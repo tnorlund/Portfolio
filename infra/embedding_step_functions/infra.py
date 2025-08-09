@@ -227,10 +227,7 @@ class LineEmbeddingStepFunction(ComponentResource):
                                 "Next": "CheckContinuation",
                                 "Retry": [
                                     {
-                                        "ErrorEquals": [
-                                            "States.TaskFailed",
-                                            "States.ALL",
-                                        ],
+                                        "ErrorEquals": ["States.ALL"],
                                         "IntervalSeconds": 5,
                                         "MaxAttempts": 3,
                                         "BackoffRate": 2.0,
@@ -282,10 +279,7 @@ class LineEmbeddingStepFunction(ComponentResource):
                                 "End": True,
                                 "Retry": [
                                     {
-                                        "ErrorEquals": [
-                                            "States.TaskFailed",
-                                            "States.ALL",
-                                        ],
+                                        "ErrorEquals": ["States.ALL"],
                                         "IntervalSeconds": 10,
                                         "MaxAttempts": 3,
                                         "BackoffRate": 2.0,
