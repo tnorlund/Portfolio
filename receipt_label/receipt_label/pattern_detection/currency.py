@@ -35,6 +35,10 @@ class CurrencyPatternDetector(PatternDetector):
         # First pass: detect all currency-like patterns
         currency_words = []
         for word in words:
+            # Validate input type
+            if not hasattr(word, 'is_noise') or not hasattr(word, 'text'):
+                continue  # Skip invalid objects
+            
             if word.is_noise:
                 continue
 

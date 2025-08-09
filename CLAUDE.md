@@ -26,9 +26,15 @@ This repository contains:
 
 ### Testing
 ```bash
+# Install test dependencies first (required for async tests)
+pip install -e "receipt_label[test]"
+
 # Python tests
-pytest receipt_dynamo/tests/unit -v
-pytest receipt_label/tests -m "not integration"
+pytest receipt_label/tests/ -v
+pytest receipt_label/tests/ -m "not integration"
+
+# For CI environments - ensure async plugin is available
+pip install pytest-asyncio>=0.24.0
 
 # JavaScript tests
 cd portfolio && npm test
