@@ -382,6 +382,11 @@ echo "🎉 Parallel function updates completed!"'''
                 "rm -rf build/python/s3transfer* || true",
                 "rm -rf build/python/six* || true",
                 "rm -rf build/python/numpy* || true",
+                # Flatten site-packages to python root (CRITICAL for Lambda layer structure)
+                'echo "Flattening site-packages to root python directory"',
+                "cp -r build/python/lib/python*/site-packages/. build/python/ || true",
+                'echo "Removing nested lib directory after flattening"',
+                "rm -rf build/python/lib || true",
                 # Check for pydantic-core if pydantic is installed
                 'if find build/python -name "pydantic*" -type d | head -1 | grep -q .; then '
                 'echo "Pydantic found, checking for pydantic_core..."; '
@@ -462,6 +467,11 @@ echo "🎉 Parallel function updates completed!"'''
                 "rm -rf build/python/s3transfer* || true",
                 "rm -rf build/python/six* || true",
                 "rm -rf build/python/numpy* || true",
+                # Flatten site-packages to python root (CRITICAL for Lambda layer structure)
+                'echo "Flattening site-packages to root python directory"',
+                "cp -r build/python/lib/python*/site-packages/. build/python/ || true",
+                'echo "Removing nested lib directory after flattening"',
+                "rm -rf build/python/lib || true",
                 # Check for pydantic-core if pydantic is installed
                 'if find build/python -name "pydantic*" -type d | head -1 | grep -q .; then '
                 'echo "Pydantic found, checking for pydantic_core..."; '
@@ -1374,7 +1384,7 @@ layers_to_build = [
         "name": "receipt-label",
         "description": "Label layer for receipt-label",
         "python_versions": ["3.12"],
-        "needs_pillow": False,  # Not needed - embedding lambdas don't use chromadb/PIL
+        "needs_pillow": True,   # Needed - transitive dependency via openai or other packages
         "package_extras": "lambda",  # Minimal dependencies for Lambda
     },
     {
