@@ -1350,15 +1350,15 @@ layers_to_build = [
         "name": "receipt-label",
         "description": "Label layer for receipt-label",
         "python_versions": ["3.12"],
-        "needs_pillow": True,  # Required for chromadb/onnxruntime dependencies
-        "package_extras": "lambda",  # Use lightweight chromadb-client for Lambda layer
+        "needs_pillow": False,  # Not needed - embedding lambdas don't use chromadb/PIL
+        "package_extras": "lambda",  # Minimal dependencies for Lambda
     },
     {
         "package_dir": "receipt_upload",
         "name": "receipt-upload",
         "description": "Upload layer for receipt-upload",
         "python_versions": ["3.12"],
-        "needs_pillow": True,
+        "needs_pillow": False,  # Not needed - no image processing in upload lambdas
     },
 ]
 
