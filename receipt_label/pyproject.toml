@@ -52,9 +52,8 @@ full = [
 # Minimal dependencies for Lambda layers
 # Note: numpy available via AWS Lambda Layer
 # Note: botocore excluded (provided by Lambda runtime)
-# Note: chromadb-client not needed for embedding lambdas (only used in compaction)
 lambda = [
-  # Empty for now - embedding lambdas don't need chromadb-client
+  "chromadb-client>=0.5.0",  # Lightweight ChromaDB client for Lambda
 ]
 test = [
     "pytest>=8.3.0,<9.0.0",
