@@ -1031,16 +1031,18 @@ EXEC_ID=$(aws codepipeline start-pipeline-execution --name {pn} --query pipeline
 echo "Triggered pipeline: $EXEC_ID"
 """
         )
-        command.local.Command(
-            f"{self.name}-trigger-pipeline",
-            create=trigger_script,
-            update=trigger_script,
-            triggers=[package_hash],
-            opts=pulumi.ResourceOptions(
-                parent=self,
-                depends_on=[upload_cmd, pipeline],
-            ),
-        )
+        # Only create trigger-pipeline command if NOT in sync mode (to avoid duplicate triggers)
+        if not self.sync_mode:
+            command.local.Command(
+                f"{self.name}-trigger-pipeline",
+                create=trigger_script,
+                update=trigger_script,
+                triggers=[package_hash],
+                opts=pulumi.ResourceOptions(
+                    parent=self,
+                    depends_on=[upload_cmd, pipeline],
+                ),
+            )
 
         # If sync_mode, start the pipeline and wait for it to complete before finishing Pulumi up
         if self.sync_mode:
@@ -1071,6 +1073,8 @@ done
             sync_cmd = command.local.Command(
                 f"{self.name}-sync-pipeline",
                 create=sync_script,
+                update=sync_script,  # Also run on updates
+                triggers=[package_hash],  # Trigger on package changes
                 opts=pulumi.ResourceOptions(
                     parent=self, depends_on=[upload_cmd, pipeline]
                 ),
