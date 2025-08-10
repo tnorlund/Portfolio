@@ -1,81 +1,74 @@
-"""Handler for finding unembedded lines."""
+"""Find unembedded lines handler - unified container version."""
 
 import os
 from typing import Any, Dict
+
+from receipt_label.embedding.line import (
+    chunk_into_line_embedding_batches,
+    list_receipt_lines_with_no_embeddings,
+    serialize_receipt_lines,
+    upload_serialized_lines,
+)
 
 from .base import BaseLambdaHandler
 
 
 class FindUnembeddedHandler(BaseLambdaHandler):
-    """Handler for finding lines that need embedding."""
+    """Handler for finding receipt lines that need embeddings.
+    
+    This is a direct port of the original find_unembedded_lines_lambda/handler.py
+    to work within the unified container architecture.
+    
+    This Lambda queries DynamoDB for lines with embedding_status=NONE and
+    prepares them for batch submission to OpenAI.
+    """
     
     def __init__(self):
         super().__init__("FindUnembedded")
+        self.bucket = os.environ["S3_BUCKET"]
         
     def handle(self, event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-        """Find lines without embeddings and prepare them for processing.
+        """Find receipt lines without embeddings and prepare batches for submission.
         
         Args:
-            event: Contains scan parameters
-            context: Lambda context
+            event: Lambda event (unused in current implementation)
+            context: Lambda context (unused)
             
         Returns:
-            List of unembedded lines and batch info
+            dict: Contains statusCode and batches ready for processing
         """
-        # Import here to avoid loading at module level
-        from receipt_dynamo.entities import Line
-        from receipt_label.embedding.utils import (
-            find_unembedded_items,
-            prepare_embedding_batch,
-            upload_batch_to_s3,
-        )
-        
-        # Get scan parameters
-        limit = event.get("limit", 1000)
-        start_key = event.get("start_key")
-        receipt_filter = event.get("receipt_filter")
-        
-        self.logger.info(f"Scanning for unembedded lines (limit: {limit})")
-        
-        # Find unembedded lines
-        scan_result = find_unembedded_items(
-            entity_type=Line,
-            limit=limit,
-            start_key=start_key,
-            filter_expression=receipt_filter
-        )
-        
-        unembedded_lines = scan_result["items"]
-        next_key = scan_result.get("last_evaluated_key")
-        
-        self.logger.info(f"Found {len(unembedded_lines)} unembedded lines")
-        
-        if not unembedded_lines:
-            return {
-                "found": 0,
-                "next_key": next_key,
-                "batch_created": False
-            }
-        
-        # Prepare batch for OpenAI
-        batch_data = prepare_embedding_batch(
-            items=unembedded_lines,
-            batch_type="line"
-        )
-        
-        # Upload to S3 if configured
-        s3_bucket = os.environ.get("S3_BUCKET")
-        if s3_bucket and batch_data:
-            s3_result = upload_batch_to_s3(
-                batch_data=batch_data,
-                bucket=s3_bucket,
-                prefix="line-embeddings/batches"
+        self.logger.info("Starting find_unembedded_lines handler")
+
+        try:
+            lines_without_embeddings = list_receipt_lines_with_no_embeddings()
+            self.logger.info(
+                "Found %d lines without embeddings", len(lines_without_embeddings)
             )
-            batch_data["s3_path"] = s3_result["path"]
-        
-        return {
-            "found": len(unembedded_lines),
-            "next_key": next_key,
-            "batch_created": True,
-            "batch_info": batch_data
-        }
+
+            batches = chunk_into_line_embedding_batches(lines_without_embeddings)
+            self.logger.info("Chunked into %d batches", len(batches))
+
+            uploaded = upload_serialized_lines(
+                serialize_receipt_lines(batches), self.bucket
+            )
+            self.logger.info("Uploaded %d files", len(uploaded))
+
+            cleaned = [
+                {
+                    "s3_key": e["s3_key"],
+                    "s3_bucket": e["s3_bucket"],
+                    "image_id": e["image_id"],
+                    "receipt_id": e["receipt_id"],
+                }
+                for e in uploaded
+            ]
+
+            return {"statusCode": 200, "batches": cleaned}
+
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            self.logger.error("Error finding unembedded lines: %s", str(e))
+            return {
+                "statusCode": 500,
+                "error": str(e),
+                "batches": [],
+            }

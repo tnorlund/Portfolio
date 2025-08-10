@@ -1,83 +1,71 @@
-"""Handler for listing pending OpenAI batches."""
+"""List pending batches handler - unified container version."""
 
-from typing import Any, Dict
+from typing import Any, Dict, List
+
+from receipt_label.embedding.line import list_pending_line_embedding_batches
 
 from .base import BaseLambdaHandler
 
 
 class ListPendingHandler(BaseLambdaHandler):
-    """Handler for listing pending OpenAI batches."""
+    """Handler for listing pending line embedding batches.
+    
+    This is a direct port of the original list_pending_batches_lambda/handler.py
+    to work within the unified container architecture.
+    
+    This Lambda queries DynamoDB for line embedding batches that are ready
+    for polling.
+    """
     
     def __init__(self):
         super().__init__("ListPending")
         
-    def handle(self, event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-        """List all pending OpenAI batches.
+    def handle(self, event: Dict[str, Any], context: Any) -> List[Dict[str, str]]:
+        """List pending line embedding batches from DynamoDB.
         
         Args:
-            event: Contains filter parameters
-            context: Lambda context
+            event: Lambda event (unused in current implementation)
+            context: Lambda context (unused)
             
         Returns:
-            List of pending batches with their status
+            List of pending batches with batch_id and openai_batch_id
         """
-        # Import here to avoid loading at module level
-        from receipt_label.embedding.monitoring import (
-            get_pending_batches,
-            get_batch_metrics,
-            check_batch_health,
-        )
-        
-        # Get filter parameters
-        batch_type = event.get("batch_type")  # "word", "line", or None for all
-        max_age_hours = event.get("max_age_hours", 24)
-        include_metrics = event.get("include_metrics", True)
-        
-        self.logger.info(f"Listing pending batches (type: {batch_type or 'all'})")
-        
-        # Get pending batches from DynamoDB
-        pending_batches = get_pending_batches(
-            batch_type=batch_type,
-            max_age_hours=max_age_hours
-        )
-        
-        self.logger.info(f"Found {len(pending_batches)} pending batches")
-        
-        # Enrich with metrics if requested
-        if include_metrics and pending_batches:
-            for batch in pending_batches:
-                batch["metrics"] = get_batch_metrics(batch["batch_id"])
-                batch["health"] = check_batch_health(batch)
-        
-        # Categorize by status
-        categorized = {
-            "validating": [],
-            "in_progress": [],
-            "finalizing": [],
-            "stalled": [],
-            "unknown": []
-        }
-        
-        for batch in pending_batches:
-            status = batch.get("status", "unknown")
-            health = batch.get("health", {})
-            
-            if health.get("is_stalled"):
-                categorized["stalled"].append(batch)
-            elif status in categorized:
-                categorized[status].append(batch)
-            else:
-                categorized["unknown"].append(batch)
-        
-        return {
-            "total_pending": len(pending_batches),
-            "batches": pending_batches,
-            "categorized": categorized,
-            "summary": {
-                "validating": len(categorized["validating"]),
-                "in_progress": len(categorized["in_progress"]),
-                "finalizing": len(categorized["finalizing"]),
-                "stalled": len(categorized["stalled"]),
-                "unknown": len(categorized["unknown"])
-            }
-        }
+        self.logger.info("Starting list_pending_line_batches_for_polling handler")
+
+        try:
+            # Get pending batches
+            pending_batches = list_pending_line_embedding_batches()
+
+            self.logger.info(
+                "Found %d pending line embedding batches", len(pending_batches)
+            )
+
+            # Format response for step function
+            batch_list = []
+            for batch in pending_batches[0:5]:
+                # TODO: Remove this once we have a proper polling mechanism  # pylint: disable=fixme
+                batch_list.append(
+                    {
+                        "batch_id": batch.batch_id,
+                        "openai_batch_id": batch.openai_batch_id,
+                    }
+                )
+
+            # Return the list directly for Step Functions
+            # Step Functions doesn't need HTTP-style responses
+            return batch_list
+
+        except AttributeError as e:
+            self.logger.error("Client manager configuration error: %s", str(e))
+            # For Step Functions, throwing an exception is better than returning an error object
+            # This will cause the state to fail with proper error handling
+            raise RuntimeError(f"Configuration error: {str(e)}") from e
+        except KeyError as e:
+            self.logger.error("Missing expected field in DynamoDB response: %s", str(e))
+            raise RuntimeError(f"Data format error: {str(e)}") from e
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            # Catch-all for other exceptions (network errors, etc.)
+            self.logger.error(
+                "Unexpected error listing pending line batches: %s", str(e)
+            )
+            raise RuntimeError(f"Internal error: {str(e)}") from e

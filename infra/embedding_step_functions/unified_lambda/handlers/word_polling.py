@@ -1,8 +1,14 @@
-"""Word polling handler for OpenAI batch results."""
+"""Word polling handler for OpenAI batch results - unified container version."""
 
+import json
+import os
 from typing import Any, Dict
 
-from receipt_label.embedding.common import handle_batch_status
+from receipt_label.embedding.common import (
+    handle_batch_status,
+    mark_items_for_retry,
+    process_partial_results,
+)
 from receipt_label.embedding.word.poll import (
     download_openai_batch_result,
     get_openai_batch_status,
@@ -17,7 +23,11 @@ from .base import BaseLambdaHandler
 
 
 class WordPollingHandler(BaseLambdaHandler):
-    """Handler for polling word embedding batches from OpenAI."""
+    """Handler for polling word embedding batches from OpenAI.
+    
+    This is a direct port of the original chromadb_word_polling_lambda/handler.py
+    to work within the unified container architecture.
+    """
     
     def __init__(self):
         super().__init__("WordPolling")
@@ -25,61 +35,181 @@ class WordPollingHandler(BaseLambdaHandler):
     def handle(self, event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         """Poll a word embedding batch and save results as deltas to S3.
         
+        This enhanced handler processes all OpenAI batch statuses including
+        failed, expired, and in-progress states.
+        
+        When called from Step Function, set skip_sqs_notification=True to 
+        prevent individual compaction triggers.
+        
         Args:
-            event: Contains batch_id and metadata
-            context: Lambda context
+            event: Lambda event containing batch_id and openai_batch_id
+            context: Lambda context (unused)
             
         Returns:
-            Status of the polling operation
+            Dictionary with status, action taken, and next steps
         """
+        self.logger.info("Starting containerized poll_word_embedding_batch_handler")
+        self.logger.info(f"Event: {json.dumps(event)}")
+
         batch_id = event["batch_id"]
-        self.logger.info(f"Polling word embedding batch: {batch_id}")
+        openai_batch_id = event["openai_batch_id"]
         
-        # Get batch status from OpenAI
-        status_info = get_openai_batch_status(batch_id)
-        self.logger.info(f"Batch status: {status_info['status']}")
-        
-        # Handle different batch statuses
-        result = handle_batch_status(
+        # Check if we should skip SQS notification (when called from step function)
+        skip_sqs = event.get("skip_sqs_notification", False)
+
+        # Get client manager
+        client_manager = get_client_manager()
+
+        # Check the batch status
+        batch_status = get_openai_batch_status(openai_batch_id)
+        self.logger.info(f"Batch {openai_batch_id} status: {batch_status}")
+
+        # Use modular status handler
+        status_result = handle_batch_status(
             batch_id=batch_id,
-            status_info=status_info,
-            download_func=download_openai_batch_result,
-            process_func=self._process_word_results,
-            mark_complete_func=mark_batch_complete,
-            batch_type="word_embedding"
+            openai_batch_id=openai_batch_id,
+            status=batch_status,
+            client_manager=client_manager
         )
         
-        return result
-    
-    def _process_word_results(self, batch_id: str, results: Dict) -> Dict[str, Any]:
-        """Process successful word embedding results.
-        
-        Args:
-            batch_id: OpenAI batch ID
-            results: Downloaded batch results
+        # Process based on the action determined by status handler
+        if status_result["action"] == "process_results" and batch_status == "completed":
+            # Download the batch results
+            results = download_openai_batch_result(openai_batch_id)
+            self.logger.info(f"Downloaded {len(results)} embedding results")
+
+            # Get receipt details
+            descriptions = get_receipt_descriptions(results)
+            self.logger.info(f"Retrieved details for {len(descriptions)} receipts")
+
+            # Get configuration from environment
+            bucket_name = os.environ.get("CHROMADB_BUCKET")
+            if not bucket_name:
+                raise ValueError("CHROMADB_BUCKET environment variable not set")
             
-        Returns:
-            Processing status
-        """
-        # Get receipt descriptions if needed
-        receipt_descriptions = get_receipt_descriptions(batch_id)
+            # Determine SQS queue URL based on skip_sqs flag
+            if skip_sqs:
+                self.logger.info("Skipping SQS notification for this delta")
+                sqs_queue_url = None
+            else:
+                sqs_queue_url = os.environ.get("COMPACTION_QUEUE_URL")
+                self.logger.info(f"Will send SQS notification to: {sqs_queue_url}")
+
+            delta_result = save_word_embeddings_as_delta(
+                results, descriptions, batch_id, bucket_name, sqs_queue_url
+            )
+            self.logger.info(
+                f"Saved delta {delta_result['delta_id']} with "
+                f"{delta_result['embedding_count']} embeddings"
+            )
+
+            # Write to DynamoDB for tracking
+            written = write_embedding_results_to_dynamo(
+                results, descriptions, batch_id
+            )
+            self.logger.info(f"Wrote {written} embedding results to DynamoDB")
+
+            # Mark batch complete
+            mark_batch_complete(batch_id)
+            self.logger.info(f"Marked batch {batch_id} as complete")
+
+            return {
+                "statusCode": 200,
+                "batch_id": batch_id,
+                "openai_batch_id": openai_batch_id,
+                "batch_status": batch_status,
+                "action": status_result["action"],
+                "results_count": len(results),
+                "delta_id": delta_result["delta_id"],
+                "delta_key": delta_result["delta_key"],
+                "embedding_count": delta_result["embedding_count"],
+                "storage": "s3_delta",
+            }
         
-        # Write results to DynamoDB
-        dynamo_result = write_embedding_results_to_dynamo(
-            batch_id=batch_id,
-            results=results,
-            descriptions=receipt_descriptions
-        )
+        elif status_result["action"] == "process_partial" and batch_status == "expired":
+            # Handle expired batch with partial results
+            partial_results = status_result.get("partial_results", [])
+            failed_ids = status_result.get("failed_ids", [])
+            
+            if partial_results:
+                self.logger.info(f"Processing {len(partial_results)} partial results")
+                
+                # Get receipt details for successful results
+                descriptions = get_receipt_descriptions(partial_results)
+                
+                # Save partial results
+                delta_result = save_word_embeddings_as_delta(
+                    partial_results, descriptions, batch_id
+                )
+                
+                # Write partial results to DynamoDB
+                written = write_embedding_results_to_dynamo(
+                    partial_results, descriptions, batch_id
+                )
+                self.logger.info(f"Processed {written} partial embedding results")
+            
+            # Mark failed items for retry
+            if failed_ids:
+                marked = mark_items_for_retry(
+                    failed_ids,
+                    "word",
+                    client_manager
+                )
+                self.logger.info(f"Marked {marked} words for retry")
+            
+            return {
+                "statusCode": 200,
+                "batch_id": batch_id,
+                "openai_batch_id": openai_batch_id,
+                "batch_status": batch_status,
+                "action": status_result["action"],
+                "successful_count": status_result.get("successful_count", 0),
+                "failed_count": status_result.get("failed_count", 0),
+                "next_step": status_result.get("next_step"),
+            }
         
-        # Save as ChromaDB delta for later compaction
-        delta_result = save_word_embeddings_as_delta(
-            batch_id=batch_id,
-            results=results,
-            metadata=receipt_descriptions
-        )
+        elif status_result["action"] == "handle_failure":
+            # Handle completely failed batch
+            error_info = status_result
+            self.logger.error(
+                f"Batch {openai_batch_id} failed with {error_info.get('error_count', 0)} errors"
+            )
+            
+            # Could mark all items for retry here if needed
+            # For now, just return the error info
+            
+            return {
+                "statusCode": 200,  # Still 200 for Step Functions
+                "batch_id": batch_id,
+                "openai_batch_id": openai_batch_id,
+                "batch_status": batch_status,
+                "action": status_result["action"],
+                "error_count": error_info.get("error_count", 0),
+                "error_types": error_info.get("error_types", {}),
+                "sample_errors": error_info.get("sample_errors", []),
+                "next_step": error_info.get("next_step"),
+            }
         
-        return {
-            "dynamo_items_written": dynamo_result["items_written"],
-            "delta_saved": delta_result["success"],
-            "delta_path": delta_result.get("path")
-        }
+        elif status_result["action"] in ["wait", "handle_cancellation"]:
+            # Batch is still processing or was cancelled
+            return {
+                "statusCode": 200,
+                "batch_id": batch_id,
+                "openai_batch_id": openai_batch_id,
+                "batch_status": batch_status,
+                "action": status_result["action"],
+                "hours_elapsed": status_result.get("hours_elapsed"),
+                "next_step": status_result.get("next_step"),
+            }
+        
+        else:
+            # Unknown action
+            self.logger.error(f"Unknown action from status handler: {status_result['action']}")
+            return {
+                "statusCode": 200,
+                "batch_id": batch_id,
+                "openai_batch_id": openai_batch_id,
+                "batch_status": batch_status,
+                "action": "unknown",
+                "error": f"Unknown action: {status_result['action']}",
+            }
