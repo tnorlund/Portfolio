@@ -54,6 +54,8 @@ full = [
 # Note: botocore excluded (provided by Lambda runtime)
 lambda = [
   "chromadb-client>=0.5.0",  # Lightweight ChromaDB client for Lambda
+  "opentelemetry-api>=1.20.0",  # Required by chromadb for telemetry
+  "opentelemetry-sdk>=1.20.0",  # Runtime context for Lambda environment
 ]
 test = [
     "pytest>=8.3.0,<9.0.0",

@@ -103,6 +103,10 @@ class WordLabelStepFunctions(ComponentResource):
                     "PINECONE_INDEX_NAME": pinecone_index_name,
                     "PINECONE_HOST": pinecone_host,
                     "S3_BUCKET": batch_bucket.bucket,
+                    # Disable ChromaDB telemetry to avoid OpenTelemetry issues in Lambda
+                    "CHROMA_TELEMETRY": "false",
+                    "CHROMA_OTEL_EXPORTER_OTLP_ENDPOINT": "",  # Disable OTLP export
+                    "OTEL_SDK_DISABLED": "true",  # Disable OpenTelemetry SDK completely
                 }
             ),
             layers=[dynamo_layer.arn, label_layer.arn],
@@ -157,6 +161,10 @@ class WordLabelStepFunctions(ComponentResource):
                     "PINECONE_INDEX_NAME": pinecone_index_name,
                     "PINECONE_HOST": pinecone_host,
                     "S3_BUCKET": batch_bucket.bucket,
+                    # Disable ChromaDB telemetry to avoid OpenTelemetry issues in Lambda
+                    "CHROMA_TELEMETRY": "false",
+                    "CHROMA_OTEL_EXPORTER_OTLP_ENDPOINT": "",  # Disable OTLP export
+                    "OTEL_SDK_DISABLED": "true",  # Disable OpenTelemetry SDK completely
                 }
             ),
             layers=[dynamo_layer.arn, label_layer.arn],
@@ -319,6 +327,10 @@ class WordLabelStepFunctions(ComponentResource):
                     "PINECONE_INDEX_NAME": pinecone_index_name,
                     "PINECONE_HOST": pinecone_host,
                     "S3_BUCKET": batch_bucket.bucket,
+                    # Disable ChromaDB telemetry to avoid OpenTelemetry issues in Lambda
+                    "CHROMA_TELEMETRY": "false",
+                    "CHROMA_OTEL_EXPORTER_OTLP_ENDPOINT": "",  # Disable OTLP export
+                    "OTEL_SDK_DISABLED": "true",  # Disable OpenTelemetry SDK completely
                 }
             ),
             layers=[dynamo_layer.arn, label_layer.arn],
@@ -356,6 +368,10 @@ class WordLabelStepFunctions(ComponentResource):
                     "PINECONE_INDEX_NAME": pinecone_index_name,
                     "PINECONE_HOST": pinecone_host,
                     "S3_BUCKET": batch_bucket.bucket,
+                    # Disable ChromaDB telemetry to avoid OpenTelemetry issues in Lambda
+                    "CHROMA_TELEMETRY": "false",
+                    "CHROMA_OTEL_EXPORTER_OTLP_ENDPOINT": "",  # Disable OTLP export
+                    "OTEL_SDK_DISABLED": "true",  # Disable OpenTelemetry SDK completely
                 }
             ),
             layers=[dynamo_layer.arn, label_layer.arn],
