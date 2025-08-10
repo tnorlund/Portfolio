@@ -827,28 +827,29 @@ echo "🎉 Parallel function updates completed!"'''
             # Step 1: Prepare merged directory
             commands.append('echo "Preparing merged layer directory..."')
             commands.append("rm -rf merged && mkdir -p merged")
-            # Step 2: Merge each version's unpacked artifact into python/lib/python<ver>/site-packages
-            commands.append('echo "Setting up merged python/lib directory..."')
+            # Step 2: Merge already-flattened artifacts (build stage already flattened to python/*)
+            commands.append('echo "Setting up merged python directory (already flattened)..."')
             commands.append(
-                "rm -rf merged/python && mkdir -p merged/python/lib"
+                "rm -rf merged/python && mkdir -p merged/python"
             )
             for idx, v in enumerate(self.python_versions):
-                commands.append(f'echo "Merging artifacts for Python {v}..."')
-                # Use the version string directly (e.g., "3.11", "3.12")
-                commands.append(
-                    f"mkdir -p merged/python/lib/python{v}/site-packages"
-                )
+                commands.append(f'echo "Merging flattened artifacts for Python {v}..."')
                 if idx == 0:
-                    # Primary artifact in root workspace
+                    # Primary artifact in root workspace - already flattened to python/*
                     commands.append(
-                        f"cp -r python/* merged/python/lib/python{v}/site-packages/"
+                        "cp -r python/* merged/python/"
                     )
                 else:
                     # Secondary artifacts under CODEBUILD_SRC_DIR_py<ver> (ver without dots)
+                    # These are also already flattened to python/*
                     ver = v.replace(".", "")
                     commands.append(
-                        f"cp -r $CODEBUILD_SRC_DIR_py{ver}/python/* merged/python/lib/python{v}/site-packages/"
+                        f"cp -r $CODEBUILD_SRC_DIR_py{ver}/python/* merged/python/"
                     )
+            # Validate the flattened structure before zipping
+            commands.append('echo "Validating flattened structure..."')
+            commands.append('if [ -d "merged/python/lib" ]; then echo "ERROR: Nested lib directory found! Layer should be flattened."; exit 1; fi')
+            commands.append('echo "✓ Structure is correctly flattened (no nested lib directory)"')
             # Step 3: Zip the merged python directory
             commands.append('echo "Zipping merged layer..."')
             commands.append("cd merged && zip -r ../layer.zip python && cd ..")
