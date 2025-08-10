@@ -35,7 +35,7 @@ def create_optimized_embedding_workflow(lambda_arns, role_arn, name, parent):
                         "Retry": [
                             {
                                 "ErrorEquals": ["Lambda.TooManyRequestsException"],
-                                "IntervalSeconds": 0.5,  # Fast retry keeps container warm
+                                "IntervalSeconds": 1,  # Fast retry keeps container warm
                                 "MaxAttempts": 2,
                                 "BackoffRate": 1.2,
                                 "JitterStrategy": "FULL"
@@ -140,7 +140,7 @@ def create_optimized_embedding_workflow(lambda_arns, role_arn, name, parent):
                                     "Retry": [
                                         {
                                             "ErrorEquals": ["Lambda.Unknown"],
-                                            "IntervalSeconds": 0.5,
+                                            "IntervalSeconds": 1,
                                             "MaxAttempts": 2,
                                             "BackoffRate": 1.1
                                         }
@@ -296,7 +296,7 @@ def create_express_subworkflow(lambda_arn, role_arn, name, parent):
                     "Retry": [
                         {
                             "ErrorEquals": ["States.ALL"],
-                            "IntervalSeconds": 0.5,
+                            "IntervalSeconds": 1,
                             "MaxAttempts": 2,
                             "BackoffRate": 1.5
                         }

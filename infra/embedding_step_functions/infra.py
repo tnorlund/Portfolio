@@ -170,7 +170,7 @@ class LineEmbeddingStepFunction(ComponentResource):
                                 "Retry": [
                                     {
                                         "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
-                                        "IntervalSeconds": 0.5,
+                                        "IntervalSeconds": 1,
                                         "MaxAttempts": 2,
                                         "BackoffRate": 1.5,
                                         "JitterStrategy": "FULL",
@@ -202,7 +202,7 @@ class LineEmbeddingStepFunction(ComponentResource):
                                             "Retry": [
                                                 {
                                                     "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
-                                                    "IntervalSeconds": 0.5,
+                                                    "IntervalSeconds": 1,
                                                     "MaxAttempts": 2,
                                                     "BackoffRate": 1.5,
                                                     "JitterStrategy": "FULL",
@@ -266,7 +266,7 @@ class LineEmbeddingStepFunction(ComponentResource):
                                     {
                                         # Fast retry for Lambda service errors to keep container warm
                                         "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
-                                        "IntervalSeconds": 0.5,
+                                        "IntervalSeconds": 1,
                                         "MaxAttempts": 2,
                                         "BackoffRate": 1.5,
                                         "JitterStrategy": "FULL",
@@ -334,7 +334,7 @@ class LineEmbeddingStepFunction(ComponentResource):
                                     {
                                         # Fast retry to keep container warm for final merge
                                         "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
-                                        "IntervalSeconds": 0.5,
+                                        "IntervalSeconds": 1,
                                         "MaxAttempts": 2,
                                         "BackoffRate": 1.5,
                                         "JitterStrategy": "FULL",
@@ -400,7 +400,7 @@ class LineEmbeddingStepFunction(ComponentResource):
                                 "Retry": [
                                     {
                                         "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
-                                        "IntervalSeconds": 0.5,
+                                        "IntervalSeconds": 1,
                                         "MaxAttempts": 2,
                                         "BackoffRate": 1.5,
                                         "JitterStrategy": "FULL",
@@ -427,7 +427,7 @@ class LineEmbeddingStepFunction(ComponentResource):
                                             "Retry": [
                                                 {
                                                     "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
-                                                    "IntervalSeconds": 0.5,
+                                                    "IntervalSeconds": 1,
                                                     "MaxAttempts": 2,
                                                     "BackoffRate": 1.5,
                                                     "JitterStrategy": "FULL",
