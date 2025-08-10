@@ -478,33 +478,16 @@ echo "🎉 Parallel function updates completed!"'''
     def _setup_fast_build(self, package_hash: str, package_path: str) -> None:
         """Set up the fast build process with CodePipeline and per-version CodeBuild projects."""
 
-        # Create S3 bucket for artifacts
-        # Truncate to fit AWS S3 bucket naming limits (63 chars)
-        stack = pulumi.get_stack()
-        
-        # Use a hash of the full name for uniqueness when truncating
-        full_name = f"{self.name}-{stack}"
-        name_hash = hashlib.md5(full_name.encode()).hexdigest()[:8]
-        
-        # Build a bucket name that's guaranteed to be under 63 chars
-        # Pattern: "fll-{name_short}-{stack_short}-{hash}"
-        name_short = self.name[:10]
-        stack_short = stack[:15] if len(stack) > 15 else stack
-        
-        bucket_name = f"fll-{name_short}-{stack_short}-{name_hash}"
-        # Ensure lowercase and replace underscores
-        bucket_name = bucket_name.lower().replace("_", "-").replace("--", "-")
-        
+        # Create S3 bucket for artifacts - let Pulumi auto-generate unique name
         build_bucket = aws.s3.Bucket(
-            resource_name=f"fast-lambda-layer-{self.name}-artifacts-{stack}",
-            bucket=bucket_name,
+            f"{self.name}-artifacts",
             force_destroy=True,
             opts=pulumi.ResourceOptions(parent=self),
         )
 
         # Configure versioning as a separate resource
         aws.s3.BucketVersioningV2(
-            f"fast-lambda-layer-{self.name}-artifacts-versioning",
+            f"{self.name}-artifacts-versioning",
             bucket=build_bucket.id,
             versioning_configuration=(
                 aws.s3.BucketVersioningV2VersioningConfigurationArgs(
@@ -536,7 +519,7 @@ echo "🎉 Parallel function updates completed!"'''
 
         # Create IAM role for CodeBuild/CodePipeline
         codebuild_role = aws.iam.Role(
-            f"{self.name}-fast-codebuild-role",
+            f"{self.name}-codebuild-role",
             assume_role_policy=json.dumps(
                 {
                     "Version": "2012-10-17",
@@ -563,7 +546,7 @@ echo "🎉 Parallel function updates completed!"'''
 
         # Create CodeBuild policy with permissions for layer publishing and function updates
         aws.iam.RolePolicy(
-            f"{self.name}-fast-codebuild-policy",
+            f"{self.name}-codebuild-policy",
             role=codebuild_role.id,
             policy=pulumi.Output.all(build_bucket.arn, self.layer_name).apply(
                 lambda args: json.dumps(
@@ -628,7 +611,7 @@ echo "🎉 Parallel function updates completed!"'''
                                     "codebuild:BatchGetBuildBatches",
                                 ],
                                 "Resource": [
-                                    f"arn:aws:codebuild:{aws.config.region}:{aws.get_caller_identity().account_id}:project/{self.name}-publish-{pulumi.get_stack()}",
+                                    f"arn:aws:codebuild:{aws.config.region}:{aws.get_caller_identity().account_id}:project/{self.name}-publish",
                                     f"arn:aws:codebuild:{aws.config.region}:{aws.get_caller_identity().account_id}:project/{self.name}-*",
                                 ],
                             },
@@ -742,7 +725,7 @@ echo "🎉 Parallel function updates completed!"'''
         for v in self.python_versions:
             project = aws.codebuild.Project(
                 resource_name=f"{self.name}-build-py{v.replace('.', '')}",
-                name=f"{self.name}-build-py{v.replace('.', '')}-{pulumi.get_stack()}",
+                name=f"{self.name}-build-py{v.replace('.', '')}",
                 service_role=codebuild_role.arn,
                 source=aws.codebuild.ProjectSourceArgs(
                     type="S3",
@@ -891,7 +874,7 @@ echo "🎉 Parallel function updates completed!"'''
         # Create the publish CodeBuild project
         publish_project = aws.codebuild.Project(
             f"{self.name}-publish",
-            name=f"{self.name}-publish-{pulumi.get_stack()}",
+            name=f"{self.name}-publish",
             service_role=codebuild_role.arn,
             source=aws.codebuild.ProjectSourceArgs(
                 type="CODEPIPELINE",
@@ -936,8 +919,8 @@ echo "🎉 Parallel function updates completed!"'''
 
         # Define CodePipeline to run all builds in parallel and then publish layer versions
         pipeline = aws.codepipeline.Pipeline(
-            resource_name=f"{self.name}-pipeline-{pulumi.get_stack()}",
-            name=f"{self.name}-pipeline-{pulumi.get_stack()}",
+            resource_name=f"{self.name}-pipeline",
+            name=f"{self.name}-pipeline",
             role_arn=pipeline_role.arn,
             artifact_stores=[
                 aws.codepipeline.PipelineArtifactStoreArgs(
