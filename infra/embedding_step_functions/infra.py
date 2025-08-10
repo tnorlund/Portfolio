@@ -25,7 +25,8 @@ from pulumi_aws.sfn import StateMachine
 
 # Import ChromaDB infrastructure components
 from chromadb_compaction import ChromaDBBuckets, ChromaDBQueues
-from .chromadb_lambdas import ChromaDBLambdas
+# Use the new unified Lambda implementation
+from .unified_chromadb_lambdas import UnifiedChromaDBLambdas
 
 # Note: This import is not actually used in this file
 # from base_images.base_images_v3 import BaseImages
@@ -97,7 +98,7 @@ class LineEmbeddingStepFunction(ComponentResource):
             lambda_args["base_image_name"] = base_image_name
             lambda_args["base_image_resource"] = base_image_resource
 
-        self.chromadb_lambdas = ChromaDBLambdas(f"{name}-chromadb", **lambda_args)
+        self.chromadb_lambdas = UnifiedChromaDBLambdas(f"{name}-chromadb", **lambda_args)
 
         # Create IAM role for Step Function
         self.step_function_role = Role(

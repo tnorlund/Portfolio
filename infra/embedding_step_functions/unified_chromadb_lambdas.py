@@ -436,5 +436,15 @@ class UnifiedChromaDBLambdas(ComponentResource):
             opts=ResourceOptions(parent=self, depends_on=[self.unified_image]),
         )
 
-        # Store function reference
-        setattr(self, f"{config['handler_type'].replace('_', '')}_lambda", lambda_func)
+        # Store function reference with correct attribute name
+        # Map handler types to the expected attribute names
+        attr_name_map = {
+            "word_polling": "polling_lambda",
+            "line_polling": "line_polling_lambda", 
+            "compaction": "compaction_lambda",
+            "find_unembedded": "find_unembedded_lambda",
+            "submit_openai": "submit_openai_lambda",
+            "list_pending": "list_pending_lambda",
+        }
+        attr_name = attr_name_map.get(config['handler_type'], f"{config['handler_type']}_lambda")
+        setattr(self, attr_name, lambda_func)
