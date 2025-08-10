@@ -1366,6 +1366,10 @@ layers_to_build = [
 # TEMPORARILY SKIP LAYER BUILDING
 SKIP_LAYER_BUILDING = False  # Set to False to enable layer building
 
+# SYNC MODE: Set to True when ARNs are needed immediately (e.g., after major changes)
+# Set to False for faster pulumi up once layers are stable
+USE_SYNC_MODE = True  # Temporarily enabled to fix null ARN issues
+
 fast_lambda_layers = {}
 
 if not SKIP_LAYER_BUILDING:
@@ -1377,6 +1381,7 @@ if not SKIP_LAYER_BUILDING:
             description=layer_config["description"],  # type: ignore
             needs_pillow=layer_config["needs_pillow"],  # type: ignore
             package_extras=layer_config.get("package_extras"),  # type: ignore
+            sync_mode=USE_SYNC_MODE,  # Use flag to control sync/async mode
         )
         fast_lambda_layers[layer_config["name"]] = fast_layer
 
