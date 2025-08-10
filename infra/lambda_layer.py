@@ -1041,7 +1041,7 @@ done
                 f"{self.name}-sync-pipeline",
                 create=sync_script,
                 opts=pulumi.ResourceOptions(
-                    parent=self, depends_on=[pipeline]
+                    parent=self, depends_on=[upload_cmd, pipeline]
                 ),
             )
             # Ensure Pulumi waits for pipeline before proceeding
@@ -1372,7 +1372,7 @@ SKIP_LAYER_BUILDING = False  # Set to False to enable layer building
 
 # SYNC MODE: Set to True when ARNs are needed immediately (e.g., after major changes)
 # Set to False for faster pulumi up once layers are stable
-USE_SYNC_MODE = True  # Temporarily enabled to fix null ARN issues
+USE_SYNC_MODE = False  # Temporarily disabled for faster pulumi up while testing
 
 # Create Lambda layers using the hybrid approach
 lambda_layers = {}
