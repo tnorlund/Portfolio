@@ -330,11 +330,12 @@ echo "🎉 Parallel function updates completed!"'''
                 'WHEEL_FILE=$(ls dist/*.whl | head -1)',
                 'echo "Found wheel: $WHEEL_FILE"',
                 # Install with extras if specified (e.g., [lambda] for lightweight chromadb-client)
-                f"python{version} -m pip install --no-cache-dir --no-compile "
+                # Note: Removed --no-compile to allow pydantic-core and other compiled extensions
+                f"python{version} -m pip install --no-cache-dir "
                 f"\"$WHEEL_FILE{f'[{self.package_extras}]' if self.package_extras else ''}\" "
                 f"-t build/python/lib/python{version}/site-packages || "
                 f"{{ echo 'First pip install attempt failed, retrying...'; "
-                f"python{version} -m pip install --no-cache-dir --no-compile "
+                f"python{version} -m pip install --no-cache-dir "
                 f"\"$WHEEL_FILE{f'[{self.package_extras}]' if self.package_extras else ''}\" "
                 f"-t build/python/lib/python{version}/site-packages; }}",
                 # Install Pillow BEFORE flattening if needed
@@ -381,11 +382,23 @@ echo "🎉 Parallel function updates completed!"'''
                 "rm -rf build/python/s3transfer* || true",
                 "rm -rf build/python/six* || true",
                 "rm -rf build/python/numpy* || true",
+                # Check for pydantic-core if pydantic is installed
+                'if find build/python -name "pydantic*" -type d | head -1 | grep -q .; then '
+                'echo "Pydantic found, checking for pydantic_core..."; '
+                'if ! find build/python -name "*pydantic_core*" | head -1 | grep -q .; then '
+                'echo "WARNING: Pydantic found but pydantic_core missing - this may cause import errors"; '
+                'fi; fi',
                 "chmod -R 755 build",
                 # Validate layer output
                 'echo "Validating build output..."',
                 "[ -d build/python ] || { echo 'ERROR: build/python not found'; exit 1; }",
                 "ls -la build/python/ | head -20 || true",
+                # Check for pydantic-core if pydantic is installed
+                'if find build/python -name "pydantic*" -type d | head -1 | grep -q .; then '
+                'echo "Pydantic found, checking for pydantic_core..."; '
+                'if ! find build/python -name "*pydantic_core*" | head -1 | grep -q .; then '
+                'echo "WARNING: Pydantic found but pydantic_core missing - this may cause import errors"; '
+                'fi; fi',
                 # Validate Pillow import if needed
                 'if [ "$NEEDS_PILLOW" = "True" ]; then '
                 'echo "Validating Pillow installation..."; '
@@ -420,7 +433,8 @@ echo "🎉 Parallel function updates completed!"'''
                 'echo "Building wheel"',
                 "cd source && python3 -m build --wheel --outdir ../dist/ && cd ..",
                 'echo "Installing wheel for each runtime with Lambda optimizations"',
-                'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do python${v} -m pip install --no-cache-dir --no-compile dist/*.whl -t build/python/lib/python${v}/site-packages; done',
+                # Note: Removed --no-compile to allow pydantic-core and other compiled extensions
+                'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do python${v} -m pip install --no-cache-dir dist/*.whl -t build/python/lib/python${v}/site-packages; done',
                 # Install Pillow if needed BEFORE flattening
                 'if [ "$NEEDS_PILLOW" = "True" ]; then '
                 'echo "Installing Pillow for each runtime before flattening"; '
@@ -448,6 +462,12 @@ echo "🎉 Parallel function updates completed!"'''
                 "rm -rf build/python/s3transfer* || true",
                 "rm -rf build/python/six* || true",
                 "rm -rf build/python/numpy* || true",
+                # Check for pydantic-core if pydantic is installed
+                'if find build/python -name "pydantic*" -type d | head -1 | grep -q .; then '
+                'echo "Pydantic found, checking for pydantic_core..."; '
+                'if ! find build/python -name "*pydantic_core*" | head -1 | grep -q .; then '
+                'echo "WARNING: Pydantic found but pydantic_core missing - this may cause import errors"; '
+                'fi; fi',
                 "chmod -R 755 build",
             ]
             pre_build_phase = {
