@@ -1338,7 +1338,7 @@ layers_to_build = [
         "name": "receipt-label",
         "description": "Label layer for receipt-label",
         "python_versions": ["3.12"],
-        "needs_pillow": False,
+        "needs_pillow": True,  # Required for chromadb/onnxruntime dependencies
         "package_extras": "lambda",  # Use lightweight chromadb-client for Lambda layer
     },
     {
