@@ -25,7 +25,8 @@ from pulumi_aws.sfn import StateMachine
 
 # Import ChromaDB infrastructure components
 from chromadb_compaction import ChromaDBBuckets, ChromaDBQueues
-from .chromadb_lambdas import ChromaDBLambdas
+# Use the new unified Lambda implementation
+from .unified_chromadb_lambdas import UnifiedChromaDBLambdas
 
 # Note: This import is not actually used in this file
 # from base_images.base_images_v3 import BaseImages
@@ -97,7 +98,7 @@ class LineEmbeddingStepFunction(ComponentResource):
             lambda_args["base_image_name"] = base_image_name
             lambda_args["base_image_resource"] = base_image_resource
 
-        self.chromadb_lambdas = ChromaDBLambdas(f"{name}-chromadb", **lambda_args)
+        self.chromadb_lambdas = UnifiedChromaDBLambdas(f"{name}-chromadb", **lambda_args)
 
         # Create IAM role for Step Function
         self.step_function_role = Role(
@@ -166,6 +167,21 @@ class LineEmbeddingStepFunction(ComponentResource):
                                 "Resource": arns[0],
                                 "Comment": ("Find all OpenAI batches with " "status=PENDING"),
                                 "Next": "PollLineEmbeddingBatch",
+                                "Retry": [
+                                    {
+                                        "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                                        "IntervalSeconds": 1,
+                                        "MaxAttempts": 2,
+                                        "BackoffRate": 1.5,
+                                        "JitterStrategy": "FULL",
+                                    },
+                                    {
+                                        "ErrorEquals": ["States.ALL"],
+                                        "IntervalSeconds": 1,
+                                        "MaxAttempts": 3,
+                                        "BackoffRate": 2.0,
+                                    }
+                                ],
                             },
                             "PollLineEmbeddingBatch": {
                                 "Type": "Map",
@@ -183,6 +199,27 @@ class LineEmbeddingStepFunction(ComponentResource):
                                             "Type": "Task",
                                             "Resource": arns[1],
                                             "End": True,
+                                            "Retry": [
+                                                {
+                                                    "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                                                    "IntervalSeconds": 1,
+                                                    "MaxAttempts": 2,
+                                                    "BackoffRate": 1.5,
+                                                    "JitterStrategy": "FULL",
+                                                },
+                                                {
+                                                    "ErrorEquals": ["RateLimitError", "OpenAIError"],
+                                                    "IntervalSeconds": 5,
+                                                    "MaxAttempts": 5,
+                                                    "BackoffRate": 2.0,
+                                                },
+                                                {
+                                                    "ErrorEquals": ["States.ALL"],
+                                                    "IntervalSeconds": 2,
+                                                    "MaxAttempts": 3,
+                                                    "BackoffRate": 2.0,
+                                                }
+                                            ],
                                         }
                                     },
                                 },
@@ -227,8 +264,24 @@ class LineEmbeddingStepFunction(ComponentResource):
                                 "Next": "CheckContinuation",
                                 "Retry": [
                                     {
+                                        # Fast retry for Lambda service errors to keep container warm
+                                        "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                                        "IntervalSeconds": 1,
+                                        "MaxAttempts": 2,
+                                        "BackoffRate": 1.5,
+                                        "JitterStrategy": "FULL",
+                                    },
+                                    {
+                                        # Slower retry for rate limits
+                                        "ErrorEquals": ["Lambda.TooManyRequestsException", "States.Timeout"],
+                                        "IntervalSeconds": 2,
+                                        "MaxAttempts": 3,
+                                        "BackoffRate": 2.0,
+                                    },
+                                    {
+                                        # Catch-all for other errors
                                         "ErrorEquals": ["States.ALL"],
-                                        "IntervalSeconds": 5,
+                                        "IntervalSeconds": 1,
                                         "MaxAttempts": 3,
                                         "BackoffRate": 2.0,
                                     }
@@ -279,8 +332,17 @@ class LineEmbeddingStepFunction(ComponentResource):
                                 "End": True,
                                 "Retry": [
                                     {
+                                        # Fast retry to keep container warm for final merge
+                                        "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                                        "IntervalSeconds": 1,
+                                        "MaxAttempts": 2,
+                                        "BackoffRate": 1.5,
+                                        "JitterStrategy": "FULL",
+                                    },
+                                    {
+                                        # Longer retry for resource issues during compaction
                                         "ErrorEquals": ["States.ALL"],
-                                        "IntervalSeconds": 10,
+                                        "IntervalSeconds": 3,
                                         "MaxAttempts": 3,
                                         "BackoffRate": 2.0,
                                     }
@@ -335,6 +397,21 @@ class LineEmbeddingStepFunction(ComponentResource):
                                     "Query DynamoDB for lines with " "embedding_status=NONE"
                                 ),
                                 "Next": "SubmitEmbedding",
+                                "Retry": [
+                                    {
+                                        "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                                        "IntervalSeconds": 1,
+                                        "MaxAttempts": 2,
+                                        "BackoffRate": 1.5,
+                                        "JitterStrategy": "FULL",
+                                    },
+                                    {
+                                        "ErrorEquals": ["States.ALL"],
+                                        "IntervalSeconds": 1,
+                                        "MaxAttempts": 3,
+                                        "BackoffRate": 2.0,
+                                    }
+                                ],
                             },
                             "SubmitEmbedding": {
                                 "Type": "Map",
@@ -347,6 +424,27 @@ class LineEmbeddingStepFunction(ComponentResource):
                                             "Type": "Task",
                                             "Resource": arns[1],
                                             "End": True,
+                                            "Retry": [
+                                                {
+                                                    "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                                                    "IntervalSeconds": 1,
+                                                    "MaxAttempts": 2,
+                                                    "BackoffRate": 1.5,
+                                                    "JitterStrategy": "FULL",
+                                                },
+                                                {
+                                                    "ErrorEquals": ["RateLimitError", "OpenAIError"],
+                                                    "IntervalSeconds": 5,
+                                                    "MaxAttempts": 5,
+                                                    "BackoffRate": 2.0,
+                                                },
+                                                {
+                                                    "ErrorEquals": ["States.ALL"],
+                                                    "IntervalSeconds": 2,
+                                                    "MaxAttempts": 3,
+                                                    "BackoffRate": 2.0,
+                                                }
+                                            ],
                                         },
                                     },
                                 },
