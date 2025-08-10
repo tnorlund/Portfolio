@@ -334,6 +334,12 @@ echo "🎉 Parallel function updates completed!"'''
                 f"python{version} -m pip install --no-cache-dir --no-compile "
                 f"\"$WHEEL_FILE{f'[{self.package_extras}]' if self.package_extras else ''}\" "
                 f"-t build/python/lib/python{version}/site-packages; }}",
+                # Install Pillow BEFORE flattening if needed
+                'if [ "$NEEDS_PILLOW" = "True" ]; then '
+                'echo "Installing Pillow before flattening"; '
+                f"python{version} -m pip install --no-cache-dir Pillow "
+                f"-t build/python/lib/python{version}/site-packages; "
+                "fi",
                 'echo "Removing packages provided by AWS Lambda runtime"',
                 "rm -rf build/python/lib/python*/site-packages/boto* || true",
                 "rm -rf build/python/lib/python*/site-packages/*boto* || true",
@@ -375,21 +381,21 @@ echo "🎉 Parallel function updates completed!"'''
                 'echo "Validating build output..."',
                 "[ -d build/python ] || { echo 'ERROR: build/python not found'; exit 1; }",
                 "ls -la build/python/ | head -20 || true",
+                # Validate Pillow import if needed
+                'if [ "$NEEDS_PILLOW" = "True" ]; then '
+                'echo "Validating Pillow installation..."; '
+                f"cd build && python{version} -c \"import sys; sys.path.insert(0, 'python'); "
+                "from PIL import Image, _imaging; print('Pillow import successful')\" || "
+                "{ echo 'ERROR: Pillow import failed'; exit 1; }; cd ..; "
+                "fi",
                 'echo "Build validation complete"',
             ]
-            if self.needs_pillow:
-                build_commands.append('echo "Installing Pillow"')
-                build_commands.append(
-                    f"python{version} -m pip install --no-cache-dir Pillow -t build/python/lib/python{version}/site-packages"
-                )
+            # Removed old Pillow installation - now handled before flattening
             pre_build_phase = {
                 "commands": [
-                    'if [ "$NEEDS_PILLOW" = "True" ]; then '
-                    'echo "Pre-build: generating Pillow bundle"; '
-                    f"cd source && python{version} -m pip install --no-cache-dir Pillow -t ../build/pillow && cd ..; "
-                    "mkdir -p build/lib && cp -r build/pillow/. build/lib/; "
-                    'echo "Static Pillow bundle added"; '
-                    "fi"
+                    # Pre-build phase no longer needed for Pillow
+                    # Pillow is now installed in the build phase before flattening
+                    'echo "Pre-build phase completed"'
                 ]
             }
             artifacts = {
@@ -408,8 +414,14 @@ echo "🎉 Parallel function updates completed!"'''
                 'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do mkdir -p build/python/lib/python${v}/site-packages; done',
                 'echo "Building wheel"',
                 "cd source && python3 -m build --wheel --outdir ../dist/ && cd ..",
-                'echo "Installing wheel and Pillow for each runtime with Lambda optimizations"',
-                'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do python${v} -m pip install --no-cache-dir --no-compile dist/*.whl Pillow -t build/python/lib/python${v}/site-packages; done',
+                'echo "Installing wheel for each runtime with Lambda optimizations"',
+                'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do python${v} -m pip install --no-cache-dir --no-compile dist/*.whl -t build/python/lib/python${v}/site-packages; done',
+                # Install Pillow if needed BEFORE flattening
+                'if [ "$NEEDS_PILLOW" = "True" ]; then '
+                'echo "Installing Pillow for each runtime before flattening"; '
+                'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do '
+                'python${v} -m pip install --no-cache-dir Pillow -t build/python/lib/python${v}/site-packages; '
+                'done; fi',
                 'echo "Removing boto3/botocore (provided by AWS Lambda runtime)"',
                 "find build -type d -name 'boto*' -exec rm -rf {} + 2>/dev/null || true",
                 'echo "Cleaning up unnecessary files from all packages"',
@@ -433,13 +445,9 @@ echo "🎉 Parallel function updates completed!"'''
             ]
             pre_build_phase = {
                 "commands": [
-                    'if [ "$NEEDS_PILLOW" = "True" ]; then '
-                    'echo "Pre-build: generating Pillow bundle"; '
-                    'echo "Installing Pillow for each runtime for static bundle"; '
-                    'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do cd source && python${v} -m pip install --no-cache-dir Pillow -t ../build/pillow && cd ..; done; '
-                    "mkdir -p build/lib && cp -r build/pillow/. build/lib/; "
-                    'echo "Static Pillow bundle added"; '
-                    "fi"
+                    # Pre-build phase no longer needed for Pillow
+                    # Pillow is now installed in the build phase before flattening
+                    'echo "Pre-build phase completed"'
                 ]
             }
             artifacts = {
