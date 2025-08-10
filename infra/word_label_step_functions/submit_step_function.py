@@ -300,6 +300,7 @@ class WordLabelStepFunctions(ComponentResource):
             handler="prepare_embedding_batch_handler.submit_handler",
             timeout=900,
             memory_size=512,
+            architectures=["arm64"],
             code=AssetArchive(
                 {
                     "prepare_embedding_batch_handler.py": FileAsset(
@@ -336,6 +337,7 @@ class WordLabelStepFunctions(ComponentResource):
             handler="submit_embedding_batch_handler.submit_handler",
             timeout=900,
             memory_size=512,
+            architectures=["arm64"],
             code=AssetArchive(
                 {
                     "submit_embedding_batch_handler.py": FileAsset(
