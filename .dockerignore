@@ -77,6 +77,10 @@ tmp/
 temp/
 *.tmp
 *.temp
+.venv_test/
+debug_validation.py
+test_cost_tracking.py
+remove_validation.patch
 
 # Logs
 *.log
@@ -84,6 +88,9 @@ logs/
 
 # Cache files
 .cache/
+
+# Cost tracking documentation (not needed for Docker builds)
+COST_TRACKING.md
 
 # IDE files
 *.sublime-*
@@ -94,9 +101,9 @@ logs/
 Pulumi.*.yaml
 .pulumi/
 
-# Keep only essential directories
-!receipt_dynamo/
-!receipt_label/
+# Infrastructure files - exclude everything except Lambda handlers
+infra/
+# But keep the Lambda handler directories we need for unified image
 !infra/embedding_step_functions/unified_lambda/
 !infra/embedding_step_functions/chromadb_*_lambda/
 !infra/embedding_step_functions/find_unembedded_lines_lambda/
