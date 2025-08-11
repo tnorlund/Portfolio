@@ -2,78 +2,24 @@
 """
 lambda_layer.py
 
-This module defines the LambdaLayer component resource, which automates the process of building,
-publishing, and updating AWS Lambda Layers via AWS CodeBuild and Step Functions. The component manages
-the entire lifecycle of a Lambda layer - from verifying the source package to producing a built artifact,
-and then updating dependent Lambda functions automatically.
+A hybrid Lambda Layer component that gives you the best of both worlds:
+- Fast `pulumi up` for development (async builds with real ARNs)
+- Simple architecture (no Step Functions/SQS complexity) 
+- Easy debugging and monitoring
 
-Key features:
-  - **Source Directory Validation:** Ensures that the provided package directory (which should contain a
-    valid pyproject.toml and Python source files) exists and is properly structured.
-
-  - **Change Detection:** Computes a hash of the package contents so that the layer rebuild is triggered
-    only when changes are detected (or when forced).
-
-  - **Customizable Buildspec:** Generates a buildspec for AWS CodeBuild to build the layer. The buildspec
-    creates a zip archive with the exact AWS Lambda layer structure:
-      python/lib/python<version>/site-packages/...
-
-  - **Metadata Configuration:** The LambdaLayer constructor now accepts a `description` parameter, which is
-    used to provide a human-readable description for the layer version. This description is propagated
-    both to the Pulumi-managed Lambda layer version and the publish handler environment.
-
-  - **Compatible Architectures:** The component explicitly sets `compatible_architectures` (e.g., ["x86_64", "arm64"])
-    on the Lambda layer version resource so that it can run on the desired architectures.
-
-  - **Publishing and Updates:** A separate publish handler (defined in publish_handler.py) is invoked via a
-    Step Functions state machine, which publishes a new Lambda layer version from a built artifact stored in S3.
-    The publish handler reads the layer name, description, and compatible architectures from its environment variables.
-
-  - **Automated Updates of Dependent Lambda Functions:** Once a new layer version is published, the component's
-    orchestration automatically updates all Lambda functions (filtered by environment tags) to use the newest
-    layer version.
-
-Usage Example:
-
-    dynamo_layer = LambdaLayer(
-         name="receipt-dynamo",
-         package_dir="receipt_dynamo",
-         python_version="3.12",
-         description="Automatically built Lambda layer for receipt-dynamo",
-    )
-
-In this example:
-  - The source for the layer is located in the "receipt_dynamo" directory (relative to the project root).
-  - The layer is built for Python 3.12.
-  - A custom description is provided.
-  - The resulting layer version resource will include compatible runtimes, a description, and the specified
-    compatible architectures.
-  - The build process is managed by CodeBuild, and the built artifact is published and used to update any dependent
-    Lambda functions automatically.
-
-This component uses additional resources such as:
-  - An S3 bucket for storing build artifacts.
-  - A CodeBuild project to run the build according to a generated buildspec.
-  - A Step Functions state machine to orchestrate the build and publish workflow.
-  - IAM roles and policies to provide the necessary permissions.
-  - A publish handler Lambda function (in publish_handler.py) to call lambda:PublishLayerVersion with the proper
-    description and compatible architectures.
-
-Ensure your environment (both local and AWS) meets the prerequisites for building Python layers, particularly
-that the build environment uses an Amazon Linux image so that binary dependencies (e.g. from Pillow) are compatible
-with AWS Lambda.
-
+Modes:
+- development (default): Fast `pulumi up`, builds happen in background
+- sync: Wait for builds to complete (useful for CI/CD)
 """
 
+import base64
 import glob
 import hashlib
 import json
 import os
-import shutil
-import sys
+import shlex
 import tempfile
-import time
-from pathlib import Path
+from typing import Optional, List, Dict, Any
 
 import pulumi
 import pulumi_aws as aws
@@ -81,75 +27,107 @@ import pulumi_command as command
 from pulumi import ComponentResource, Output
 from utils import _find_project_root
 
-# Constants
-
-
 PROJECT_DIR = _find_project_root()
-S3_BUCKET_NAME = "lambdalayerpulumi"
-CODEBUILD_TIMEOUT = 300  # 5 minutes timeout
-
-config = pulumi.Config("lambda-layer")
+# config will be initialized when needed in Pulumi context
 
 
 class LambdaLayer(ComponentResource):
     """
-    A Pulumi component that builds and manages Lambda Layers using AWS CodeBuild.
+    A hybrid Lambda Layer component optimized for development speed.
 
-    This component automates the process of building and deploying Lambda Layers
-    in a cloud environment. It handles the complete lifecycle from source
-    code to deployment.
-
-    Attributes:
-        name (str): The name of the Lambda Layer.
-        package_dir (str): The directory containing the source code for the Lambda Layer.
-        python_version (str): The version of Python to use for the Lambda Layer.
-        opts (pulumi.ResourceOptions): Additional options for the Lambda Layer.
+    Features:
+    - Fast `pulumi up` (async builds by default)
+    - Simple architecture (no Step Functions complexity)
+    - Easy debugging with clear status
+    - Configurable sync mode for CI/CD
     """
 
     def __init__(
         self,
         name: str,
         package_dir: str,
-        python_versions,
-        description: str = None,
-        opts: pulumi.ResourceOptions = None,
+        python_versions: List[str],
+        description: Optional[str] = None,
+        needs_pillow: bool = False,
+        sync_mode: Optional[bool] = None,
+        package_extras: Optional[str] = None,  # e.g., "lambda" for receipt_label[lambda]
+        opts: Optional[pulumi.ResourceOptions] = None,
     ):
         super().__init__(f"lambda-layer:{name}", name, {}, opts)
 
         self.name = name
-        # Use a stack‑qualified name for the actual AWS Lambda layer
         self.layer_name = f"{name}-{pulumi.get_stack()}"
         self.package_dir = package_dir
+
         # Accept either a single version string or a list
         if isinstance(python_versions, str):
-            self.python_versions = [python_versions]
+            self.python_versions: List[str] = [python_versions]
         else:
             self.python_versions = list(python_versions)
+
         self.description = (
             description or f"Automatically built Lambda layer for {name}"
         )
+        self.needs_pillow = needs_pillow
+        self.package_extras = package_extras
         self.opts = opts
+
+        # Determine build mode
+        # Priority: parameter > config > CI detection > default (async)
+        if sync_mode is not None:
+            self.sync_mode = sync_mode
+        else:
+            config = pulumi.Config("lambda-layer")
+            if config.get_bool("sync-mode"):
+                self.sync_mode = True
+            elif os.getenv("CI") or os.getenv("GITHUB_ACTIONS"):
+                self.sync_mode = True  # Use sync mode in CI
+            else:
+                self.sync_mode = False  # Fast async mode for development
 
         # Validate package directory
         self._validate_package_dir()
 
         # Get the force-rebuild config
+        config = pulumi.Config("lambda-layer")
         self.force_rebuild = config.get_bool("force-rebuild") or False
+        
+        # Get debug mode config
+        self.debug_mode = config.get_bool("debug-mode") or False
 
-        self._setup_layer_build()
-
-    def _validate_package_dir(self):
-        """Validate that the package directory exists and contains the necessary files."""
-        # Get the absolute path to the package directory
+        # Calculate package hash for change detection
+        package_hash = self._calculate_package_hash()
         package_path = os.path.join(PROJECT_DIR, self.package_dir)
 
-        # Check if directory exists
+        # Show build mode and change detection info
+        if self.sync_mode:
+            pulumi.log.info(
+                f"🔄 Building layer '{self.name}' in SYNC mode (will wait for completion)"
+            )
+        else:
+            pulumi.log.info(
+                f"⚡ Layer '{self.name}' in ASYNC mode (fast pulumi up)"
+            )
+            if self.force_rebuild:
+                pulumi.log.info(
+                    "   🔨 Force rebuild enabled - will trigger build"
+                )
+            else:
+                pulumi.log.info(
+                    f"   📦 Hash: {package_hash[:12]}... - will build only if changed"
+                )
+
+        self._setup_fast_build(package_hash, package_path)
+
+    def _validate_package_dir(self) -> None:
+        """Validate that the package directory exists and contains the necessary files."""
+        package_path = os.path.join(PROJECT_DIR, self.package_dir)
+
         if not os.path.exists(package_path):
             raise ValueError(
                 f"Package directory {package_path} does not exist"
             )
 
-        # Check for required files
         required_files = ["pyproject.toml"]
         missing_files = [
             f
@@ -158,10 +136,10 @@ class LambdaLayer(ComponentResource):
         ]
         if missing_files:
             raise ValueError(
-                f"Package directory {package_path} is missing required files: {', '.join(missing_files)}"
+                f"Package directory {package_path} is missing required files: "
+                f"{', '.join(missing_files)}"
             )
 
-        # Check for Python files
         python_files = glob.glob(
             os.path.join(package_path, "**/*.py"), recursive=True
         )
@@ -170,62 +148,549 @@ class LambdaLayer(ComponentResource):
                 f"Package directory {package_path} contains no Python files"
             )
 
-    def _calculate_package_hash(self):
+    def _calculate_package_hash(self) -> str:
         """Calculate a hash of the package contents to detect changes."""
         hash_obj = hashlib.sha256()
         package_path = os.path.join(PROJECT_DIR, self.package_dir)
 
-        # Sort files to ensure consistent hashing
         files_to_hash = []
         for root, _, files in os.walk(package_path):
             for file in files:
                 if file.endswith(".py") or file == "pyproject.toml":
                     files_to_hash.append(os.path.join(root, file))
 
-        # Sort files for consistency
         for file_path in sorted(files_to_hash):
             with open(file_path, "rb") as f:
                 hash_obj.update(f.read())
-            # Also hash the relative path to detect renamed files
             rel_path = os.path.relpath(file_path, package_path)
             hash_obj.update(rel_path.encode())
 
         return hash_obj.hexdigest()
+    
+    def _get_local_dependencies(self) -> List[str]:
+        """Get list of local package dependencies from pyproject.toml."""
+        package_path = os.path.join(PROJECT_DIR, self.package_dir)
+        pyproject_path = os.path.join(package_path, "pyproject.toml")
+        
+        local_deps = []
+        if os.path.exists(pyproject_path):
+            try:
+                # Try Python 3.11+ built-in tomllib first
+                try:
+                    import tomllib
+                    with open(pyproject_path, 'rb') as f:
+                        data = tomllib.load(f)
+                except ImportError:
+                    # Fall back to toml package if available
+                    try:
+                        import toml
+                        with open(pyproject_path, 'r') as f:
+                            data = toml.load(f)
+                    except ImportError:
+                        # If neither is available, parse manually for basic dependencies
+                        pulumi.log.warn(f"TOML parser not available, using basic parsing for {self.name}")
+                        data = self._parse_pyproject_basic(pyproject_path)
+                    
+                # Check main dependencies
+                deps = data.get('project', {}).get('dependencies', [])
+                
+                # Also check optional dependencies if using extras
+                if self.package_extras:
+                    optional_deps = data.get('project', {}).get('optional-dependencies', {})
+                    if self.package_extras in optional_deps:
+                        deps.extend(optional_deps[self.package_extras])
+                
+                # Filter for local packages (receipt-*)
+                for dep in deps:
+                    # Extract package name from version spec
+                    dep_name = dep.split('[')[0].split('>')[0].split('<')[0].split('=')[0].strip()
+                    if dep_name.startswith('receipt-'):
+                        # Convert package name to directory name (receipt-dynamo -> receipt_dynamo)
+                        dir_name = dep_name.replace('-', '_')
+                        local_path = os.path.join(PROJECT_DIR, dir_name)
+                        if os.path.exists(local_path):
+                            local_deps.append(dir_name)
+                            pulumi.log.info(f"📦 Found local dependency: {dir_name} for {self.name}")
+            except Exception as e:
+                pulumi.log.warn(f"Could not parse pyproject.toml: {e}")
+                
+        return local_deps
+    
+    def _parse_pyproject_basic(self, pyproject_path: str) -> Dict[str, Any]:
+        """Basic parser for pyproject.toml to extract dependencies when toml module is not available."""
+        result = {"project": {"dependencies": [], "optional-dependencies": {}}}
+        
+        try:
+            with open(pyproject_path, 'r') as f:
+                lines = f.readlines()
+                
+            in_dependencies = False
+            in_optional = False
+            current_extra = None
+            
+            for line in lines:
+                line = line.strip()
+                
+                # Start of dependencies section
+                if line == "dependencies = [":
+                    in_dependencies = True
+                    continue
+                    
+                # End of dependencies section
+                if in_dependencies and line == "]":
+                    in_dependencies = False
+                    continue
+                    
+                # Check for optional dependencies
+                if "[project.optional-dependencies]" in line:
+                    in_optional = True
+                    continue
+                    
+                # Parse optional dependency sections
+                if in_optional and "= [" in line:
+                    current_extra = line.split("=")[0].strip()
+                    result["project"]["optional-dependencies"][current_extra] = []
+                    continue
+                    
+                # End of optional section
+                if in_optional and line == "]":
+                    current_extra = None
+                    continue
+                    
+                # Parse dependency lines
+                if in_dependencies and line and line != "]":
+                    # Remove quotes and commas
+                    dep = line.strip(' ",\'')
+                    if dep and not dep.startswith("#"):
+                        result["project"]["dependencies"].append(dep)
+                        
+                # Parse optional dependency lines
+                if current_extra and line and line != "]":
+                    dep = line.strip(' ",\'')
+                    if dep and not dep.startswith("#"):
+                        result["project"]["optional-dependencies"][current_extra].append(dep)
+                        
+        except Exception as e:
+            pulumi.log.warn(f"Basic parsing failed: {e}")
+            
+        return result
 
-    def _setup_layer_build(self):
-        """Set up the asynchronous build process."""
+    def _encode_shell_script(self, script_content: str) -> str:
+        """Encode a shell script to base64 for use in buildspec to avoid parsing issues."""
+        return base64.b64encode(script_content.encode("utf-8")).decode("utf-8")
+    
+    def _generate_batched_pip_install(self, packages: List[str], target_dir: str, 
+                                     python_version: str, batch_size: int = 10) -> List[str]:
+        """Generate batched pip install commands to avoid ARG_MAX errors.
+        
+        Args:
+            packages: List of package names to install
+            target_dir: Target directory for installation  
+            python_version: Python version to use
+            batch_size: Number of packages per batch
+            
+        Returns:
+            List of pip install commands
+        """
+        if not packages:
+            return []
+            
+        commands = []
+        for i in range(0, len(packages), batch_size):
+            batch = packages[i:i + batch_size]
+            pkg_str = " ".join(batch)
+            commands.append(
+                f"python{python_version} -m pip install --no-cache-dir --no-compile "
+                f"{pkg_str} -t {target_dir}"
+            )
+        return commands
 
-        tags = {
-            "project": "receipt-parser",
-            "component": f"lambda-layer-{self.name}",
-            "environment": pulumi.get_stack(),
+    def _get_update_functions_script(self) -> str:
+        """Generate the shell script for updating Lambda functions."""
+        return '''#!/bin/bash
+set -e
+LAYER_BASE_ARN=$(echo "$NEW_LAYER_ARN" | sed "s/:[^:]*$//")
+
+# Function to update a single Lambda function (for parallel execution)
+update_function() {
+  local FUNC_NAME="$1"
+  local FUNC_ARN="$2"
+
+  echo "Checking function: $FUNC_NAME"
+  ENV_TAG=$(aws lambda list-tags --resource "$FUNC_ARN" --query "Tags.environment" --output text 2>/dev/null || echo "None")
+
+  if [ "$ENV_TAG" != "$STACK_NAME" ]; then
+    echo "  Skipping $FUNC_NAME (environment: $ENV_TAG)"
+    return 0
+  fi
+
+  echo "  Function $FUNC_NAME matches environment $STACK_NAME"
+  CURRENT_LAYERS=$(aws lambda get-function-configuration --function-name "$FUNC_NAME" --query "Layers[*].Arn" --output text)
+
+  # Quick check: does this function actually use the layer we are updating?
+  if [ -z "$CURRENT_LAYERS" ] || [ "$CURRENT_LAYERS" = "None" ]; then
+    echo "  Skipping $FUNC_NAME (no layers)"
+    return 0
+  fi
+
+  # Check if function uses the layer being updated
+  USES_LAYER=false
+  for LAYER in $CURRENT_LAYERS; do
+    LAYER_BASE=$(echo "$LAYER" | sed "s/:[^:]*$//")
+    if [ "$LAYER_BASE" = "$LAYER_BASE_ARN" ]; then
+      USES_LAYER=true
+      break
+    fi
+  done
+
+  if [ "$USES_LAYER" = "false" ]; then
+    echo "  Skipping $FUNC_NAME (does not use this layer)"
+    return 0
+  fi
+
+  # Build new layer list
+  NEW_LAYERS=""
+  for LAYER in $CURRENT_LAYERS; do
+    LAYER_BASE=$(echo "$LAYER" | sed "s/:[^:]*$//")
+    LAYER_NAME=$(echo "$LAYER_BASE" | sed "s/.*://")
+
+    if [ "$LAYER_BASE" = "$LAYER_BASE_ARN" ]; then
+      echo "    Replacing old version: $LAYER"
+      continue
+    fi
+
+    if echo "$LAYER_NAME" | grep -q "\\-$STACK_NAME$"; then
+      NEW_LAYERS="$NEW_LAYERS $LAYER"
+      echo "    Keeping env-specific layer: $LAYER"
+    elif echo "$LAYER_BASE" | grep -q "\\-$STACK_NAME:"; then
+      NEW_LAYERS="$NEW_LAYERS $LAYER"
+      echo "    Keeping env-specific layer: $LAYER"
+    else
+      NEW_LAYERS="$NEW_LAYERS $LAYER"
+      BASE_LAYER_NAME=$(echo "$LAYER_NAME" | sed "s/\\-[^\\-]*$//")
+      echo "    Keeping cross-env layer: $LAYER (consider migrating to ${BASE_LAYER_NAME}-$STACK_NAME)"
+    fi
+  done
+
+  NEW_LAYERS="$NEW_LAYERS $NEW_LAYER_ARN"
+  NEW_LAYERS=$(echo "$NEW_LAYERS" | xargs)
+  echo "  Updating $FUNC_NAME with layers: $NEW_LAYERS"
+
+  if aws lambda update-function-configuration --function-name "$FUNC_NAME" --layers $NEW_LAYERS >/dev/null 2>&1; then
+    echo "  ✅ Updated $FUNC_NAME successfully"
+  else
+    echo "  ❌ Failed to update $FUNC_NAME"
+  fi
+}
+
+# Export function for parallel execution
+export -f update_function
+export STACK_NAME LAYER_BASE_ARN NEW_LAYER_ARN
+
+echo "🔍 Finding Lambda functions that use this layer..."
+
+# Get functions and filter in parallel (max 10 concurrent updates)
+aws lambda list-functions --query "Functions[*].[FunctionName,FunctionArn]" --output text | \
+  grep -v "^None" | \
+  xargs -n 2 -P 10 bash -c 'update_function "$@"' _
+
+echo "🎉 Parallel function updates completed!"'''
+
+    def _get_buildspec(self, version: str | None = None) -> Dict[str, Any]:
+        """Return a buildspec dict for CodeBuild.
+
+        If ``version`` is provided, the buildspec targets a single Python
+        version. Otherwise, it handles all versions listed in
+        ``self.python_versions``.
+        
+        Includes ARG_MAX protection for long command lines.
+        """
+
+        versions = [version] if version else self.python_versions
+        primary = versions[0]
+
+        install_commands = [
+            "echo Installing native libraries for Pillow…",
+            "dnf install -y libjpeg-turbo libpng libtiff libwebp freetype lcms2 zlib",
+            "pip install build",
+            # Add error handling for pip install
+            'echo "Setting up pip error handling..."',
+            "set -e",  # Exit on any error
+        ]
+
+        if version:
+            build_commands = [
+                "echo Build directory prep",
+                # Add debug logging if enabled (use || true to prevent failure when DEBUG_MODE is false)
+                '[ "$DEBUG_MODE" = "True" ] && echo "DEBUG: Starting build for Python ${PYTHON_VERSION}" || true',
+                '[ "$DEBUG_MODE" = "True" ] && echo "DEBUG: Current directory:" && pwd || true',
+                '[ "$DEBUG_MODE" = "True" ] && echo "DEBUG: Directory contents:" && ls -la || true',
+                "echo Checking source structure:",
+                "ls -la source/ || echo 'source directory not found'",
+                "ls -la source/pyproject.toml || echo 'pyproject.toml not found in source'",
+                # Check for and build local dependencies first
+                ('if [ -d "dependencies" ]; then '
+                 'echo "Found local dependencies, building them first..."; '
+                 'mkdir -p dep_wheels; '
+                 'for dep_dir in dependencies/*; do '
+                 'if [ -d "$dep_dir" ]; then '
+                 'dep_name=$(basename "$dep_dir"); '
+                 'echo "  - Building $dep_name"; '
+                 'cd "$dep_dir"; '
+                 'python3 -m build --wheel --outdir ../../dep_wheels/; '
+                 'cd ../../; '
+                 'fi; '
+                 'done; '
+                 'echo "Installing local dependency wheels..."; '
+                 f'python{version} -m pip install --no-cache-dir dep_wheels/*.whl -t build/python/lib/python{version}/site-packages || true; '
+                 'fi'),
+                "rm -rf build && mkdir -p build",
+                f"mkdir -p build/python/lib/python{version}/site-packages",
+                'echo "Building main package wheel"',
+                "cd source && python3 -m build --wheel --outdir ../dist/ && cd ..",
+                'echo "Installing wheel with optimization exclusions for Lambda layer"',
+                # Find the wheel file and install with extras if specified
+                'echo "Finding wheel file..."',
+                'WHEEL_FILE=$(ls dist/*.whl | head -1)',
+                'echo "Found wheel: $WHEEL_FILE"',
+                # Install with extras if specified (e.g., [lambda] for lightweight chromadb-client)
+                # Note: Removed --no-compile to allow pydantic-core and other compiled extensions
+                # Include local wheels directory for dependencies like receipt-dynamo
+                f"python{version} -m pip install --no-cache-dir "
+                f"--find-links dep_wheels "
+                f"\"$WHEEL_FILE{f'[{self.package_extras}]' if self.package_extras else ''}\" "
+                f"-t build/python/lib/python{version}/site-packages || "
+                f"{{ echo 'First pip install attempt failed, retrying...'; "
+                f"python{version} -m pip install --no-cache-dir "
+                f"--find-links dep_wheels "
+                f"\"$WHEEL_FILE{f'[{self.package_extras}]' if self.package_extras else ''}\" "
+                f"-t build/python/lib/python{version}/site-packages; }}",
+                # Install Pillow BEFORE flattening if needed
+                'if [ "$NEEDS_PILLOW" = "True" ]; then '
+                'echo "Installing Pillow before flattening"; '
+                f"python{version} -m pip install --no-cache-dir Pillow "
+                f"-t build/python/lib/python{version}/site-packages; "
+                "fi",
+                'echo "Removing packages provided by AWS Lambda runtime"',
+                "rm -rf build/python/lib/python*/site-packages/boto* || true",
+                "rm -rf build/python/lib/python*/site-packages/*boto* || true",
+                "rm -rf build/python/lib/python*/site-packages/dateutil* || true",
+                "rm -rf build/python/lib/python*/site-packages/jmespath* || true",
+                "rm -rf build/python/lib/python*/site-packages/s3transfer* || true",
+                "rm -rf build/python/lib/python*/site-packages/six* || true",
+                # NumPy is now included in the layer (not removed anymore)
+                'echo "Cleaning up unnecessary files from all packages"',
+                "find build -type d -name '__pycache__' -exec rm -rf {} + "
+                "2>/dev/null || true",
+                "find build -type d -name 'tests' -o -name 'test' -exec rm -rf {} + "
+                "2>/dev/null || true",
+                "find build -type f -name '*.pyc' -o -name '*.pyo' -exec rm -f {} + "
+                "2>/dev/null || true",
+                "find build -type f \\( -name '*.md' -o -name '*.txt' -o -name '*.yml' "
+                "-o -name '*.yaml' -o -name '*.rst' \\) -not -path "
+                "'*/dist-info/top_level.txt' -exec rm -f {} + 2>/dev/null || true",
+                "find build -type f -name '*.dist-info/RECORD' -exec sed -i "
+                "'/\\.pyc/d' {} + 2>/dev/null || true",
+                'echo "Copying native libraries"',
+                "mkdir -p build/lib && cp /usr/lib64/libjpeg*.so* "
+                "/usr/lib64/libpng*.so* /usr/lib64/libtiff*.so* "
+                "/usr/lib64/libwebp*.so* /usr/lib64/liblcms2*.so* "
+                "/usr/lib64/libfreetype*.so* build/lib || true",
+                'echo "Flattening site-packages to root python directory"',
+                "cp -r build/python/lib/python*/site-packages/. build/python/ || true",
+                'echo "Removing nested lib directory after flattening"',
+                "rm -rf build/python/lib || true",
+                'echo "Final cleanup after flattening"',
+                "rm -rf build/python/boto* || true",
+                "rm -rf build/python/*boto* || true",
+                "rm -rf build/python/dateutil* || true",
+                "rm -rf build/python/jmespath* || true",
+                "rm -rf build/python/s3transfer* || true",
+                "rm -rf build/python/six* || true",
+                # Flatten site-packages to python root (CRITICAL for Lambda layer structure)
+                'echo "Flattening site-packages to root python directory"',
+                "cp -r build/python/lib/python*/site-packages/. build/python/ || true",
+                'echo "Removing nested lib directory after flattening"',
+                "rm -rf build/python/lib || true",
+                # Check for pydantic-core if pydantic is installed
+                'if find build/python -name "pydantic*" -type d | head -1 | grep -q .; then '
+                'echo "Pydantic found, checking for pydantic_core..."; '
+                'if ! find build/python -name "*pydantic_core*" | head -1 | grep -q .; then '
+                'echo "WARNING: Pydantic found but pydantic_core missing - this may cause import errors"; '
+                'fi; fi',
+                "chmod -R 755 build",
+                # Validate layer output
+                'echo "Validating build output..."',
+                "[ -d build/python ] || { echo 'ERROR: build/python not found'; exit 1; }",
+                "ls -la build/python/ | head -20 || true",
+                # Check for pydantic-core if pydantic is installed
+                'if find build/python -name "pydantic*" -type d | head -1 | grep -q .; then '
+                'echo "Pydantic found, checking for pydantic_core..."; '
+                'if ! find build/python -name "*pydantic_core*" | head -1 | grep -q .; then '
+                'echo "WARNING: Pydantic found but pydantic_core missing - this may cause import errors"; '
+                'fi; fi',
+                # Validate Pillow import if needed
+                'if [ "$NEEDS_PILLOW" = "True" ]; then '
+                'echo "Validating Pillow installation..."; '
+                f"cd build && python{version} -c \"import sys; sys.path.insert(0, 'python'); "
+                "from PIL import Image, _imaging; print('Pillow import successful')\" || "
+                "{ echo 'ERROR: Pillow import failed'; exit 1; }; cd ..; "
+                "fi",
+                'echo "Build validation complete"',
+            ]
+            # Removed old Pillow installation - now handled before flattening
+            pre_build_phase = {
+                "commands": [
+                    # Pre-build phase no longer needed for Pillow
+                    # Pillow is now installed in the build phase before flattening
+                    'echo "Pre-build phase completed"'
+                ]
+            }
+            artifacts = {
+                "files": ["python/**/*", "lib/**/*"],
+                "base-directory": "build",
+            }
+        else:
+            build_commands = [
+                "echo Build directory prep",
+                "pwd",
+                "ls -la",
+                "echo Checking source structure:",
+                "ls -la source/ || echo 'source directory not found'",
+                "ls -la source/pyproject.toml || echo 'pyproject.toml not found in source'",
+                # Check for and build local dependencies first
+                ('if [ -d "dependencies" ]; then '
+                 'echo "Found local dependencies, building them first..."; '
+                 'mkdir -p dep_wheels; '
+                 'for dep_dir in dependencies/*; do '
+                 'if [ -d "$dep_dir" ]; then '
+                 'dep_name=$(basename "$dep_dir"); '
+                 'echo "  - Building $dep_name"; '
+                 'cd "$dep_dir"; '
+                 'python3 -m build --wheel --outdir ../../dep_wheels/; '
+                 'cd ../../; '
+                 'fi; '
+                 'done; '
+                 'echo "Installing local dependency wheels for all Python versions..."; '
+                 'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do '
+                 'python${v} -m pip install --no-cache-dir dep_wheels/*.whl -t build/python/lib/python${v}/site-packages || true; '
+                 'done; '
+                 'fi'),
+                "rm -rf build && mkdir -p build",
+                'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do mkdir -p build/python/lib/python${v}/site-packages; done',
+                'echo "Building main package wheel"',
+                "cd source && python3 -m build --wheel --outdir ../dist/ && cd ..",
+                'echo "Installing wheel for each runtime with Lambda optimizations"',
+                # Note: Removed --no-compile to allow pydantic-core and other compiled extensions
+                # Include local wheels directory for dependencies like receipt-dynamo
+                'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do python${v} -m pip install --no-cache-dir --find-links dep_wheels dist/*.whl -t build/python/lib/python${v}/site-packages; done',
+                # Install Pillow if needed BEFORE flattening
+                'if [ "$NEEDS_PILLOW" = "True" ]; then '
+                'echo "Installing Pillow for each runtime before flattening"; '
+                'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do '
+                'python${v} -m pip install --no-cache-dir Pillow -t build/python/lib/python${v}/site-packages; '
+                'done; fi',
+                'echo "Removing boto3/botocore (provided by AWS Lambda runtime)"',
+                "find build -type d -name 'boto*' -exec rm -rf {} + 2>/dev/null || true",
+                'echo "Cleaning up unnecessary files from all packages"',
+                "find build -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true",
+                "find build -type d -name 'tests' -o -name 'test' -exec rm -rf {} + 2>/dev/null || true",
+                "find build -type f -name '*.pyc' -o -name '*.pyo' -exec rm -f {} + 2>/dev/null || true",
+                "find build -type f \\( -name '*.md' -o -name '*.txt' -o -name '*.yml' -o -name '*.yaml' -o -name '*.rst' \\) -not -path '*/dist-info/top_level.txt' -exec rm -f {} + 2>/dev/null || true",
+                'echo "Copying native libraries"',
+                "mkdir -p build/lib && cp /usr/lib64/libjpeg*.so* /usr/lib64/libpng*.so* /usr/lib64/libtiff*.so* /usr/lib64/libwebp*.so* /usr/lib64/liblcms2*.so* /usr/lib64/libfreetype*.so* build/lib || true",
+                'echo "Flattening site-packages to root python directory"',
+                "cp -r build/python/lib/python*/site-packages/. build/python/ || true",
+                'echo "Removing nested lib directory after flattening"',
+                "rm -rf build/python/lib || true",
+                'echo "Final cleanup after flattening"',
+                "rm -rf build/python/boto* || true",
+                "rm -rf build/python/*boto* || true",
+                "rm -rf build/python/dateutil* || true",
+                "rm -rf build/python/jmespath* || true",
+                "rm -rf build/python/s3transfer* || true",
+                "rm -rf build/python/six* || true",
+                # Flatten site-packages to python root (CRITICAL for Lambda layer structure)
+                'echo "Flattening site-packages to root python directory"',
+                "cp -r build/python/lib/python*/site-packages/. build/python/ || true",
+                'echo "Removing nested lib directory after flattening"',
+                "rm -rf build/python/lib || true",
+                # Check for pydantic-core if pydantic is installed
+                'if find build/python -name "pydantic*" -type d | head -1 | grep -q .; then '
+                'echo "Pydantic found, checking for pydantic_core..."; '
+                'if ! find build/python -name "*pydantic_core*" | head -1 | grep -q .; then '
+                'echo "WARNING: Pydantic found but pydantic_core missing - this may cause import errors"; '
+                'fi; fi',
+                "chmod -R 755 build",
+            ]
+            pre_build_phase = {
+                "commands": [
+                    # Pre-build phase no longer needed for Pillow
+                    # Pillow is now installed in the build phase before flattening
+                    'echo "Pre-build phase completed"'
+                ]
+            }
+            artifacts = {
+                "files": ["python/**/*"],
+                "base-directory": "build",
+            }
+
+        return {
+            "version": 0.2,
+            "phases": {
+                "pre_build": pre_build_phase,
+                "install": {
+                    "runtime-versions": {"python": primary},
+                    "commands": install_commands,
+                },
+                "build": {"commands": build_commands},
+            },
+            "artifacts": artifacts,
         }
-        # Create an S3 bucket for source code and build artifacts
+
+    def _setup_fast_build(self, package_hash: str, package_path: str) -> None:
+        """Set up the fast build process with CodePipeline and per-version CodeBuild projects."""
+
+        # Create S3 bucket for artifacts - let Pulumi auto-generate unique name
         build_bucket = aws.s3.Bucket(
-            resource_name=f"lambda-layer-{self.name}-artifacts-{pulumi.get_stack()}",
-            bucket=f"lambda-layer-{self.name}-artifacts-{pulumi.get_stack()}",
+            f"{self.name}-artifacts",
             force_destroy=True,
             opts=pulumi.ResourceOptions(parent=self),
         )
 
-        # Calculate package hash
-        package_hash = self._calculate_package_hash()
-
-        # Get the absolute path to the package directory
-        package_path = os.path.join(PROJECT_DIR, self.package_dir)
-
-        # Create a local command to upload the package if it has changed
-        upload_command = command.local.Command(
-            f"{self.name}-upload-source",
-            create=pulumi.Output.all(build_bucket.bucket, package_hash).apply(
-                lambda args: self._create_and_run_upload_script(
-                    args[0], package_path, package_hash
+        # Configure versioning as a separate resource
+        aws.s3.BucketVersioningV2(
+            f"{self.name}-artifacts-versioning",
+            bucket=build_bucket.id,
+            versioning_configuration=(
+                aws.s3.BucketVersioningV2VersioningConfigurationArgs(
+                    status="Enabled"
                 )
             ),
             opts=pulumi.ResourceOptions(parent=self),
         )
 
-        # Create IAM role for CodeBuild with more specific permissions
+        # Upload source command (runs on create and update, triggers on package_hash)
+        upload_cmd = command.local.Command(
+            f"{self.name}-upload-source",
+            create=build_bucket.bucket.apply(
+                lambda b: self._create_and_run_upload_script(
+                    b, package_path, package_hash
+                )
+            ),
+            update=build_bucket.bucket.apply(
+                lambda b: self._create_and_run_upload_script(
+                    b, package_path, package_hash
+                )
+            ),
+            triggers=[package_hash],
+            opts=pulumi.ResourceOptions(
+                parent=self,
+                delete_before_replace=True,
+            ),
+        )
+
+        # Create IAM role for CodeBuild/CodePipeline
         codebuild_role = aws.iam.Role(
             f"{self.name}-codebuild-role",
             assume_role_policy=json.dumps(
@@ -238,24 +703,25 @@ class LambdaLayer(ComponentResource):
                                 "Service": "codebuild.amazonaws.com"
                             },
                             "Action": "sts:AssumeRole",
-                        }
+                        },
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "codepipeline.amazonaws.com"
+                            },
+                            "Action": "sts:AssumeRole",
+                        },
                     ],
                 }
             ),
             opts=pulumi.ResourceOptions(parent=self),
         )
 
-        # Create the bucket ARN and layer ARN variables to use in policies
-        bucket_arn = build_bucket.arn
-        layer_arn_pattern = Output.all().apply(
-            lambda _: f"arn:aws:lambda:*:*:layer:{self.layer_name}:*"
-        )
-
-        # Attach more specific policies to the role
-        codebuild_policy = aws.iam.RolePolicy(
+        # Create CodeBuild policy with permissions for layer publishing and function updates
+        aws.iam.RolePolicy(
             f"{self.name}-codebuild-policy",
             role=codebuild_role.id,
-            policy=pulumi.Output.all(bucket_arn, layer_arn_pattern).apply(
+            policy=pulumi.Output.all(build_bucket.arn, self.layer_name).apply(
                 lambda args: json.dumps(
                     {
                         "Version": "2012-10-17",
@@ -276,10 +742,10 @@ class LambdaLayer(ComponentResource):
                                 "Effect": "Allow",
                                 "Action": [
                                     "s3:GetObject",
-                                    "s3:PutObject",
                                     "s3:GetObjectVersion",
+                                    "s3:PutObject",
                                 ],
-                                "Resource": f"{args[0]}/{self.name}/*",
+                                "Resource": f"{args[0]}/*",
                             },
                             {
                                 "Effect": "Allow",
@@ -293,7 +759,10 @@ class LambdaLayer(ComponentResource):
                             {
                                 "Effect": "Allow",
                                 "Action": ["lambda:PublishLayerVersion"],
-                                "Resource": args[1],
+                                "Resource": [
+                                    f"arn:aws:lambda:*:*:layer:{args[1]}",
+                                    f"arn:aws:lambda:*:*:layer:{args[1]}:*",
+                                ],
                             },
                             {
                                 "Effect": "Allow",
@@ -306,379 +775,18 @@ class LambdaLayer(ComponentResource):
                                 ],
                                 "Resource": "*",
                             },
-                        ],
-                    }
-                )
-            ),
-            opts=pulumi.ResourceOptions(parent=self),
-        )
-
-        # Create the CodeBuild project
-        codebuild_project = aws.codebuild.Project(
-            resource_name=f"{self.name}-layer-build",
-            name=f"{self.name}-layer-build-{pulumi.get_stack()}",
-            service_role=codebuild_role.arn,
-            source=aws.codebuild.ProjectSourceArgs(
-                type="S3",
-                location=pulumi.Output.concat(
-                    build_bucket.bucket, f"/{self.name}/source.zip"
-                ),
-                buildspec=pulumi.Output.from_input(
-                    self._get_buildspec()
-                ).apply(lambda spec: json.dumps(spec)),
-            ),
-            source_version=None,
-            artifacts=aws.codebuild.ProjectArtifactsArgs(
-                type="S3",
-                location=build_bucket.bucket,
-                path=self.name,  # e.g., receipt-dynamo/
-                name="layer.zip",  # Artifact file name
-                packaging="ZIP",  # CodeBuild zips the artifacts
-                namespace_type="NONE",
-            ),
-            environment=aws.codebuild.ProjectEnvironmentArgs(
-                type="LINUX_CONTAINER",  # Changed from 'LINUX_CONTAINER'
-                compute_type="BUILD_GENERAL1_SMALL",  # Appropriate compute type for Lambda
-                image="aws/codebuild/amazonlinux2-x86_64-standard:5.0",
-                environment_variables=[
-                    aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
-                        name="LAYER_NAME", value=self.layer_name
-                    ),
-                    aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
-                        name="PACKAGE_DIR",
-                        value="source",
-                    ),
-                    aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
-                        name="PYTHON_VERSIONS",
-                        value=",".join(self.python_versions),
-                    ),
-                ],
-            ),
-            # Set a cache configuration to speed up builds
-            cache=aws.codebuild.ProjectCacheArgs(
-                type="S3",
-                location=pulumi.Output.concat(
-                    build_bucket.bucket, f"/{self.name}/cache"
-                ),
-            ),
-            # Remove unused dependencies
-            opts=pulumi.ResourceOptions(
-                parent=self,
-                depends_on=[codebuild_role, codebuild_policy, upload_command],
-            ),
-        )
-
-        # Check if the .zip file already exists
-        initial_sync_build = command.local.Command(
-            f"{self.name}-initial-sync-build",
-            create=pulumi.Output.all(
-                build_bucket.bucket, codebuild_project.name
-            ).apply(
-                lambda args: f"""
-                BUCKET_NAME="{args[0]}"
-                PROJECT_NAME="{args[1]}"
-
-                if ! aws s3api head-object --bucket "$BUCKET_NAME" --key "{self.name}/layer.zip"; then
-                    echo "Layer zip not found. Triggering initial build.";
-
-                    MAX_RETRIES=3
-                    RETRY_DELAY=10
-
-                    attempt=0
-                    BUILD_ID=""
-                    until [ "$attempt" -ge $MAX_RETRIES ]
-                    do
-                    BUILD_ID=$(aws codebuild start-build --project-name "$PROJECT_NAME" --query 'build.id' --output text) && break
-                    attempt=$((attempt+1))
-                    echo "Attempt $attempt failed. Retrying in $RETRY_DELAY seconds..."
-                    sleep $RETRY_DELAY
-                    done
-
-                    if [ -z "$BUILD_ID" ]; then
-                    echo "CodeBuild trigger failed after $MAX_RETRIES attempts"
-                    exit 1
-                    fi
-
-                    STATUS='IN_PROGRESS'
-                    until [[ "$STATUS" != "IN_PROGRESS" ]]; do
-                        echo 'Waiting for initial CodeBuild...'
-                        sleep 15
-                        STATUS=$(aws codebuild batch-get-builds --ids "$BUILD_ID" --query 'builds[0].buildStatus' --output text)
-                    done
-                    if [[ "$STATUS" != "SUCCEEDED" ]]; then
-                    echo 'Build failed'; exit 1;
-                    fi
-                    echo 'Initial build completed successfully.';
-                else
-                    echo "Layer zip exists. No initial build required.";
-                fi
-                """
-            ),
-            opts=pulumi.ResourceOptions(
-                depends_on=[codebuild_project, upload_command],
-                parent=self,
-            ),
-        )
-
-        # Trigger the initial synchronous build explicitly
-        self.layer_version = aws.lambda_.LayerVersion(
-            f"{self.name}-lambda-layer",
-            layer_name=self.layer_name,
-            compatible_runtimes=[f"python{v}" for v in self.python_versions],
-            compatible_architectures=["x86_64", "arm64"],
-            description=self.description,
-            s3_bucket=build_bucket.bucket,
-            s3_key=f"{self.name}/layer.zip",
-            opts=pulumi.ResourceOptions(
-                depends_on=[initial_sync_build], parent=self
-            ),
-        )
-
-        self.arn = self.layer_version.arn
-
-        # Create IAM role for EventBridge to invoke CodeBuild
-        self.eventbridge_role = aws.iam.Role(
-            f"{self.name}-eventbridge-role",
-            assume_role_policy=json.dumps(
-                {
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Effect": "Allow",
-                            "Principal": {"Service": "events.amazonaws.com"},
-                            "Action": "sts:AssumeRole",
-                        }
-                    ],
-                }
-            ),
-            opts=pulumi.ResourceOptions(parent=self),
-        )
-
-        # Create a local command to start the build if force-rebuild is enabled
-        # Enhanced to check if a build is already running
-        if self.force_rebuild:
-            start_build = command.local.Command(
-                f"{self.name}-start-build",
-                create=pulumi.Output.all(codebuild_project.name).apply(
-                    lambda args: f"""
-                    # Check if there's already a build in progress
-                    BUILD_STATUS=$(aws codebuild list-builds-for-project --project-name {args[0]} --query 'ids[0]' --output text)
-                    if [ "$BUILD_STATUS" != "None" ]; then
-                        # Get build status
-                        CURRENT_STATUS=$(aws codebuild batch-get-builds --ids $BUILD_STATUS --query 'builds[0].buildStatus' --output text)
-                        if [ "$CURRENT_STATUS" == "IN_PROGRESS" ]; then
-                            echo "A build is already in progress. Skipping new build."
-                            exit 0
-                        fi
-                    fi
-
-                    # Start a new build
-                    aws codebuild start-build --project-name {args[0]}
-                    """
-                ),
-                opts=pulumi.ResourceOptions(
-                    parent=self, depends_on=[upload_command, codebuild_project]
-                ),
-            )
-
-        # Create SNS topic for notifications
-        sns_topic = aws.sns.Topic(
-            f"{self.name}-codebuild-failure-notifications",
-            display_name=f"{self.name}-CodeBuildFailures",
-            opts=pulumi.ResourceOptions(parent=self),
-        )
-
-        # Export the SNS topic ARN (useful for subscribing later)
-        pulumi.export(f"{self.name}_sns_topic_arn", sns_topic.arn)
-
-        # Create CloudWatch alarm for CodeBuild failed builds
-        failed_builds_metric = aws.cloudwatch.MetricAlarm(
-            f"{self.name}-failed-builds-alarm",
-            name=f"{self.name}-failed-builds",
-            comparison_operator="GreaterThanOrEqualToThreshold",
-            evaluation_periods=1,
-            metric_name="FailedBuilds",
-            namespace="AWS/CodeBuild",
-            period=300,
-            statistic="Sum",
-            threshold=1,
-            alarm_description=f"Alarm when {self.name} CodeBuild project has failed builds",
-            dimensions={
-                "ProjectName": codebuild_project.name,
-            },
-            alarm_actions=[sns_topic.arn],
-            opts=pulumi.ResourceOptions(parent=self),
-        )
-
-        # (EventBridge integration removed)
-
-        # Set up Step Functions for orchestration
-        self._setup_step_functions(codebuild_project, build_bucket)
-
-    def _get_buildspec(self):
-        """Generate the buildspec.yml content for CodeBuild."""
-        primary = self.python_versions[0]
-        versions_csv = ",".join(self.python_versions)
-        return {
-            "version": 0.2,
-            "phases": {
-                "install": {
-                    "runtime-versions": {"python": primary},
-                    "commands": [
-                        "echo Installing build tooling ...",
-                        "yum install -y libjpeg-devel zlib-devel",
-                        "pip install --upgrade pip build",
-                    ],
-                },
-                "build": {
-                    "commands": [
-                        "echo Build directory prep",
-                        "rm -rf build",
-                        "mkdir -p build",
-                        'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do '
-                        "mkdir -p build/python/lib/python${v}/site-packages; "
-                        "done",
-                        'echo "Building wheel"',
-                        "python -m build source --wheel --outdir dist/",
-                        'echo "Installing wheel into layer structure"',
-                        'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do '
-                        "pip install dist/*.whl -t build/python/lib/python${v}/site-packages; "
-                        "done",
-                        "chmod -R 755 build/python",
-                    ],
-                },
-            },
-            "artifacts": {"files": ["python/**/*"], "base-directory": "build"},
-        }
-
-    def _create_and_run_upload_script(self, bucket, package_path, package_hash):
-        """Create a script file and return just the execution command."""
-        import tempfile
-        import os
-        
-        try:
-            # Generate the script content with embedded variables to avoid argument issues
-            script_content = self._generate_upload_script(bucket, package_path, package_hash)
-            
-            # Create a persistent script file in /tmp with a unique name
-            script_name = f"pulumi-upload-{self.name}-{package_hash[:8]}.sh"
-            script_path = os.path.join("/tmp", script_name)
-            
-            # Write the script file
-            with open(script_path, 'w') as f:
-                f.write(script_content)
-            
-            # Make it executable
-            os.chmod(script_path, 0o755)
-            
-            # Return just the simple command to execute the script
-            # No arguments or environment variables in the command line
-            return f"/bin/bash {script_path}"
-        except (OSError, IOError) as e:
-            raise RuntimeError(f"Failed to create upload script: {e}") from e
-
-    def _generate_upload_script(self, bucket, package_path, package_hash):
-        """Generate a bash script with safely embedded paths."""
-        # Escape the paths to handle special characters
-        import shlex
-        safe_package_path = shlex.quote(package_path)
-        safe_bucket = shlex.quote(bucket)
-        
-        return f"""#!/bin/bash
-        set -e
-        
-        # Set variables within the script to avoid command line length issues
-        PACKAGE_PATH={safe_package_path}
-        BUCKET_NAME={safe_bucket}
-        LAYER_NAME="{self.name}"
-        PACKAGE_HASH="{package_hash}"
-        
-        # Create a unique temporary directory
-        TMP_DIR=$(mktemp -d)
-
-        # Ensure cleanup on exit
-        trap 'rm -rf "$TMP_DIR"' EXIT
-
-        # Create source directory and copy package files
-        echo "Copying package from $PACKAGE_PATH to temp directory..."
-        mkdir -p "$TMP_DIR/source"
-        cp -r "$PACKAGE_PATH"/* "$TMP_DIR/source/"
-
-        # Create the zip file with the source directory
-        echo "Creating source.zip..."
-        cd "$TMP_DIR"
-        zip -qr source.zip source
-        cd - >/dev/null
-
-        # Define retries and delay between retries
-        MAX_RETRIES=3
-        RETRY_DELAY=5
-
-        echo "Uploading to s3://$BUCKET_NAME/$LAYER_NAME/source.zip..."
-        attempt=0
-        until [ "$attempt" -ge $MAX_RETRIES ]
-        do
-            aws s3 cp "$TMP_DIR/source.zip" "s3://$BUCKET_NAME/$LAYER_NAME/source.zip" && break
-            attempt=$((attempt+1))
-            echo "Attempt $attempt failed. Retrying in $RETRY_DELAY seconds..."
-            sleep $RETRY_DELAY
-        done
-
-        if [ "$attempt" -ge $MAX_RETRIES ]; then
-            echo "Failed to upload after $MAX_RETRIES attempts"
-            exit 1
-        fi
-
-        # Upload the hash
-        echo "Uploading hash..."
-        echo "$PACKAGE_HASH" | aws s3 cp - "s3://$BUCKET_NAME/$LAYER_NAME/hash.txt"
-        echo "Upload complete!"
-        """
-
-    def _setup_step_functions(self, codebuild_project, build_bucket):
-        """Set up Step Functions workflow to orchestrate the Lambda Layer build process."""
-        config = pulumi.Config()
-        # Create update_lambda_functions directory and handler.py if not existing
-
-        # Create IAM role for Step Functions
-        step_functions_role = aws.iam.Role(
-            f"{self.name}-step-functions-role",
-            assume_role_policy=json.dumps(
-                {
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Effect": "Allow",
-                            "Principal": {"Service": "states.amazonaws.com"},
-                            "Action": "sts:AssumeRole",
-                        }
-                    ],
-                }
-            ),
-            opts=pulumi.ResourceOptions(parent=self),
-        )
-
-        # Attach necessary IAM policies for Step Functions
-        step_functions_policy = aws.iam.RolePolicy(
-            f"{self.name}-step-functions-policy",
-            role=step_functions_role.id,
-            policy=codebuild_project.arn.apply(
-                lambda arn: json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
                             {
                                 "Effect": "Allow",
                                 "Action": [
                                     "codebuild:StartBuild",
+                                    "codebuild:StartBuildBatch",
                                     "codebuild:BatchGetBuilds",
+                                    "codebuild:BatchGetBuildBatches",
                                 ],
-                                "Resource": arn,
-                            },
-                            {
-                                "Effect": "Allow",
-                                "Action": ["lambda:InvokeFunction"],
-                                "Resource": "*",
+                                "Resource": [
+                                    f"arn:aws:codebuild:{aws.config.region}:{aws.get_caller_identity().account_id}:project/{self.name}-publish",
+                                    f"arn:aws:codebuild:{aws.config.region}:{aws.get_caller_identity().account_id}:project/{self.name}-*",
+                                ],
                             },
                         ],
                     }
@@ -687,16 +795,18 @@ class LambdaLayer(ComponentResource):
             opts=pulumi.ResourceOptions(parent=self),
         )
 
-        # Create IAM role for the Lambda function
-        update_lambda_function_role = aws.iam.Role(
-            f"{self.name}-update-lambda-functions-role",
+        # Create IAM role for CodePipeline
+        pipeline_role = aws.iam.Role(
+            f"{self.name}-pipeline-role",
             assume_role_policy=json.dumps(
                 {
                     "Version": "2012-10-17",
                     "Statement": [
                         {
                             "Effect": "Allow",
-                            "Principal": {"Service": "lambda.amazonaws.com"},
+                            "Principal": {
+                                "Service": "codepipeline.amazonaws.com"
+                            },
                             "Action": "sts:AssumeRole",
                         }
                     ],
@@ -705,100 +815,60 @@ class LambdaLayer(ComponentResource):
             opts=pulumi.ResourceOptions(parent=self),
         )
 
-        # Attach basic execution role for the Lambda function
-        lambda_basic_execution = aws.iam.RolePolicyAttachment(
-            f"{self.name}-lambda-basic-execution",
-            role=update_lambda_function_role.name,
-            policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
-            opts=pulumi.ResourceOptions(parent=self),
-        )
-
-        # Add permissions to update Lambda functions
-        update_lambda_functions_policy = aws.iam.RolePolicy(
-            f"{self.name}-update-lambda-functions-policy",
-            role=update_lambda_function_role.id,
-            policy=json.dumps(
-                {
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Effect": "Allow",
-                            "Action": [
-                                "lambda:UpdateFunctionConfiguration",
-                                "lambda:ListLayerVersions",
-                                "lambda:GetLayerVersion",
-                                "lambda:ListFunctions",
-                                "lambda:ListTags",
-                            ],
-                            "Resource": "*",
-                        }
-                    ],
-                }
-            ),
-            opts=pulumi.ResourceOptions(parent=self),
-        )
-
-        lambda_timeout = config.get_int("update_lambda_timeout") or 300
-        lambda_memory = config.get_int("update_lambda_memory") or 512
-
-        # Create the Lambda function to update other functions
-        update_lambda_function = aws.lambda_.Function(
-            f"{self.name}-update-lambda-functions",
-            runtime="python3.12",
-            architectures=["arm64"],
-            role=update_lambda_function_role.arn,
-            handler="handler.lambda_handler",
-            code=pulumi.AssetArchive(
-                {
-                    ".": pulumi.FileArchive(
-                        os.path.join(
-                            PROJECT_DIR, "infra", "update_lambda_functions"
-                        )
-                    )
-                }
-            ),
-            timeout=lambda_timeout,
-            memory_size=lambda_memory,
-            environment=aws.lambda_.FunctionEnvironmentArgs(
-                variables={
-                    "STACK_NAME": pulumi.get_stack(),
-                },
-            ),
-            opts=pulumi.ResourceOptions(parent=self),
-        )
-
-        # Create IAM role for publish_layer_lambda
-        publish_layer_function_role = aws.iam.Role(
-            f"{self.name}-publish-layer-role",
-            assume_role_policy=json.dumps(
-                {
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Effect": "Allow",
-                            "Principal": {"Service": "lambda.amazonaws.com"},
-                            "Action": "sts:AssumeRole",
-                        }
-                    ],
-                }
-            ),
-            opts=pulumi.ResourceOptions(parent=self),
-        )
-
-        # Attach basic Lambda execution permissions
-        aws.iam.RolePolicyAttachment(
-            f"{self.name}-publish-layer-basic-execution",
-            role=publish_layer_function_role.name,
-            policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
-            opts=pulumi.ResourceOptions(parent=self),
-        )
-
-        # Attach permissions needed to publish Lambda layers and read from S3
+        # Grant CodePipeline read/write access to the S3 artifact bucket
         aws.iam.RolePolicy(
-            f"{self.name}-publish-layer-policy",
-            role=publish_layer_function_role.id,
-            policy=pulumi.Output.all(
-                build_bucket.bucket, self.layer_name
+            f"{self.name}-pipeline-s3-policy",
+            role=pipeline_role.id,
+            policy=pulumi.Output.all(build_bucket.arn).apply(
+                lambda args: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            # 1) Bucket-level read/list
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "s3:ListBucket",
+                                    "s3:GetBucketLocation",
+                                    "s3:GetBucketVersioning",
+                                    "s3:GetBucketAcl",
+                                    "s3:GetBucketPolicy",
+                                    "s3:GetBucketPublicAccessBlock",
+                                ],
+                                "Resource": args[0],
+                            },
+                            # 2) Read your source objects
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "s3:GetObject",
+                                    "s3:GetObjectVersion",
+                                    "s3:GetObjectAcl",
+                                    "s3:GetObjectVersionAcl",
+                                    "s3:GetObjectTagging",
+                                    "s3:GetObjectVersionTagging",
+                                ],
+                                "Resource": f"{args[0]}/{self.name}/*",
+                            },
+                            # 3) Write pipeline artifacts anywhere in the bucket
+                            {
+                                "Effect": "Allow",
+                                "Action": ["s3:PutObject"],
+                                "Resource": f"{args[0]}/*",
+                            },
+                        ],
+                    }
+                )
+            ),
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+
+        # Grant CodePipeline permission to invoke CodeBuild projects (including StartBuildBatch)
+        aws.iam.RolePolicy(
+            f"{self.name}-pipeline-codebuild-policy",
+            role=pipeline_role.id,
+            policy=Output.all(
+                aws.config.region, aws.get_caller_identity().account_id
             ).apply(
                 lambda args: json.dumps(
                     {
@@ -806,176 +876,15 @@ class LambdaLayer(ComponentResource):
                         "Statement": [
                             {
                                 "Effect": "Allow",
-                                "Action": ["lambda:PublishLayerVersion"],
-                                "Resource": [
-                                    f"arn:aws:lambda:*:*:layer:{args[1]}",
-                                    f"arn:aws:lambda:*:*:layer:{args[1]}:*",
+                                "Action": [
+                                    "codebuild:StartBuild",
+                                    "codebuild:StartBuildBatch",
+                                    "codebuild:BatchGetBuilds",
+                                    "codebuild:BatchGetBuildBatches",
+                                    "codebuild:BatchGetProjects",
+                                    "codebuild:ListBuildsForProject",
                                 ],
-                            },
-                            {
-                                "Effect": "Allow",
-                                "Action": ["s3:GetObject"],
-                                "Resource": f"arn:aws:s3:::{args[0]}/{args[1]}/layer.zip",
-                            },
-                        ],
-                    }
-                )
-            ),
-            opts=pulumi.ResourceOptions(parent=self),
-        )
-
-        # Create publish_layer_lambda function
-        publish_layer_lambda = aws.lambda_.Function(
-            f"{self.name}-publish-layer",
-            runtime="python3.12",
-            architectures=["arm64"],
-            role=publish_layer_function_role.arn,
-            handler="publish_handler.lambda_handler",
-            code=pulumi.AssetArchive(
-                {
-                    ".": pulumi.FileArchive(
-                        os.path.join(PROJECT_DIR, "infra", "publish_layer")
-                    )
-                }
-            ),
-            timeout=300,
-            memory_size=512,
-            environment=aws.lambda_.FunctionEnvironmentArgs(
-                variables={
-                    "BUCKET_NAME": build_bucket.bucket,
-                    "LAYER_NAME": self.layer_name,
-                    "LAYER_DESCRIPTION": self.description,
-                    "COMPATIBLE_ARCHITECTURES": "x86_64,arm64",
-                },
-            ),
-            opts=pulumi.ResourceOptions(parent=self),
-        )
-
-        # Update state_machine_definition with PublishNewLayer state
-        state_machine_definition = pulumi.Output.all(
-            codebuild_project_name=codebuild_project.name,
-            publish_layer_lambda_name=publish_layer_lambda.name,
-            update_lambda_function_name=update_lambda_function.name,
-        ).apply(
-            lambda args: json.dumps(
-                {
-                    "Comment": f"Build {self.name} Lambda Layer, Publish and Update Lambda Functions",
-                    "StartAt": "TriggerCodeBuild",
-                    "States": {
-                        "TriggerCodeBuild": {
-                            "Type": "Task",
-                            "Resource": "arn:aws:states:::aws-sdk:codebuild:startBuild",
-                            "Parameters": {
-                                "ProjectName": args["codebuild_project_name"]
-                            },
-                            "Next": "WaitForBuild",
-                        },
-                        "WaitForBuild": {
-                            "Type": "Wait",
-                            "Seconds": 60,
-                            "Next": "CheckBuildStatus",
-                        },
-                        "CheckBuildStatus": {
-                            "Type": "Task",
-                            "Resource": "arn:aws:states:::aws-sdk:codebuild:batchGetBuilds",
-                            "Parameters": {
-                                "Ids.$": "States.Array($.Build.Id)"
-                            },
-                            "Next": "BuildSucceeded?",
-                        },
-                        "BuildSucceeded?": {
-                            "Type": "Choice",
-                            "Choices": [
-                                {
-                                    "Variable": "$.Builds[0].BuildStatus",
-                                    "StringEquals": "SUCCEEDED",
-                                    "Next": "PublishNewLayer",
-                                },
-                                {
-                                    "Variable": "$.Builds[0].BuildStatus",
-                                    "StringEquals": "FAILED",
-                                    "Next": "BuildFailed",
-                                },
-                            ],
-                            "Default": "WaitForBuild",
-                        },
-                        "PublishNewLayer": {
-                            "Type": "Task",
-                            "Resource": "arn:aws:states:::lambda:invoke",
-                            "Parameters": {
-                                "FunctionName": args[
-                                    "publish_layer_lambda_name"
-                                ],
-                                "Payload": {},
-                            },
-                            "Next": "UpdateLambdaFunctions",
-                        },
-                        "UpdateLambdaFunctions": {
-                            "Type": "Task",
-                            "Resource": "arn:aws:states:::lambda:invoke",
-                            "Parameters": {
-                                "FunctionName": args[
-                                    "update_lambda_function_name"
-                                ],
-                                "Payload": {
-                                    "layer_arn.$": "$.Payload.LayerVersionArn"
-                                },
-                            },
-                            "End": True,
-                        },
-                        "BuildFailed": {
-                            "Type": "Fail",
-                            "Cause": "CodeBuild failed.",
-                            "Error": "CodeBuildFailure",
-                        },
-                    },
-                }
-            )
-        )
-
-        # Create the state machine
-        state_machine = aws.sfn.StateMachine(
-            f"{self.name}-build-state-machine",
-            role_arn=step_functions_role.arn,
-            definition=state_machine_definition,
-            opts=pulumi.ResourceOptions(parent=self),
-        )
-
-        # ------------------------------------------------------------------
-        # S3 -> SQS notification (no CloudTrail needed in provider v6.78)
-        # ------------------------------------------------------------------
-        event_queue = aws.sqs.Queue(
-            f"{self.name}-source-upload-queue",
-            visibility_timeout_seconds=60,
-            message_retention_seconds=345600,  # 4 days
-            receive_wait_time_seconds=0,  # Short polling
-            redrive_policy=None,  # No DLQ for now
-            tags={
-                "Purpose": "Lambda Layer Build Triggers",
-                "Component": f"lambda-layer-{self.name}",
-                "Environment": pulumi.get_stack(),
-            },
-            opts=pulumi.ResourceOptions(parent=self),
-        )
-
-        # Allow S3 bucket to send messages to the SQS queue
-        queue_policy = aws.sqs.QueuePolicy(
-            f"{self.name}-queue-policy",
-            queue_url=event_queue.id,
-            policy=pulumi.Output.all(event_queue.arn, build_bucket.arn).apply(
-                lambda arns: json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Sid": "AllowS3SendMessage",
-                                "Effect": "Allow",
-                                "Principal": {"Service": "s3.amazonaws.com"},
-                                "Action": "SQS:SendMessage",
-                                "Resource": arns[0],
-                                "Condition": {
-                                    "ArnEquals": {"aws:SourceArn": arns[1]}
-                                },
+                                "Resource": f"arn:aws:codebuild:{args[0]}:{args[1]}:project/{self.name}-*",
                             }
                         ],
                     }
@@ -984,169 +893,655 @@ class LambdaLayer(ComponentResource):
             opts=pulumi.ResourceOptions(parent=self),
         )
 
-        # Add bucket notification to send ObjectCreated events to SQS
-        aws.s3.BucketNotification(
-            f"{self.name}-sqs-notification",
-            bucket=build_bucket.id,
-            queues=[
-                aws.s3.BucketNotificationQueueArgs(
-                    queue_arn=event_queue.arn,
-                    events=["s3:ObjectCreated:*"],
-                    filter_prefix=f"{self.name}/",
-                    filter_suffix="source.zip",
+        # Create a CodeBuild project for each Python version
+        build_projects = {}
+        for v in self.python_versions:
+            project = aws.codebuild.Project(
+                resource_name=f"{self.name}-build-py{v.replace('.', '')}",
+                name=f"{self.name}-build-py{v.replace('.', '')}",
+                service_role=codebuild_role.arn,
+                source=aws.codebuild.ProjectSourceArgs(
+                    type="S3",
+                    # instead of lambda b: f"{self.name}/source.zip", do:
+                    location=build_bucket.bucket.apply(
+                        lambda b: f"{b}/{self.name}/source.zip"
+                    ),
+                    buildspec=json.dumps(self._get_buildspec(version=v)),
+                ),
+                artifacts=aws.codebuild.ProjectArtifactsArgs(
+                    type="S3",
+                    location=build_bucket.bucket,
+                    path=f"{self.name}/py{v.replace('.', '')}",
+                    name="layer.zip",
+                    packaging="ZIP",
+                    namespace_type="NONE",
+                ),
+                environment=aws.codebuild.ProjectEnvironmentArgs(
+                    type="ARM_CONTAINER",
+                    compute_type="BUILD_GENERAL1_SMALL",
+                    image=f"aws/codebuild/amazonlinux-aarch64-standard:3.0",
+                    environment_variables=[
+                        aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
+                            name="PYTHON_VERSION", value=v
+                        ),
+                        aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
+                            name="LAYER_NAME", value=self.layer_name
+                        ),
+                        aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
+                            name="PACKAGE_NAME", value=self.name
+                        ),
+                        aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
+                            name="BUCKET_NAME", value=build_bucket.bucket
+                        ),
+                        aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
+                            name="PACKAGE_DIR", value="source"
+                        ),
+                        aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
+                            name="STACK_NAME", value=pulumi.get_stack()
+                        ),
+                        aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
+                            name="NEEDS_PILLOW", value=str(self.needs_pillow)
+                        ),
+                        aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
+                            name="DEBUG_MODE", value=str(self.debug_mode)
+                        ),
+                    ],
+                ),
+                cache=aws.codebuild.ProjectCacheArgs(
+                    type="S3",
+                    location=build_bucket.bucket.apply(
+                        lambda b: f"{b}/{self.name}/cache"
+                    ),
+                ),
+                logs_config=aws.codebuild.ProjectLogsConfigArgs(
+                    cloudwatch_logs=aws.codebuild.ProjectLogsConfigCloudwatchLogsArgs(
+                        status="ENABLED",
+                        group_name=f"/aws/codebuild/{self.name}-build-py{v.replace('.', '')}",
+                        stream_name=f"{self.name}-build-stream",
+                    ),
+                ),
+                opts=pulumi.ResourceOptions(parent=self),
+            )
+            build_projects[v] = project
+
+        def publish_buildspec() -> Dict[str, Any]:
+            # This buildspec will merge all version artifacts under a single python/lib/python<ver>/site-packages tree, zip, upload to S3, and publish as one layer from S3.
+            commands = []
+            # Step 1: Prepare merged directory
+            commands.append('echo "Preparing merged layer directory..."')
+            commands.append("rm -rf merged && mkdir -p merged")
+            # Step 2: Merge already-flattened artifacts (build stage already flattened to python/*)
+            commands.append('echo "Setting up merged python directory (already flattened)..."')
+            commands.append(
+                "rm -rf merged/python && mkdir -p merged/python"
+            )
+            for idx, v in enumerate(self.python_versions):
+                commands.append(f'echo "Merging flattened artifacts for Python {v}..."')
+                if idx == 0:
+                    # Primary artifact in root workspace - already flattened to python/*
+                    commands.append(
+                        "cp -r python/* merged/python/"
+                    )
+                else:
+                    # Secondary artifacts under CODEBUILD_SRC_DIR_py<ver> (ver without dots)
+                    # These are also already flattened to python/*
+                    ver = v.replace(".", "")
+                    commands.append(
+                        f"cp -r $CODEBUILD_SRC_DIR_py{ver}/python/* merged/python/"
+                    )
+            # Validate the flattened structure before zipping
+            commands.append('echo "Validating flattened structure..."')
+            commands.append('if [ -d "merged/python/lib" ]; then echo "ERROR: Nested lib directory found! Layer should be flattened."; exit 1; fi')
+            commands.append('echo "Structure is correctly flattened (no nested lib directory)"')
+            # Step 3: Zip the merged python directory
+            commands.append('echo "Zipping merged layer..."')
+            commands.append("cd merged && zip -r ../layer.zip python && cd ..")
+            # Validate the zip file
+            commands.append('echo "Validating layer.zip..."')
+            commands.append("[ -f layer.zip ] || { echo 'ERROR: layer.zip not created'; exit 1; }")
+            commands.append("ZIP_SIZE=$(stat -c%s layer.zip 2>/dev/null || stat -f%z layer.zip 2>/dev/null || echo 0)")
+            commands.append('echo "Layer zip size: $ZIP_SIZE bytes"')
+            commands.append("[ \"$ZIP_SIZE\" -gt 0 ] || { echo 'ERROR: layer.zip is empty'; exit 1; }")
+            # Check if zip size exceeds Lambda limits
+            commands.append("MAX_SIZE=$((250 * 1024 * 1024))  # 250MB in bytes")
+            commands.append("if [ \"$ZIP_SIZE\" -gt \"$MAX_SIZE\" ]; then echo \"WARNING: Layer size exceeds Lambda limit (250MB)\"; echo \"Size: $(($ZIP_SIZE / 1024 / 1024))MB\"; fi")
+            # Step 3.1: Upload combined zip to artifact bucket
+            commands.append('echo "Uploading merged layer.zip to S3..."')
+            commands.append(
+                "aws s3 cp layer.zip s3://$BUCKET_NAME/${PACKAGE_NAME}/combined/layer.zip"
+            )
+            # Step 4: Publish the merged layer from S3
+            commands.append(
+                'echo "Publishing merged layer from S3 to Lambda..."'
+            )
+            commands.append(
+                "NEW_LAYER_ARN=$(aws lambda publish-layer-version "
+                '--layer-name "$LAYER_NAME" '
+                '--content S3Bucket="$BUCKET_NAME",S3Key="${PACKAGE_NAME}/combined/layer.zip" '
+                "--compatible-runtimes "
+                + " ".join([f"python{v}" for v in self.python_versions])
+                + " --compatible-architectures arm64 "
+                f'--description "{self.description}" '
+                '--query "LayerVersionArn" --output text 2>&1) || '
+                '{ echo "ERROR: Failed to publish layer version"; echo "Output: $NEW_LAYER_ARN"; exit 1; }'
+            )
+            commands.append('echo "New layer ARN: $NEW_LAYER_ARN"')
+            commands.append("[ -n \"$NEW_LAYER_ARN\" ] || { echo 'ERROR: No layer ARN returned'; exit 1; }")
+            commands.append("export NEW_LAYER_ARN")
+            commands.append(
+                f'echo "{self._encode_shell_script(self._get_update_functions_script())}" | base64 -d > update_layers.sh'
+            )
+            commands.append("chmod +x update_layers.sh")
+            commands.append("./update_layers.sh")
+            commands.append(
+                'echo "All layer versions published and functions updated."'
+            )
+            return {
+                "version": 0.2,
+                "phases": {
+                    "build": {
+                        "commands": commands,
+                    }
+                },
+            }
+
+        # Create the publish CodeBuild project
+        publish_project = aws.codebuild.Project(
+            f"{self.name}-publish",
+            name=f"{self.name}-publish",
+            service_role=codebuild_role.arn,
+            source=aws.codebuild.ProjectSourceArgs(
+                type="CODEPIPELINE",
+                buildspec=json.dumps(publish_buildspec()),
+            ),
+            artifacts=aws.codebuild.ProjectArtifactsArgs(type="CODEPIPELINE"),
+            environment=aws.codebuild.ProjectEnvironmentArgs(
+                type="ARM_CONTAINER",
+                compute_type="BUILD_GENERAL1_SMALL",
+                image="aws/codebuild/amazonlinux-aarch64-standard:3.0",
+                environment_variables=[
+                    aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
+                        name="LAYER_NAME", value=self.layer_name
+                    ),
+                    aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
+                        name="PACKAGE_NAME", value=self.name
+                    ),
+                    aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
+                        name="BUCKET_NAME", value=build_bucket.bucket
+                    ),
+                    aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
+                        name="STACK_NAME", value=pulumi.get_stack()
+                    ),
+                    aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
+                        name="NEEDS_PILLOW", value=str(self.needs_pillow)
+                    ),
+                    aws.codebuild.ProjectEnvironmentEnvironmentVariableArgs(
+                        name="DEBUG_MODE", value=str(self.debug_mode)
+                    ),
+                ],
+            ),
+            build_timeout=60,
+            logs_config=aws.codebuild.ProjectLogsConfigArgs(
+                cloudwatch_logs=aws.codebuild.ProjectLogsConfigCloudwatchLogsArgs(
+                    status="ENABLED",
+                    group_name=f"/aws/codebuild/{self.name}-publish",
+                    stream_name=f"{self.name}-publish-stream",
+                ),
+            ),
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+
+        # Define CodePipeline to run all builds in parallel and then publish layer versions
+        pipeline = aws.codepipeline.Pipeline(
+            resource_name=f"{self.name}-pipeline",
+            name=f"{self.name}-pipeline",
+            role_arn=pipeline_role.arn,
+            artifact_stores=[
+                aws.codepipeline.PipelineArtifactStoreArgs(
+                    type="S3",
+                    location=build_bucket.bucket,
                 )
             ],
-            opts=pulumi.ResourceOptions(
-                parent=self, depends_on=[event_queue, queue_policy]
-            ),
-        )
-
-        # ------------------------------------------------------------------
-        # Lambda that reads SQS messages and starts the Step Function
-        # ------------------------------------------------------------------
-        trigger_lambda_role = aws.iam.Role(
-            f"{self.name}-trigger-role",
-            assume_role_policy=json.dumps(
-                {
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Effect": "Allow",
-                            "Principal": {"Service": "lambda.amazonaws.com"},
-                            "Action": "sts:AssumeRole",
-                        }
+            stages=[
+                aws.codepipeline.PipelineStageArgs(
+                    name="Source",
+                    actions=[
+                        aws.codepipeline.PipelineStageActionArgs(
+                            name="Source",
+                            category="Source",
+                            owner="AWS",
+                            provider="S3",
+                            version="1",
+                            output_artifacts=["SourceArtifact"],
+                            configuration={
+                                "S3Bucket": build_bucket.bucket,
+                                "S3ObjectKey": f"{self.name}/source.zip",
+                            },
+                            run_order=1,
+                        )
                     ],
-                }
-            ),
+                ),
+                aws.codepipeline.PipelineStageArgs(
+                    name="Build",
+                    actions=[
+                        aws.codepipeline.PipelineStageActionArgs(
+                            name=f"Build_py{v.replace('.', '')}",
+                            category="Build",
+                            owner="AWS",
+                            provider="CodeBuild",
+                            version="1",
+                            input_artifacts=["SourceArtifact"],
+                            output_artifacts=[f"py{v.replace('.', '')}"],
+                            run_order=1,
+                            configuration={
+                                "ProjectName": build_projects[v].name,
+                            },
+                        )
+                        for v in self.python_versions
+                    ],
+                ),
+                aws.codepipeline.PipelineStageArgs(
+                    name="Deploy",
+                    actions=[
+                        aws.codepipeline.PipelineStageActionArgs(
+                            name="PublishAndUpdate",
+                            category="Build",
+                            owner="AWS",
+                            provider="CodeBuild",
+                            version="1",
+                            input_artifacts=[
+                                f"py{v.replace('.', '')}"
+                                for v in self.python_versions
+                            ],
+                            run_order=1,
+                            configuration={
+                                "ProjectName": publish_project.name,
+                                "PrimarySource": f"py{self.python_versions[0].replace('.', '')}",
+                            },
+                        )
+                    ],
+                ),
+            ],
             opts=pulumi.ResourceOptions(parent=self),
         )
 
-        aws.iam.RolePolicyAttachment(
-            f"{self.name}-trigger-basic-exec",
-            role=trigger_lambda_role.name,
-            policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
-            opts=pulumi.ResourceOptions(parent=self),
-        )
-
-        # Allow Lambda to start executions of the state machine
-        aws.iam.RolePolicy(
-            f"{self.name}-trigger-start-exec",
-            role=trigger_lambda_role.id,
-            policy=state_machine.arn.apply(
-                lambda sm_arn: json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Effect": "Allow",
-                                "Action": ["states:StartExecution"],
-                                "Resource": sm_arn,
-                            }
-                        ],
-                    }
-                )
-            ),
-            opts=pulumi.ResourceOptions(parent=self),
-        )
-
-        # Allow the trigger Lambda to receive and delete messages from the queue
-        aws.iam.RolePolicy(
-            f"{self.name}-trigger-sqs-access",
-            role=trigger_lambda_role.id,
-            policy=event_queue.arn.apply(
-                lambda qarn: json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "sqs:ReceiveMessage",
-                                    "sqs:DeleteMessage",
-                                    "sqs:GetQueueAttributes",
-                                ],
-                                "Resource": qarn,
-                            }
-                        ],
-                    }
-                )
-            ),
-            opts=pulumi.ResourceOptions(parent=self),
-        )
-
-        trigger_lambda = aws.lambda_.Function(
-            f"{self.name}-sqs-trigger",
-            runtime="python3.12",
-            architectures=["arm64"],
-            role=trigger_lambda_role.arn,
-            handler="index.handler",
-            code=pulumi.AssetArchive(
-                {
-                    "index.py": pulumi.StringAsset(
-                        """
-import os, json, boto3
-
-sf = boto3.client("stepfunctions")
-SM_ARN = os.environ["STATE_MACHINE_ARN"]
-
-def handler(event, _):
-    for record in event["Records"]:
-        body = json.loads(record["body"])
-        sf.start_execution(stateMachineArn=SM_ARN, input=json.dumps(body))
-    return {"status": "started"}
+        # Trigger pipeline run when source is updated
+        trigger_script = pipeline.name.apply(
+            lambda pn: f"""#!/usr/bin/env bash
+set -e
+echo "🔄 Changes detected, starting CodePipeline execution for {self.name}"
+EXEC_ID=$(aws codepipeline start-pipeline-execution --name {pn} --query pipelineExecutionId --output text)
+echo "Triggered pipeline: $EXEC_ID"
 """
-                    )
-                }
-            ),
-            timeout=60,
-            memory_size=128,
-            environment=aws.lambda_.FunctionEnvironmentArgs(
-                variables={"STATE_MACHINE_ARN": state_machine.arn}
-            ),
-            opts=pulumi.ResourceOptions(parent=self),
         )
+        # Only create trigger-pipeline command if NOT in sync mode (to avoid duplicate triggers)
+        if not self.sync_mode:
+            command.local.Command(
+                f"{self.name}-trigger-pipeline",
+                create=trigger_script,
+                update=trigger_script,
+                triggers=[package_hash],
+                opts=pulumi.ResourceOptions(
+                    parent=self,
+                    depends_on=[upload_cmd, pipeline],
+                ),
+            )
 
-        # SQS event source mapping to the Lambda
-        aws.lambda_.EventSourceMapping(
-            f"{self.name}-sqs-event-source",
-            event_source_arn=event_queue.arn,
-            function_name=trigger_lambda.name,
-            batch_size=1,
-            opts=pulumi.ResourceOptions(parent=self),
-        )
+        # If sync_mode, start the pipeline and wait for it to complete before finishing Pulumi up
+        if self.sync_mode:
+            sync_script = pipeline.name.apply(
+                lambda pn: f"""#!/usr/bin/env bash
+set -e
+echo "🔄 Sync: Starting CodePipeline execution for {self.name}"
+EXEC_ID=$(aws codepipeline start-pipeline-execution --name {pn} --query pipelineExecutionId --output text)
+echo "Execution ID: $EXEC_ID"
+sleep 2
+while true; do
+    STATUS=$(aws codepipeline get-pipeline-execution \\
+        --pipeline-name {pn} \\
+        --pipeline-execution-id $EXEC_ID \\
+        --query "pipelineExecution.status" --output text)
+    echo "🔄 Pipeline status: $STATUS"
+    if [ "$STATUS" = "Succeeded" ]; then
+        echo "✅ Pipeline completed successfully"
+        break
+    elif [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Superseded" ]; then
+        echo "❌ Pipeline failed with status: $STATUS"
+        exit 1
+    fi
+    sleep 10
+done
+"""
+            )
+            sync_cmd = command.local.Command(
+                f"{self.name}-sync-pipeline",
+                create=sync_script,
+                update=sync_script,  # Also run on updates
+                triggers=[package_hash],  # Trigger on package changes
+                opts=pulumi.ResourceOptions(
+                    parent=self, depends_on=[upload_cmd, pipeline]
+                ),
+            )
+            # Ensure Pulumi waits for pipeline before proceeding
+            pulumi.log.info(f"Sync command added for pipeline {self.name}")
+        else:
+            sync_cmd = None
 
-        # Attach policy allowing EventBridge to start CodeBuild project
-        aws.iam.RolePolicy(
-            f"{self.name}-eventbridge-policy",
-            role=self.eventbridge_role.id,
-            policy=pulumi.Output.all(
-                codebuild_project.arn, state_machine.arn
-            ).apply(
-                lambda arns: json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Effect": "Allow",
-                                "Action": ["codebuild:StartBuild"],
-                                "Resource": arns[0],
-                            },
-                            {
-                                "Effect": "Allow",
-                                "Action": ["states:StartExecution"],
-                                "Resource": arns[1],
-                            },
-                        ],
-                    }
-                )
+        # In sync mode, create LayerVersion resource and wait for pipeline
+        # In async mode, create LayerVersion resource for ARN but let pipeline manage updates
+        self.layer_version = aws.lambda_.LayerVersion(
+            f"{self.name}-lambda-layer",
+            layer_name=self.layer_name,
+            compatible_runtimes=[f"python{v}" for v in self.python_versions],
+            compatible_architectures=["x86_64", "arm64"],
+            description=self.description,
+            s3_bucket=build_bucket.bucket,
+            s3_key=f"{self.name}/combined/layer.zip",
+            opts=pulumi.ResourceOptions(
+                depends_on=[sync_cmd] if (self.sync_mode and sync_cmd) else [pipeline],
+                parent=self,
+                # Let pipeline manage the actual layer content via aws lambda publish-layer-version  
+                ignore_changes=["s3_key"] if not self.sync_mode else None,
             ),
-            opts=pulumi.ResourceOptions(parent=self),
         )
+        self.arn = self.layer_version.arn
 
-        # Export the state machine ARN
-        pulumi.export(f"{self.name}_state_machine_arn", state_machine.arn)
+    def _create_and_run_upload_script(
+        self, bucket: str, package_path: str, package_hash: str
+    ) -> str:
+        """Create a script file and return just the execution command."""
+        try:
+            # Generate the script content with embedded variables to avoid argument issues
+            script_content = self._generate_upload_script(
+                bucket, package_path, package_hash
+            )
 
-        # NOTE: EventBridge rule removed – S3 -> SQS -> Lambda now handles triggering.
+            # Create a persistent script file in /tmp with a unique name
+            script_name = f"pulumi-upload-{self.name}-{package_hash[:8]}.sh"
+            script_path = os.path.join("/tmp", script_name)
+
+            # Write the script file
+            with open(script_path, "w") as f:
+                f.write(script_content)
+
+            # Make it executable
+            os.chmod(script_path, 0o755)
+
+            # Return just the simple command to execute the script
+            # No arguments or environment variables in the command line
+            return f"/bin/bash {script_path}"
+        except (OSError, IOError) as e:
+            raise RuntimeError(f"Failed to create upload script: {e}") from e
+
+    def _generate_upload_script(self, bucket: str, package_path: str, package_hash: str) -> str:
+        """Generate script to upload source package with safely embedded paths.
+        
+        Includes improved error handling and validation.
+        """
+        # Escape the paths to handle special characters
+        safe_package_path = shlex.quote(package_path)
+        safe_bucket = shlex.quote(bucket)
+        
+        # Get local dependencies that need to be included
+        local_deps = self._get_local_dependencies()
+
+        return f"""#!/bin/bash
+set -e
+
+# Set variables within the script to avoid command line length issues
+BUCKET={safe_bucket}
+PACKAGE_PATH={safe_package_path}
+HASH="{package_hash}"
+LAYER_NAME="{self.name}"
+FORCE_REBUILD="{self.force_rebuild}"
+LOCAL_DEPS="{' '.join(local_deps)}"
+
+echo "📦 Checking if source upload needed for layer '$LAYER_NAME'..."
+if [ -n "$LOCAL_DEPS" ]; then
+    echo "📚 Including local dependencies: $LOCAL_DEPS"
+fi
+
+# Check if we need to upload
+STORED_HASH=$(aws s3 cp "s3://$BUCKET/$LAYER_NAME/hash.txt" - 2>/dev/null || echo '')
+if [ "$STORED_HASH" = "$HASH" ] && [ "$FORCE_REBUILD" != "True" ]; then
+    HASH_SHORT=$(echo "$HASH" | cut -c1-12)
+    echo "✅ Source already up-to-date (hash: $HASH_SHORT...). Skipping upload."
+    exit 0
+fi
+
+if [ "$STORED_HASH" != "$HASH" ]; then
+    echo "📝 Source changes detected, uploading..."
+elif [ "$FORCE_REBUILD" = "True" ]; then
+    echo "🔨 Force rebuild enabled, re-uploading source..."
+fi
+
+# Validate package structure before upload
+if [ ! -f "$PACKAGE_PATH/pyproject.toml" ]; then
+    echo "❌ Error: pyproject.toml not found in $PACKAGE_PATH"
+    echo "Package contents:"
+    ls -la "$PACKAGE_PATH" 2>/dev/null || echo "Directory not accessible"
+    echo "Current directory: $(pwd)"
+    echo "Looking for package in: $PACKAGE_PATH"
+    exit 1
+fi
+
+# Check if package has Python files
+PY_FILES=$(find "$PACKAGE_PATH" -name "*.py" -type f | head -5)
+if [ -z "$PY_FILES" ]; then
+    echo "⚠️  Warning: No Python files found in package"
+else
+    echo "✓ Found Python files in package"
+fi
+
+# Upload source
+TMP_DIR=$(mktemp -d)
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+echo "Creating source package structure..."
+mkdir -p "$TMP_DIR/source"
+
+# Copy the main package directory structure
+cp -r "$PACKAGE_PATH"/* "$TMP_DIR/source/"
+
+# Include local dependencies if present
+if [ -n "$LOCAL_DEPS" ]; then
+    echo "Including local dependencies in source package..."
+    for dep in $LOCAL_DEPS; do
+        DEP_PATH="$(dirname "$PACKAGE_PATH")/$dep"
+        if [ -d "$DEP_PATH" ]; then
+            echo "  - Adding $dep from $DEP_PATH"
+            mkdir -p "$TMP_DIR/dependencies/$dep"
+            cp -r "$DEP_PATH"/* "$TMP_DIR/dependencies/$dep/"
+        else
+            echo "  Warning: Local dependency $dep not found at $DEP_PATH"
+        fi
+    done
+fi
+
+# Create zip quietly to reduce output
+cd "$TMP_DIR"
+if [ -d dependencies ]; then
+    zip -qr source.zip source dependencies
+else
+    zip -qr source.zip source
+fi
+cd - >/dev/null
+
+echo "Uploading to S3..."
+# Add retry logic for S3 operations
+for attempt in 1 2 3; do
+    if aws s3 cp "$TMP_DIR/source.zip" "s3://$BUCKET/$LAYER_NAME/source.zip"; then
+        echo "✓ Source zip uploaded"
+        break
+    else
+        echo "Attempt $attempt failed, retrying..."
+        sleep 2
+    fi
+    if [ $attempt -eq 3 ]; then
+        echo "❌ Failed to upload source.zip after 3 attempts"
+        exit 1
+    fi
+done
+
+echo -n "$HASH" | aws s3 cp - "s3://$BUCKET/$LAYER_NAME/hash.txt"
+
+echo "✅ Source uploaded successfully"
+"""
+
+    def _generate_trigger_script(self, bucket: str, project_name: str, package_hash: str) -> str:
+        """Generate script to trigger build without waiting."""
+        return f"""#!/bin/bash
+set -e
+
+BUCKET="{bucket}"
+PROJECT="{project_name}"
+HASH="{package_hash}"
+
+echo "🚀 Checking if build needed for layer '{self.name}'..."
+
+# Check if we need to build
+STORED_HASH=$(aws s3 cp s3://$BUCKET/{self.name}/hash.txt - 2>/dev/null || echo '')
+if [ "$STORED_HASH" = "$HASH" ] && [ "{self.force_rebuild}" != "True" ]; then
+    HASH_SHORT=$(echo "$HASH" | cut -c1-12)
+    echo "✅ No changes detected (hash: $HASH_SHORT...). Skipping build."
+    echo "💡 To force rebuild: pulumi up --config lambda-layer:force-rebuild=true"
+    exit 0
+fi
+
+if [ "$STORED_HASH" != "$HASH" ]; then
+    echo "📝 Code changes detected:"
+    STORED_HASH_SHORT=$(echo "$STORED_HASH" | cut -c1-12)
+    HASH_SHORT=$(echo "$HASH" | cut -c1-12)
+    echo "   Old hash: $STORED_HASH_SHORT..."
+    echo "   New hash: $HASH_SHORT..."
+fi
+
+if [ "{self.force_rebuild}" = "True" ]; then
+    echo "🔨 Force rebuild enabled"
+fi
+
+# Check if there's already a build in progress
+BUILD_STATUS=$(aws codebuild list-builds-for-project --project-name "$PROJECT" --query 'ids[0]' --output text 2>/dev/null || echo "None")
+if [ "$BUILD_STATUS" != "None" ]; then
+    CURRENT_STATUS=$(aws codebuild batch-get-builds --ids "$BUILD_STATUS" --query 'builds[0].buildStatus' --output text 2>/dev/null || echo "UNKNOWN")
+    if [ "$CURRENT_STATUS" = "IN_PROGRESS" ]; then
+        echo "⏳ Build already in progress. Skipping new build."
+        exit 0
+    fi
+fi
+
+# Start async build
+echo "🏗️  Starting async build..."
+BUILD_ID=$(aws codebuild start-build --project-name "$PROJECT" --query 'build.id' --output text)
+echo "✅ Build started: $BUILD_ID"
+echo "📊 Monitor at: https://console.aws.amazon.com/codesuite/codebuild/projects/$PROJECT/build/$BUILD_ID"
+echo "⚡ Continuing with fast pulumi up (not waiting for completion)"
+"""
+
+    def _generate_initial_build_script(self, bucket: str, project_name: str) -> str:
+        """Generate script to ensure initial layer exists."""
+        return f"""#!/bin/bash
+set -e
+
+BUCKET="{bucket}"
+PROJECT="{project_name}"
+
+echo "🔍 Checking if initial layer exists for '{self.name}'..."
+
+# Check if layer exists
+if aws s3api head-object --bucket "$BUCKET" --key "{self.name}/layer.zip" &>/dev/null; then
+    echo "✅ Layer already exists. No initial build needed."
+    exit 0
+fi
+
+echo "🏗️  No layer found. Running initial build (this will wait for completion)..."
+
+# Start build and wait
+BUILD_ID=$(aws codebuild start-build --project-name "$PROJECT" --query 'build.id' --output text)
+echo "Build ID: $BUILD_ID"
+
+while true; do
+    BUILD_STATUS=$(aws codebuild batch-get-builds --ids "$BUILD_ID" --query 'builds[0].buildStatus' --output text)
+    echo "Build status: $BUILD_STATUS"
+
+    if [ "$BUILD_STATUS" = "SUCCEEDED" ]; then
+        echo "✅ Initial build completed successfully!"
+        break
+    elif [ "$BUILD_STATUS" = "FAILED" ] || [ "$BUILD_STATUS" = "FAULT" ] || [ "$BUILD_STATUS" = "STOPPED" ] || [ "$BUILD_STATUS" = "TIMED_OUT" ]; then
+        echo "❌ Initial build failed with status: $BUILD_STATUS"
+        exit 1
+    fi
+
+    sleep 30
+done
+"""
+
+    def _generate_sync_script(
+        self, bucket: str, project_name: str, layer_name: str, package_path: str, package_hash: str
+    ) -> str:
+        """Generate script for sync mode (waits for completion)."""
+        return f"""#!/bin/bash
+set -e
+
+BUCKET="{bucket}"
+PROJECT="{project_name}"
+LAYER_NAME="{layer_name}"
+PACKAGE_PATH="{package_path}"
+HASH="{package_hash}"
+
+echo "🔄 Building layer '{self.name}' in SYNC mode..."
+
+# Check if we need to rebuild
+if [ "$(aws s3 cp s3://$BUCKET/{self.name}/hash.txt - 2>/dev/null || echo '')" = "$HASH" ] && [ "{self.force_rebuild}" != "True" ]; then
+    echo "✅ No changes detected. Skipping rebuild."
+
+    # Ensure layer exists
+    if ! aws s3api head-object --bucket "$BUCKET" --key "{self.name}/layer.zip" &>/dev/null; then
+        echo "❌ Layer missing but hash matches. Please run with force-rebuild."
+        exit 1
+    fi
+    exit 0
+fi
+
+# Upload source
+echo "📦 Uploading source..."
+TMP_DIR=$(mktemp -d)
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+mkdir -p "$TMP_DIR/source"
+cp -r "$PACKAGE_PATH"/* "$TMP_DIR/source/"
+
+# Use cd instead of pushd/popd for better shell compatibility
+cd "$TMP_DIR"
+zip -r source.zip source
+cd - >/dev/null
+
+aws s3 cp "$TMP_DIR/source.zip" "s3://$BUCKET/{self.name}/source.zip"
+
+# Start build and wait
+echo "🏗️  Starting build..."
+BUILD_ID=$(aws codebuild start-build --project-name "$PROJECT" --query 'build.id' --output text)
+echo "Build ID: $BUILD_ID"
+
+while true; do
+    BUILD_STATUS=$(aws codebuild batch-get-builds --ids "$BUILD_ID" --query 'builds[0].buildStatus' --output text)
+    echo "Build status: $BUILD_STATUS"
+
+    if [ "$BUILD_STATUS" = "SUCCEEDED" ]; then
+        echo "✅ Build completed successfully!"
+        break
+    elif [ "$BUILD_STATUS" = "FAILED" ] || [ "$BUILD_STATUS" = "FAULT" ] || [ "$BUILD_STATUS" = "STOPPED" ] || [ "$BUILD_STATUS" = "TIMED_OUT" ]; then
+        echo "❌ Build failed with status: $BUILD_STATUS"
+        exit 1
+    fi
+
+    sleep 30
+done
+
+# Save hash
+echo -n "$HASH" | aws s3 cp - "s3://$BUCKET/{self.name}/hash.txt"
+echo "✅ Layer build process completed!"
+"""
 
 
 # Define the layers to build
@@ -1156,42 +1551,72 @@ layers_to_build = [
         "name": "receipt-dynamo",
         "description": "DynamoDB layer for receipt-dynamo",
         "python_versions": ["3.12"],
+        "needs_pillow": False,
     },
     {
         "package_dir": "receipt_label",
         "name": "receipt-label",
         "description": "Label layer for receipt-label",
         "python_versions": ["3.12"],
+        "needs_pillow": True,   # Needed - transitive dependency via openai or other packages
+        "package_extras": "lambda",  # Minimal dependencies for Lambda
     },
     {
         "package_dir": "receipt_upload",
         "name": "receipt-upload",
         "description": "Upload layer for receipt-upload",
         "python_versions": ["3.12"],
+        "needs_pillow": False,  # Not needed - no image processing in upload lambdas
     },
-    # Add more layers here as needed
 ]
 
-# Create Lambda layers using CodeBuild
+# Create Lambda layers using the fast approach
+# TEMPORARILY SKIP LAYER BUILDING
+SKIP_LAYER_BUILDING = False  # Set to False to enable layer building
+
+# SYNC MODE: Set to True when ARNs are needed immediately (e.g., after major changes)
+# Set to False for faster pulumi up once layers are stable
+USE_SYNC_MODE = False  # Temporarily disabled for faster pulumi up while testing
+
+# Create Lambda layers using the hybrid approach
 lambda_layers = {}
 
-for layer_config in layers_to_build:
-    # Create the Lambda Layer resource using the enhanced component
-    lambda_layer = LambdaLayer(
-        name=layer_config["name"],
-        package_dir=layer_config["package_dir"],
-        python_versions=layer_config["python_versions"],
-        description=layer_config["description"],
-    )
+# Only create layers when running in a Pulumi context
+try:
+    pulumi.get_stack()  # This will throw if not in a Pulumi context
+    _in_pulumi_context = not SKIP_LAYER_BUILDING
+except Exception:
+    _in_pulumi_context = False
 
-    lambda_layers[layer_config["name"]] = lambda_layer
+if _in_pulumi_context:
+    for layer_config in layers_to_build:
+        lambda_layer = LambdaLayer(
+            name=layer_config["name"],  # type: ignore
+            package_dir=layer_config["package_dir"],  # type: ignore
+            python_versions=layer_config["python_versions"],  # type: ignore
+            description=layer_config["description"],  # type: ignore
+            needs_pillow=layer_config["needs_pillow"],  # type: ignore
+            package_extras=layer_config.get("package_extras"),  # type: ignore
+            sync_mode=USE_SYNC_MODE,  # Use flag to control sync/async mode
+        )
+        lambda_layers[layer_config["name"]] = lambda_layer
 
-# Access the built layers by name
-dynamo_layer = lambda_layers["receipt-dynamo"]
-label_layer = lambda_layers["receipt-label"]
-upload_layer = lambda_layers["receipt-upload"]
-
-# Export the layer ARNs for reference
-pulumi.export("dynamo_layer_arn", dynamo_layer.arn)
-pulumi.export("label_layer_arn", label_layer.arn)
-pulumi.export("upload_layer_arn", upload_layer.arn)
+    # Access the built layers by name  
+    dynamo_layer = lambda_layers["receipt-dynamo"]
+    label_layer = lambda_layers["receipt-label"]
+    upload_layer = lambda_layers["receipt-upload"]
+    
+    # Export the layer ARNs for reference
+    pulumi.export("dynamo_layer_arn", dynamo_layer.arn)
+    pulumi.export("label_layer_arn", label_layer.arn)
+    pulumi.export("upload_layer_arn", upload_layer.arn)
+else:
+    # Create dummy objects when skipping or not in Pulumi context
+    class DummyLayer:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.arn = None
+    
+    dynamo_layer = DummyLayer("receipt-dynamo")  # type: ignore
+    label_layer = DummyLayer("receipt-label")  # type: ignore
+    upload_layer = DummyLayer("receipt-upload")  # type: ignore

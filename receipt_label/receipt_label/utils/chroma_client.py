@@ -4,18 +4,41 @@ ChromaDB client management module.
 This module provides ChromaDB integration for vector storage,
 replacing the previous Pinecone implementation.
 """
+from __future__ import annotations
 
 import os
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 import boto3
-import chromadb
-from chromadb import Collection
-from chromadb.config import Settings
-from chromadb.utils import embedding_functions
-from chromadb.errors import NotFoundError
+
+# Type checking imports (these don't run at runtime)
+if TYPE_CHECKING:
+    import chromadb
+    from chromadb import Collection
+    from chromadb.config import Settings
+    from chromadb.utils import embedding_functions
+    from chromadb.errors import NotFoundError
+
+# Runtime imports - try to import ChromaDB, but don't fail if unavailable
+try:
+    import chromadb
+    from chromadb import Collection
+    from chromadb.config import Settings
+    from chromadb.utils import embedding_functions
+    from chromadb.errors import NotFoundError
+    CHROMADB_AVAILABLE = True
+except (ImportError, StopIteration) as e:
+    # ChromaDB not available or telemetry initialization failed (common in Lambda)
+    print(f"Warning: ChromaDB import failed: {e}. ChromaDB features will be disabled.")
+    if not TYPE_CHECKING:
+        chromadb = None
+        Collection = None
+        Settings = None
+        embedding_functions = None
+        NotFoundError = Exception  # Fallback to base Exception
+    CHROMADB_AVAILABLE = False
 
 
 class ChromaDBClient:
@@ -42,6 +65,13 @@ class ChromaDBClient:
             mode: Operation mode - "read" (read-only), "delta" (write deltas),
                   or "snapshot" (read-write snapshots)
         """
+        if not CHROMADB_AVAILABLE:
+            raise RuntimeError(
+                "ChromaDB is not available. This is expected in Lambda environments "
+                "that don't use ChromaDB features. Install chromadb-client with "
+                "proper dependencies if ChromaDB is needed."
+            )
+        
         self.persist_directory = persist_directory
         self.collection_prefix = collection_prefix
         self.mode = mode.lower()
@@ -56,7 +86,7 @@ class ChromaDBClient:
         )
 
     @property
-    def client(self) -> chromadb.Client:
+    def client(self) -> Optional[chromadb.Client]:
         """Get or create ChromaDB client."""
         if self._client is None:
             if self.use_persistent_client and self.persist_directory:
@@ -341,7 +371,7 @@ _chroma_client_instance: Optional[ChromaDBClient] = None
 
 def get_chroma_client(
     persist_directory: Optional[str] = None, reset: bool = False
-) -> ChromaDBClient:
+) -> Optional[ChromaDBClient]:
     """
     Get or create a singleton ChromaDB client instance.
 
@@ -351,8 +381,11 @@ def get_chroma_client(
         reset: Whether to reset the existing client
 
     Returns:
-        ChromaDBClient instance
+        ChromaDBClient instance or None if ChromaDB is not available
     """
+    if not CHROMADB_AVAILABLE:
+        return None
+        
     global _chroma_client_instance
 
     if reset or _chroma_client_instance is None:

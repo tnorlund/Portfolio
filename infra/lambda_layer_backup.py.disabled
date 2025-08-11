@@ -1,0 +1,9 @@
+# This file has been disabled to prevent duplicate layer creation
+# The fast_lambda_layer.py is now the primary layer system
+# 
+# To re-enable this file:
+# 1. Rename it back to lambda_layer.py
+# 2. Remove the exports from fast_lambda_layer.py
+#
+# Original file content has been moved here for backup purposes
+# See fast_lambda_layer.py for the current implementation

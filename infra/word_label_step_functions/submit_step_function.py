@@ -103,9 +103,14 @@ class WordLabelStepFunctions(ComponentResource):
                     "PINECONE_INDEX_NAME": pinecone_index_name,
                     "PINECONE_HOST": pinecone_host,
                     "S3_BUCKET": batch_bucket.bucket,
+                    # Fix OpenTelemetry context initialization in Lambda
+                    "OTEL_PYTHON_CONTEXT": "contextvars_context",  # Explicitly set context implementation
+                    # Disable ChromaDB telemetry to avoid issues
+                    "CHROMA_TELEMETRY": "false",
+                    "ANONYMIZED_TELEMETRY": "false",
                 }
             ),
-            layers=[dynamo_layer.arn, label_layer.arn],
+            layers=[label_layer.arn],  # receipt-label includes receipt-dynamo
             tags={"environment": stack},
             opts=ResourceOptions(
                 parent=self,
@@ -157,9 +162,14 @@ class WordLabelStepFunctions(ComponentResource):
                     "PINECONE_INDEX_NAME": pinecone_index_name,
                     "PINECONE_HOST": pinecone_host,
                     "S3_BUCKET": batch_bucket.bucket,
+                    # Fix OpenTelemetry context initialization in Lambda
+                    "OTEL_PYTHON_CONTEXT": "contextvars_context",  # Explicitly set context implementation
+                    # Disable ChromaDB telemetry to avoid issues
+                    "CHROMA_TELEMETRY": "false",
+                    "ANONYMIZED_TELEMETRY": "false",
                 }
             ),
-            layers=[dynamo_layer.arn, label_layer.arn],
+            layers=[label_layer.arn],  # receipt-label includes receipt-dynamo
             tags={"environment": stack},
             opts=ResourceOptions(
                 parent=self,
@@ -300,6 +310,7 @@ class WordLabelStepFunctions(ComponentResource):
             handler="prepare_embedding_batch_handler.submit_handler",
             timeout=900,
             memory_size=512,
+            architectures=["arm64"],
             code=AssetArchive(
                 {
                     "prepare_embedding_batch_handler.py": FileAsset(
@@ -318,9 +329,14 @@ class WordLabelStepFunctions(ComponentResource):
                     "PINECONE_INDEX_NAME": pinecone_index_name,
                     "PINECONE_HOST": pinecone_host,
                     "S3_BUCKET": batch_bucket.bucket,
+                    # Fix OpenTelemetry context initialization in Lambda
+                    "OTEL_PYTHON_CONTEXT": "contextvars_context",  # Explicitly set context implementation
+                    # Disable ChromaDB telemetry to avoid issues
+                    "CHROMA_TELEMETRY": "false",
+                    "ANONYMIZED_TELEMETRY": "false",
                 }
             ),
-            layers=[dynamo_layer.arn, label_layer.arn],
+            layers=[label_layer.arn],  # receipt-label includes receipt-dynamo
             tags={"environment": stack},
             opts=ResourceOptions(
                 parent=self,
@@ -336,6 +352,7 @@ class WordLabelStepFunctions(ComponentResource):
             handler="submit_embedding_batch_handler.submit_handler",
             timeout=900,
             memory_size=512,
+            architectures=["arm64"],
             code=AssetArchive(
                 {
                     "submit_embedding_batch_handler.py": FileAsset(
@@ -354,9 +371,14 @@ class WordLabelStepFunctions(ComponentResource):
                     "PINECONE_INDEX_NAME": pinecone_index_name,
                     "PINECONE_HOST": pinecone_host,
                     "S3_BUCKET": batch_bucket.bucket,
+                    # Fix OpenTelemetry context initialization in Lambda
+                    "OTEL_PYTHON_CONTEXT": "contextvars_context",  # Explicitly set context implementation
+                    # Disable ChromaDB telemetry to avoid issues
+                    "CHROMA_TELEMETRY": "false",
+                    "ANONYMIZED_TELEMETRY": "false",
                 }
             ),
-            layers=[dynamo_layer.arn, label_layer.arn],
+            layers=[label_layer.arn],  # receipt-label includes receipt-dynamo
             tags={"environment": stack},
             opts=ResourceOptions(
                 parent=self,
