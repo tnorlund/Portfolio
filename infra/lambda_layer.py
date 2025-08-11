@@ -351,8 +351,7 @@ echo "🎉 Parallel function updates completed!"'''
                 "rm -rf build/python/lib/python*/site-packages/jmespath* || true",
                 "rm -rf build/python/lib/python*/site-packages/s3transfer* || true",
                 "rm -rf build/python/lib/python*/site-packages/six* || true",
-                'echo "Removing numpy (use AWS Lambda Layer instead)"',
-                "rm -rf build/python/lib/python*/site-packages/numpy* || true",
+                # NumPy is now included in the layer (not removed anymore)
                 'echo "Cleaning up unnecessary files from all packages"',
                 "find build -type d -name '__pycache__' -exec rm -rf {} + "
                 "2>/dev/null || true",
@@ -381,7 +380,6 @@ echo "🎉 Parallel function updates completed!"'''
                 "rm -rf build/python/jmespath* || true",
                 "rm -rf build/python/s3transfer* || true",
                 "rm -rf build/python/six* || true",
-                "rm -rf build/python/numpy* || true",
                 # Flatten site-packages to python root (CRITICAL for Lambda layer structure)
                 'echo "Flattening site-packages to root python directory"',
                 "cp -r build/python/lib/python*/site-packages/. build/python/ || true",
@@ -466,7 +464,6 @@ echo "🎉 Parallel function updates completed!"'''
                 "rm -rf build/python/jmespath* || true",
                 "rm -rf build/python/s3transfer* || true",
                 "rm -rf build/python/six* || true",
-                "rm -rf build/python/numpy* || true",
                 # Flatten site-packages to python root (CRITICAL for Lambda layer structure)
                 'echo "Flattening site-packages to root python directory"',
                 "cp -r build/python/lib/python*/site-packages/. build/python/ || true",
