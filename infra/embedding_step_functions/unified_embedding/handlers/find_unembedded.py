@@ -11,7 +11,8 @@ from receipt_label.embedding.line import (
     serialize_receipt_lines,
     upload_serialized_lines,
 )
-from ..utils.logging import get_logger
+import utils.logging
+get_logger = utils.logging.get_logger
 
 logger = get_logger(__name__)
 

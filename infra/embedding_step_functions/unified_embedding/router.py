@@ -9,15 +9,13 @@ import logging
 from typing import Any, Dict, Optional
 
 # Import handlers when needed, not at module level
-from handlers import (
-    word_polling,
-    line_polling,
-    compaction,
-    find_unembedded,
-    submit_openai,
-    list_pending,
-)
-from utils.response import format_response
+import handlers.word_polling as word_polling
+import handlers.line_polling as line_polling
+import handlers.compaction as compaction
+import handlers.find_unembedded as find_unembedded
+import handlers.submit_openai as submit_openai
+import handlers.list_pending as list_pending
+import utils.response as response_utils
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -72,13 +70,13 @@ def route_request(event: Dict[str, Any], context: Any) -> Any:
         result = handler(event, context)
         
         # Format response based on invocation source
-        return format_response(result, event)
+        return response_utils.format_response(result, event)
         
     except Exception as e:
         logger.error(f"Error in {handler_type} handler: {str(e)}", exc_info=True)
         
         # Let format_response handle error formatting
-        return format_response(
+        return response_utils.format_response(
             {"error": str(e)}, 
             event, 
             is_error=True

@@ -21,7 +21,8 @@ from receipt_label.embedding.line.poll import (
     write_line_embedding_results_to_dynamo,
 )
 from receipt_label.utils import get_client_manager
-from ..utils.logging import get_logger
+import utils.logging
+get_logger = utils.logging.get_logger
 
 logger = get_logger(__name__)
 

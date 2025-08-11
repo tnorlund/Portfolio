@@ -5,7 +5,8 @@ Pure business logic - no Lambda-specific code.
 
 from typing import Any, Dict, List
 from receipt_label.embedding.line import list_pending_line_embedding_batches
-from ..utils.logging import get_logger
+import utils.logging
+get_logger = utils.logging.get_logger
 
 logger = get_logger(__name__)
 

@@ -4,7 +4,7 @@ This is the main entry point that AWS Lambda invokes.
 All routing logic is delegated to the router module.
 """
 
-from router import route_request
+import router
 
 
 def lambda_handler(event, context):
@@ -17,4 +17,4 @@ def lambda_handler(event, context):
     Returns:
         Response appropriate for the invocation source
     """
-    return route_request(event, context)
+    return router.route_request(event, context)
