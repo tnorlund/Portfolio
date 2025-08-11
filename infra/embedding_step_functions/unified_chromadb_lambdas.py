@@ -103,20 +103,27 @@ class UnifiedChromaDBLambdas(ComponentResource):
             shutil.copytree(repo_root / "receipt_dynamo", temp_context_dir / "receipt_dynamo")
             shutil.copytree(repo_root / "receipt_label", temp_context_dir / "receipt_label")
             
-            # Copy the unified lambda directory
+            # Copy the unified lambda directory to the root of temp context for simpler paths
             unified_lambda_src = repo_root / "infra/embedding_step_functions/unified_lambda"
-            unified_lambda_dst = temp_context_dir / "infra/embedding_step_functions/unified_lambda"
-            unified_lambda_dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(unified_lambda_src, unified_lambda_dst)
+            shutil.copytree(unified_lambda_src, temp_context_dir / "unified_lambda")
             
-            # Copy individual handler files for legacy compatibility
-            for handler_name in ["chromadb_word_polling", "chromadb_compaction", "chromadb_line_polling", 
-                               "find_unembedded_lines", "submit_to_openai", "list_pending_batches"]:
+            # Copy individual handler files for legacy compatibility (simplified paths)
+            legacy_dir = temp_context_dir / "legacy"
+            legacy_dir.mkdir(exist_ok=True)
+            
+            handler_mapping = {
+                "chromadb_word_polling": "word_polling.py",
+                "chromadb_compaction": "compaction.py", 
+                "chromadb_line_polling": "line_polling.py",
+                "find_unembedded_lines": "find_unembedded.py",
+                "submit_to_openai": "submit_openai.py",
+                "list_pending_batches": "list_pending.py"
+            }
+            
+            for handler_name, legacy_name in handler_mapping.items():
                 handler_src = repo_root / f"infra/embedding_step_functions/{handler_name}_lambda/handler.py"
                 if handler_src.exists():
-                    handler_dst = temp_context_dir / f"infra/embedding_step_functions/{handler_name}_lambda"
-                    handler_dst.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(handler_src, handler_dst / "handler.py")
+                    shutil.copy2(handler_src, legacy_dir / legacy_name)
             
             build_context_path = temp_context_dir
             
@@ -133,7 +140,7 @@ class UnifiedChromaDBLambdas(ComponentResource):
                 },
                 dockerfile={
                     "location": str(
-                        (build_context_path / "infra/embedding_step_functions/unified_lambda/Dockerfile").resolve()
+                        (build_context_path / "unified_lambda/Dockerfile").resolve()
                     ),
                 },
                 platforms=["linux/arm64"],
