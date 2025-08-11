@@ -91,10 +91,10 @@ class EmbeddingInfrastructure(ComponentResource):
     def _build_docker_image(self):
         """Build the unified Docker image for all Lambda functions."""
         
-        # Create ECR repository
+        # Create ECR repository with versioned name to avoid conflicts
         self.ecr_repo = Repository(
-            f"unified-embedding-repo-{stack}",
-            name=f"unified-embedding-{stack}",
+            f"unified-embedding-v2-repo-{stack}",
+            name=f"unified-embedding-v2-{stack}",
             image_scanning_configuration=RepositoryImageScanningConfigurationArgs(
                 scan_on_push=True,
             ),
@@ -110,7 +110,7 @@ class EmbeddingInfrastructure(ComponentResource):
         
         # Build Docker image
         self.docker_image = docker_build.Image(
-            f"unified-embedding-image-{stack}",
+            f"unified-embedding-v2-image-{stack}",
             context={
                 "location": str(build_context_path.resolve()),
             },
