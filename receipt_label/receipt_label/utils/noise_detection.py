@@ -169,26 +169,3 @@ def is_noise_text(
 
     # Not noise - it's a meaningful word
     return False
-
-
-# Backward compatibility aliases
-def is_noise_word(
-    text: str, config: Optional[NoiseDetectionConfig] = None
-) -> bool:
-    """
-    Backward compatibility alias for is_noise_text().
-    
-    Use is_noise_text() for new code as it works for both words and lines.
-    """
-    return is_noise_text(text, config)
-
-
-def is_noise_line(
-    text: str, config: Optional[NoiseDetectionConfig] = None
-) -> bool:
-    """
-    Backward compatibility alias for is_noise_text().
-    
-    Use is_noise_text() for new code as it works for both words and lines.
-    """
-    return is_noise_text(text, config)

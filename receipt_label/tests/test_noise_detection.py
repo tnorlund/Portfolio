@@ -5,7 +5,6 @@ import pytest
 from receipt_label.utils.noise_detection import (
     NoiseDetectionConfig,
     is_noise_text,
-    is_noise_line,  # Keep for line-specific tests
 )
 
 
@@ -262,7 +261,7 @@ class TestNoiseLineDetection:
 
         for line in separator_lines:
             assert (
-                is_noise_line(line) is True
+                is_noise_text(line) is True
             ), f"'{line}' should be detected as noise line"
 
     @pytest.mark.unit
@@ -282,7 +281,7 @@ class TestNoiseLineDetection:
 
         for line in empty_lines:
             assert (
-                is_noise_line(line) is True
+                is_noise_text(line) is True
             ), f"'{repr(line)}' should be detected as noise line"
 
     @pytest.mark.unit
@@ -299,7 +298,7 @@ class TestNoiseLineDetection:
 
         for line in noise_word_lines:
             assert (
-                is_noise_line(line) is True
+                is_noise_text(line) is True
             ), f"'{line}' should be detected as noise line"
         
         # These patterns might have meaning (CSV, lists, groupings) so they're not noise
@@ -336,7 +335,7 @@ class TestNoiseLineDetection:
 
         for line in meaningful_lines:
             assert (
-                is_noise_line(line) is False
+                is_noise_text(line) is False
             ), f"'{line}' should NOT be detected as noise line"
 
     @pytest.mark.unit
@@ -355,7 +354,7 @@ class TestNoiseLineDetection:
 
         for line in mixed_separators:
             assert (
-                is_noise_line(line) is True
+                is_noise_text(line) is True
             ), f"'{line}' should be detected as noise line"
 
     @pytest.mark.unit
@@ -372,7 +371,7 @@ class TestNoiseLineDetection:
 
         for line in partial_meaningful:
             assert (
-                is_noise_line(line) is False
+                is_noise_text(line) is False
             ), f"'{line}' should NOT be detected as noise line"
 
     @pytest.mark.unit
@@ -382,8 +381,8 @@ class TestNoiseLineDetection:
         custom_config = NoiseDetectionConfig(preserve_currency=False)
 
         # Single currency symbols are detected differently
-        assert is_noise_line("$", custom_config) is True  # Single $ is noise without preservation
-        assert is_noise_line("$") is False  # Single $ is not noise with preservation
+        assert is_noise_text("$", custom_config) is True  # Single $ is noise without preservation
+        assert is_noise_text("$") is False  # Single $ is not noise with preservation
         
         # Multi-word patterns like "$ $ $ $" contain spaces so they're not pure noise
         # The unified function is more conservative - if it has meaningful structure
@@ -403,7 +402,7 @@ class TestNoiseLineDetection:
 
         for line in noise_examples:
             assert (
-                is_noise_line(line) is True
+                is_noise_text(line) is True
             ), f"'{line}' should be detected as noise"
 
         # Common meaningful lines from receipts
@@ -420,5 +419,5 @@ class TestNoiseLineDetection:
 
         for line in meaningful_examples:
             assert (
-                is_noise_line(line) is False
+                is_noise_text(line) is False
             ), f"'{line}' should NOT be detected as noise"
