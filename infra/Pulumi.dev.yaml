@@ -24,5 +24,7 @@ config:
   lambda-layer:sync-mode: "true"
   portfolio:notification_emails:
     - "tnorlund@icloud.com" # Replace with your actual email address
-  portfolio:use-static-base-image: "true"  # Use stable tags for faster dev builds
-  portfolio:docker-buildkit: "true"        # Enable Docker BuildKit for caching
+  portfolio:use-static-base-image: "true" # Use stable tags for faster dev builds
+  portfolio:docker-buildkit: "true" # Enable Docker BuildKit for caching
+  portfolio:aws-account-id: "681647709217"
+  portfolio:aws-region: us-east-1

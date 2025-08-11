@@ -62,9 +62,10 @@ class UnifiedChromaDBLambdas(ComponentResource):
             opts,
         )
 
-        # Get AWS account details
-        account_id = get_caller_identity().account_id
-        region = config.region
+        # Get static AWS account details from config to avoid dynamic context hash changes
+        pulumi_config = pulumi.Config("portfolio")
+        account_id_static = pulumi_config.require("aws-account-id")
+        region_static = pulumi_config.get("aws-region") or "us-east-1"
 
         # Create single ECR repository for unified image
         self.unified_repo = Repository(
@@ -79,7 +80,12 @@ class UnifiedChromaDBLambdas(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Get ECR authorization token
+        # Build static ECR URLs to avoid dynamic context hash changes
+        ecr_registry = f"{account_id_static}.dkr.ecr.{region_static}.amazonaws.com"
+        repo_name = f"unified-embedding-{stack}"
+        repo_url = f"{ecr_registry}/{repo_name}"
+
+        # Get ECR authorization token - still needed but we'll minimize context hash impact
         ecr_auth_token = get_authorization_token_output()
 
         # Build context path - use repository root
@@ -103,13 +109,11 @@ class UnifiedChromaDBLambdas(ComponentResource):
             },
             platforms=["linux/arm64"],
             build_args=build_args,
-            # ECR caching configuration
+            # ECR caching configuration with static URLs
             cache_from=[
                 {
                     "registry": {
-                        "ref": self.unified_repo.repository_url.apply(
-                            lambda url: f"{url}:cache"
-                        ),
+                        "ref": f"{repo_url}:cache",
                     },
                 },
             ],
@@ -118,24 +122,20 @@ class UnifiedChromaDBLambdas(ComponentResource):
                     "registry": {
                         "imageManifest": True,
                         "ociMediaTypes": True,
-                        "ref": self.unified_repo.repository_url.apply(
-                            lambda url: f"{url}:cache"
-                        ),
+                        "ref": f"{repo_url}:cache",
                     },
                 },
             ],
             push=True,
             registries=[
                 {
-                    "address": self.unified_repo.repository_url.apply(
-                        lambda url: url.split("/")[0]
-                    ),
+                    "address": ecr_registry,
                     "password": ecr_auth_token.password,
                     "username": ecr_auth_token.user_name,
                 },
             ],
             tags=[
-                self.unified_repo.repository_url.apply(lambda url: f"{url}:latest"),
+                f"{repo_url}:latest",
             ],
             opts=ResourceOptions(parent=self, depends_on=[self.unified_repo]),
         )
