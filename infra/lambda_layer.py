@@ -429,21 +429,21 @@ echo "🎉 Parallel function updates completed!"'''
                 "ls -la source/ || echo 'source directory not found'",
                 "ls -la source/pyproject.toml || echo 'pyproject.toml not found in source'",
                 # Check for and build local dependencies first
-                'if [ -d "dependencies" ]; then',
-                '    echo "Found local dependencies, building them first..."',
-                '    mkdir -p dep_wheels',
-                '    for dep_dir in dependencies/*; do',
-                '        if [ -d "$dep_dir" ]; then',
-                '            dep_name=$(basename "$dep_dir")',
-                '            echo "  - Building $dep_name"',
-                '            cd "$dep_dir"',
-                '            python3 -m build --wheel --outdir ../../dep_wheels/',
-                '            cd ../../',
-                '        fi',
-                '    done',
-                '    echo "Installing local dependency wheels..."',
-                f'    python{version} -m pip install --no-cache-dir dep_wheels/*.whl -t build/python/lib/python{version}/site-packages || true',
-                'fi',
+                ('if [ -d "dependencies" ]; then '
+                 'echo "Found local dependencies, building them first..."; '
+                 'mkdir -p dep_wheels; '
+                 'for dep_dir in dependencies/*; do '
+                 'if [ -d "$dep_dir" ]; then '
+                 'dep_name=$(basename "$dep_dir"); '
+                 'echo "  - Building $dep_name"; '
+                 'cd "$dep_dir"; '
+                 'python3 -m build --wheel --outdir ../../dep_wheels/; '
+                 'cd ../../; '
+                 'fi; '
+                 'done; '
+                 'echo "Installing local dependency wheels..."; '
+                 f'python{version} -m pip install --no-cache-dir dep_wheels/*.whl -t build/python/lib/python{version}/site-packages || true; '
+                 'fi'),
                 "rm -rf build && mkdir -p build",
                 f"mkdir -p build/python/lib/python{version}/site-packages",
                 'echo "Building main package wheel"',
@@ -556,23 +556,23 @@ echo "🎉 Parallel function updates completed!"'''
                 "ls -la source/ || echo 'source directory not found'",
                 "ls -la source/pyproject.toml || echo 'pyproject.toml not found in source'",
                 # Check for and build local dependencies first
-                'if [ -d "dependencies" ]; then',
-                '    echo "Found local dependencies, building them first..."',
-                '    mkdir -p dep_wheels',
-                '    for dep_dir in dependencies/*; do',
-                '        if [ -d "$dep_dir" ]; then',
-                '            dep_name=$(basename "$dep_dir")',
-                '            echo "  - Building $dep_name"',
-                '            cd "$dep_dir"',
-                '            python3 -m build --wheel --outdir ../../dep_wheels/',
-                '            cd ../../',
-                '        fi',
-                '    done',
-                '    echo "Installing local dependency wheels for all Python versions..."',
-                '    for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do',
-                '        python${v} -m pip install --no-cache-dir dep_wheels/*.whl -t build/python/lib/python${v}/site-packages || true',
-                '    done',
-                'fi',
+                ('if [ -d "dependencies" ]; then '
+                 'echo "Found local dependencies, building them first..."; '
+                 'mkdir -p dep_wheels; '
+                 'for dep_dir in dependencies/*; do '
+                 'if [ -d "$dep_dir" ]; then '
+                 'dep_name=$(basename "$dep_dir"); '
+                 'echo "  - Building $dep_name"; '
+                 'cd "$dep_dir"; '
+                 'python3 -m build --wheel --outdir ../../dep_wheels/; '
+                 'cd ../../; '
+                 'fi; '
+                 'done; '
+                 'echo "Installing local dependency wheels for all Python versions..."; '
+                 'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do '
+                 'python${v} -m pip install --no-cache-dir dep_wheels/*.whl -t build/python/lib/python${v}/site-packages || true; '
+                 'done; '
+                 'fi'),
                 "rm -rf build && mkdir -p build",
                 'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do mkdir -p build/python/lib/python${v}/site-packages; done',
                 'echo "Building main package wheel"',
