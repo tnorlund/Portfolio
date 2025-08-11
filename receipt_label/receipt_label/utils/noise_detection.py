@@ -48,33 +48,45 @@ class NoiseDetectionConfig:
 DEFAULT_NOISE_CONFIG = NoiseDetectionConfig()
 
 
-def is_noise_word(
+def is_noise_text(
     text: str, config: Optional[NoiseDetectionConfig] = None
 ) -> bool:
     """
-    Determine if a word is noise based on configurable patterns.
+    Determine if text (word or line) is noise based on configurable patterns.
+
+    This function works for both individual words and entire lines, detecting:
+    - Single punctuation marks
+    - Separator characters and patterns
+    - Multi-character separators (===, ---, etc.)
+    - Mixed separator patterns with spaces
+    - Empty or whitespace-only text
+    - Non-alphanumeric artifacts
 
     Args:
-        text: The word text to check
+        text: The text to check (can be a word or line)
         config: Optional configuration, uses DEFAULT_NOISE_CONFIG if not provided
 
     Returns:
-        True if the word is considered noise, False otherwise
+        True if the text is considered noise, False otherwise
 
     Examples:
-        >>> is_noise_word(".")  # Single punctuation
+        >>> is_noise_text(".")  # Single punctuation
         True
-        >>> is_noise_word(",")  # Single punctuation
+        >>> is_noise_text(",")  # Single punctuation
         True
-        >>> is_noise_word("|")  # Separator
+        >>> is_noise_text("|")  # Separator
         True
-        >>> is_noise_word("---")  # Multi-character separator
+        >>> is_noise_text("---")  # Multi-character separator
         True
-        >>> is_noise_word("TOTAL")  # Meaningful word
+        >>> is_noise_text("==================")  # Line separator
+        True
+        >>> is_noise_text("- - - - -")  # Spaced separators
+        True
+        >>> is_noise_text("TOTAL")  # Meaningful word
         False
-        >>> is_noise_word("$5.99")  # Currency (preserved by default)
+        >>> is_noise_text("$5.99")  # Currency (preserved by default)
         False
-        >>> is_noise_word("QTY")  # Short but meaningful
+        >>> is_noise_text("TOTAL: $12.99")  # Meaningful line
         False
     """
     if config is None:
@@ -146,87 +158,37 @@ def is_noise_word(
         r"^/+$",  # Multiple slashes: //, ///, ////
         r"^\\+$",  # Multiple backslashes: \\, \\\, \\\\
         r"^~+$",  # Multiple tildes: ~~, ~~~, ~~~~
+        r"^\|+$",  # Multiple pipes: ||, |||, ||||
+        r"^##+$",  # Multiple hashes: ##, ###, ####
+        r"^[+\-=*_./\\~|# ]+$",  # Mix of separator characters with spaces
     ]
 
     for pattern in multi_char_noise_patterns:
-        if re.match(pattern, text):
+        if re.match(pattern, text.strip()):
             return True
 
     # Not noise - it's a meaningful word
     return False
 
 
+# Backward compatibility aliases
+def is_noise_word(
+    text: str, config: Optional[NoiseDetectionConfig] = None
+) -> bool:
+    """
+    Backward compatibility alias for is_noise_text().
+    
+    Use is_noise_text() for new code as it works for both words and lines.
+    """
+    return is_noise_text(text, config)
+
+
 def is_noise_line(
     text: str, config: Optional[NoiseDetectionConfig] = None
 ) -> bool:
     """
-    Determine if an entire line is noise based on its content.
-
-    A line is considered noise if it:
-    - Contains only separator characters (===, ---, etc.)
-    - Is empty or only whitespace
-    - Contains only noise words (when split into words)
-    - Matches common separator line patterns
-
-    Args:
-        text: The line text to check
-        config: Optional configuration, uses DEFAULT_NOISE_CONFIG if not provided
-
-    Returns:
-        True if the line is considered noise, False otherwise
-
-    Examples:
-        >>> is_noise_line("==================")  # Separator line
-        True
-        >>> is_noise_line("--------------------")  # Separator line
-        True
-        >>> is_noise_line("********************")  # Separator line
-        True
-        >>> is_noise_line("   ")  # Whitespace only
-        True
-        >>> is_noise_line("")  # Empty
-        True
-        >>> is_noise_line("| | | | |")  # All noise words
-        True
-        >>> is_noise_line("TOTAL: $12.99")  # Meaningful line
-        False
-        >>> is_noise_line("Big Mac")  # Product name
-        False
+    Backward compatibility alias for is_noise_text().
+    
+    Use is_noise_text() for new code as it works for both words and lines.
     """
-    if config is None:
-        config = DEFAULT_NOISE_CONFIG
-
-    # Empty or whitespace-only lines are noise
-    if not text or text.isspace():
-        return True
-
-    # Common separator line patterns (entire line is just separators)
-    separator_line_patterns = [
-        r"^-+$",  # All dashes
-        r"^=+$",  # All equals
-        r"^\*+$",  # All asterisks
-        r"^_+$",  # All underscores
-        r"^\.+$",  # All dots
-        r"^/+$",  # All forward slashes
-        r"^\\+$",  # All backslashes
-        r"^~+$",  # All tildes
-        r"^\|+$",  # All pipes
-        r"^##+$",  # All hashes (##########)
-        r"^[+\-=*_./\\~|# ]+$",  # Mix of separator characters with spaces
-    ]
-
-    for pattern in separator_line_patterns:
-        if re.match(pattern, text.strip()):
-            return True
-
-    # Check if all words in the line are noise
-    # Split by whitespace and check each word
-    words = text.split()
-    if words:
-        # If there are words, check if ALL of them are noise
-        all_noise = all(is_noise_word(word, config) for word in words)
-        if all_noise:
-            return True
-
-    # Line contains at least some meaningful content
-    return False
+    return is_noise_text(text, config)
