@@ -91,7 +91,7 @@ class UnifiedChromaDBLambdas(ComponentResource):
         # Build context path - use repository root
         build_context_path = Path(__file__).parent.parent.parent
 
-        # Build unified image with static build args only
+        # Build unified image with static build args only  
         build_args = {
             "PYTHON_VERSION": "3.12",
             "BUILDKIT_INLINE_CACHE": "1",
