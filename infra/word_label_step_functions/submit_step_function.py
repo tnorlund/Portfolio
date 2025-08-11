@@ -110,7 +110,7 @@ class WordLabelStepFunctions(ComponentResource):
                     "ANONYMIZED_TELEMETRY": "false",
                 }
             ),
-            layers=[dynamo_layer.arn, label_layer.arn],
+            layers=[label_layer.arn],  # receipt-label includes receipt-dynamo
             tags={"environment": stack},
             opts=ResourceOptions(
                 parent=self,
@@ -169,7 +169,7 @@ class WordLabelStepFunctions(ComponentResource):
                     "ANONYMIZED_TELEMETRY": "false",
                 }
             ),
-            layers=[dynamo_layer.arn, label_layer.arn],
+            layers=[label_layer.arn],  # receipt-label includes receipt-dynamo
             tags={"environment": stack},
             opts=ResourceOptions(
                 parent=self,
@@ -336,7 +336,7 @@ class WordLabelStepFunctions(ComponentResource):
                     "ANONYMIZED_TELEMETRY": "false",
                 }
             ),
-            layers=[dynamo_layer.arn, label_layer.arn],
+            layers=[label_layer.arn],  # receipt-label includes receipt-dynamo
             tags={"environment": stack},
             opts=ResourceOptions(
                 parent=self,
@@ -378,7 +378,7 @@ class WordLabelStepFunctions(ComponentResource):
                     "ANONYMIZED_TELEMETRY": "false",
                 }
             ),
-            layers=[dynamo_layer.arn, label_layer.arn],
+            layers=[label_layer.arn],  # receipt-label includes receipt-dynamo
             tags={"environment": stack},
             opts=ResourceOptions(
                 parent=self,
