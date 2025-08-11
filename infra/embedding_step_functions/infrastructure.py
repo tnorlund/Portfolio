@@ -41,6 +41,7 @@ class EmbeddingInfrastructure(ComponentResource):
     def __init__(
         self,
         name: str,
+        base_images=None,  # Add base_images dependency
         opts: Optional[ResourceOptions] = None,
     ):
         super().__init__(
@@ -49,6 +50,9 @@ class EmbeddingInfrastructure(ComponentResource):
             None,
             opts,
         )
+        
+        # Store base_images dependency for use in _build_docker_image
+        self.base_images = base_images
         
         # Create ChromaDB infrastructure
         self.chromadb_buckets = ChromaDBBuckets(
@@ -132,7 +136,10 @@ class EmbeddingInfrastructure(ComponentResource):
             tags=[
                 self.ecr_repo.repository_url.apply(lambda url: f"{url}:latest"),
             ],
-            opts=ResourceOptions(parent=self, depends_on=[self.ecr_repo]),
+            opts=ResourceOptions(
+                parent=self, 
+                depends_on=[self.ecr_repo] + ([self.base_images] if self.base_images else [])
+            ),
         )
     
     def _create_lambda_functions(self):
