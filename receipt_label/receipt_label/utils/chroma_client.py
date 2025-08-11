@@ -4,6 +4,7 @@ ChromaDB client management module.
 This module provides ChromaDB integration for vector storage,
 replacing the previous Pinecone implementation.
 """
+from __future__ import annotations
 
 import os
 import uuid
@@ -75,8 +76,8 @@ class ChromaDBClient:
         self.collection_prefix = collection_prefix
         self.mode = mode.lower()
         self.use_persistent_client = persist_directory is not None
-        self._client: Optional["chromadb.Client"] = None
-        self._collections: Dict[str, "Collection"] = {}
+        self._client: Optional[chromadb.Client] = None
+        self._collections: Dict[str, Collection] = {}
 
         # OpenAI embedding function for consistency with current implementation
         self._embedding_function = embedding_functions.OpenAIEmbeddingFunction(
@@ -85,7 +86,7 @@ class ChromaDBClient:
         )
 
     @property
-    def client(self) -> Optional["chromadb.Client"]:
+    def client(self) -> Optional[chromadb.Client]:
         """Get or create ChromaDB client."""
         if self._client is None:
             if self.use_persistent_client and self.persist_directory:
@@ -108,7 +109,7 @@ class ChromaDBClient:
 
     def get_collection(
         self, name: str, metadata: Optional[Dict[str, Any]] = None
-    ) -> "Collection":
+    ) -> Collection:
         """
         Get or create a ChromaDB collection.
 
