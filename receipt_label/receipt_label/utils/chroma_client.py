@@ -8,7 +8,7 @@ replacing the previous Pinecone implementation.
 import os
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 import boto3
 
@@ -66,8 +66,8 @@ class ChromaDBClient:
         self.collection_prefix = collection_prefix
         self.mode = mode.lower()
         self.use_persistent_client = persist_directory is not None
-        self._client: Optional[chromadb.Client] = None
-        self._collections: Dict[str, Collection] = {}
+        self._client: Optional[Any] = None  # chromadb.Client when available
+        self._collections: Dict[str, Any] = {}  # Dict[str, Collection] when available
 
         # OpenAI embedding function for consistency with current implementation
         self._embedding_function = embedding_functions.OpenAIEmbeddingFunction(
@@ -76,7 +76,7 @@ class ChromaDBClient:
         )
 
     @property
-    def client(self) -> chromadb.Client:
+    def client(self) -> Optional["chromadb.Client"]:
         """Get or create ChromaDB client."""
         if self._client is None:
             if self.use_persistent_client and self.persist_directory:
@@ -99,7 +99,7 @@ class ChromaDBClient:
 
     def get_collection(
         self, name: str, metadata: Optional[Dict[str, Any]] = None
-    ) -> Collection:
+    ) -> Any:  # Returns Collection when ChromaDB is available
         """
         Get or create a ChromaDB collection.
 
