@@ -17,7 +17,7 @@ COPY receipt_label /tmp/receipt_label
 
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir /tmp/receipt_dynamo && \
-    pip install --no-cache-dir /tmp/receipt_label && \
+    pip install --no-cache-dir "/tmp/receipt_label[full]" && \
     rm -rf /tmp/receipt_dynamo /tmp/receipt_label
 
 # Copy the unified embedding handler module
