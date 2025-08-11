@@ -16,7 +16,7 @@ from receipt_label.embedding.line import (
     upload_to_openai,
     write_ndjson,
 )
-from utils.logging import get_logger
+from ..utils.logging import get_logger
 
 logger = get_logger(__name__)
 
