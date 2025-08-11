@@ -174,10 +174,22 @@ class LambdaLayer(ComponentResource):
         
         local_deps = []
         if os.path.exists(pyproject_path):
-            import toml
             try:
-                with open(pyproject_path, 'r') as f:
-                    data = toml.load(f)
+                # Try Python 3.11+ built-in tomllib first
+                try:
+                    import tomllib
+                    with open(pyproject_path, 'rb') as f:
+                        data = tomllib.load(f)
+                except ImportError:
+                    # Fall back to toml package if available
+                    try:
+                        import toml
+                        with open(pyproject_path, 'r') as f:
+                            data = toml.load(f)
+                    except ImportError:
+                        # If neither is available, parse manually for basic dependencies
+                        pulumi.log.warn(f"TOML parser not available, using basic parsing for {self.name}")
+                        data = self._parse_pyproject_basic(pyproject_path)
                     
                 # Check main dependencies
                 deps = data.get('project', {}).get('dependencies', [])
@@ -203,6 +215,65 @@ class LambdaLayer(ComponentResource):
                 pulumi.log.warn(f"Could not parse pyproject.toml: {e}")
                 
         return local_deps
+    
+    def _parse_pyproject_basic(self, pyproject_path: str) -> Dict[str, Any]:
+        """Basic parser for pyproject.toml to extract dependencies when toml module is not available."""
+        result = {"project": {"dependencies": [], "optional-dependencies": {}}}
+        
+        try:
+            with open(pyproject_path, 'r') as f:
+                lines = f.readlines()
+                
+            in_dependencies = False
+            in_optional = False
+            current_extra = None
+            
+            for line in lines:
+                line = line.strip()
+                
+                # Start of dependencies section
+                if line == "dependencies = [":
+                    in_dependencies = True
+                    continue
+                    
+                # End of dependencies section
+                if in_dependencies and line == "]":
+                    in_dependencies = False
+                    continue
+                    
+                # Check for optional dependencies
+                if "[project.optional-dependencies]" in line:
+                    in_optional = True
+                    continue
+                    
+                # Parse optional dependency sections
+                if in_optional and "= [" in line:
+                    current_extra = line.split("=")[0].strip()
+                    result["project"]["optional-dependencies"][current_extra] = []
+                    continue
+                    
+                # End of optional section
+                if in_optional and line == "]":
+                    current_extra = None
+                    continue
+                    
+                # Parse dependency lines
+                if in_dependencies and line and line != "]":
+                    # Remove quotes and commas
+                    dep = line.strip(' ",\'')
+                    if dep and not dep.startswith("#"):
+                        result["project"]["dependencies"].append(dep)
+                        
+                # Parse optional dependency lines
+                if current_extra and line and line != "]":
+                    dep = line.strip(' ",\'')
+                    if dep and not dep.startswith("#"):
+                        result["project"]["optional-dependencies"][current_extra].append(dep)
+                        
+        except Exception as e:
+            pulumi.log.warn(f"Basic parsing failed: {e}")
+            
+        return result
 
     def _encode_shell_script(self, script_content: str) -> str:
         """Encode a shell script to base64 for use in buildspec to avoid parsing issues."""
