@@ -104,6 +104,7 @@ Pulumi.*.yaml
 # Infrastructure files - exclude everything except Lambda handlers
 infra/
 # But keep the Lambda handler directories we need for unified image
+!infra/embedding_step_functions/unified_embedding/
 !infra/embedding_step_functions/unified_lambda/
 !infra/embedding_step_functions/chromadb_*_lambda/
 !infra/embedding_step_functions/find_unembedded_lines_lambda/
