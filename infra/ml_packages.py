@@ -120,7 +120,6 @@ class MLPackageBuilder(pulumi.ComponentResource):
         # Create an S3 bucket for package artifacts and build state
         self.artifact_bucket = aws.s3.Bucket(
             f"{name}-artifacts",
-            acl="private",
             force_destroy=True,
             tags={
                 "Name": f"{name}-artifacts",
@@ -128,6 +127,14 @@ class MLPackageBuilder(pulumi.ComponentResource):
                 "ManagedBy": "Pulumi",
             },
             opts=pulumi.ResourceOptions(parent=self),
+        )
+
+        # Set bucket ACL using separate resource (replaces deprecated acl parameter)
+        aws.s3.BucketAcl(
+            f"{name}-artifacts-acl",
+            bucket=self.artifact_bucket.id,
+            acl="private",
+            opts=pulumi.ResourceOptions(parent=self, depends_on=[self.artifact_bucket]),
         )
 
         # Create IAM role for CodeBuild
