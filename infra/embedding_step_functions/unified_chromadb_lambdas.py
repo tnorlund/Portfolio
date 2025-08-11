@@ -88,57 +88,91 @@ class UnifiedChromaDBLambdas(ComponentResource):
         # Get ECR authorization token - still needed but we'll minimize context hash impact
         ecr_auth_token = get_authorization_token_output()
 
-        # Build context path - use repository root
-        build_context_path = Path(__file__).parent.parent.parent
+        # Create minimal build context with only required files
+        # This dramatically reduces context hash changes by excluding unnecessary files
+        import tempfile
+        import shutil
+        
+        repo_root = Path(__file__).parent.parent.parent
+        
+        # Create temporary directory for minimal build context
+        temp_context_dir = Path(tempfile.mkdtemp(prefix="unified-lambda-build-"))
+        
+        try:
+            # Copy only the required packages and files
+            shutil.copytree(repo_root / "receipt_dynamo", temp_context_dir / "receipt_dynamo")
+            shutil.copytree(repo_root / "receipt_label", temp_context_dir / "receipt_label")
+            
+            # Copy the unified lambda directory
+            unified_lambda_src = repo_root / "infra/embedding_step_functions/unified_lambda"
+            unified_lambda_dst = temp_context_dir / "infra/embedding_step_functions/unified_lambda"
+            unified_lambda_dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(unified_lambda_src, unified_lambda_dst)
+            
+            # Copy individual handler files for legacy compatibility
+            for handler_name in ["chromadb_word_polling", "chromadb_compaction", "chromadb_line_polling", 
+                               "find_unembedded_lines", "submit_to_openai", "list_pending_batches"]:
+                handler_src = repo_root / f"infra/embedding_step_functions/{handler_name}_lambda/handler.py"
+                if handler_src.exists():
+                    handler_dst = temp_context_dir / f"infra/embedding_step_functions/{handler_name}_lambda"
+                    handler_dst.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(handler_src, handler_dst / "handler.py")
+            
+            build_context_path = temp_context_dir
+            
+            # Build unified image with static build args only  
+            build_args = {
+                "PYTHON_VERSION": "3.12",
+                "BUILDKIT_INLINE_CACHE": "1",
+            }
 
-        # Build unified image with static build args only  
-        build_args = {
-            "PYTHON_VERSION": "3.12",
-            "BUILDKIT_INLINE_CACHE": "1",
-        }
-
-        self.unified_image = docker_build.Image(
-            f"unified-embedding-img-{stack}",
-            context={
-                "location": str(build_context_path.resolve()),
-            },
-            dockerfile={
-                "location": str(
-                    (build_context_path / "infra/embedding_step_functions/unified_lambda/Dockerfile").resolve()
-                ),
-            },
-            platforms=["linux/arm64"],
-            build_args=build_args,
-            # ECR caching configuration with static URLs
-            cache_from=[
-                {
-                    "registry": {
-                        "ref": f"{repo_url}:cache",
+            self.unified_image = docker_build.Image(
+                f"unified-embedding-img-{stack}",
+                context={
+                    "location": str(build_context_path.resolve()),
+                },
+                dockerfile={
+                    "location": str(
+                        (build_context_path / "infra/embedding_step_functions/unified_lambda/Dockerfile").resolve()
+                    ),
+                },
+                platforms=["linux/arm64"],
+                build_args=build_args,
+                # ECR caching configuration with static URLs
+                cache_from=[
+                    {
+                        "registry": {
+                            "ref": f"{repo_url}:cache",
+                        },
                     },
-                },
-            ],
-            cache_to=[
-                {
-                    "registry": {
-                        "imageManifest": True,
-                        "ociMediaTypes": True,
-                        "ref": f"{repo_url}:cache",
+                ],
+                cache_to=[
+                    {
+                        "registry": {
+                            "imageManifest": True,
+                            "ociMediaTypes": True,
+                            "ref": f"{repo_url}:cache",
+                        },
                     },
-                },
-            ],
-            push=True,
-            registries=[
-                {
-                    "address": ecr_registry,
-                    "password": ecr_auth_token.password,
-                    "username": ecr_auth_token.user_name,
-                },
-            ],
-            tags=[
-                f"{repo_url}:latest",
-            ],
-            opts=ResourceOptions(parent=self, depends_on=[self.unified_repo]),
-        )
+                ],
+                push=True,
+                registries=[
+                    {
+                        "address": ecr_registry,
+                        "password": ecr_auth_token.password,
+                        "username": ecr_auth_token.user_name,
+                    },
+                ],
+                tags=[
+                    f"{repo_url}:latest",
+                ],
+                opts=ResourceOptions(parent=self, depends_on=[self.unified_repo]),
+            )
+            
+        finally:
+            # Clean up temporary build context
+            if temp_context_dir.exists():
+                shutil.rmtree(temp_context_dir)
 
         # Create Lambda functions with different configurations
         self._create_lambda_functions(
