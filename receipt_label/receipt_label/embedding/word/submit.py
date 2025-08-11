@@ -118,7 +118,6 @@ def query_receipt_words(
         words,
         _,
         _,
-        _,
     ) = client_manager.dynamo.get_receipt_details(image_id, receipt_id)
     return words
 

@@ -1,0 +1,111 @@
+# Minimize Docker build context to avoid contextHash changes
+# Only include essential files needed for Docker builds
+
+# Version control
+.git/
+.github/
+.gitignore
+
+# Documentation
+*.md
+README*
+docs/
+spec/
+
+# Development files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Node.js and frontend
+portfolio/
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn
+
+# Python development
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.coverage
+.pytest_cache/
+htmlcov/
+.tox/
+.env
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Testing and CI
+.coverage
+coverage.xml
+*.cover
+.hypothesis/
+tests/
+test_*.py
+*_test.py
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+.wheel/
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Scripts and utilities
+scripts/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Logs
+*.log
+logs/
+
+# Cache files
+.cache/
+
+# IDE files
+*.sublime-*
+.vscode/
+.idea/
+
+# Pulumi state and config (keep only what's needed)
+Pulumi.*.yaml
+.pulumi/
+
+# Keep only essential directories
+!receipt_dynamo/
+!receipt_label/
+!infra/embedding_step_functions/unified_lambda/
+!infra/embedding_step_functions/chromadb_*_lambda/
+!infra/embedding_step_functions/find_unembedded_lines_lambda/
+!infra/embedding_step_functions/submit_to_openai_lambda/
+!infra/embedding_step_functions/list_pending_batches_lambda/
+
+# But exclude test files from kept directories
+receipt_dynamo/tests/
+receipt_label/tests/
+**/test_*.py
+**/*_test.py
+**/tests/
