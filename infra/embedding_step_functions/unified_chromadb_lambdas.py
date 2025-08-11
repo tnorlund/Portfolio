@@ -64,8 +64,8 @@ class UnifiedChromaDBLambdas(ComponentResource):
 
         # Get static AWS account details from config to avoid dynamic context hash changes
         pulumi_config = pulumi.Config("portfolio")
-        account_id_static = pulumi_config.require("aws-account-id")
-        region_static = pulumi_config.get("aws-region") or "us-east-1"
+        self.account_id_static = pulumi_config.require("aws-account-id")
+        self.region_static = pulumi_config.get("aws-region") or "us-east-1"
 
         # Create single ECR repository for unified image
         self.unified_repo = Repository(
@@ -81,7 +81,7 @@ class UnifiedChromaDBLambdas(ComponentResource):
         )
 
         # Build static ECR URLs to avoid dynamic context hash changes
-        ecr_registry = f"{account_id_static}.dkr.ecr.{region_static}.amazonaws.com"
+        ecr_registry = f"{self.account_id_static}.dkr.ecr.{self.region_static}.amazonaws.com"
         repo_name = f"unified-embedding-{stack}"
         repo_url = f"{ecr_registry}/{repo_name}"
 
@@ -143,8 +143,8 @@ class UnifiedChromaDBLambdas(ComponentResource):
         # Create Lambda functions with different configurations
         self._create_lambda_functions(
             stack=stack,
-            region=region_static,
-            account_id=account_id_static,
+            region=self.region_static,
+            account_id=self.account_id_static,
             chromadb_bucket_name=chromadb_bucket_name,
             chromadb_queue_url=chromadb_queue_url,
             chromadb_queue_arn=chromadb_queue_arn,
@@ -271,7 +271,7 @@ class UnifiedChromaDBLambdas(ComponentResource):
 
         # Create IAM role for all Lambda functions (can be shared or separate)
         self.lambda_role = self._create_lambda_role(
-            stack, region_static, account_id_static, 
+            stack, self.region_static, self.account_id_static, 
             chromadb_bucket_name, chromadb_queue_arn, s3_batch_bucket_name
         )
 
