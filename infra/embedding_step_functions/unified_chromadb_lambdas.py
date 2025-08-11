@@ -105,7 +105,19 @@ class UnifiedChromaDBLambdas(ComponentResource):
             
             # Copy the unified lambda directory to the root of temp context for simpler paths
             unified_lambda_src = repo_root / "infra/embedding_step_functions/unified_lambda"
-            shutil.copytree(unified_lambda_src, temp_context_dir / "unified_lambda")
+            unified_lambda_dst = temp_context_dir / "unified_lambda"
+            
+            # Ensure the destination doesn't exist before copying
+            if unified_lambda_dst.exists():
+                shutil.rmtree(unified_lambda_dst)
+            shutil.copytree(unified_lambda_src, unified_lambda_dst)
+            
+            # Verify the Dockerfile was copied
+            dockerfile_path = unified_lambda_dst / "Dockerfile"
+            if not dockerfile_path.exists():
+                raise FileNotFoundError(f"Dockerfile not found at {dockerfile_path}")
+            
+            print(f"DEBUG: Dockerfile verified at: {dockerfile_path}")
             
             # Copy individual handler files for legacy compatibility (simplified paths)
             legacy_dir = temp_context_dir / "legacy"
@@ -127,6 +139,13 @@ class UnifiedChromaDBLambdas(ComponentResource):
             
             build_context_path = temp_context_dir
             
+            # Debug: Print what we actually created
+            print(f"DEBUG: Build context created at: {build_context_path}")
+            print(f"DEBUG: Contents: {list(build_context_path.iterdir())}")
+            dockerfile_path = build_context_path / "unified_lambda/Dockerfile"
+            print(f"DEBUG: Dockerfile path: {dockerfile_path}")
+            print(f"DEBUG: Dockerfile exists: {dockerfile_path.exists()}")
+            
             # Build unified image with static build args only  
             build_args = {
                 "PYTHON_VERSION": "3.12",
@@ -134,7 +153,7 @@ class UnifiedChromaDBLambdas(ComponentResource):
             }
 
             self.unified_image = docker_build.Image(
-                f"unified-embedding-img-{stack}",
+                f"unified-embedding-img-v2-{stack}",  # v2 to force new resource
                 context={
                     "location": str(build_context_path.resolve()),
                 },
