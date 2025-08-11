@@ -63,15 +63,19 @@ class BaseLambdaHandler(ABC):
             return self._error_response(str(e))
     
     @abstractmethod
-    def handle(self, event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-        """Main handler logic to be implemented by subclasses."""
+    def handle(self, event: Dict[str, Any], context: Any) -> Any:
+        """Main handler logic to be implemented by subclasses.
+        
+        Returns:
+            Any: Raw data for Step Functions, dict for API Gateway responses
+        """
         pass
     
     def pre_process(self, event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         """Hook for pre-processing. Override if needed."""
         return event
     
-    def post_process(self, result: Dict[str, Any], context: Any) -> Dict[str, Any]:
+    def post_process(self, result: Any, context: Any) -> Any:
         """Hook for post-processing. Override if needed."""
         return result
     

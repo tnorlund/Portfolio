@@ -80,11 +80,10 @@ class CompactionHandler(BaseLambdaHandler):
             "Invalid operation: %s. Expected 'process_chunk' or 'final_merge'",
             operation,
         )
-        return {
-            "statusCode": 400,
-            "error": f"Invalid operation: {operation}",
-            "message": "Operation must be 'process_chunk' or 'final_merge'",
-        }
+        raise ValueError(
+            f"Invalid operation: {operation}. "
+            "Operation must be 'process_chunk' or 'final_merge'"
+        )
 
     def process_chunk_handler(self, event: Dict[str, Any]) -> Dict[str, Any]:
         """Process a chunk of deltas without acquiring locks.
@@ -98,21 +97,14 @@ class CompactionHandler(BaseLambdaHandler):
         delta_results = event.get("delta_results", [])
 
         if not batch_id:
-            return {
-                "statusCode": 400,
-                "error": "batch_id is required for chunk processing",
-            }
+            raise ValueError("batch_id is required for chunk processing")
 
         if chunk_index is None:
-            return {
-                "statusCode": 400,
-                "error": "chunk_index is required for chunk processing",
-            }
+            raise ValueError("chunk_index is required for chunk processing")
 
         if not delta_results:
             self.logger.info("No delta results in chunk %d, skipping", chunk_index)
             return {
-                "statusCode": 200,
                 "batch_id": batch_id,
                 "chunk_index": chunk_index,
                 "embeddings_processed": 0,
@@ -138,7 +130,6 @@ class CompactionHandler(BaseLambdaHandler):
 
             # Prepare response
             response = {
-                "statusCode": 200,
                 "batch_id": batch_id,
                 "chunk_index": chunk_index,
                 "intermediate_key": chunk_result["intermediate_key"],
@@ -160,13 +151,7 @@ class CompactionHandler(BaseLambdaHandler):
 
         except Exception as e:  # pylint: disable=broad-exception-caught
             self.logger.error("Chunk %d processing failed: %s", chunk_index, str(e))
-            return {
-                "statusCode": 500,
-                "error": str(e),
-                "batch_id": batch_id,
-                "chunk_index": chunk_index,
-                "message": "Chunk processing failed",
-            }
+            raise RuntimeError(f"Chunk {chunk_index} processing failed: {str(e)}") from e
 
     def final_merge_handler(self, event: Dict[str, Any]) -> Dict[str, Any]:
         """Final merge step that acquires lock and combines intermediate chunks.
@@ -179,16 +164,10 @@ class CompactionHandler(BaseLambdaHandler):
         total_chunks = event.get("total_chunks")
 
         if not batch_id:
-            return {
-                "statusCode": 400,
-                "error": "batch_id is required for final merge",
-            }
+            raise ValueError("batch_id is required for final merge")
 
         if total_chunks is None:
-            return {
-                "statusCode": 400,
-                "error": "total_chunks is required for final merge",
-            }
+            raise ValueError("total_chunks is required for final merge")
 
         self.logger.info(
             "Final merge for batch %s with %d chunks", batch_id, total_chunks
@@ -208,8 +187,9 @@ class CompactionHandler(BaseLambdaHandler):
                     "Could not acquire compaction lock for final merge - "
                     "another compaction is in progress"
                 )
+                # Return a special status that Step Functions can handle
                 return {
-                    "statusCode": 423,  # Locked
+                    "locked": True,
                     "message": "Final merge blocked - compaction already in progress",
                 }
 
@@ -226,7 +206,6 @@ class CompactionHandler(BaseLambdaHandler):
             self.logger.info("Final merge completed successfully: %s", merge_result)
 
             return {
-                "statusCode": 200,
                 "compaction_method": "chunked",
                 "batch_id": batch_id,
                 "chunks_merged": total_chunks,
@@ -242,12 +221,7 @@ class CompactionHandler(BaseLambdaHandler):
             lock_manager.stop_heartbeat()
             lock_manager.release()
 
-            return {
-                "statusCode": 500,
-                "error": str(e),
-                "batch_id": batch_id,
-                "message": "Final merge failed",
-            }
+            raise RuntimeError(f"Final merge failed: {str(e)}") from e
 
     def _process_single_delta(
         self,

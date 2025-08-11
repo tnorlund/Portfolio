@@ -63,12 +63,9 @@ class FindUnembeddedHandler(BaseLambdaHandler):
                 for e in uploaded
             ]
 
-            return {"statusCode": 200, "batches": cleaned}
+            return {"batches": cleaned}
 
         except Exception as e:  # pylint: disable=broad-exception-caught
             self.logger.error("Error finding unembedded lines: %s", str(e))
-            return {
-                "statusCode": 500,
-                "error": str(e),
-                "batches": [],
-            }
+            # Re-raise for proper Step Function error handling
+            raise RuntimeError(f"Error finding unembedded lines: {str(e)}") from e

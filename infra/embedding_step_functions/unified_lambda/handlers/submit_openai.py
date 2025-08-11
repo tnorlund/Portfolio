@@ -86,11 +86,9 @@ class SubmitOpenAIHandler(BaseLambdaHandler):
             add_batch_summary(batch_summary)
             self.logger.info("Added batch summary with ID %s", batch_summary.batch_id)
 
-            return {"statusCode": 200, "batch_id": batch_id}
+            return {"batch_id": batch_id}
             
         except Exception as e:  # pylint: disable=broad-exception-caught
             self.logger.error("Error submitting to OpenAI: %s", str(e))
-            return {
-                "statusCode": 500,
-                "error": str(e),
-            }
+            # Re-raise for proper Step Function error handling
+            raise RuntimeError(f"Error submitting to OpenAI: {str(e)}") from e

@@ -85,7 +85,6 @@ class LinePollingHandler(BaseLambdaHandler):
 
         # Return delta information for CompactAllDeltas step
         return {
-            "statusCode": 200,
             "batch_id": batch_id,
             "openai_batch_id": openai_batch_id,
             "batch_status": batch_status,
@@ -182,7 +181,6 @@ class LinePollingHandler(BaseLambdaHandler):
                 self.logger.info("Marked %d lines for retry", marked)
 
             return {
-                "statusCode": 200,
                 "batch_id": batch_id,
                 "openai_batch_id": openai_batch_id,
                 "batch_status": batch_status,
@@ -202,7 +200,6 @@ class LinePollingHandler(BaseLambdaHandler):
             )
 
             return {
-                "statusCode": 200,  # Still 200 for Step Functions
                 "batch_id": batch_id,
                 "openai_batch_id": openai_batch_id,
                 "batch_status": batch_status,
@@ -216,7 +213,6 @@ class LinePollingHandler(BaseLambdaHandler):
         if status_result["action"] in ["wait", "handle_cancellation"]:
             # Batch is still processing or was cancelled
             return {
-                "statusCode": 200,
                 "batch_id": batch_id,
                 "openai_batch_id": openai_batch_id,
                 "batch_status": batch_status,
@@ -230,7 +226,6 @@ class LinePollingHandler(BaseLambdaHandler):
             "Unknown action from status handler: %s", status_result["action"]
         )
         return {
-            "statusCode": 200,
             "batch_id": batch_id,
             "openai_batch_id": openai_batch_id,
             "batch_status": batch_status,

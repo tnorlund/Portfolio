@@ -114,7 +114,6 @@ class WordPollingHandler(BaseLambdaHandler):
             self.logger.info(f"Marked batch {batch_id} as complete")
 
             return {
-                "statusCode": 200,
                 "batch_id": batch_id,
                 "openai_batch_id": openai_batch_id,
                 "batch_status": batch_status,
@@ -158,7 +157,6 @@ class WordPollingHandler(BaseLambdaHandler):
                 self.logger.info(f"Marked {marked} words for retry")
             
             return {
-                "statusCode": 200,
                 "batch_id": batch_id,
                 "openai_batch_id": openai_batch_id,
                 "batch_status": batch_status,
@@ -179,7 +177,6 @@ class WordPollingHandler(BaseLambdaHandler):
             # For now, just return the error info
             
             return {
-                "statusCode": 200,  # Still 200 for Step Functions
                 "batch_id": batch_id,
                 "openai_batch_id": openai_batch_id,
                 "batch_status": batch_status,
@@ -193,7 +190,6 @@ class WordPollingHandler(BaseLambdaHandler):
         elif status_result["action"] in ["wait", "handle_cancellation"]:
             # Batch is still processing or was cancelled
             return {
-                "statusCode": 200,
                 "batch_id": batch_id,
                 "openai_batch_id": openai_batch_id,
                 "batch_status": batch_status,
@@ -206,7 +202,6 @@ class WordPollingHandler(BaseLambdaHandler):
             # Unknown action
             self.logger.error(f"Unknown action from status handler: {status_result['action']}")
             return {
-                "statusCode": 200,
                 "batch_id": batch_id,
                 "openai_batch_id": openai_batch_id,
                 "batch_status": batch_status,
