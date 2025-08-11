@@ -123,8 +123,6 @@ class ClientManager:
                 track_to_dynamo=True,
                 track_to_file=os.environ.get("TRACK_TO_FILE", "false").lower()
                 == "true",
-                validate_table_environment=False,  # Allow custom table names
-                # for test configurations
             )
 
             # Override with resilient tracker if configured
@@ -171,10 +169,6 @@ class ClientManager:
                         "TRACK_TO_FILE", "false"
                     ).lower()
                     == "true",
-                    validate_table_environment=(
-                        test_client is None
-                        and os.environ.get("SKIP_TABLE_VALIDATION", "false").lower() != "true"
-                    ),  # Only validate in production unless explicitly skipped
                     # Resilience configuration
                     circuit_breaker_threshold=int(
                         os.environ.get("CIRCUIT_BREAKER_THRESHOLD", "5")
