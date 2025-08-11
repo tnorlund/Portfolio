@@ -4,8 +4,8 @@ import pytest
 
 from receipt_label.utils.noise_detection import (
     NoiseDetectionConfig,
-    is_noise_word,
-    is_noise_line,
+    is_noise_text,
+    is_noise_line,  # Keep for line-specific tests
 )
 
 
@@ -36,7 +36,7 @@ class TestNoiseDetection:
 
         for mark in punctuation_marks:
             assert (
-                is_noise_word(mark) is True
+                is_noise_text(mark) is True
             ), f"'{mark}' should be detected as noise"
 
     @pytest.mark.unit
@@ -46,7 +46,7 @@ class TestNoiseDetection:
 
         for sep in separators:
             assert (
-                is_noise_word(sep) is True
+                is_noise_text(sep) is True
             ), f"'{sep}' should be detected as noise"
 
     @pytest.mark.unit
@@ -81,7 +81,7 @@ class TestNoiseDetection:
 
         for sep in multi_separators:
             assert (
-                is_noise_word(sep) is True
+                is_noise_text(sep) is True
             ), f"'{sep}' should be detected as noise"
 
     @pytest.mark.unit
@@ -109,7 +109,7 @@ class TestNoiseDetection:
 
         for currency in currency_examples:
             assert (
-                is_noise_word(currency) is False
+                is_noise_text(currency) is False
             ), f"'{currency}' should NOT be noise"
 
     @pytest.mark.unit
@@ -136,17 +136,17 @@ class TestNoiseDetection:
 
         for word in meaningful_words:
             assert (
-                is_noise_word(word) is False
+                is_noise_text(word) is False
             ), f"'{word}' should NOT be noise"
 
     @pytest.mark.unit
     def test_empty_and_whitespace(self):
         """Test that empty strings and whitespace are detected as noise."""
-        assert is_noise_word("") is True
-        assert is_noise_word(" ") is True
-        assert is_noise_word("  ") is True
-        assert is_noise_word("\t") is True
-        assert is_noise_word("\n") is True
+        assert is_noise_text("") is True
+        assert is_noise_text(" ") is True
+        assert is_noise_text("  ") is True
+        assert is_noise_text("\t") is True
+        assert is_noise_text("\n") is True
 
     @pytest.mark.unit
     def test_ocr_artifacts(self):
@@ -164,21 +164,21 @@ class TestNoiseDetection:
 
         for artifact in artifacts:
             assert (
-                is_noise_word(artifact) is True
+                is_noise_text(artifact) is True
             ), f"'{artifact}' should be detected as noise"
 
     @pytest.mark.unit
     def test_edge_cases(self):
         """Test edge cases for noise detection."""
         # Mixed punctuation that should be noise
-        assert is_noise_word(".-") is True
-        assert is_noise_word("...") is True
-        assert is_noise_word("!!!") is True
+        assert is_noise_text(".-") is True
+        assert is_noise_text("...") is True
+        assert is_noise_text("!!!") is True
 
         # Meaningful combinations that should NOT be noise
-        assert is_noise_word("1.5") is False  # Decimal number
-        assert is_noise_word("U.S.") is False  # Abbreviation
-        assert is_noise_word("email@example.com") is False  # Email
+        assert is_noise_text("1.5") is False  # Decimal number
+        assert is_noise_text("U.S.") is False  # Abbreviation
+        assert is_noise_text("email@example.com") is False  # Email
 
     @pytest.mark.unit
     def test_custom_configuration(self):
@@ -187,26 +187,26 @@ class TestNoiseDetection:
         custom_config = NoiseDetectionConfig(preserve_currency=False)
 
         # Currency should now be marked as noise
-        assert is_noise_word("$", custom_config) is True
-        assert is_noise_word("€", custom_config) is True
+        assert is_noise_text("$", custom_config) is True
+        assert is_noise_text("€", custom_config) is True
 
         # But amounts with numbers should still not be noise (they're alphanumeric)
-        assert is_noise_word("$5.99", custom_config) is False
+        assert is_noise_text("$5.99", custom_config) is False
 
     @pytest.mark.unit
     def test_meaningful_short_words(self):
         """Test that meaningful short words are not marked as noise."""
         # Single character meaningful words
-        assert is_noise_word("I") is False  # Pronoun
-        assert is_noise_word("A") is False  # Article
-        assert is_noise_word("1") is False  # Number
-        assert is_noise_word("X") is False  # Letter (could be size, etc.)
+        assert is_noise_text("I") is False  # Pronoun
+        assert is_noise_text("A") is False  # Article
+        assert is_noise_text("1") is False  # Number
+        assert is_noise_text("X") is False  # Letter (could be size, etc.)
 
         # Two character meaningful words
-        assert is_noise_word("OR") is False
-        assert is_noise_word("TO") is False
-        assert is_noise_word("IN") is False
-        assert is_noise_word("NO") is False
+        assert is_noise_text("OR") is False
+        assert is_noise_text("TO") is False
+        assert is_noise_text("IN") is False
+        assert is_noise_text("NO") is False
 
     @pytest.mark.unit
     def test_special_receipt_patterns(self):
@@ -221,7 +221,7 @@ class TestNoiseDetection:
 
         for pattern in noise_patterns:
             assert (
-                is_noise_word(pattern) is True
+                is_noise_text(pattern) is True
             ), f"'{pattern}' should be noise"
 
         # These should NOT be noise
@@ -234,7 +234,7 @@ class TestNoiseDetection:
 
         for pattern in meaningful_patterns:
             assert (
-                is_noise_word(pattern) is False
+                is_noise_text(pattern) is False
             ), f"'{pattern}' should NOT be noise"
 
 
