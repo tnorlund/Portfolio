@@ -1,15 +1,12 @@
 # syntax=docker/dockerfile:1
 # Unified Lambda container for all embedding step functions
-ARG BASE_IMAGE
 ARG PYTHON_VERSION=3.12
-FROM ${BASE_IMAGE:-public.ecr.aws/lambda/python:${PYTHON_VERSION}}
+FROM public.ecr.aws/lambda/python:${PYTHON_VERSION}
 
-# Install system dependencies if not using base image
-RUN if [ -z "$BASE_IMAGE" ]; then \
-        dnf install -y gcc gcc-c++ python3-devel && \
-        dnf clean all && \
-        rm -rf /var/cache/dnf; \
-    fi
+# Install system dependencies required for Python packages
+RUN dnf install -y gcc gcc-c++ python3-devel && \
+    dnf clean all && \
+    rm -rf /var/cache/dnf
 
 # Set environment variable to avoid compilation issues
 ENV HNSWLIB_NO_NATIVE=1
@@ -19,12 +16,8 @@ COPY receipt_dynamo /tmp/receipt_dynamo
 COPY receipt_label /tmp/receipt_label
 
 RUN --mount=type=cache,target=/root/.cache/pip \
-    if [ -z "$BASE_IMAGE" ]; then \
-        pip install --no-cache-dir /tmp/receipt_dynamo && \
-        pip install --no-cache-dir /tmp/receipt_label; \
-    else \
-        echo "Packages already installed in base image"; \
-    fi && \
+    pip install --no-cache-dir /tmp/receipt_dynamo && \
+    pip install --no-cache-dir /tmp/receipt_label && \
     rm -rf /tmp/receipt_dynamo /tmp/receipt_label
 
 # Copy the unified handler module

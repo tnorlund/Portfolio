@@ -85,15 +85,11 @@ class UnifiedChromaDBLambdas(ComponentResource):
         # Build context path - use repository root
         build_context_path = Path(__file__).parent.parent.parent
 
-        # Build unified image
+        # Build unified image with static build args only
         build_args = {
             "PYTHON_VERSION": "3.12",
             "BUILDKIT_INLINE_CACHE": "1",
         }
-        if base_image_name:
-            build_args["BASE_IMAGE"] = self._get_base_image_for_build(
-                base_image_name, stack
-            )
 
         self.unified_image = docker_build.Image(
             f"unified-embedding-img-{stack}",
@@ -169,27 +165,6 @@ class UnifiedChromaDBLambdas(ComponentResource):
             }
         )
 
-    def _get_base_image_for_build(
-        self,
-        base_image_output: Output[str],
-        stack: str,
-        service: str = "label",
-    ) -> str:
-        """Get the base image name for Docker builds."""
-        pulumi_config = pulumi.Config("portfolio")
-        use_static = pulumi_config.get_bool("use-static-base-image")
-
-        if use_static is None:
-            use_static = os.environ.get(
-                "USE_STATIC_BASE_IMAGE", ""
-            ).lower() in ("true", "1", "yes")
-
-        if use_static:
-            account_id = get_caller_identity().account_id
-            region = config.region or "us-east-1"
-            return f"{account_id}.dkr.ecr.{region}.amazonaws.com/base-receipt-{service}-{stack}:stable"
-        else:
-            return base_image_output
 
     def _create_lambda_functions(
         self,
