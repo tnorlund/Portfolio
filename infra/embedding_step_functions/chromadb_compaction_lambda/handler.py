@@ -62,7 +62,8 @@ def compact_handler(
             {
                 "delta_key": "delta/abc123/",
                 "delta_id": "abc123",
-                "embedding_count": 100
+                "embedding_count": 100,
+                "collection": "receipt_words"  # or "receipt_lines"
             },
             ...
         ]
@@ -135,17 +136,26 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     chunk_deltas = delta_results[:10]
     remaining_deltas = delta_results[10:]
 
+    # Group chunk deltas by collection name for collection-aware processing
+    deltas_by_collection = {}
+    for result in chunk_deltas:
+        collection = result.get("collection", "receipt_words")  # Default for backward compat
+        if collection not in deltas_by_collection:
+            deltas_by_collection[collection] = []
+        deltas_by_collection[collection].append(result)
+
     logger.info(
-        "Processing chunk %d with %d deltas (batch_id: %s)",
+        "Processing chunk %d with %d deltas across %d collections (batch_id: %s)",
         chunk_index,
         len(chunk_deltas),
+        len(deltas_by_collection),
         batch_id,
     )
 
     try:
-        # Process chunk deltas
+        # Process chunk deltas with collection awareness
         chunk_result = process_chunk_deltas(
-            batch_id, chunk_index, chunk_deltas
+            batch_id, chunk_index, chunk_deltas, deltas_by_collection
         )
 
         # Prepare response
@@ -245,9 +255,11 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             "batch_id": batch_id,
             "chunks_merged": total_chunks,
             "total_embeddings": merge_result["total_embeddings"],
-            "snapshot_key": merge_result["snapshot_key"],
+            "snapshot_keys": merge_result["snapshot_keys"],  # Multiple keys for multiple collections
+            "collections_compacted": merge_result["collections"],
             "processing_time_seconds": merge_result["processing_time"],
             "message": "Final merge completed successfully",
+>>>>>>> origin/chroma_db
         }
 
     except Exception as e:  # pylint: disable=broad-exception-caught
@@ -269,9 +281,10 @@ def _process_single_delta(
     temp_dir: str,
     bucket_name: str,
     chunk_collection: Any,
+    collection_name: str = "receipt_words",
 ) -> int:
     """Process a single delta and add to chunk collection."""
-    logger.info("Processing delta: %s", delta_key)
+    logger.info("Processing delta: %s for collection: %s", delta_key, collection_name)
 
     # Download delta to temporary directory
     delta_dir = os.path.join(
@@ -294,7 +307,16 @@ def _process_single_delta(
 
     # Load delta ChromaDB
     delta_client = chromadb.PersistentClient(path=delta_dir)
-    delta_collection = delta_client.get_collection("receipt_words")
+    try:
+        # Try to get the collection with the expected name
+        delta_collection = delta_client.get_collection(collection_name)
+    except ValueError as e:
+        # If collection doesn't exist, log warning and return 0
+        logger.warning(
+            "Delta %s does not contain collection %s, skipping: %s",
+            delta_key, collection_name, str(e)
+        )
+        return 0
 
     # Get all data from delta
     delta_data = delta_collection.get(
@@ -319,34 +341,49 @@ def _upload_chunk_to_s3(
     batch_id: str,
     chunk_index: int,
     bucket_name: str,
-) -> str:
-    """Upload chunk to S3 and return the intermediate key."""
-    intermediate_key = f"intermediate/{batch_id}/chunk-{chunk_index}/"
-    chunk_dir = os.path.join(temp_dir, "chunk")
+    collections_processed: List[str],
+) -> Dict[str, str]:
+    """Upload chunk to S3 and return the intermediate keys for each collection."""
+    intermediate_keys = {}
+    
+    for collection_name in collections_processed:
+        intermediate_key = f"intermediate/{batch_id}/{collection_name}/chunk-{chunk_index}/"
+        chunk_dir = os.path.join(temp_dir, "chunk", collection_name)
+        
+        if not os.path.exists(chunk_dir):
+            logger.warning("Chunk directory not found for collection %s, skipping", collection_name)
+            continue
 
-    for root, _, files in os.walk(chunk_dir):
-        for file in files:
-            local_path = os.path.join(root, file)
-            relative_path = os.path.relpath(local_path, chunk_dir)
-            s3_key = intermediate_key + relative_path
-            s3_client.upload_file(local_path, bucket_name, s3_key)
+        for root, _, files in os.walk(chunk_dir):
+            for file in files:
+                local_path = os.path.join(root, file)
+                relative_path = os.path.relpath(local_path, chunk_dir)
+                s3_key = intermediate_key + relative_path
+                s3_client.upload_file(local_path, bucket_name, s3_key)
 
-    logger.info(
-        "Uploaded chunk %d to s3://%s/%s",
-        chunk_index,
-        bucket_name,
-        intermediate_key,
-    )
-    return intermediate_key
+        logger.info(
+            "Uploaded chunk %d for collection %s to s3://%s/%s",
+            chunk_index,
+            collection_name,
+            bucket_name,
+            intermediate_key,
+        )
+        intermediate_keys[collection_name] = intermediate_key
+    
+    return intermediate_keys
 
 
 def process_chunk_deltas(
-    batch_id: str, chunk_index: int, delta_results: List[Dict[str, Any]]
+    batch_id: str, 
+    chunk_index: int, 
+    delta_results: List[Dict[str, Any]],
+    deltas_by_collection: Dict[str, List[Dict[str, Any]]]
 ) -> Dict[str, Any]:
     """
     Process a chunk of deltas and write to intermediate S3 location.
 
     This function does not acquire locks and processes deltas independently.
+    Supports collection-aware processing by grouping deltas by collection.
     """
     start_time = time.time()
     bucket_name = os.environ["CHROMADB_BUCKET"]
@@ -356,37 +393,49 @@ def process_chunk_deltas(
     delta_keys = [result["delta_key"] for result in delta_results]
 
     with tempfile.TemporaryDirectory() as temp_dir:
-        # Create ChromaDB instance for this chunk
-        chunk_client = chromadb.PersistentClient(
-            path=os.path.join(temp_dir, "chunk")
-        )
-        chunk_collection = chunk_client.get_or_create_collection(
-            name="receipt_words",
-            metadata={
-                "created_at": datetime.utcnow().isoformat(),
-                "batch_id": batch_id,
-                "chunk_index": chunk_index,
-            },
-        )
-
-        # Process each delta in the chunk
-        for delta_key in delta_keys:
-            embeddings_count = _process_single_delta(
-                delta_key, temp_dir, bucket_name, chunk_collection
+        collections_processed = []
+        intermediate_keys = {}
+        
+        # Process each collection separately
+        for collection_name, collection_deltas in deltas_by_collection.items():
+            # Create ChromaDB instance for this collection chunk
+            chunk_path = os.path.join(temp_dir, "chunk", collection_name)
+            chunk_client = chromadb.PersistentClient(path=chunk_path)
+            chunk_collection = chunk_client.get_or_create_collection(
+                name=collection_name,
+                metadata={
+                    "created_at": datetime.utcnow().isoformat(),
+                    "batch_id": batch_id,
+                    "chunk_index": chunk_index,
+                    "collection_type": collection_name,
+                },
             )
-            total_embeddings_processed += embeddings_count
-            if embeddings_count > 0:
-                logger.info(
-                    "Added %d embeddings from delta to chunk %d "
-                    "(total in chunk: %d)",
-                    embeddings_count,
-                    chunk_index,
-                    total_embeddings_processed,
-                )
 
-        # Upload chunk to intermediate S3 location
-        intermediate_key = _upload_chunk_to_s3(
-            temp_dir, batch_id, chunk_index, bucket_name
+            # Process each delta for this collection
+            collection_embeddings = 0
+            for delta_result in collection_deltas:
+                delta_key = delta_result["delta_key"]
+                embeddings_count = _process_single_delta(
+                    delta_key, temp_dir, bucket_name, chunk_collection, collection_name
+                )
+                collection_embeddings += embeddings_count
+                total_embeddings_processed += embeddings_count
+                if embeddings_count > 0:
+                    logger.info(
+                        "Added %d embeddings from delta to chunk %d for collection %s "
+                        "(collection total: %d, chunk total: %d)",
+                        embeddings_count,
+                        chunk_index,
+                        collection_name,
+                        collection_embeddings,
+                        total_embeddings_processed,
+                    )
+            
+            collections_processed.append(collection_name)
+
+        # Upload chunks to intermediate S3 location (one per collection)
+        intermediate_keys = _upload_chunk_to_s3(
+            temp_dir, batch_id, chunk_index, bucket_name, collections_processed
         )
 
     elapsed_time = time.time() - start_time
@@ -398,9 +447,10 @@ def process_chunk_deltas(
     )
 
     return {
-        "intermediate_key": intermediate_key,
+        "intermediate_keys": intermediate_keys,
+        "collections_processed": collections_processed,
         "embeddings_processed": total_embeddings_processed,
-        "deltas_processed": len(delta_keys),
+        "deltas_processed": len(delta_results),
         "processing_time": elapsed_time,
     }
 
@@ -410,143 +460,180 @@ def _process_intermediate_chunk(
     batch_id: str,
     temp_dir: str,
     bucket_name: str,
-    main_collection: Any,
-) -> int:
-    """Process a single intermediate chunk and merge into main collection."""
-    intermediate_key = f"intermediate/{batch_id}/chunk-{chunk_index}/"
-    logger.info("Merging intermediate chunk: %s", intermediate_key)
+    main_collections: Dict[str, Any],
+) -> Dict[str, int]:
+    """Process a single intermediate chunk and merge into main collections."""
+    embeddings_by_collection = {}
+    
+    # Process each collection's chunk
+    for collection_name, main_collection in main_collections.items():
+        intermediate_key = f"intermediate/{batch_id}/{collection_name}/chunk-{chunk_index}/"
+        logger.info("Merging intermediate chunk for collection %s: %s", collection_name, intermediate_key)
 
-    # Download chunk to temporary directory
-    chunk_dir = os.path.join(temp_dir, "chunks", f"chunk-{chunk_index}")
-    os.makedirs(chunk_dir, exist_ok=True)
+        # Download chunk to temporary directory
+        chunk_dir = os.path.join(temp_dir, "chunks", collection_name, f"chunk-{chunk_index}")
+        os.makedirs(chunk_dir, exist_ok=True)
 
-    # List and download all files in chunk
-    paginator = s3_client.get_paginator("list_objects_v2")
-    pages = paginator.paginate(Bucket=bucket_name, Prefix=intermediate_key)
+        # List and download all files in chunk
+        paginator = s3_client.get_paginator("list_objects_v2")
+        pages = paginator.paginate(Bucket=bucket_name, Prefix=intermediate_key)
 
-    chunk_has_data = False
-    for page in pages:
-        for obj in page.get("Contents", []):
-            key = obj["Key"]
-            local_path = os.path.join(
-                chunk_dir, os.path.relpath(key, intermediate_key)
-            )
-            os.makedirs(os.path.dirname(local_path), exist_ok=True)
-            s3_client.download_file(bucket_name, key, local_path)
-            chunk_has_data = True
+        chunk_has_data = False
+        for page in pages:
+            for obj in page.get("Contents", []):
+                key = obj["Key"]
+                local_path = os.path.join(
+                    chunk_dir, os.path.relpath(key, intermediate_key)
+                )
+                os.makedirs(os.path.dirname(local_path), exist_ok=True)
+                s3_client.download_file(bucket_name, key, local_path)
+                chunk_has_data = True
 
-    if not chunk_has_data:
-        logger.warning("No data found for chunk %d, skipping", chunk_index)
-        return 0
+        if not chunk_has_data:
+            logger.warning("No data found for chunk %d in collection %s, skipping", chunk_index, collection_name)
+            embeddings_by_collection[collection_name] = 0
+            continue
 
-    # Load chunk ChromaDB
-    chunk_client = chromadb.PersistentClient(path=chunk_dir)
-    chunk_collection = chunk_client.get_collection("receipt_words")
+        # Load chunk ChromaDB
+        chunk_client = chromadb.PersistentClient(path=chunk_dir)
+        try:
+            chunk_collection = chunk_client.get_collection(collection_name)
+        except ValueError:
+            logger.warning("Collection %s not found in chunk %d, skipping", collection_name, chunk_index)
+            embeddings_by_collection[collection_name] = 0
+            continue
 
-    # Get all data from chunk
-    chunk_data = chunk_collection.get(
-        include=["embeddings", "documents", "metadatas"]
-    )
-
-    if chunk_data["ids"]:
-        # Add to main collection
-        embeddings_count = len(chunk_data["ids"])
-        main_collection.add(
-            ids=chunk_data["ids"],
-            embeddings=chunk_data["embeddings"],
-            documents=chunk_data["documents"],
-            metadatas=chunk_data["metadatas"],
+        # Get all data from chunk
+        chunk_data = chunk_collection.get(
+            include=["embeddings", "documents", "metadatas"]
         )
-        return embeddings_count
-    return 0
+
+        if chunk_data["ids"]:
+            # Add to main collection
+            embeddings_count = len(chunk_data["ids"])
+            main_collection.add(
+                ids=chunk_data["ids"],
+                embeddings=chunk_data["embeddings"],
+                documents=chunk_data["documents"],
+                metadatas=chunk_data["metadatas"],
+            )
+            embeddings_by_collection[collection_name] = embeddings_count
+        else:
+            embeddings_by_collection[collection_name] = 0
+    
+    return embeddings_by_collection
 
 
 def _cleanup_intermediate_chunks(
-    batch_id: str, total_chunks: int, bucket_name: str
+    batch_id: str, total_chunks: int, bucket_name: str, collections: List[str]
 ) -> None:
     """Clean up intermediate chunks after merge."""
     if os.environ.get("DELETE_INTERMEDIATE_CHUNKS", "true").lower() != "true":
         return
 
-    for chunk_index in range(total_chunks):
-        intermediate_key = f"intermediate/{batch_id}/chunk-{chunk_index}/"
-        # Delete all objects with this prefix
-        paginator = s3_client.get_paginator("list_objects_v2")
-        pages = paginator.paginate(Bucket=bucket_name, Prefix=intermediate_key)
+    for collection_name in collections:
+        for chunk_index in range(total_chunks):
+            intermediate_key = f"intermediate/{batch_id}/{collection_name}/chunk-{chunk_index}/"
+            # Delete all objects with this prefix
+            paginator = s3_client.get_paginator("list_objects_v2")
+            pages = paginator.paginate(Bucket=bucket_name, Prefix=intermediate_key)
 
-        for page in pages:
-            if "Contents" in page:
-                objects = [{"Key": obj["Key"]} for obj in page["Contents"]]
-                if objects:  # Only delete if objects exist
-                    # Fix for mypy typeddict issue
-                    delete_batch = {"Objects": objects}
-                    s3_client.delete_objects(
-                        Bucket=bucket_name, Delete=delete_batch
-                    )
-        logger.info("Cleaned up intermediate chunk: %s", intermediate_key)
+            for page in pages:
+                if "Contents" in page:
+                    objects = [{"Key": obj["Key"]} for obj in page["Contents"]]
+                    if objects:  # Only delete if objects exist
+                        # Fix for mypy typeddict issue
+                        delete_batch = {"Objects": objects}
+                        s3_client.delete_objects(
+                            Bucket=bucket_name, Delete=delete_batch
+                        )
+            logger.info("Cleaned up intermediate chunk for collection %s: %s", collection_name, intermediate_key)
 
 
 def merge_intermediate_chunks(
     batch_id: str, total_chunks: int
 ) -> Dict[str, Any]:
     """
-    Merge all intermediate chunks into a final ChromaDB snapshot.
+    Merge all intermediate chunks into final ChromaDB snapshots.
 
     This function is called during the final merge step with lock protection.
+    Supports multiple collections.
     """
     start_time = time.time()
     bucket_name = os.environ["CHROMADB_BUCKET"]
-    snapshot_id = str(uuid.uuid4())
     total_embeddings_processed = 0
+    snapshot_keys = {}
+    collections_found = set()
+    
+    # First, discover which collections are present in the chunks
+    for chunk_index in range(total_chunks):
+        # Check for both receipt_words and receipt_lines collections
+        for collection_name in ["receipt_words", "receipt_lines"]:
+            intermediate_prefix = f"intermediate/{batch_id}/{collection_name}/chunk-{chunk_index}/"
+            response = s3_client.list_objects_v2(
+                Bucket=bucket_name,
+                Prefix=intermediate_prefix,
+                MaxKeys=1
+            )
+            if response.get("Contents"):
+                collections_found.add(collection_name)
+    
+    logger.info("Found collections to merge: %s", list(collections_found))
 
     with tempfile.TemporaryDirectory() as temp_dir:
-        # Create main ChromaDB instance for final merge
-        main_client = chromadb.PersistentClient(
-            path=os.path.join(temp_dir, "main")
-        )
-        main_collection = main_client.get_or_create_collection(
-            name="receipt_words",
-            metadata={
-                "created_at": datetime.utcnow().isoformat(),
-                "batch_id": batch_id,
-                "snapshot_id": snapshot_id,
-            },
-        )
-
-        # Process each intermediate chunk
-        for chunk_index in range(total_chunks):
-            embeddings_count = _process_intermediate_chunk(
-                chunk_index, batch_id, temp_dir, bucket_name, main_collection
+        # Create main ChromaDB instances for each collection found
+        main_collections = {}
+        for collection_name in collections_found:
+            snapshot_id = str(uuid.uuid4())
+            collection_path = os.path.join(temp_dir, collection_name)
+            main_client = chromadb.PersistentClient(path=collection_path)
+            main_collection = main_client.get_or_create_collection(
+                name=collection_name,
+                metadata={
+                    "created_at": datetime.utcnow().isoformat(),
+                    "batch_id": batch_id,
+                    "snapshot_id": snapshot_id,
+                    "collection_type": collection_name,
+                },
             )
-            total_embeddings_processed += embeddings_count
-            if embeddings_count > 0:
-                logger.info(
-                    "Merged %d embeddings from chunk %d (total: %d)",
-                    embeddings_count,
-                    chunk_index,
-                    total_embeddings_processed,
-                )
+            main_collections[collection_name] = main_collection
+            snapshot_keys[collection_name] = f"snapshot/{collection_name}/{snapshot_id}/"
 
-        # Upload final snapshot to S3
-        snapshot_key = f"snapshot/{snapshot_id}/"
-        main_dir = os.path.join(temp_dir, "main")
+        # Process each intermediate chunk for all collections
+        for chunk_index in range(total_chunks):
+            embeddings_by_collection = _process_intermediate_chunk(
+                chunk_index, batch_id, temp_dir, bucket_name, main_collections
+            )
+            for collection_name, embeddings_count in embeddings_by_collection.items():
+                total_embeddings_processed += embeddings_count
+                if embeddings_count > 0:
+                    logger.info(
+                        "Merged %d embeddings from chunk %d for collection %s (total: %d)",
+                        embeddings_count,
+                        chunk_index,
+                        collection_name,
+                        total_embeddings_processed,
+                    )
 
-        for root, _, files in os.walk(main_dir):
-            for file in files:
-                local_path = os.path.join(root, file)
-                relative_path = os.path.relpath(local_path, main_dir)
-                s3_key = snapshot_key + relative_path
-                s3_client.upload_file(local_path, bucket_name, s3_key)
+        # Upload final snapshots to S3 (one per collection)
+        for collection_name in collections_found:
+            snapshot_key = snapshot_keys[collection_name]
+            collection_path = os.path.join(temp_dir, collection_name)
 
-        logger.info(
-            "Uploaded final snapshot %s to s3://%s/%s",
-            snapshot_id,
-            bucket_name,
-            snapshot_key,
-        )
+            for root, _, files in os.walk(collection_path):
+                for file in files:
+                    local_path = os.path.join(root, file)
+                    relative_path = os.path.relpath(local_path, collection_path)
+                    s3_key = snapshot_key + relative_path
+                    s3_client.upload_file(local_path, bucket_name, s3_key)
 
-        # Clean up intermediate chunks
-        _cleanup_intermediate_chunks(batch_id, total_chunks, bucket_name)
+            logger.info(
+                "Uploaded %s snapshot to s3://%s/%s",
+                collection_name, bucket_name, snapshot_key
+            )
+
+        # Clean up intermediate chunks for all collections
+        _cleanup_intermediate_chunks(batch_id, total_chunks, bucket_name, list(collections_found))
 
     elapsed_time = time.time() - start_time
     logger.info(
@@ -558,8 +645,8 @@ def merge_intermediate_chunks(
     )
 
     return {
-        "snapshot_id": snapshot_id,
-        "snapshot_key": snapshot_key,
+        "snapshot_keys": snapshot_keys,
+        "collections": list(collections_found),
         "chunks_merged": total_chunks,
         "total_embeddings": total_embeddings_processed,
         "processing_time": elapsed_time,

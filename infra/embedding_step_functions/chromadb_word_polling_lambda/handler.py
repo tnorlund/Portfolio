@@ -136,6 +136,7 @@ def poll_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "delta_id": delta_result["delta_id"],
             "delta_key": delta_result["delta_key"],
             "embedding_count": delta_result["embedding_count"],
+            "collection": "receipt_words",  # Specify collection for compaction
             "storage": "s3_delta",
         }
     

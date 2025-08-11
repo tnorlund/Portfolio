@@ -107,6 +107,7 @@ def _handle_completed_batch(
         "delta_id": delta_result["delta_id"],
         "delta_key": delta_result["delta_key"],
         "embedding_count": delta_result["embedding_count"],
+        "collection": "receipt_lines",  # Specify collection for compaction
         "storage": "s3_delta",
     }
 
