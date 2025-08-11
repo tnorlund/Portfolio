@@ -1,0 +1,2 @@
+boto3>=1.26.0
+# receipt_label will be installed from Lambda layer or included in deployment package
