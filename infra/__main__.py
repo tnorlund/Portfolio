@@ -96,16 +96,12 @@ notification_system = NotificationSystem(
 # Create base images first - they're used by multiple components
 base_images = BaseImages("base-images", stack=pulumi.get_stack())
 
-word_label_step_functions = WordLabelStepFunctions(
-    "word-label-step-functions"
-)
+word_label_step_functions = WordLabelStepFunctions("word-label-step-functions")
 validate_merchant_step_functions = ValidateMerchantStepFunctions(
     "validate-merchant"
 )
 validation_pipeline = ValidationPipeline("validation-pipeline")
-embedding_infrastructure = EmbeddingInfrastructure(
-    "embedding-infra"
-)
+embedding_infrastructure = EmbeddingInfrastructure("embedding-infra")
 validation_by_merchant_step_functions = ValidationByMerchantStepFunction(
     "validation-by-merchant"
 )

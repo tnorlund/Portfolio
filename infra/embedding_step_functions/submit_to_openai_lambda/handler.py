@@ -38,15 +38,15 @@ if len(logger.handlers) == 0:
 def lambda_handler(event, _context):
     """
     Submit a line embedding batch to OpenAI's Batch API.
-    
+
     Args:
         event: Contains s3_key, s3_bucket, image_id, receipt_id
-        
+
     Returns:
         dict: Contains statusCode and batch_id
     """
     logger.info("Starting submit_to_openai handler")
-    
+
     try:
         s3_key = event["s3_key"]
         s3_bucket = event["s3_bucket"]
@@ -56,7 +56,9 @@ def lambda_handler(event, _context):
         batch_id = generate_batch_id()
 
         # Download the serialized lines
-        filepath = download_serialized_lines(s3_bucket=s3_bucket, s3_key=s3_key)
+        filepath = download_serialized_lines(
+            s3_bucket=s3_bucket, s3_key=s3_key
+        )
         logger.info("Downloaded file to %s", filepath)
 
         lines = deserialize_receipt_lines(filepath)
@@ -79,7 +81,9 @@ def lambda_handler(event, _context):
         logger.info("Submitted OpenAI batch %s", openai_batch.id)
 
         # Create a batch summary
-        batch_summary = create_batch_summary(batch_id, openai_batch.id, input_file)
+        batch_summary = create_batch_summary(
+            batch_id, openai_batch.id, input_file
+        )
         logger.info("Created batch summary with ID %s", batch_summary.batch_id)
 
         # Update the line embedding status
@@ -91,7 +95,7 @@ def lambda_handler(event, _context):
         logger.info("Added batch summary with ID %s", batch_summary.batch_id)
 
         return {"statusCode": 200, "batch_id": batch_id}
-        
+
     except Exception as e:  # pylint: disable=broad-exception-caught
         logger.error("Error submitting to OpenAI: %s", str(e))
         return {
