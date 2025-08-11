@@ -101,7 +101,7 @@ validate_merchant_step_functions = ValidateMerchantStepFunctions(
     "validate-merchant"
 )
 validation_pipeline = ValidationPipeline("validation-pipeline")
-embedding_infrastructure = EmbeddingInfrastructure("embedding-infra")
+embedding_infrastructure = EmbeddingInfrastructure("embedding-infra", base_images=base_images)
 validation_by_merchant_step_functions = ValidationByMerchantStepFunction(
     "validation-by-merchant"
 )
