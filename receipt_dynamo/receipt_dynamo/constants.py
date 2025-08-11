@@ -18,7 +18,7 @@ class ValidationStatus(str, Enum):
 
 class BatchStatus(str, Enum):
     """States for batch job execution.
-    
+
     Maps to OpenAI Batch API statuses:
     - VALIDATING: Initial file validation in progress
     - IN_PROGRESS: Batch processing underway
@@ -64,6 +64,7 @@ class EmbeddingStatus(str, Enum):
     PENDING = "PENDING"
     SUCCESS = "SUCCESS"
     FAILED = "FAILED"
+    NOISE = "NOISE"
 
 
 class SectionType(str, Enum):
