@@ -988,7 +988,7 @@ echo "🎉 Parallel function updates completed!"'''
             # Validate the flattened structure before zipping
             commands.append('echo "Validating flattened structure..."')
             commands.append('if [ -d "merged/python/lib" ]; then echo "ERROR: Nested lib directory found! Layer should be flattened."; exit 1; fi')
-            commands.append('echo "✓ Structure is correctly flattened (no nested lib directory)"')
+            commands.append('echo "Structure is correctly flattened (no nested lib directory)"')
             # Step 3: Zip the merged python directory
             commands.append('echo "Zipping merged layer..."')
             commands.append("cd merged && zip -r ../layer.zip python && cd ..")
@@ -1349,7 +1349,7 @@ if [ -n "$LOCAL_DEPS" ]; then
             mkdir -p "$TMP_DIR/dependencies/$dep"
             cp -r "$DEP_PATH"/* "$TMP_DIR/dependencies/$dep/"
         else
-            echo "  ⚠️  Warning: Local dependency $dep not found at $DEP_PATH"
+            echo "  Warning: Local dependency $dep not found at $DEP_PATH"
         fi
     done
 fi
