@@ -69,19 +69,12 @@ class WordLabelStepFunctions(ComponentResource):
         )
 
         # Create S3 bucket for NDJSON batch files
+        # Note: No ACL needed - S3 buckets are private by default in newer AWS accounts
         batch_bucket = aws.s3.Bucket(
             f"{name}-embedding-batch-bucket",
             force_destroy=True,
             tags={"environment": stack},
             opts=ResourceOptions(parent=self),
-        )
-
-        # Set bucket ACL using separate resource (replaces deprecated acl parameter)
-        aws.s3.BucketAcl(
-            f"{name}-embedding-batch-bucket-acl",
-            bucket=batch_bucket.id,
-            acl="private",
-            opts=ResourceOptions(parent=self, depends_on=[batch_bucket]),
         )
 
         # Define the poll lambda
