@@ -8,7 +8,7 @@ from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities import ReceiptWord
 
 from receipt_label.client_manager import get_client_manager
-from receipt_label.utils.noise_detection import is_noise_word
+from receipt_label.utils.noise_detection import is_noise_text
 
 logger = logging.getLogger(__name__)
 
@@ -220,7 +220,7 @@ def embed_words_realtime(
     openai_client = client_manager.openai
 
     # Filter out noise words
-    meaningful_words = [w for w in words if not is_noise_word(w.text)]
+    meaningful_words = [w for w in words if not is_noise_text(w.text)]
 
     if not meaningful_words:
         logger.info("No meaningful words to embed")

@@ -296,7 +296,7 @@ class PatternConfig:
 # ========================================
 
 
-def is_noise_word(text: str) -> bool:
+def is_noise_text(text: str) -> bool:
     """
     Check if a word is likely OCR noise/artifact.
 

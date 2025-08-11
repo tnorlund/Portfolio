@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from receipt_dynamo.entities.receipt_word import ReceiptWord
 
 from ..pattern_detection.orchestrator import ParallelPatternOrchestrator
+from ..utils.noise_detection import is_noise_text
 
 try:
     from ..pattern_detection.enhanced_orchestrator import (
@@ -261,7 +262,7 @@ class DecisionEngineOrchestrator:
 
         # Count words and labels
         total_words = len(words)
-        noise_words = sum(1 for word in words if self._is_noise_word(word))
+        noise_words = sum(1 for word in words if is_noise_text(word.text))
 
         # Extract labeled words from pattern results
         labeled_word_positions = set()
@@ -405,26 +406,6 @@ class DecisionEngineOrchestrator:
             product_name_found=product_found,
         )
 
-    def _is_noise_word(self, word: ReceiptWord) -> bool:
-        """Determine if a word is noise (punctuation, artifacts, etc.)."""
-        if not word.text:
-            return True
-
-        text = word.text.strip()
-        if not text:
-            return True
-
-        # Common noise patterns
-        if len(text) == 1 and not text.isalnum():
-            return True  # Single punctuation
-
-        if text in {"---", "***", "===", "+++", "..."}:
-            return True  # Common separators
-
-        if all(c in "-=*+_.:|" for c in text):
-            return True  # Only punctuation/separators
-
-        return False
 
     def _finalize_pattern_labels(
         self, pattern_results: Dict[str, Any]
