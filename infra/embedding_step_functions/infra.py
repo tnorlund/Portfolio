@@ -166,7 +166,8 @@ class LineEmbeddingStepFunction(ComponentResource):
                                 "Type": "Task",
                                 "Resource": arns[0],
                                 "Comment": ("Find all OpenAI batches with " "status=PENDING"),
-                                "Next": "PollLineEmbeddingBatch",
+                                "ResultPath": "$.pending_batches",
+                                "Next": "CheckPendingBatches",
                                 "Retry": [
                                     {
                                         "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
@@ -183,9 +184,21 @@ class LineEmbeddingStepFunction(ComponentResource):
                                     }
                                 ],
                             },
+                            "CheckPendingBatches": {
+                                "Type": "Choice",
+                                "Comment": "Check if there are any pending batches to process",
+                                "Choices": [
+                                    {
+                                        "Variable": "$.pending_batches[0]",
+                                        "IsPresent": True,
+                                        "Next": "PollLineEmbeddingBatch",
+                                    }
+                                ],
+                                "Default": "NoPendingBatches",
+                            },
                             "PollLineEmbeddingBatch": {
                                 "Type": "Map",
-                                "ItemsPath": "$",
+                                "ItemsPath": "$.pending_batches",
                                 "MaxConcurrency": 10,
                                 "Parameters": {
                                     "batch_id.$": "$$.Map.Item.Value.batch_id",
@@ -366,6 +379,10 @@ class LineEmbeddingStepFunction(ComponentResource):
                                 "Cause": (
                                     "Failed to merge intermediate chunks during " "final compaction"
                                 ),
+                            },
+                            "NoPendingBatches": {
+                                "Type": "Succeed",
+                                "Comment": "No pending batches to process",
                             },
                         },
                     }

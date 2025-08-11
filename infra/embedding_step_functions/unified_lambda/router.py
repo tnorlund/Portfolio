@@ -43,7 +43,7 @@ _handler_class = HANDLER_REGISTRY[_handler_type]
 _handler_instance = _handler_class()
 
 
-def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def lambda_handler(event: Dict[str, Any], context: Any) -> Any:
     """Main Lambda entry point that routes to the appropriate handler.
     
     This is the function that AWS Lambda will invoke.
@@ -53,6 +53,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         context: Lambda context
         
     Returns:
-        Handler response
+        Handler response (raw data for Step Functions, HTTP response for API Gateway)
     """
     return _handler_instance(event, context)

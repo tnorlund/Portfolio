@@ -25,11 +25,13 @@ class BaseLambdaHandler(ABC):
         self.name = name
         self.logger = logging.getLogger(name)
         
-    def __call__(self, event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+    def __call__(self, event: Dict[str, Any], context: Any) -> Any:
         """Main entry point for Lambda execution.
         
         Handles common concerns like logging and error handling,
         then delegates to the specific handler implementation.
+        
+        For Step Functions, returns raw result without HTTP response wrapper.
         """
         self.logger.info(f"Starting {self.name} handler")
         self.logger.debug(f"Event: {json.dumps(event, default=str)}")
@@ -45,10 +47,19 @@ class BaseLambdaHandler(ABC):
             result = self.post_process(result, context)
             
             self.logger.info(f"Successfully completed {self.name} handler")
+            
+            # Check if we're being invoked from Step Functions
+            # Step Functions doesn't need HTTP-style responses
+            if self._is_step_function_invocation(event):
+                return result
+            
             return self._success_response(result)
             
         except Exception as e:
             self.logger.error(f"Error in {self.name} handler: {str(e)}", exc_info=True)
+            # Step Functions handle exceptions differently
+            if self._is_step_function_invocation(event):
+                raise
             return self._error_response(str(e))
     
     @abstractmethod
@@ -83,3 +94,23 @@ class BaseLambdaHandler(ABC):
                 "Content-Type": "application/json"
             }
         }
+    
+    def _is_step_function_invocation(self, event: Dict[str, Any]) -> bool:
+        """Check if this Lambda is being invoked from Step Functions.
+        
+        Step Functions invocations can be detected by:
+        1. Direct invocation (no httpMethod)
+        2. Presence of Step Function-specific fields
+        3. Absence of API Gateway fields
+        """
+        # If there's an httpMethod, it's from API Gateway
+        if "httpMethod" in event:
+            return False
+        
+        # If requestContext exists and has apiId, it's from API Gateway
+        if "requestContext" in event and "apiId" in event.get("requestContext", {}):
+            return False
+        
+        # Otherwise, assume it's from Step Functions or direct invocation
+        # Step Functions pass data directly without HTTP wrapper
+        return True
