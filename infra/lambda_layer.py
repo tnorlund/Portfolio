@@ -455,11 +455,14 @@ echo "🎉 Parallel function updates completed!"'''
                 'echo "Found wheel: $WHEEL_FILE"',
                 # Install with extras if specified (e.g., [lambda] for lightweight chromadb-client)
                 # Note: Removed --no-compile to allow pydantic-core and other compiled extensions
+                # Include local wheels directory for dependencies like receipt-dynamo
                 f"python{version} -m pip install --no-cache-dir "
+                f"--find-links dep_wheels "
                 f"\"$WHEEL_FILE{f'[{self.package_extras}]' if self.package_extras else ''}\" "
                 f"-t build/python/lib/python{version}/site-packages || "
                 f"{{ echo 'First pip install attempt failed, retrying...'; "
                 f"python{version} -m pip install --no-cache-dir "
+                f"--find-links dep_wheels "
                 f"\"$WHEEL_FILE{f'[{self.package_extras}]' if self.package_extras else ''}\" "
                 f"-t build/python/lib/python{version}/site-packages; }}",
                 # Install Pillow BEFORE flattening if needed
@@ -579,7 +582,8 @@ echo "🎉 Parallel function updates completed!"'''
                 "cd source && python3 -m build --wheel --outdir ../dist/ && cd ..",
                 'echo "Installing wheel for each runtime with Lambda optimizations"',
                 # Note: Removed --no-compile to allow pydantic-core and other compiled extensions
-                'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do python${v} -m pip install --no-cache-dir dist/*.whl -t build/python/lib/python${v}/site-packages; done',
+                # Include local wheels directory for dependencies like receipt-dynamo
+                'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do python${v} -m pip install --no-cache-dir --find-links dep_wheels dist/*.whl -t build/python/lib/python${v}/site-packages; done',
                 # Install Pillow if needed BEFORE flattening
                 'if [ "$NEEDS_PILLOW" = "True" ]; then '
                 'echo "Installing Pillow for each runtime before flattening"; '
