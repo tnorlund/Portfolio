@@ -12,7 +12,15 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 import boto3
 
-# Try to import ChromaDB, but don't fail if it's not available or has issues
+# Type checking imports (these don't run at runtime)
+if TYPE_CHECKING:
+    import chromadb
+    from chromadb import Collection
+    from chromadb.config import Settings
+    from chromadb.utils import embedding_functions
+    from chromadb.errors import NotFoundError
+
+# Runtime imports - try to import ChromaDB, but don't fail if unavailable
 try:
     import chromadb
     from chromadb import Collection
@@ -23,11 +31,12 @@ try:
 except (ImportError, StopIteration) as e:
     # ChromaDB not available or telemetry initialization failed (common in Lambda)
     print(f"Warning: ChromaDB import failed: {e}. ChromaDB features will be disabled.")
-    chromadb = None
-    Collection = None
-    Settings = None
-    embedding_functions = None
-    NotFoundError = Exception  # Fallback to base Exception
+    if not TYPE_CHECKING:
+        chromadb = None
+        Collection = None
+        Settings = None
+        embedding_functions = None
+        NotFoundError = Exception  # Fallback to base Exception
     CHROMADB_AVAILABLE = False
 
 
@@ -66,8 +75,8 @@ class ChromaDBClient:
         self.collection_prefix = collection_prefix
         self.mode = mode.lower()
         self.use_persistent_client = persist_directory is not None
-        self._client: Optional[Any] = None  # chromadb.Client when available
-        self._collections: Dict[str, Any] = {}  # Dict[str, Collection] when available
+        self._client: Optional[chromadb.Client] = None
+        self._collections: Dict[str, Collection] = {}
 
         # OpenAI embedding function for consistency with current implementation
         self._embedding_function = embedding_functions.OpenAIEmbeddingFunction(
@@ -76,7 +85,7 @@ class ChromaDBClient:
         )
 
     @property
-    def client(self) -> Optional["chromadb.Client"]:
+    def client(self) -> Optional[chromadb.Client]:
         """Get or create ChromaDB client."""
         if self._client is None:
             if self.use_persistent_client and self.persist_directory:
@@ -99,7 +108,7 @@ class ChromaDBClient:
 
     def get_collection(
         self, name: str, metadata: Optional[Dict[str, Any]] = None
-    ) -> Any:  # Returns Collection when ChromaDB is available
+    ) -> Collection:
         """
         Get or create a ChromaDB collection.
 
