@@ -213,7 +213,7 @@ class UploadImages(ComponentResource):
                 }
             ),
             architectures=["arm64"],
-            layers=[dynamo_layer.arn, upload_layer.arn],
+            layers=[upload_layer.arn],  # receipt-upload includes receipt-dynamo
             tags={"environment": stack},
             environment=FunctionEnvironmentArgs(
                 variables={
@@ -390,7 +390,7 @@ class UploadImages(ComponentResource):
             timeout=300,  # 5 minutes
             memory_size=1024,  # 1GB
             architectures=["arm64"],
-            layers=[dynamo_layer.arn, label_layer.arn, upload_layer.arn],
+            layers=[label_layer.arn, upload_layer.arn],  # Both include receipt-dynamo
             opts=ResourceOptions(parent=self, ignore_changes=["layers"]),
         )
 

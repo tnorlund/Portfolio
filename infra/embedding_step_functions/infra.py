@@ -8,28 +8,26 @@ This module creates step functions for processing line embeddings using:
 """
 
 import json
-import os
+from typing import Optional
+
 import pulumi
 
-from dynamo_db import dynamodb_table
-from lambda_layer import dynamo_layer, label_layer
 from pulumi import (
-    AssetArchive,
     ComponentResource,
     Config,
-    FileAsset,
     Output,
     ResourceOptions,
     Resource,
 )
 from pulumi_aws.s3 import Bucket
-from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
-from pulumi_aws.lambda_ import Function, FunctionEnvironmentArgs
+from pulumi_aws.iam import Role, RolePolicy
 from pulumi_aws.sfn import StateMachine
 
 # Import ChromaDB infrastructure components
 from chromadb_compaction import ChromaDBBuckets, ChromaDBQueues
-from .chromadb_lambdas import ChromaDBLambdas
+# Use the new unified Lambda implementation
+from .unified_chromadb_lambdas import UnifiedChromaDBLambdas
+
 # Note: This import is not actually used in this file
 # from base_images.base_images_v3 import BaseImages
 
@@ -49,9 +47,9 @@ class LineEmbeddingStepFunction(ComponentResource):
     def __init__(
         self,
         name: str,
-        base_image_name: Output[str] = None,
-        base_image_resource: Resource = None,
-        opts: ResourceOptions = None,
+        base_image_name: Optional[Output[str]] = None,
+        base_image_resource: Optional[Resource] = None,
+        opts: Optional[ResourceOptions] = None,
     ):
         super().__init__(
             f"{__name__}-{name}",
@@ -83,22 +81,24 @@ class LineEmbeddingStepFunction(ComponentResource):
         # Add dependency on base image resource if provided
         lambda_opts = ResourceOptions(parent=self)
         if base_image_resource:
-            lambda_opts = ResourceOptions(
-                parent=self, depends_on=[base_image_resource]
-            )
+            lambda_opts = ResourceOptions(parent=self, depends_on=[base_image_resource])
 
-        self.chromadb_lambdas = ChromaDBLambdas(
-            f"{name}-chromadb",
-            chromadb_bucket_name=self.chromadb_buckets.bucket_name,
-            chromadb_queue_url=self.chromadb_queues.delta_queue_url,
-            chromadb_queue_arn=self.chromadb_queues.delta_queue_arn,
-            openai_api_key=openai_api_key,
-            s3_batch_bucket_name=self.batch_bucket.bucket,
-            stack=stack,
-            base_image_name=base_image_name,
-            base_image_resource=base_image_resource,
-            opts=lambda_opts,
-        )
+        # Only pass base_image_name if it's provided
+        lambda_args = {
+            "chromadb_bucket_name": self.chromadb_buckets.bucket_name,
+            "chromadb_queue_url": self.chromadb_queues.delta_queue_url,
+            "chromadb_queue_arn": self.chromadb_queues.delta_queue_arn,
+            "openai_api_key": openai_api_key,
+            "s3_batch_bucket_name": self.batch_bucket.bucket,
+            "stack": stack,
+            "opts": lambda_opts,
+        }
+
+        if base_image_name is not None:
+            lambda_args["base_image_name"] = base_image_name
+            lambda_args["base_image_resource"] = base_image_resource
+
+        self.chromadb_lambdas = UnifiedChromaDBLambdas(f"{name}-chromadb", **lambda_args)
 
         # Create IAM role for Step Function
         self.step_function_role = Role(
@@ -145,7 +145,7 @@ class LineEmbeddingStepFunction(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Create the Poll and Store Line Embeddings Step Function
+        # Create the Poll and Store Line Embeddings Step Function with Chunked Compaction
         self.poll_and_store_embeddings_sm = StateMachine(
             f"{name}-poll-store-embeddings-sm",
             role_arn=self.step_function_role.arn,
@@ -158,18 +158,30 @@ class LineEmbeddingStepFunction(ComponentResource):
                     {
                         "Comment": (
                             "Poll OpenAI for completed line embedding batches and "
-                            "store in ChromaDB"
+                            "store in ChromaDB using chunked compaction"
                         ),
                         "StartAt": "ListPendingBatches",
                         "States": {
                             "ListPendingBatches": {
                                 "Type": "Task",
                                 "Resource": arns[0],
-                                "Comment": (
-                                    "Find all OpenAI batches with "
-                                    "status=PENDING"
-                                ),
+                                "Comment": ("Find all OpenAI batches with " "status=PENDING"),
                                 "Next": "PollLineEmbeddingBatch",
+                                "Retry": [
+                                    {
+                                        "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                                        "IntervalSeconds": 1,
+                                        "MaxAttempts": 2,
+                                        "BackoffRate": 1.5,
+                                        "JitterStrategy": "FULL",
+                                    },
+                                    {
+                                        "ErrorEquals": ["States.ALL"],
+                                        "IntervalSeconds": 1,
+                                        "MaxAttempts": 3,
+                                        "BackoffRate": 2.0,
+                                    }
+                                ],
                             },
                             "PollLineEmbeddingBatch": {
                                 "Type": "Map",
@@ -187,19 +199,173 @@ class LineEmbeddingStepFunction(ComponentResource):
                                             "Type": "Task",
                                             "Resource": arns[1],
                                             "End": True,
+                                            "Retry": [
+                                                {
+                                                    "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                                                    "IntervalSeconds": 1,
+                                                    "MaxAttempts": 2,
+                                                    "BackoffRate": 1.5,
+                                                    "JitterStrategy": "FULL",
+                                                },
+                                                {
+                                                    "ErrorEquals": ["RateLimitError", "OpenAIError"],
+                                                    "IntervalSeconds": 5,
+                                                    "MaxAttempts": 5,
+                                                    "BackoffRate": 2.0,
+                                                },
+                                                {
+                                                    "ErrorEquals": ["States.ALL"],
+                                                    "IntervalSeconds": 2,
+                                                    "MaxAttempts": 3,
+                                                    "BackoffRate": 2.0,
+                                                }
+                                            ],
                                         }
                                     },
                                 },
                                 "ResultPath": "$.poll_results",
-                                "Next": "CompactAllDeltas",
+                                "Next": "PrepareChunkedCompaction",
                             },
-                            "CompactAllDeltas": {
+                            "PrepareChunkedCompaction": {
+                                "Type": "Pass",
+                                "Comment": "Prepare data for chunked compaction",
+                                "Parameters": {
+                                    "batch_id.$": "$$.Execution.Name",
+                                    "delta_results.$": "$.poll_results",
+                                    "chunk_index": 0,
+                                    "total_chunks_processed": 0,
+                                    "operation": "process_chunk",
+                                },
+                                "Next": "CheckForDeltas",
+                            },
+                            "CheckForDeltas": {
+                                "Type": "Choice",
+                                "Comment": "Check if there are deltas to process",
+                                "Choices": [
+                                    {
+                                        "Variable": "$.delta_results[0]",
+                                        "IsPresent": True,
+                                        "Next": "ProcessChunk",
+                                    }
+                                ],
+                                "Default": "FinalMerge",
+                            },
+                            "ProcessChunk": {
                                 "Type": "Task",
                                 "Resource": arns[2],
+                                "Comment": "Process a chunk of deltas (max 10)",
                                 "Parameters": {
-                                    "delta_results.$": "$.poll_results"
+                                    "operation": "process_chunk",
+                                    "batch_id.$": "$.batch_id",
+                                    "chunk_index.$": "$.chunk_index",
+                                    "delta_results.$": "$.delta_results",
+                                },
+                                "ResultPath": "$.chunk_result",
+                                "Next": "CheckContinuation",
+                                "Retry": [
+                                    {
+                                        # Fast retry for Lambda service errors to keep container warm
+                                        "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                                        "IntervalSeconds": 1,
+                                        "MaxAttempts": 2,
+                                        "BackoffRate": 1.5,
+                                        "JitterStrategy": "FULL",
+                                    },
+                                    {
+                                        # Slower retry for rate limits
+                                        "ErrorEquals": ["Lambda.TooManyRequestsException", "States.Timeout"],
+                                        "IntervalSeconds": 2,
+                                        "MaxAttempts": 3,
+                                        "BackoffRate": 2.0,
+                                    },
+                                    {
+                                        # Catch-all for other errors
+                                        "ErrorEquals": ["States.ALL"],
+                                        "IntervalSeconds": 1,
+                                        "MaxAttempts": 3,
+                                        "BackoffRate": 2.0,
+                                    }
+                                ],
+                                "Catch": [
+                                    {
+                                        "ErrorEquals": ["States.ALL"],
+                                        "Next": "ChunkProcessingFailed",
+                                        "ResultPath": "$.error",
+                                    }
+                                ],
+                            },
+                            "CheckContinuation": {
+                                "Type": "Choice",
+                                "Comment": "Check if there are more chunks to process",
+                                "Choices": [
+                                    {
+                                        "Variable": "$.chunk_result.has_more_chunks",
+                                        "BooleanEquals": True,
+                                        "Next": "PrepareNextChunk",
+                                    }
+                                ],
+                                "Default": "FinalMerge",
+                            },
+                            "PrepareNextChunk": {
+                                "Type": "Pass",
+                                "Comment": "Prepare for next chunk iteration",
+                                "Parameters": {
+                                    "batch_id.$": "$.batch_id",
+                                    "operation": "process_chunk",
+                                    "chunk_index.$": "$.chunk_result.next_chunk_index",
+                                    "delta_results.$": "$.chunk_result.remaining_deltas",
+                                    "total_chunks_processed.$": (
+                                        "States.MathAdd($.total_chunks_processed, 1)"
+                                    ),
+                                },
+                                "Next": "ProcessChunk",
+                            },
+                            "FinalMerge": {
+                                "Type": "Task",
+                                "Resource": arns[2],
+                                "Comment": "Final merge of all intermediate chunks",
+                                "Parameters": {
+                                    "operation": "final_merge",
+                                    "batch_id.$": "$.batch_id",
+                                    "total_chunks.$": "States.MathAdd($.total_chunks_processed, 1)",
                                 },
                                 "End": True,
+                                "Retry": [
+                                    {
+                                        # Fast retry to keep container warm for final merge
+                                        "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                                        "IntervalSeconds": 1,
+                                        "MaxAttempts": 2,
+                                        "BackoffRate": 1.5,
+                                        "JitterStrategy": "FULL",
+                                    },
+                                    {
+                                        # Longer retry for resource issues during compaction
+                                        "ErrorEquals": ["States.ALL"],
+                                        "IntervalSeconds": 3,
+                                        "MaxAttempts": 3,
+                                        "BackoffRate": 2.0,
+                                    }
+                                ],
+                                "Catch": [
+                                    {
+                                        "ErrorEquals": ["States.ALL"],
+                                        "Next": "FinalMergeFailed",
+                                        "ResultPath": "$.error",
+                                    }
+                                ],
+                            },
+                            "ChunkProcessingFailed": {
+                                "Type": "Fail",
+                                "Comment": "Chunk processing failed",
+                                "Cause": "Failed to process chunk during compaction",
+                            },
+                            "FinalMergeFailed": {
+                                "Type": "Fail",
+                                "Comment": "Final merge failed",
+                                "Cause": (
+                                    "Failed to merge intermediate chunks during " "final compaction"
+                                ),
                             },
                         },
                     }
@@ -228,10 +394,24 @@ class LineEmbeddingStepFunction(ComponentResource):
                                 "Type": "Task",
                                 "Resource": arns[0],
                                 "Comment": (
-                                    "Query DynamoDB for lines with "
-                                    "embedding_status=NONE"
+                                    "Query DynamoDB for lines with " "embedding_status=NONE"
                                 ),
                                 "Next": "SubmitEmbedding",
+                                "Retry": [
+                                    {
+                                        "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                                        "IntervalSeconds": 1,
+                                        "MaxAttempts": 2,
+                                        "BackoffRate": 1.5,
+                                        "JitterStrategy": "FULL",
+                                    },
+                                    {
+                                        "ErrorEquals": ["States.ALL"],
+                                        "IntervalSeconds": 1,
+                                        "MaxAttempts": 3,
+                                        "BackoffRate": 2.0,
+                                    }
+                                ],
                             },
                             "SubmitEmbedding": {
                                 "Type": "Map",
@@ -244,6 +424,27 @@ class LineEmbeddingStepFunction(ComponentResource):
                                             "Type": "Task",
                                             "Resource": arns[1],
                                             "End": True,
+                                            "Retry": [
+                                                {
+                                                    "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                                                    "IntervalSeconds": 1,
+                                                    "MaxAttempts": 2,
+                                                    "BackoffRate": 1.5,
+                                                    "JitterStrategy": "FULL",
+                                                },
+                                                {
+                                                    "ErrorEquals": ["RateLimitError", "OpenAIError"],
+                                                    "IntervalSeconds": 5,
+                                                    "MaxAttempts": 5,
+                                                    "BackoffRate": 2.0,
+                                                },
+                                                {
+                                                    "ErrorEquals": ["States.ALL"],
+                                                    "IntervalSeconds": 2,
+                                                    "MaxAttempts": 3,
+                                                    "BackoffRate": 2.0,
+                                                }
+                                            ],
                                         },
                                     },
                                 },
@@ -261,18 +462,10 @@ class LineEmbeddingStepFunction(ComponentResource):
             {
                 "chromadb_bucket_name": self.chromadb_buckets.bucket_name,
                 "chromadb_queue_url": self.chromadb_queues.delta_queue_url,
-                "chromadb_line_polling_lambda_arn": (
-                    self.chromadb_lambdas.line_polling_lambda.arn
-                ),
-                "chromadb_compaction_lambda_arn": (
-                    self.chromadb_lambdas.compaction_lambda.arn
-                ),
-                "poll_and_store_embeddings_sm_arn": (
-                    self.poll_and_store_embeddings_sm.arn
-                ),
-                "create_embedding_batches_sm_arn": (
-                    self.create_embedding_batches_sm.arn
-                ),
+                "chromadb_line_polling_lambda_arn": (self.chromadb_lambdas.line_polling_lambda.arn),
+                "chromadb_compaction_lambda_arn": (self.chromadb_lambdas.compaction_lambda.arn),
+                "poll_and_store_embeddings_sm_arn": (self.poll_and_store_embeddings_sm.arn),
+                "create_embedding_batches_sm_arn": (self.create_embedding_batches_sm.arn),
                 "list_pending_openai_batches_lambda_arn": (
                     self.chromadb_lambdas.list_pending_lambda.arn
                 ),
@@ -291,7 +484,7 @@ class LineEmbeddingStepFunction(ComponentResource):
 class LegacyLineEmbeddingStepFunction(ComponentResource):
     """Legacy Pinecone-based line embedding step functions (deprecated)."""
 
-    def __init__(self, name: str, opts: ResourceOptions = None):
+    def __init__(self, name: str, opts: Optional[ResourceOptions] = None):
         super().__init__(
             f"{__name__}-{name}-legacy",
             "aws:stepfunctions:LegacyLineEmbeddingStepFunction",
@@ -301,4 +494,3 @@ class LegacyLineEmbeddingStepFunction(ComponentResource):
 
         # NOTE: Move existing Pinecone-based logic here if needed for transition
         # For now, this is a placeholder to maintain backward compatibility
-        pass
