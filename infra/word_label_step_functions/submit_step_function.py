@@ -85,6 +85,7 @@ class WordLabelStepFunctions(ComponentResource):
             handler="poll_single_batch.poll_handler",
             timeout=900,
             memory_size=512,
+            architectures=["arm64"],
             code=AssetArchive(
                 {
                     "poll_single_batch.py": FileAsset(
@@ -144,6 +145,7 @@ class WordLabelStepFunctions(ComponentResource):
             handler="list_pending_batches_for_polling.list_handler",
             timeout=900,
             memory_size=512,
+            architectures=["arm64"],
             code=AssetArchive(
                 {
                     "list_pending_batches_for_polling.py": FileAsset(
