@@ -166,6 +166,43 @@ class LambdaLayer(ComponentResource):
             hash_obj.update(rel_path.encode())
 
         return hash_obj.hexdigest()
+    
+    def _get_local_dependencies(self) -> List[str]:
+        """Get list of local package dependencies from pyproject.toml."""
+        package_path = os.path.join(PROJECT_DIR, self.package_dir)
+        pyproject_path = os.path.join(package_path, "pyproject.toml")
+        
+        local_deps = []
+        if os.path.exists(pyproject_path):
+            import toml
+            try:
+                with open(pyproject_path, 'r') as f:
+                    data = toml.load(f)
+                    
+                # Check main dependencies
+                deps = data.get('project', {}).get('dependencies', [])
+                
+                # Also check optional dependencies if using extras
+                if self.package_extras:
+                    optional_deps = data.get('project', {}).get('optional-dependencies', {})
+                    if self.package_extras in optional_deps:
+                        deps.extend(optional_deps[self.package_extras])
+                
+                # Filter for local packages (receipt-*)
+                for dep in deps:
+                    # Extract package name from version spec
+                    dep_name = dep.split('[')[0].split('>')[0].split('<')[0].split('=')[0].strip()
+                    if dep_name.startswith('receipt-'):
+                        # Convert package name to directory name (receipt-dynamo -> receipt_dynamo)
+                        dir_name = dep_name.replace('-', '_')
+                        local_path = os.path.join(PROJECT_DIR, dir_name)
+                        if os.path.exists(local_path):
+                            local_deps.append(dir_name)
+                            pulumi.log.info(f"📦 Found local dependency: {dir_name} for {self.name}")
+            except Exception as e:
+                pulumi.log.warn(f"Could not parse pyproject.toml: {e}")
+                
+        return local_deps
 
     def _encode_shell_script(self, script_content: str) -> str:
         """Encode a shell script to base64 for use in buildspec to avoid parsing issues."""
@@ -320,9 +357,25 @@ echo "🎉 Parallel function updates completed!"'''
                 "echo Checking source structure:",
                 "ls -la source/ || echo 'source directory not found'",
                 "ls -la source/pyproject.toml || echo 'pyproject.toml not found in source'",
+                # Check for and build local dependencies first
+                'if [ -d "dependencies" ]; then',
+                '    echo "📦 Found local dependencies, building them first..."',
+                '    mkdir -p dep_wheels',
+                '    for dep_dir in dependencies/*; do',
+                '        if [ -d "$dep_dir" ]; then',
+                '            dep_name=$(basename "$dep_dir")',
+                '            echo "  - Building $dep_name"',
+                '            cd "$dep_dir"',
+                '            python3 -m build --wheel --outdir ../../dep_wheels/',
+                '            cd ../../',
+                '        fi',
+                '    done',
+                '    echo "📦 Installing local dependency wheels..."',
+                f'    python{version} -m pip install --no-cache-dir dep_wheels/*.whl -t build/python/lib/python{version}/site-packages || true',
+                'fi',
                 "rm -rf build && mkdir -p build",
                 f"mkdir -p build/python/lib/python{version}/site-packages",
-                'echo "Building wheel"',
+                'echo "Building main package wheel"',
                 "cd source && python3 -m build --wheel --outdir ../dist/ && cd ..",
                 'echo "Installing wheel with optimization exclusions for Lambda layer"',
                 # Find the wheel file and install with extras if specified
@@ -431,9 +484,27 @@ echo "🎉 Parallel function updates completed!"'''
                 "echo Checking source structure:",
                 "ls -la source/ || echo 'source directory not found'",
                 "ls -la source/pyproject.toml || echo 'pyproject.toml not found in source'",
+                # Check for and build local dependencies first
+                'if [ -d "dependencies" ]; then',
+                '    echo "📦 Found local dependencies, building them first..."',
+                '    mkdir -p dep_wheels',
+                '    for dep_dir in dependencies/*; do',
+                '        if [ -d "$dep_dir" ]; then',
+                '            dep_name=$(basename "$dep_dir")',
+                '            echo "  - Building $dep_name"',
+                '            cd "$dep_dir"',
+                '            python3 -m build --wheel --outdir ../../dep_wheels/',
+                '            cd ../../',
+                '        fi',
+                '    done',
+                '    echo "📦 Installing local dependency wheels for all Python versions..."',
+                '    for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do',
+                '        python${v} -m pip install --no-cache-dir dep_wheels/*.whl -t build/python/lib/python${v}/site-packages || true',
+                '    done',
+                'fi',
                 "rm -rf build && mkdir -p build",
                 'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do mkdir -p build/python/lib/python${v}/site-packages; done',
-                'echo "Building wheel"',
+                'echo "Building main package wheel"',
                 "cd source && python3 -m build --wheel --outdir ../dist/ && cd ..",
                 'echo "Installing wheel for each runtime with Lambda optimizations"',
                 # Note: Removed --no-compile to allow pydantic-core and other compiled extensions
@@ -1135,6 +1206,9 @@ done
         # Escape the paths to handle special characters
         safe_package_path = shlex.quote(package_path)
         safe_bucket = shlex.quote(bucket)
+        
+        # Get local dependencies that need to be included
+        local_deps = self._get_local_dependencies()
 
         return f"""#!/bin/bash
 set -e
@@ -1145,8 +1219,12 @@ PACKAGE_PATH={safe_package_path}
 HASH="{package_hash}"
 LAYER_NAME="{self.name}"
 FORCE_REBUILD="{self.force_rebuild}"
+LOCAL_DEPS="{' '.join(local_deps)}"
 
 echo "📦 Checking if source upload needed for layer '$LAYER_NAME'..."
+if [ -n "$LOCAL_DEPS" ]; then
+    echo "📚 Including local dependencies: $LOCAL_DEPS"
+fi
 
 # Check if we need to upload
 STORED_HASH=$(aws s3 cp "s3://$BUCKET/$LAYER_NAME/hash.txt" - 2>/dev/null || echo '')
@@ -1187,12 +1265,31 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 echo "Creating source package structure..."
 mkdir -p "$TMP_DIR/source"
 
-# Copy the entire package directory structure
+# Copy the main package directory structure
 cp -r "$PACKAGE_PATH"/* "$TMP_DIR/source/"
+
+# Include local dependencies if present
+if [ -n "$LOCAL_DEPS" ]; then
+    echo "Including local dependencies in source package..."
+    for dep in $LOCAL_DEPS; do
+        DEP_PATH="$(dirname "$PACKAGE_PATH")/$dep"
+        if [ -d "$DEP_PATH" ]; then
+            echo "  - Adding $dep from $DEP_PATH"
+            mkdir -p "$TMP_DIR/dependencies/$dep"
+            cp -r "$DEP_PATH"/* "$TMP_DIR/dependencies/$dep/"
+        else
+            echo "  ⚠️  Warning: Local dependency $dep not found at $DEP_PATH"
+        fi
+    done
+fi
 
 # Create zip quietly to reduce output
 cd "$TMP_DIR"
-zip -qr source.zip source
+if [ -d dependencies ]; then
+    zip -qr source.zip source dependencies
+else
+    zip -qr source.zip source
+fi
 cd - >/dev/null
 
 echo "Uploading to S3..."
