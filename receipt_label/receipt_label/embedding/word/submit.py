@@ -112,14 +112,8 @@ def query_receipt_words(
     """Query the ReceiptWords from DynamoDB."""
     if client_manager is None:
         client_manager = get_client_manager()
-    (
-        _,
-        _,
-        words,
-        _,
-        _,
-    ) = client_manager.dynamo.get_receipt_details(image_id, receipt_id)
-    return words
+    receipt_details = client_manager.dynamo.get_receipt_details(image_id, receipt_id)
+    return receipt_details.words
 
 
 def chunk_into_embedding_batches(
