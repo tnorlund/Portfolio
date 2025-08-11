@@ -28,7 +28,10 @@ import s3_website  # noqa: F401
 from dynamo_db import (
     dynamodb_table,  # Import DynamoDB table from original code
 )
-from embedding_step_functions import EmbeddingInfrastructure
+
+from embedding_step_functions.infrastructure_hybrid import (
+    HybridEmbeddingInfrastructure,
+)
 from notifications import NotificationSystem
 from pulumi import ResourceOptions
 from raw_bucket import raw_bucket  # Import the actual bucket instance
@@ -101,7 +104,7 @@ validate_merchant_step_functions = ValidateMerchantStepFunctions(
     "validate-merchant"
 )
 validation_pipeline = ValidationPipeline("validation-pipeline")
-embedding_infrastructure = EmbeddingInfrastructure("embedding-infra")
+embedding_infrastructure = HybridEmbeddingInfrastructure("embedding-infra")
 validation_by_merchant_step_functions = ValidationByMerchantStepFunction(
     "validation-by-merchant"
 )

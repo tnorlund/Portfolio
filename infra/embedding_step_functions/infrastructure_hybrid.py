@@ -41,9 +41,9 @@ from dynamo_db import dynamodb_table
 
 # Import the existing Lambda layer for receipt packages
 try:
-    from fast_lambda_layer import fast_lambda_layer
+    from lambda_layer import label_layer
 except ImportError:
-    fast_lambda_layer = None
+    label_layer = None
 
 # Configuration
 config = Config("portfolio")
@@ -172,6 +172,7 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                                     "dynamodb:DeleteItem",
                                     "dynamodb:BatchWriteItem",
                                     "dynamodb:BatchGetItem",
+                                    "dynamodb:DescribeTable",
                                 ],
                                 "Resource": [
                                     f"arn:aws:dynamodb:*:*:table/{args[0]}",
@@ -268,8 +269,8 @@ class HybridEmbeddingInfrastructure(ComponentResource):
 
             # Create the Lambda function
             layers = []
-            if fast_lambda_layer:
-                layers = [fast_lambda_layer.arn]
+            if label_layer:
+                layers = [label_layer.arn]
 
             lambda_func = Function(
                 f"{name}-lambda-{stack}",
@@ -283,7 +284,7 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                 environment=FunctionEnvironmentArgs(variables=env_vars),
                 layers=layers,  # Use the receipt_label layer
                 architectures=["arm64"],
-                opts=ResourceOptions(parent=self),
+                opts=ResourceOptions(parent=self, ignore_changes=["layers"]),
             )
 
             self.zip_lambda_functions[name] = lambda_func
