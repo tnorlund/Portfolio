@@ -1,1 +1,1 @@
-from .infra import LineEmbeddingStepFunction
+from .infrastructure import EmbeddingInfrastructure

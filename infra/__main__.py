@@ -28,7 +28,7 @@ import s3_website  # noqa: F401
 from dynamo_db import (
     dynamodb_table,  # Import DynamoDB table from original code
 )
-from embedding_step_functions import LineEmbeddingStepFunction
+from embedding_step_functions import EmbeddingInfrastructure
 from notifications import NotificationSystem
 from pulumi import ResourceOptions
 from raw_bucket import raw_bucket  # Import the actual bucket instance
@@ -103,10 +103,8 @@ validate_merchant_step_functions = ValidateMerchantStepFunctions(
     "validate-merchant"
 )
 validation_pipeline = ValidationPipeline("validation-pipeline")
-line_embedding_step_functions = LineEmbeddingStepFunction(
-    "step-func",
-    base_image_name=base_images.label_base_image.tags[0],  # Using first tag from docker-build provider
-    base_image_resource=base_images.label_base_image,  # Pass the actual resource for dependency
+embedding_infrastructure = EmbeddingInfrastructure(
+    "embedding-infra"
 )
 validation_by_merchant_step_functions = ValidationByMerchantStepFunction(
     "validation-by-merchant"
