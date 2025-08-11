@@ -107,6 +107,15 @@ class ReceiptLine(
                 "embedding_status must be an EmbeddingStatus or a string"
             )
 
+        # Validate is_noise field
+        if not isinstance(self.is_noise, bool):
+            raise ValueError(
+                (
+                    "is_noise must be a boolean, got "
+                    f"{type(self.is_noise).__name__}"
+                )
+            )
+
     @property
     def key(self) -> Dict[str, Any]:
         """
@@ -149,6 +158,7 @@ class ReceiptLine(
         custom_fields = {
             **self._get_geometry_fields(),
             "embedding_status": {"S": self.embedding_status},
+            "is_noise": {"BOOL": self.is_noise},
         }
 
         return self.build_dynamodb_item(
@@ -166,6 +176,7 @@ class ReceiptLine(
                 "angle_radians",
                 "confidence",
                 "embedding_status",
+                "is_noise",
             },
         )
 
@@ -177,7 +188,8 @@ class ReceiptLine(
             f"image_id={_repr_str(self.image_id)}, "
             f"line_id={self.line_id}, "
             f"{geometry_fields}, "
-            f"embedding_status={self.embedding_status}"
+            f"embedding_status={self.embedding_status}, "
+            f"is_noise={self.is_noise}"
             f")"
         )
 
@@ -188,12 +200,12 @@ class ReceiptLine(
             self.image_id,
             self.line_id,
             self.embedding_status,
+            self.is_noise,
         )
 
     def __hash__(self) -> int:
         """Returns the hash value of the ReceiptLine object."""
         return hash(self._get_geometry_hash_fields())
-
 
 
 def item_to_receipt_line(item: Dict[str, Any]) -> ReceiptLine:
@@ -244,6 +256,7 @@ def item_to_receipt_line(item: Dict[str, Any]) -> ReceiptLine:
     custom_extractors = {
         "text": EntityFactory.extract_text_field,
         "embedding_status": EntityFactory.extract_embedding_status,
+        "is_noise": EntityFactory.extract_is_noise,
         **create_geometry_extractors(),  # Handles all geometry fields
     }
 
