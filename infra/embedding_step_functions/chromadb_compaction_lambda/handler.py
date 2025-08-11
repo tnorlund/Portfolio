@@ -259,7 +259,6 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             "collections_compacted": merge_result["collections"],
             "processing_time_seconds": merge_result["processing_time"],
             "message": "Final merge completed successfully",
->>>>>>> origin/chroma_db
         }
 
     except Exception as e:  # pylint: disable=broad-exception-caught
