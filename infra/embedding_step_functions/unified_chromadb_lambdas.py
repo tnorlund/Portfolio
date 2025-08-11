@@ -143,8 +143,8 @@ class UnifiedChromaDBLambdas(ComponentResource):
         # Create Lambda functions with different configurations
         self._create_lambda_functions(
             stack=stack,
-            region=region,
-            account_id=account_id,
+            region=region_static,
+            account_id=account_id_static,
             chromadb_bucket_name=chromadb_bucket_name,
             chromadb_queue_url=chromadb_queue_url,
             chromadb_queue_arn=chromadb_queue_arn,
@@ -271,7 +271,7 @@ class UnifiedChromaDBLambdas(ComponentResource):
 
         # Create IAM role for all Lambda functions (can be shared or separate)
         self.lambda_role = self._create_lambda_role(
-            stack, region, account_id, 
+            stack, region_static, account_id_static, 
             chromadb_bucket_name, chromadb_queue_arn, s3_batch_bucket_name
         )
 
