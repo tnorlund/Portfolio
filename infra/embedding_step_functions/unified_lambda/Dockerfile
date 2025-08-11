@@ -20,11 +20,17 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir /tmp/receipt_label && \
     rm -rf /tmp/receipt_dynamo /tmp/receipt_label
 
-# Copy the unified handler module (simplified path in minimal context)
-COPY unified_lambda/ ${LAMBDA_TASK_ROOT}/
+# Copy the unified handler module
+COPY infra/embedding_step_functions/unified_lambda/ ${LAMBDA_TASK_ROOT}/
 
-# Copy original handlers for backward compatibility (pre-organized in legacy/ dir)
-COPY legacy/ ${LAMBDA_TASK_ROOT}/legacy/
+# Copy original handlers for backward compatibility during migration
+# These can be removed once migration is complete
+COPY infra/embedding_step_functions/chromadb_word_polling_lambda/handler.py ${LAMBDA_TASK_ROOT}/legacy/word_polling.py
+COPY infra/embedding_step_functions/chromadb_compaction_lambda/handler.py ${LAMBDA_TASK_ROOT}/legacy/compaction.py
+COPY infra/embedding_step_functions/chromadb_line_polling_lambda/handler.py ${LAMBDA_TASK_ROOT}/legacy/line_polling.py
+COPY infra/embedding_step_functions/find_unembedded_lines_lambda/handler.py ${LAMBDA_TASK_ROOT}/legacy/find_unembedded.py
+COPY infra/embedding_step_functions/submit_to_openai_lambda/handler.py ${LAMBDA_TASK_ROOT}/legacy/submit_openai.py
+COPY infra/embedding_step_functions/list_pending_batches_lambda/handler.py ${LAMBDA_TASK_ROOT}/legacy/list_pending.py
 
 # Default handler is the router
 # Individual Lambda functions will override this with environment variables

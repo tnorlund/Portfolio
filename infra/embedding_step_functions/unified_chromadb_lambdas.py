@@ -88,117 +88,55 @@ class UnifiedChromaDBLambdas(ComponentResource):
         # Get ECR authorization token - still needed but we'll minimize context hash impact
         ecr_auth_token = get_authorization_token_output()
 
-        # Create minimal build context with only required files
-        # This dramatically reduces context hash changes by excluding unnecessary files
-        import tempfile
-        import shutil
+        # Revert to repository root context but with better .dockerignore
+        build_context_path = Path(__file__).parent.parent.parent
         
-        repo_root = Path(__file__).parent.parent.parent
-        
-        # Create temporary directory for minimal build context
-        temp_context_dir = Path(tempfile.mkdtemp(prefix="unified-lambda-build-"))
-        
-        try:
-            # Copy only the required packages and files
-            shutil.copytree(repo_root / "receipt_dynamo", temp_context_dir / "receipt_dynamo")
-            shutil.copytree(repo_root / "receipt_label", temp_context_dir / "receipt_label")
-            
-            # Copy the unified lambda directory to the root of temp context for simpler paths
-            unified_lambda_src = repo_root / "infra/embedding_step_functions/unified_lambda"
-            unified_lambda_dst = temp_context_dir / "unified_lambda"
-            
-            # Ensure the destination doesn't exist before copying
-            if unified_lambda_dst.exists():
-                shutil.rmtree(unified_lambda_dst)
-            shutil.copytree(unified_lambda_src, unified_lambda_dst)
-            
-            # Verify the Dockerfile was copied
-            dockerfile_path = unified_lambda_dst / "Dockerfile"
-            if not dockerfile_path.exists():
-                raise FileNotFoundError(f"Dockerfile not found at {dockerfile_path}")
-            
-            print(f"DEBUG: Dockerfile verified at: {dockerfile_path}")
-            
-            # Copy individual handler files for legacy compatibility (simplified paths)
-            legacy_dir = temp_context_dir / "legacy"
-            legacy_dir.mkdir(exist_ok=True)
-            
-            handler_mapping = {
-                "chromadb_word_polling": "word_polling.py",
-                "chromadb_compaction": "compaction.py", 
-                "chromadb_line_polling": "line_polling.py",
-                "find_unembedded_lines": "find_unembedded.py",
-                "submit_to_openai": "submit_openai.py",
-                "list_pending_batches": "list_pending.py"
-            }
-            
-            for handler_name, legacy_name in handler_mapping.items():
-                handler_src = repo_root / f"infra/embedding_step_functions/{handler_name}_lambda/handler.py"
-                if handler_src.exists():
-                    shutil.copy2(handler_src, legacy_dir / legacy_name)
-            
-            build_context_path = temp_context_dir
-            
-            # Debug: Print what we actually created
-            print(f"DEBUG: Build context created at: {build_context_path}")
-            print(f"DEBUG: Contents: {list(build_context_path.iterdir())}")
-            dockerfile_path = build_context_path / "unified_lambda/Dockerfile"
-            print(f"DEBUG: Dockerfile path: {dockerfile_path}")
-            print(f"DEBUG: Dockerfile exists: {dockerfile_path.exists()}")
-            
-            # Build unified image with static build args only  
-            build_args = {
-                "PYTHON_VERSION": "3.12",
-                "BUILDKIT_INLINE_CACHE": "1",
-            }
+        # Build unified image with static build args only  
+        build_args = {
+            "PYTHON_VERSION": "3.12",
+            "BUILDKIT_INLINE_CACHE": "1",
+        }
 
-            self.unified_image = docker_build.Image(
-                f"unified-embedding-img-v2-{stack}",  # v2 to force new resource
-                context={
-                    "location": str(build_context_path.resolve()),
+        self.unified_image = docker_build.Image(
+            f"unified-embedding-img-v2-{stack}",  # v2 to force new resource
+            context={
+                "location": str(build_context_path.resolve()),
+            },
+            dockerfile={
+                "location": str((build_context_path / "infra/embedding_step_functions/unified_lambda/Dockerfile").resolve()),
+            },
+            platforms=["linux/arm64"],
+            build_args=build_args,
+            # ECR caching configuration with static URLs
+            cache_from=[
+                {
+                    "registry": {
+                        "ref": f"{repo_url}:cache",
+                    },
                 },
-                dockerfile={
-                    "location": str(
-                        (build_context_path / "unified_lambda/Dockerfile").resolve()
-                    ),
+            ],
+            cache_to=[
+                {
+                    "registry": {
+                        "imageManifest": True,
+                        "ociMediaTypes": True,
+                        "ref": f"{repo_url}:cache",
+                    },
                 },
-                platforms=["linux/arm64"],
-                build_args=build_args,
-                # ECR caching configuration with static URLs
-                cache_from=[
-                    {
-                        "registry": {
-                            "ref": f"{repo_url}:cache",
-                        },
-                    },
-                ],
-                cache_to=[
-                    {
-                        "registry": {
-                            "imageManifest": True,
-                            "ociMediaTypes": True,
-                            "ref": f"{repo_url}:cache",
-                        },
-                    },
-                ],
-                push=True,
-                registries=[
-                    {
-                        "address": ecr_registry,
-                        "password": ecr_auth_token.password,
-                        "username": ecr_auth_token.user_name,
-                    },
-                ],
-                tags=[
-                    f"{repo_url}:latest",
-                ],
-                opts=ResourceOptions(parent=self, depends_on=[self.unified_repo]),
-            )
-            
-        finally:
-            # Clean up temporary build context
-            if temp_context_dir.exists():
-                shutil.rmtree(temp_context_dir)
+            ],
+            push=True,
+            registries=[
+                {
+                    "address": ecr_registry,
+                    "password": ecr_auth_token.password,
+                    "username": ecr_auth_token.user_name,
+                },
+            ],
+            tags=[
+                f"{repo_url}:latest",
+            ],
+            opts=ResourceOptions(parent=self, depends_on=[self.unified_repo]),
+        )
 
         # Create Lambda functions with different configurations
         self._create_lambda_functions(
