@@ -5,6 +5,7 @@ import pytest
 from receipt_label.utils.noise_detection import (
     NoiseDetectionConfig,
     is_noise_word,
+    is_noise_line,
 )
 
 
@@ -235,3 +236,175 @@ class TestNoiseDetection:
             assert (
                 is_noise_word(pattern) is False
             ), f"'{pattern}' should NOT be noise"
+
+
+class TestNoiseLineDetection:
+    """Test suite for noise line detection."""
+
+    @pytest.mark.unit
+    def test_separator_lines(self):
+        """Test that separator lines are detected as noise."""
+        separator_lines = [
+            "==================",
+            "--------------------",
+            "********************",
+            "____________________",
+            "....................",
+            "////////////////////",
+            "\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\",
+            "~~~~~~~~~~~~~~~~~~~~",
+            "||||||||||||||||||||",
+            "####################",
+            "= = = = = = = = = = =",  # Spaced separators
+            "- - - - - - - - - - -",
+            "* * * * * * * * * * *",
+        ]
+
+        for line in separator_lines:
+            assert (
+                is_noise_line(line) is True
+            ), f"'{line}' should be detected as noise line"
+
+    @pytest.mark.unit
+    def test_empty_and_whitespace_lines(self):
+        """Test that empty and whitespace-only lines are noise."""
+        empty_lines = [
+            "",
+            " ",
+            "  ",
+            "   ",
+            "\t",
+            "\t\t",
+            " \t ",
+            "\n",
+            " \n ",
+        ]
+
+        for line in empty_lines:
+            assert (
+                is_noise_line(line) is True
+            ), f"'{repr(line)}' should be detected as noise line"
+
+    @pytest.mark.unit
+    def test_lines_with_all_noise_words(self):
+        """Test that lines containing only noise words are detected as noise."""
+        noise_word_lines = [
+            "| | | | |",
+            ". . . . .",
+            ", , , ,",
+            "- - -",
+            "/ \\ / \\",
+            "( ) [ ]",
+            "{ } < >",
+        ]
+
+        for line in noise_word_lines:
+            assert (
+                is_noise_line(line) is True
+            ), f"'{line}' should be detected as noise line"
+
+    @pytest.mark.unit
+    def test_meaningful_lines(self):
+        """Test that meaningful lines are NOT detected as noise."""
+        meaningful_lines = [
+            "TOTAL: $12.99",
+            "Big Mac",
+            "Walmart #1234",
+            "Thank you for shopping",
+            "DATE: 01/15/2024",
+            "SUBTOTAL",
+            "TAX",
+            "Your cashier was: John",
+            "Order #ABC123",
+            "1 x Apple @ $0.99",
+            "VISA ****1234",
+            "============ RECEIPT ============",  # Has meaningful word
+            "--- CUSTOMER COPY ---",  # Has meaningful words
+        ]
+
+        for line in meaningful_lines:
+            assert (
+                is_noise_line(line) is False
+            ), f"'{line}' should NOT be detected as noise line"
+
+    @pytest.mark.unit
+    def test_mixed_separator_patterns(self):
+        """Test mixed separator patterns that are still noise."""
+        mixed_separators = [
+            "-*-*-*-*-*-",
+            "=+=+=+=+=+",
+            "_-_-_-_-_-",
+            "*~*~*~*~*~",
+            "#-#-#-#-#-",
+            "... ... ...",
+            "--- === ---",
+            "*** --- ***",
+        ]
+
+        for line in mixed_separators:
+            assert (
+                is_noise_line(line) is True
+            ), f"'{line}' should be detected as noise line"
+
+    @pytest.mark.unit
+    def test_lines_with_partial_meaningful_content(self):
+        """Test that lines with at least some meaningful content are not noise."""
+        partial_meaningful = [
+            "---- TOTAL ----",  # Has meaningful word
+            "**** $12.99 ****",  # Has price
+            "==== END ====",  # Has meaningful word
+            "| Item | Price |",  # Table header
+            "... more ...",  # Has meaningful word
+            "Page 1 of 2",  # Page indicator
+        ]
+
+        for line in partial_meaningful:
+            assert (
+                is_noise_line(line) is False
+            ), f"'{line}' should NOT be detected as noise line"
+
+    @pytest.mark.unit
+    def test_custom_configuration_for_lines(self):
+        """Test line noise detection with custom configuration."""
+        # Custom config that doesn't preserve currency
+        custom_config = NoiseDetectionConfig(preserve_currency=False)
+
+        # A line with only currency symbols should be noise with custom config
+        assert is_noise_line("$ $ $ $", custom_config) is True
+
+        # But with default config, currency is preserved
+        assert is_noise_line("$ $ $ $") is False
+
+    @pytest.mark.unit
+    def test_real_receipt_examples(self):
+        """Test with real receipt line examples."""
+        # Common noise lines from receipts
+        noise_examples = [
+            "********************************",
+            "--------------------------------",
+            "................................",
+            "                                ",  # Just spaces
+            "||||||||||||||||||||||||||||||||",
+        ]
+
+        for line in noise_examples:
+            assert (
+                is_noise_line(line) is True
+            ), f"'{line}' should be detected as noise"
+
+        # Common meaningful lines from receipts
+        meaningful_examples = [
+            "Store #1234 Reg #02 Tran #5678",
+            "GROCERY",
+            "2 @ $1.99",
+            "SUBTOTAL            $19.99",
+            "SALES TAX            $1.60",
+            "TOTAL               $21.59",
+            "CHANGE DUE           $0.00",
+            "Items Sold: 5",
+        ]
+
+        for line in meaningful_examples:
+            assert (
+                is_noise_line(line) is False
+            ), f"'{line}' should NOT be detected as noise"

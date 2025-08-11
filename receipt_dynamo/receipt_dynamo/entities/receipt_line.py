@@ -74,6 +74,7 @@ class ReceiptLine(
     angle_radians: float
     confidence: float
     embedding_status: EmbeddingStatus | str = EmbeddingStatus.NONE
+    is_noise: bool = False
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""

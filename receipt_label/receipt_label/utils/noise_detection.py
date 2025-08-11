@@ -154,3 +154,79 @@ def is_noise_word(
 
     # Not noise - it's a meaningful word
     return False
+
+
+def is_noise_line(
+    text: str, config: Optional[NoiseDetectionConfig] = None
+) -> bool:
+    """
+    Determine if an entire line is noise based on its content.
+
+    A line is considered noise if it:
+    - Contains only separator characters (===, ---, etc.)
+    - Is empty or only whitespace
+    - Contains only noise words (when split into words)
+    - Matches common separator line patterns
+
+    Args:
+        text: The line text to check
+        config: Optional configuration, uses DEFAULT_NOISE_CONFIG if not provided
+
+    Returns:
+        True if the line is considered noise, False otherwise
+
+    Examples:
+        >>> is_noise_line("==================")  # Separator line
+        True
+        >>> is_noise_line("--------------------")  # Separator line
+        True
+        >>> is_noise_line("********************")  # Separator line
+        True
+        >>> is_noise_line("   ")  # Whitespace only
+        True
+        >>> is_noise_line("")  # Empty
+        True
+        >>> is_noise_line("| | | | |")  # All noise words
+        True
+        >>> is_noise_line("TOTAL: $12.99")  # Meaningful line
+        False
+        >>> is_noise_line("Big Mac")  # Product name
+        False
+    """
+    if config is None:
+        config = DEFAULT_NOISE_CONFIG
+
+    # Empty or whitespace-only lines are noise
+    if not text or text.isspace():
+        return True
+
+    # Common separator line patterns (entire line is just separators)
+    separator_line_patterns = [
+        r"^-+$",  # All dashes
+        r"^=+$",  # All equals
+        r"^\*+$",  # All asterisks
+        r"^_+$",  # All underscores
+        r"^\.+$",  # All dots
+        r"^/+$",  # All forward slashes
+        r"^\\+$",  # All backslashes
+        r"^~+$",  # All tildes
+        r"^\|+$",  # All pipes
+        r"^##+$",  # All hashes (##########)
+        r"^[+\-=*_./\\~|# ]+$",  # Mix of separator characters with spaces
+    ]
+
+    for pattern in separator_line_patterns:
+        if re.match(pattern, text.strip()):
+            return True
+
+    # Check if all words in the line are noise
+    # Split by whitespace and check each word
+    words = text.split()
+    if words:
+        # If there are words, check if ALL of them are noise
+        all_noise = all(is_noise_word(word, config) for word in words)
+        if all_noise:
+            return True
+
+    # Line contains at least some meaningful content
+    return False
