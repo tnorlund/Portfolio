@@ -91,22 +91,10 @@ class UnifiedChromaDBLambdas(ComponentResource):
         # Revert to repository root context but with better .dockerignore
         build_context_path = Path(__file__).parent.parent.parent
         
-        # Build unified image with static build args only
-        # Add a cache buster to force rebuilds when handlers change
-        import subprocess
-        try:
-            git_hash = subprocess.check_output(
-                ["git", "rev-parse", "--short", "HEAD"],
-                cwd=str(build_context_path),
-                stderr=subprocess.DEVNULL,
-            ).decode().strip()
-        except:
-            git_hash = "unknown"
-            
+        # Build unified image with static build args only  
         build_args = {
             "PYTHON_VERSION": "3.12",
             "BUILDKIT_INLINE_CACHE": "1",
-            "GIT_COMMIT": git_hash,  # Cache buster for code changes
         }
 
         self.unified_image = docker_build.Image(

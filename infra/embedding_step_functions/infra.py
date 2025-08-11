@@ -189,12 +189,35 @@ class LineEmbeddingStepFunction(ComponentResource):
                                 "Comment": "Check if there are any pending batches to process",
                                 "Choices": [
                                     {
+                                        # Handle HTTP-wrapped response (current behavior)
+                                        "And": [
+                                            {
+                                                "Variable": "$.pending_batches.statusCode",
+                                                "NumericEquals": 200,
+                                            },
+                                            {
+                                                "Variable": "$.pending_batches.body",
+                                                "StringMatches": "*batch_id*",
+                                            }
+                                        ],
+                                        "Next": "ParsePendingBatches",
+                                    },
+                                    {
+                                        # Handle clean array response (after deployment)
                                         "Variable": "$.pending_batches[0]",
                                         "IsPresent": True,
                                         "Next": "PollLineEmbeddingBatch",
                                     }
                                 ],
                                 "Default": "NoPendingBatches",
+                            },
+                            "ParsePendingBatches": {
+                                "Type": "Pass",
+                                "Comment": "Parse HTTP body to get array of batches",
+                                "Parameters": {
+                                    "pending_batches.$": "States.StringToJson($.pending_batches.body)"
+                                },
+                                "Next": "PollLineEmbeddingBatch",
                             },
                             "PollLineEmbeddingBatch": {
                                 "Type": "Map",
