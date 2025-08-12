@@ -258,6 +258,19 @@ def handle_failed_status(
     batch_summary.status = BatchStatus.FAILED
     client_manager.dynamo.update_batch_summary(batch_summary)
 
+    # Mark all failed items for retry based on batch type
+    marked_count = 0
+    if error_info["error_details"]:
+        failed_ids = [detail["custom_id"] for detail in error_info["error_details"]]
+        # Determine entity type from batch_type
+        entity_type = "line" if batch_summary.batch_type == "LINE_EMBEDDING" else "word"
+        marked_count = mark_items_for_retry(failed_ids, entity_type, client_manager)
+        logger.info(
+            "Marked %d failed items from failed batch %s for retry",
+            marked_count,
+            openai_batch_id,
+        )
+
     # Log sample errors for debugging
     if error_info["sample_errors"]:
         logger.error(
@@ -272,6 +285,7 @@ def handle_failed_status(
         "error_count": error_info["error_count"],
         "error_types": error_info["error_types"],
         "sample_errors": error_info["sample_errors"],
+        "marked_for_retry": marked_count,
         "next_step": "create_retry_batch",
         "should_continue_processing": False,
     }
@@ -303,11 +317,28 @@ def handle_expired_status(
     batch_summary.status = BatchStatus.EXPIRED
     client_manager.dynamo.update_batch_summary(batch_summary)
 
+    # Mark failed items for retry based on batch type
+    marked_count = 0
+    if failed_ids:
+        # Determine entity type from batch_type
+        entity_type = "line" if batch_summary.batch_type == "LINE_EMBEDDING" else "word"
+        marked_count = mark_items_for_retry(failed_ids, entity_type, client_manager)
+        logger.info(
+            "Marked %d failed items from expired batch %s for retry",
+            marked_count,
+            openai_batch_id,
+        )
+
+    # TODO: Consider marking successful items as COMPLETED
+    # This would require implementing a similar function to mark_items_for_retry
+    # but setting status to COMPLETED instead of FAILED
+
     return {
         "action": "process_partial",
         "status": "expired",
         "successful_count": len(successful_results),
         "failed_count": len(failed_ids),
+        "marked_for_retry": marked_count,
         "partial_results": successful_results,
         "failed_ids": failed_ids,
         "next_step": "process_partial_and_retry_failed",
