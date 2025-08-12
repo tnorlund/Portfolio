@@ -112,7 +112,7 @@ class HybridEmbeddingInfrastructure(ComponentResource):
         self.register_outputs(
             {
                 "docker_image_uri": (
-                    self.docker_image.tags[0]
+                    self.docker_image.repo_digest
                     if hasattr(self, "docker_image")
                     else None
                 ),
@@ -407,7 +407,7 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                 f"{name}-lambda-{stack}",
                 name=f"{name}-{stack}",
                 package_type="Image",
-                image_uri=self.docker_image.tags[0],
+                image_uri=self.docker_image.repo_digest,
                 role=self.lambda_role.arn,
                 architectures=["arm64"],
                 memory_size=config["memory"],

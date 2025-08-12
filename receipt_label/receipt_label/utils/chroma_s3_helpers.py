@@ -18,7 +18,11 @@ import boto3
 
 from openai import OpenAI
 
-from .chroma_client import ChromaDBClient
+try:
+    from .chroma_client import ChromaDBClient, CHROMADB_AVAILABLE
+except ImportError:
+    CHROMADB_AVAILABLE = False
+    ChromaDBClient = None
 
 logger = logging.getLogger(__name__)
 
