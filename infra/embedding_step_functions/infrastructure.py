@@ -254,6 +254,11 @@ class EmbeddingInfrastructure(ComponentResource):
                 "timeout": 900,
                 "handler_type": "submit_words_openai",
             },
+            "split-into-chunks": {
+                "memory": 512,
+                "timeout": 60,
+                "handler_type": "split_into_chunks",
+            },
             "line-polling": {
                 "memory": 3008,
                 "timeout": 900,
@@ -397,6 +402,7 @@ class EmbeddingInfrastructure(ComponentResource):
                 self.lambda_functions["list-pending"].arn,
                 self.lambda_functions["line-polling"].arn,
                 self.lambda_functions["compaction"].arn,
+                self.lambda_functions["split-into-chunks"].arn,
             ).apply(lambda arns: json.dumps({
                 "Comment": "Poll OpenAI for completed batches and store in ChromaDB",
                 "StartAt": "ListPendingBatches",
@@ -454,65 +460,88 @@ class EmbeddingInfrastructure(ComponentResource):
                             },
                         },
                         "ResultPath": "$.poll_results",
-                        "Next": "PrepareChunkedCompaction",
+                        "Next": "SplitIntoChunks",
                     },
-                    "PrepareChunkedCompaction": {
-                        "Type": "Pass",
-                        "Comment": "Prepare data for chunked compaction",
+                    "SplitIntoChunks": {
+                        "Type": "Task",
+                        "Resource": arns[3],
+                        "Comment": "Split delta results into chunks of 10 for parallel processing",
                         "Parameters": {
                             "batch_id.$": "$$.Execution.Name",
-                            "delta_results.$": "$.poll_results",
-                            "chunk_index": 0,
-                            "total_chunks_processed": 0,
-                            "operation": "process_chunk",
+                            "poll_results.$": "$.poll_results",
                         },
-                        "Next": "CheckForDeltas",
-                    },
-                    "CheckForDeltas": {
-                        "Type": "Choice",
-                        "Comment": "Check if there are deltas to process",
-                        "Choices": [
-                            {
-                                "Variable": "$.delta_results[0]",
-                                "IsPresent": True,
-                                "Next": "ProcessChunk",
-                            }
-                        ],
-                        "Default": "FinalMerge",
-                    },
-                    "ProcessChunk": {
-                        "Type": "Task",
-                        "Resource": arns[2],
-                        "Comment": "Process a chunk of deltas (max 10)",
-                        "Parameters": {
-                            "operation": "process_chunk",
-                            "batch_id.$": "$.batch_id",
-                            "chunk_index.$": "$.chunk_index",
-                            "delta_results.$": "$.delta_results",
-                        },
-                        "ResultPath": "$.chunk_result",
-                        "Next": "CheckContinuation",
+                        "ResultPath": "$.chunked_data",
+                        "Next": "CheckForChunks",
                         "Retry": [
                             {
                                 "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
                                 "IntervalSeconds": 1,
                                 "MaxAttempts": 2,
                                 "BackoffRate": 1.5,
-                                "JitterStrategy": "FULL",
-                            },
-                            {
-                                "ErrorEquals": ["Lambda.TooManyRequestsException", "States.Timeout"],
-                                "IntervalSeconds": 2,
-                                "MaxAttempts": 3,
-                                "BackoffRate": 2.0,
-                            },
-                            {
-                                "ErrorEquals": ["States.ALL"],
-                                "IntervalSeconds": 1,
-                                "MaxAttempts": 3,
-                                "BackoffRate": 2.0,
                             }
                         ],
+                        "Catch": [
+                            {
+                                "ErrorEquals": ["States.ALL"],
+                                "Next": "CompactionFailed",
+                                "ResultPath": "$.error",
+                            }
+                        ],
+                    },
+                    "CheckForChunks": {
+                        "Type": "Choice",
+                        "Comment": "Check if there are chunks to process",
+                        "Choices": [
+                            {
+                                "Variable": "$.chunked_data.chunks[0]",
+                                "IsPresent": True,
+                                "Next": "ProcessChunksInParallel",
+                            }
+                        ],
+                        "Default": "NoChunksToProcess",
+                    },
+                    "ProcessChunksInParallel": {
+                        "Type": "Map",
+                        "Comment": "Process chunks in parallel with controlled concurrency",
+                        "ItemsPath": "$.chunked_data.chunks",
+                        "MaxConcurrency": 5,
+                        "Parameters": {
+                            "chunk.$": "$$.Map.Item.Value",
+                        },
+                        "Iterator": {
+                            "StartAt": "ProcessSingleChunk",
+                            "States": {
+                                "ProcessSingleChunk": {
+                                    "Type": "Task",
+                                    "Resource": arns[2],
+                                    "Comment": "Process a single chunk of deltas",
+                                    "Parameters": {
+                                        "operation.$": "$.chunk.operation",
+                                        "batch_id.$": "$.chunk.batch_id",
+                                        "chunk_index.$": "$.chunk.chunk_index",
+                                        "delta_results.$": "$.chunk.delta_results",
+                                    },
+                                    "End": True,
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                                            "IntervalSeconds": 2,
+                                            "MaxAttempts": 2,
+                                            "BackoffRate": 2.0,
+                                            "JitterStrategy": "FULL",
+                                        },
+                                        {
+                                            "ErrorEquals": ["Lambda.TooManyRequestsException"],
+                                            "IntervalSeconds": 5,
+                                            "MaxAttempts": 3,
+                                            "BackoffRate": 2.0,
+                                        },
+                                    ],
+                                },
+                            },
+                        },
+                        "ResultPath": "$.chunk_results",
+                        "Next": "PrepareFinalMerge",
                         "Catch": [
                             {
                                 "ErrorEquals": ["States.ALL"],
@@ -521,38 +550,28 @@ class EmbeddingInfrastructure(ComponentResource):
                             }
                         ],
                     },
-                    "CheckContinuation": {
-                        "Type": "Choice",
-                        "Comment": "Check if there are more chunks to process",
-                        "Choices": [
-                            {
-                                "Variable": "$.chunk_result.has_more_chunks",
-                                "BooleanEquals": True,
-                                "Next": "PrepareNextChunk",
-                            }
-                        ],
-                        "Default": "FinalMerge",
-                    },
-                    "PrepareNextChunk": {
+                    "PrepareFinalMerge": {
                         "Type": "Pass",
-                        "Comment": "Prepare for next chunk iteration",
+                        "Comment": "Prepare data for final merge",
                         "Parameters": {
-                            "batch_id.$": "$.batch_id",
-                            "operation": "process_chunk",
-                            "chunk_index.$": "$.chunk_result.next_chunk_index",
-                            "delta_results.$": "$.chunk_result.remaining_deltas",
-                            "total_chunks_processed.$": "States.MathAdd($.total_chunks_processed, 1)",
+                            "batch_id.$": "$.chunked_data.batch_id",
+                            "total_chunks.$": "$.chunked_data.total_chunks",
+                            "operation": "final_merge",
                         },
-                        "Next": "ProcessChunk",
+                        "Next": "FinalMerge",
+                    },
+                    "NoChunksToProcess": {
+                        "Type": "Succeed",
+                        "Comment": "No chunks to process, ending successfully",
                     },
                     "FinalMerge": {
                         "Type": "Task",
                         "Resource": arns[2],
                         "Comment": "Final merge of all intermediate chunks",
                         "Parameters": {
-                            "operation": "final_merge",
+                            "operation.$": "$.operation",
                             "batch_id.$": "$.batch_id",
-                            "total_chunks.$": "States.MathAdd($.total_chunks_processed, 1)",
+                            "total_chunks.$": "$.total_chunks",
                         },
                         "End": True,
                         "Retry": [
@@ -630,6 +649,7 @@ class EmbeddingInfrastructure(ComponentResource):
                 self.lambda_functions["list-pending"].arn,
                 self.lambda_functions["word-polling"].arn,
                 self.lambda_functions["compaction"].arn,
+                self.lambda_functions["split-into-chunks"].arn,
             ).apply(lambda arns: json.dumps({
                 "Comment": "Poll OpenAI for completed word embedding batches and store in ChromaDB",
                 "StartAt": "ListPendingWordBatches",
@@ -671,65 +691,88 @@ class EmbeddingInfrastructure(ComponentResource):
                             },
                         },
                         "ResultPath": "$.poll_results",
-                        "Next": "PrepareWordChunkedCompaction",
+                        "Next": "SplitWordIntoChunks",
                     },
-                    "PrepareWordChunkedCompaction": {
-                        "Type": "Pass",
-                        "Comment": "Prepare data for chunked compaction",
+                    "SplitWordIntoChunks": {
+                        "Type": "Task",
+                        "Resource": arns[3],
+                        "Comment": "Split word delta results into chunks of 10 for parallel processing",
                         "Parameters": {
                             "batch_id.$": "$$.Execution.Name",
-                            "delta_results.$": "$.poll_results",
-                            "chunk_index": 0,
-                            "total_chunks_processed": 0,
-                            "operation": "process_chunk",
+                            "poll_results.$": "$.poll_results",
                         },
-                        "Next": "CheckForWordDeltas",
-                    },
-                    "CheckForWordDeltas": {
-                        "Type": "Choice",
-                        "Comment": "Check if there are deltas to process",
-                        "Choices": [
-                            {
-                                "Variable": "$.delta_results[0]",
-                                "IsPresent": True,
-                                "Next": "ProcessWordChunk",
-                            }
-                        ],
-                        "Default": "WordFinalMerge",
-                    },
-                    "ProcessWordChunk": {
-                        "Type": "Task",
-                        "Resource": arns[2],
-                        "Comment": "Process a chunk of word deltas (max 10)",
-                        "Parameters": {
-                            "operation": "process_chunk",
-                            "batch_id.$": "$.batch_id",
-                            "chunk_index.$": "$.chunk_index",
-                            "delta_results.$": "$.delta_results",
-                        },
-                        "ResultPath": "$.chunk_result",
-                        "Next": "CheckWordContinuation",
+                        "ResultPath": "$.chunked_data",
+                        "Next": "CheckForWordChunks",
                         "Retry": [
                             {
                                 "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
                                 "IntervalSeconds": 1,
                                 "MaxAttempts": 2,
                                 "BackoffRate": 1.5,
-                                "JitterStrategy": "FULL",
-                            },
-                            {
-                                "ErrorEquals": ["Lambda.TooManyRequestsException", "States.Timeout"],
-                                "IntervalSeconds": 2,
-                                "MaxAttempts": 3,
-                                "BackoffRate": 2.0,
-                            },
-                            {
-                                "ErrorEquals": ["States.ALL"],
-                                "IntervalSeconds": 1,
-                                "MaxAttempts": 3,
-                                "BackoffRate": 2.0,
                             }
                         ],
+                        "Catch": [
+                            {
+                                "ErrorEquals": ["States.ALL"],
+                                "Next": "WordCompactionFailed",
+                                "ResultPath": "$.error",
+                            }
+                        ],
+                    },
+                    "CheckForWordChunks": {
+                        "Type": "Choice",
+                        "Comment": "Check if there are chunks to process",
+                        "Choices": [
+                            {
+                                "Variable": "$.chunked_data.chunks[0]",
+                                "IsPresent": True,
+                                "Next": "ProcessWordChunksInParallel",
+                            }
+                        ],
+                        "Default": "NoWordChunksToProcess",
+                    },
+                    "ProcessWordChunksInParallel": {
+                        "Type": "Map",
+                        "Comment": "Process word chunks in parallel with controlled concurrency",
+                        "ItemsPath": "$.chunked_data.chunks",
+                        "MaxConcurrency": 5,
+                        "Parameters": {
+                            "chunk.$": "$$.Map.Item.Value",
+                        },
+                        "Iterator": {
+                            "StartAt": "ProcessSingleWordChunk",
+                            "States": {
+                                "ProcessSingleWordChunk": {
+                                    "Type": "Task",
+                                    "Resource": arns[2],
+                                    "Comment": "Process a single chunk of word deltas",
+                                    "Parameters": {
+                                        "operation.$": "$.chunk.operation",
+                                        "batch_id.$": "$.chunk.batch_id",
+                                        "chunk_index.$": "$.chunk.chunk_index",
+                                        "delta_results.$": "$.chunk.delta_results",
+                                    },
+                                    "End": True,
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                                            "IntervalSeconds": 2,
+                                            "MaxAttempts": 2,
+                                            "BackoffRate": 2.0,
+                                            "JitterStrategy": "FULL",
+                                        },
+                                        {
+                                            "ErrorEquals": ["Lambda.TooManyRequestsException"],
+                                            "IntervalSeconds": 5,
+                                            "MaxAttempts": 3,
+                                            "BackoffRate": 2.0,
+                                        },
+                                    ],
+                                },
+                            },
+                        },
+                        "ResultPath": "$.chunk_results",
+                        "Next": "PrepareWordFinalMerge",
                         "Catch": [
                             {
                                 "ErrorEquals": ["States.ALL"],
@@ -738,38 +781,28 @@ class EmbeddingInfrastructure(ComponentResource):
                             }
                         ],
                     },
-                    "CheckWordContinuation": {
-                        "Type": "Choice",
-                        "Comment": "Check if there are more chunks to process",
-                        "Choices": [
-                            {
-                                "Variable": "$.chunk_result.has_more_chunks",
-                                "BooleanEquals": True,
-                                "Next": "PrepareNextWordChunk",
-                            }
-                        ],
-                        "Default": "WordFinalMerge",
-                    },
-                    "PrepareNextWordChunk": {
+                    "PrepareWordFinalMerge": {
                         "Type": "Pass",
-                        "Comment": "Prepare for next chunk iteration",
+                        "Comment": "Prepare data for final merge of word embeddings",
                         "Parameters": {
-                            "batch_id.$": "$.batch_id",
-                            "operation": "process_chunk",
-                            "chunk_index.$": "$.chunk_result.next_chunk_index",
-                            "delta_results.$": "$.chunk_result.remaining_deltas",
-                            "total_chunks_processed.$": "States.MathAdd($.total_chunks_processed, 1)",
+                            "batch_id.$": "$.chunked_data.batch_id",
+                            "total_chunks.$": "$.chunked_data.total_chunks",
+                            "operation": "final_merge",
                         },
-                        "Next": "ProcessWordChunk",
+                        "Next": "WordFinalMerge",
+                    },
+                    "NoWordChunksToProcess": {
+                        "Type": "Succeed",
+                        "Comment": "No word chunks to process, ending successfully",
                     },
                     "WordFinalMerge": {
                         "Type": "Task",
                         "Resource": arns[2],
                         "Comment": "Final merge of all intermediate word chunks",
                         "Parameters": {
-                            "operation": "final_merge",
+                            "operation.$": "$.operation",
                             "batch_id.$": "$.batch_id",
-                            "total_chunks.$": "States.MathAdd($.total_chunks_processed, 1)",
+                            "total_chunks.$": "$.total_chunks",
                         },
                         "End": True,
                         "Retry": [

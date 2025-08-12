@@ -139,9 +139,14 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             "message": "Empty chunk processed",
         }
 
-    # Limit chunk size to 10 deltas as required
+    # With Map state, each chunk should already be limited to 10 deltas
+    # But we'll enforce the limit here as a safety measure
     chunk_deltas = delta_results[:10]
-    remaining_deltas = delta_results[10:]
+    if len(delta_results) > 10:
+        logger.warning(
+            "Chunk %d has %d deltas, expected max 10. Processing first 10.",
+            chunk_index, len(delta_results)
+        )
 
     # Group chunk deltas by collection name for collection-aware processing
     deltas_by_collection = {}
@@ -165,7 +170,8 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             batch_id, chunk_index, chunk_deltas, deltas_by_collection
         )
 
-        # Prepare response
+        # Prepare response for Map state
+        # No need for continuation logic since all chunks process in parallel
         response = {
             "statusCode": 200,
             "batch_id": batch_id,
@@ -175,14 +181,6 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             "processing_time_seconds": chunk_result["processing_time"],
             "message": "Chunk processed successfully",
         }
-
-        # Add continuation data if there are remaining deltas
-        if remaining_deltas:
-            response["next_chunk_index"] = chunk_index + 1
-            response["remaining_deltas"] = remaining_deltas
-            response["has_more_chunks"] = True
-        else:
-            response["has_more_chunks"] = False
 
         logger.info("Chunk %d processing completed: %s", chunk_index, response)
         return response
