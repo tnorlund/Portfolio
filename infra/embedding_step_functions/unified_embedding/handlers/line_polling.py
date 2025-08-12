@@ -18,7 +18,6 @@ from receipt_label.embedding.line.poll import (
     mark_batch_complete,
     save_line_embeddings_as_delta,
     update_line_embedding_status_to_success,
-    write_line_embedding_results_to_dynamo,
 )
 from receipt_label.utils import get_client_manager
 import utils.logging
@@ -98,10 +97,6 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             f"{delta_result['embedding_count']} embeddings"
         )
 
-        # Write to DynamoDB for tracking
-        write_line_embedding_results_to_dynamo(results, descriptions, batch_id)
-        logger.info(f"Wrote {len(results)} line embedding results to DynamoDB")
-
         # Update line embedding status to SUCCESS (line-specific step)
         update_line_embedding_status_to_success(results, descriptions)
         logger.info("Updated line embedding status to SUCCESS")
@@ -148,11 +143,6 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             # Save partial results
             delta_result = save_line_embeddings_as_delta(
                 partial_results, descriptions, batch_id, bucket_name, sqs_queue_url
-            )
-            
-            # Write partial results to DynamoDB
-            write_line_embedding_results_to_dynamo(
-                partial_results, descriptions, batch_id
             )
             
             # Update status for successful lines

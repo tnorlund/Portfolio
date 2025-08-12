@@ -17,7 +17,6 @@ from receipt_label.embedding.word.poll import (
     get_receipt_descriptions,
     mark_batch_complete,
     save_word_embeddings_as_delta,
-    write_embedding_results_to_dynamo,
 )
 from receipt_label.utils import get_client_manager
 import utils.logging
@@ -97,11 +96,8 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             f"{delta_result['embedding_count']} embeddings"
         )
 
-        # Write to DynamoDB for tracking
-        written = write_embedding_results_to_dynamo(
-            results, descriptions, batch_id
-        )
-        logger.info(f"Wrote {written} embedding results to DynamoDB")
+        # Skip writing to DynamoDB - we only store in ChromaDB now
+        logger.info(f"Processed {len(results)} embedding results")
 
         # Mark batch complete
         mark_batch_complete(batch_id)
@@ -135,11 +131,8 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 partial_results, descriptions, batch_id
             )
             
-            # Write partial results to DynamoDB
-            written = write_embedding_results_to_dynamo(
-                partial_results, descriptions, batch_id
-            )
-            logger.info(f"Processed {written} partial embedding results")
+            # Skip writing to DynamoDB - we only store in ChromaDB now
+            logger.info(f"Processed {len(partial_results)} partial embedding results")
         
         # Mark failed items for retry
         if failed_ids:
