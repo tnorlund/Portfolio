@@ -123,6 +123,8 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                 "batch_bucket_name": self.batch_bucket.bucket,
                 "create_batches_sf_arn": self.create_batches_sf.arn,
                 "poll_and_store_sf_arn": self.poll_and_store_sf.arn,
+                "create_word_batches_sf_arn": self.create_word_batches_sf.arn,
+                "poll_word_embeddings_sf_arn": self.poll_word_embeddings_sf.arn,
             }
         )
 
@@ -252,11 +254,23 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                 "timeout": 900,
                 "source_dir": "find_unembedded",
             },
+            "find-unembedded-words": {
+                "handler": "handler.lambda_handler",
+                "memory": 1024,
+                "timeout": 900,
+                "source_dir": "find_unembedded_words",
+            },
             "submit-openai": {
                 "handler": "handler.lambda_handler",
                 "memory": 1024,
                 "timeout": 900,
                 "source_dir": "submit_openai",
+            },
+            "submit-words-openai": {
+                "handler": "handler.lambda_handler",
+                "memory": 1024,
+                "timeout": 900,
+                "source_dir": "submit_words_openai",
             },
         }
 
@@ -700,6 +714,231 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                             "NoPendingBatches": {
                                 "Type": "Succeed",
                                 "Comment": "No pending batches to process",
+                            },
+                        },
+                    }
+                )
+            ),
+            opts=ResourceOptions(parent=self),
+        )
+        
+        # Create the Create Word Embedding Batches Step Function
+        self.create_word_batches_sf = StateMachine(
+            f"create-word-batches-sf-{stack}",
+            role_arn=self.sf_role.arn,
+            definition=Output.all(
+                self.zip_lambda_functions["find-unembedded-words"].arn,
+                self.zip_lambda_functions["submit-words-openai"].arn,
+            ).apply(
+                lambda arns: json.dumps(
+                    {
+                        "Comment": "Find words without embeddings and submit to OpenAI",
+                        "StartAt": "FindUnembeddedWords",
+                        "States": {
+                            "FindUnembeddedWords": {
+                                "Type": "Task",
+                                "Resource": arns[0],
+                                "Next": "SubmitWordBatches",
+                            },
+                            "SubmitWordBatches": {
+                                "Type": "Map",
+                                "ItemsPath": "$.batches",
+                                "MaxConcurrency": 10,
+                                "Iterator": {
+                                    "StartAt": "SubmitWordsToOpenAI",
+                                    "States": {
+                                        "SubmitWordsToOpenAI": {
+                                            "Type": "Task",
+                                            "Resource": arns[1],
+                                            "End": True,
+                                        },
+                                    },
+                                },
+                                "End": True,
+                            },
+                        },
+                    }
+                )
+            ),
+            opts=ResourceOptions(parent=self),
+        )
+        
+        # Create the Poll and Store Word Embeddings Step Function
+        self.poll_word_embeddings_sf = StateMachine(
+            f"poll-word-embeddings-sf-{stack}",
+            role_arn=self.sf_role.arn,
+            definition=Output.all(
+                self.zip_lambda_functions["list-pending"].arn,
+                self.container_lambda_functions["word-polling"].arn,
+                self.container_lambda_functions["compaction"].arn,
+            ).apply(
+                lambda arns: json.dumps(
+                    {
+                        "Comment": "Poll OpenAI for completed word embedding batches and store in ChromaDB",
+                        "StartAt": "ListPendingWordBatches",
+                        "States": {
+                            "ListPendingWordBatches": {
+                                "Type": "Task",
+                                "Resource": arns[0],
+                                "ResultPath": "$.pending_batches",
+                                "Next": "CheckPendingWordBatches",
+                            },
+                            "CheckPendingWordBatches": {
+                                "Type": "Choice",
+                                "Choices": [
+                                    {
+                                        "Variable": "$.pending_batches[0]",
+                                        "IsPresent": True,
+                                        "Next": "PollWordBatches",
+                                    },
+                                ],
+                                "Default": "NoWordBatchesPending",
+                            },
+                            "PollWordBatches": {
+                                "Type": "Map",
+                                "ItemsPath": "$.pending_batches",
+                                "MaxConcurrency": 10,
+                                "Parameters": {
+                                    "batch_id.$": "$$.Map.Item.Value.batch_id",
+                                    "openai_batch_id.$": "$$.Map.Item.Value.openai_batch_id",
+                                    "skip_sqs_notification": True,
+                                },
+                                "Iterator": {
+                                    "StartAt": "PollWordBatch",
+                                    "States": {
+                                        "PollWordBatch": {
+                                            "Type": "Task",
+                                            "Resource": arns[1],
+                                            "End": True,
+                                        },
+                                    },
+                                },
+                                "ResultPath": "$.poll_results",
+                                "Next": "PrepareWordChunkedCompaction",
+                            },
+                            "PrepareWordChunkedCompaction": {
+                                "Type": "Pass",
+                                "Comment": "Prepare data for chunked compaction",
+                                "Parameters": {
+                                    "batch_id.$": "$$.Execution.Name",
+                                    "delta_results.$": "$.poll_results",
+                                    "chunk_index": 0,
+                                    "total_chunks_processed": 0,
+                                    "operation": "process_chunk",
+                                },
+                                "Next": "CheckForWordDeltas",
+                            },
+                            "CheckForWordDeltas": {
+                                "Type": "Choice",
+                                "Comment": "Check if there are deltas to process",
+                                "Choices": [
+                                    {
+                                        "Variable": "$.delta_results[0]",
+                                        "IsPresent": True,
+                                        "Next": "ProcessWordChunk",
+                                    }
+                                ],
+                                "Default": "WordFinalMerge",
+                            },
+                            "ProcessWordChunk": {
+                                "Type": "Task",
+                                "Resource": arns[2],
+                                "Comment": "Process a chunk of word deltas (max 10)",
+                                "Parameters": {
+                                    "operation": "process_chunk",
+                                    "batch_id.$": "$.batch_id",
+                                    "chunk_index.$": "$.chunk_index",
+                                    "delta_results.$": "$.delta_results",
+                                },
+                                "ResultPath": "$.chunk_result",
+                                "Next": "CheckWordContinuation",
+                                "Retry": [
+                                    {
+                                        "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                                        "IntervalSeconds": 1,
+                                        "MaxAttempts": 2,
+                                        "BackoffRate": 1.5,
+                                        "JitterStrategy": "FULL",
+                                    },
+                                    {
+                                        "ErrorEquals": ["Lambda.TooManyRequestsException", "States.Timeout"],
+                                        "IntervalSeconds": 2,
+                                        "MaxAttempts": 3,
+                                        "BackoffRate": 2.0,
+                                    },
+                                    {
+                                        "ErrorEquals": ["States.ALL"],
+                                        "IntervalSeconds": 1,
+                                        "MaxAttempts": 3,
+                                        "BackoffRate": 2.0,
+                                    }
+                                ],
+                                "Catch": [
+                                    {
+                                        "ErrorEquals": ["States.ALL"],
+                                        "Next": "WordChunkProcessingFailed",
+                                        "ResultPath": "$.error",
+                                    }
+                                ],
+                            },
+                            "CheckWordContinuation": {
+                                "Type": "Choice",
+                                "Comment": "Check if there are more chunks to process",
+                                "Choices": [
+                                    {
+                                        "Variable": "$.chunk_result.has_more_chunks",
+                                        "BooleanEquals": True,
+                                        "Next": "PrepareNextWordChunk",
+                                    }
+                                ],
+                                "Default": "WordFinalMerge",
+                            },
+                            "PrepareNextWordChunk": {
+                                "Type": "Pass",
+                                "Comment": "Prepare for next chunk iteration",
+                                "Parameters": {
+                                    "batch_id.$": "$.batch_id",
+                                    "operation": "process_chunk",
+                                    "chunk_index.$": "$.chunk_result.next_chunk_index",
+                                    "delta_results.$": "$.chunk_result.remaining_deltas",
+                                    "total_chunks_processed.$": "States.MathAdd($.total_chunks_processed, 1)",
+                                },
+                                "Next": "ProcessWordChunk",
+                            },
+                            "WordFinalMerge": {
+                                "Type": "Task",
+                                "Resource": arns[2],
+                                "Comment": "Final merge of all intermediate word chunks",
+                                "Parameters": {
+                                    "operation": "final_merge",
+                                    "batch_id.$": "$.batch_id",
+                                    "total_chunks.$": "States.MathAdd($.total_chunks_processed, 1)",
+                                },
+                                "End": True,
+                                "Retry": [
+                                    {
+                                        "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                                        "IntervalSeconds": 1,
+                                        "MaxAttempts": 2,
+                                        "BackoffRate": 1.5,
+                                        "JitterStrategy": "FULL",
+                                    },
+                                    {
+                                        "ErrorEquals": ["States.TaskFailed"],
+                                        "IntervalSeconds": 3,
+                                        "MaxAttempts": 2,
+                                        "BackoffRate": 2.0,
+                                    }
+                                ],
+                            },
+                            "WordChunkProcessingFailed": {
+                                "Type": "Fail",
+                                "Error": "WordChunkProcessingFailed",
+                                "Cause": "Failed to process word delta chunk",
+                            },
+                            "NoWordBatchesPending": {
+                                "Type": "Succeed",
+                                "Comment": "No pending word batches to process",
                             },
                         },
                     }
