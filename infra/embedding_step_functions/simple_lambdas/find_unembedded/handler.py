@@ -51,23 +51,32 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             return {"batches": []}
         
         # Chunk lines into batches (returns nested dict structure)
-        line_batches = chunk_into_line_embedding_batches(lines)
-        logger.info("Grouped lines into %d images", len(line_batches))
+        batches = chunk_into_line_embedding_batches(lines)
+        logger.info("Chunked into %d batches", len(batches))
         
-        # Serialize all the batches (accepts the nested dict)
-        serialized_files = serialize_receipt_lines(line_batches)
-        logger.info("Created %d serialized files", len(serialized_files))
+        # Serialize and upload in one step (like the working version)
+        uploaded = upload_serialized_lines(
+            serialize_receipt_lines(batches), bucket
+        )
+        logger.info("Uploaded %d files", len(uploaded))
         
-        # Upload each serialized file to S3
-        batch_metadata = upload_serialized_lines(serialized_files, bucket)
-        logger.info("Uploaded %d files to S3", len(batch_metadata))
+        # Clean the output to match expected format
+        cleaned = [
+            {
+                "s3_key": e["s3_key"],
+                "s3_bucket": e["s3_bucket"],
+                "image_id": e["image_id"],
+                "receipt_id": e["receipt_id"],
+            }
+            for e in uploaded
+        ]
         
-        logger.info("Successfully prepared %d batches for processing", len(batch_metadata))
+        logger.info("Successfully prepared %d batches for processing", len(cleaned))
         
         return {
-            "batches": batch_metadata,
+            "batches": cleaned,
             "total_lines": len(lines),
-            "batch_count": len(batch_metadata),
+            "batch_count": len(cleaned),
         }
         
     except AttributeError as e:
