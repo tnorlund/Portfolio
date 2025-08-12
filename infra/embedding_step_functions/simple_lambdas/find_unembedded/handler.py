@@ -50,27 +50,17 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             logger.info("No lines need embeddings")
             return {"batches": []}
         
-        # Chunk lines into batches
-        batches = chunk_into_line_embedding_batches(lines)
-        logger.info("Created %d batches for processing", len(batches))
+        # Chunk lines into batches (returns nested dict structure)
+        line_batches = chunk_into_line_embedding_batches(lines)
+        logger.info("Grouped lines into %d images", len(line_batches))
         
-        # Process each batch
-        batch_metadata = []
-        for i, batch in enumerate(batches):
-            # Serialize the batch
-            serialized_path = serialize_receipt_lines(batch)
-            logger.info("Serialized batch %d to %s", i, serialized_path)
-            
-            # Upload to S3
-            s3_key = upload_serialized_lines(serialized_path, bucket)
-            logger.info("Uploaded batch %d to s3://%s/%s", i, bucket, s3_key)
-            
-            # Add to metadata
-            batch_metadata.append({
-                "s3_bucket": bucket,
-                "s3_key": s3_key,
-                "line_count": len(batch),
-            })
+        # Serialize all the batches (accepts the nested dict)
+        serialized_files = serialize_receipt_lines(line_batches)
+        logger.info("Created %d serialized files", len(serialized_files))
+        
+        # Upload each serialized file to S3
+        batch_metadata = upload_serialized_lines(serialized_files, bucket)
+        logger.info("Uploaded %d files to S3", len(batch_metadata))
         
         logger.info("Successfully prepared %d batches for processing", len(batch_metadata))
         
