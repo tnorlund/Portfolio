@@ -449,9 +449,9 @@ def perform_final_merge(batch_id: str, total_chunks: int) -> Dict[str, Any]:
                 import shutil
                 shutil.rmtree(chunk_temp, ignore_errors=True)
 
-        # Create timestamped snapshot
+        # Create timestamped snapshot with dedicated prefix for lifecycle management
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        timestamped_key = f"snapshot/{timestamp}/"
+        timestamped_key = f"snapshot/timestamped/{timestamp}/"
         
         # Upload to S3
         upload_to_s3(temp_dir, bucket, timestamped_key)

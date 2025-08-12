@@ -99,31 +99,28 @@ class ChromaDBBuckets(ComponentResource):
                         days=7,
                     ),
                 ),
-                # Archive old snapshots
+                # Delete old timestamped snapshots after 14 days
+                # Only targets snapshot/timestamped/* prefix, preserving snapshot/latest/
                 aws.s3.BucketLifecycleConfigurationRuleArgs(
-                    id="archive-old-snapshots",
+                    id="delete-old-timestamped-snapshots",
                     status="Enabled",
                     filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(
-                        prefix="snapshot/",
+                        prefix="snapshot/timestamped/",
                     ),
-                    transitions=[
-                        aws.s3.BucketLifecycleConfigurationRuleTransitionArgs(
-                            days=30,
-                            storage_class="STANDARD_IA",
-                        ),
-                        aws.s3.BucketLifecycleConfigurationRuleTransitionArgs(
-                            days=90,
-                            storage_class="GLACIER",
-                        ),
-                    ],
-                    noncurrent_version_transitions=[
-                        aws.s3.BucketLifecycleConfigurationRuleNoncurrentVersionTransitionArgs(
-                            noncurrent_days=30,
-                            storage_class="STANDARD_IA",
-                        ),
-                    ],
-                    noncurrent_version_expiration=aws.s3.BucketLifecycleConfigurationRuleNoncurrentVersionExpirationArgs(
-                        noncurrent_days=90,
+                    expiration=aws.s3.BucketLifecycleConfigurationRuleExpirationArgs(
+                        days=14,
+                    ),
+                ),
+                # Clean up intermediate chunks after 1 day
+                # These are temporary files created during chunked compaction
+                aws.s3.BucketLifecycleConfigurationRuleArgs(
+                    id="delete-intermediate-chunks",
+                    status="Enabled",
+                    filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(
+                        prefix="intermediate/",
+                    ),
+                    expiration=aws.s3.BucketLifecycleConfigurationRuleExpirationArgs(
+                        days=1,
                     ),
                 ),
             ],
