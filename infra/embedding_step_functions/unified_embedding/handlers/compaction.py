@@ -216,11 +216,14 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         }
 
     # Acquire lock for final merge
-    lock_manager = LockManager(dynamo_client, lock_duration_minutes)
+    lock_manager = LockManager(
+        dynamo_client, 
+        heartbeat_interval=heartbeat_interval,
+        lock_duration_minutes=lock_duration_minutes
+    )
     try:
-        lock_acquired = lock_manager.acquire_lock(
-            f"chroma-final-merge-{batch_id}",
-            f"Final merge for batch {batch_id}",
+        lock_acquired = lock_manager.acquire(
+            f"chroma-final-merge-{batch_id}"
         )
         if not lock_acquired:
             logger.warning("Could not acquire lock for final merge")
@@ -259,7 +262,7 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     finally:
         # Stop heartbeat and release lock
         lock_manager.stop_heartbeat()
-        lock_manager.release_lock()
+        lock_manager.release()
 
 
 def process_chunk_deltas(
