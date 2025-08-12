@@ -84,7 +84,7 @@ class EmbeddingInfrastructure(ComponentResource):
         
         # Register outputs
         self.register_outputs({
-            "docker_image_uri": self.docker_image.ref,
+            "docker_image_uri": self.docker_image.digest,
             "chromadb_bucket_name": self.chromadb_buckets.bucket_name,
             "chromadb_queue_url": self.chromadb_queues.delta_queue_url,
             "batch_bucket_name": self.batch_bucket.bucket,
@@ -287,7 +287,7 @@ class EmbeddingInfrastructure(ComponentResource):
                 f"{name}-lambda-{stack}",
                 name=f"{name}-{stack}",
                 package_type="Image",
-                image_uri=self.docker_image.ref,
+                image_uri=self.docker_image.digest,
                 role=self.lambda_role.arn,
                 architectures=["arm64"],
                 memory_size=config["memory"],
