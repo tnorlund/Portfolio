@@ -801,7 +801,7 @@ def test_embedding_batch_submit(
     stored = moto_client.get_batch_summary(batch_summary.batch_id)
     assert stored.status == "PENDING"
     assert stored.receipt_refs == [(event["image_id"], event["receipt_id"])]
-    assert stored.batch_type == "EMBEDDING"
+    assert stored.batch_type == "WORD_EMBEDDING"
     assert stored.openai_batch_id == "fake-batch-id"
     assert stored.submitted_at is not None
     assert stored.result_file_id == "N/A"

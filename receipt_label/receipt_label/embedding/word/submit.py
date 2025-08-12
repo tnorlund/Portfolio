@@ -337,7 +337,7 @@ def create_batch_summary(
     # 3) Build and return the BatchSummary
     return BatchSummary(
         batch_id=batch_id,
-        batch_type="EMBEDDING",
+        batch_type="WORD_EMBEDDING",
         openai_batch_id=open_ai_batch_id,
         submitted_at=datetime.now(timezone.utc),
         status="PENDING",

@@ -38,14 +38,14 @@ class TestLineEmbeddingPoll:
                 batch_id="line_batch_001",
                 openai_batch_id="batch_openai_line_123",
                 status="PENDING",
-                batch_type="EMBEDDING",
+                batch_type="LINE_EMBEDDING",
                 submitted_at=datetime.now(timezone.utc)
             ),
             BatchSummary(
                 batch_id="line_batch_002", 
                 openai_batch_id="batch_openai_line_456",
                 status="PENDING",
-                batch_type="EMBEDDING",
+                batch_type="LINE_EMBEDDING",
                 submitted_at=datetime.now(timezone.utc)
             )
         ]
@@ -161,7 +161,7 @@ class TestLineEmbeddingPoll:
         
         assert len(batches) == 2
         assert all(batch.status == "PENDING" for batch in batches)
-        assert all(batch.batch_type == "EMBEDDING" for batch in batches)
+        assert all(batch.batch_type == "LINE_EMBEDDING" for batch in batches)
         
         mock_client_manager.dynamo.get_batch_summaries_by_status.assert_called_with(
             status="PENDING",

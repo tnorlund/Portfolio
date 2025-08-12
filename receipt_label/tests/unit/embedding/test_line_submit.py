@@ -247,7 +247,7 @@ class TestLineEmbeddingSubmit:
             summary = create_batch_summary(batch_id, openai_batch_id, "/tmp/test.ndjson")
         
         assert summary.batch_id == batch_id
-        assert summary.batch_type == "EMBEDDING"
+        assert summary.batch_type == "LINE_EMBEDDING"
         assert summary.openai_batch_id == openai_batch_id
         assert summary.status == "PENDING"
         assert summary.result_file_id == "N/A"
@@ -262,7 +262,7 @@ class TestLineEmbeddingSubmit:
         """Test adding batch summary to DynamoDB."""
         summary = BatchSummary(
             batch_id="test-line-batch",
-            batch_type="EMBEDDING",
+            batch_type="LINE_EMBEDDING",
             openai_batch_id="batch_openai_line_123",
             status="PENDING"
         )
@@ -335,7 +335,7 @@ class TestLineEmbeddingSubmit:
         assert len(formatted_inputs) == 3
         assert file_obj.id == "file_line_123"
         assert batch_obj.id == "batch_line_456"
-        assert summary.batch_type == "EMBEDDING"
+        assert summary.batch_type == "LINE_EMBEDDING"
         assert all(line.embedding_status == EmbeddingStatus.PENDING.value for line in batch_lines)
 
     def test_custom_id_format_consistency(self, sample_receipt_lines):

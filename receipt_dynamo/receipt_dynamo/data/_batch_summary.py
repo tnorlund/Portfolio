@@ -278,7 +278,7 @@ class _BatchSummary(
     def get_batch_summaries_by_status(
         self,
         status: str | BatchStatus,
-        batch_type: str | BatchType = "EMBEDDING",
+        batch_type: str | BatchType = "WORD_EMBEDDING",
         limit: Optional[int] = None,
         last_evaluated_key: dict | None = None,
     ) -> Tuple[

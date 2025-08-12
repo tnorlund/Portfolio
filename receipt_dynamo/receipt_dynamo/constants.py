@@ -46,7 +46,8 @@ class BatchType(str, Enum):
     """Types of batch jobs for label processing."""
 
     COMPLETION = "COMPLETION"
-    EMBEDDING = "EMBEDDING"
+    EMBEDDING = "EMBEDDING"  # Deprecated - use WORD_EMBEDDING
+    WORD_EMBEDDING = "WORD_EMBEDDING"
     LINE_EMBEDDING = "LINE_EMBEDDING"
 
 

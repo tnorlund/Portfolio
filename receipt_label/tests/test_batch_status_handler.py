@@ -250,7 +250,7 @@ class TestStatusHandlers:
         # Mock batch summary
         mock_batch_summary = BatchSummary(
             batch_id="batch_123",
-            batch_type="EMBEDDING",
+            batch_type="WORD_EMBEDDING",
             openai_batch_id="openai_batch_456",
             submitted_at=datetime.now(timezone.utc),
             status=BatchStatus.PENDING,
@@ -292,7 +292,7 @@ class TestStatusHandlers:
         # Mock batch summary
         mock_batch_summary = BatchSummary(
             batch_id="batch_123",
-            batch_type="EMBEDDING",
+            batch_type="WORD_EMBEDDING",
             openai_batch_id="openai_batch_456",
             submitted_at=datetime.now(timezone.utc),
             status=BatchStatus.PENDING,
@@ -333,7 +333,7 @@ class TestStatusHandlers:
         submitted_time = datetime.now(timezone.utc) - timedelta(hours=10)
         mock_batch_summary = BatchSummary(
             batch_id="batch_123",
-            batch_type="EMBEDDING",
+            batch_type="WORD_EMBEDDING",
             openai_batch_id="openai_batch_456",
             submitted_at=submitted_time,
             status=BatchStatus.PENDING,
@@ -366,7 +366,7 @@ class TestStatusHandlers:
         submitted_time = datetime.now(timezone.utc) - timedelta(hours=22)
         mock_batch_summary = BatchSummary(
             batch_id="batch_123",
-            batch_type="EMBEDDING",
+            batch_type="WORD_EMBEDDING",
             openai_batch_id="openai_batch_456",
             submitted_at=submitted_time,
             status=BatchStatus.PENDING,
@@ -395,7 +395,7 @@ class TestStatusHandlers:
         # Mock batch summary
         mock_batch_summary = BatchSummary(
             batch_id="batch_123",
-            batch_type="EMBEDDING",
+            batch_type="WORD_EMBEDDING",
             openai_batch_id="openai_batch_456",
             submitted_at=datetime.now(timezone.utc),
             status=BatchStatus.PENDING,
@@ -447,7 +447,7 @@ class TestHandleBatchStatus:
         # Mock batch summary for statuses that need it
         mock_batch_summary = BatchSummary(
             batch_id="batch_123",
-            batch_type="EMBEDDING",
+            batch_type="WORD_EMBEDDING",
             openai_batch_id="openai_batch_456",
             submitted_at=datetime.now(timezone.utc),
             status=BatchStatus.PENDING,
@@ -551,7 +551,7 @@ class TestShouldRetryBatch:
         """Test that failed batches should be retried."""
         batch_summary = BatchSummary(
             batch_id="batch_123",
-            batch_type="EMBEDDING",
+            batch_type="WORD_EMBEDDING",
             openai_batch_id="openai_batch_456",
             submitted_at=datetime.now(timezone.utc),
             status=BatchStatus.FAILED,
@@ -565,7 +565,7 @@ class TestShouldRetryBatch:
         """Test that expired batches should be retried."""
         batch_summary = BatchSummary(
             batch_id="batch_123",
-            batch_type="EMBEDDING",
+            batch_type="WORD_EMBEDDING",
             openai_batch_id="openai_batch_456",
             submitted_at=datetime.now(timezone.utc),
             status=BatchStatus.EXPIRED,
@@ -579,7 +579,7 @@ class TestShouldRetryBatch:
         """Test that completed batches should not be retried."""
         batch_summary = BatchSummary(
             batch_id="batch_123",
-            batch_type="EMBEDDING",
+            batch_type="WORD_EMBEDDING",
             openai_batch_id="openai_batch_456",
             submitted_at=datetime.now(timezone.utc),
             status=BatchStatus.COMPLETED,
