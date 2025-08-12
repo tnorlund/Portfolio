@@ -15,6 +15,9 @@ import handlers.compaction as compaction
 import handlers.find_unembedded as find_unembedded
 import handlers.submit_openai as submit_openai
 import handlers.list_pending as list_pending
+import handlers.split_into_chunks as split_into_chunks
+import handlers.find_unembedded_words as find_unembedded_words
+import handlers.submit_words_openai as submit_words_openai
 import utils.response as response_utils
 
 # Set up logging
@@ -29,6 +32,9 @@ HANDLER_MAP = {
     "find_unembedded": find_unembedded.handle,
     "submit_openai": submit_openai.handle,
     "list_pending": list_pending.handle,
+    "split_into_chunks": split_into_chunks.handle,
+    "find_unembedded_words": find_unembedded_words.handle,
+    "submit_words_openai": submit_words_openai.handle,
 }
 
 

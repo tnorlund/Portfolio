@@ -77,6 +77,36 @@ LAMBDA_CONFIGS = {
             "HANDLER_TYPE": "list_pending",
         },
     },
+    "split_into_chunks": {
+        "name": "split-into-chunks",
+        "memory": 512,
+        "timeout": 60,
+        "ephemeral_storage": 512,
+        "description": "Split delta results into chunks for parallel processing",
+        "env_vars": {
+            "HANDLER_TYPE": "split_into_chunks",
+        },
+    },
+    "find_unembedded_words": {
+        "name": "find-unembedded-words",
+        "memory": 1024,
+        "timeout": 900,
+        "ephemeral_storage": 512,
+        "description": "Find words without embeddings",
+        "env_vars": {
+            "HANDLER_TYPE": "find_unembedded_words",
+        },
+    },
+    "submit_words_openai": {
+        "name": "submit-words-openai",
+        "memory": 1024,
+        "timeout": 900,
+        "ephemeral_storage": 512,
+        "description": "Submit word embedding batches to OpenAI",
+        "env_vars": {
+            "HANDLER_TYPE": "submit_words_openai",
+        },
+    },
 }
 
 # Common environment variables (merged with handler-specific ones)
