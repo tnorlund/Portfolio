@@ -575,17 +575,127 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                                     },
                                 },
                                 "ResultPath": "$.poll_results",
-                                "Next": "CompactDeltas",
+                                "Next": "PrepareChunkedCompaction",
                             },
-                            "CompactDeltas": {
+                            "PrepareChunkedCompaction": {
+                                "Type": "Pass",
+                                "Comment": "Prepare data for chunked compaction",
+                                "Parameters": {
+                                    "batch_id.$": "$$.Execution.Name",
+                                    "delta_results.$": "$.poll_results",
+                                    "chunk_index": 0,
+                                    "total_chunks_processed": 0,
+                                    "operation": "process_chunk",
+                                },
+                                "Next": "CheckForDeltas",
+                            },
+                            "CheckForDeltas": {
+                                "Type": "Choice",
+                                "Comment": "Check if there are deltas to process",
+                                "Choices": [
+                                    {
+                                        "Variable": "$.delta_results[0]",
+                                        "IsPresent": True,
+                                        "Next": "ProcessChunk",
+                                    }
+                                ],
+                                "Default": "FinalMerge",
+                            },
+                            "ProcessChunk": {
                                 "Type": "Task",
                                 "Resource": arns[2],
+                                "Comment": "Process a chunk of deltas (max 10)",
+                                "Parameters": {
+                                    "operation": "process_chunk",
+                                    "batch_id.$": "$.batch_id",
+                                    "chunk_index.$": "$.chunk_index",
+                                    "delta_results.$": "$.delta_results",
+                                },
+                                "ResultPath": "$.chunk_result",
+                                "Next": "CheckContinuation",
+                                "Retry": [
+                                    {
+                                        "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                                        "IntervalSeconds": 1,
+                                        "MaxAttempts": 2,
+                                        "BackoffRate": 1.5,
+                                        "JitterStrategy": "FULL",
+                                    },
+                                    {
+                                        "ErrorEquals": ["Lambda.TooManyRequestsException", "States.Timeout"],
+                                        "IntervalSeconds": 2,
+                                        "MaxAttempts": 3,
+                                        "BackoffRate": 2.0,
+                                    },
+                                    {
+                                        "ErrorEquals": ["States.ALL"],
+                                        "IntervalSeconds": 1,
+                                        "MaxAttempts": 3,
+                                        "BackoffRate": 2.0,
+                                    }
+                                ],
+                                "Catch": [
+                                    {
+                                        "ErrorEquals": ["States.ALL"],
+                                        "Next": "ChunkProcessingFailed",
+                                        "ResultPath": "$.error",
+                                    }
+                                ],
+                            },
+                            "CheckContinuation": {
+                                "Type": "Choice",
+                                "Comment": "Check if there are more chunks to process",
+                                "Choices": [
+                                    {
+                                        "Variable": "$.chunk_result.has_more_chunks",
+                                        "BooleanEquals": True,
+                                        "Next": "PrepareNextChunk",
+                                    }
+                                ],
+                                "Default": "FinalMerge",
+                            },
+                            "PrepareNextChunk": {
+                                "Type": "Pass",
+                                "Comment": "Prepare for next chunk iteration",
+                                "Parameters": {
+                                    "batch_id.$": "$.batch_id",
+                                    "operation": "process_chunk",
+                                    "chunk_index.$": "$.chunk_result.next_chunk_index",
+                                    "delta_results.$": "$.chunk_result.remaining_deltas",
+                                    "total_chunks_processed.$": "States.MathAdd($.total_chunks_processed, 1)",
+                                },
+                                "Next": "ProcessChunk",
+                            },
+                            "FinalMerge": {
+                                "Type": "Task",
+                                "Resource": arns[2],
+                                "Comment": "Final merge of all intermediate chunks",
                                 "Parameters": {
                                     "operation": "final_merge",
-                                    "batch_id.$": "$$.Execution.Name",
-                                    "total_chunks": 1,
+                                    "batch_id.$": "$.batch_id",
+                                    "total_chunks.$": "States.MathAdd($.total_chunks_processed, 1)",
                                 },
                                 "End": True,
+                                "Retry": [
+                                    {
+                                        "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                                        "IntervalSeconds": 1,
+                                        "MaxAttempts": 2,
+                                        "BackoffRate": 1.5,
+                                        "JitterStrategy": "FULL",
+                                    },
+                                    {
+                                        "ErrorEquals": ["States.TaskFailed"],
+                                        "IntervalSeconds": 3,
+                                        "MaxAttempts": 2,
+                                        "BackoffRate": 2.0,
+                                    }
+                                ],
+                            },
+                            "ChunkProcessingFailed": {
+                                "Type": "Fail",
+                                "Error": "ChunkProcessingFailed",
+                                "Cause": "Failed to process delta chunk",
                             },
                             "NoPendingBatches": {
                                 "Type": "Succeed",
