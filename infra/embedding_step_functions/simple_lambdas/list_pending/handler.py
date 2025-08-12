@@ -34,14 +34,13 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> List[Dict[str, str]]:
         
         logger.info("Found %d pending line embedding batches", len(pending_batches))
         
-        # Format response for Step Function (limit to 5 for now)
-        # TODO: Remove this limit once proper pagination is implemented
+        # Format response for Step Function
         batch_list = [
             {
                 "batch_id": batch.batch_id,
                 "openai_batch_id": batch.openai_batch_id,
             }
-            for batch in pending_batches[:5]
+            for batch in pending_batches
         ]
         
         return batch_list
