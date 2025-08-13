@@ -412,12 +412,14 @@ def perform_final_merge(batch_id: str, total_chunks: int) -> Dict[str, Any]:
 
         # Merge all intermediate chunks
         for chunk_index in range(total_chunks):
+            logger.info("Processing chunk %d of %d", chunk_index + 1, total_chunks)
             intermediate_key = f"intermediate/{batch_id}/chunk-{chunk_index}/"
             chunk_temp = tempfile.mkdtemp()
             
             try:
                 # Download intermediate chunk
                 download_from_s3(bucket, intermediate_key, chunk_temp)
+                logger.info("Downloaded chunk %d", chunk_index)
                 
                 # Load chunk
                 chunk_client = chromadb.PersistentClient(path=chunk_temp)
@@ -432,20 +434,44 @@ def perform_final_merge(batch_id: str, total_chunks: int) -> Dict[str, Any]:
                     except Exception:
                         main_collection = chroma_client.create_collection(collection_meta.name)
                     
-                    # Get all embeddings from chunk
-                    results = chunk_collection.get(
-                        include=["embeddings", "documents", "metadatas"]
-                    )
+                    # Process embeddings in batches to reduce memory usage
+                    BATCH_SIZE = 1000  # Process 1000 embeddings at a time
+                    chunk_count = chunk_collection.count()
                     
-                    if results["ids"]:
-                        # Upsert into main collection
-                        main_collection.upsert(
-                            ids=results["ids"],
-                            embeddings=results["embeddings"],
-                            documents=results["documents"],
-                            metadatas=results["metadatas"],
-                        )
-                        total_embeddings += len(results["ids"])
+                    if chunk_count > 0:
+                        # For large collections, process in batches
+                        if chunk_count > BATCH_SIZE:
+                            # Get all IDs first (lightweight)
+                            all_ids = chunk_collection.get(include=[])["ids"]
+                            
+                            for i in range(0, len(all_ids), BATCH_SIZE):
+                                batch_ids = all_ids[i:i + BATCH_SIZE]
+                                results = chunk_collection.get(
+                                    ids=batch_ids,
+                                    include=["embeddings", "documents", "metadatas"]
+                                )
+                                
+                                main_collection.upsert(
+                                    ids=results["ids"],
+                                    embeddings=results["embeddings"],
+                                    documents=results["documents"],
+                                    metadatas=results["metadatas"],
+                                )
+                                total_embeddings += len(results["ids"])
+                        else:
+                            # Small collection, process all at once
+                            results = chunk_collection.get(
+                                include=["embeddings", "documents", "metadatas"]
+                            )
+                            
+                            if results["ids"]:
+                                main_collection.upsert(
+                                    ids=results["ids"],
+                                    embeddings=results["embeddings"],
+                                    documents=results["documents"],
+                                    metadatas=results["metadatas"],
+                                )
+                                total_embeddings += len(results["ids"])
                 
             finally:
                 import shutil

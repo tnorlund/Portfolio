@@ -392,9 +392,9 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                 "handler_type": "word_polling",
             },
             "compaction": {
-                "memory": 4096,
+                "memory": 8192,  # Increased for better performance
                 "timeout": 900,
-                "ephemeral_storage": 5120,
+                "ephemeral_storage": 10240,  # Maximum allowed (10GB)
                 "handler_type": "compaction",
             },
         }
