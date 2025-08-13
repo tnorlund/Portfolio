@@ -232,7 +232,7 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             }
 
         # Start heartbeat
-        lock_manager.start_heartbeat(heartbeat_interval)
+        lock_manager.start_heartbeat()
 
         # Perform final merge
         merge_result = perform_final_merge(batch_id, total_chunks)
