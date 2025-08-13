@@ -430,8 +430,8 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                 f"{name}-lambda-{stack}",
                 name=f"{name}-{stack}",
                 package_type="Image",
-                image_uri=Output.all(self.ecr_repo.repository_url, self.docker_image.digest).apply(
-                    lambda args: f"{args[0].split(':')[0]}@{args[1]}"
+                image_uri=self.ecr_repo.repository_url.apply(
+                    lambda url: f"{url}:latest"
                 ),
                 role=self.lambda_role.arn,
                 architectures=["arm64"],
