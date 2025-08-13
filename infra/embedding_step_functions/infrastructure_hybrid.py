@@ -112,9 +112,7 @@ class HybridEmbeddingInfrastructure(ComponentResource):
         self.register_outputs(
             {
                 "docker_image_uri": (
-                    Output.all(self.ecr_repo.repository_url, self.docker_image.digest).apply(
-                        lambda args: f"{args[0].split(':')[0]}@{args[1]}"
-                    )
+                    self.docker_image.ref  # Use ref output which includes tag with digest
                     if hasattr(self, "docker_image")
                     else None
                 ),
@@ -430,12 +428,7 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                 f"{name}-lambda-{stack}",
                 name=f"{name}-{stack}",
                 package_type="Image",
-                image_uri=Output.all(
-                    self.ecr_repo.repository_url,
-                    self.docker_image.digest
-                ).apply(
-                    lambda args: f"{args[0].split(':')[0]}@{args[1]}"
-                ),
+                image_uri=self.docker_image.ref,  # Use ref output directly - includes tag with digest
                 role=self.lambda_role.arn,
                 architectures=["arm64"],
                 memory_size=config["memory"],
