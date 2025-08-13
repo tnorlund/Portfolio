@@ -310,6 +310,7 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                 environment=FunctionEnvironmentArgs(variables=env_vars),
                 layers=layers,  # Use the receipt_label layer
                 architectures=["arm64"],
+                tags={"environment": stack},  # Add environment tag for CodePipeline layer updates
                 opts=ResourceOptions(parent=self, ignore_changes=["layers"]),
             )
 
@@ -444,6 +445,7 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                     if config.get("ephemeral_storage", 512) > 512
                     else None
                 ),
+                tags={"environment": stack},  # Add environment tag for CodePipeline layer updates
                 opts=ResourceOptions(
                     parent=self, depends_on=[self.docker_image]
                 ),
