@@ -51,6 +51,21 @@ def _parse_left_right_from_formatted(fmt: str) -> tuple[str, str]:
 
 def _parse_metadata_from_custom_id(custom_id: str) -> dict:
     parts = custom_id.split("#")
+    
+    # Validate we have the expected format for word embeddings
+    if len(parts) < 8:
+        raise ValueError(
+            f"Invalid custom_id format for word embedding: {custom_id}. "
+            f"Expected format: IMAGE#<id>#RECEIPT#<id>#LINE#<id>#WORD#<id>, "
+            f"but got {len(parts)} parts"
+        )
+    
+    # Additional validation: check for WORD component
+    if "WORD" not in parts:
+        raise ValueError(
+            f"Custom ID appears to be for line embedding, not word embedding: {custom_id}"
+        )
+    
     return {
         "image_id": parts[1],
         "receipt_id": int(parts[3]),
@@ -71,7 +86,7 @@ def list_pending_embedding_batches(
         client_manager = get_client_manager()
     summaries, lek = client_manager.dynamo.get_batch_summaries_by_status(
         status="PENDING",
-        batch_type=BatchType.EMBEDDING,
+        batch_type=BatchType.WORD_EMBEDDING,
         limit=25,
         last_evaluated_key=None,
     )
@@ -79,7 +94,7 @@ def list_pending_embedding_batches(
         next_summaries, lek = (
             client_manager.dynamo.get_batch_summaries_by_status(
                 status="PENDING",
-                batch_type=BatchType.EMBEDDING,
+                batch_type=BatchType.WORD_EMBEDDING,
                 limit=25,
                 last_evaluated_key=lek,
             )
