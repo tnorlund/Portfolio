@@ -65,12 +65,13 @@ def compact_handler(
         "operation": "process_chunk",
         "batch_id": "batch-uuid",
         "chunk_index": 0,
+        "database": "lines",  # or "words" - specifies which database to use
         "delta_results": [
             {
-                "delta_key": "delta/abc123/",
+                "delta_key": "lines/delta/abc123/",  # Now includes database prefix
                 "delta_id": "abc123",
                 "embedding_count": 100,
-                "collection": "receipt_words"  # or "receipt_lines"
+                "collection": "receipt_lines"
             },
             ...
         ]
@@ -80,6 +81,7 @@ def compact_handler(
     {
         "operation": "final_merge",
         "batch_id": "batch-uuid",
+        "database": "lines",  # or "words"
         "total_chunks": 5
     }
     """
@@ -109,12 +111,13 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     """
     Process a chunk of deltas without acquiring locks.
 
-    Writes output to intermediate/{batch_id}/chunk-{index}/ in S3.
+    Writes output to intermediate/{database}/{batch_id}/chunk-{index}/ in S3.
     """
     logger.info("Processing chunk compaction")
 
     batch_id = event.get("batch_id")
     chunk_index = event.get("chunk_index")
+    database = event.get("database", "default")  # Database name (lines/words)
     delta_results = event.get("delta_results", [])
 
     if not batch_id:
@@ -167,7 +170,7 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     try:
         # Process chunk deltas with collection awareness
         chunk_result = process_chunk_deltas(
-            batch_id, chunk_index, chunk_deltas, deltas_by_collection
+            batch_id, chunk_index, chunk_deltas, deltas_by_collection, database
         )
 
         # Prepare response for Map state
@@ -205,6 +208,7 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     logger.info("Starting final merge compaction")
 
     batch_id = event.get("batch_id")
+    database = event.get("database", "default")
     total_chunks = event.get("total_chunks", 1)
 
     if not batch_id:
@@ -221,7 +225,7 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     )
     try:
         lock_acquired = lock_manager.acquire(
-            f"chroma-final-merge-{batch_id}"
+            f"chroma-final-merge-{database}-{batch_id}"
         )
         if not lock_acquired:
             logger.warning("Could not acquire lock for final merge")
@@ -234,11 +238,11 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         # Start heartbeat
         lock_manager.start_heartbeat()
 
-        # Perform final merge
-        merge_result = perform_final_merge(batch_id, total_chunks)
+        # Perform final merge with database awareness
+        merge_result = perform_final_merge(batch_id, total_chunks, database)
 
         # Clean up intermediate chunks
-        cleanup_intermediate_chunks(batch_id, total_chunks)
+        cleanup_intermediate_chunks(batch_id, total_chunks, database)
 
         return {
             "statusCode": 200,
@@ -268,6 +272,7 @@ def process_chunk_deltas(
     chunk_index: int,
     chunk_deltas: List[Dict[str, Any]],
     deltas_by_collection: Dict[str, List[Dict[str, Any]]],
+    database: str = "default",
 ) -> Dict[str, Any]:
     """
     Process a chunk of deltas and save to intermediate storage.
@@ -280,7 +285,7 @@ def process_chunk_deltas(
     total_embeddings = 0
 
     try:
-        # Initialize ChromaDB in memory
+        # Initialize ChromaDB in memory - database-specific
         chroma_client = chromadb.PersistentClient(path=temp_dir)
         
         # Process each collection separately
@@ -315,8 +320,8 @@ def process_chunk_deltas(
                     embeddings_added, delta_key, collection_name
                 )
 
-        # Upload intermediate chunk to S3
-        intermediate_key = f"intermediate/{batch_id}/chunk-{chunk_index}/"
+        # Upload intermediate chunk to S3 with database-specific path
+        intermediate_key = f"{database}/intermediate/{batch_id}/chunk-{chunk_index}/"
         upload_to_s3(temp_dir, bucket, intermediate_key)
 
         processing_time = time.time() - start_time
@@ -389,7 +394,7 @@ def download_and_merge_delta(
         shutil.rmtree(delta_temp, ignore_errors=True)
 
 
-def perform_final_merge(batch_id: str, total_chunks: int) -> Dict[str, Any]:
+def perform_final_merge(batch_id: str, total_chunks: int, database: str = "default") -> Dict[str, Any]:
     """
     Perform the final merge of all intermediate chunks into a snapshot.
     """
@@ -399,8 +404,8 @@ def perform_final_merge(batch_id: str, total_chunks: int) -> Dict[str, Any]:
     total_embeddings = 0
 
     try:
-        # Download current snapshot if exists
-        snapshot_key = "snapshot/latest/"
+        # Download current snapshot if exists - database-specific
+        snapshot_key = f"{database}/snapshot/latest/"
         try:
             download_from_s3(bucket, snapshot_key, temp_dir)
             chroma_client = chromadb.PersistentClient(path=temp_dir)
@@ -413,7 +418,7 @@ def perform_final_merge(batch_id: str, total_chunks: int) -> Dict[str, Any]:
         # Merge all intermediate chunks
         for chunk_index in range(total_chunks):
             logger.info("Processing chunk %d of %d", chunk_index + 1, total_chunks)
-            intermediate_key = f"intermediate/{batch_id}/chunk-{chunk_index}/"
+            intermediate_key = f"{database}/intermediate/{batch_id}/chunk-{chunk_index}/"
             chunk_temp = tempfile.mkdtemp()
             
             try:
@@ -479,7 +484,7 @@ def perform_final_merge(batch_id: str, total_chunks: int) -> Dict[str, Any]:
 
         # Create timestamped snapshot with dedicated prefix for lifecycle management
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        timestamped_key = f"snapshot/timestamped/{timestamp}/"
+        timestamped_key = f"{database}/snapshot/timestamped/{timestamp}/"
         
         # Upload to S3
         upload_to_s3(temp_dir, bucket, timestamped_key)
@@ -506,12 +511,12 @@ def perform_final_merge(batch_id: str, total_chunks: int) -> Dict[str, Any]:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-def cleanup_intermediate_chunks(batch_id: str, total_chunks: int):
+def cleanup_intermediate_chunks(batch_id: str, total_chunks: int, database: str = "default"):
     """Clean up intermediate chunk files from S3."""
     bucket = os.environ["CHROMADB_BUCKET"]
     
     for chunk_index in range(total_chunks):
-        intermediate_key = f"intermediate/{batch_id}/chunk-{chunk_index}/"
+        intermediate_key = f"{database}/intermediate/{batch_id}/chunk-{chunk_index}/"
         try:
             # List and delete all objects with this prefix
             response = s3_client.list_objects_v2(

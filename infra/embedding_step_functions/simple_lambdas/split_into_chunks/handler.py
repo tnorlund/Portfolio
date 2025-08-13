@@ -44,12 +44,16 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         # Filter out any invalid results
         valid_deltas = []
+        database = None  # Track the database being used
         for result in poll_results:
             # Each result should have delta_key and collection info
             if isinstance(result, dict) and "delta_key" in result:
                 # Ensure collection is set (default to receipt_words for backward compat)
                 if "collection" not in result:
                     result["collection"] = "receipt_words"
+                # Track database (should be consistent across all deltas in a batch)
+                if "database" in result:
+                    database = result["database"]
                 valid_deltas.append(result)
             else:
                 logger.warning(f"Skipping invalid delta result: {result}")
@@ -72,6 +76,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "delta_results": chunk_deltas,
                 "operation": "process_chunk",
             }
+            # Add database if we detected one
+            if database:
+                chunk["database"] = database
             chunks.append(chunk)
             
             # Log chunk details for debugging
@@ -82,11 +89,15 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         logger.info(f"Created {len(chunks)} chunks from {len(valid_deltas)} deltas")
         
-        return {
+        result = {
             "batch_id": batch_id,
             "chunks": chunks,
             "total_chunks": len(chunks),
         }
+        # Add database if detected
+        if database:
+            result["database"] = database
+        return result
         
     except ValueError as e:
         logger.error(f"Validation error: {str(e)}")

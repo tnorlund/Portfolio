@@ -506,7 +506,8 @@ def save_line_embeddings_as_delta(
         documents=documents,
         metadatas=metadatas,
         bucket_name=bucket_name,
-        collection_name="receipt_lines",
+        collection_name="receipt_lines",  # Clean name without prefix
+        database_name="lines",  # Separate database for line embeddings
         sqs_queue_url=sqs_queue_url,
         batch_id=batch_id,
     )

@@ -34,6 +34,7 @@ def produce_embedding_delta(
     metadatas: List[Dict[str, Any]],
     bucket_name: str,
     collection_name: str = "words",
+    database_name: Optional[str] = None,  # New parameter for database separation
     sqs_queue_url: Optional[str] = None,
     batch_id: Optional[str] = None,
     delta_prefix: str = "delta/",  # For tests
@@ -52,6 +53,8 @@ def produce_embedding_delta(
         metadatas: Metadata dictionaries
         bucket_name: S3 bucket name for storing the delta
         collection_name: ChromaDB collection name (default: "words")
+        database_name: Database name for separation (e.g., "lines", "words"). 
+                      If provided, creates database-specific structure
         sqs_queue_url: SQS queue URL for compaction notification. If None, skips SQS notification
         batch_id: Optional batch identifier for tracking purposes
         delta_prefix: S3 prefix for delta files (default: "delta/")
@@ -89,7 +92,18 @@ def produce_embedding_delta(
     
     try:
         # Create ChromaDB client in delta mode
-        chroma = ChromaDBClient(persist_directory=delta_dir, mode="delta")
+        # If database_name is provided, use no prefix (database is already specific)
+        # Otherwise, use default "receipts" prefix for backward compatibility
+        if database_name:
+            chroma = ChromaDBClient(
+                persist_directory=delta_dir, 
+                collection_prefix="",  # No prefix for database-specific storage
+                mode="delta"
+            )
+            # Adjust delta prefix to include database name
+            delta_prefix = f"{database_name}/{delta_prefix}"
+        else:
+            chroma = ChromaDBClient(persist_directory=delta_dir, mode="delta")
 
         # Upsert vectors
         chroma.upsert_vectors(
@@ -115,6 +129,7 @@ def produce_embedding_delta(
                 message_body = {
                     "delta_key": s3_key,
                     "collection": collection_name,
+                    "database": database_name if database_name else "default",
                     "vector_count": len(ids),
                     "timestamp": datetime.utcnow().isoformat(),
                 }
