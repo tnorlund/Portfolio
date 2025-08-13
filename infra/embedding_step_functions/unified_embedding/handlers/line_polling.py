@@ -115,6 +115,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "delta_key": delta_result["delta_key"],
             "embedding_count": delta_result["embedding_count"],
             "storage": "s3_delta",
+            "collection": "receipt_lines",  # Specify the collection name for line embeddings
         }
     
     elif status_result["action"] == "process_partial" and batch_status == "expired":

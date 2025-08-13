@@ -356,12 +356,16 @@ def download_and_merge_delta(
         # Load delta into temporary ChromaDB instance
         delta_client = chromadb.PersistentClient(path=delta_temp)
         
-        # Get the collection from delta (assumes same name)
-        try:
-            delta_collection = delta_client.get_collection(collection.name)
-        except Exception:
-            logger.warning("Collection %s not found in delta %s", collection.name, delta_key)
+        # Get the first (and typically only) collection from the delta
+        # The delta should contain exactly one collection with all the embeddings
+        delta_collections = delta_client.list_collections()
+        if not delta_collections:
+            logger.warning("No collections found in delta %s", delta_key)
             return 0
+        
+        # Use the first collection from the delta (there should only be one)
+        delta_collection = delta_collections[0]
+        logger.info("Found collection '%s' in delta %s", delta_collection.name, delta_key)
         
         # Get all embeddings from delta
         results = delta_collection.get(include=["embeddings", "documents", "metadatas"])
