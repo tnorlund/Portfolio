@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.constants import BatchStatus, BatchType
 from receipt_dynamo.data.base_operations import (
+    BatchGetItemInputTypeDef,
     DeleteTypeDef,
     DynamoDBBaseOperations,
     FlattenedStandardMixin,
@@ -237,6 +238,72 @@ class _BatchSummary(
             )
 
         return result
+
+    @handle_dynamodb_errors("get_batch_summaries_by_batch_ids")
+    def get_batch_summaries_by_batch_ids(
+        self, batch_ids: List[str]
+    ) -> List[BatchSummary]:
+        """
+        Retrieves a list of BatchSummary records from DynamoDB by batch_id.
+        """
+        if not isinstance(batch_ids, list):
+            raise EntityValidationError("batch_ids must be a list")
+        for batch_id in batch_ids:
+            assert_valid_uuid(batch_id)
+
+        keys = [
+            {
+                "PK": {"S": f"BATCH#{batch_id}"},
+                "SK": {"S": "STATUS"},
+            }
+            for batch_id in batch_ids
+        ]
+
+        return self.get_batch_summaries_by_keys(keys)
+
+    @handle_dynamodb_errors("get_batch_summaries_by_keys")
+    def get_batch_summaries_by_keys(
+        self, keys: List[dict]
+    ) -> List[BatchSummary]:
+        """
+        Retrieves a list of BatchSummary records from DynamoDB by keys.
+        """
+        if not keys:
+            raise EntityValidationError("keys cannot be None or empty")
+        if not isinstance(keys, list):
+            raise EntityValidationError("keys must be a list of dictionaries.")
+
+        # Validate all keys
+        for key in keys:
+            if not {"PK", "SK"}.issubset(key.keys()):
+                raise EntityValidationError("Keys must contain 'PK' and 'SK'")
+            if not key["PK"]["S"].startswith("BATCH#"):
+                raise EntityValidationError("PK must start with 'BATCH#'")
+            if key["SK"]["S"] != "STATUS":
+                raise EntityValidationError("SK must be 'STATUS'")
+
+        # Batch get items in chunks of 100 (DynamoDB limit)
+        results: List[Dict[str, Any]] = []
+        for i in range(0, len(keys), 100):
+            chunk = keys[i : i + 100]
+            request: BatchGetItemInputTypeDef = {
+                "RequestItems": {self.table_name: {"Keys": chunk}}
+            }
+
+            # Perform batch get with retry for unprocessed keys
+            response = self._client.batch_get_item(**request)
+            results.extend(response["Responses"].get(self.table_name, []))
+
+            # Handle unprocessed keys
+            unprocessed = response.get("UnprocessedKeys", {})
+            while unprocessed.get(self.table_name, {}).get("Keys"):
+                response = self._client.batch_get_item(
+                    RequestItems=unprocessed
+                )
+                results.extend(response["Responses"].get(self.table_name, []))
+                unprocessed = response.get("UnprocessedKeys", {})
+
+        return [item_to_batch_summary(item) for item in results]
 
     @handle_dynamodb_errors("list_batch_summaries")
     def list_batch_summaries(
