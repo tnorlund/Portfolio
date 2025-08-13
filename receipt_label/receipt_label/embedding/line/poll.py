@@ -57,6 +57,21 @@ def _parse_prev_next_from_formatted(fmt: str) -> tuple[str, str]:
 def _parse_metadata_from_line_id(custom_id: str) -> dict:
     """Parse metadata from a line ID in the format IMAGE#uuid#RECEIPT#00001#LINE#00001"""
     parts = custom_id.split("#")
+    
+    # Validate we have the expected format for line embeddings
+    if len(parts) != 6:
+        raise ValueError(
+            f"Invalid custom_id format for line embedding: {custom_id}. "
+            f"Expected format: IMAGE#<id>#RECEIPT#<id>#LINE#<id> (6 parts), "
+            f"but got {len(parts)} parts"
+        )
+    
+    # Additional validation: check that this is NOT a word embedding
+    if "WORD" in parts:
+        raise ValueError(
+            f"Custom ID appears to be for word embedding, not line embedding: {custom_id}"
+        )
+    
     return {
         "image_id": parts[1],
         "receipt_id": int(parts[3]),
