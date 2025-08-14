@@ -72,6 +72,61 @@ class BaseImages(ComponentResource):
                 content_hash.update(file_path.read_bytes())
         return f"sha-{content_hash.hexdigest()[:12]}"
 
+    def get_combined_content_hash(self, package_dirs: list[Path]) -> str:
+        """Generate a hash based on multiple package contents.
+
+        Args:
+            package_dirs: List of paths to package directories
+
+        Returns:
+            A deterministic hash string based on all package contents
+        """
+        # Option 1: Try to use git commit SHA (fast and reliable)
+        try:
+            commit = (
+                subprocess.check_output(
+                    ["git", "rev-parse", "--short", "HEAD"],
+                    cwd=str(package_dirs[0].parent),
+                    stderr=subprocess.DEVNULL,
+                )
+                .decode()
+                .strip()
+            )
+            # Check for uncommitted changes in any package
+            has_changes = False
+            for package_dir in package_dirs:
+                status = (
+                    subprocess.check_output(
+                        ["git", "status", "--porcelain", str(package_dir)],
+                        cwd=str(package_dir.parent),
+                        stderr=subprocess.DEVNULL,
+                    )
+                    .decode()
+                    .strip()
+                )
+                if status:
+                    has_changes = True
+                    break
+            
+            if has_changes:
+                return f"git-{commit}-dirty"
+            return f"git-{commit}"
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            pass
+        
+        # Option 2: Hash all package files (fallback)
+        content_hash = hashlib.sha256()
+        for package_dir in sorted(package_dirs):
+            package_files = list(package_dir.rglob("*.py"))
+            for file_path in sorted(package_files):
+                if file_path.is_file() and not file_path.name.startswith("test_"):
+                    # Include package name and relative path for consistency
+                    rel_path = file_path.relative_to(package_dir.parent)
+                    content_hash.update(str(rel_path).encode())
+                    # Include file content
+                    content_hash.update(file_path.read_bytes())
+        return f"sha-{content_hash.hexdigest()[:12]}"
+
     def get_image_tag(self, package_name: str, package_dir: Path) -> str:
         """Get the image tag for a package.
 
@@ -100,6 +155,37 @@ class BaseImages(ComponentResource):
         hash_tag = self.get_content_hash(package_dir)
         pulumi.log.info(
             f"Using content-based tag for {package_name}: {hash_tag}"
+        )
+        return hash_tag
+
+    def get_combined_image_tag(self, package_name: str, package_dirs: list[Path]) -> str:
+        """Get the image tag for a package that includes multiple directories.
+
+        Args:
+            package_name: Name of the package (e.g., "receipt_label")
+            package_dirs: List of paths to package directories
+
+        Returns:
+            The image tag to use
+        """
+        # Check Pulumi config first, then environment variable as fallback
+        pulumi_config = pulumi.Config("portfolio")
+        use_static = pulumi_config.get_bool("use-static-base-image")
+        # If not in config, check environment variable
+        if use_static is None:
+            use_static = os.environ.get(
+                "USE_STATIC_BASE_IMAGE", ""
+            ).lower() in ("true", "1", "yes")
+        if use_static:
+            # Use a stable tag for local development
+            pulumi.log.info(
+                f"Using stable tag for {package_name} (static mode enabled)"
+            )
+            return "stable"
+        # Use combined content-based hash for production
+        hash_tag = self.get_combined_content_hash(package_dirs)
+        pulumi.log.info(
+            f"Using combined content-based tag for {package_name}: {hash_tag}"
         )
         return hash_tag
 
@@ -151,7 +237,8 @@ class BaseImages(ComponentResource):
         dynamo_package_dir = build_context_path / "receipt_dynamo"
         label_package_dir = build_context_path / "receipt_label"
         dynamo_tag = self.get_image_tag("receipt_dynamo", dynamo_package_dir)
-        label_tag = self.get_image_tag("receipt_label", label_package_dir)
+        # For label image, use combined hash since it includes both packages
+        label_tag = self.get_combined_image_tag("receipt_label", [dynamo_package_dir, label_package_dir])
 
         # Build receipt_dynamo base image with content-based tag
         # Using docker-build provider for proper ECR caching support
@@ -213,8 +300,8 @@ class BaseImages(ComponentResource):
             ),
         )
 
-        # Build receipt_label base image (depends on dynamo base image
-        # and label ECR repo)
+        # Build receipt_label base image IN PARALLEL (no dependency on dynamo image)
+        # This is now self-contained with both packages
         self.label_base_image = docker_build.Image(
             f"base-receipt-label-img-{stack}",
             context={
@@ -228,7 +315,7 @@ class BaseImages(ComponentResource):
             platforms=["linux/arm64"],
             build_args={
                 "PYTHON_VERSION": "3.12",
-                "BASE_IMAGE": self.dynamo_base_image.tags[0],  # Use first tag from the built image
+                # No BASE_IMAGE needed anymore - self-contained build
                 "BUILDKIT_INLINE_CACHE": "1",
             },
             # ECR caching configuration
@@ -271,7 +358,7 @@ class BaseImages(ComponentResource):
             ],
             opts=ResourceOptions(
                 parent=self,
-                depends_on=[self.dynamo_base_image, self.label_base_repo],
+                depends_on=[self.label_base_repo],  # Only depends on ECR repo, not dynamo image
             ),
         )
 
