@@ -338,7 +338,7 @@ class ChromaDBClient:
             S3 prefix where the delta was uploaded
 
         Raises:
-            RuntimeError: If not in delta mode
+            RuntimeError: If not in delta mode or no files to upload
         """
         if self.mode != "delta":
             raise RuntimeError(
@@ -351,19 +351,54 @@ class ChromaDBClient:
         if s3_client is None:
             s3_client = boto3.client("s3")
 
-        # ChromaDB PersistentClient auto-persists, no manual persist needed
+        # Force ChromaDB to persist data to disk
+        # ChromaDB's PersistentClient should auto-persist, but we need to ensure
+        # the data is written before we try to upload
+        logger.info(f"Persisting ChromaDB data to {self.persist_directory}")
+        
+        # Try to explicitly persist if the method exists
+        if hasattr(self._client, 'persist'):
+            try:
+                self._client.persist()
+                logger.info("Explicitly called client.persist()")
+            except Exception as e:
+                logger.warning(f"Could not call persist(): {e}")
+        
+        # Check if any files exist in the persist directory
+        persist_path = Path(self.persist_directory)
+        files_to_upload = list(persist_path.rglob("*"))
+        files_to_upload = [f for f in files_to_upload if f.is_file()]
+        
+        if not files_to_upload:
+            logger.error(f"No files found in persist directory: {self.persist_directory}")
+            # List directory contents for debugging
+            try:
+                all_items = list(persist_path.rglob("*"))
+                logger.error(f"Directory contents: {all_items}")
+            except Exception as e:
+                logger.error(f"Could not list directory: {e}")
+            raise RuntimeError(f"No ChromaDB files found to upload in {self.persist_directory}")
+        
+        logger.info(f"Found {len(files_to_upload)} files to upload to S3")
 
         # Create unique prefix for this delta
         prefix = f"{s3_prefix.rstrip('/')}/{uuid.uuid4().hex}/"
+        logger.info(f"Uploading delta to S3 with prefix: {prefix}")
 
         # Upload all files in the persist directory
-        persist_path = Path(self.persist_directory)
-        for file_path in persist_path.rglob("*"):
-            if file_path.is_file():
+        uploaded_count = 0
+        for file_path in files_to_upload:
+            try:
                 relative_path = file_path.relative_to(persist_path)
                 s3_key = f"{prefix}{relative_path}"
+                logger.debug(f"Uploading {file_path} to s3://{bucket}/{s3_key}")
                 s3_client.upload_file(str(file_path), bucket, s3_key)
-
+                uploaded_count += 1
+            except Exception as e:
+                logger.error(f"Failed to upload {file_path} to S3: {e}")
+                raise RuntimeError(f"S3 upload failed for {file_path}: {e}")
+        
+        logger.info(f"Successfully uploaded {uploaded_count} files to S3 at {prefix}")
         return prefix
 
     def reset(self) -> None:

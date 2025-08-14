@@ -88,14 +88,19 @@ def produce_embedding_delta(
         # Use context manager for auto-cleanup
         temp_dir = tempfile.mkdtemp()
         delta_dir = f"{temp_dir}/chroma_delta_{uuid.uuid4().hex}"
+        os.makedirs(delta_dir, exist_ok=True)  # CRITICAL: Must create the directory!
         cleanup_temp = True
     
     try:
+        # Log delta directory for debugging
+        logger.info(f"Delta directory created at: {delta_dir}")
+        
         # Create ChromaDB client in delta mode
         # If database_name is provided, use no prefix (database is already specific)
         # Otherwise, use default "receipts" prefix for backward compatibility
         if database_name:
             logger.info(f"Creating ChromaDB client for database '{database_name}' with no prefix")
+            logger.info(f"Persist directory: {delta_dir}")
             chroma = ChromaDBClient(
                 persist_directory=delta_dir, 
                 collection_prefix="",  # No prefix for database-specific storage
@@ -106,6 +111,7 @@ def produce_embedding_delta(
             logger.info(f"S3 delta prefix will be: {delta_prefix}")
         else:
             logger.info("Creating ChromaDB client with default 'receipts' prefix")
+            logger.info(f"Persist directory: {delta_dir}")
             chroma = ChromaDBClient(persist_directory=delta_dir, mode="delta")
 
         # Upsert vectors
@@ -120,11 +126,17 @@ def produce_embedding_delta(
         logger.info(f"Successfully upserted vectors to collection '{collection_name}'")
 
         # Upload to S3 using the specified prefix
-        s3_key = chroma.persist_and_upload_delta(
-            bucket=bucket_name, s3_prefix=delta_prefix
-        )
-
-        logger.info("Uploaded delta to S3: %s", s3_key)
+        try:
+            logger.info(f"Starting S3 upload to bucket '{bucket_name}' with prefix '{delta_prefix}'")
+            s3_key = chroma.persist_and_upload_delta(
+                bucket=bucket_name, s3_prefix=delta_prefix
+            )
+            logger.info("Successfully uploaded delta to S3: %s", s3_key)
+        except Exception as e:
+            logger.error(f"Failed to upload delta to S3: {e}")
+            logger.error(f"Delta directory was: {delta_dir}")
+            # Re-raise the exception to be caught by the outer try/except
+            raise
 
         # Send to SQS if queue URL is provided and not empty
         if sqs_queue_url:
