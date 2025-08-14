@@ -160,7 +160,6 @@ def produce_embedding_delta(
                 # Delta is still in S3, compactor can find it later
 
         # Calculate delta size (approximate)
-        import os
         delta_size = 0
         if os.path.exists(delta_dir):
             for root, dirs, files in os.walk(delta_dir):
