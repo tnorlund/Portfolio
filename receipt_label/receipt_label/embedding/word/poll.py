@@ -492,6 +492,7 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
         metadatas=metadatas,
         bucket_name=bucket_name,
         collection_name="receipt_words",
+        database_name="words",  # Use words-specific database path
         sqs_queue_url=sqs_queue_url,
         batch_id=batch_id,
     )

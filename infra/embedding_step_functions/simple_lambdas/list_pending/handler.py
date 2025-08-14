@@ -7,6 +7,7 @@ receipt_label and boto3. No container overhead needed.
 import logging
 from typing import Any, Dict, List
 from receipt_label.embedding.line import list_pending_line_embedding_batches
+from receipt_label.embedding.word import list_pending_embedding_batches as list_pending_word_embedding_batches
 
 # Set up logging
 logger = logging.getLogger()
@@ -16,10 +17,13 @@ logger.setLevel(logging.INFO)
 def lambda_handler(
     event: Dict[str, Any], context: Any
 ) -> List[Dict[str, str]]:
-    """List pending line embedding batches from DynamoDB.
+    """List pending embedding batches from DynamoDB.
+    
+    Supports both line and word embedding batches based on the 
+    batch_type parameter in the event.
 
     Args:
-        event: Lambda event (unused in current implementation)
+        event: Lambda event with optional 'batch_type' field ('line' or 'word')
         context: Lambda context (unused)
 
     Returns:
@@ -28,14 +32,20 @@ def lambda_handler(
     Raises:
         RuntimeError: If there's an error accessing DynamoDB
     """
-    logger.info("Starting list_pending_line_batches handler")
+    # Determine batch type from event (default to 'line' for backward compatibility)
+    batch_type = event.get("batch_type", "line")
+    
+    logger.info("Starting list_pending_batches handler for batch_type: %s", batch_type)
 
     try:
-        # Get pending batches from DynamoDB
-        pending_batches = list_pending_line_embedding_batches()
+        # Get pending batches from DynamoDB based on type
+        if batch_type == "word":
+            pending_batches = list_pending_word_embedding_batches()
+        else:
+            pending_batches = list_pending_line_embedding_batches()
 
         logger.info(
-            "Found %d pending line embedding batches", len(pending_batches)
+            "Found %d pending %s embedding batches", len(pending_batches), batch_type
         )
 
         # Format response for Step Function

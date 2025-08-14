@@ -568,6 +568,9 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                             "ListPendingBatches": {
                                 "Type": "Task",
                                 "Resource": arns[0],
+                                "Parameters": {
+                                    "batch_type": "line"
+                                },
                                 "ResultPath": "$.pending_batches",
                                 "Next": "CheckPendingBatches",
                             },
@@ -826,6 +829,9 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                             "ListPendingWordBatches": {
                                 "Type": "Task",
                                 "Resource": arns[0],
+                                "Parameters": {
+                                    "batch_type": "word"
+                                },
                                 "ResultPath": "$.pending_batches",
                                 "Next": "CheckPendingWordBatches",
                             },
