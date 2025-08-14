@@ -120,7 +120,13 @@ class ChromaDBClient:
         Returns:
             ChromaDB Collection instance
         """
-        full_name = f"{self.collection_prefix}_{name}"
+        # Only add underscore separator if prefix is not empty
+        if self.collection_prefix:
+            full_name = f"{self.collection_prefix}_{name}"
+        else:
+            full_name = name
+        
+        logger.debug(f"Getting/creating collection: '{full_name}' (prefix='{self.collection_prefix}', name='{name}')")
 
         if full_name not in self._collections:
             try:

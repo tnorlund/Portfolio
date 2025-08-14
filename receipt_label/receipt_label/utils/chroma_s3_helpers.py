@@ -95,6 +95,7 @@ def produce_embedding_delta(
         # If database_name is provided, use no prefix (database is already specific)
         # Otherwise, use default "receipts" prefix for backward compatibility
         if database_name:
+            logger.info(f"Creating ChromaDB client for database '{database_name}' with no prefix")
             chroma = ChromaDBClient(
                 persist_directory=delta_dir, 
                 collection_prefix="",  # No prefix for database-specific storage
@@ -102,10 +103,13 @@ def produce_embedding_delta(
             )
             # Adjust delta prefix to include database name
             delta_prefix = f"{database_name}/{delta_prefix}"
+            logger.info(f"S3 delta prefix will be: {delta_prefix}")
         else:
+            logger.info("Creating ChromaDB client with default 'receipts' prefix")
             chroma = ChromaDBClient(persist_directory=delta_dir, mode="delta")
 
         # Upsert vectors
+        logger.info(f"Upserting {len(ids)} vectors to collection '{collection_name}'")
         chroma.upsert_vectors(
             collection_name=collection_name,
             ids=ids,
@@ -113,6 +117,7 @@ def produce_embedding_delta(
             documents=documents,
             metadatas=metadatas,
         )
+        logger.info(f"Successfully upserted vectors to collection '{collection_name}'")
 
         # Upload to S3 using the specified prefix
         s3_key = chroma.persist_and_upload_delta(
