@@ -6,12 +6,15 @@ replacing the previous Pinecone implementation.
 """
 from __future__ import annotations
 
+import logging
 import os
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 import boto3
+
+logger = logging.getLogger(__name__)
 
 # Type checking imports (these don't run at runtime)
 if TYPE_CHECKING:
