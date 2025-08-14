@@ -408,6 +408,13 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
             if lbl.validation_status == ValidationStatus.VALID.value
         ]
         
+        # invalid_labels — all labels with status INVALID
+        invalid_labels = [
+            lbl.label
+            for lbl in labels
+            if lbl.validation_status == ValidationStatus.INVALID.value
+        ]
+        
         # label_validated_at — timestamp of the most recent VALID
         valids = [
             lbl
@@ -473,8 +480,21 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
             word_metadata["label_confidence"] = label_confidence
         if label_proposed_by is not None:
             word_metadata["label_proposed_by"] = label_proposed_by
+        
+        # Store validated labels with delimiters for exact matching
         if validated_labels:
-            word_metadata["validated_labels"] = validated_labels
+            # Use comma delimiters to enable exact matching with $contains
+            word_metadata["validated_labels"] = f",{','.join(validated_labels)},"
+        else:
+            word_metadata["validated_labels"] = ""
+            
+        # Store invalid labels with delimiters for exact matching
+        if invalid_labels:
+            # Use comma delimiters to enable exact matching with $contains
+            word_metadata["invalid_labels"] = f",{','.join(invalid_labels)},"
+        else:
+            word_metadata["invalid_labels"] = ""
+            
         if label_validated_at is not None:
             word_metadata["label_validated_at"] = label_validated_at
             
