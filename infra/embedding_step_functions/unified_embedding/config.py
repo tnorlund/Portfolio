@@ -121,27 +121,27 @@ COMMON_ENV_VARS = {
 
 def get_lambda_config(handler_type: str) -> Dict[str, Any]:
     """Get configuration for a specific Lambda handler.
-    
+
     Args:
         handler_type: The type of handler
-        
+
     Returns:
         Lambda configuration dictionary
-        
+
     Raises:
         KeyError: If handler_type is not found
     """
     if handler_type not in LAMBDA_CONFIGS:
         raise KeyError(f"Unknown handler type: {handler_type}")
-    
+
     config = LAMBDA_CONFIGS[handler_type].copy()
-    
+
     # Merge common env vars with handler-specific ones
     config["env_vars"] = {
         **COMMON_ENV_VARS,
         **config["env_vars"],
     }
-    
+
     return config
 
 

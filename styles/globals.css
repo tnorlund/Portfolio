@@ -1,0 +1,285 @@
+:root {
+  /* Light / default mode variables */
+  --background-color: #ffffff;
+  --text-color: #000000;
+  --text-color-rgb: 0, 0, 0;  /* Add this line - RGB for black */
+  --code-background: #f6f8fa;
+
+  --header-background: #000000;
+  --header-text: #ffffff;
+
+  --button-background: #1a1a1a;
+  --button-text: #ffffff;
+  --button-background-hover: #ffffff;
+  --button-text-hover: #1a1a1a;
+
+  --safari-icon-top: #fdfdfe;
+  --safari-icon-bottom: #f3f3f3;
+
+  --react-logo: #087ea4;
+
+  --color-red: #E53935;
+  --color-red-rgb: 229, 57, 53;  /* RGB values for #E53935 */
+  --color-green: #43A047;
+  --color-green-rgb: 67, 160, 71;  /* RGB values for #43A047 */
+  --color-blue: #1E88E5;
+  --color-blue-rgb: 30, 136, 229;  /* RGB values for #1E88E5 */
+  --color-yellow: #FDD835;
+  --color-yellow-rgb: 253, 216, 53;  /* RGB values for #FDD835 */
+
+  --background-color-rgb: 255, 255, 255;  /* Add this for light mode */
+}
+
+main {
+  flex: 1; /* take up all available space */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+select {
+  background-color: var(--button-background);
+  color: var(--button-text);
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: bold;
+  border: 1px solid var(--button-text);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin: 1rem;
+}
+
+/* Hover state for select elements */
+select:hover {
+  background-color: var(--button-background-hover);
+  color: var(--button-text-hover);
+  border-color: var(--button-text-hover);
+}
+
+/* Optional: Focus state for improved accessibility */
+select:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.2);
+}
+
+header {
+  background-color: var(--header-background);
+  color: var(--header-text);
+  text-align: center;
+  display: flex;
+  justify-content: center;
+  padding: 1rem;
+}
+header h1 {
+  margin: 0;            /* remove default h1 margin */
+  padding: 0;
+}
+
+header h1 a {
+  color: inherit;
+  text-decoration: none;
+}
+
+h1 {
+  font-size: 1.75rem;
+  margin-top: 2rem;
+  margin-bottom: 1rem;
+  font-weight: 700;
+}
+
+h2 {
+  font-size: 1.25rem;
+  margin-top: 1.5rem;
+  margin-bottom: 0;
+}
+
+p {
+  margin: 0;
+}
+
+em {
+  font-style: italic;
+  margin-left: 1rem;
+  border-left: 2px solid var(--text-color);
+  padding-left: 0.5rem;
+}
+
+/* Block‑level quote with a vertical rule that spans all wrapped lines */
+blockquote {
+  margin-left: 1rem;
+  border-left: 2px solid var(--text-color);
+  padding-left: 0.5rem;
+  font-style: italic;
+}
+
+
+body {
+  font-size: 16px;         /* or 17px, depending on taste */
+  line-height: 1.6;        /* adds breathing room between lines */
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  margin: 0;
+  background-color: var(--background-color);
+  color: var(--text-color);
+}
+
+button {
+  background-color: var(--button-background);
+  color: var(--button-text);
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: bold;             /* Make text bold */
+  border: 1px solid var(--button-text);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin: 1rem;
+}
+
+button:hover {
+  background-color: var(--button-background-hover);
+  color: var(--button-text-hover);
+  border-color: var(--button-text-hover);
+}
+
+hr {
+  border: none;  /* remove the default border */
+  border-top: 0.5px solid var(--text-color);  /* add a custom border */
+}
+
+.resume-box {
+  display: flex;
+  justify-content: space-between;
+  margin: 0.5rem 0;
+  font-size: 1.1rem;  /* slightly larger than body */
+  /* font-weight: 600; */
+}
+
+ul {
+  margin: 1rem 0 1rem;
+  padding-left: 1.5rem; /* increase indentation to separate bullet text from edges */
+}
+
+li {
+  margin-bottom: 0.75rem; /* more vertical spacing */
+  line-height: 1.4;       /* or 1.6, depending on your global line-height */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background-color: #121212;
+    --text-color: #ffffff;
+    --text-color-rgb: 255, 255, 255;  /* Add this line - RGB for white */
+    --code-background: #1f1f1f;
+
+    --header-background: #000000;
+    --header-text: #ffffff;
+
+    --button-background: #333333;
+    --button-text: #ffffff;
+    --button-background-hover: #555555;
+    --button-text-hover: #ffffff;
+
+    --safari-icon-top: #1D1D1E;
+    --safari-icon-bottom: #111112;
+
+    --react-logo: #58C4DC;
+
+    --color-red: #EF5350;
+    --color-red-rgb: 239, 83, 80;  /* RGB values for #EF5350 */
+    --color-green: #66BB6A;
+    --color-green-rgb: 102, 187, 106;  /* RGB values for #66BB6A */
+    --color-blue: #42A5F5;
+    --color-yellow: #FFEE58;
+
+    --background-color-rgb: 18, 18, 18;  /* Add this for dark mode */
+  }
+}
+
+/* Center the container and give it a default max-width */
+.container {
+  margin: 0 auto;       /* center horizontally */
+  padding: 2rem;        /* some breathing room */
+  max-width: 1024px;    /* default "tablet/desktop" width */
+  text-align: left;     /* or 'center' if you want text centered too */
+}
+
+/* MOBILE (portrait) - up to 480px */
+@media (max-width: 480px) {
+  .container {
+    max-width: 90%;  /* shrink to fit smaller screens */
+    padding: 1rem;
+  }
+}
+
+/* MOBILE (landscape) - up to 768px */
+@media (max-width: 768px) {
+  .container {
+    max-width: 600px;
+  }
+}
+
+/* TABLET (portrait) - up to 834px (slightly bigger than 768) */
+@media (max-width: 834px) {
+  .container {
+    max-width: 700px;
+  }
+}
+
+/* TABLET (landscape) - up to 1024px */
+@media (max-width: 1024px) {
+  .container {
+    max-width: 900px;
+  }
+}
+
+/* LAPTOP - up to 1440px */
+@media (max-width: 1440px) {
+  .container {
+    max-width: 1024px;
+  }
+}
+
+/* DESKTOP - above 1440px */
+@media (min-width: 1441px) {
+  .container {
+    max-width: 1200px; /* or larger if you prefer */
+  }
+}
+
+.receipt-item {
+  -webkit-user-select: none;  /* Safari */
+  -moz-user-select: none;     /* Firefox */
+  -ms-user-select: none;      /* IE10+/Edge */
+  user-select: none;          /* Standard */
+  -webkit-touch-callout: none; /* iOS Safari */
+}
+
+svg text {
+  font-size: 1rem;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  fill: var(--text-color);
+  font-weight: bold;
+}
+
+/* Global styles for code blocks */
+pre {
+  background-color: var(--code-background);  /* Light gray background often used on code blocks */
+  padding: 1em;
+  border-radius: 4px;
+  overflow: auto; /* Show scrollbar if content is wide */
+  line-height: 1.4;
+  font-size: 0.9rem;
+  font-family: Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  margin: 0 0; 
+}
+
+/* Optionally, style <code> elements if you use them directly */
+code {
+  padding: 0.2em 0.4em;
+  border-radius: 4px;
+  font-family: Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}

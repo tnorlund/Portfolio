@@ -18,31 +18,35 @@ from .base import BaseLambdaHandler
 
 class CompactionHandler(BaseLambdaHandler):
     """Handler for compacting multiple ChromaDB deltas.
-    
+
     This is a direct port of the original chromadb_compaction_lambda/handler.py
     to work within the unified container architecture.
-    
+
     This handler is called at the end of the step function to compact all deltas
     created during parallel embedding processing.
     """
-    
+
     def __init__(self):
         super().__init__("Compaction")
         # Initialize clients
         self.s3_client = boto3.client("s3")
         self.dynamo_client = DynamoClient(os.environ["DYNAMODB_TABLE_NAME"])
-        
+
         # Get configuration from environment
-        self.heartbeat_interval = int(os.environ.get("HEARTBEAT_INTERVAL_SECONDS", "60"))
-        self.lock_duration_minutes = int(os.environ.get("LOCK_DURATION_MINUTES", "5"))
-        
+        self.heartbeat_interval = int(
+            os.environ.get("HEARTBEAT_INTERVAL_SECONDS", "60")
+        )
+        self.lock_duration_minutes = int(
+            os.environ.get("LOCK_DURATION_MINUTES", "5")
+        )
+
     def handle(self, event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         """Compact multiple delta files into ChromaDB using chunked processing.
-        
+
         This handler supports two modes:
         1. Chunked processing: Process deltas in chunks without locks
         2. Final merge: Acquire lock and merge all intermediate chunks
-        
+
         Input event format for chunked processing:
         {
             "operation": "process_chunk",
@@ -57,7 +61,7 @@ class CompactionHandler(BaseLambdaHandler):
                 ...
             ]
         }
-        
+
         Input event format for final merge:
         {
             "operation": "final_merge",
@@ -87,7 +91,7 @@ class CompactionHandler(BaseLambdaHandler):
 
     def process_chunk_handler(self, event: Dict[str, Any]) -> Dict[str, Any]:
         """Process a chunk of deltas without acquiring locks.
-        
+
         Writes output to intermediate/{batch_id}/chunk-{index}/ in S3.
         """
         self.logger.info("Processing chunk compaction")
@@ -103,7 +107,9 @@ class CompactionHandler(BaseLambdaHandler):
             raise ValueError("chunk_index is required for chunk processing")
 
         if not delta_results:
-            self.logger.info("No delta results in chunk %d, skipping", chunk_index)
+            self.logger.info(
+                "No delta results in chunk %d, skipping", chunk_index
+            )
             return {
                 "batch_id": batch_id,
                 "chunk_index": chunk_index,
@@ -146,16 +152,22 @@ class CompactionHandler(BaseLambdaHandler):
             else:
                 response["has_more_chunks"] = False
 
-            self.logger.info("Chunk %d processing completed: %s", chunk_index, response)
+            self.logger.info(
+                "Chunk %d processing completed: %s", chunk_index, response
+            )
             return response
 
         except Exception as e:  # pylint: disable=broad-exception-caught
-            self.logger.error("Chunk %d processing failed: %s", chunk_index, str(e))
-            raise RuntimeError(f"Chunk {chunk_index} processing failed: {str(e)}") from e
+            self.logger.error(
+                "Chunk %d processing failed: %s", chunk_index, str(e)
+            )
+            raise RuntimeError(
+                f"Chunk {chunk_index} processing failed: {str(e)}"
+            ) from e
 
     def final_merge_handler(self, event: Dict[str, Any]) -> Dict[str, Any]:
         """Final merge step that acquires lock and combines intermediate chunks.
-        
+
         Preserves existing heartbeat support for the final merge operation.
         """
         self.logger.info("Starting final merge operation")
@@ -197,13 +209,17 @@ class CompactionHandler(BaseLambdaHandler):
             lock_manager.start_heartbeat()
 
             # Perform final merge
-            merge_result = self.merge_intermediate_chunks(batch_id, total_chunks)
+            merge_result = self.merge_intermediate_chunks(
+                batch_id, total_chunks
+            )
 
             # Stop heartbeat thread and release lock
             lock_manager.stop_heartbeat()
             lock_manager.release()
 
-            self.logger.info("Final merge completed successfully: %s", merge_result)
+            self.logger.info(
+                "Final merge completed successfully: %s", merge_result
+            )
 
             return {
                 "compaction_method": "chunked",
@@ -300,10 +316,13 @@ class CompactionHandler(BaseLambdaHandler):
         return intermediate_key
 
     def process_chunk_deltas(
-        self, batch_id: str, chunk_index: int, delta_results: List[Dict[str, Any]]
+        self,
+        batch_id: str,
+        chunk_index: int,
+        delta_results: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
         """Process a chunk of deltas and write to intermediate S3 location.
-        
+
         This function does not acquire locks and processes deltas independently.
         """
         start_time = time.time()
@@ -394,7 +413,9 @@ class CompactionHandler(BaseLambdaHandler):
                 chunk_has_data = True
 
         if not chunk_has_data:
-            self.logger.warning("No data found for chunk %d, skipping", chunk_index)
+            self.logger.warning(
+                "No data found for chunk %d, skipping", chunk_index
+            )
             return 0
 
         # Load chunk ChromaDB
@@ -422,14 +443,19 @@ class CompactionHandler(BaseLambdaHandler):
         self, batch_id: str, total_chunks: int, bucket_name: str
     ) -> None:
         """Clean up intermediate chunks after merge."""
-        if os.environ.get("DELETE_INTERMEDIATE_CHUNKS", "true").lower() != "true":
+        if (
+            os.environ.get("DELETE_INTERMEDIATE_CHUNKS", "true").lower()
+            != "true"
+        ):
             return
 
         for chunk_index in range(total_chunks):
             intermediate_key = f"intermediate/{batch_id}/chunk-{chunk_index}/"
             # Delete all objects with this prefix
             paginator = self.s3_client.get_paginator("list_objects_v2")
-            pages = paginator.paginate(Bucket=bucket_name, Prefix=intermediate_key)
+            pages = paginator.paginate(
+                Bucket=bucket_name, Prefix=intermediate_key
+            )
 
             for page in pages:
                 if "Contents" in page:
@@ -440,13 +466,15 @@ class CompactionHandler(BaseLambdaHandler):
                         self.s3_client.delete_objects(
                             Bucket=bucket_name, Delete=delete_batch
                         )
-            self.logger.info("Cleaned up intermediate chunk: %s", intermediate_key)
+            self.logger.info(
+                "Cleaned up intermediate chunk: %s", intermediate_key
+            )
 
     def merge_intermediate_chunks(
         self, batch_id: str, total_chunks: int
     ) -> Dict[str, Any]:
         """Merge all intermediate chunks into a final ChromaDB snapshot.
-        
+
         This function is called during the final merge step with lock protection.
         """
         start_time = time.time()
@@ -471,7 +499,11 @@ class CompactionHandler(BaseLambdaHandler):
             # Process each intermediate chunk
             for chunk_index in range(total_chunks):
                 embeddings_count = self._process_intermediate_chunk(
-                    chunk_index, batch_id, temp_dir, bucket_name, main_collection
+                    chunk_index,
+                    batch_id,
+                    temp_dir,
+                    bucket_name,
+                    main_collection,
                 )
                 total_embeddings_processed += embeddings_count
                 if embeddings_count > 0:
@@ -501,7 +533,9 @@ class CompactionHandler(BaseLambdaHandler):
             )
 
             # Clean up intermediate chunks
-            self._cleanup_intermediate_chunks(batch_id, total_chunks, bucket_name)
+            self._cleanup_intermediate_chunks(
+                batch_id, total_chunks, bucket_name
+            )
 
         elapsed_time = time.time() - start_time
         self.logger.info(

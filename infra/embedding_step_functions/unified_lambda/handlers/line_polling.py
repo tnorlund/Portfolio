@@ -24,21 +24,21 @@ from .base import BaseLambdaHandler
 
 class LinePollingHandler(BaseLambdaHandler):
     """Handler for polling line embedding batches from OpenAI.
-    
+
     This is a direct port of the original chromadb_line_polling_lambda/handler.py
     to work within the unified container architecture.
     """
-    
+
     def __init__(self):
         super().__init__("LinePolling")
-    
+
     def _handle_completed_batch(
         self,
         batch_id: str,
-        openai_batch_id: str, 
+        openai_batch_id: str,
         batch_status: str,
         status_result: Dict[str, Any],
-        skip_sqs: bool
+        skip_sqs: bool,
     ) -> Dict[str, Any]:
         """Handle completed batch processing."""
         # Download the batch results
@@ -47,21 +47,25 @@ class LinePollingHandler(BaseLambdaHandler):
 
         # Get receipt details
         descriptions = get_receipt_descriptions(results)
-        self.logger.info("Retrieved details for %d receipts", len(descriptions))
+        self.logger.info(
+            "Retrieved details for %d receipts", len(descriptions)
+        )
 
         # Get configuration from environment
         bucket_name = os.environ.get("CHROMADB_BUCKET")
         if not bucket_name:
             raise ValueError("CHROMADB_BUCKET environment variable not set")
-        
+
         # Determine SQS queue URL based on skip_sqs flag
         if skip_sqs:
             self.logger.info("Skipping SQS notification for this delta")
             sqs_queue_url = None
         else:
             sqs_queue_url = os.environ.get("COMPACTION_QUEUE_URL")
-            self.logger.info("Will send SQS notification to: %s", sqs_queue_url)
-        
+            self.logger.info(
+                "Will send SQS notification to: %s", sqs_queue_url
+            )
+
         delta_result = save_line_embeddings_as_delta(
             results, descriptions, batch_id, bucket_name, sqs_queue_url
         )
@@ -73,7 +77,9 @@ class LinePollingHandler(BaseLambdaHandler):
 
         # Write to DynamoDB for tracking
         write_line_embedding_results_to_dynamo(results, descriptions, batch_id)
-        self.logger.info("Wrote %d line embedding results to DynamoDB", len(results))
+        self.logger.info(
+            "Wrote %d line embedding results to DynamoDB", len(results)
+        )
 
         # Update line embedding status to SUCCESS
         update_line_embedding_status_to_success(results, descriptions)
@@ -95,24 +101,26 @@ class LinePollingHandler(BaseLambdaHandler):
             "embedding_count": delta_result["embedding_count"],
             "storage": "s3_delta",
         }
-        
+
     def handle(self, event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         """Poll a line embedding batch and save results as deltas to S3.
-        
+
         This enhanced handler processes all OpenAI batch statuses including
         failed, expired, and in-progress states.
-        
+
         When called from Step Function, set skip_sqs_notification=True to
         prevent individual compaction triggers.
-        
+
         Args:
             event: Lambda event containing batch_id and openai_batch_id
             context: Lambda context (unused)
-            
+
         Returns:
             Dictionary with status, action taken, and next steps
         """
-        self.logger.info("Starting containerized poll_line_embedding_batch_handler")
+        self.logger.info(
+            "Starting containerized poll_line_embedding_batch_handler"
+        )
         self.logger.info("Event: %s", json.dumps(event))
 
         batch_id = event["batch_id"]
@@ -142,7 +150,11 @@ class LinePollingHandler(BaseLambdaHandler):
             and batch_status == "completed"
         ):
             return self._handle_completed_batch(
-                batch_id, openai_batch_id, batch_status, status_result, skip_sqs
+                batch_id,
+                openai_batch_id,
+                batch_status,
+                status_result,
+                skip_sqs,
             )
 
         if (
@@ -154,7 +166,9 @@ class LinePollingHandler(BaseLambdaHandler):
             failed_ids = status_result.get("failed_ids", [])
 
             if partial_results:
-                self.logger.info("Processing %d partial results", len(partial_results))
+                self.logger.info(
+                    "Processing %d partial results", len(partial_results)
+                )
 
                 # Get receipt details for successful results
                 descriptions = get_receipt_descriptions(partial_results)
@@ -177,7 +191,9 @@ class LinePollingHandler(BaseLambdaHandler):
 
             # Mark failed items for retry
             if failed_ids:
-                marked = mark_items_for_retry(failed_ids, "line", client_manager)
+                marked = mark_items_for_retry(
+                    failed_ids, "line", client_manager
+                )
                 self.logger.info("Marked %d lines for retry", marked)
 
             return {

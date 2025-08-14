@@ -24,7 +24,8 @@ from pulumi_aws.iam import Role, RolePolicy
 from pulumi_aws.sfn import StateMachine
 
 # Import ChromaDB infrastructure components
-from chromadb_compaction import ChromaDBBuckets, ChromaDBQueues
+from ..chromadb_compaction import ChromaDBBuckets, ChromaDBQueues
+
 # Use the new unified Lambda implementation
 from .unified_chromadb_lambdas import UnifiedChromaDBLambdas
 
@@ -81,7 +82,9 @@ class LineEmbeddingStepFunction(ComponentResource):
         # Add dependency on base image resource if provided
         lambda_opts = ResourceOptions(parent=self)
         if base_image_resource:
-            lambda_opts = ResourceOptions(parent=self, depends_on=[base_image_resource])
+            lambda_opts = ResourceOptions(
+                parent=self, depends_on=[base_image_resource]
+            )
 
         # Only pass base_image_name if it's provided
         lambda_args = {
@@ -98,7 +101,9 @@ class LineEmbeddingStepFunction(ComponentResource):
             lambda_args["base_image_name"] = base_image_name
             lambda_args["base_image_resource"] = base_image_resource
 
-        self.chromadb_lambdas = UnifiedChromaDBLambdas(f"{name}-chromadb", **lambda_args)
+        self.chromadb_lambdas = UnifiedChromaDBLambdas(
+            f"{name}-chromadb", **lambda_args
+        )
 
         # Create IAM role for Step Function
         self.step_function_role = Role(
@@ -145,7 +150,8 @@ class LineEmbeddingStepFunction(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Create the Poll and Store Line Embeddings Step Function with Chunked Compaction
+        # Create the Poll and Store Line Embeddings Step Function
+        # with Chunked Compaction
         self.poll_and_store_embeddings_sm = StateMachine(
             f"{name}-poll-store-embeddings-sm",
             role_arn=self.step_function_role.arn,
@@ -157,20 +163,27 @@ class LineEmbeddingStepFunction(ComponentResource):
                 lambda arns: json.dumps(
                     {
                         "Comment": (
-                            "Poll OpenAI for completed line embedding batches and "
-                            "store in ChromaDB using chunked compaction"
+                            "Poll OpenAI for completed line "
+                            "embedding batches and store in "
+                            "ChromaDB using chunked compaction"
                         ),
                         "StartAt": "ListPendingBatches",
                         "States": {
                             "ListPendingBatches": {
                                 "Type": "Task",
                                 "Resource": arns[0],
-                                "Comment": ("Find all OpenAI batches with " "status=PENDING"),
+                                "Comment": (
+                                    "Find all OpenAI batches with "
+                                    "status=PENDING"
+                                ),
                                 "ResultPath": "$.pending_batches",
                                 "Next": "CheckPendingBatches",
                                 "Retry": [
                                     {
-                                        "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                                        "ErrorEquals": [
+                                            "Lambda.ServiceException",
+                                            "Lambda.AWSLambdaException",
+                                        ],
                                         "IntervalSeconds": 1,
                                         "MaxAttempts": 2,
                                         "BackoffRate": 1.5,
@@ -181,41 +194,58 @@ class LineEmbeddingStepFunction(ComponentResource):
                                         "IntervalSeconds": 1,
                                         "MaxAttempts": 3,
                                         "BackoffRate": 2.0,
-                                    }
+                                    },
                                 ],
                             },
                             "CheckPendingBatches": {
                                 "Type": "Choice",
-                                "Comment": "Check if there are any pending batches to process",
+                                "Comment": (
+                                    "Check if there are any pending "
+                                    "batches to process"
+                                ),
                                 "Choices": [
                                     {
-                                        # Handle HTTP-wrapped response (current behavior)
+                                        # Handle HTTP-wrapped response
+                                        # (current behavior)
                                         "And": [
                                             {
-                                                "Variable": "$.pending_batches.statusCode",
+                                                "Variable": (
+                                                    "$.pending_batches"
+                                                    ".statusCode"
+                                                ),
                                                 "NumericEquals": 200,
                                             },
                                             {
-                                                "Variable": "$.pending_batches.body",
+                                                "Variable": (
+                                                    "$.pending_batches"
+                                                    ".body"
+                                                ),
                                                 "StringMatches": "*batch_id*",
-                                            }
+                                            },
                                         ],
                                         "Next": "ParsePendingBatches",
                                     },
                                     {
-                                        # Handle clean array response (after deployment)
+                                        # Handle clean array response
+                                        # (after deployment)
                                         "Variable": "$.pending_batches[0]",
                                         "IsPresent": True,
                                         "Next": "PollLineEmbeddingBatch",
-                                    }
+                                    },
                                 ],
                                 "Default": "NoPendingBatches",
                             },
                             "ParsePendingBatches": {
                                 "Type": "Pass",
-                                "Comment": "Parse HTTP body to get array of batches",
+                                "Comment": (
+                                    "Parse HTTP body to get array "
+                                    "of batches"
+                                ),
                                 "Parameters": {
-                                    "pending_batches.$": "States.StringToJson($.pending_batches.body)"
+                                    "pending_batches.$": (
+                                        "States.StringToJson("
+                                        "$.pending_batches.body)"
+                                    )
                                 },
                                 "Next": "PollLineEmbeddingBatch",
                             },
@@ -224,8 +254,13 @@ class LineEmbeddingStepFunction(ComponentResource):
                                 "ItemsPath": "$.pending_batches",
                                 "MaxConcurrency": 10,
                                 "Parameters": {
-                                    "batch_id.$": "$$.Map.Item.Value.batch_id",
-                                    "openai_batch_id.$": "$$.Map.Item.Value.openai_batch_id",
+                                    "batch_id.$": (
+                                        "$$.Map.Item.Value.batch_id"
+                                    ),
+                                    "openai_batch_id.$": (
+                                        "$$.Map.Item.Value."
+                                        "openai_batch_id"
+                                    ),
                                     "skip_sqs_notification": True,
                                 },
                                 "Iterator": {
@@ -237,24 +272,32 @@ class LineEmbeddingStepFunction(ComponentResource):
                                             "End": True,
                                             "Retry": [
                                                 {
-                                                    "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                                                    "ErrorEquals": [
+                                                        "Lambda.ServiceException",
+                                                        "Lambda.AWSLambdaException",
+                                                    ],
                                                     "IntervalSeconds": 1,
                                                     "MaxAttempts": 2,
                                                     "BackoffRate": 1.5,
                                                     "JitterStrategy": "FULL",
                                                 },
                                                 {
-                                                    "ErrorEquals": ["RateLimitError", "OpenAIError"],
+                                                    "ErrorEquals": [
+                                                        "RateLimitError",
+                                                        "OpenAIError",
+                                                    ],
                                                     "IntervalSeconds": 5,
                                                     "MaxAttempts": 5,
                                                     "BackoffRate": 2.0,
                                                 },
                                                 {
-                                                    "ErrorEquals": ["States.ALL"],
+                                                    "ErrorEquals": [
+                                                        "States.ALL"
+                                                    ],
                                                     "IntervalSeconds": 2,
                                                     "MaxAttempts": 3,
                                                     "BackoffRate": 2.0,
-                                                }
+                                                },
                                             ],
                                         }
                                     },
@@ -301,7 +344,10 @@ class LineEmbeddingStepFunction(ComponentResource):
                                 "Retry": [
                                     {
                                         # Fast retry for Lambda service errors to keep container warm
-                                        "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                                        "ErrorEquals": [
+                                            "Lambda.ServiceException",
+                                            "Lambda.AWSLambdaException",
+                                        ],
                                         "IntervalSeconds": 1,
                                         "MaxAttempts": 2,
                                         "BackoffRate": 1.5,
@@ -309,7 +355,10 @@ class LineEmbeddingStepFunction(ComponentResource):
                                     },
                                     {
                                         # Slower retry for rate limits
-                                        "ErrorEquals": ["Lambda.TooManyRequestsException", "States.Timeout"],
+                                        "ErrorEquals": [
+                                            "Lambda.TooManyRequestsException",
+                                            "States.Timeout",
+                                        ],
                                         "IntervalSeconds": 2,
                                         "MaxAttempts": 3,
                                         "BackoffRate": 2.0,
@@ -320,7 +369,7 @@ class LineEmbeddingStepFunction(ComponentResource):
                                         "IntervalSeconds": 1,
                                         "MaxAttempts": 3,
                                         "BackoffRate": 2.0,
-                                    }
+                                    },
                                 ],
                                 "Catch": [
                                     {
@@ -369,7 +418,10 @@ class LineEmbeddingStepFunction(ComponentResource):
                                 "Retry": [
                                     {
                                         # Fast retry to keep container warm for final merge
-                                        "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                                        "ErrorEquals": [
+                                            "Lambda.ServiceException",
+                                            "Lambda.AWSLambdaException",
+                                        ],
                                         "IntervalSeconds": 1,
                                         "MaxAttempts": 2,
                                         "BackoffRate": 1.5,
@@ -381,7 +433,7 @@ class LineEmbeddingStepFunction(ComponentResource):
                                         "IntervalSeconds": 3,
                                         "MaxAttempts": 3,
                                         "BackoffRate": 2.0,
-                                    }
+                                    },
                                 ],
                                 "Catch": [
                                     {
@@ -400,7 +452,8 @@ class LineEmbeddingStepFunction(ComponentResource):
                                 "Type": "Fail",
                                 "Comment": "Final merge failed",
                                 "Cause": (
-                                    "Failed to merge intermediate chunks during " "final compaction"
+                                    "Failed to merge intermediate "
+                                    "chunks during final compaction"
                                 ),
                             },
                             "NoPendingBatches": {
@@ -434,12 +487,16 @@ class LineEmbeddingStepFunction(ComponentResource):
                                 "Type": "Task",
                                 "Resource": arns[0],
                                 "Comment": (
-                                    "Query DynamoDB for lines with " "embedding_status=NONE"
+                                    "Query DynamoDB for lines with "
+                                    "embedding_status=NONE"
                                 ),
                                 "Next": "SubmitEmbedding",
                                 "Retry": [
                                     {
-                                        "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                                        "ErrorEquals": [
+                                            "Lambda.ServiceException",
+                                            "Lambda.AWSLambdaException",
+                                        ],
                                         "IntervalSeconds": 1,
                                         "MaxAttempts": 2,
                                         "BackoffRate": 1.5,
@@ -450,7 +507,7 @@ class LineEmbeddingStepFunction(ComponentResource):
                                         "IntervalSeconds": 1,
                                         "MaxAttempts": 3,
                                         "BackoffRate": 2.0,
-                                    }
+                                    },
                                 ],
                             },
                             "SubmitEmbedding": {
@@ -466,24 +523,32 @@ class LineEmbeddingStepFunction(ComponentResource):
                                             "End": True,
                                             "Retry": [
                                                 {
-                                                    "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                                                    "ErrorEquals": [
+                                                        "Lambda.ServiceException",
+                                                        "Lambda.AWSLambdaException",
+                                                    ],
                                                     "IntervalSeconds": 1,
                                                     "MaxAttempts": 2,
                                                     "BackoffRate": 1.5,
                                                     "JitterStrategy": "FULL",
                                                 },
                                                 {
-                                                    "ErrorEquals": ["RateLimitError", "OpenAIError"],
+                                                    "ErrorEquals": [
+                                                        "RateLimitError",
+                                                        "OpenAIError",
+                                                    ],
                                                     "IntervalSeconds": 5,
                                                     "MaxAttempts": 5,
                                                     "BackoffRate": 2.0,
                                                 },
                                                 {
-                                                    "ErrorEquals": ["States.ALL"],
+                                                    "ErrorEquals": [
+                                                        "States.ALL"
+                                                    ],
                                                     "IntervalSeconds": 2,
                                                     "MaxAttempts": 3,
                                                     "BackoffRate": 2.0,
-                                                }
+                                                },
                                             ],
                                         },
                                     },
@@ -502,10 +567,18 @@ class LineEmbeddingStepFunction(ComponentResource):
             {
                 "chromadb_bucket_name": self.chromadb_buckets.bucket_name,
                 "chromadb_queue_url": self.chromadb_queues.delta_queue_url,
-                "chromadb_line_polling_lambda_arn": (self.chromadb_lambdas.line_polling_lambda.arn),
-                "chromadb_compaction_lambda_arn": (self.chromadb_lambdas.compaction_lambda.arn),
-                "poll_and_store_embeddings_sm_arn": (self.poll_and_store_embeddings_sm.arn),
-                "create_embedding_batches_sm_arn": (self.create_embedding_batches_sm.arn),
+                "chromadb_line_polling_lambda_arn": (
+                    self.chromadb_lambdas.line_polling_lambda.arn
+                ),
+                "chromadb_compaction_lambda_arn": (
+                    self.chromadb_lambdas.compaction_lambda.arn
+                ),
+                "poll_and_store_embeddings_sm_arn": (
+                    self.poll_and_store_embeddings_sm.arn
+                ),
+                "create_embedding_batches_sm_arn": (
+                    self.create_embedding_batches_sm.arn
+                ),
                 "list_pending_openai_batches_lambda_arn": (
                     self.chromadb_lambdas.list_pending_lambda.arn
                 ),
@@ -532,5 +605,6 @@ class LegacyLineEmbeddingStepFunction(ComponentResource):
             opts,
         )
 
-        # NOTE: Move existing Pinecone-based logic here if needed for transition
-        # For now, this is a placeholder to maintain backward compatibility
+        # NOTE: Move existing Pinecone-based logic here if needed
+        # for transition. For now, this is a placeholder to maintain
+        # backward compatibility

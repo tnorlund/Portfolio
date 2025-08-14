@@ -20,6 +20,7 @@ from receipt_label.embedding.word.poll import (
 )
 from receipt_label.utils import get_client_manager
 import utils.logging
+
 get_logger = utils.logging.get_logger
 
 logger = get_logger(__name__)
@@ -27,17 +28,17 @@ logger = get_logger(__name__)
 
 def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """Poll a word embedding batch and save results as deltas to S3.
-    
+
     This enhanced handler processes all OpenAI batch statuses including
     failed, expired, and in-progress states.
-    
-    When called from Step Function, set skip_sqs_notification=True to 
+
+    When called from Step Function, set skip_sqs_notification=True to
     prevent individual compaction triggers.
-    
+
     Args:
         event: Lambda event containing batch_id and openai_batch_id
         context: Lambda context (unused)
-        
+
     Returns:
         Dictionary with status, action taken, and next steps
     """
@@ -46,7 +47,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     batch_id = event["batch_id"]
     openai_batch_id = event["openai_batch_id"]
-    
+
     # Check if we should skip SQS notification (when called from step function)
     skip_sqs = event.get("skip_sqs_notification", False)
 
@@ -62,11 +63,14 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         batch_id=batch_id,
         openai_batch_id=openai_batch_id,
         status=batch_status,
-        client_manager=client_manager
+        client_manager=client_manager,
     )
-    
+
     # Process based on the action determined by status handler
-    if status_result["action"] == "process_results" and batch_status == "completed":
+    if (
+        status_result["action"] == "process_results"
+        and batch_status == "completed"
+    ):
         # Download the batch results
         results = download_openai_batch_result(openai_batch_id)
         logger.info(f"Downloaded {len(results)} embedding results")
@@ -79,7 +83,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         bucket_name = os.environ.get("CHROMADB_BUCKET")
         if not bucket_name:
             raise ValueError("CHROMADB_BUCKET environment variable not set")
-        
+
         # Determine SQS queue URL based on skip_sqs flag
         if skip_sqs:
             logger.info("Skipping SQS notification for this delta")
@@ -114,35 +118,36 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "embedding_count": delta_result["embedding_count"],
             "storage": "s3_delta",
         }
-    
-    elif status_result["action"] == "process_partial" and batch_status == "expired":
+
+    elif (
+        status_result["action"] == "process_partial"
+        and batch_status == "expired"
+    ):
         # Handle expired batch with partial results
         partial_results = status_result.get("partial_results", [])
         failed_ids = status_result.get("failed_ids", [])
-        
+
         if partial_results:
             logger.info(f"Processing {len(partial_results)} partial results")
-            
+
             # Get receipt details for successful results
             descriptions = get_receipt_descriptions(partial_results)
-            
+
             # Save partial results
             delta_result = save_word_embeddings_as_delta(
                 partial_results, descriptions, batch_id
             )
-            
+
             # Skip writing to DynamoDB - we only store in ChromaDB now
-            logger.info(f"Processed {len(partial_results)} partial embedding results")
-        
+            logger.info(
+                f"Processed {len(partial_results)} partial embedding results"
+            )
+
         # Mark failed items for retry
         if failed_ids:
-            marked = mark_items_for_retry(
-                failed_ids,
-                "word",
-                client_manager
-            )
+            marked = mark_items_for_retry(failed_ids, "word", client_manager)
             logger.info(f"Marked {marked} words for retry")
-        
+
         return {
             "batch_id": batch_id,
             "openai_batch_id": openai_batch_id,
@@ -152,17 +157,17 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "failed_count": status_result.get("failed_count", 0),
             "next_step": status_result.get("next_step"),
         }
-    
+
     elif status_result["action"] == "handle_failure":
         # Handle completely failed batch
         error_info = status_result
         logger.error(
             f"Batch {openai_batch_id} failed with {error_info.get('error_count', 0)} errors"
         )
-        
+
         # Could mark all items for retry here if needed
         # For now, just return the error info
-        
+
         return {
             "batch_id": batch_id,
             "openai_batch_id": openai_batch_id,
@@ -173,7 +178,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "sample_errors": error_info.get("sample_errors", []),
             "next_step": error_info.get("next_step"),
         }
-    
+
     elif status_result["action"] in ["wait", "handle_cancellation"]:
         # Batch is still processing or was cancelled
         return {
@@ -184,10 +189,12 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "hours_elapsed": status_result.get("hours_elapsed"),
             "next_step": status_result.get("next_step"),
         }
-    
+
     else:
         # Unknown action
-        logger.error(f"Unknown action from status handler: {status_result['action']}")
+        logger.error(
+            f"Unknown action from status handler: {status_result['action']}"
+        )
         return {
             "batch_id": batch_id,
             "openai_batch_id": openai_batch_id,

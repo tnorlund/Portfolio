@@ -24,36 +24,38 @@ from .base import BaseLambdaHandler
 
 class WordPollingHandler(BaseLambdaHandler):
     """Handler for polling word embedding batches from OpenAI.
-    
+
     This is a direct port of the original chromadb_word_polling_lambda/handler.py
     to work within the unified container architecture.
     """
-    
+
     def __init__(self):
         super().__init__("WordPolling")
-        
+
     def handle(self, event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         """Poll a word embedding batch and save results as deltas to S3.
-        
+
         This enhanced handler processes all OpenAI batch statuses including
         failed, expired, and in-progress states.
-        
-        When called from Step Function, set skip_sqs_notification=True to 
+
+        When called from Step Function, set skip_sqs_notification=True to
         prevent individual compaction triggers.
-        
+
         Args:
             event: Lambda event containing batch_id and openai_batch_id
             context: Lambda context (unused)
-            
+
         Returns:
             Dictionary with status, action taken, and next steps
         """
-        self.logger.info("Starting containerized poll_word_embedding_batch_handler")
+        self.logger.info(
+            "Starting containerized poll_word_embedding_batch_handler"
+        )
         self.logger.info(f"Event: {json.dumps(event)}")
 
         batch_id = event["batch_id"]
         openai_batch_id = event["openai_batch_id"]
-        
+
         # Check if we should skip SQS notification (when called from step function)
         skip_sqs = event.get("skip_sqs_notification", False)
 
@@ -69,31 +71,40 @@ class WordPollingHandler(BaseLambdaHandler):
             batch_id=batch_id,
             openai_batch_id=openai_batch_id,
             status=batch_status,
-            client_manager=client_manager
+            client_manager=client_manager,
         )
-        
+
         # Process based on the action determined by status handler
-        if status_result["action"] == "process_results" and batch_status == "completed":
+        if (
+            status_result["action"] == "process_results"
+            and batch_status == "completed"
+        ):
             # Download the batch results
             results = download_openai_batch_result(openai_batch_id)
             self.logger.info(f"Downloaded {len(results)} embedding results")
 
             # Get receipt details
             descriptions = get_receipt_descriptions(results)
-            self.logger.info(f"Retrieved details for {len(descriptions)} receipts")
+            self.logger.info(
+                f"Retrieved details for {len(descriptions)} receipts"
+            )
 
             # Get configuration from environment
             bucket_name = os.environ.get("CHROMADB_BUCKET")
             if not bucket_name:
-                raise ValueError("CHROMADB_BUCKET environment variable not set")
-            
+                raise ValueError(
+                    "CHROMADB_BUCKET environment variable not set"
+                )
+
             # Determine SQS queue URL based on skip_sqs flag
             if skip_sqs:
                 self.logger.info("Skipping SQS notification for this delta")
                 sqs_queue_url = None
             else:
                 sqs_queue_url = os.environ.get("COMPACTION_QUEUE_URL")
-                self.logger.info(f"Will send SQS notification to: {sqs_queue_url}")
+                self.logger.info(
+                    f"Will send SQS notification to: {sqs_queue_url}"
+                )
 
             delta_result = save_word_embeddings_as_delta(
                 results, descriptions, batch_id, bucket_name, sqs_queue_url
@@ -124,38 +135,43 @@ class WordPollingHandler(BaseLambdaHandler):
                 "embedding_count": delta_result["embedding_count"],
                 "storage": "s3_delta",
             }
-        
-        elif status_result["action"] == "process_partial" and batch_status == "expired":
+
+        elif (
+            status_result["action"] == "process_partial"
+            and batch_status == "expired"
+        ):
             # Handle expired batch with partial results
             partial_results = status_result.get("partial_results", [])
             failed_ids = status_result.get("failed_ids", [])
-            
+
             if partial_results:
-                self.logger.info(f"Processing {len(partial_results)} partial results")
-                
+                self.logger.info(
+                    f"Processing {len(partial_results)} partial results"
+                )
+
                 # Get receipt details for successful results
                 descriptions = get_receipt_descriptions(partial_results)
-                
+
                 # Save partial results
                 delta_result = save_word_embeddings_as_delta(
                     partial_results, descriptions, batch_id
                 )
-                
+
                 # Write partial results to DynamoDB
                 written = write_embedding_results_to_dynamo(
                     partial_results, descriptions, batch_id
                 )
-                self.logger.info(f"Processed {written} partial embedding results")
-            
+                self.logger.info(
+                    f"Processed {written} partial embedding results"
+                )
+
             # Mark failed items for retry
             if failed_ids:
                 marked = mark_items_for_retry(
-                    failed_ids,
-                    "word",
-                    client_manager
+                    failed_ids, "word", client_manager
                 )
                 self.logger.info(f"Marked {marked} words for retry")
-            
+
             return {
                 "batch_id": batch_id,
                 "openai_batch_id": openai_batch_id,
@@ -165,17 +181,17 @@ class WordPollingHandler(BaseLambdaHandler):
                 "failed_count": status_result.get("failed_count", 0),
                 "next_step": status_result.get("next_step"),
             }
-        
+
         elif status_result["action"] == "handle_failure":
             # Handle completely failed batch
             error_info = status_result
             self.logger.error(
                 f"Batch {openai_batch_id} failed with {error_info.get('error_count', 0)} errors"
             )
-            
+
             # Could mark all items for retry here if needed
             # For now, just return the error info
-            
+
             return {
                 "batch_id": batch_id,
                 "openai_batch_id": openai_batch_id,
@@ -186,7 +202,7 @@ class WordPollingHandler(BaseLambdaHandler):
                 "sample_errors": error_info.get("sample_errors", []),
                 "next_step": error_info.get("next_step"),
             }
-        
+
         elif status_result["action"] in ["wait", "handle_cancellation"]:
             # Batch is still processing or was cancelled
             return {
@@ -197,10 +213,12 @@ class WordPollingHandler(BaseLambdaHandler):
                 "hours_elapsed": status_result.get("hours_elapsed"),
                 "next_step": status_result.get("next_step"),
             }
-        
+
         else:
             # Unknown action
-            self.logger.error(f"Unknown action from status handler: {status_result['action']}")
+            self.logger.error(
+                f"Unknown action from status handler: {status_result['action']}"
+            )
             return {
                 "batch_id": batch_id,
                 "openai_batch_id": openai_batch_id,

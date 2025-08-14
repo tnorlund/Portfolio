@@ -40,50 +40,50 @@ HANDLER_MAP = {
 
 def route_request(event: Dict[str, Any], context: Any) -> Any:
     """Route request to appropriate handler based on environment.
-    
+
     Args:
         event: Lambda event
         context: Lambda context
-        
+
     Returns:
         Formatted response appropriate for invocation source
-        
+
     Raises:
         ValueError: If HANDLER_TYPE is not set or invalid
     """
     # Get handler type from environment
     handler_type = os.environ.get("HANDLER_TYPE")
-    
+
     if not handler_type:
         raise ValueError(
             f"HANDLER_TYPE environment variable must be set. "
             f"Valid values: {', '.join(HANDLER_MAP.keys())}"
         )
-    
+
     # Get the handler function
     handler = HANDLER_MAP.get(handler_type)
-    
+
     if not handler:
         raise ValueError(
             f"Invalid HANDLER_TYPE: {handler_type}. "
             f"Valid values: {', '.join(HANDLER_MAP.keys())}"
         )
-    
+
     logger.info(f"Routing to {handler_type} handler")
-    
+
     try:
         # Execute the handler
         result = handler(event, context)
-        
+
         # Format response based on invocation source
         return response_utils.format_response(result, event)
-        
+
     except Exception as e:
-        logger.error(f"Error in {handler_type} handler: {str(e)}", exc_info=True)
-        
+        logger.error(
+            f"Error in {handler_type} handler: {str(e)}", exc_info=True
+        )
+
         # Let format_response handle error formatting
         return response_utils.format_response(
-            {"error": str(e)}, 
-            event, 
-            is_error=True
+            {"error": str(e)}, event, is_error=True
         )

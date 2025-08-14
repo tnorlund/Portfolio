@@ -16,7 +16,7 @@ from . import (
 
 __all__ = [
     "word_polling",
-    "line_polling", 
+    "line_polling",
     "compaction",
     "find_unembedded",
     "submit_openai",

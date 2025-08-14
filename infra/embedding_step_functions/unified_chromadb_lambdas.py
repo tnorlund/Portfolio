@@ -6,7 +6,7 @@ with handler selection controlled by environment variables.
 
 Benefits:
 - Single Docker build instead of 6 separate builds
-- Shared layers reduce ECR storage and pull times  
+- Shared layers reduce ECR storage and pull times
 - Easier dependency management
 - Faster deployments
 """
@@ -37,10 +37,18 @@ from dynamo_db import dynamodb_table
 
 class UnifiedChromaDBLambdas(ComponentResource):
     """Component for unified ChromaDB containerized Lambda functions.
-    
+
     Creates a single container image that can handle all embedding
     step function tasks based on environment configuration.
     """
+
+    # Lambda function attributes (set dynamically in _create_lambda_function)
+    polling_lambda: Optional[Function] = None
+    line_polling_lambda: Optional[Function] = None
+    compaction_lambda: Optional[Function] = None
+    find_unembedded_lambda: Optional[Function] = None
+    submit_openai_lambda: Optional[Function] = None
+    list_pending_lambda: Optional[Function] = None
 
     def __init__(
         self,
@@ -90,8 +98,8 @@ class UnifiedChromaDBLambdas(ComponentResource):
 
         # Revert to repository root context but with better .dockerignore
         build_context_path = Path(__file__).parent.parent.parent
-        
-        # Build unified image with static build args only  
+
+        # Build unified image with static build args only
         build_args = {
             "PYTHON_VERSION": "3.12",
             "BUILDKIT_INLINE_CACHE": "1",
@@ -103,7 +111,12 @@ class UnifiedChromaDBLambdas(ComponentResource):
                 "location": str(build_context_path.resolve()),
             },
             dockerfile={
-                "location": str((build_context_path / "infra/embedding_step_functions/unified_lambda/Dockerfile").resolve()),
+                "location": str(
+                    (
+                        build_context_path
+                        / "infra/embedding_step_functions/unified_lambda/Dockerfile"
+                    ).resolve()
+                ),
             },
             platforms=["linux/arm64"],
             build_args=build_args,
@@ -163,7 +176,6 @@ class UnifiedChromaDBLambdas(ComponentResource):
             }
         )
 
-
     def _create_lambda_functions(
         self,
         stack: str,
@@ -176,7 +188,7 @@ class UnifiedChromaDBLambdas(ComponentResource):
         s3_batch_bucket_name: Output[str],
     ):
         """Create all Lambda functions using the unified image."""
-        
+
         # Lambda configurations
         lambda_configs = [
             {
@@ -269,8 +281,12 @@ class UnifiedChromaDBLambdas(ComponentResource):
 
         # Create IAM role for all Lambda functions (can be shared or separate)
         self.lambda_role = self._create_lambda_role(
-            stack, self.region_static, self.account_id_static, 
-            chromadb_bucket_name, chromadb_queue_arn, s3_batch_bucket_name
+            stack,
+            self.region_static,
+            self.account_id_static,
+            chromadb_bucket_name,
+            chromadb_queue_arn,
+            s3_batch_bucket_name,
         )
 
         # Create Lambda functions
@@ -287,7 +303,7 @@ class UnifiedChromaDBLambdas(ComponentResource):
         s3_batch_bucket_name: Output[str],
     ) -> Role:
         """Create IAM role with permissions for all Lambda functions."""
-        
+
         role = Role(
             f"unified-embedding-role-{stack}",
             assume_role_policy=json.dumps(
@@ -387,9 +403,9 @@ class UnifiedChromaDBLambdas(ComponentResource):
         role: Role,
     ):
         """Create a Lambda function with the specified configuration."""
-        
+
         name = config["name"]
-        
+
         # Create the function
         lambda_func = Function(
             f"{name}-fn-{stack}",
@@ -403,9 +419,13 @@ class UnifiedChromaDBLambdas(ComponentResource):
             environment=FunctionEnvironmentArgs(
                 variables=config["env_vars"],
             ),
-            ephemeral_storage=FunctionEphemeralStorageArgs(
-                size=config["ephemeral_storage"],
-            ) if config["ephemeral_storage"] > 512 else None,
+            ephemeral_storage=(
+                FunctionEphemeralStorageArgs(
+                    size=config["ephemeral_storage"],
+                )
+                if config["ephemeral_storage"] > 512
+                else None
+            ),
             opts=ResourceOptions(parent=self, depends_on=[self.unified_image]),
         )
 
@@ -413,11 +433,13 @@ class UnifiedChromaDBLambdas(ComponentResource):
         # Map handler types to the expected attribute names
         attr_name_map = {
             "word_polling": "polling_lambda",
-            "line_polling": "line_polling_lambda", 
+            "line_polling": "line_polling_lambda",
             "compaction": "compaction_lambda",
             "find_unembedded": "find_unembedded_lambda",
             "submit_openai": "submit_openai_lambda",
             "list_pending": "list_pending_lambda",
         }
-        attr_name = attr_name_map.get(config['handler_type'], f"{config['handler_type']}_lambda")
+        attr_name = attr_name_map.get(
+            config["handler_type"], f"{config['handler_type']}_lambda"
+        )
         setattr(self, attr_name, lambda_func)

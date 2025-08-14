@@ -112,9 +112,9 @@ class HybridEmbeddingInfrastructure(ComponentResource):
         self.register_outputs(
             {
                 "docker_image_uri": (
-                    Output.all(self.ecr_repo.repository_url, self.docker_image.digest).apply(
-                        lambda args: f"{args[0].split(':')[0]}@{args[1]}"
-                    )
+                    Output.all(
+                        self.ecr_repo.repository_url, self.docker_image.digest
+                    ).apply(lambda args: f"{args[0].split(':')[0]}@{args[1]}")
                     if hasattr(self, "docker_image")
                     else None
                 ),
@@ -310,7 +310,9 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                 environment=FunctionEnvironmentArgs(variables=env_vars),
                 layers=layers,  # Use the receipt_label layer
                 architectures=["arm64"],
-                tags={"environment": stack},  # Add environment tag for CodePipeline layer updates
+                tags={
+                    "environment": stack
+                },  # Add environment tag for CodePipeline layer updates
                 opts=ResourceOptions(parent=self, ignore_changes=["layers"]),
             )
 
@@ -371,8 +373,9 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                 ),
             ],
             opts=ResourceOptions(
-                parent=self, 
-                depends_on=[self.ecr_repo] + ([self.base_images] if self.base_images else [])
+                parent=self,
+                depends_on=[self.ecr_repo]
+                + ([self.base_images] if self.base_images else []),
             ),
         )
 
@@ -431,11 +434,8 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                 name=f"{name}-{stack}",
                 package_type="Image",
                 image_uri=Output.all(
-                    self.ecr_repo.repository_url,
-                    self.docker_image.digest
-                ).apply(
-                    lambda args: f"{args[0].split(':')[0]}@{args[1]}"
-                ),
+                    self.ecr_repo.repository_url, self.docker_image.digest
+                ).apply(lambda args: f"{args[0].split(':')[0]}@{args[1]}"),
                 role=self.lambda_role.arn,
                 architectures=["arm64"],
                 memory_size=config["memory"],
@@ -448,7 +448,9 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                     if config.get("ephemeral_storage", 512) > 512
                     else None
                 ),
-                tags={"environment": stack},  # Add environment tag for CodePipeline layer updates
+                tags={
+                    "environment": stack
+                },  # Add environment tag for CodePipeline layer updates
                 opts=ResourceOptions(
                     parent=self, depends_on=[self.docker_image]
                 ),
@@ -615,7 +617,10 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                                 "Next": "CheckForChunks",
                                 "Retry": [
                                     {
-                                        "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                                        "ErrorEquals": [
+                                            "Lambda.ServiceException",
+                                            "Lambda.AWSLambdaException",
+                                        ],
                                         "IntervalSeconds": 1,
                                         "MaxAttempts": 2,
                                         "BackoffRate": 1.5,
@@ -665,14 +670,19 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                                             "End": True,
                                             "Retry": [
                                                 {
-                                                    "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                                                    "ErrorEquals": [
+                                                        "Lambda.ServiceException",
+                                                        "Lambda.AWSLambdaException",
+                                                    ],
                                                     "IntervalSeconds": 2,
                                                     "MaxAttempts": 2,
                                                     "BackoffRate": 2.0,
                                                     "JitterStrategy": "FULL",
                                                 },
                                                 {
-                                                    "ErrorEquals": ["Lambda.TooManyRequestsException"],
+                                                    "ErrorEquals": [
+                                                        "Lambda.TooManyRequestsException"
+                                                    ],
                                                     "IntervalSeconds": 5,
                                                     "MaxAttempts": 3,
                                                     "BackoffRate": 2.0,
@@ -717,7 +727,10 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                                 "End": True,
                                 "Retry": [
                                     {
-                                        "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                                        "ErrorEquals": [
+                                            "Lambda.ServiceException",
+                                            "Lambda.AWSLambdaException",
+                                        ],
                                         "IntervalSeconds": 1,
                                         "MaxAttempts": 2,
                                         "BackoffRate": 1.5,
@@ -728,7 +741,7 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                                         "IntervalSeconds": 3,
                                         "MaxAttempts": 2,
                                         "BackoffRate": 2.0,
-                                    }
+                                    },
                                 ],
                             },
                             "ChunkProcessingFailed": {
@@ -751,7 +764,7 @@ class HybridEmbeddingInfrastructure(ComponentResource):
             ),
             opts=ResourceOptions(parent=self),
         )
-        
+
         # Create the Create Word Embedding Batches Step Function
         self.create_word_batches_sf = StateMachine(
             f"create-word-batches-sf-{stack}",
@@ -792,7 +805,7 @@ class HybridEmbeddingInfrastructure(ComponentResource):
             ),
             opts=ResourceOptions(parent=self),
         )
-        
+
         # Create the Poll and Store Word Embeddings Step Function
         self.poll_word_embeddings_sf = StateMachine(
             f"poll-word-embeddings-sf-{stack}",
@@ -859,7 +872,10 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                                 "Next": "CheckForWordChunks",
                                 "Retry": [
                                     {
-                                        "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                                        "ErrorEquals": [
+                                            "Lambda.ServiceException",
+                                            "Lambda.AWSLambdaException",
+                                        ],
                                         "IntervalSeconds": 1,
                                         "MaxAttempts": 2,
                                         "BackoffRate": 1.5,
@@ -909,14 +925,19 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                                             "End": True,
                                             "Retry": [
                                                 {
-                                                    "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                                                    "ErrorEquals": [
+                                                        "Lambda.ServiceException",
+                                                        "Lambda.AWSLambdaException",
+                                                    ],
                                                     "IntervalSeconds": 2,
                                                     "MaxAttempts": 2,
                                                     "BackoffRate": 2.0,
                                                     "JitterStrategy": "FULL",
                                                 },
                                                 {
-                                                    "ErrorEquals": ["Lambda.TooManyRequestsException"],
+                                                    "ErrorEquals": [
+                                                        "Lambda.TooManyRequestsException"
+                                                    ],
                                                     "IntervalSeconds": 5,
                                                     "MaxAttempts": 3,
                                                     "BackoffRate": 2.0,
@@ -961,7 +982,10 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                                 "End": True,
                                 "Retry": [
                                     {
-                                        "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                                        "ErrorEquals": [
+                                            "Lambda.ServiceException",
+                                            "Lambda.AWSLambdaException",
+                                        ],
                                         "IntervalSeconds": 1,
                                         "MaxAttempts": 2,
                                         "BackoffRate": 1.5,
@@ -972,7 +996,7 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                                         "IntervalSeconds": 3,
                                         "MaxAttempts": 2,
                                         "BackoffRate": 2.0,
-                                    }
+                                    },
                                 ],
                             },
                             "WordChunkProcessingFailed": {

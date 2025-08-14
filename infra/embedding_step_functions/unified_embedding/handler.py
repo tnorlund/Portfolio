@@ -9,11 +9,11 @@ import router
 
 def lambda_handler(event, context):
     """AWS Lambda handler function.
-    
+
     Args:
         event: Lambda event from Step Functions or API Gateway
         context: Lambda runtime context
-        
+
     Returns:
         Response appropriate for the invocation source
     """

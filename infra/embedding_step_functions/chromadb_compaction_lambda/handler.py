@@ -139,7 +139,9 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     # Group chunk deltas by collection name for collection-aware processing
     deltas_by_collection = {}
     for result in chunk_deltas:
-        collection = result.get("collection", "receipt_words")  # Default for backward compat
+        collection = result.get(
+            "collection", "receipt_words"
+        )  # Default for backward compat
         if collection not in deltas_by_collection:
             deltas_by_collection[collection] = []
         deltas_by_collection[collection].append(result)
@@ -255,7 +257,9 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             "batch_id": batch_id,
             "chunks_merged": total_chunks,
             "total_embeddings": merge_result["total_embeddings"],
-            "snapshot_keys": merge_result["snapshot_keys"],  # Multiple keys for multiple collections
+            "snapshot_keys": merge_result[
+                "snapshot_keys"
+            ],  # Multiple keys for multiple collections
             "collections_compacted": merge_result["collections"],
             "processing_time_seconds": merge_result["processing_time"],
             "message": "Final merge completed successfully",
@@ -283,7 +287,9 @@ def _process_single_delta(
     collection_name: str = "receipt_words",
 ) -> int:
     """Process a single delta and add to chunk collection."""
-    logger.info("Processing delta: %s for collection: %s", delta_key, collection_name)
+    logger.info(
+        "Processing delta: %s for collection: %s", delta_key, collection_name
+    )
 
     # Download delta to temporary directory
     delta_dir = os.path.join(
@@ -313,7 +319,9 @@ def _process_single_delta(
         # If collection doesn't exist, log warning and return 0
         logger.warning(
             "Delta %s does not contain collection %s, skipping: %s",
-            delta_key, collection_name, str(e)
+            delta_key,
+            collection_name,
+            str(e),
         )
         return 0
 
@@ -344,13 +352,18 @@ def _upload_chunk_to_s3(
 ) -> Dict[str, str]:
     """Upload chunk to S3 and return the intermediate keys for each collection."""
     intermediate_keys = {}
-    
+
     for collection_name in collections_processed:
-        intermediate_key = f"intermediate/{batch_id}/{collection_name}/chunk-{chunk_index}/"
+        intermediate_key = (
+            f"intermediate/{batch_id}/{collection_name}/chunk-{chunk_index}/"
+        )
         chunk_dir = os.path.join(temp_dir, "chunk", collection_name)
-        
+
         if not os.path.exists(chunk_dir):
-            logger.warning("Chunk directory not found for collection %s, skipping", collection_name)
+            logger.warning(
+                "Chunk directory not found for collection %s, skipping",
+                collection_name,
+            )
             continue
 
         for root, _, files in os.walk(chunk_dir):
@@ -368,15 +381,15 @@ def _upload_chunk_to_s3(
             intermediate_key,
         )
         intermediate_keys[collection_name] = intermediate_key
-    
+
     return intermediate_keys
 
 
 def process_chunk_deltas(
-    batch_id: str, 
-    chunk_index: int, 
+    batch_id: str,
+    chunk_index: int,
     delta_results: List[Dict[str, Any]],
-    deltas_by_collection: Dict[str, List[Dict[str, Any]]]
+    deltas_by_collection: Dict[str, List[Dict[str, Any]]],
 ) -> Dict[str, Any]:
     """
     Process a chunk of deltas and write to intermediate S3 location.
@@ -394,7 +407,7 @@ def process_chunk_deltas(
     with tempfile.TemporaryDirectory() as temp_dir:
         collections_processed = []
         intermediate_keys = {}
-        
+
         # Process each collection separately
         for collection_name, collection_deltas in deltas_by_collection.items():
             # Create ChromaDB instance for this collection chunk
@@ -415,7 +428,11 @@ def process_chunk_deltas(
             for delta_result in collection_deltas:
                 delta_key = delta_result["delta_key"]
                 embeddings_count = _process_single_delta(
-                    delta_key, temp_dir, bucket_name, chunk_collection, collection_name
+                    delta_key,
+                    temp_dir,
+                    bucket_name,
+                    chunk_collection,
+                    collection_name,
                 )
                 collection_embeddings += embeddings_count
                 total_embeddings_processed += embeddings_count
@@ -429,7 +446,7 @@ def process_chunk_deltas(
                         collection_embeddings,
                         total_embeddings_processed,
                     )
-            
+
             collections_processed.append(collection_name)
 
         # Upload chunks to intermediate S3 location (one per collection)
@@ -463,14 +480,22 @@ def _process_intermediate_chunk(
 ) -> Dict[str, int]:
     """Process a single intermediate chunk and merge into main collections."""
     embeddings_by_collection = {}
-    
+
     # Process each collection's chunk
     for collection_name, main_collection in main_collections.items():
-        intermediate_key = f"intermediate/{batch_id}/{collection_name}/chunk-{chunk_index}/"
-        logger.info("Merging intermediate chunk for collection %s: %s", collection_name, intermediate_key)
+        intermediate_key = (
+            f"intermediate/{batch_id}/{collection_name}/chunk-{chunk_index}/"
+        )
+        logger.info(
+            "Merging intermediate chunk for collection %s: %s",
+            collection_name,
+            intermediate_key,
+        )
 
         # Download chunk to temporary directory
-        chunk_dir = os.path.join(temp_dir, "chunks", collection_name, f"chunk-{chunk_index}")
+        chunk_dir = os.path.join(
+            temp_dir, "chunks", collection_name, f"chunk-{chunk_index}"
+        )
         os.makedirs(chunk_dir, exist_ok=True)
 
         # List and download all files in chunk
@@ -489,7 +514,11 @@ def _process_intermediate_chunk(
                 chunk_has_data = True
 
         if not chunk_has_data:
-            logger.warning("No data found for chunk %d in collection %s, skipping", chunk_index, collection_name)
+            logger.warning(
+                "No data found for chunk %d in collection %s, skipping",
+                chunk_index,
+                collection_name,
+            )
             embeddings_by_collection[collection_name] = 0
             continue
 
@@ -498,7 +527,11 @@ def _process_intermediate_chunk(
         try:
             chunk_collection = chunk_client.get_collection(collection_name)
         except ValueError:
-            logger.warning("Collection %s not found in chunk %d, skipping", collection_name, chunk_index)
+            logger.warning(
+                "Collection %s not found in chunk %d, skipping",
+                collection_name,
+                chunk_index,
+            )
             embeddings_by_collection[collection_name] = 0
             continue
 
@@ -519,7 +552,7 @@ def _process_intermediate_chunk(
             embeddings_by_collection[collection_name] = embeddings_count
         else:
             embeddings_by_collection[collection_name] = 0
-    
+
     return embeddings_by_collection
 
 
@@ -535,7 +568,9 @@ def _cleanup_intermediate_chunks(
             intermediate_key = f"intermediate/{batch_id}/{collection_name}/chunk-{chunk_index}/"
             # Delete all objects with this prefix
             paginator = s3_client.get_paginator("list_objects_v2")
-            pages = paginator.paginate(Bucket=bucket_name, Prefix=intermediate_key)
+            pages = paginator.paginate(
+                Bucket=bucket_name, Prefix=intermediate_key
+            )
 
             for page in pages:
                 if "Contents" in page:
@@ -546,7 +581,11 @@ def _cleanup_intermediate_chunks(
                         s3_client.delete_objects(
                             Bucket=bucket_name, Delete=delete_batch
                         )
-            logger.info("Cleaned up intermediate chunk for collection %s: %s", collection_name, intermediate_key)
+            logger.info(
+                "Cleaned up intermediate chunk for collection %s: %s",
+                collection_name,
+                intermediate_key,
+            )
 
 
 def merge_intermediate_chunks(
@@ -563,20 +602,18 @@ def merge_intermediate_chunks(
     total_embeddings_processed = 0
     snapshot_keys = {}
     collections_found = set()
-    
+
     # First, discover which collections are present in the chunks
     for chunk_index in range(total_chunks):
         # Check for both receipt_words and receipt_lines collections
         for collection_name in ["receipt_words", "receipt_lines"]:
             intermediate_prefix = f"intermediate/{batch_id}/{collection_name}/chunk-{chunk_index}/"
             response = s3_client.list_objects_v2(
-                Bucket=bucket_name,
-                Prefix=intermediate_prefix,
-                MaxKeys=1
+                Bucket=bucket_name, Prefix=intermediate_prefix, MaxKeys=1
             )
             if response.get("Contents"):
                 collections_found.add(collection_name)
-    
+
     logger.info("Found collections to merge: %s", list(collections_found))
 
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -596,14 +633,19 @@ def merge_intermediate_chunks(
                 },
             )
             main_collections[collection_name] = main_collection
-            snapshot_keys[collection_name] = f"snapshot/{collection_name}/{snapshot_id}/"
+            snapshot_keys[collection_name] = (
+                f"snapshot/{collection_name}/{snapshot_id}/"
+            )
 
         # Process each intermediate chunk for all collections
         for chunk_index in range(total_chunks):
             embeddings_by_collection = _process_intermediate_chunk(
                 chunk_index, batch_id, temp_dir, bucket_name, main_collections
             )
-            for collection_name, embeddings_count in embeddings_by_collection.items():
+            for (
+                collection_name,
+                embeddings_count,
+            ) in embeddings_by_collection.items():
                 total_embeddings_processed += embeddings_count
                 if embeddings_count > 0:
                     logger.info(
@@ -622,17 +664,23 @@ def merge_intermediate_chunks(
             for root, _, files in os.walk(collection_path):
                 for file in files:
                     local_path = os.path.join(root, file)
-                    relative_path = os.path.relpath(local_path, collection_path)
+                    relative_path = os.path.relpath(
+                        local_path, collection_path
+                    )
                     s3_key = snapshot_key + relative_path
                     s3_client.upload_file(local_path, bucket_name, s3_key)
 
             logger.info(
                 "Uploaded %s snapshot to s3://%s/%s",
-                collection_name, bucket_name, snapshot_key
+                collection_name,
+                bucket_name,
+                snapshot_key,
             )
 
         # Clean up intermediate chunks for all collections
-        _cleanup_intermediate_chunks(batch_id, total_chunks, bucket_name, list(collections_found))
+        _cleanup_intermediate_chunks(
+            batch_id, total_chunks, bucket_name, list(collections_found)
+        )
 
     elapsed_time = time.time() - start_time
     logger.info(

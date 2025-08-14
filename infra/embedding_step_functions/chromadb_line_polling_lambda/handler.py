@@ -48,10 +48,10 @@ if len(logger.handlers) == 0:
 
 def _handle_completed_batch(
     batch_id: str,
-    openai_batch_id: str, 
+    openai_batch_id: str,
     batch_status: str,
     status_result: Dict[str, Any],
-    skip_sqs: bool
+    skip_sqs: bool,
 ) -> Dict[str, Any]:
     """Handle completed batch processing."""
     # Download the batch results
@@ -66,7 +66,7 @@ def _handle_completed_batch(
     bucket_name = os.environ.get("CHROMADB_BUCKET")
     if not bucket_name:
         raise ValueError("CHROMADB_BUCKET environment variable not set")
-    
+
     # Determine SQS queue URL based on skip_sqs flag
     if skip_sqs:
         logger.info("Skipping SQS notification for this delta")
@@ -74,7 +74,7 @@ def _handle_completed_batch(
     else:
         sqs_queue_url = os.environ.get("COMPACTION_QUEUE_URL")
         logger.info("Will send SQS notification to: %s", sqs_queue_url)
-    
+
     delta_result = save_line_embeddings_as_delta(
         results, descriptions, batch_id, bucket_name, sqs_queue_url
     )
@@ -112,7 +112,9 @@ def _handle_completed_batch(
     }
 
 
-def poll_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:  # pylint: disable=unused-argument
+def poll_handler(
+    event: Dict[str, Any], context: Any
+) -> Dict[str, Any]:  # pylint: disable=unused-argument
     """
     Poll a line embedding batch and save results as deltas to S3.
 

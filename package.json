@@ -1,0 +1,75 @@
+{
+  "name": "portfolio",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "@react-spring/web": "^10.0.1",
+    "next": "^15.3.3",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-intersection-observer": "^9.15.1"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:ci": "jest --ci --coverage --watchAll=false",
+    "test:perf": "jest --testMatch='**/*.perf.test.{ts,tsx}'",
+    "test:e2e": "playwright test",
+    "test:e2e:perf": "playwright test --project=performance",
+    "type-check": "tsc --noEmit",
+    "monitor": "node monitor-project.js",
+    "monitor:watch": "node monitor-project.js --watch",
+    "optimize-image": "node scripts/optimize-images.js",
+    "docs": "typedoc",
+    "docs:md": "typedoc --theme markdown --out docs-md",
+    "ci:docs": "npm run docs && npm run docs:md && git diff --exit-code",
+    "analyze": "ANALYZE=true npm run build",
+    "analyze:bundle": "npm run build && node scripts/analyze-bundle.js",
+    "lighthouse": "lhci autorun",
+    "lighthouse:view": "npx lighthouse http://localhost:3000 --view",
+    "perf:all": "npm run test:perf && npm run lighthouse"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "@babel/plugin-syntax-flow": "^7.26.0",
+    "@eslint/eslintrc": "^3.1.0",
+    "@jest/types": "^30.0.0",
+    "@lhci/cli": "^0.15.1",
+    "@modelcontextprotocol/sdk": "^0.4.0",
+    "@next/bundle-analyzer": "^15.3.3",
+    "@playwright/test": "^1.54.0",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/jest-dom": "^5.14.1",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^13.2.1",
+    "@types/jest": "^27.0.1",
+    "@types/node": "^16.7.13",
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0",
+    "eslint": "^9.27.0",
+    "eslint-config-next": "^15.3.3",
+    "jest": "^30.0.0",
+    "jest-environment-jsdom": "^30.0.0",
+    "typedoc": "^0.28.5",
+    "typedoc-material-theme": "^1.4.0",
+    "typedoc-plugin-markdown": "^4.5.0",
+    "typescript": "^5.8.0",
+    "web-vitals": "^2.1.4"
+  }
+}

@@ -9,28 +9,32 @@ from .base import BaseLambdaHandler
 
 class ListPendingHandler(BaseLambdaHandler):
     """Handler for listing pending line embedding batches.
-    
+
     This is a direct port of the original list_pending_batches_lambda/handler.py
     to work within the unified container architecture.
-    
+
     This Lambda queries DynamoDB for line embedding batches that are ready
     for polling.
     """
-    
+
     def __init__(self):
         super().__init__("ListPending")
-        
-    def handle(self, event: Dict[str, Any], context: Any) -> List[Dict[str, str]]:
+
+    def handle(
+        self, event: Dict[str, Any], context: Any
+    ) -> List[Dict[str, str]]:
         """List pending line embedding batches from DynamoDB.
-        
+
         Args:
             event: Lambda event (unused in current implementation)
             context: Lambda context (unused)
-            
+
         Returns:
             List of pending batches with batch_id and openai_batch_id
         """
-        self.logger.info("Starting list_pending_line_batches_for_polling handler")
+        self.logger.info(
+            "Starting list_pending_line_batches_for_polling handler"
+        )
 
         try:
             # Get pending batches
@@ -61,7 +65,9 @@ class ListPendingHandler(BaseLambdaHandler):
             # This will cause the state to fail with proper error handling
             raise RuntimeError(f"Configuration error: {str(e)}") from e
         except KeyError as e:
-            self.logger.error("Missing expected field in DynamoDB response: %s", str(e))
+            self.logger.error(
+                "Missing expected field in DynamoDB response: %s", str(e)
+            )
             raise RuntimeError(f"Data format error: {str(e)}") from e
         except Exception as e:  # pylint: disable=broad-exception-caught
             # Catch-all for other exceptions (network errors, etc.)

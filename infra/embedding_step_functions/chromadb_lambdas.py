@@ -29,6 +29,7 @@ from pulumi_aws.lambda_ import (
     FunctionEnvironmentArgs,
     FunctionEphemeralStorageArgs,
 )
+
 # Migrate to docker-build provider for ECR caching support
 import pulumi_docker_build as docker_build
 
@@ -50,18 +51,18 @@ class ChromaDBLambdas(ComponentResource):
         dockerfile_name: str = "Dockerfile",
     ) -> docker_build.Image:
         """Build a Lambda image with docker-build provider and ECR caching.
-        
+
         This helper method provides:
         1. ECR cache_from and cache_to configuration
         2. Proper registry authentication
         3. Multi-platform support (ARM64)
-        
+
         Args:
             dockerfile_name: Path to Dockerfile relative to context_path
         """
         # Ensure context_path is absolute and exists
         context_path_str = str(context_path.resolve())
-        
+
         # Handle both relative and full path Dockerfiles
         if "/" in dockerfile_name:
             # Full path from repo root
@@ -69,18 +70,20 @@ class ChromaDBLambdas(ComponentResource):
         else:
             # Simple filename in context directory
             dockerfile_path = context_path / dockerfile_name
-        
+
         # Log for debugging
         pulumi.log.info(f"Building {name} with context: {context_path_str}")
         pulumi.log.info(f"Looking for Dockerfile at: {dockerfile_path}")
-        
+
         return docker_build.Image(
             f"{name}-img-{stack}",
             context={
                 "location": context_path_str,
             },
             dockerfile={
-                "location": str(dockerfile_path.resolve()),  # Use absolute path to Dockerfile
+                "location": str(
+                    dockerfile_path.resolve()
+                ),  # Use absolute path to Dockerfile
             },
             platforms=["linux/arm64"],
             build_args=build_args,
@@ -111,7 +114,9 @@ class ChromaDBLambdas(ComponentResource):
                 {
                     # Use just the ECR registry address, not the full repository URL
                     "address": repository.repository_url.apply(
-                        lambda url: url.split("/")[0]  # Extract registry address
+                        lambda url: url.split("/")[
+                            0
+                        ]  # Extract registry address
                     ),
                     "password": ecr_auth_token.password,
                     "username": ecr_auth_token.user_name,
@@ -230,7 +235,9 @@ class ChromaDBLambdas(ComponentResource):
 
         # Build context path - use repository root for access to packages
         # The Dockerfiles expect to copy receipt_dynamo and receipt_label from root
-        build_context_path = Path(__file__).parent.parent.parent  # Go up to repo root
+        build_context_path = Path(
+            __file__
+        ).parent.parent.parent  # Go up to repo root
 
         # Build polling image using Pulumi Docker provider
         # Pulumi will handle the Output[str] dependency automatically
@@ -615,7 +622,9 @@ class ChromaDBLambdas(ComponentResource):
             ephemeral_storage=FunctionEphemeralStorageArgs(
                 size=5120,  # 5GB for compaction operations
             ),
-            opts=ResourceOptions(parent=self, depends_on=[self.compaction_image]),
+            opts=ResourceOptions(
+                parent=self, depends_on=[self.compaction_image]
+            ),
         )
 
         # Create IAM role for line polling Lambda
@@ -730,7 +739,9 @@ class ChromaDBLambdas(ComponentResource):
             ephemeral_storage=FunctionEphemeralStorageArgs(
                 size=3072,  # 3GB for temporary ChromaDB storage
             ),
-            opts=ResourceOptions(parent=self, depends_on=[self.line_polling_image]),
+            opts=ResourceOptions(
+                parent=self, depends_on=[self.line_polling_image]
+            ),
         )
 
         # Create IAM role for find unembedded lines Lambda
@@ -820,7 +831,9 @@ class ChromaDBLambdas(ComponentResource):
                     "OPENAI_API_KEY": openai_api_key,
                 },
             ),
-            opts=ResourceOptions(parent=self, depends_on=[self.find_unembedded_image]),
+            opts=ResourceOptions(
+                parent=self, depends_on=[self.find_unembedded_image]
+            ),
         )
 
         # Create IAM role for submit to OpenAI Lambda
@@ -908,7 +921,9 @@ class ChromaDBLambdas(ComponentResource):
                     "OPENAI_API_KEY": openai_api_key,
                 },
             ),
-            opts=ResourceOptions(parent=self, depends_on=[self.submit_openai_image]),
+            opts=ResourceOptions(
+                parent=self, depends_on=[self.submit_openai_image]
+            ),
         )
 
         # Create IAM role for list pending batches Lambda
@@ -990,7 +1005,9 @@ class ChromaDBLambdas(ComponentResource):
                     "OPENAI_API_KEY": openai_api_key,
                 },
             ),
-            opts=ResourceOptions(parent=self, depends_on=[self.list_pending_image]),
+            opts=ResourceOptions(
+                parent=self, depends_on=[self.list_pending_image]
+            ),
         )
 
         # Register outputs
