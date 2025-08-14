@@ -20,6 +20,7 @@ logger.setLevel(logging.INFO)
 
 
 def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+# pylint: disable=unused-argument
     """Find receipt words without embeddings and prepare batches.
 
     Args:

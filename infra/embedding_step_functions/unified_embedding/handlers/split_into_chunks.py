@@ -16,6 +16,7 @@ CHUNK_SIZE = 10  # Max deltas per chunk as per compaction requirements
 
 
 def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+# pylint: disable=unused-argument
     """Split delta results into chunks for parallel processing.
 
     Args:
@@ -48,12 +49,13 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         for result in poll_results:
             # Each result should have delta_key and collection info
             if isinstance(result, dict) and "delta_key" in result:
+
                 # Ensure collection is set (default to receipt_words for backward compat)
                 if "collection" not in result:
                     result["collection"] = "receipt_words"
                 valid_deltas.append(result)
             else:
-                logger.warning(f"Skipping invalid delta result: {result}")
+                logger.warning("Skipping invalid delta result: %s", result)
 
         if not valid_deltas:
             logger.info("No valid deltas to process")
@@ -92,7 +94,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
 
     except ValueError as e:
-        logger.error(f"Validation error: {str(e)}")
+        logger.error("Validation error: %s", str(e))
         return {
             "statusCode": 400,
             "error": str(e),
@@ -100,7 +102,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
 
     except Exception as e:
-        logger.error(f"Unexpected error splitting into chunks: {str(e)}")
+        logger.error("Unexpected error splitting into chunks: %s", str(e))
         return {
             "statusCode": 500,
             "error": str(e),

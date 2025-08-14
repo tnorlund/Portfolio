@@ -44,6 +44,7 @@ lock_duration_minutes = int(os.environ.get("LOCK_DURATION_MINUTES", "5"))
 
 
 def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+# pylint: disable=unused-argument
     """Main entry point for Lambda handler.
 
     Routes to either chunk processing or final merge based on operation.

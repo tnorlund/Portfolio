@@ -27,6 +27,7 @@ logger = get_logger(__name__)
 
 
 def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+# pylint: disable=unused-argument
     """Poll a word embedding batch and save results as deltas to S3.
 
     This enhanced handler processes all OpenAI batch statuses including
@@ -43,7 +44,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         Dictionary with status, action taken, and next steps
     """
     logger.info("Starting containerized poll_word_embedding_batch_handler")
-    logger.info(f"Event: {json.dumps(event)}")
+    logger.info("Event: %s", json.dumps(event))
 
     batch_id = event["batch_id"]
     openai_batch_id = event["openai_batch_id"]
@@ -56,7 +57,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     # Check the batch status
     batch_status = get_openai_batch_status(openai_batch_id)
-    logger.info(f"Batch {openai_batch_id} status: {batch_status}")
+    logger.info("Batch %s status: %s", openai_batch_id, batch_status)
 
     # Use modular status handler
     status_result = handle_batch_status(
@@ -73,11 +74,11 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     ):
         # Download the batch results
         results = download_openai_batch_result(openai_batch_id)
-        logger.info(f"Downloaded {len(results)} embedding results")
+        logger.info("Downloaded %s embedding results", len(results))
 
         # Get receipt details
         descriptions = get_receipt_descriptions(results)
-        logger.info(f"Retrieved details for {len(descriptions)} receipts")
+        logger.info("Retrieved details for %s receipts", len(descriptions))
 
         # Get configuration from environment
         bucket_name = os.environ.get("CHROMADB_BUCKET")
@@ -90,7 +91,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             sqs_queue_url = None
         else:
             sqs_queue_url = os.environ.get("COMPACTION_QUEUE_URL")
-            logger.info(f"Will send SQS notification to: {sqs_queue_url}")
+            logger.info("Will send SQS notification to: %s", sqs_queue_url)
 
         delta_result = save_word_embeddings_as_delta(
             results, descriptions, batch_id, bucket_name, sqs_queue_url
@@ -101,11 +102,11 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         )
 
         # Skip writing to DynamoDB - we only store in ChromaDB now
-        logger.info(f"Processed {len(results)} embedding results")
+        logger.info("Processed %s embedding results", len(results))
 
         # Mark batch complete
         mark_batch_complete(batch_id)
-        logger.info(f"Marked batch {batch_id} as complete")
+        logger.info("Marked batch %s as complete", batch_id)
 
         return {
             "batch_id": batch_id,
@@ -128,7 +129,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         failed_ids = status_result.get("failed_ids", [])
 
         if partial_results:
-            logger.info(f"Processing {len(partial_results)} partial results")
+            logger.info("Processing %s partial results", len(partial_results))
 
             # Get receipt details for successful results
             descriptions = get_receipt_descriptions(partial_results)
@@ -146,7 +147,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Mark failed items for retry
         if failed_ids:
             marked = mark_items_for_retry(failed_ids, "word", client_manager)
-            logger.info(f"Marked {marked} words for retry")
+            logger.info("Marked %s words for retry", marked)
 
         return {
             "batch_id": batch_id,

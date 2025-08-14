@@ -13,6 +13,7 @@ logger = get_logger(__name__)
 
 
 def handle(event: Dict[str, Any], context: Any) -> List[Dict[str, str]]:
+# pylint: disable=unused-argument
     """List pending line embedding batches from DynamoDB.
 
     Args:

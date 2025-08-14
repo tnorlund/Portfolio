@@ -27,6 +27,7 @@ logger.setLevel(logging.INFO)
 
 
 def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+# pylint: disable=unused-argument
     """Submit a word embedding batch to OpenAI.
 
     This function downloads word data from S3, formats it for OpenAI's
@@ -47,7 +48,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         RuntimeError: If there's an error processing
     """
     logger.info("Starting submit_words_openai handler")
-    logger.info(f"Event: {event}")
+    logger.info("Event: %s", event)
 
     try:
         # Extract parameters from event
@@ -58,22 +59,23 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Generate unique batch ID
         batch_id = generate_batch_id()
-        logger.info(f"Generated batch ID: {batch_id}")
+        logger.info("Generated batch ID: %s", batch_id)
 
         # Download the NDJSON from S3 back to local via serialized helper
         local_path = download_serialized_words(
             {
                 "s3_bucket": s3_bucket,
                 "s3_key": s3_key,
+
                 # Include the original ndjson path so the helper can write to it
                 "ndjson_path": f"/tmp/{Path(s3_key).name}",
             }
         )
-        logger.info(f"Downloaded file to {local_path}")
+        logger.info("Downloaded file to %s", local_path)
 
         # Deserialize the words from the downloaded file
         deserialized_words = deserialize_receipt_words(local_path)
-        logger.info(f"Deserialized {len(deserialized_words)} words")
+        logger.info("Deserialized %s words", len(deserialized_words))
 
         # Query all words in the receipt for context
         all_words_in_receipt = query_receipt_words(image_id, receipt_id)
@@ -86,25 +88,26 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         formatted_words = format_word_context_embedding(
             deserialized_words, all_words_in_receipt
         )
-        logger.info(f"Formatted {len(formatted_words)} words with context")
+        logger.info("Formatted %s words with context", len(formatted_words))
 
         # Write formatted data to NDJSON file
         input_file = write_ndjson(batch_id, formatted_words)
-        logger.info(f"Wrote input file to {input_file}")
+        logger.info("Wrote input file to %s", input_file)
 
         # Upload NDJSON file to OpenAI
         openai_file = upload_to_openai(input_file)
-        logger.info(f"Uploaded input file to OpenAI with ID: {openai_file.id}")
+        logger.info("Uploaded input file to OpenAI with ID: %s",
+            openai_file.id)
 
         # Submit batch job to OpenAI
         openai_batch = submit_openai_batch(openai_file.id)
-        logger.info(f"Submitted OpenAI batch {openai_batch.id}")
+        logger.info("Submitted OpenAI batch %s", openai_batch.id)
 
         # Create batch summary for tracking
         batch_summary = create_batch_summary(
             batch_id, openai_batch.id, input_file
         )
-        logger.info(f"Created batch summary with ID {batch_summary.batch_id}")
+        logger.info("Created batch summary with ID %s", batch_summary.batch_id)
 
         # Update word embedding status in DynamoDB
         update_word_embedding_status(deserialized_words)
@@ -114,7 +117,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Store batch summary in DynamoDB
         add_batch_summary(batch_summary)
-        logger.info(f"Added batch summary to DynamoDB")
+        logger.info("Added batch summary to DynamoDB")
 
         return {
             "batch_id": batch_id,

@@ -24,6 +24,7 @@ logger = get_logger(__name__)
 
 
 def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+# pylint: disable=unused-argument
     """Submit a line embedding batch to OpenAI's Batch API.
 
     Args:
