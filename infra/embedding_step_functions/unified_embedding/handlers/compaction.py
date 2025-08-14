@@ -118,6 +118,7 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     batch_id = event.get("batch_id")
     chunk_index = event.get("chunk_index")
     delta_results = event.get("delta_results", [])
+    database_name = event.get("database")  # Track database for this chunk
 
     if not batch_id:
         return {
@@ -212,6 +213,7 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
 
     batch_id = event.get("batch_id")
     total_chunks = event.get("total_chunks", 1)
+    database_name = event.get("database")  # Get database from event
 
     if not batch_id:
         return {
@@ -238,8 +240,8 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         # Start heartbeat
         lock_manager.start_heartbeat()
 
-        # Perform final merge
-        merge_result = perform_final_merge(batch_id, total_chunks)
+        # Perform final merge with database awareness
+        merge_result = perform_final_merge(batch_id, total_chunks, database_name)
 
         # Clean up intermediate chunks
         cleanup_intermediate_chunks(batch_id, total_chunks)
@@ -402,26 +404,39 @@ def download_and_merge_delta(
         shutil.rmtree(delta_temp, ignore_errors=True)
 
 
-def perform_final_merge(batch_id: str, total_chunks: int) -> Dict[str, Any]:
+def perform_final_merge(batch_id: str, total_chunks: int, database_name: str = None) -> Dict[str, Any]:
     """
     Perform the final merge of all intermediate chunks into a snapshot.
+    
+    Args:
+        batch_id: Unique identifier for this batch
+        total_chunks: Number of chunks to merge
+        database_name: Database name ('lines' or 'words') for separate snapshots
     """
     start_time = time.time()
     bucket = os.environ["CHROMADB_BUCKET"]
     temp_dir = tempfile.mkdtemp()
     total_embeddings = 0
 
+    # Determine snapshot paths based on database
+    if database_name:
+        snapshot_key = f"{database_name}/snapshot/latest/"
+        logger.info(f"Using database-specific snapshot path: {snapshot_key}")
+    else:
+        # Backward compatibility - unified snapshot
+        snapshot_key = "snapshot/latest/"
+        logger.info("Using unified snapshot path for backward compatibility")
+
     try:
         # Download current snapshot if exists
-        snapshot_key = "snapshot/latest/"
         try:
             download_from_s3(bucket, snapshot_key, temp_dir)
             chroma_client = chromadb.PersistentClient(path=temp_dir)
-            logger.info("Loaded existing snapshot from S3")
+            logger.info(f"Loaded existing snapshot from S3: {snapshot_key}")
         except Exception:
             # No existing snapshot, create new
             chroma_client = chromadb.PersistentClient(path=temp_dir)
-            logger.info("Creating new snapshot")
+            logger.info(f"Creating new snapshot at: {snapshot_key}")
 
         # Merge all intermediate chunks
         for chunk_index in range(total_chunks):
@@ -508,13 +523,21 @@ def perform_final_merge(batch_id: str, total_chunks: int) -> Dict[str, Any]:
         # Create timestamped snapshot with dedicated prefix for
         # lifecycle management
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        timestamped_key = f"snapshot/timestamped/{timestamp}/"
+        
+        # Use database-specific path if provided
+        if database_name:
+            timestamped_key = f"{database_name}/snapshot/timestamped/{timestamp}/"
+        else:
+            # Backward compatibility
+            timestamped_key = f"snapshot/timestamped/{timestamp}/"
 
         # Upload to S3
         upload_to_s3(temp_dir, bucket, timestamped_key)
+        logger.info(f"Uploaded timestamped snapshot to: {timestamped_key}")
 
         # Update latest pointer
         upload_to_s3(temp_dir, bucket, snapshot_key)
+        logger.info(f"Updated latest snapshot pointer at: {snapshot_key}")
 
         processing_time = time.time() - start_time
         logger.info(

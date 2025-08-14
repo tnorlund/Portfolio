@@ -666,6 +666,7 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                                                 "batch_id.$": "$.chunk.batch_id",
                                                 "chunk_index.$": "$.chunk.chunk_index",
                                                 "delta_results.$": "$.chunk.delta_results",
+                                                "database": "lines",
                                             },
                                             "End": True,
                                             "Retry": [
@@ -723,6 +724,7 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                                     "operation.$": "$.operation",
                                     "batch_id.$": "$.batch_id",
                                     "total_chunks.$": "$.total_chunks",
+                                    "database": "lines",
                                 },
                                 "End": True,
                                 "Retry": [
@@ -921,6 +923,7 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                                                 "batch_id.$": "$.chunk.batch_id",
                                                 "chunk_index.$": "$.chunk.chunk_index",
                                                 "delta_results.$": "$.chunk.delta_results",
+                                                "database": "words",
                                             },
                                             "End": True,
                                             "Retry": [
@@ -978,6 +981,7 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                                     "operation.$": "$.operation",
                                     "batch_id.$": "$.batch_id",
                                     "total_chunks.$": "$.total_chunks",
+                                    "database": "words",
                                 },
                                 "End": True,
                                 "Retry": [
