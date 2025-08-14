@@ -6,6 +6,7 @@ parallel embedding processing, with support for collection-aware processing.
 
 import json
 import os
+import shutil
 import tempfile
 import time
 import uuid
@@ -160,7 +161,8 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         deltas_by_collection[collection].append(result)
 
     logger.info(
-        "Processing chunk %d with %d deltas across %d collections (batch_id: %s)",
+        "Processing chunk %d with %d deltas across %d collections "
+        "(batch_id: %s)",
         chunk_index,
         len(chunk_deltas),
         len(deltas_by_collection),
@@ -341,8 +343,6 @@ def process_chunk_deltas(
 
     finally:
         # Clean up temp directory
-        import shutil
-
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
@@ -364,7 +364,7 @@ def download_and_merge_delta(
         delta_client = chromadb.PersistentClient(path=delta_temp)
 
         # Get the first (and typically only) collection from the delta
-        # The delta should contain exactly one collection with all the embeddings
+        # The delta should contain exactly one collection with all embeddings
         delta_collections = delta_client.list_collections()
         if not delta_collections:
             logger.warning("No collections found in delta %s", delta_key)
@@ -398,8 +398,6 @@ def download_and_merge_delta(
 
     finally:
         # Clean up delta temp directory
-        import shutil
-
         shutil.rmtree(delta_temp, ignore_errors=True)
 
 
@@ -457,17 +455,17 @@ def perform_final_merge(batch_id: str, total_chunks: int) -> Dict[str, Any]:
                         )
 
                     # Process embeddings in batches to reduce memory usage
-                    BATCH_SIZE = 1000  # Process 1000 embeddings at a time
+                    batch_size = 1000  # Process 1000 embeddings at a time
                     chunk_count = chunk_collection.count()
 
                     if chunk_count > 0:
                         # For large collections, process in batches
-                        if chunk_count > BATCH_SIZE:
+                        if chunk_count > batch_size:
                             # Get all IDs first (lightweight)
                             all_ids = chunk_collection.get(include=[])["ids"]
 
-                            for i in range(0, len(all_ids), BATCH_SIZE):
-                                batch_ids = all_ids[i : i + BATCH_SIZE]
+                            for i in range(0, len(all_ids), batch_size):
+                                batch_ids = all_ids[i : i + batch_size]
                                 results = chunk_collection.get(
                                     ids=batch_ids,
                                     include=[
@@ -504,11 +502,10 @@ def perform_final_merge(batch_id: str, total_chunks: int) -> Dict[str, Any]:
                                 total_embeddings += len(results["ids"])
 
             finally:
-                import shutil
-
                 shutil.rmtree(chunk_temp, ignore_errors=True)
 
-        # Create timestamped snapshot with dedicated prefix for lifecycle management
+        # Create timestamped snapshot with dedicated prefix for
+        # lifecycle management
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         timestamped_key = f"snapshot/timestamped/{timestamp}/"
 
@@ -533,8 +530,6 @@ def perform_final_merge(batch_id: str, total_chunks: int) -> Dict[str, Any]:
 
     finally:
         # Clean up temp directory
-        import shutil
-
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
