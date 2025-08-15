@@ -22,10 +22,10 @@ class TestPulumiInfrastructure:
         
         # Create a minimal Pulumi program for testing
         def pulumi_program():
-            from embedding_step_functions import EmbeddingInfrastructure
+            from embedding_step_functions.infrastructure_hybrid import HybridEmbeddingInfrastructure
             
             # Create the infrastructure
-            infra = EmbeddingInfrastructure("test-infra")
+            infra = HybridEmbeddingInfrastructure("test-infra")
             
             # Export some values for testing
             pulumi.export("docker_image_uri", infra.docker_image.tags[0])
@@ -138,11 +138,11 @@ class TestPulumiInfrastructure:
     def test_resource_dependencies(self):
         """Test that resource dependencies are properly configured."""
         # This test validates the dependency graph
-        from embedding_step_functions.infrastructure import EmbeddingInfrastructure
+        from embedding_step_functions.infrastructure_hybrid import HybridEmbeddingInfrastructure
         
         # Create a mock infrastructure instance
         with pulumi.runtime.mocks.Mocks():
-            infra = EmbeddingInfrastructure("test")
+            infra = HybridEmbeddingInfrastructure("test")
             
             # Verify Lambda functions depend on Docker image
             for lambda_func in infra.lambda_functions.values():
