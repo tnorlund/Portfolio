@@ -339,7 +339,6 @@ class EmbeddingInfrastructure(ComponentResource):
 
             lambda_func = Function(
                 f"{name}-lambda-{stack}",
-                name=f"{name}-{stack}",
                 runtime="python3.12",
                 handler=config["handler"],
                 code=FileArchive(str(source_path)),
@@ -363,7 +362,6 @@ class EmbeddingInfrastructure(ComponentResource):
         # Create ECR repository with versioned name to avoid conflicts
         self.ecr_repo = Repository(
             f"unified-embedding-repo-{stack}",
-            name=f"unified-embedding-{stack}",
             image_scanning_configuration=RepositoryImageScanningConfigurationArgs(
                 scan_on_push=True,
             ),
@@ -471,7 +469,6 @@ class EmbeddingInfrastructure(ComponentResource):
 
             lambda_func = Function(
                 f"{name}-lambda-{stack}",
-                name=f"{name}-{stack}",
                 package_type="Image",
                 image_uri=Output.all(
                     self.ecr_repo.repository_url, self.docker_image.digest
