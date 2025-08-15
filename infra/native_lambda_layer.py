@@ -235,8 +235,8 @@ class NativeLambdaLayerWithCodeBuild(NativeLambdaLayer):
         
         # Create CodeBuild project
         return aws.codebuild.Project(
-            f"{self.name}-layer-builder",
-            name=f"{self.name}-layer-builder",
+            f"{self.name}-layer-builder-{pulumi.get_stack()}",
+            name=f"{self.name}-layer-builder-{pulumi.get_stack()}",
             service_role=codebuild_role.arn,
             artifacts=aws.codebuild.ProjectArtifactsArgs(
                 type="S3",
