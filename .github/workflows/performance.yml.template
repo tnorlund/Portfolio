@@ -1,3 +1,26 @@
+# Performance Testing Workflow Template
+# 
+# This workflow was developed for the ChromaDB integration but temporarily
+# removed to keep the PR focused on core functionality. It can be re-enabled
+# in a future PR dedicated to performance monitoring improvements.
+#
+# To implement this workflow:
+# 1. Rename this file from .template to .yml
+# 2. Set up the required secrets (LHCI_GITHUB_APP_TOKEN)
+# 3. Ensure portfolio package.json has the required scripts:
+#    - npm run analyze:bundle
+#    - npm run test:e2e:perf
+# 4. Install required dependencies in portfolio/:
+#    - @lhci/cli for Lighthouse CI
+#    - Playwright for performance testing
+#
+# Features provided by this workflow:
+# - Lighthouse CI for Core Web Vitals monitoring
+# - Playwright-based performance regression testing
+# - Bundle size analysis with PR comments
+# - Daily scheduled performance monitoring
+# - Performance regression detection between PR and main branch
+
 name: Performance Testing
 
 on:
