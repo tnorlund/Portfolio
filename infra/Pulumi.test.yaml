@@ -1,0 +1,4 @@
+name: portfolio-layer-test
+runtime: python
+description: Isolated test environment for FastLambdaLayer
+main: test_fast_lambda_layer.py

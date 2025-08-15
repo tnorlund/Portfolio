@@ -125,7 +125,6 @@ class ValidationByMerchantStepFunction(ComponentResource):
         # Create S3 bucket for NDJSON batch files
         batch_bucket = aws.s3.Bucket(
             f"{name}-completion-batch-bucket",
-            acl="private",
             force_destroy=True,
             tags={"environment": stack_name},
             opts=ResourceOptions(parent=self),

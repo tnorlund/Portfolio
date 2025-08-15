@@ -1,0 +1,13 @@
+name: test-fast-lambda-layer
+runtime: python
+description: Test stack for FastLambdaLayer component
+
+config:
+  aws:region: us-east-1
+  
+  # FastLambdaLayer configuration
+  lambda-layer:sync-mode: false  # Use async mode for fast development
+  lambda-layer:force-rebuild: false
+  
+  # Test configuration
+  test-package: receipt_dynamo  # Which package to test building

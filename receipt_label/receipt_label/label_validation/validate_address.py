@@ -12,7 +12,7 @@ from receipt_dynamo.entities import ReceiptWordLabel
 from receipt_label.label_validation.data import LabelValidationResult
 from receipt_label.label_validation.utils import (
     normalize_text,
-    pinecone_id_from_label,
+    chroma_id_from_label,
 )
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
@@ -137,20 +137,29 @@ def validate_address(
 ) -> LabelValidationResult:
     """Validate that a word is part of the receipt address."""
 
-    # Get pinecone index from client manager
+    # Get ChromaDB client from client manager
     if client_manager is None:
         client_manager = get_client_manager()
-    pinecone_index = client_manager.pinecone
+    chroma_client = client_manager.chroma
 
-    pinecone_id = pinecone_id_from_label(label)
+    chroma_id = chroma_id_from_label(label)
     canonical_address = (
         _normalize_address(receipt_metadata.canonical_address)
         if receipt_metadata.canonical_address
         else ""
     )
 
-    fetch_response = pinecone_index.fetch(ids=[pinecone_id], namespace="words")
-    vector_data = fetch_response.vectors.get(pinecone_id)
+    # Get vector from ChromaDB
+    results = chroma_client.get_by_ids("words", [chroma_id], include=["metadatas"])
+    
+    # Extract vector data
+    vector_data = None
+    if results and 'ids' in results and len(results['ids']) > 0:
+        idx = results['ids'].index(chroma_id) if chroma_id in results['ids'] else -1
+        if idx >= 0:
+            vector_data = {
+                'metadata': results['metadatas'][idx] if 'metadatas' in results else {}
+            }
     if vector_data is None:
         return LabelValidationResult(
             image_id=label.image_id,
@@ -162,10 +171,10 @@ def validate_address(
             is_consistent=False,
             avg_similarity=0.0,
             neighbors=[],
-            pinecone_id=pinecone_id,
+            pinecone_id=chroma_id,
         )
 
-    variants = _merged_address_variants(word, vector_data.metadata)
+    variants = _merged_address_variants(word, vector_data['metadata'])
 
     looks_like_address = False
     for v in variants:
@@ -198,5 +207,5 @@ def validate_address(
         is_consistent=looks_like_address,
         avg_similarity=1.0 if looks_like_address else 0.0,
         neighbors=[],
-        pinecone_id=pinecone_id,
+        pinecone_id=chroma_id,
     )

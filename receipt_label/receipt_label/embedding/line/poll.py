@@ -20,8 +20,9 @@ receipt section classification.
 """
 
 import json
+import os
 import re
-from typing import List
+from typing import List, Optional
 
 from receipt_dynamo.constants import BatchType, EmbeddingStatus
 from receipt_dynamo.entities import (
@@ -32,6 +33,7 @@ from receipt_dynamo.entities import (
 
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
+from receipt_label.utils.chroma_s3_helpers import produce_embedding_delta
 
 
 def _parse_prev_next_from_formatted(fmt: str) -> tuple[str, str]:
@@ -55,6 +57,21 @@ def _parse_prev_next_from_formatted(fmt: str) -> tuple[str, str]:
 def _parse_metadata_from_line_id(custom_id: str) -> dict:
     """Parse metadata from a line ID in the format IMAGE#uuid#RECEIPT#00001#LINE#00001"""
     parts = custom_id.split("#")
+    
+    # Validate we have the expected format for line embeddings
+    if len(parts) != 6:
+        raise ValueError(
+            f"Invalid custom_id format for line embedding: {custom_id}. "
+            f"Expected format: IMAGE#<id>#RECEIPT#<id>#LINE#<id> (6 parts), "
+            f"but got {len(parts)} parts"
+        )
+    
+    # Additional validation: check that this is NOT a word embedding
+    if "WORD" in parts:
+        raise ValueError(
+            f"Custom ID appears to be for word embedding, not line embedding: {custom_id}"
+        )
+    
     return {
         "image_id": parts[1],
         "receipt_id": int(parts[3]),
@@ -76,7 +93,7 @@ def list_pending_line_embedding_batches(
         status="PENDING",
         batch_type=BatchType.LINE_EMBEDDING,
         limit=25,
-        lastEvaluatedKey=None,
+        last_evaluated_key=None,
     )
     while lek:
         next_summaries, lek = (
@@ -84,7 +101,7 @@ def list_pending_line_embedding_batches(
                 status="PENDING",
                 batch_type=BatchType.LINE_EMBEDDING,
                 limit=25,
-                lastEvaluatedKey=lek,
+                last_evaluated_key=lek,
             )
         )
         summaries.extend(next_summaries)
@@ -222,126 +239,6 @@ def _get_section_by_line_id(
     )
 
 
-def upsert_line_embeddings_to_pinecone(
-    results: List[dict],
-    descriptions: dict[str, dict[int, dict]],
-    client_manager: ClientManager = None,
-):
-    """
-    Upsert line embedding results to Pinecone with rich metadata.
-    """
-    vectors = []
-
-    for result in results:
-        # Parse metadata fields
-        meta = _parse_metadata_from_line_id(result["custom_id"])
-        image_id = meta["image_id"]
-        receipt_id = meta["receipt_id"]
-        line_id = meta["line_id"]
-        source = meta["source"]
-
-        # From the descriptions, get the receipt details
-        receipt_details = descriptions[image_id][receipt_id]
-        _ = receipt_details["receipt"]  # receipt
-        lines = receipt_details["lines"]
-        words = receipt_details["words"]
-        metadata = receipt_details["metadata"]
-        sections = receipt_details["sections"]
-        section = _get_section_by_line_id(sections, line_id)
-        # Find the target line
-        target_line = next((l for l in lines if l.line_id == line_id), None)
-
-        if target_line is None:
-            raise ValueError(
-                f"No ReceiptLine found for image_id={image_id}, "
-                f"receipt_id={receipt_id}, line_id={line_id}"
-            )
-
-        # Calculate line metrics
-        line_words = [w for w in words if w.line_id == line_id]
-        avg_confidence = (
-            sum(w.confidence for w in line_words) / len(line_words)
-            if line_words
-            else target_line.confidence
-        )
-        word_count = len(line_words)
-
-        # Get line centroid and dimensions
-        x_center, y_center = target_line.calculate_centroid()
-        width = target_line.bounding_box["width"]
-        height = target_line.bounding_box["height"]
-
-        # Format the line context to extract prev/next lines
-        # Import locally to avoid circular import
-        from receipt_label.submit_line_embedding_batch.submit_line_batch import (  # pylint: disable=import-outside-toplevel,line-too-long  # noqa: E501
-            _format_line_context_embedding_input,
-        )
-
-        embedding_input = _format_line_context_embedding_input(
-            target_line, lines
-        )
-        prev_line, next_line = _parse_prev_next_from_formatted(embedding_input)
-
-        # Merchant name handling - same as word embeddings
-        if (
-            hasattr(metadata, "canonical_merchant_name")
-            and metadata.canonical_merchant_name
-        ):
-            merchant_name = metadata.canonical_merchant_name
-        else:
-            merchant_name = metadata.merchant_name
-
-        # Standardize merchant name format
-        if merchant_name:
-            merchant_name = merchant_name.strip().title()
-
-        # Build the vector entry
-        vectors.append(
-            {
-                "id": result["custom_id"],
-                "values": result["embedding"],
-                "metadata": {
-                    "image_id": image_id,
-                    "receipt_id": receipt_id,
-                    "line_id": line_id,
-                    "source": source,
-                    "text": target_line.text,
-                    "x": x_center,
-                    "y": y_center,
-                    "width": width,
-                    "height": height,
-                    "confidence": target_line.confidence,
-                    "avg_word_confidence": avg_confidence,
-                    "word_count": word_count,
-                    "prev_line": prev_line,
-                    "next_line": next_line,
-                    "merchant_name": merchant_name,
-                    "angle_degrees": target_line.angle_degrees,
-                    "section": section if section is not None else "UNLABELED",
-                },
-            }
-        )
-
-    # Upsert batches to Pinecone with 'lines' namespace
-    batch_size = 100
-    upserted_count = 0
-
-    for i in range(0, len(vectors), batch_size):
-        chunk = vectors[i : i + batch_size]
-        try:
-            if client_manager is None:
-                client_manager = get_client_manager()
-            response = client_manager.pinecone.upsert(
-                vectors=chunk, namespace="lines"
-            )
-            upserted_count += response.get("upserted_count", 0)
-        except Exception as e:
-            print(f"Failed to upsert chunk to Pinecone: {e}")
-            raise e
-
-    return upserted_count
-
-
 def write_line_embedding_results_to_dynamo(
     results: List[dict],
     descriptions: dict[str, dict[int, dict]],
@@ -468,3 +365,151 @@ def update_line_embedding_status_to_success(
                 if client_manager is None:
                     client_manager = get_client_manager()
                 client_manager.dynamo.update_receipt_lines(lines)
+
+
+def mark_batch_complete(batch_id: str, client_manager: ClientManager = None):
+    """
+    Mark the line embedding batch as complete in the system.
+    Args:
+        batch_id (str): The identifier of the batch.
+    """
+    if client_manager is None:
+        client_manager = get_client_manager()
+    batch_summary = client_manager.dynamo.get_batch_summary(batch_id)
+    batch_summary.status = "COMPLETED"
+    client_manager.dynamo.update_batch_summary(batch_summary)
+
+
+def save_line_embeddings_as_delta(
+    results: List[dict],
+    descriptions: dict[str, dict[int, dict]],
+    batch_id: str,
+    bucket_name: str,
+    sqs_queue_url: Optional[str] = None,
+    client_manager: ClientManager = None,
+) -> dict:
+    """
+    Save line embedding results as a delta file to S3 for ChromaDB compaction.
+
+    This replaces the direct Pinecone upsert with a delta file that will be
+    processed later by the compaction job.
+
+    Args:
+        results (List[dict]): The list of embedding results, each containing:
+            - custom_id (str)
+            - embedding (List[float])
+        descriptions (dict): A nested dict of receipt details keyed by
+            image_id and receipt_id.
+        batch_id (str): The identifier of the batch.
+        bucket_name (str): S3 bucket name for storing the delta.
+        sqs_queue_url (Optional[str]): SQS queue URL for compaction notification.
+            If None, skips SQS notification.
+        client_manager (ClientManager, optional): Client manager for AWS services.
+
+    Returns:
+        dict: Delta creation result with keys:
+            - delta_id: Unique identifier for the delta
+            - delta_key: S3 key where delta was saved
+            - embedding_count: Number of embeddings in the delta
+    """
+    # Prepare ChromaDB-compatible data
+    ids = []
+    embeddings = []
+    metadatas = []
+    documents = []
+
+    for result in results:
+        # Parse metadata from custom_id
+        meta = _parse_metadata_from_line_id(result["custom_id"])
+        image_id = meta["image_id"]
+        receipt_id = meta["receipt_id"]
+        line_id = meta["line_id"]
+
+        # Get receipt details
+        receipt_details = descriptions[image_id][receipt_id]
+        lines = receipt_details["lines"]
+        words = receipt_details["words"]
+        metadata = receipt_details["metadata"]
+
+        # Find the target line
+        target_line = next((l for l in lines if l.line_id == line_id), None)
+        if not target_line:
+            raise ValueError(
+                f"No ReceiptLine found for image_id={image_id}, "
+                f"receipt_id={receipt_id}, line_id={line_id}"
+            )
+
+        # Get line words for confidence calculation
+        line_words = [w for w in words if w.line_id == line_id]
+        avg_confidence = (
+            sum(w.confidence for w in line_words) / len(line_words)
+            if line_words
+            else target_line.confidence
+        )
+
+        # Import locally to avoid circular import
+        from receipt_label.embedding.line.realtime import (  # pylint: disable=import-outside-toplevel
+            _format_line_context_embedding_input,
+        )
+
+        # Get line context
+        embedding_input = _format_line_context_embedding_input(
+            target_line, lines
+        )
+        prev_line, next_line = _parse_prev_next_from_formatted(embedding_input)
+
+        # Priority: canonical name > regular merchant name
+        if (
+            hasattr(metadata, "canonical_merchant_name")
+            and metadata.canonical_merchant_name
+        ):
+            merchant_name = metadata.canonical_merchant_name
+        else:
+            merchant_name = metadata.merchant_name
+
+        # Standardize the merchant name format
+        if merchant_name:
+            merchant_name = merchant_name.strip().title()
+
+        # Build metadata for ChromaDB
+        line_metadata = {
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "line_id": line_id,
+            "text": target_line.text,
+            "confidence": target_line.confidence,
+            "avg_word_confidence": avg_confidence,
+            "x": target_line.bounding_box["x"],
+            "y": target_line.bounding_box["y"],
+            "width": target_line.bounding_box["width"],
+            "height": target_line.bounding_box["height"],
+            "prev_line": prev_line,
+            "next_line": next_line,
+            "merchant_name": merchant_name,
+            "source": "openai_embedding_batch",
+        }
+
+        # Add section label if available
+        if hasattr(target_line, "section_label") and target_line.section_label:
+            line_metadata["section_label"] = target_line.section_label
+
+        # Add to delta arrays
+        ids.append(result["custom_id"])
+        embeddings.append(result["embedding"])
+        metadatas.append(line_metadata)
+        documents.append(target_line.text)
+
+    # Produce the delta file
+    delta_result = produce_embedding_delta(
+        ids=ids,
+        embeddings=embeddings,
+        documents=documents,
+        metadatas=metadatas,
+        bucket_name=bucket_name,
+        collection_name="receipt_lines",  # Clean name without prefix
+        database_name="lines",  # Separate database for line embeddings
+        sqs_queue_url=sqs_queue_url,
+        batch_id=batch_id,
+    )
+
+    return delta_result
