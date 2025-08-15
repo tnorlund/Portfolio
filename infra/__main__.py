@@ -1,17 +1,35 @@
 """Main Pulumi program for AWS infrastructure."""
 
 import base64
+import os
 
 import api_gateway  # noqa: F401
 import pulumi
 import pulumi_aws as aws
+
+# Auto-enable Docker BuildKit based on Pulumi config
+config = pulumi.Config("portfolio")
+if config.get_bool("docker-buildkit") != False:  # Default to True if not set
+    os.environ["DOCKER_BUILDKIT"] = "1"
+    os.environ["COMPOSE_DOCKER_CLI_BUILD"] = (
+        "1"  # Also enable for docker-compose
+    )
+
+    # Warning if BuildKit might not be inherited by Docker
+    if not os.environ.get("DOCKER_BUILDKIT"):
+        print("⚠️  DOCKER_BUILDKIT not set in parent environment")
+        print("   For best performance, run: export DOCKER_BUILDKIT=1")
+        print("   Or use: ./pulumi_up.sh instead of 'pulumi up'")
+    else:
+        print("✓ Docker BuildKit enabled for faster builds")
 
 # Import our infrastructure components
 import s3_website  # noqa: F401
 from dynamo_db import (
     dynamodb_table,  # Import DynamoDB table from original code
 )
-from embedding_step_functions import LineEmbeddingStepFunction
+
+from embedding_step_functions import EmbeddingInfrastructure
 from notifications import NotificationSystem
 from pulumi import ResourceOptions
 from raw_bucket import raw_bucket  # Import the actual bucket instance
@@ -20,6 +38,11 @@ from upload_images import UploadImages
 from validate_merchant_step_functions import ValidateMerchantStepFunctions
 from validation_by_merchant import ValidationByMerchantStepFunction
 from validation_pipeline import ValidationPipeline
+
+from chromadb_compaction import ChromaDBBuckets, ChromaDBQueues
+
+# Using the optimized docker-build based base images with scoped contexts
+from base_images.base_images import BaseImages
 
 # from spot_interruption import SpotInterruptionHandler
 # from efs_storage import EFSStorage
@@ -71,12 +94,15 @@ notification_system = NotificationSystem(
     },
 )
 
+# Create base images first - they're used by multiple components
+base_images = BaseImages("base-images", stack=pulumi.get_stack())
+
 word_label_step_functions = WordLabelStepFunctions("word-label-step-functions")
 validate_merchant_step_functions = ValidateMerchantStepFunctions(
     "validate-merchant"
 )
 validation_pipeline = ValidationPipeline("validation-pipeline")
-line_embedding_step_functions = LineEmbeddingStepFunction("step-func")
+embedding_infrastructure = EmbeddingInfrastructure("embedding-infra", base_images=base_images)
 validation_by_merchant_step_functions = ValidationByMerchantStepFunction(
     "validation-by-merchant"
 )
@@ -128,6 +154,16 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
     "ml-s3-policy-attachment",
     role=ml_training_role.name,
     policy_arn="arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
+)
+
+# Create ChromaDB S3 buckets
+chromadb_storage = ChromaDBBuckets(
+    "chromadb-test",
+)
+
+# Create ChromaDB SQS queues
+chromadb_queues = ChromaDBQueues(
+    "chromadb-test",
 )
 
 # Create spot interruption handler
@@ -653,3 +689,9 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 # pulumi.export("training_efs_id", efs_storage.file_system_id)
 # pulumi.export("instance_registry_table_name", instance_registry.table_name)
 # pulumi.export("ml_packages_built", ml_package_builder.packages)
+
+# ChromaDB infrastructure exports
+pulumi.export("chromadb_bucket_name", chromadb_storage.bucket_name)
+pulumi.export("chromadb_bucket_arn", chromadb_storage.bucket_arn)
+pulumi.export("chromadb_delta_queue_url", chromadb_queues.delta_queue_url)
+pulumi.export("chromadb_delta_queue_arn", chromadb_queues.delta_queue_arn)

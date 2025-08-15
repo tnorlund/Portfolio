@@ -13,7 +13,7 @@ from receipt_dynamo.entities import ReceiptWord
 from receipt_label.pattern_detection.patterns_config import (
     PatternConfig,
     classify_word_type,
-    is_noise_word,
+    is_noise_text,
 )
 
 
@@ -45,7 +45,7 @@ class PatternOptimizer:
         has_relevant_words = False
 
         for word in words:
-            if word.is_noise or is_noise_word(word.text):
+            if word.is_noise or is_noise_text(word.text):
                 continue
 
             types = classify_word_type(word.text)

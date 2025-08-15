@@ -4,6 +4,7 @@ import boto3
 
 from receipt_dynamo.data._ai_usage_metric import _AIUsageMetric
 from receipt_dynamo.data._batch_summary import _BatchSummary
+from receipt_dynamo.data._compaction_lock import _CompactionLock
 from receipt_dynamo.data._completion_batch_result import _CompletionBatchResult
 from receipt_dynamo.data._embedding_batch_result import _EmbeddingBatchResult
 from receipt_dynamo.data._image import _Image
@@ -92,6 +93,7 @@ class DynamoClient(
     _ReceiptSection,
     _OCRRoutingDecision,
     _AIUsageMetric,
+    _CompactionLock,
 ):
     """A class used to represent a DynamoDB client."""
 

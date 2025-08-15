@@ -6,7 +6,7 @@ from .poll import (
     get_receipt_descriptions,
     list_pending_embedding_batches,
     mark_batch_complete,
-    upsert_embeddings_to_pinecone,
+    # Removed: upsert_embeddings_to_pinecone (use ChromaDB instead)
     write_embedding_results_to_dynamo,
 )
 from .submit import (
@@ -48,7 +48,7 @@ __all__ = [
     "list_pending_embedding_batches",
     "get_openai_batch_status",
     "download_openai_batch_result",
-    "upsert_embeddings_to_pinecone",
+    # Removed: "upsert_embeddings_to_pinecone",
     "write_embedding_results_to_dynamo",
     "mark_batch_complete",
     "get_receipt_descriptions",
