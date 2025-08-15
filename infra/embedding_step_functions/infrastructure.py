@@ -1,4 +1,4 @@
-"""Hybrid infrastructure for embedding step functions.
+"""Infrastructure for embedding step functions.
 
 This provides both zip-based Lambda functions for simple operations
 and container-based Lambda functions for ChromaDB operations.
@@ -51,8 +51,8 @@ openai_api_key = config.require_secret("OPENAI_API_KEY")
 stack = pulumi.get_stack()
 
 
-class HybridEmbeddingInfrastructure(ComponentResource):
-    """Hybrid infrastructure with both zip and container Lambda functions.
+class EmbeddingInfrastructure(ComponentResource):
+    """Infrastructure with both zip and container Lambda functions.
 
     Simple functions (list_pending, find_unembedded, submit_openai) use zip deployment.
     Complex functions (line_polling, word_polling, compaction) use container deployment.
@@ -65,7 +65,7 @@ class HybridEmbeddingInfrastructure(ComponentResource):
         opts: Optional[ResourceOptions] = None,
     ):
         super().__init__(
-            "custom:embedding:HybridInfrastructure",
+            "custom:embedding:Infrastructure",
             name,
             None,
             opts,

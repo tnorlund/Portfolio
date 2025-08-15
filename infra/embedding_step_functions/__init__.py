@@ -1,7 +1,5 @@
-# Try to import the new hybrid infrastructure first, fall back to regular if not available
-try:
-    from .infrastructure_hybrid import (
-        HybridEmbeddingInfrastructure as EmbeddingInfrastructure,
-    )
-except ImportError:
-    from .infrastructure import EmbeddingInfrastructure
+"""Embedding Step Functions Infrastructure Module."""
+
+from .infrastructure import EmbeddingInfrastructure
+
+__all__ = ["EmbeddingInfrastructure"]

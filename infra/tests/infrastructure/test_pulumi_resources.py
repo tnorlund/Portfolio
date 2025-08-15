@@ -22,10 +22,10 @@ class TestPulumiInfrastructure:
         
         # Create a minimal Pulumi program for testing
         def pulumi_program():
-            from embedding_step_functions.infrastructure_hybrid import HybridEmbeddingInfrastructure
+            from embedding_step_functions import EmbeddingInfrastructure
             
             # Create the infrastructure
-            infra = HybridEmbeddingInfrastructure("test-infra")
+            infra = EmbeddingInfrastructure("test-infra")
             
             # Export some values for testing
             pulumi.export("docker_image_uri", infra.docker_image.tags[0])
@@ -138,11 +138,11 @@ class TestPulumiInfrastructure:
     def test_resource_dependencies(self):
         """Test that resource dependencies are properly configured."""
         # This test validates the dependency graph
-        from embedding_step_functions.infrastructure_hybrid import HybridEmbeddingInfrastructure
+        from embedding_step_functions import EmbeddingInfrastructure
         
         # Create a mock infrastructure instance
         with pulumi.runtime.mocks.Mocks():
-            infra = HybridEmbeddingInfrastructure("test")
+            infra = EmbeddingInfrastructure("test")
             
             # Verify Lambda functions depend on Docker image
             for lambda_func in infra.lambda_functions.values():
@@ -203,10 +203,10 @@ class TestPulumiInfrastructure:
     
     def test_hybrid_architecture_validation(self):
         """Test that hybrid architecture properly separates zip and container Lambdas."""
-        from embedding_step_functions.infrastructure_hybrid import HybridEmbeddingInfrastructure
+        from embedding_step_functions import EmbeddingInfrastructure
         
         with pulumi.runtime.mocks.Mocks():
-            infra = HybridEmbeddingInfrastructure("test")
+            infra = EmbeddingInfrastructure("test")
             
             # Verify zip-based Lambda functions
             zip_lambdas = ["list-pending", "find-unembedded", "submit-openai"]
