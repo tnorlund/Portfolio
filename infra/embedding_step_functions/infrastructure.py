@@ -107,26 +107,44 @@ class EmbeddingInfrastructure(ComponentResource):
 
         # Create Step Functions
         self._create_step_functions()
-        
+
         # Backward compatibility aliases for Step Functions (deprecated)
         self.create_batches_sf = self.embedding_line_submit_sf
         self.poll_and_store_sf = self.embedding_line_ingest_sf
         self.create_word_batches_sf = self.embedding_word_submit_sf
         self.poll_word_embeddings_sf = self.embedding_word_ingest_sf
-        
+
         # Backward compatibility aliases for Lambda functions (deprecated)
-        if hasattr(self, 'zip_lambda_functions'):
-            self.zip_lambda_functions["list-pending"] = self.zip_lambda_functions.get("embedding-batch-list")
-            self.zip_lambda_functions["find-unembedded"] = self.zip_lambda_functions.get("embedding-line-find")
-            self.zip_lambda_functions["find-unembedded-words"] = self.zip_lambda_functions.get("embedding-word-find")
-            self.zip_lambda_functions["submit-openai"] = self.zip_lambda_functions.get("embedding-line-submit")
-            self.zip_lambda_functions["submit-words-openai"] = self.zip_lambda_functions.get("embedding-word-submit")
-            self.zip_lambda_functions["split-into-chunks"] = self.zip_lambda_functions.get("embedding-chunk-split")
-        
-        if hasattr(self, 'container_lambda_functions'):
-            self.container_lambda_functions["line-polling"] = self.container_lambda_functions.get("embedding-line-poll")
-            self.container_lambda_functions["word-polling"] = self.container_lambda_functions.get("embedding-word-poll")
-            self.container_lambda_functions["compaction"] = self.container_lambda_functions.get("embedding-vector-compact")
+        if hasattr(self, "zip_lambda_functions"):
+            self.zip_lambda_functions["list-pending"] = (
+                self.zip_lambda_functions.get("embedding-batch-list")
+            )
+            self.zip_lambda_functions["find-unembedded"] = (
+                self.zip_lambda_functions.get("embedding-line-find")
+            )
+            self.zip_lambda_functions["find-unembedded-words"] = (
+                self.zip_lambda_functions.get("embedding-word-find")
+            )
+            self.zip_lambda_functions["submit-openai"] = (
+                self.zip_lambda_functions.get("embedding-line-submit")
+            )
+            self.zip_lambda_functions["submit-words-openai"] = (
+                self.zip_lambda_functions.get("embedding-word-submit")
+            )
+            self.zip_lambda_functions["split-into-chunks"] = (
+                self.zip_lambda_functions.get("embedding-chunk-split")
+            )
+
+        if hasattr(self, "container_lambda_functions"):
+            self.container_lambda_functions["line-polling"] = (
+                self.container_lambda_functions.get("embedding-line-poll")
+            )
+            self.container_lambda_functions["word-polling"] = (
+                self.container_lambda_functions.get("embedding-word-poll")
+            )
+            self.container_lambda_functions["compaction"] = (
+                self.container_lambda_functions.get("embedding-vector-compact")
+            )
 
         # Register outputs
         self.register_outputs(
@@ -344,8 +362,8 @@ class EmbeddingInfrastructure(ComponentResource):
 
         # Create ECR repository with versioned name to avoid conflicts
         self.ecr_repo = Repository(
-            f"unified-embedding-v2-repo-{stack}",
-            name=f"unified-embedding-v2-{stack}",
+            f"unified-embedding-repo-{stack}",
+            name=f"unified-embedding-{stack}",
             image_scanning_configuration=RepositoryImageScanningConfigurationArgs(
                 scan_on_push=True,
             ),
@@ -362,7 +380,7 @@ class EmbeddingInfrastructure(ComponentResource):
 
         # Build Docker image
         self.docker_image = docker_build.Image(
-            f"unified-embedding-v2-image-{stack}",
+            f"unified-embedding-image-{stack}",
             context={
                 "location": str(build_context_path.resolve()),
             },
@@ -582,7 +600,9 @@ class EmbeddingInfrastructure(ComponentResource):
             definition=Output.all(
                 self.zip_lambda_functions["embedding-batch-list"].arn,
                 self.container_lambda_functions["embedding-line-poll"].arn,
-                self.container_lambda_functions["embedding-vector-compact"].arn,
+                self.container_lambda_functions[
+                    "embedding-vector-compact"
+                ].arn,
                 self.zip_lambda_functions["embedding-chunk-split"].arn,
             ).apply(
                 lambda arns: json.dumps(
@@ -593,9 +613,7 @@ class EmbeddingInfrastructure(ComponentResource):
                             "ListPendingBatches": {
                                 "Type": "Task",
                                 "Resource": arns[0],
-                                "Parameters": {
-                                    "batch_type": "line"
-                                },
+                                "Parameters": {"batch_type": "line"},
                                 "ResultPath": "$.pending_batches",
                                 "Next": "CheckPendingBatches",
                             },
@@ -845,7 +863,9 @@ class EmbeddingInfrastructure(ComponentResource):
             definition=Output.all(
                 self.zip_lambda_functions["embedding-batch-list"].arn,
                 self.container_lambda_functions["embedding-word-poll"].arn,
-                self.container_lambda_functions["embedding-vector-compact"].arn,
+                self.container_lambda_functions[
+                    "embedding-vector-compact"
+                ].arn,
                 self.zip_lambda_functions["embedding-chunk-split"].arn,
             ).apply(
                 lambda arns: json.dumps(
@@ -856,9 +876,7 @@ class EmbeddingInfrastructure(ComponentResource):
                             "ListPendingWordBatches": {
                                 "Type": "Task",
                                 "Resource": arns[0],
-                                "Parameters": {
-                                    "batch_type": "word"
-                                },
+                                "Parameters": {"batch_type": "word"},
                                 "ResultPath": "$.pending_batches",
                                 "Next": "CheckPendingWordBatches",
                             },
