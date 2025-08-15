@@ -4,6 +4,8 @@ This handler efficiently compacts multiple ChromaDB deltas created during
 parallel embedding processing, with support for collection-aware processing.
 """
 
+from typing import Optional
+
 import json
 import os
 import shutil
@@ -153,7 +155,7 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         )
 
     # Group chunk deltas by collection name for collection-aware processing
-    deltas_by_collection = {}
+    deltas_by_collection: dict[str, list] = {}
     for result in chunk_deltas:
         collection = result.get(
             "collection", "receipt_words"
@@ -213,7 +215,7 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
 
     batch_id = event.get("batch_id")
     total_chunks = event.get("total_chunks", 1)
-    database_name = event.get("database")  # Get database from event
+    database_name = event.get("database", "lines")  # Get database from event with default
 
     if not batch_id:
         return {
@@ -404,7 +406,7 @@ def download_and_merge_delta(
         shutil.rmtree(delta_temp, ignore_errors=True)
 
 
-def perform_final_merge(batch_id: str, total_chunks: int, database_name: str = None) -> Dict[str, Any]:
+def perform_final_merge(batch_id: str, total_chunks: int, database_name: Optional[str] = None) -> Dict[str, Any]:
     """
     Perform the final merge of all intermediate chunks into a snapshot.
     
@@ -572,7 +574,7 @@ def cleanup_intermediate_chunks(batch_id: str, total_chunks: int):
             if "Contents" in response:
                 objects = [{"Key": obj["Key"]} for obj in response["Contents"]]
                 s3_client.delete_objects(
-                    Bucket=bucket, Delete={"Objects": objects}
+                    Bucket=bucket, Delete={"Objects": objects}  # type: ignore
                 )
                 logger.info("Deleted intermediate chunk %d", chunk_index)
         except Exception as e:
