@@ -108,11 +108,25 @@ class HybridEmbeddingInfrastructure(ComponentResource):
         # Create Step Functions
         self._create_step_functions()
         
-        # Backward compatibility aliases (deprecated)
+        # Backward compatibility aliases for Step Functions (deprecated)
         self.create_batches_sf = self.embedding_line_submit_sf
         self.poll_and_store_sf = self.embedding_line_ingest_sf
         self.create_word_batches_sf = self.embedding_word_submit_sf
         self.poll_word_embeddings_sf = self.embedding_word_ingest_sf
+        
+        # Backward compatibility aliases for Lambda functions (deprecated)
+        if hasattr(self, 'zip_lambda_functions'):
+            self.zip_lambda_functions["list-pending"] = self.zip_lambda_functions.get("embedding-batch-list")
+            self.zip_lambda_functions["find-unembedded"] = self.zip_lambda_functions.get("embedding-line-find")
+            self.zip_lambda_functions["find-unembedded-words"] = self.zip_lambda_functions.get("embedding-word-find")
+            self.zip_lambda_functions["submit-openai"] = self.zip_lambda_functions.get("embedding-line-submit")
+            self.zip_lambda_functions["submit-words-openai"] = self.zip_lambda_functions.get("embedding-word-submit")
+            self.zip_lambda_functions["split-into-chunks"] = self.zip_lambda_functions.get("embedding-chunk-split")
+        
+        if hasattr(self, 'container_lambda_functions'):
+            self.container_lambda_functions["line-polling"] = self.container_lambda_functions.get("embedding-line-poll")
+            self.container_lambda_functions["word-polling"] = self.container_lambda_functions.get("embedding-word-poll")
+            self.container_lambda_functions["compaction"] = self.container_lambda_functions.get("embedding-vector-compact")
 
         # Register outputs
         self.register_outputs(
@@ -248,37 +262,37 @@ class HybridEmbeddingInfrastructure(ComponentResource):
 
         # Define zip-based Lambda configurations
         zip_configs = {
-            "list-pending": {
+            "embedding-batch-list": {
                 "handler": "handler.lambda_handler",
                 "memory": 512,
                 "timeout": 900,
                 "source_dir": "list_pending",
             },
-            "find-unembedded": {
+            "embedding-line-find": {
                 "handler": "handler.lambda_handler",
                 "memory": 1024,
                 "timeout": 900,
                 "source_dir": "find_unembedded",
             },
-            "find-unembedded-words": {
+            "embedding-word-find": {
                 "handler": "handler.lambda_handler",
                 "memory": 1024,
                 "timeout": 900,
                 "source_dir": "find_unembedded_words",
             },
-            "submit-openai": {
+            "embedding-line-submit": {
                 "handler": "handler.lambda_handler",
                 "memory": 1024,
                 "timeout": 900,
                 "source_dir": "submit_openai",
             },
-            "submit-words-openai": {
+            "embedding-word-submit": {
                 "handler": "handler.lambda_handler",
                 "memory": 1024,
                 "timeout": 900,
                 "source_dir": "submit_words_openai",
             },
-            "split-into-chunks": {
+            "embedding-chunk-split": {
                 "handler": "handler.lambda_handler",
                 "memory": 512,
                 "timeout": 60,
@@ -390,19 +404,19 @@ class HybridEmbeddingInfrastructure(ComponentResource):
 
         # Define container-based Lambda configurations
         container_configs = {
-            "line-polling": {
+            "embedding-line-poll": {
                 "memory": 3008,
                 "timeout": 900,
                 "ephemeral_storage": 3072,
                 "handler_type": "line_polling",
             },
-            "word-polling": {
+            "embedding-word-poll": {
                 "memory": 3008,
                 "timeout": 900,
                 "ephemeral_storage": 3072,
                 "handler_type": "word_polling",
             },
-            "compaction": {
+            "embedding-vector-compact": {
                 "memory": 8192,  # Increased for better performance
                 "timeout": 900,
                 "ephemeral_storage": 10240,  # Maximum allowed (10GB)
@@ -520,8 +534,8 @@ class HybridEmbeddingInfrastructure(ComponentResource):
             f"embedding-line-submit-sf-{stack}",
             role_arn=self.sf_role.arn,
             definition=Output.all(
-                self.zip_lambda_functions["find-unembedded"].arn,
-                self.zip_lambda_functions["submit-openai"].arn,
+                self.zip_lambda_functions["embedding-line-find"].arn,
+                self.zip_lambda_functions["embedding-line-submit"].arn,
             ).apply(
                 lambda arns: json.dumps(
                     {
@@ -561,10 +575,10 @@ class HybridEmbeddingInfrastructure(ComponentResource):
             f"embedding-line-ingest-sf-{stack}",
             role_arn=self.sf_role.arn,
             definition=Output.all(
-                self.zip_lambda_functions["list-pending"].arn,
-                self.container_lambda_functions["line-polling"].arn,
-                self.container_lambda_functions["compaction"].arn,
-                self.zip_lambda_functions["split-into-chunks"].arn,
+                self.zip_lambda_functions["embedding-batch-list"].arn,
+                self.container_lambda_functions["embedding-line-poll"].arn,
+                self.container_lambda_functions["embedding-vector-compact"].arn,
+                self.zip_lambda_functions["embedding-chunk-split"].arn,
             ).apply(
                 lambda arns: json.dumps(
                     {
@@ -781,8 +795,8 @@ class HybridEmbeddingInfrastructure(ComponentResource):
             f"embedding-word-submit-sf-{stack}",
             role_arn=self.sf_role.arn,
             definition=Output.all(
-                self.zip_lambda_functions["find-unembedded-words"].arn,
-                self.zip_lambda_functions["submit-words-openai"].arn,
+                self.zip_lambda_functions["embedding-word-find"].arn,
+                self.zip_lambda_functions["embedding-word-submit"].arn,
             ).apply(
                 lambda arns: json.dumps(
                     {
@@ -822,10 +836,10 @@ class HybridEmbeddingInfrastructure(ComponentResource):
             f"embedding-word-ingest-sf-{stack}",
             role_arn=self.sf_role.arn,
             definition=Output.all(
-                self.zip_lambda_functions["list-pending"].arn,
-                self.container_lambda_functions["word-polling"].arn,
-                self.container_lambda_functions["compaction"].arn,
-                self.zip_lambda_functions["split-into-chunks"].arn,
+                self.zip_lambda_functions["embedding-batch-list"].arn,
+                self.container_lambda_functions["embedding-word-poll"].arn,
+                self.container_lambda_functions["embedding-vector-compact"].arn,
+                self.zip_lambda_functions["embedding-chunk-split"].arn,
             ).apply(
                 lambda arns: json.dumps(
                     {
