@@ -302,9 +302,18 @@ def update_valid_labels(
     vectors_needing_update: list[tuple[str, dict]] = []  # (id, merged_meta)
 
     for id_batch in _chunk(valid_by_vector.keys(), 100):
-        fetched = client_manager.pinecone.fetch(
-            ids=id_batch, namespace=PINECONE_NS
-        ).vectors
+        # Get vectors from ChromaDB
+        results = client_manager.chroma.get_by_ids(
+            PINECONE_NS,
+            id_batch,
+            include=["metadatas"]
+        )
+        fetched = {}
+        if results and 'ids' in results:
+            for i, id_ in enumerate(results['ids']):
+                fetched[id_] = type('Vector', (), {
+                    'metadata': results['metadatas'][i] if 'metadatas' in results else {}
+                })
         for vid in id_batch:
             meta = (fetched[vid].metadata if vid in fetched else {}) or {}
             existing = meta.get("valid_labels", [])
@@ -325,8 +334,11 @@ def update_valid_labels(
     # 3. Write only vectors whose metadata changed                       #
     # ------------------------------------------------------------------ #
     for vid, meta in vectors_needing_update:
-        client_manager.pinecone.update(
-            id=vid, set_metadata=meta, namespace=PINECONE_NS
+        # Update metadata in ChromaDB
+        collection = client_manager.chroma.get_collection(PINECONE_NS)
+        collection.update(
+            ids=[vid],
+            metadatas=[meta]
         )
 
     # Chunk into 25 items and update
@@ -417,9 +429,18 @@ def update_invalid_labels(
     vectors_needing_update: list[tuple[str, dict]] = []
 
     for id_batch in _chunk(invalid_by_vector.keys(), 100):
-        fetched = client_manager.pinecone.fetch(
-            ids=id_batch, namespace=PINECONE_NS
-        ).vectors
+        # Get vectors from ChromaDB
+        results = client_manager.chroma.get_by_ids(
+            PINECONE_NS,
+            id_batch,
+            include=["metadatas"]
+        )
+        fetched = {}
+        if results and 'ids' in results:
+            for i, id_ in enumerate(results['ids']):
+                fetched[id_] = type('Vector', (), {
+                    'metadata': results['metadatas'][i] if 'metadatas' in results else {}
+                })
         for vid in id_batch:
             meta = (fetched[vid].metadata if vid in fetched else {}) or {}
             existing_invalid = meta.get("invalid_labels", [])
@@ -443,8 +464,11 @@ def update_invalid_labels(
                 vectors_needing_update.append((vid, meta))
 
     for vid, meta in vectors_needing_update:
-        client_manager.pinecone.update(
-            id=vid, set_metadata=meta, namespace=PINECONE_NS
+        # Update metadata in ChromaDB
+        collection = client_manager.chroma.get_collection(PINECONE_NS)
+        collection.update(
+            ids=[vid],
+            metadatas=[meta]
         )
 
     # ------------------------------------------------------------------ #

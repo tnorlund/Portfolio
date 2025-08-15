@@ -73,8 +73,7 @@ This directory contains all GitHub Actions workflow definitions for the reposito
 
 ### Claude AI Workflows
 
-
-#### 🔍 [`claude-review.yml`](./claude-review.yml)
+#### 🤖 [`claude.yml`](./claude.yml)
 **Purpose**: Consolidated Claude code review, interactive assistance, and comment management
 **Triggers**:
 - PR marked "ready for review" (automatic)
@@ -90,6 +89,27 @@ This directory contains all GitHub Actions workflow definitions for the reposito
 - Interactive Q&A support
 - Comprehensive review guidelines
 - Cost optimization controls
+
+---
+
+### Template Workflows (Future Implementation)
+
+#### 📊 [`performance.yml.template`](./performance.yml.template)
+**Purpose**: Comprehensive frontend performance testing framework
+**Status**: Template only - removed from ChromaDB PR to maintain focus
+
+**Planned Features**:
+- Lighthouse CI for Core Web Vitals monitoring
+- Playwright-based performance regression testing  
+- Bundle size analysis with PR comments
+- Daily scheduled performance monitoring
+- Performance regression detection between branches
+
+**To Implement**:
+1. Rename `.template` to `.yml`
+2. Set up LHCI_GITHUB_APP_TOKEN secret
+3. Add npm scripts: `analyze:bundle`, `test:e2e:perf`
+4. Install dependencies: @lhci/cli, Playwright
 
 ---
 

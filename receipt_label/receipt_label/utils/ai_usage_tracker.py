@@ -66,7 +66,6 @@ class AIUsageTracker:
         log_file: str = "/tmp/ai_usage.jsonl",  # nosec B108
         environment: Optional[Environment] = None,
         environment_config: Optional[EnvironmentConfig] = None,
-        validate_table_environment: bool = True,
     ) -> None:
         """
         Initialize the AI usage tracker.
@@ -80,7 +79,6 @@ class AIUsageTracker:
             log_file: Path to the log file
             environment: Specific environment to use (if None, will auto-detect)
             environment_config: Pre-built environment config (if None, will create)
-            validate_table_environment: Whether to validate table name matches environment
         """
         # Environment configuration
         self.environment_config = (
@@ -100,17 +98,7 @@ class AIUsageTracker:
                 base_table_name, self.environment_config.environment
             )
 
-        # Optionally validate environment isolation
-        if (
-            validate_table_environment
-            and not AIUsageEnvironmentConfig.validate_environment_isolation(
-                self.table_name, self.environment_config.environment
-            )
-        ):
-            raise ValueError(
-                f"Table name '{self.table_name}' does not match environment "
-                f"'{self.environment_config.environment.value}' isolation requirements"
-            )
+        # Validation removed - Pulumi handles table isolation via stack naming
 
         self.dynamo_client = dynamo_client
         self.user_id = user_id or os.environ.get("USER_ID", "default")
@@ -593,7 +581,6 @@ class AIUsageTracker:
         track_to_dynamo: bool = True,
         track_to_file: bool = False,
         environment: Optional[Environment] = None,
-        validate_table_environment: bool = True,  # Strict validation by default
     ) -> "AIUsageTracker":
         """
         Create an AIUsageTracker with automatic environment detection and configuration.
@@ -607,7 +594,6 @@ class AIUsageTracker:
             track_to_dynamo: Whether to store metrics in DynamoDB
             track_to_file: Whether to log metrics to a file (for local dev)
             environment: Specific environment to use (if None, will auto-detect)
-            validate_table_environment: Whether to validate table name matches environment
 
         Returns:
             AIUsageTracker: Configured tracker for the environment
@@ -619,7 +605,6 @@ class AIUsageTracker:
             track_to_dynamo=track_to_dynamo,
             track_to_file=track_to_file,
             environment=environment,
-            validate_table_environment=validate_table_environment,
         )
 
     @classmethod

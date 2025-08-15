@@ -170,17 +170,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-cache-py312-v3-
 
-      - name: Cache pytest results and coverage
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ matrix.package }}/.pytest_cache
-            ${{ matrix.package }}/.coverage
-            .pytest_cache
-          key: ${{ runner.os }}-pytest-${{ matrix.package }}-${{ hashFiles(format('{0}/**/*.py', matrix.package)) }}
-          restore-keys: |
-            ${{ runner.os }}-pytest-${{ matrix.package }}-
-
       - name: Setup virtual environment and install packages
         run: |
           # Create isolated virtual environment for this job to prevent collisions
@@ -204,17 +193,35 @@ jobs:
           python3 -m pip install --upgrade pip wheel --disable-pip-version-check
 
           # CRITICAL: Always install packages in editable mode to use PR's source code
-          # Install receipt_dynamo first as it's a dependency for other packages
-          if [[ "${{ matrix.package }}" != "receipt_dynamo" ]]; then
+          # Special handling for receipt_label which depends on receipt_dynamo
+          if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
+            echo "Installing receipt_label with local receipt_dynamo dependency..."
+            # First install receipt_dynamo without its test dependencies
+            python3 -m pip install --force-reinstall -e "receipt_dynamo" --disable-pip-version-check
+            # Then install receipt_label without dependencies
+            python3 -m pip install --force-reinstall --no-deps -e "receipt_label" --disable-pip-version-check
+            # Finally install the remaining dependencies for receipt_label
+            python3 -m pip install --force-reinstall -e "receipt_label[test]" --disable-pip-version-check --no-deps
+            # Install the test dependencies manually (avoiding the receipt-dynamo resolution issue)
+            python3 -m pip install "pytest>=8.3.0,<9.0.0" "pytest-mock>=3.14.0,<4.0.0" "pytest-cov>=6.1.0,<7.0.0" \
+              "pytest-xdist>=3.6.0,<4.0.0" "pytest-timeout>=2.1.0,<3.0.0" "pytest-asyncio>=0.24.0,<1.0.0" \
+              "moto>=5.1.0,<6.0.0" "freezegun>=1.5.0,<2.0.0" \
+              "openai>=1.3.0" "openai-agents>=0.0.12" "fuzzywuzzy>=0.18.0" "RapidFuzz>=3.13.0" \
+              "chromadb>=0.5.0" "numpy>=1.24.0" "pinecone>=3.0" \
+              --disable-pip-version-check
+          elif [[ "${{ matrix.package }}" != "receipt_dynamo" ]]; then
             echo "Installing receipt_dynamo dependency from PR source..."
             python3 -m pip install --force-reinstall -e "receipt_dynamo[test]" --disable-pip-version-check
-          fi
-
-          # Install the target package from PR source with all test dependencies
-          if [[ "${{ matrix.package }}" == "receipt_trainer" ]] || [[ "${{ matrix.package }}" == "receipt_trainer_1" ]]; then
-            echo "Installing ${{ matrix.package }} from PR source..."
-            python3 -m pip install --force-reinstall -e "${{ matrix.package }}[dev]" --disable-pip-version-check
+            # Install the target package from PR source with all test dependencies
+            if [[ "${{ matrix.package }}" == "receipt_trainer" ]] || [[ "${{ matrix.package }}" == "receipt_trainer_1" ]]; then
+              echo "Installing ${{ matrix.package }} from PR source..."
+              python3 -m pip install --force-reinstall -e "${{ matrix.package }}[dev]" --disable-pip-version-check
+            else
+              echo "Installing ${{ matrix.package }} from PR source..."
+              python3 -m pip install --force-reinstall -e "${{ matrix.package }}[test]" --disable-pip-version-check
+            fi
           else
+            # receipt_dynamo package - just install it directly
             echo "Installing ${{ matrix.package }} from PR source..."
             python3 -m pip install --force-reinstall -e "${{ matrix.package }}[test]" --disable-pip-version-check
           fi
