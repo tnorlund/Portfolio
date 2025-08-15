@@ -23,10 +23,5 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # Copy the unified embedding handler module
 COPY infra/embedding_step_functions/unified_embedding/ ${LAMBDA_TASK_ROOT}/
 
-# Also copy the old unified_lambda for temporary compatibility
-# (since we're using wrappers for complex handlers)
-# TODO: Remove this once handlers are fully migrated
-COPY infra/embedding_step_functions/unified_lambda/ ${LAMBDA_TASK_ROOT}/unified_lambda/
-
 # Set the handler
 CMD ["handler.lambda_handler"]
