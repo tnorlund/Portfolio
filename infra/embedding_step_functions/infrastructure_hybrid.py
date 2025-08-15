@@ -107,6 +107,12 @@ class HybridEmbeddingInfrastructure(ComponentResource):
 
         # Create Step Functions
         self._create_step_functions()
+        
+        # Backward compatibility aliases (deprecated)
+        self.create_batches_sf = self.embedding_line_submit_sf
+        self.poll_and_store_sf = self.embedding_line_ingest_sf
+        self.create_word_batches_sf = self.embedding_word_submit_sf
+        self.poll_word_embeddings_sf = self.embedding_word_ingest_sf
 
         # Register outputs
         self.register_outputs(
@@ -121,10 +127,10 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                 "chromadb_bucket_name": self.chromadb_buckets.bucket_name,
                 "chromadb_queue_url": self.chromadb_queues.delta_queue_url,
                 "batch_bucket_name": self.batch_bucket.bucket,
-                "create_batches_sf_arn": self.create_batches_sf.arn,
-                "poll_and_store_sf_arn": self.poll_and_store_sf.arn,
-                "create_word_batches_sf_arn": self.create_word_batches_sf.arn,
-                "poll_word_embeddings_sf_arn": self.poll_word_embeddings_sf.arn,
+                "embedding_line_submit_sf_arn": self.embedding_line_submit_sf.arn,
+                "embedding_line_ingest_sf_arn": self.embedding_line_ingest_sf.arn,
+                "embedding_word_submit_sf_arn": self.embedding_word_submit_sf.arn,
+                "embedding_word_ingest_sf_arn": self.embedding_word_ingest_sf.arn,
             }
         )
 
@@ -509,9 +515,9 @@ class HybridEmbeddingInfrastructure(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Create the Create Embedding Batches Step Function
-        self.create_batches_sf = StateMachine(
-            f"create-batches-sf-{stack}",
+        # Create the Line Embedding Submit Step Function
+        self.embedding_line_submit_sf = StateMachine(
+            f"embedding-line-submit-sf-{stack}",
             role_arn=self.sf_role.arn,
             definition=Output.all(
                 self.zip_lambda_functions["find-unembedded"].arn,
@@ -550,9 +556,9 @@ class HybridEmbeddingInfrastructure(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Create the Poll and Store Embeddings Step Function
-        self.poll_and_store_sf = StateMachine(
-            f"poll-store-sf-{stack}",
+        # Create the Line Embedding Ingest Step Function
+        self.embedding_line_ingest_sf = StateMachine(
+            f"embedding-line-ingest-sf-{stack}",
             role_arn=self.sf_role.arn,
             definition=Output.all(
                 self.zip_lambda_functions["list-pending"].arn,
@@ -770,9 +776,9 @@ class HybridEmbeddingInfrastructure(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Create the Create Word Embedding Batches Step Function
-        self.create_word_batches_sf = StateMachine(
-            f"create-word-batches-sf-{stack}",
+        # Create the Word Embedding Submit Step Function
+        self.embedding_word_submit_sf = StateMachine(
+            f"embedding-word-submit-sf-{stack}",
             role_arn=self.sf_role.arn,
             definition=Output.all(
                 self.zip_lambda_functions["find-unembedded-words"].arn,
@@ -811,9 +817,9 @@ class HybridEmbeddingInfrastructure(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Create the Poll and Store Word Embeddings Step Function
-        self.poll_word_embeddings_sf = StateMachine(
-            f"poll-word-embeddings-sf-{stack}",
+        # Create the Word Embedding Ingest Step Function
+        self.embedding_word_ingest_sf = StateMachine(
+            f"embedding-word-ingest-sf-{stack}",
             role_arn=self.sf_role.arn,
             definition=Output.all(
                 self.zip_lambda_functions["list-pending"].arn,
