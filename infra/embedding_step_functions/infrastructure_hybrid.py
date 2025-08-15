@@ -165,6 +165,7 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                     ],
                 }
             ),
+            tags={"environment": stack},
             opts=ResourceOptions(parent=self),
         )
 
@@ -349,6 +350,7 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                 scan_on_push=True,
             ),
             force_delete=True,
+            tags={"environment": stack},
             opts=ResourceOptions(parent=self),
         )
 
@@ -496,6 +498,7 @@ class HybridEmbeddingInfrastructure(ComponentResource):
                     ],
                 }
             ),
+            tags={"environment": stack},
             opts=ResourceOptions(parent=self),
         )
 
@@ -533,6 +536,7 @@ class HybridEmbeddingInfrastructure(ComponentResource):
         self.embedding_line_submit_sf = StateMachine(
             f"embedding-line-submit-sf-{stack}",
             role_arn=self.sf_role.arn,
+            tags={"environment": stack},
             definition=Output.all(
                 self.zip_lambda_functions["embedding-line-find"].arn,
                 self.zip_lambda_functions["embedding-line-submit"].arn,
@@ -574,6 +578,7 @@ class HybridEmbeddingInfrastructure(ComponentResource):
         self.embedding_line_ingest_sf = StateMachine(
             f"embedding-line-ingest-sf-{stack}",
             role_arn=self.sf_role.arn,
+            tags={"environment": stack},
             definition=Output.all(
                 self.zip_lambda_functions["embedding-batch-list"].arn,
                 self.container_lambda_functions["embedding-line-poll"].arn,
@@ -794,6 +799,7 @@ class HybridEmbeddingInfrastructure(ComponentResource):
         self.embedding_word_submit_sf = StateMachine(
             f"embedding-word-submit-sf-{stack}",
             role_arn=self.sf_role.arn,
+            tags={"environment": stack},
             definition=Output.all(
                 self.zip_lambda_functions["embedding-word-find"].arn,
                 self.zip_lambda_functions["embedding-word-submit"].arn,
@@ -835,6 +841,7 @@ class HybridEmbeddingInfrastructure(ComponentResource):
         self.embedding_word_ingest_sf = StateMachine(
             f"embedding-word-ingest-sf-{stack}",
             role_arn=self.sf_role.arn,
+            tags={"environment": stack},
             definition=Output.all(
                 self.zip_lambda_functions["embedding-batch-list"].arn,
                 self.container_lambda_functions["embedding-word-poll"].arn,
