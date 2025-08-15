@@ -23,6 +23,7 @@ def _example_receipt_line() -> ReceiptLine:
         angle_degrees=0.0,
         angle_radians=0.0,
         confidence=0.95,
+        is_noise=False,
     )
 
 
@@ -384,7 +385,8 @@ def test_receipt_line_repr(example_receipt_line: ReceiptLine) -> None:
         "angle_degrees=0.0, "
         "angle_radians=0.0, "
         "confidence=0.95, "
-        "embedding_status=NONE"
+        "embedding_status=NONE, "
+        "is_noise=False"
         ")"
     )
 
@@ -407,6 +409,7 @@ def test_receipt_line_iter(example_receipt_line: ReceiptLine) -> None:
         "angle_radians",
         "confidence",
         "embedding_status",
+        "is_noise",
     }
     assert set(receipt_line_dict.keys()) == expected_keys
     assert receipt_line_dict["receipt_id"] == 1

@@ -1,0 +1,77 @@
+# Tests - not needed for production image
+tests/
+test_*.py
+*_test.py
+
+# Cache directories
+__pycache__/
+*.py[cod]
+*$py.class
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.cover
+.hypothesis/
+
+# Build artifacts
+*.egg-info/
+dist/
+build/
+*.egg
+*.whl
+
+# IDE and OS files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Documentation (except README needed by pyproject.toml)
+docs/
+*.md
+!README.md
+
+# Data files (but keep package metadata)
+test_*.json
+fixture*.json
+*.csv
+*.db
+*.sqlite
+*.pkl
+*.log
+test_*.txt
+export_*.txt
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Temporary files
+*.tmp
+*.bak
+temp/
+tmp/
+
+# Configuration files that aren't needed
+.pylintrc
+.mypy.ini
+pytest.ini
+setup.cfg
+tox.ini
+.coveragerc
+
+# Jupyter notebooks
+*.ipynb
+.ipynb_checkpoints/

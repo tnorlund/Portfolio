@@ -17,18 +17,37 @@ class ValidationStatus(str, Enum):
 
 
 class BatchStatus(str, Enum):
-    """States for batch job execution."""
+    """States for batch job execution.
 
-    PENDING = "PENDING"
+    Maps to OpenAI Batch API statuses:
+    - VALIDATING: Initial file validation in progress
+    - IN_PROGRESS: Batch processing underway
+    - FINALIZING: Results being prepared
+    - COMPLETED: Success, results ready
+    - FAILED: Validation or processing error
+    - EXPIRED: Exceeded 24h SLA, partial results may be available
+    - CANCELING: Cancellation requested
+    - CANCELLED: Successfully cancelled
+    - PENDING: Internal status for batches submitted but not yet checked
+    """
+
+    PENDING = "PENDING"  # Internal status before first poll
+    VALIDATING = "VALIDATING"
+    IN_PROGRESS = "IN_PROGRESS"
+    FINALIZING = "FINALIZING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
+    EXPIRED = "EXPIRED"
+    CANCELING = "CANCELING"
+    CANCELLED = "CANCELLED"
 
 
 class BatchType(str, Enum):
     """Types of batch jobs for label processing."""
 
     COMPLETION = "COMPLETION"
-    EMBEDDING = "EMBEDDING"
+    EMBEDDING = "EMBEDDING"  # Deprecated - use WORD_EMBEDDING
+    WORD_EMBEDDING = "WORD_EMBEDDING"
     LINE_EMBEDDING = "LINE_EMBEDDING"
 
 
@@ -46,6 +65,7 @@ class EmbeddingStatus(str, Enum):
     PENDING = "PENDING"
     SUCCESS = "SUCCESS"
     FAILED = "FAILED"
+    NOISE = "NOISE"
 
 
 class SectionType(str, Enum):

@@ -118,9 +118,9 @@ class MLPackageBuilder(pulumi.ComponentResource):
         )
 
         # Create an S3 bucket for package artifacts and build state
+        # Note: No ACL needed - S3 buckets are private by default in newer AWS accounts
         self.artifact_bucket = aws.s3.Bucket(
             f"{name}-artifacts",
-            acl="private",
             force_destroy=True,
             tags={
                 "Name": f"{name}-artifacts",

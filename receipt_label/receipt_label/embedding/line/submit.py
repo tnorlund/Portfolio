@@ -39,12 +39,14 @@ def generate_batch_id() -> str:
 def list_receipt_lines_with_no_embeddings(
     client_manager: ClientManager = None,
 ) -> list[ReceiptLine]:
-    """Fetch all ReceiptLine items with embedding_status == NONE."""
+    """Fetch all ReceiptLine items with embedding_status == NONE and is_noise == False."""
     if client_manager is None:
         client_manager = get_client_manager()
-    return client_manager.dynamo.list_receipt_lines_by_embedding_status(
+    all_lines = client_manager.dynamo.list_receipt_lines_by_embedding_status(
         EmbeddingStatus.NONE
     )
+    # Filter out noise lines (same pattern as words)
+    return [line for line in all_lines if not line.is_noise]
 
 
 def chunk_into_line_embedding_batches(

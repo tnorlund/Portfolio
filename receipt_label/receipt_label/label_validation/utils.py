@@ -5,8 +5,8 @@ import re
 from receipt_dynamo.entities import ReceiptWordLabel  # type: ignore
 
 
-def pinecone_id_from_label(label: ReceiptWordLabel) -> str:
-    """Return a deterministic Pinecone ID for the provided label."""
+def chroma_id_from_label(label: ReceiptWordLabel) -> str:
+    """Return a deterministic ChromaDB ID for the provided label."""
 
     return (
         f"IMAGE#{label.image_id}#"

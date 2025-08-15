@@ -1,0 +1,16 @@
+# Scoped Dockerfile for receipt_label
+# This version expects the build context to be the receipt_label directory itself
+ARG PYTHON_VERSION=3.12
+
+# Build from receipt_dynamo base image
+# BASE_IMAGE will be provided by Pulumi, with fallback to public Lambda image
+ARG BASE_IMAGE=public.ecr.aws/lambda/python:${PYTHON_VERSION}
+FROM ${BASE_IMAGE}
+
+# Copy and install receipt_label package (which depends on receipt_dynamo)
+# Since context is the package directory, we copy everything
+COPY . /tmp/receipt_label
+RUN pip install --no-cache-dir /tmp/receipt_label && \
+    rm -rf /tmp/receipt_label
+
+# This is a base image, no CMD needed

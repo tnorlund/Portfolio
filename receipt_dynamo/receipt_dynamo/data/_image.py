@@ -82,7 +82,6 @@ class _Image(FlattenedStandardMixin):
             sort_key="IMAGE",
             entity_class=Image,
             converter_func=item_to_image,
-            consistent_read=False,
         )
 
         if result is None:

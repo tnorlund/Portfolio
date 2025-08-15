@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from receipt_label.utils.noise_detection import (
     NoiseDetectionConfig,
-    is_noise_word,
+    is_noise_text,
 )
 
 # Common receipt samples for testing
@@ -213,7 +213,7 @@ def test_word(
     word: str, config: NoiseDetectionConfig = None
 ) -> Tuple[str, bool, str]:
     """Test a single word and return result with explanation."""
-    is_noise = is_noise_word(word, config)
+    is_noise = is_noise_text(word, config)
 
     # Determine why it's classified as noise or not
     reason = ""
