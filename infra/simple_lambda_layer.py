@@ -248,8 +248,7 @@ class SimpleLambdaLayer(ComponentResource):
 
         # Create CodeBuild project
         codebuild_project = aws.codebuild.Project(
-            resource_name=f"{self.name}-simple-layer-build",
-            name=f"{self.name}-simple-layer-build-{pulumi.get_stack()}",
+            f"{self.name}-simple-layer-build-{pulumi.get_stack()}",  # Pulumi logical name with stack
             service_role=codebuild_role.arn,
             source=aws.codebuild.ProjectSourceArgs(
                 type="S3",
