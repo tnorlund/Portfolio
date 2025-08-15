@@ -49,7 +49,16 @@ jobs:
         run: |
           cd infra
           pulumi stack select tnorlund/portfolio/prod
-          pulumi up --yes
+          # Try full deployment first
+          if ! pulumi up --yes; then
+            echo "Initial deployment detected, running in phases..."
+            # Phase 1: Build infrastructure only
+            pulumi up --yes --target '**/*codebuild*' --target '**/*codepipeline*' --target '**/*pipeline*' || true
+            # Wait for pipelines to initialize
+            sleep 30
+            # Phase 2: Full deployment
+            pulumi up --yes
+          fi
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
