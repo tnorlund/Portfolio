@@ -6,7 +6,7 @@
 
 # Interface: ImageDetailsApiResponse
 
-Defined in: [types/api.ts:7](https://github.com/tnorlund/Portfolio/blob/9c9698a46edd2af80f8449d49e1036b62ece5d10/portfolio/types/api.ts#L7)
+Defined in: [types/api.ts:7](https://github.com/tnorlund/Portfolio/blob/8fd0cba669905e6a3e76c1c54eda1f1fcfc392c1/portfolio/types/api.ts#L7)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:7](https://github.com/tnorlund/Portfolio/blob/9c9698a4
 
 > **image**: [`Image`](Image.md)
 
-Defined in: [types/api.ts:8](https://github.com/tnorlund/Portfolio/blob/9c9698a46edd2af80f8449d49e1036b62ece5d10/portfolio/types/api.ts#L8)
+Defined in: [types/api.ts:8](https://github.com/tnorlund/Portfolio/blob/8fd0cba669905e6a3e76c1c54eda1f1fcfc392c1/portfolio/types/api.ts#L8)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:8](https://github.com/tnorlund/Portfolio/blob/9c9698a4
 
 > **lines**: [`Line`](Line.md)[]
 
-Defined in: [types/api.ts:9](https://github.com/tnorlund/Portfolio/blob/9c9698a46edd2af80f8449d49e1036b62ece5d10/portfolio/types/api.ts#L9)
+Defined in: [types/api.ts:9](https://github.com/tnorlund/Portfolio/blob/8fd0cba669905e6a3e76c1c54eda1f1fcfc392c1/portfolio/types/api.ts#L9)
 
 ***
 
@@ -30,4 +30,4 @@ Defined in: [types/api.ts:9](https://github.com/tnorlund/Portfolio/blob/9c9698a4
 
 > **receipts**: [`Receipt`](Receipt.md)[]
 
-Defined in: [types/api.ts:10](https://github.com/tnorlund/Portfolio/blob/9c9698a46edd2af80f8449d49e1036b62ece5d10/portfolio/types/api.ts#L10)
+Defined in: [types/api.ts:10](https://github.com/tnorlund/Portfolio/blob/8fd0cba669905e6a3e76c1c54eda1f1fcfc392c1/portfolio/types/api.ts#L10)
