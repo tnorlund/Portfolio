@@ -713,9 +713,9 @@ def test_get_batch_summaries_by_status_success(
             client.add_batch_summary(summary)
     
     # Query by status
-    pending_summaries, _ = client.get_batch_summaries_by_status(BatchStatus.PENDING)
-    completed_summaries, _ = client.get_batch_summaries_by_status(BatchStatus.COMPLETED)
-    failed_summaries, _ = client.get_batch_summaries_by_status(BatchStatus.FAILED)
+    pending_summaries, _ = client.get_batch_summaries_by_status(BatchStatus.PENDING, BatchType.EMBEDDING)
+    completed_summaries, _ = client.get_batch_summaries_by_status(BatchStatus.COMPLETED, BatchType.EMBEDDING)
+    failed_summaries, _ = client.get_batch_summaries_by_status(BatchStatus.FAILED, BatchType.EMBEDDING)
     
     # Filter to only our test summaries (may have others from other tests)
     test_batch_ids = {s.batch_id for s in summaries}
@@ -801,14 +801,14 @@ def test_get_batch_summaries_by_status_with_pagination(
     
     # Get first page
     page1, last_key1 = client.get_batch_summaries_by_status(
-        BatchStatus.PENDING, limit=8
+        BatchStatus.PENDING, BatchType.EMBEDDING, limit=8
     )
     assert len(page1) >= 8  # At least 8
     assert last_key1 is not None
     
     # Get second page
     page2, last_key2 = client.get_batch_summaries_by_status(
-        BatchStatus.PENDING, limit=8, last_evaluated_key=last_key1
+        BatchStatus.PENDING, BatchType.EMBEDDING, limit=8, last_evaluated_key=last_key1
     )
     assert len(page2) >= 0  # May have items
     
@@ -1126,10 +1126,10 @@ def test_get_batch_summaries_by_status_enum_vs_string(
     client.add_batch_summary(summary)
     
     # Query with enum
-    enum_results, _ = client.get_batch_summaries_by_status(BatchStatus.PENDING)
+    enum_results, _ = client.get_batch_summaries_by_status(BatchStatus.PENDING, BatchType.EMBEDDING)
     
     # Query with string
-    string_results, _ = client.get_batch_summaries_by_status("PENDING")
+    string_results, _ = client.get_batch_summaries_by_status("PENDING", BatchType.EMBEDDING)
     
     # Filter to our test summary
     enum_test = [r for r in enum_results if r.batch_id == summary.batch_id]

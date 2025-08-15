@@ -100,9 +100,13 @@ jobs:
 
       - name: Setup virtual environment and install packages
         run: |
-          # Create isolated virtual environment for this PR check job
-          VENV_PATH=".venv-pr-${{ matrix.package }}"
+          # Create isolated virtual environment for this PR check job - unique per run
+          VENV_PATH=".venv-pr-${{ matrix.package }}-${{ github.run_id }}"
           echo "Creating virtual environment: $VENV_PATH"
+          
+          # Clean up any stale environments from previous runs
+          echo "Cleaning up stale virtual environments..."
+          rm -rf .venv-pr-${{ matrix.package }}-* 2>/dev/null || true
           
           # Always create fresh virtual environment to ensure we test against PR code
           if [ -d "$VENV_PATH" ]; then
@@ -127,14 +131,24 @@ jobs:
           # Install package with test dependencies from PR source
           if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
             echo "Installing receipt_dynamo dependency from PR source first"
-            python3 -m pip install --force-reinstall -e "receipt_dynamo[test]" --disable-pip-version-check
+            # Install from the parent directory since we haven't cd'd yet
+            python3 -m pip install -e "./receipt_dynamo" --disable-pip-version-check
+            # Verify receipt_dynamo is importable
+            echo "Verifying receipt_dynamo installation..."
+            python3 -c "import receipt_dynamo; print(f'receipt_dynamo imported from: {receipt_dynamo.__file__}')"
+            python3 -c "from receipt_dynamo.entities.places_cache import PlacesCache; print('PlacesCache imported successfully')"
           fi
           
           # Install target package with all test dependencies
           cd ${{ matrix.package }}
           if [[ -f "pyproject.toml" ]] && grep -q "test.*=" pyproject.toml; then
             echo "Installing package with test dependencies from PR source"
-            python3 -m pip install --force-reinstall -e ".[test]" --disable-pip-version-check
+            # Don't use --force-reinstall for receipt_label to preserve local receipt_dynamo
+            if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
+              python3 -m pip install -e ".[test,lambda]" --disable-pip-version-check
+            else
+              python3 -m pip install --force-reinstall -e ".[test]" --disable-pip-version-check
+            fi
           else
             echo "Installing package from PR source with minimal test dependencies"
             python3 -m pip install --force-reinstall -e . --disable-pip-version-check
@@ -147,16 +161,58 @@ jobs:
           echo "Python location: $(which python3)"
           echo "Virtual environment: $VIRTUAL_ENV"
           
-          # Verify editable installs
-          echo "=== Verifying editable installs ==="
-          python3 -m pip show ${{ matrix.package }} 2>/dev/null | grep -E "(Location|Editable)" || echo "${{ matrix.package }} not found"
+          # Verify editable installs are from PR checkout
+          echo "=== Verifying editable installs from PR checkout ==="
+          # Check if package is installed and get its info
+          PIP_SHOW_OUTPUT=$(python3 -m pip show ${{ matrix.package }} 2>/dev/null || echo "NOT_FOUND")
+          
+          if [[ "$PIP_SHOW_OUTPUT" == "NOT_FOUND" ]]; then
+            echo "❌ ERROR: Package ${{ matrix.package }} not found!"
+            exit 1
+          fi
+          
+          # Check for editable install by looking for "Editable project location" in pip show
+          EDITABLE_LOCATION=$(echo "$PIP_SHOW_OUTPUT" | grep "Editable project location:" | cut -d' ' -f4- || echo "")
+          
+          if [[ -n "$EDITABLE_LOCATION" ]]; then
+            echo "✅ Package installed as editable from: $EDITABLE_LOCATION"
+            echo "Current directory: $PWD"
+          else
+            # If not explicitly editable, verify it's at least from our checkout
+            LOCATION=$(echo "$PIP_SHOW_OUTPUT" | grep "Location:" | cut -d' ' -f2-)
+            echo "⚠️ Package may not be editable, checking location..."
+            echo "Package location: $LOCATION"
+            echo "Current directory: $PWD"
+            # For now, just warn but don't fail - the important thing is tests run with PR code
+          fi
+          
+          # Show full package info for debugging
+          echo "=== Package info ==="
+          echo "$PIP_SHOW_OUTPUT" | grep -E "(Name:|Version:|Location:|Editable)" || true
+          
+          # Final verification for receipt_label that receipt_dynamo is still local
+          if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
+            echo "=== Final receipt_dynamo verification ==="
+            python3 -c "import receipt_dynamo; print(f'receipt_dynamo location: {receipt_dynamo.__file__}')"
+            python3 -c "from receipt_dynamo.entities.places_cache import PlacesCache; print('PlacesCache still importable')" || {
+              echo "ERROR: receipt_dynamo imports broken after receipt_label installation!"
+              python3 -m pip list | grep receipt
+              exit 1
+            }
+          fi
 
       - name: Run Python tests
         working-directory: ${{ matrix.package }}
         env:
           SKIP_PERFORMANCE_TESTS: "true"
         run: |
-
+          # Ensure we're using the unique virtual environment
+          VENV_PATH="../.venv-pr-${{ matrix.package }}-${{ github.run_id }}"
+          source "$VENV_PATH/bin/activate"
+          
+          echo "Using Python from: $(which python3)"
+          echo "Virtual environment: $VIRTUAL_ENV"
+          
           # Run only fast unit tests with 30-second timeout
           # Use -o addopts="" to override pytest.ini for faster CI runs without coverage
           if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
@@ -165,6 +221,17 @@ jobs:
           else
             # receipt_dynamo uses directory-based test organization
             pytest tests/unit -n auto --timeout=30 -m "not slow" --tb=short -q -o addopts=""
+          fi
+
+      - name: Cleanup after test
+        if: always()
+        run: |
+          # Clean up the unique venv after the test
+          VENV_PATH=".venv-pr-${{ matrix.package }}-${{ github.run_id }}"
+          if [ -d "$VENV_PATH" ]; then
+            echo "Cleaning up virtual environment: $VENV_PATH"
+            # Use force flag and ignore errors since we're in cleanup
+            rm -rf "$VENV_PATH" 2>/dev/null || true
           fi
 
   # TypeScript tests on GitHub-hosted
