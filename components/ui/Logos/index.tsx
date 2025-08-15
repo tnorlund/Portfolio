@@ -1,9 +1,0 @@
-export { default as ReactLogo } from "./ReactLogo";
-export { default as TypeScriptLogo } from "./TypeScriptLogo";
-export { default as OpenAILogo } from "./OpenAILogo";
-export { default as PineconeLogo } from "./PineconeLogo";
-export { default as GooglePlacesLogo } from "./GooglePlacesLogo";
-export { default as GithubLogo } from "./GithubLogo";
-export { default as PulumiLogo } from "./PulumiLogo";
-export { default as HuggingFaceLogo } from "./HuggingFaceLogo";
-export { default as NextJSLogo } from "./NextJSLogo";
