@@ -28,7 +28,6 @@ class ResilientAIUsageTracker(AIUsageTracker):
         track_to_dynamo: bool = True,
         track_to_file: bool = False,
         log_file: str = "/tmp/ai_usage.jsonl",
-        validate_table_environment: bool = True,
         # Resilience configuration passed to DynamoClient
         circuit_breaker_threshold: int = 5,
         circuit_breaker_timeout: float = 30.0,
@@ -71,7 +70,6 @@ class ResilientAIUsageTracker(AIUsageTracker):
             track_to_dynamo=track_to_dynamo,
             track_to_file=track_to_file,
             log_file=log_file,
-            validate_table_environment=validate_table_environment,
         )
 
         # Store reference for cleanup

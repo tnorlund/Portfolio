@@ -95,40 +95,47 @@ def _update_pinecone_metadata(
     invalid_by_id: dict[str, list[ReceiptWordLabel]],
     client_manager: ClientManager,
 ) -> None:
-    """Update Pinecone vector metadata with validation results."""
-    all_pinecone_ids = set(valid_by_id.keys()) | set(invalid_by_id.keys())
+    """Update ChromaDB vector metadata with validation results."""
+    all_chroma_ids = set(valid_by_id.keys()) | set(invalid_by_id.keys())
     vectors_by_id = {}
-    for vector in client_manager.pinecone.fetch(
-        list(all_pinecone_ids),
-        namespace="words",
-    ).vectors.values():
-        pinecone_id = vector.id
-        valid_labels = set(vector.metadata.get("valid_labels", []))
-        invalid_labels = set(vector.metadata.get("invalid_labels", []))
+    
+    # Get vectors from ChromaDB
+    results = client_manager.chroma.get_by_ids(
+        "words",
+        list(all_chroma_ids),
+        include=["metadatas"]
+    )
+    
+    # Process each vector
+    if results and 'ids' in results:
+        for i, chroma_id in enumerate(results['ids']):
+            metadata = results['metadatas'][i] if 'metadatas' in results else {}
+            valid_labels = set(metadata.get("valid_labels", []))
+            invalid_labels = set(metadata.get("invalid_labels", []))
 
-        # Add valid labels
-        for label in valid_by_id.get(pinecone_id, []):
-            valid_labels.add(label.label)
-            # If label is now valid, ensure it's removed from invalid_labels
-            if label.label in invalid_labels:
-                invalid_labels.discard(label.label)
+            # Add valid labels
+            for label in valid_by_id.get(chroma_id, []):
+                valid_labels.add(label.label)
+                # If label is now valid, ensure it's removed from invalid_labels
+                if label.label in invalid_labels:
+                    invalid_labels.discard(label.label)
 
-        # Add invalid labels and remove them from valid_labels
-        for label in invalid_by_id.get(pinecone_id, []):
-            invalid_labels.add(label.label)
-            if label.label in valid_labels:
-                valid_labels.discard(label.label)
+            # Add invalid labels and remove them from valid_labels
+            for label in invalid_by_id.get(chroma_id, []):
+                invalid_labels.add(label.label)
+                if label.label in valid_labels:
+                    valid_labels.discard(label.label)
 
-        vector.metadata["valid_labels"] = list(valid_labels)
-        vector.metadata["invalid_labels"] = list(invalid_labels)
-        vectors_by_id[pinecone_id] = vector
+            metadata["valid_labels"] = list(valid_labels)
+            metadata["invalid_labels"] = list(invalid_labels)
+            vectors_by_id[chroma_id] = metadata
 
-    # Instead of upsert, use update to only update metadata for each vector
-    for v in vectors_by_id.values():
-        client_manager.pinecone.update(
-            id=v.id,
-            set_metadata=v.metadata,
-            namespace="words",
+    # Update metadata for each vector in ChromaDB
+    collection = client_manager.chroma.get_collection("words")
+    for chroma_id, metadata in vectors_by_id.items():
+        collection.update(
+            ids=[chroma_id],
+            metadatas=[metadata]
         )
 
 

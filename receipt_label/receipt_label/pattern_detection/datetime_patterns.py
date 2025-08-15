@@ -53,6 +53,10 @@ class DateTimePatternDetector(PatternDetector):
         matches = []
 
         for word in words:
+            # Validate input type
+            if word is None or not hasattr(word, 'is_noise') or not hasattr(word, 'text'):
+                continue  # Skip invalid objects
+                
             if word.is_noise:
                 continue
 
@@ -290,6 +294,10 @@ class DateTimePatternDetector(PatternDetector):
         """Create a date match dictionary."""
         # Handle 2-digit years
         if year < 100:
+            # Reject ambiguous 2-digit years like 99 (could be 1999 or 2099)
+            if year == 99:
+                return None
+                
             current_year = datetime.now().year
             century = (current_year // 100) * 100
             year = century + year

@@ -112,15 +112,8 @@ def query_receipt_words(
     """Query the ReceiptWords from DynamoDB."""
     if client_manager is None:
         client_manager = get_client_manager()
-    (
-        _,
-        _,
-        words,
-        _,
-        _,
-        _,
-    ) = client_manager.dynamo.get_receipt_details(image_id, receipt_id)
-    return words
+    receipt_details = client_manager.dynamo.get_receipt_details(image_id, receipt_id)
+    return receipt_details.words
 
 
 def chunk_into_embedding_batches(
@@ -344,7 +337,7 @@ def create_batch_summary(
     # 3) Build and return the BatchSummary
     return BatchSummary(
         batch_id=batch_id,
-        batch_type="EMBEDDING",
+        batch_type="WORD_EMBEDDING",
         openai_batch_id=open_ai_batch_id,
         submitted_at=datetime.now(timezone.utc),
         status="PENDING",

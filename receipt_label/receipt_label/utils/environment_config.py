@@ -64,6 +64,11 @@ class AIUsageEnvironmentConfig:
             except ValueError:
                 pass
 
+        # Check Pulumi stack name - only care about production
+        stack_name = os.getenv("PULUMI_STACK", os.getenv("PULUMI_STACK_NAME", "")).lower()
+        if stack_name and "prod" in stack_name:
+            return Environment.PRODUCTION
+
         # Detect CI/CD environment
         if any(
             os.getenv(var)
@@ -76,18 +81,6 @@ class AIUsageEnvironmentConfig:
             ]
         ):
             return Environment.CICD
-
-        # Detect production by AWS context
-        if os.getenv("AWS_EXECUTION_ENV") and not os.getenv("AWS_SAM_LOCAL"):
-            # Check if we're in production based on stack name or other indicators
-            stack_name = os.getenv("PULUMI_STACK_NAME", "")
-            if "prod" in stack_name.lower():
-                return Environment.PRODUCTION
-            elif (
-                "staging" in stack_name.lower()
-                or "stage" in stack_name.lower()
-            ):
-                return Environment.STAGING
 
         # Default to development
         return Environment.DEVELOPMENT
@@ -221,17 +214,13 @@ class AIUsageEnvironmentConfig:
         Returns:
             bool: True if table name is valid for environment
         """
-        expected_suffix = AIUsageEnvironmentConfig._get_table_suffix(
-            expected_environment
+        # Only validate in production - development can use any table name
+        if expected_environment != Environment.PRODUCTION:
+            return True
+            
+        # Production should not have development/staging suffixes
+        return not any(
+            table_name.endswith(f"-{env.value}")
+            for env in Environment
+            if env != Environment.PRODUCTION
         )
-
-        if expected_environment == Environment.PRODUCTION:
-            # Production should not have a suffix
-            return not any(
-                table_name.endswith(f"-{env.value}")
-                for env in Environment
-                if env != Environment.PRODUCTION
-            )
-        else:
-            # Non-production should have the correct suffix
-            return table_name.endswith(expected_suffix)

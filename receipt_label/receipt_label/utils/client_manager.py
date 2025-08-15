@@ -11,11 +11,11 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from openai import OpenAI
-from pinecone import Pinecone
 from receipt_dynamo import DynamoClient
 
 from .ai_usage_tracker import AIUsageTracker
 from .ai_usage_tracker_resilient import ResilientAIUsageTracker
+from .chroma_client import ChromaDBClient, get_chroma_client
 
 
 @dataclass
@@ -24,12 +24,15 @@ class ClientConfig:
 
     dynamo_table: str
     openai_api_key: str
-    pinecone_api_key: str
-    pinecone_index_name: str
-    pinecone_host: str
+    chroma_persist_path: Optional[str] = None
     track_usage: bool = True
     user_id: Optional[str] = None
     use_resilient_tracker: bool = True
+
+    # Deprecated Pinecone fields - kept for backward compatibility
+    pinecone_api_key: Optional[str] = None
+    pinecone_index_name: Optional[str] = None
+    pinecone_host: Optional[str] = None
 
     @classmethod
     def from_env(cls) -> "ClientConfig":
@@ -40,21 +43,31 @@ class ClientConfig:
             dynamo_table = os.environ.get("DYNAMO_TABLE_NAME")
             if dynamo_table:
                 warnings.warn(
-                    "DYNAMO_TABLE_NAME is deprecated. Use DYNAMODB_TABLE_NAME instead.",
+                    "DYNAMO_TABLE_NAME is deprecated. Use DYNAMODB_TABLE_NAME"
+                    " instead.",
                     DeprecationWarning,
                     stacklevel=2,
                 )
             else:
                 raise KeyError(
-                    "Either DYNAMODB_TABLE_NAME or DYNAMO_TABLE_NAME must be set"
+                    "Either DYNAMODB_TABLE_NAME or DYNAMO_TABLE_NAME must be"
+                    " set."
                 )
+
+        # Check for deprecated Pinecone environment variables
+        pinecone_api_key = os.environ.get("PINECONE_API_KEY")
+        if pinecone_api_key:
+            warnings.warn(
+                "PINECONE_API_KEY is deprecated. ChromaDB is now used for"
+                " vector storage.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
         return cls(
             dynamo_table=dynamo_table,
             openai_api_key=os.environ["OPENAI_API_KEY"],
-            pinecone_api_key=os.environ["PINECONE_API_KEY"],
-            pinecone_index_name=os.environ["PINECONE_INDEX_NAME"],
-            pinecone_host=os.environ["PINECONE_HOST"],
+            chroma_persist_path=os.environ.get("CHROMA_PERSIST_PATH"),
             track_usage=os.environ.get("TRACK_AI_USAGE", "true").lower()
             == "true",
             user_id=os.environ.get("USER_ID"),
@@ -62,6 +75,10 @@ class ClientConfig:
                 "USE_RESILIENT_TRACKER", "true"
             ).lower()
             == "true",
+            # Keep deprecated fields for backward compatibility
+            pinecone_api_key=pinecone_api_key,
+            pinecone_index_name=os.environ.get("PINECONE_INDEX_NAME"),
+            pinecone_host=os.environ.get("PINECONE_HOST"),
         )
 
 
@@ -70,7 +87,8 @@ class ClientManager:
     Manages client instances with lazy initialization and usage tracking.
 
     This class provides centralized access to all external service clients
-    while supporting lazy initialization, usage tracking, and easy mocking for tests.
+    while supporting lazy initialization, usage tracking, and easy mocking for
+    tests.
     """
 
     def __init__(self, config: ClientConfig):
@@ -83,7 +101,8 @@ class ClientManager:
         self.config = config
         self._dynamo_client: Optional[DynamoClient] = None
         self._openai_client: Optional[OpenAI] = None
-        self._pinecone_index: Optional[Any] = None  # Pinecone Index
+        self._chroma_client: Optional[ChromaDBClient] = None
+        self._pinecone_index: Optional[Any] = None  # Deprecated
         self._usage_tracker: Optional[AIUsageTracker] = None
 
     @property
@@ -104,17 +123,19 @@ class ClientManager:
                 track_to_dynamo=True,
                 track_to_file=os.environ.get("TRACK_TO_FILE", "false").lower()
                 == "true",
-                validate_table_environment=False,  # Allow custom table names for test configurations
             )
 
             # Override with resilient tracker if configured
             if self.config.use_resilient_tracker:
-                # In tests, we need to pass the mock client to avoid creating real DynamoDB connections
-                # In production, pass None to let ResilientAIUsageTracker create its own ResilientDynamoClient
+                # In tests, we need to pass the mock client to avoid creating
+                # real DynamoDB connections
+                # In production, pass None to let ResilientAIUsageTracker
+                # create its own ResilientDynamoClient
                 test_client = None
 
                 # Detect test environments by table name patterns
-                # Only match explicit test patterns, not any table containing "test"
+                # Only match explicit test patterns, not any table containing
+                # "test"
                 test_table_patterns = [
                     "test-table",
                     "integration-test-table",
@@ -131,7 +152,8 @@ class ClientManager:
                     or self.config.dynamo_table.lower().endswith("-test")
                     or self.config.dynamo_table.lower().startswith("test-")
                     or self.config.dynamo_table.lower() == "test"
-                    # Removed: "test" in table_name - too broad, matches "contest-results"
+                    # Removed: "test" in table_name - too broad, matches
+                    # "contest-results"
                 )
 
                 if is_test_env:
@@ -147,8 +169,6 @@ class ClientManager:
                         "TRACK_TO_FILE", "false"
                     ).lower()
                     == "true",
-                    validate_table_environment=test_client
-                    is None,  # Only validate in production
                     # Resilience configuration
                     circuit_breaker_threshold=int(
                         os.environ.get("CIRCUIT_BREAKER_THRESHOLD", "5")
@@ -189,23 +209,46 @@ class ClientManager:
         return self._openai_client
 
     @property
-    def pinecone(self) -> Any:  # Returns Pinecone Index
-        """Get or create Pinecone index."""
-        if self._pinecone_index is None:
-            pc = Pinecone(api_key=self.config.pinecone_api_key)
-            self._pinecone_index = pc.Index(
-                self.config.pinecone_index_name, host=self.config.pinecone_host
+    def chroma(self) -> ChromaDBClient:
+        """Get or create ChromaDB client."""
+        if self._chroma_client is None:
+            self._chroma_client = get_chroma_client(
+                persist_directory=self.config.chroma_persist_path
             )
-        return self._pinecone_index
+            # Note: get_chroma_client returns a read-only client by default.
+            # For write operations, instantiate ChromaDBClient directly with
+            # appropriate mode ("delta" or "snapshot").
+        return self._chroma_client
+
+    @property
+    def pinecone(self) -> Any:  # Returns ChromaDB client for backward compatibility
+        """
+        Get ChromaDB client for backward compatibility.
+
+        DEPRECATED: This property is maintained for backward compatibility
+        only and now returns the ChromaDB client instead of Pinecone.
+        Use chroma property instead for new code.
+        """
+        warnings.warn(
+            "pinecone property is deprecated and now returns ChromaDB client. "
+            "Use chroma property instead for new code.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        
+        # Return ChromaDB client instead of trying to import Pinecone
+        return self.chroma
 
     def get_all_clients(self) -> tuple[DynamoClient, OpenAI, Any]:
         """
         Get all clients as a tuple (for backward compatibility).
 
         Returns:
-            Tuple of (dynamo_client, openai_client, pinecone_index)
+            Tuple of (dynamo_client, openai_client, chroma_client)
+
+        Note: The third element is now ChromaDB client instead of Pinecone.
         """
-        return self.dynamo, self.openai, self.pinecone
+        return self.dynamo, self.openai, self.chroma
 
     def set_tracking_context(
         self,

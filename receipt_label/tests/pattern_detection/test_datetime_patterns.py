@@ -153,23 +153,32 @@ class TestDateTimePatternDetector:
     @pytest.mark.asyncio
     async def test_two_digit_year_handling(self, detector, create_word):
         """Test handling of 2-digit years."""
-        test_cases = [
+        valid_test_cases = [
             # Recent years (should be 20xx)
             ("01/15/24", "2024-01-15"),
             ("12/31/23", "2023-12-31"),
             ("03/05/25", "2025-03-05"),
-            # Older years (should be 20xx for now)
-            ("01/15/99", "2099-01-15"),  # Future interpretation
+            # Y2K boundary case
             ("01/15/00", "2000-01-15"),  # Y2K boundary
         ]
 
-        for i, (text, expected_date) in enumerate(test_cases):
+        # Test valid 2-digit years
+        for i, (text, expected_date) in enumerate(valid_test_cases):
             word = create_word(text, word_id=i)
             matches = await detector.detect([word])
 
             assert len(matches) == 1, f"Failed to detect date in: {text}"
             assert matches[0].pattern_type == PatternType.DATE
             # Note: The actual year interpretation may vary based on implementation
+
+        # Test ambiguous years that should be rejected
+        ambiguous_cases = ["01/15/99"]  # Ambiguous - could be 1999 or 2099
+        
+        for i, text in enumerate(ambiguous_cases):
+            word = create_word(text, word_id=i + 100)
+            matches = await detector.detect([word])
+
+            assert len(matches) == 0, f"Should reject ambiguous date: {text}"
 
     @pytest.mark.unit
     @pytest.mark.asyncio

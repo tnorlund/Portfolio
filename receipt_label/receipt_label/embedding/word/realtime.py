@@ -2,14 +2,13 @@
 
 import logging
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict, Any
 
-from pinecone.grpc import Vector
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities import ReceiptWord
 
 from receipt_label.client_manager import get_client_manager
-from receipt_label.utils.noise_detection import is_noise_word
+from receipt_label.utils.noise_detection import is_noise_text
 
 logger = logging.getLogger(__name__)
 
@@ -221,7 +220,7 @@ def embed_words_realtime(
     openai_client = client_manager.openai
 
     # Filter out noise words
-    meaningful_words = [w for w in words if not is_noise_word(w.text)]
+    meaningful_words = [w for w in words if not is_noise_text(w.text)]
 
     if not meaningful_words:
         logger.info("No meaningful words to embed")
@@ -260,7 +259,7 @@ def embed_receipt_words_realtime(
     merchant_name: Optional[str] = None,
 ) -> List[Tuple[ReceiptWord, List[float]]]:
     """
-    Embed all words from a receipt and store to Pinecone using batch-compatible structure.
+    Embed all words from a receipt and store to ChromaDB using batch-compatible structure.
 
     Args:
         receipt_id: ID of the receipt to process
@@ -271,7 +270,7 @@ def embed_receipt_words_realtime(
     """
     client_manager = get_client_manager()
     dynamo_client = client_manager.dynamo
-    pinecone_client = client_manager.pinecone
+    chroma_client = client_manager.chroma
 
     # Get receipt words from DynamoDB
     words = dynamo_client.list_receipt_words_by_receipt(receipt_id)
@@ -283,8 +282,11 @@ def embed_receipt_words_realtime(
     # Get embeddings with spatial context
     word_embeddings = embed_words_realtime(words, merchant_name)
 
-    # Prepare vectors for Pinecone using batch structure
-    vectors = []
+    # Prepare data for ChromaDB
+    ids = []
+    embeddings = []
+    metadatas = []
+    documents = []
     word_embedding_pairs = []
 
     # Create a mapping for quick lookup of embeddings by word
@@ -310,27 +312,27 @@ def embed_receipt_words_realtime(
                 label_status="unvalidated",
             )
 
-            # Create Pinecone vector
-            vectors.append(
-                Vector(
-                    id=vector_id,
-                    values=embedding_map[word_key],
-                    metadata=metadata,
-                )
-            )
+            # Prepare data for ChromaDB
+            ids.append(vector_id)
+            embeddings.append(embedding_map[word_key])
+            metadatas.append(metadata)
+            documents.append(word.text)  # Store word text as document
 
             word_embedding_pairs.append((word, embedding_map[word_key]))
 
-    # Store to Pinecone using correct namespace
-    if vectors:
+    # Store to ChromaDB using correct collection
+    if ids:
         try:
-            index = pinecone_client.Index("receipt-embeddings")
-            index.upsert(
-                vectors=vectors, namespace="words"
-            )  # Match batch namespace
+            chroma_client.upsert_vectors(
+                collection_name="words",
+                ids=ids,
+                embeddings=embeddings,
+                documents=documents,
+                metadatas=metadatas
+            )
 
             logger.info(
-                f"Stored {len(vectors)} word embeddings to Pinecone for receipt {receipt_id}"
+                f"Stored {len(ids)} word embeddings to ChromaDB for receipt {receipt_id}"
             )
 
             # Update embedding status in DynamoDB
@@ -364,11 +366,11 @@ def embed_receipt_words_realtime(
                     f"Error during DynamoDB batch update: {batch_error}"
                 )
                 raise RuntimeError(
-                    f"Embeddings stored to Pinecone but DynamoDB update failed: {batch_error}"
+                    f"Embeddings stored to ChromaDB but DynamoDB update failed: {batch_error}"
                 )
 
         except Exception as e:
-            logger.error(f"Error storing to Pinecone: {str(e)}")
+            logger.error(f"Error storing to ChromaDB: {str(e)}")
             raise
 
     return word_embedding_pairs
