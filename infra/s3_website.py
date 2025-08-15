@@ -77,21 +77,27 @@ certificate_validation = pulumi.Output.all(
 ########################
 site_bucket = aws.s3.Bucket(
     "siteBucket",
-    # Remove website configuration - using REST API endpoint instead
+    # Remove inline configuration - using separate resources
+)
+
+# Configure CORS as a separate resource
+site_bucket_cors = aws.s3.BucketCorsConfiguration(
+    "siteBucket-cors",
+    bucket=site_bucket.id,
     cors_rules=[
-        {
-            "allowedHeaders": ["*"],
-            "allowedMethods": ["GET", "HEAD"],
-            "allowedOrigins": [
+        aws.s3.BucketCorsConfigurationCorsRuleArgs(
+            allowed_headers=["*"],
+            allowed_methods=["GET", "HEAD"],
+            allowed_origins=[
                 "https://tylernorlund.com",
                 "https://www.tylernorlund.com",
                 "https://dev.tylernorlund.com",
                 "http://localhost:3000",  # For development
                 "http://localhost:3001",  # Alternative dev port
             ],
-            "exposeHeaders": ["ETag"],
-            "maxAgeSeconds": 3000,
-        }
+            expose_headers=["ETag"],
+            max_age_seconds=3000,
+        )
     ],
 )
 

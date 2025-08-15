@@ -20,14 +20,16 @@ distributed receipt labeling and validation workflow.
 """
 
 import json
+import os
 import re
-from typing import List
+from typing import List, Optional
 
 from receipt_dynamo.constants import BatchType, ValidationStatus
 from receipt_dynamo.entities import BatchSummary, EmbeddingBatchResult
 
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
+from receipt_label.utils.chroma_s3_helpers import produce_embedding_delta
 
 
 def _parse_left_right_from_formatted(fmt: str) -> tuple[str, str]:
@@ -49,6 +51,21 @@ def _parse_left_right_from_formatted(fmt: str) -> tuple[str, str]:
 
 def _parse_metadata_from_custom_id(custom_id: str) -> dict:
     parts = custom_id.split("#")
+    
+    # Validate we have the expected format for word embeddings
+    if len(parts) < 8:
+        raise ValueError(
+            f"Invalid custom_id format for word embedding: {custom_id}. "
+            f"Expected format: IMAGE#<id>#RECEIPT#<id>#LINE#<id>#WORD#<id>, "
+            f"but got {len(parts)} parts"
+        )
+    
+    # Additional validation: check for WORD component
+    if "WORD" not in parts:
+        raise ValueError(
+            f"Custom ID appears to be for line embedding, not word embedding: {custom_id}"
+        )
+    
     return {
         "image_id": parts[1],
         "receipt_id": int(parts[3]),
@@ -69,7 +86,7 @@ def list_pending_embedding_batches(
         client_manager = get_client_manager()
     summaries, lek = client_manager.dynamo.get_batch_summaries_by_status(
         status="PENDING",
-        batch_type=BatchType.EMBEDDING,
+        batch_type=BatchType.WORD_EMBEDDING,
         limit=25,
         last_evaluated_key=None,
     )
@@ -77,7 +94,7 @@ def list_pending_embedding_batches(
         next_summaries, lek = (
             client_manager.dynamo.get_batch_summaries_by_status(
                 status="PENDING",
-                batch_type=BatchType.EMBEDDING,
+                batch_type=BatchType.WORD_EMBEDDING,
                 limit=25,
                 last_evaluated_key=lek,
             )
@@ -205,226 +222,6 @@ def _get_unique_receipt_and_image_ids(
     )
 
 
-def upsert_embeddings_to_pinecone(  # pylint: disable=too-many-statements
-    results: List[dict],
-    descriptions: dict[str, dict[int, dict]],
-    client_manager: ClientManager = None,
-):
-    """
-    Upsert embedding results to Pinecone with rich metadata.
-
-    Each result entry in `results` is transformed into a Pinecone vector with:
-      - id: the original custom_id string (e.g. "IMAGE#...#RECEIPT#...#LINE#...#WORD#...").
-      - values: the embedding array for that word.
-
-    The metadata dict for each vector includes:
-      - image_id (str): the UUID of the source image.
-      - receipt_id (int): the numeric ID of the receipt within that
-        image.
-      - line_id (int): the line number from the OCR output.
-      - word_id (int): the position of the word in the line.
-      - source (str): fixed value "openai_embedding_batch" to track provenance.
-      - text (str): the OCR-extracted word string.
-      - confidence (float): OCR confidence score for the word.
-      - left (str): the adjacent word to the left (or "<EDGE>" if none).
-      - right (str): the adjacent word to the right (or "<EDGE>" if none).
-      - merchant_name (str, optional): the merchant name for this receipt,
-        if available.
-
-    Args:
-        results (List[dict]): The list of embedding results, each containing:
-            - custom_id (str)
-            - embedding (List[float])
-        descriptions (dict): A nested dict of receipt details keyed by
-            image_id and receipt_id.
-
-    Returns:
-        int: The total number of vectors successfully upserted to Pinecone.
-    """
-    vectors = []
-    for result in results:
-
-        # parse our metadata fields
-        _meta = _parse_metadata_from_custom_id(result["custom_id"])
-        image_id = _meta["image_id"]
-        receipt_id = _meta["receipt_id"]
-        line_id = _meta["line_id"]
-        word_id = _meta["word_id"]
-        source = "openai_embedding_batch"
-        # From the descriptions, get the receipt details for this result
-        receipt_details = descriptions[image_id][receipt_id]
-        _ = receipt_details["receipt"]  # receipt
-        _ = receipt_details["lines"]  # lines
-        words = receipt_details["words"]
-        _ = receipt_details["letters"]  # letters
-        labels = receipt_details["labels"]
-        metadata = receipt_details["metadata"]
-        # Get the target word from the list of words
-        target_word = next(
-            (
-                w
-                for w in words
-                if w.line_id == line_id and w.word_id == word_id
-            ),
-            None,
-        )
-        if target_word is None:
-            raise ValueError(
-                f"No ReceiptWord found for image_id={image_id}, "
-                f"receipt_id={receipt_id}, line_id={line_id}, "
-                f"word_id={word_id}"
-            )
-        _ = [  # target_word_labels
-            label
-            for label in labels
-            if label.image_id == image_id
-            and label.receipt_id == receipt_id
-            and label.line_id == line_id
-            and label.word_id == word_id
-        ]
-        # label_status — overall state for this word:
-        #    "unvalidated" if none VALID,
-        #    "auto_suggested" if ANY PENDING and none VALID,
-        #    "validated" if at least one VALID
-        if any(
-            lbl.validation_status == ValidationStatus.VALID.value
-            for lbl in labels
-        ):
-            label_status = "validated"
-        elif any(
-            lbl.validation_status == ValidationStatus.PENDING.value
-            for lbl in labels
-        ):
-            label_status = "auto_suggested"
-        else:
-            label_status = "unvalidated"
-        auto_suggestions = [
-            lbl
-            for lbl in labels
-            if lbl.validation_status == ValidationStatus.PENDING.value
-        ]
-        # label_confidence & label_proposed_by — pick from the most recent
-        # auto‑suggestion:
-        if auto_suggestions:
-            # assume the last‑added pending label is the one your LLM just
-            # suggested
-            last = sorted(auto_suggestions, key=lambda l: l.timestamp_added)[
-                -1
-            ]
-            label_confidence = getattr(
-                last, "confidence", None
-            )  # if you store it on the label
-            label_proposed_by = last.label_proposed_by
-        else:
-            label_confidence = None
-            label_proposed_by = None
-        # validated_labels — all labels with status VALID
-        validated_labels = [
-            lbl.label
-            for lbl in labels
-            if lbl.validation_status == ValidationStatus.VALID.value
-        ]
-        # label_validated_at — timestamp of the most recent VALID
-        valids = [
-            lbl
-            for lbl in labels
-            if lbl.validation_status == ValidationStatus.VALID.value
-        ]
-        label_validated_at = (
-            sorted(valids, key=lambda l: l.timestamp_added)[-1].timestamp_added
-            if valids
-            else None
-        )
-
-        # Re format the embedding to get the words left and right of the
-        # target word
-        text = target_word.text
-        _word_centroid = target_word.calculate_centroid()
-        x_center, y_center = _word_centroid
-        width = target_word.bounding_box["width"]
-        height = target_word.bounding_box["height"]
-        confidence = target_word.confidence
-        # Import locally to avoid circular import
-        from receipt_label.embedding.word.submit import (  # pylint: disable=import-outside-toplevel
-            _format_word_context_embedding_input,
-        )
-
-        _embedding = _format_word_context_embedding_input(target_word, words)
-        left_text, right_text = _parse_left_right_from_formatted(_embedding)
-
-        # Priority: canonical name > regular merchant name
-        if (
-            hasattr(metadata, "canonical_merchant_name")
-            and metadata.canonical_merchant_name
-        ):
-            merchant_name = metadata.canonical_merchant_name
-        else:
-            merchant_name = metadata.merchant_name
-
-        # Standardize the merchant name format
-        if merchant_name:
-            merchant_name = merchant_name.strip().title()
-
-        # build the vector entry
-        vectors.append(
-            {
-                "id": result["custom_id"],
-                "values": result["embedding"],
-                "metadata": {
-                    "image_id": image_id,
-                    "receipt_id": receipt_id,
-                    "line_id": line_id,
-                    "word_id": word_id,
-                    "source": source,
-                    "text": text,
-                    "x": x_center,
-                    "y": y_center,
-                    "width": width,
-                    "height": height,
-                    "confidence": confidence,
-                    "left": left_text,
-                    "right": right_text,
-                    "merchant_name": merchant_name,
-                    "label_status": label_status,
-                    **(
-                        {"label_confidence": label_confidence}
-                        if label_confidence is not None
-                        else {}
-                    ),
-                    **(
-                        {"label_proposed_by": label_proposed_by}
-                        if label_proposed_by is not None
-                        else {}
-                    ),
-                    **(
-                        {"validated_labels": validated_labels}
-                        if validated_labels
-                        else {}
-                    ),
-                    **(
-                        {"label_validated_at": label_validated_at}
-                        if label_validated_at is not None
-                        else {}
-                    ),
-                },
-            }
-        )
-
-    batch_size = 100
-    upserted_count = 0
-    for i in range(0, len(vectors), batch_size):
-        chunk = vectors[i : i + batch_size]
-        try:
-            if client_manager is None:
-                client_manager = get_client_manager()
-            response = client_manager.pinecone.upsert(
-                vectors=chunk, namespace="words"
-            )
-            upserted_count += response.get("upserted_count", 0)
-        except Exception as e:
-            print(f"Failed to upsert chunk to Pinecone: {e}")
-            raise e
-    return upserted_count
 
 
 def write_embedding_results_to_dynamo(
@@ -440,7 +237,8 @@ def write_embedding_results_to_dynamo(
         results (List[dict]): The list of embedding results containing:
             - custom_id (str)
             - embedding (List[float])
-        descriptions (dict): Nested dict from get_receipt_descriptions, keyed by image_id then receipt_id.
+        descriptions (dict): Nested dict from get_receipt_descriptions, keyed
+            by image_id then receipt_id.
         batch_id (str): The identifier of the batch for EmbeddingBatchResult.
 
     Returns:
@@ -503,3 +301,220 @@ def mark_batch_complete(batch_id: str, client_manager: ClientManager = None):
     batch_summary = client_manager.dynamo.get_batch_summary(batch_id)
     batch_summary.status = "COMPLETED"
     client_manager.dynamo.update_batch_summary(batch_summary)
+
+
+def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
+    results: List[dict],
+    descriptions: dict[str, dict[int, dict]],
+    batch_id: str,
+    bucket_name: str,
+    sqs_queue_url: Optional[str] = None,
+    client_manager: ClientManager = None,
+) -> dict:
+    """
+    Save word embedding results as a delta file to S3 for ChromaDB compaction.
+    
+    This replaces the direct Pinecone upsert with a delta file that will be
+    processed later by the compaction job.
+    
+    Args:
+        results (List[dict]): The list of embedding results, each containing:
+            - custom_id (str)
+            - embedding (List[float])
+        descriptions (dict): A nested dict of receipt details keyed by
+            image_id and receipt_id.
+        batch_id (str): The identifier of the batch.
+        bucket_name (str): S3 bucket name for storing the delta.
+        sqs_queue_url (Optional[str]): SQS queue URL for compaction notification.
+            If None, skips SQS notification.
+        client_manager (ClientManager, optional): Client manager for AWS services.
+            
+    Returns:
+        dict: Delta creation result with keys:
+            - delta_id: Unique identifier for the delta
+            - delta_key: S3 key where delta was saved
+            - embedding_count: Number of embeddings in the delta
+    """
+    # Prepare ChromaDB-compatible data
+    ids = []
+    embeddings = []
+    metadatas = []
+    documents = []
+    
+    for result in results:
+        # parse our metadata fields
+        _meta = _parse_metadata_from_custom_id(result["custom_id"])
+        image_id = _meta["image_id"]
+        receipt_id = _meta["receipt_id"]
+        line_id = _meta["line_id"]
+        word_id = _meta["word_id"]
+        source = "openai_embedding_batch"
+        
+        # From the descriptions, get the receipt details for this result
+        receipt_details = descriptions[image_id][receipt_id]
+        words = receipt_details["words"]
+        labels = receipt_details["labels"]
+        metadata = receipt_details["metadata"]
+        
+        # Get the target word from the list of words
+        target_word = next(
+            (
+                w
+                for w in words
+                if w.line_id == line_id and w.word_id == word_id
+            ),
+            None,
+        )
+        if target_word is None:
+            raise ValueError(
+                f"No ReceiptWord found for image_id={image_id}, "
+                f"receipt_id={receipt_id}, line_id={line_id}, "
+                f"word_id={word_id}"
+            )
+        
+        # label_status — overall state for this word
+        if any(
+            lbl.validation_status == ValidationStatus.VALID.value
+            for lbl in labels
+        ):
+            label_status = "validated"
+        elif any(
+            lbl.validation_status == ValidationStatus.PENDING.value
+            for lbl in labels
+        ):
+            label_status = "auto_suggested"
+        else:
+            label_status = "unvalidated"
+            
+        auto_suggestions = [
+            lbl
+            for lbl in labels
+            if lbl.validation_status == ValidationStatus.PENDING.value
+        ]
+        
+        # label_confidence & label_proposed_by
+        if auto_suggestions:
+            last = sorted(auto_suggestions, key=lambda l: l.timestamp_added)[-1]
+            label_confidence = getattr(last, "confidence", None)
+            label_proposed_by = last.label_proposed_by
+        else:
+            label_confidence = None
+            label_proposed_by = None
+            
+        # validated_labels — all labels with status VALID
+        validated_labels = [
+            lbl.label
+            for lbl in labels
+            if lbl.validation_status == ValidationStatus.VALID.value
+        ]
+        
+        # invalid_labels — all labels with status INVALID
+        invalid_labels = [
+            lbl.label
+            for lbl in labels
+            if lbl.validation_status == ValidationStatus.INVALID.value
+        ]
+        
+        # label_validated_at — timestamp of the most recent VALID
+        valids = [
+            lbl
+            for lbl in labels
+            if lbl.validation_status == ValidationStatus.VALID.value
+        ]
+        label_validated_at = (
+            sorted(valids, key=lambda l: l.timestamp_added)[-1].timestamp_added
+            if valids
+            else None
+        )
+        
+        # Get word details and context
+        text = target_word.text
+        _word_centroid = target_word.calculate_centroid()
+        x_center, y_center = _word_centroid
+        width = target_word.bounding_box["width"]
+        height = target_word.bounding_box["height"]
+        confidence = target_word.confidence
+        
+        # Import locally to avoid circular import
+        from receipt_label.embedding.word.submit import (  # pylint: disable=import-outside-toplevel
+            _format_word_context_embedding_input,
+        )
+        
+        _embedding = _format_word_context_embedding_input(target_word, words)
+        left_text, right_text = _parse_left_right_from_formatted(_embedding)
+        
+        # Priority: canonical name > regular merchant name
+        if (
+            hasattr(metadata, "canonical_merchant_name")
+            and metadata.canonical_merchant_name
+        ):
+            merchant_name = metadata.canonical_merchant_name
+        else:
+            merchant_name = metadata.merchant_name
+            
+        # Standardize the merchant name format
+        if merchant_name:
+            merchant_name = merchant_name.strip().title()
+            
+        # Build metadata for ChromaDB
+        word_metadata = {
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "line_id": line_id,
+            "word_id": word_id,
+            "source": source,
+            "text": text,
+            "x": x_center,
+            "y": y_center,
+            "width": width,
+            "height": height,
+            "confidence": confidence,
+            "left": left_text,
+            "right": right_text,
+            "merchant_name": merchant_name,
+            "label_status": label_status,
+        }
+        
+        # Add optional fields
+        if label_confidence is not None:
+            word_metadata["label_confidence"] = label_confidence
+        if label_proposed_by is not None:
+            word_metadata["label_proposed_by"] = label_proposed_by
+        
+        # Store validated labels with delimiters for exact matching
+        if validated_labels:
+            # Use comma delimiters to enable exact matching with $contains
+            word_metadata["validated_labels"] = f",{','.join(validated_labels)},"
+        else:
+            word_metadata["validated_labels"] = ""
+            
+        # Store invalid labels with delimiters for exact matching
+        if invalid_labels:
+            # Use comma delimiters to enable exact matching with $contains
+            word_metadata["invalid_labels"] = f",{','.join(invalid_labels)},"
+        else:
+            word_metadata["invalid_labels"] = ""
+            
+        if label_validated_at is not None:
+            word_metadata["label_validated_at"] = label_validated_at
+            
+        # Add to delta arrays
+        ids.append(result["custom_id"])
+        embeddings.append(result["embedding"])
+        metadatas.append(word_metadata)
+        documents.append(text)
+    
+    # Produce the delta file
+    delta_result = produce_embedding_delta(
+        ids=ids,
+        embeddings=embeddings,
+        documents=documents,
+        metadatas=metadatas,
+        bucket_name=bucket_name,
+        collection_name="receipt_words",
+        database_name="words",  # Use words-specific database path
+        sqs_queue_url=sqs_queue_url,
+        batch_id=batch_id,
+    )
+    
+    return delta_result
