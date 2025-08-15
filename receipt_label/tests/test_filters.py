@@ -179,7 +179,7 @@ def get_coverage_config_for_environment(environment: str = None) -> dict:
     return environment_configs.get(environment, environment_configs["development"])
 
 
-class TestExecutionStrategy:
+class ExecutionStrategy:
     """Strategy pattern for test execution in different environments."""
     
     def __init__(self, environment: str = None):
