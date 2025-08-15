@@ -348,7 +348,7 @@ class MLPackageBuilder(pulumi.ComponentResource):
             ).apply(self._create_buildspec)
 
             codebuild_project = aws.codebuild.Project(
-                f"{name}-{package}-{pulumi.get_stack()}",
+                f"{name}-{package}-{pulumi.get_stack()}",  # Pulumi logical name with stack
                 artifacts=aws.codebuild.ProjectArtifactsArgs(
                     type="S3",
                     location=self.artifact_bucket.bucket,
