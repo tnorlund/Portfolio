@@ -252,7 +252,6 @@ class LambdaFunctionsComponent(ComponentResource):
 
         return Function(
             f"{name}-lambda-{stack}",
-            name=f"{name}-{stack}",
             runtime="python3.12",
             handler=config["handler"],
             code=FileArchive(str(source_path)),
@@ -324,7 +323,6 @@ class LambdaFunctionsComponent(ComponentResource):
 
         return Function(
             f"{name}-lambda-{stack}",
-            name=f"{name}-{stack}",
             package_type="Image",
             image_uri=Output.all(
                 self.docker_image.ecr_repo.repository_url,

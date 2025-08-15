@@ -46,7 +46,6 @@ class DockerImageComponent(ComponentResource):
         # Create ECR repository
         self.ecr_repo = Repository(
             f"{name}-repo",
-            name=f"unified-embedding-{stack}",
             image_scanning_configuration=(
                 RepositoryImageScanningConfigurationArgs(
                     scan_on_push=True,
