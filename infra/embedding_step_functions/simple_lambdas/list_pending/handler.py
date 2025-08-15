@@ -7,7 +7,9 @@ receipt_label and boto3. No container overhead needed.
 import logging
 from typing import Any, Dict, List
 from receipt_label.embedding.line import list_pending_line_embedding_batches
-from receipt_label.embedding.word import list_pending_embedding_batches as list_pending_word_embedding_batches
+from receipt_label.embedding.word import (
+    list_pending_embedding_batches as list_pending_word_embedding_batches
+)
 
 # Set up logging
 logger = logging.getLogger()
@@ -32,10 +34,12 @@ def lambda_handler(
     Raises:
         RuntimeError: If there's an error accessing DynamoDB
     """
-    # Determine batch type from event (default to 'line' for backward compatibility)
+    # Determine batch type from event (default to 'line' for backward
+    # compatibility)
     batch_type = event.get("batch_type", "line")
-    
-    logger.info("Starting list_pending_batches handler for batch_type: %s", batch_type)
+    logger.info(
+        "Starting list_pending_batches handler for batch_type: %s", batch_type
+    )
 
     try:
         # Get pending batches from DynamoDB based on type
@@ -45,7 +49,8 @@ def lambda_handler(
             pending_batches = list_pending_line_embedding_batches()
 
         logger.info(
-            "Found %d pending %s embedding batches", len(pending_batches), batch_type
+            "Found %d pending %s embedding batches",
+            len(pending_batches), batch_type
         )
 
         # Format response for Step Function

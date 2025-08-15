@@ -66,7 +66,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             }
 
         # Split into chunks
-        chunks = []
+        chunks: List[Dict[str, Any]] = []
         for i in range(0, len(valid_deltas), CHUNK_SIZE):
             chunk_deltas = valid_deltas[i : i + CHUNK_SIZE]
             chunk = {

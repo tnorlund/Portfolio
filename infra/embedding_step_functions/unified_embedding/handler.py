@@ -4,10 +4,11 @@ This is the main entry point that AWS Lambda invokes.
 All routing logic is delegated to the router module.
 """
 
+from typing import Any, Dict
 import router
 
 
-def lambda_handler(event, context):
+def lambda_handler(event: Dict[str, Any], context: Any) -> Any:
     """AWS Lambda handler function.
 
     Args:

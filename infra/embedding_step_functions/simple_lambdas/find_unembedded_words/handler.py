@@ -19,7 +19,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 
-def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def lambda_handler(event: Any, context: Any) -> Dict[str, Any]:
     """Find receipt words without embeddings and prepare batches.
 
     Args:
@@ -64,13 +64,14 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 unique = len({(w.line_id, w.word_id) for w in words_list})
                 if total != unique:
                     logger.warning(
-                        f"Duplicate words in image {image_id}, receipt {receipt_id}: "
-                        f"total {total}, unique {unique}"
+                        "Duplicate words in image %s, receipt %s: "
+                        "total %d, unique %d",
+                        image_id, receipt_id, total, unique
                     )
                 else:
                     logger.info(
-                        f"Words count OK for image {image_id}, receipt {receipt_id}: "
-                        f"{total} words"
+                        "Words count OK for image %s, receipt %s: %d words",
+                        image_id, receipt_id, total
                     )
 
         # Serialize and upload in one step

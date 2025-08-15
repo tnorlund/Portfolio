@@ -4,7 +4,7 @@ All Lambda configurations, environment variables, and settings in one place.
 """
 
 import os
-from typing import Dict, Any
+from typing import Dict, Any, List, cast
 
 # Lambda function configurations
 LAMBDA_CONFIGS = {
@@ -82,7 +82,7 @@ LAMBDA_CONFIGS = {
         "memory": 512,
         "timeout": 60,
         "ephemeral_storage": 512,
-        "description": "Split delta results into chunks for parallel processing",
+        "description": "Split delta results into chunks for parallel proc",
         "env_vars": {
             "HANDLER_TYPE": "split_into_chunks",
         },
@@ -110,7 +110,7 @@ LAMBDA_CONFIGS = {
 }
 
 # Common environment variables (merged with handler-specific ones)
-COMMON_ENV_VARS = {
+COMMON_ENV_VARS: Dict[str, str | None] = {
     "DYNAMODB_TABLE_NAME": os.environ.get("DYNAMODB_TABLE_NAME"),
     "CHROMADB_BUCKET": os.environ.get("CHROMADB_BUCKET"),
     "COMPACTION_QUEUE_URL": os.environ.get("COMPACTION_QUEUE_URL"),
@@ -137,15 +137,19 @@ def get_lambda_config(handler_type: str) -> Dict[str, Any]:
     config = LAMBDA_CONFIGS[handler_type].copy()
 
     # Merge common env vars with handler-specific ones
+    common_vars: Dict[str, str] = {
+        k: v for k, v in COMMON_ENV_VARS.items() if v is not None
+    }
+    handler_vars: Dict[str, str] = cast(Dict[str, str], config["env_vars"])
     config["env_vars"] = {
-        **COMMON_ENV_VARS,
-        **config["env_vars"],
+        **common_vars,
+        **handler_vars,
     }
 
     return config
 
 
-def get_all_handler_types():
+def get_all_handler_types() -> List[str]:
     """Get list of all available handler types."""
     return list(LAMBDA_CONFIGS.keys())
 

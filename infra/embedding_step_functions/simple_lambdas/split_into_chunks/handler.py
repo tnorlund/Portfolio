@@ -1,10 +1,9 @@
-"""Lambda handler for splitting delta results into chunks for parallel processing.
+"""Lambda handler for splitting delta results into chunks.
 
 This function takes a list of delta results and splits them into chunks of 10
 for efficient parallel processing by the compaction Lambda.
 """
 
-import json
 import logging
 from typing import Any, Dict, List
 
@@ -41,7 +40,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             raise ValueError("batch_id is required")
 
         logger.info(
-            f"Processing {len(poll_results)} delta results for batch {batch_id}"
+            "Processing %d delta results for batch %s",
+            len(poll_results), batch_id
         )
 
         # Filter out any invalid results
@@ -49,12 +49,13 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         for result in poll_results:
             # Each result should have delta_key and collection info
             if isinstance(result, dict) and "delta_key" in result:
-                # Ensure collection is set (default to receipt_words for backward compat)
+                # Ensure collection is set (default to receipt_words for
+                # backward compat)
                 if "collection" not in result:
                     result["collection"] = "receipt_words"
                 valid_deltas.append(result)
             else:
-                logger.warning(f"Skipping invalid delta result: {result}")
+                logger.warning("Skipping invalid delta result: %s", result)
 
         if not valid_deltas:
             logger.info("No valid deltas to process")
@@ -65,7 +66,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             }
 
         # Split into chunks
-        chunks = []
+        chunks: List[Dict[str, Any]] = []
         for i in range(0, len(valid_deltas), CHUNK_SIZE):
             chunk_deltas = valid_deltas[i : i + CHUNK_SIZE]
             chunk = {
@@ -77,13 +78,16 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             chunks.append(chunk)
 
             # Log chunk details for debugging
+            collections = set(
+                d.get('collection', 'unknown') for d in chunk_deltas
+            )
             logger.info(
-                f"Chunk {chunk['chunk_index']}: {len(chunk_deltas)} deltas, "
-                f"collections: {set(d.get('collection', 'unknown') for d in chunk_deltas)}"
+                "Chunk %d: %d deltas, collections: %s",
+                chunk['chunk_index'], len(chunk_deltas), collections
             )
 
         logger.info(
-            f"Created {len(chunks)} chunks from {len(valid_deltas)} deltas"
+            "Created %d chunks from %d deltas", len(chunks), len(valid_deltas)
         )
 
         return {
@@ -93,7 +97,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
 
     except ValueError as e:
-        logger.error(f"Validation error: {str(e)}")
+        logger.error("Validation error: %s", str(e))
         return {
             "statusCode": 400,
             "error": str(e),
@@ -101,7 +105,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
 
     except Exception as e:
-        logger.error(f"Unexpected error splitting into chunks: {str(e)}")
+        logger.error("Unexpected error splitting into chunks: %s", str(e))
         return {
             "statusCode": 500,
             "error": str(e),

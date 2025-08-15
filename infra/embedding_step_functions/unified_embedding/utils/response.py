@@ -39,7 +39,7 @@ def format_response(
     data: Any,
     event: Dict[str, Any],
     is_error: bool = False,
-    status_code: int = None,
+    status_code: int | None = None,
 ) -> Any:
     """Format response based on invocation source.
 
