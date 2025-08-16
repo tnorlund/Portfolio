@@ -1,0 +1,12 @@
+# Docker build context optimization for Pulumi base images
+# Only include the two package directories needed for Docker builds
+
+# Ignore everything by default
+*
+
+# Only include the packages we need
+!receipt_dynamo/
+!receipt_label/
+
+# Include the embedding handler code for the embedding Docker image
+!infra/embedding_step_functions/unified_embedding/
