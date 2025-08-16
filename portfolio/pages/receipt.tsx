@@ -501,12 +501,10 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         phone, address) and add a couple of simple checks:
       </p>
 
-      {/* TODO make this a list */}
-      <p>
-        sum(items) ~= subtotal
-        <br />
-        Subtotal + tax + fees - discounts ~= total
-      </p>
+      <ul>
+        <li>sum(items) ~= subtotal</li>
+        <li>Subtotal + tax + fees - discounts ~= total</li>
+      </ul>
 
       <p>
         Asking ChatGPT if this word is Sprout’s phone number is an easy way to
@@ -522,16 +520,11 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         date, total, etc. in one forward pass. In production this gives me:
       </p>
 
-      {/* TODO make this a list */}
-      <p>
-        Speed & cost: cheap, local inference instead of repeated chat calls
-        <br />
-        Consistency: probabilistic explanations vs. non-deterministic
-        hallucinations
-        <br />
-        Better validation: predicted labels + graph/rule checks catch mismatches
-        fast
-      </p>
+      <ul>
+        <li><strong>Speed & cost</strong>: cheap, local inference instead of repeated chat calls</li>
+        <li><strong>Consistency</strong>: probabilistic explanations vs. non-deterministic hallucinations</li>
+        <li><strong>Better validation</strong>: predicted labels + graph/rule checks catch mismatches fast</li>
+      </ul>
       <p>
         To improve accuracy, I can add more receipts, synthesize new receipts by
         finding patterns within and outside of different merchants, and adding
