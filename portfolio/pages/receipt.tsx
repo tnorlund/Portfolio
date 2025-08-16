@@ -612,20 +612,6 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         another with minimal effort.
       </p>
 
-      <h2>Training a Custom Model</h2>
-      <p>
-        I&apos;m currently training a custom model to improve the process of
-        getting an image and structuring the data. Having to query a database of
-        similar words works for large datasets, but there&apos;s room here for a
-        simple model that can run on my laptop. I&apos;ve been playing with a
-        few models on Hugging Face. Hugging Face.
-      </p>
-      <ClientOnly>
-        <AnimatedInView>
-          <HuggingFaceLogo />
-        </AnimatedInView>
-      </ClientOnly>
-
       <h2>A New Era of Coding</h2>
       <p>
         Artificial intelligence is advancing quickly and changing how we write
