@@ -7,3 +7,6 @@
 # Only include the packages we need
 !receipt_dynamo/
 !receipt_label/
+
+# Include the embedding handler code for the embedding Docker image
+!infra/embedding_step_functions/unified_embedding/
