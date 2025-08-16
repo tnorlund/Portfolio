@@ -24,50 +24,6 @@ import pulumi_docker_build as docker_build
 class BaseImages(ComponentResource):
     """Component for creating base ECR images for packages."""
 
-    def calculate_directory_hash(self, directories: list[Path]) -> str:
-        """Calculate a deterministic hash of directory contents.
-        
-        This hash is used as a build argument to trigger Docker rebuilds
-        when the content of specific directories changes.
-        
-        Args:
-            directories: List of directories to include in hash
-            
-        Returns:
-            Short hash string representing directory contents
-        """
-        hasher = hashlib.sha256()
-        
-        for directory in sorted(directories):
-            if not directory.exists():
-                continue
-                
-            # Include all Python files and setup files
-            patterns = ['*.py', 'pyproject.toml', 'setup.py', 'setup.cfg', 'requirements.txt']
-            all_files = []
-            for pattern in patterns:
-                all_files.extend(directory.rglob(pattern))
-            
-            # Sort for deterministic ordering
-            for file_path in sorted(all_files):
-                if file_path.is_file() and not any(part.startswith('.') for part in file_path.parts):
-                    # Skip test files and cache
-                    if 'test' in file_path.name.lower() or '__pycache__' in str(file_path):
-                        continue
-                    
-                    # Include relative path and content
-                    rel_path = file_path.relative_to(directory)
-                    hasher.update(str(rel_path).encode())
-                    
-                    # Include file content
-                    try:
-                        hasher.update(file_path.read_bytes())
-                    except Exception:
-                        # If we can't read the file, just use its path
-                        pass
-        
-        return hasher.hexdigest()[:12]
-
     def get_content_hash(self, package_dir: Path) -> str:
         """Generate a hash based on package content.
 
@@ -288,11 +244,8 @@ class BaseImages(ComponentResource):
         dynamo_dockerfile = str(Path(__file__).parent / "dockerfiles" / "Dockerfile.receipt_dynamo")
         label_dockerfile = str(Path(__file__).parent / "dockerfiles" / "Dockerfile.receipt_label")
 
-        # Calculate hash for receipt_dynamo directory
-        dynamo_dir_hash = self.calculate_directory_hash([dynamo_package_dir])
-        
         # Build receipt_dynamo base image with content-based tag
-        # The CONTENT_HASH build arg will trigger rebuilds when directory changes
+        # .dockerignore at project root ensures only receipt_dynamo/ and receipt_label/ are included
         self.dynamo_base_image = docker_build.Image(
             f"base-receipt-dynamo-img-{stack}",
             context={
@@ -305,7 +258,6 @@ class BaseImages(ComponentResource):
             build_args={
                 "PYTHON_VERSION": "3.12",
                 "BUILDKIT_INLINE_CACHE": "1",
-                "CONTENT_HASH": dynamo_dir_hash,  # Triggers rebuild when directory changes
             },
             # ECR caching configuration
             cache_from=[
@@ -350,12 +302,9 @@ class BaseImages(ComponentResource):
             ),
         )
 
-        # Calculate combined hash for both directories
-        label_dir_hash = self.calculate_directory_hash([dynamo_package_dir, label_package_dir])
-        
         # Build receipt_label base image IN PARALLEL (no dependency on dynamo image)
         # This is now self-contained with both packages
-        # The CONTENT_HASH build arg will trigger rebuilds when either directory changes
+        # .dockerignore at project root ensures only receipt_dynamo/ and receipt_label/ are included
         self.label_base_image = docker_build.Image(
             f"base-receipt-label-img-{stack}",
             context={
@@ -369,7 +318,6 @@ class BaseImages(ComponentResource):
                 "PYTHON_VERSION": "3.12",
                 # No BASE_IMAGE needed anymore - self-contained build
                 "BUILDKIT_INLINE_CACHE": "1",
-                "CONTENT_HASH": label_dir_hash,  # Triggers rebuild when either directory changes
             },
             # ECR caching configuration
             cache_from=[

@@ -1,0 +1,9 @@
+# Docker build context optimization for Pulumi base images
+# Only include the two package directories needed for Docker builds
+
+# Ignore everything by default
+*
+
+# Only include the packages we need
+!receipt_dynamo/
+!receipt_label/
