@@ -23,7 +23,7 @@ const ChromaLogo: React.FC = () => {
             >
               <path
                 d="M114.18,52.91H47.9v44.19h66.28v-44.19Z"
-                fill="var(--text-color)"
+                fill="white"
               />
             </g>
           </mask>
