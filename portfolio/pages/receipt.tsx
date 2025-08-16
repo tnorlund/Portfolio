@@ -31,6 +31,11 @@ import {
   PulumiLogo,
   ReactLogo,
   NextJSLogo,
+  PyTorchLogo,
+  ChromaLogo,
+  DockerLogo,
+  OllamaLogo,
+  LangChainLogo,
 } from "../components/ui/Logos";
 
 interface ReceiptPageProps {
@@ -418,163 +423,53 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         <ClientReceiptCounts />
       </div>
 
-      <h1>Semantic Labeling</h1>
-      <p>
-        In order to explain the text on the receipt, I needed to explain how the
-        words semantically relate to one another. But before I can explain, we
-        have to understand what embedding is.
-      </p>
-      <h2>Embedding</h2>
-      <p>
-        I had never used embeddings before. They are not exactly new, but they
-        have become widely available in the last few years. What embeddings
-        offer is{" "}
-        <i>
-          the ability to discover connections between things at previously
-          impossible scales.
-        </i>{" "}
-      </p>
-      <p>
-        If someone were to ask you to embed something, what do you need? You
-        start with textual representation of the thing they&apos;re asking to
-        embed.
-      </p>
-
-      <p>What do you get back? You get a structure of numbers.</p>
-
-      <ClientOnly>
-        <EmbeddingExample />
-      </ClientOnly>
+      <h2>Semantic Understanding</h2>
 
       <p>
-        While each input might be different, we get the same structure of
-        numbers back. Here&apos;s the magic. Because we get the same structure,
-        we have a way to mathematically compare two pieces of text together. But
-        what do the numbers mean?
+        I’ve found that these “AI agents” are pretty dumb on their own: the meme
+        is a dumb intern that needs more information to figure out how to do the
+        job. Retrieval-Augmented Generation gives the intern a window of context
+        through a set of tools, but the answers can still be non-deterministic.
+        The fix is to encode the data so the retrieval is precise and learning
+        is repeatable.
       </p>
-      <h3>How To Literally Embed</h3>
+
+      <h3>Tools</h3>
       <p>
-        There are many services that offer to generate embeddings, but I ended
-        up going with OpenAI.
+        One of the best tools I’ve found has been semantic search. I found the
+        best way I can understand it is this example:
       </p>
+      <p>King is to queen as man is to woman</p>
+      <p>
+        This shows how king and queen have a similar meaning as man and woman
+        (gender). This relationship is semantically explained by embeddings,
+        which place related words near each other.{" "}
+      </p>
+      <p>I embed the words with OpenAI.</p>
       <ClientOnly>
         <AnimatedInView>
           <OpenAILogo />
         </AnimatedInView>
       </ClientOnly>
-      <h3>Is It Expensive?</h3>
       <p>
-        No. I experimented <i>a lot</i>. I developed a way to batch embeddings
-        to cut costs further. This part is also free.
+        The relationships can be queried using a database like Chroma, and I’ve
+        been able to run it for less than a dollar a month using docker and
+        Amazon’s serverless service, Fargate.
       </p>
-      <h3>But What Do The Numbers Actually Mean?</h3>
-      <p>
-        So back to the question: what do the numbers mean? Let&apos;s think
-        about coordinates on a map. Suppose I give you three points:
-      </p>
-      <table style={{ margin: "0 auto", borderCollapse: "collapse" }}>
-        <thead>
-          <tr>
-            <th style={{ padding: "8px 16px", borderBottom: "1px solid #ddd" }}>
-              Point
-            </th>
-            <th
-              style={{
-                padding: "8px 16px",
-                borderBottom: "1px solid #ddd",
-                textAlign: "right",
-              }}
-            >
-              X
-            </th>
-            <th
-              style={{
-                padding: "8px 16px",
-                borderBottom: "1px solid #ddd",
-                textAlign: "right",
-              }}
-            >
-              Y
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td style={{ padding: "8px 16px" }}>A</td>
-            <td style={{ padding: "8px 16px", textAlign: "right" }}>{"3"}</td>
-            <td style={{ padding: "8px 16px", textAlign: "right" }}>{"2"}</td>
-          </tr>
-          <tr>
-            <td style={{ padding: "8px 16px" }}>B</td>
-            <td style={{ padding: "8px 16px", textAlign: "right" }}>{"1"}</td>
-            <td style={{ padding: "8px 16px", textAlign: "right" }}>{"1"}</td>
-          </tr>
-          <tr>
-            <td style={{ padding: "8px 16px" }}>C</td>
-            <td style={{ padding: "8px 16px", textAlign: "right" }}>{"-2"}</td>
-            <td style={{ padding: "8px 16px", textAlign: "right" }}>{"-2"}</td>
-          </tr>
-        </tbody>
-      </table>
-      <p>
-        There are 2 dimensions to this map: X and Y. Each point lives at the
-        intersection of an X and Y coordinate.
-      </p>
-      <p>Is A closer to B or C?</p>
 
-      <EmbeddingCoordinate />
-
-      <p>A is closer to B.</p>
-      <p>
-        Here&apos;s the mental leap.{" "}
-        <i>Embeddings are similar to points on a map.</i> Each number in the
-        embedding is a coordinate in a complicated map. When OpenAI sends a list
-        of numbers, it&apos;s telling you where that text <i>semantically</i>{" "}
-        lives in that map. When we ask what the distance between two embeddings
-        are, what we&apos;re really doing is asking how semantically close or
-        far apart two pieces of text are.
-      </p>
-      <p>
-        This concept of positioning items in multi-dimensional space like this,
-        where related items are clustered near each other, goes by the name of{" "}
-        <strong>latent space</strong>.
-      </p>
-      <p>
-        Latent space is a powerful concept. It allows us to discover connections
-        between things at previously impossible scales.
-      </p>
-      <h2>Scaling and Optimizing Latent Space</h2>
-      <p>
-        Writing and reading these lists of numbers get&apos;s complicated fast.
-        After some research, I found Pinecone, a vector database that allows me
-        to store and retrieve embeddings.
-      </p>
       <ClientOnly>
         <AnimatedInView>
-          <PineconeLogo />
+          <ChromaLogo />
+        </AnimatedInView>
+      </ClientOnly>
+      <ClientOnly>
+        <AnimatedInView>
+          <DockerLogo />
         </AnimatedInView>
       </ClientOnly>
       <p>
-        Pinecone&apos;s real strength shows when you attach <i>meaningful</i>
-        information to each embedding. The embedding by itself can telling you
-        which words are similar, but adding context, store name, location, or
-        even category, let&apos;s you find the semantically similar words
-        you&apos;re looking for.
-      </p>
-
-      <h2>Meaningful Metadata</h2>
-      <p>
-        Imagine looking for the word &quot;latte&quot; across 10,000 receipts.
-        Without context, you&apos;ll get results from latte flavored cereal at
-        grocery stores, expensive drinks at coffee shops, and even brown colored
-        paint from hardware stores.
-      </p>
-      <p>
-        With context, you can filter out the results that don&apos;t make sense.
-      </p>
-      <p>
-        I used OpenAI&apos;s Agents SDK with the Google Places API to get the
-        context needed for rich, semantic search.
+        I’ve also learned how powerful Google Maps is with very little
+        information.
       </p>
 
       <ClientOnly>
@@ -583,40 +478,90 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         </AnimatedInView>
       </ClientOnly>
 
+      <p>
+        Once the receipt has the place it came from and the words are
+        semantically comparable, these AI Agents can start labeling the data.
+      </p>
+
+      <h3>Enriching the Data</h3>
+
+      <p>
+        The dumb-intern still needs review. The data I get through Google Maps
+        is disorganized. The Google Maps data is cleaned using entity
+        resolution: build a small graph of merchants where the edges between
+        them mean “same phone,” “same address,” or “name similarity.” Stronger
+        signals (phone + address) outweigh weaker ones (name only). I pick a
+        “golden” merchant in these clustered groups to ensure all receipts from
+        a specific store have the most correct data.
+      </p>
       <MerchantCount />
 
-      <h2>Turning Semantic Search into Autonomous Labeling</h2>
       <p>
-        Pinecone doesn&apos;t just help me <i>find</i> similar words, it allows
-        me to act on them. After every receipt is embedded, an OpenAI agent
-        retrieves the &quot;nearest neighbors&quot; of each unlabeled word,
-        filtered by the receipt&apos;s merchant-specific metadata.
-      </p>
-      <p>
-        For the token &quot;latte&quot; on a Starbucks receipt, an agent pulls
-        semantically similar words from other Starbucks receipts and asks:
-      </p>
-      <blockquote>
-        &quot;Given these examples and surrounding words, what label would best
-        describe <strong>latte</strong>?&quot;
-      </blockquote>
-
-      <p>
-        The agent then validates the proposed label using custom rules, similar
-        examples where the word is correctly labeled with that label, and
-        examples where the word is incorrectly labeled.
+        Next, I narrow the vocabulary to receipt words (totals, taxes, dates,
+        phone, address) and add a couple of simple checks:
       </p>
 
+      <ul>
+        <li>sum(items) ~= subtotal</li>
+        <li>Subtotal + tax + fees - discounts ~= total</li>
+      </ul>
+
+      <p>
+        Asking ChatGPT if this word is Sprout’s phone number is an easy way to
+        bootstrap, but it’s incredibly expensive. Instead, I use these AI agents
+        to generate and verify the token labels, and treat the labels as
+        supervision to train a purpose-built model.
+      </p>
       <LabelValidationCount />
 
-      <h2>The Feedback Loop</h2>
       <p>
-        This process is repeated to continuously improve the accuracy of the
-        labels. As part of this loop, I use <strong>RAGAS</strong> to evaluate
-        how faithful and relevant the model&apos;s responses are to the
-        retrieved context.
+        LayoutLM is a document understanding model that takes text and layout.
+        Trained on my agent-validated labels, it predicts a token, address,
+        date, total, etc. in one forward pass. In production this gives me:
       </p>
 
+      <ul>
+        <li><strong>Speed & cost</strong>: cheap, local inference instead of repeated chat calls</li>
+        <li><strong>Consistency</strong>: probabilistic explanations vs. non-deterministic hallucinations</li>
+        <li><strong>Better validation</strong>: predicted labels + graph/rule checks catch mismatches fast</li>
+      </ul>
+      <p>
+        To improve accuracy, I can add more receipts, synthesize new receipts by
+        finding patterns within and outside of different merchants, and adding
+        noise to existing receipts. This model learns from more data while
+        poisoning the truth. This gives me consistent, repeatable predictions
+        explaining what a receipt is.
+        <ClientOnly>
+          <AnimatedInView>
+            <PyTorchLogo />
+          </AnimatedInView>
+        </ClientOnly>
+        <ClientOnly>
+          <AnimatedInView>
+            <HuggingFaceLogo />
+          </AnimatedInView>
+        </ClientOnly>
+        <h2>What’s on the Receipts?</h2>
+        <p>
+          I’m still working on this part. My experience in data engineering gave
+          me a great head start into structuring and organizing data.
+        </p>
+        <p>
+          Optimizing this has been fun. I’ve learned a lot about open source
+          models. I’ve used Ollama to organize how I deploy the models and
+          LangChain to explain how the models are using the tools.
+        </p>
+        <ClientOnly>
+          <AnimatedInView>
+            <OllamaLogo />
+          </AnimatedInView>
+        </ClientOnly>
+        <ClientOnly>
+          <AnimatedInView>
+            <LangChainLogo />
+          </AnimatedInView>
+        </ClientOnly>
+      </p>
       <h1>Conclusion</h1>
       <h2>Moving Fast and Breaking Things</h2>
       <p>
