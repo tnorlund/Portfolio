@@ -1,4 +1,6 @@
 ARG PYTHON_VERSION=3.12
+ARG CONTENT_HASH
+# The CONTENT_HASH argument triggers rebuilds when directory content changes
 FROM public.ecr.aws/lambda/python:${PYTHON_VERSION}
 
 # Install system dependencies required for both packages
