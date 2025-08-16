@@ -439,7 +439,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         One of the best tools I’ve found has been semantic search. I found the
         best way I can understand it is this example:
       </p>
-      <p>King is to queen as man is to woman</p>
+      <blockquote>King is to queen as man is to woman</blockquote>
       <p>
         This shows how king and queen have a similar meaning as man and woman
         (gender). This relationship is semantically explained by embeddings,
@@ -521,9 +521,18 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       </p>
 
       <ul>
-        <li><strong>Speed & cost</strong>: cheap, local inference instead of repeated chat calls</li>
-        <li><strong>Consistency</strong>: probabilistic explanations vs. non-deterministic hallucinations</li>
-        <li><strong>Better validation</strong>: predicted labels + graph/rule checks catch mismatches fast</li>
+        <li>
+          <strong>Speed & cost</strong>: cheap, local inference instead of
+          repeated chat calls
+        </li>
+        <li>
+          <strong>Consistency</strong>: probabilistic explanations vs.
+          non-deterministic hallucinations
+        </li>
+        <li>
+          <strong>Better validation</strong>: predicted labels + graph/rule
+          checks catch mismatches fast
+        </li>
       </ul>
       <p>
         To improve accuracy, I can add more receipts, synthesize new receipts by
