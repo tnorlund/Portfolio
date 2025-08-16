@@ -6,7 +6,7 @@
 
 # Interface: ImagesApiResponse
 
-Defined in: [types/api.ts:31](https://github.com/tnorlund/Portfolio/blob/4045a4b00e7c97bc89855da6cc7c41d42368f046/portfolio/types/api.ts#L31)
+Defined in: [types/api.ts:31](https://github.com/tnorlund/Portfolio/blob/588527e4555598f56848c0685159b6fd2999c882/portfolio/types/api.ts#L31)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:31](https://github.com/tnorlund/Portfolio/blob/4045a4b
 
 > **images**: [`Image`](Image.md)[]
 
-Defined in: [types/api.ts:32](https://github.com/tnorlund/Portfolio/blob/4045a4b00e7c97bc89855da6cc7c41d42368f046/portfolio/types/api.ts#L32)
+Defined in: [types/api.ts:32](https://github.com/tnorlund/Portfolio/blob/588527e4555598f56848c0685159b6fd2999c882/portfolio/types/api.ts#L32)
 
 ***
 
@@ -22,4 +22,4 @@ Defined in: [types/api.ts:32](https://github.com/tnorlund/Portfolio/blob/4045a4b
 
 > `optional` **lastEvaluatedKey**: `any`
 
-Defined in: [types/api.ts:33](https://github.com/tnorlund/Portfolio/blob/4045a4b00e7c97bc89855da6cc7c41d42368f046/portfolio/types/api.ts#L33)
+Defined in: [types/api.ts:33](https://github.com/tnorlund/Portfolio/blob/588527e4555598f56848c0685159b6fd2999c882/portfolio/types/api.ts#L33)
