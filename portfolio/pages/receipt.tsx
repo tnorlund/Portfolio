@@ -31,6 +31,11 @@ import {
   PulumiLogo,
   ReactLogo,
   NextJSLogo,
+  PyTorchLogo,
+  ChromaLogo,
+  DockerLogo,
+  OllamaLogo,
+  LangChainLogo,
 } from "../components/ui/Logos";
 
 interface ReceiptPageProps {
@@ -452,7 +457,16 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         Amazon’s serverless service, Fargate.
       </p>
 
-      {/* TODO add Chroma and docker logos */}
+      <ClientOnly>
+        <AnimatedInView>
+          <ChromaLogo />
+        </AnimatedInView>
+      </ClientOnly>
+      <ClientOnly>
+        <AnimatedInView>
+          <DockerLogo />
+        </AnimatedInView>
+      </ClientOnly>
       <p>
         I’ve also learned how powerful Google Maps is with very little
         information.
@@ -524,7 +538,16 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         noise to existing receipts. This model learns from more data while
         poisoning the truth. This gives me consistent, repeatable predictions
         explaining what a receipt is.
-        {/* TODO add hugging face and pytorch logos */}
+        <ClientOnly>
+          <AnimatedInView>
+            <PyTorchLogo />
+          </AnimatedInView>
+        </ClientOnly>
+        <ClientOnly>
+          <AnimatedInView>
+            <HuggingFaceLogo />
+          </AnimatedInView>
+        </ClientOnly>
         <h2>What’s on the Receipts?</h2>
         <p>
           I’m still working on this part. My experience in data engineering gave
@@ -535,7 +558,16 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
           models. I’ve used Ollama to organize how I deploy the models and
           LangChain to explain how the models are using the tools.
         </p>
-        {/* TODO add ollama and langchain logos */}
+        <ClientOnly>
+          <AnimatedInView>
+            <OllamaLogo />
+          </AnimatedInView>
+        </ClientOnly>
+        <ClientOnly>
+          <AnimatedInView>
+            <LangChainLogo />
+          </AnimatedInView>
+        </ClientOnly>
       </p>
       <h1>Conclusion</h1>
       <h2>Moving Fast and Breaking Things</h2>
