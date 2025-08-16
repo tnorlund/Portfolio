@@ -283,6 +283,10 @@ class BaseImages(ComponentResource):
         dynamo_tag = self.get_image_tag("receipt_dynamo", dynamo_package_dir)
         # For label image, use combined hash since it includes both packages
         label_tag = self.get_combined_image_tag("receipt_label", [dynamo_package_dir, label_package_dir])
+        
+        # Store Dockerfile paths once to ensure consistency
+        dynamo_dockerfile = str(Path(__file__).parent / "dockerfiles" / "Dockerfile.receipt_dynamo")
+        label_dockerfile = str(Path(__file__).parent / "dockerfiles" / "Dockerfile.receipt_label")
 
         # Calculate hash for receipt_dynamo directory
         dynamo_dir_hash = self.calculate_directory_hash([dynamo_package_dir])
@@ -295,9 +299,7 @@ class BaseImages(ComponentResource):
                 "location": str(build_context_path),
             },
             dockerfile={
-                "location": str(
-                    (Path(__file__).parent / "dockerfiles" / "Dockerfile.receipt_dynamo").resolve()
-                ),
+                "location": dynamo_dockerfile,
             },
             platforms=["linux/arm64"],
             build_args={
@@ -360,9 +362,7 @@ class BaseImages(ComponentResource):
                 "location": str(build_context_path),
             },
             dockerfile={
-                "location": str(
-                    (Path(__file__).parent / "dockerfiles" / "Dockerfile.receipt_label").resolve()
-                ),
+                "location": label_dockerfile,
             },
             platforms=["linux/arm64"],
             build_args={
