@@ -59,7 +59,7 @@ export default function LabelValidationChart() {
     >
       {/* title */}
       <div style={{ display: "flex", justifyContent: "center" }}>
-        <h2>Label Validation Count</h2>
+        <h2 style={{ margin: 0 }}>Label Validation Count</h2>
       </div>
       <div
         style={{
