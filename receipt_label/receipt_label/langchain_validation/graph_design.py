@@ -1,9 +1,9 @@
 """
-Fixed LangChain Graph Design - Actually uses LangChain + Ollama!
-================================================================
+Optimized LangChain Graph Design - Minimal LLM Usage
+====================================================
 
-This version properly uses LangChain's ChatOllama with LangGraph
-instead of making raw HTTP calls.
+This version prepares all context OUTSIDE the graph, so the graph
+only handles LLM validation. This minimizes Ollama API calls.
 """
 
 from typing import TypedDict, List, Optional, Any, Dict
@@ -15,135 +15,73 @@ import os
 
 
 # ============================================================================
-# State Definition (same as before)
+# Context Preparation (OUTSIDE the graph - no LLM usage)
 # ============================================================================
 
-class ValidationState(TypedDict):
-    """State that flows through the validation graph"""
-    # Input
-    image_id: str
-    receipt_id: int
+def prepare_validation_context(
+    image_id: str,
+    receipt_id: int,
     labels_to_validate: List[dict]
-    
-    # Context (fetched from DB)
-    receipt_lines: List[dict]
-    receipt_words: List[dict]
-    receipt_metadata: dict
-    all_labels: List[dict]
-    
-    # Processing
-    formatted_prompt: str
-    
-    # Results
-    validation_results: List[dict]
-    
-    # Status
-    error: Optional[str]
-    completed: bool
-
-
-# ============================================================================
-# The LLM Instance - Created ONCE and reused
-# ============================================================================
-
-def get_ollama_llm() -> ChatOllama:
+) -> Dict[str, Any]:
     """
-    Get the Ollama LLM instance configured from environment
+    Prepare all context BEFORE calling the graph.
+    This doesn't use the LLM at all - just data fetching and formatting.
     
-    For Ollama Turbo:
-        export OLLAMA_BASE_URL="https://api.ollama.com"
-        export OLLAMA_API_KEY="your-api-key"
-        export OLLAMA_MODEL="turbo"
-    
-    For local Ollama:
-        export OLLAMA_BASE_URL="http://localhost:11434"
-        export OLLAMA_MODEL="llama3.1:8b"
-    """
-    base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-    api_key = os.getenv("OLLAMA_API_KEY")
-    model = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
-    
-    # Create the LangChain Ollama instance
-    llm = ChatOllama(
-        model=model,
-        base_url=base_url,
-        temperature=0,  # Deterministic for validation
-        format="json",  # Request JSON output
-    )
-    
-    # If using Ollama Turbo, set the API key
-    if api_key:
-        llm.auth = {"api_key": api_key}
-    
-    return llm
-
-
-# ============================================================================
-# Graph Node Functions
-# ============================================================================
-
-async def fetch_receipt_context(state: ValidationState) -> ValidationState:
-    """
-    Node 1: Fetch receipt data from DynamoDB
+    Returns:
+        Dictionary with all the context needed for validation
     """
     from receipt_label.utils import get_client_manager
-    
-    client_manager = get_client_manager()
-    
-    # Get receipt details
-    _, lines, words, _, _, labels = client_manager.dynamo.getReceiptDetails(
-        state["image_id"], state["receipt_id"]
-    )
-    
-    metadata = client_manager.dynamo.getReceiptMetadata(
-        state["image_id"], state["receipt_id"]
-    )
-    
-    state["receipt_lines"] = [line.__dict__ for line in lines]
-    state["receipt_words"] = [word.__dict__ for word in words]
-    state["receipt_metadata"] = metadata.__dict__
-    state["all_labels"] = [label.__dict__ for label in labels]
-    
-    return state
-
-
-async def format_validation_prompt(state: ValidationState) -> ValidationState:
-    """
-    Node 2: Create the prompt for validation
-    """
     from receipt_label.completion._format_prompt import (
         _format_receipt_lines,
         CORE_LABELS,
     )
     from receipt_dynamo.entities import ReceiptLine
     
-    # Build targets to validate
+    # Fetch from database
+    client_manager = get_client_manager()
+    
+    _, lines, words, _, _, all_labels = client_manager.dynamo.getReceiptDetails(
+        image_id, receipt_id
+    )
+    
+    metadata = client_manager.dynamo.getReceiptMetadata(image_id, receipt_id)
+    
+    # Convert to dicts
+    receipt_lines = [line.__dict__ for line in lines]
+    receipt_words = [word.__dict__ for word in words]
+    receipt_metadata = metadata.__dict__
+    all_labels_dict = [label.__dict__ for label in all_labels]
+    
+    # Build validation targets
     targets = []
-    for label in state["labels_to_validate"]:
+    for label in labels_to_validate:
+        # Find the word text
         word = next(
-            w for w in state["receipt_words"]
-            if w["line_id"] == label["line_id"]
-            and w["word_id"] == label["word_id"]
+            (w for w in receipt_words
+             if w["line_id"] == label["line_id"]
+             and w["word_id"] == label["word_id"]),
+            None
         )
         
-        targets.append({
-            "id": f"IMAGE#{label['image_id']}#"
-                  f"RECEIPT#{label['receipt_id']:05d}#"
-                  f"LINE#{label['line_id']:05d}#"
-                  f"WORD#{label['word_id']:05d}#"
-                  f"LABEL#{label['label']}",
-            "text": word["text"],
-            "proposed_label": label["label"],
-        })
+        if word:
+            targets.append({
+                "id": f"IMAGE#{label['image_id']}#"
+                      f"RECEIPT#{label['receipt_id']:05d}#"
+                      f"LINE#{label['line_id']:05d}#"
+                      f"WORD#{label['word_id']:05d}#"
+                      f"LABEL#{label['label']}",
+                "text": word["text"],
+                "proposed_label": label["label"],
+            })
     
-    # Format receipt lines for context
-    lines = [ReceiptLine(**line) for line in state["receipt_lines"]]
-    receipt_text = _format_receipt_lines(lines)
+    # Format receipt text
+    lines_obj = [ReceiptLine(**line) for line in receipt_lines]
+    receipt_text = _format_receipt_lines(lines_obj)
     
-    # Create the prompt
+    # Create the validation prompt
     prompt = f"""You are validating receipt labels. 
 
-MERCHANT: {state['receipt_metadata']['merchant_name']}
+MERCHANT: {receipt_metadata['merchant_name']}
 
 ALLOWED LABELS: {', '.join(CORE_LABELS.keys())}
 
@@ -165,67 +103,171 @@ Example response:
     {{"id": "IMAGE#xyz#RECEIPT#00002#...", "is_valid": false, "correct_label": "TOTAL"}}
 ]}}"""
     
-    state["formatted_prompt"] = prompt
-    return state
+    return {
+        "image_id": image_id,
+        "receipt_id": receipt_id,
+        "labels_to_validate": labels_to_validate,
+        "validation_targets": targets,
+        "formatted_prompt": prompt,
+        "receipt_context": {
+            "lines": receipt_lines,
+            "words": receipt_words,
+            "metadata": receipt_metadata,
+            "all_labels": all_labels_dict
+        }
+    }
 
 
-async def validate_with_ollama(state: ValidationState) -> ValidationState:
+# ============================================================================
+# Minimal Graph State (only what's needed for LLM)
+# ============================================================================
+
+class MinimalValidationState(TypedDict):
+    """Minimal state for the validation graph"""
+    # Input (already prepared)
+    formatted_prompt: str
+    validation_targets: List[dict]
+    
+    # Results from LLM
+    validation_results: List[dict]
+    
+    # Status
+    error: Optional[str]
+    completed: bool
+
+
+# ============================================================================
+# LLM Configuration
+# ============================================================================
+
+def get_ollama_llm() -> ChatOllama:
+    """Get configured Ollama instance"""
+    base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    api_key = os.getenv("OLLAMA_API_KEY")
+    model = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
+    
+    llm = ChatOllama(
+        model=model,
+        base_url=base_url,
+        temperature=0,
+        format="json",
+    )
+    
+    if api_key:
+        llm.auth = {"api_key": api_key}
+    
+    return llm
+
+
+# ============================================================================
+# Minimal Graph Nodes (only 2 nodes now!)
+# ============================================================================
+
+async def validate_with_ollama(state: MinimalValidationState) -> MinimalValidationState:
     """
-    Node 3: Call Ollama using LangChain (properly!)
+    Node 1: Call Ollama to validate
+    This is the ONLY node that uses the LLM
     """
     try:
-        # Get the configured LLM
         llm = get_ollama_llm()
         
-        # Create the messages
         messages = [
             SystemMessage(content="You are a receipt validation assistant. Always respond with valid JSON."),
             HumanMessage(content=state["formatted_prompt"])
         ]
         
-        # Call the LLM using LangChain
+        # The ONLY LLM call in the entire system
         response = await llm.ainvoke(messages)
         
-        # Parse the response
         try:
-            # response.content contains the JSON string
             result = json.loads(response.content)
             state["validation_results"] = result.get("results", [])
+            state["completed"] = True
         except json.JSONDecodeError as e:
             state["error"] = f"Failed to parse LLM response: {e}"
             state["validation_results"] = []
+            state["completed"] = False
             
     except Exception as e:
         state["error"] = f"LLM call failed: {e}"
         state["validation_results"] = []
+        state["completed"] = False
     
     return state
 
 
-async def update_database(state: ValidationState) -> ValidationState:
+async def process_results(state: MinimalValidationState) -> MinimalValidationState:
     """
-    Node 4: Update DynamoDB with validation results
+    Node 2: Process validation results
+    This just formats the results - no LLM usage
+    """
+    if not state.get("validation_results"):
+        return state
+    
+    # Add any post-processing here if needed
+    # For now, just pass through
+    
+    return state
+
+
+# ============================================================================
+# Minimal Graph Construction
+# ============================================================================
+
+def create_minimal_validation_graph() -> Any:
+    """
+    Create a minimal graph with only 2 nodes:
+    1. validate_with_ollama - The ONLY LLM call
+    2. process_results - Post-processing (no LLM)
+    """
+    graph = StateGraph(MinimalValidationState)
+    
+    # Only 2 nodes now!
+    graph.add_node("validate", validate_with_ollama)
+    graph.add_node("process", process_results)
+    
+    # Simple flow
+    graph.add_edge("validate", "process")
+    graph.add_edge("process", END)
+    
+    graph.set_entry_point("validate")
+    
+    return graph.compile()
+
+
+# ============================================================================
+# Database Update (OUTSIDE the graph - no LLM usage)
+# ============================================================================
+
+def update_database_with_results(
+    context: Dict[str, Any],
+    validation_results: List[dict]
+) -> Dict[str, Any]:
+    """
+    Update database with validation results.
+    This happens OUTSIDE the graph - no LLM usage.
     """
     from receipt_label.utils import get_client_manager
     from receipt_dynamo.constants import ValidationStatus
     
-    if not state["validation_results"]:
-        state["completed"] = False
-        return state
+    if not validation_results:
+        return {"success": False, "error": "No validation results"}
     
     client_manager = get_client_manager()
     
     valid_labels = []
     invalid_labels = []
     
-    for result in state["validation_results"]:
-        # Parse the ID to find the original label
+    labels_to_validate = context["labels_to_validate"]
+    
+    for result in validation_results:
+        # Parse the ID
         parts = result["id"].split("#")
         kv = {parts[i]: parts[i+1] for i in range(0, len(parts)-1, 2)}
         
         # Find matching label
         label = next(
-            (l for l in state["labels_to_validate"]
+            (l for l in labels_to_validate
              if l["image_id"] == kv["IMAGE"]
              and l["receipt_id"] == int(kv["RECEIPT"])
              and l["line_id"] == int(kv["LINE"])
@@ -244,110 +286,171 @@ async def update_database(state: ValidationState) -> ValidationState:
                     label["suggested_label"] = result["correct_label"]
                 invalid_labels.append(label)
     
-    # Update the database
+    # Update database
     if valid_labels:
         client_manager.dynamo.updateReceiptWordLabels(valid_labels)
     if invalid_labels:
         client_manager.dynamo.updateReceiptWordLabels(invalid_labels)
     
-    state["completed"] = True
-    return state
+    return {
+        "success": True,
+        "valid_count": len(valid_labels),
+        "invalid_count": len(invalid_labels)
+    }
 
 
 # ============================================================================
-# Build the Graph
+# Main Validation Function (Orchestrates everything)
 # ============================================================================
 
-def create_validation_graph() -> Any:
-    """
-    Create the LangGraph workflow for validation
-    """
-    # Create the graph with our state
-    graph = StateGraph(ValidationState)
-    
-    # Add all the nodes
-    graph.add_node("fetch_context", fetch_receipt_context)
-    graph.add_node("format_prompt", format_validation_prompt)
-    graph.add_node("validate", validate_with_ollama)
-    graph.add_node("update_db", update_database)
-    
-    # Define the flow
-    graph.add_edge("fetch_context", "format_prompt")
-    graph.add_edge("format_prompt", "validate")
-    graph.add_edge("validate", "update_db")
-    graph.add_edge("update_db", END)
-    
-    # Set where to start
-    graph.set_entry_point("fetch_context")
-    
-    # Compile and return
-    return graph.compile()
-
-
-# ============================================================================
-# Simple Usage Function
-# ============================================================================
-
-async def validate_receipt_labels(
+async def validate_receipt_labels_optimized(
     image_id: str,
     receipt_id: int,
-    labels: List[dict]
+    labels: List[dict],
+    skip_database_update: bool = False
 ) -> Dict[str, Any]:
     """
-    Simple function to validate receipt labels
+    Optimized validation that minimizes LLM usage.
+    
+    Process:
+    1. Prepare context (no LLM)
+    2. Run minimal graph (1 LLM call)
+    3. Update database (no LLM)
     
     Args:
-        image_id: The receipt image ID
-        receipt_id: The receipt ID
-        labels: List of labels to validate, each with:
-            - line_id, word_id, label, validation_status
+        image_id: Receipt image ID
+        receipt_id: Receipt ID
+        labels: Labels to validate
+        skip_database_update: If True, don't update database (for testing)
     
     Returns:
-        Dictionary with:
-            - success: bool
-            - validation_results: list of results
-            - error: optional error message
+        Validation results with metadata
     """
-    # Create the graph
-    app = create_validation_graph()
+    # Step 1: Prepare context (NO LLM USAGE)
+    context = prepare_validation_context(image_id, receipt_id, labels)
     
-    # Set initial state
+    # Step 2: Run minimal graph (ONLY 1 LLM CALL)
+    graph = create_minimal_validation_graph()
+    
     initial_state = {
-        "image_id": image_id,
-        "receipt_id": receipt_id,
-        "labels_to_validate": labels,
+        "formatted_prompt": context["formatted_prompt"],
+        "validation_targets": context["validation_targets"],
         "completed": False
     }
     
-    # Run the graph
-    final_state = await app.ainvoke(initial_state)
+    final_state = await graph.ainvoke(initial_state)
+    
+    # Step 3: Update database if needed (NO LLM USAGE)
+    db_result = None
+    if not skip_database_update and final_state.get("completed"):
+        db_result = update_database_with_results(
+            context,
+            final_state.get("validation_results", [])
+        )
     
     return {
         "success": final_state.get("completed", False),
         "validation_results": final_state.get("validation_results", []),
-        "error": final_state.get("error")
+        "error": final_state.get("error"),
+        "database_updated": db_result is not None,
+        "database_result": db_result,
+        "context_prepared": True,
+        "llm_calls": 1 if final_state.get("completed") else 0
     }
 
 
 # ============================================================================
-# Test Function
+# Context Caching for Even Better Efficiency
 # ============================================================================
 
-async def test_ollama_connection():
-    """Test if Ollama is working with LangChain"""
-    try:
-        llm = get_ollama_llm()
-        messages = [HumanMessage(content="Say 'Ollama is working!' in JSON format")]
-        response = await llm.ainvoke(messages)
-        print(f"✅ Ollama test successful: {response.content}")
-        return True
-    except Exception as e:
-        print(f"❌ Ollama test failed: {e}")
-        return False
+class CachedValidator:
+    """
+    Validator with context caching to minimize database calls too
+    """
+    
+    def __init__(self, cache_ttl_seconds: int = 300):
+        self.context_cache: Dict[str, Dict[str, Any]] = {}
+        self.cache_ttl = cache_ttl_seconds
+        self.graph = create_minimal_validation_graph()
+    
+    async def validate_with_cache(
+        self,
+        image_id: str,
+        receipt_id: int,
+        labels: List[dict]
+    ) -> Dict[str, Any]:
+        """
+        Validate with context caching
+        """
+        import time
+        
+        cache_key = f"{image_id}:{receipt_id}"
+        
+        # Check cache for context
+        if cache_key in self.context_cache:
+            cached = self.context_cache[cache_key]
+            if time.time() - cached["timestamp"] < self.cache_ttl:
+                context = cached["context"]
+                print(f"Using cached context for {cache_key}")
+            else:
+                # Cache expired
+                context = prepare_validation_context(image_id, receipt_id, labels)
+                self.context_cache[cache_key] = {
+                    "context": context,
+                    "timestamp": time.time()
+                }
+        else:
+            # Not in cache
+            context = prepare_validation_context(image_id, receipt_id, labels)
+            self.context_cache[cache_key] = {
+                "context": context,
+                "timestamp": time.time()
+            }
+        
+        # Run validation with prepared context
+        initial_state = {
+            "formatted_prompt": context["formatted_prompt"],
+            "validation_targets": context["validation_targets"],
+            "completed": False
+        }
+        
+        final_state = await self.graph.ainvoke(initial_state)
+        
+        return {
+            "success": final_state.get("completed", False),
+            "validation_results": final_state.get("validation_results", []),
+            "error": final_state.get("error"),
+            "used_cache": cache_key in self.context_cache
+        }
 
 
 if __name__ == "__main__":
     import asyncio
     
-    # Test the connection
-    asyncio.run(test_ollama_connection())
+    async def test():
+        print("Testing optimized validation...")
+        
+        # Test data
+        test_labels = [
+            {
+                "image_id": "TEST_001",
+                "receipt_id": 12345,
+                "line_id": 1,
+                "word_id": 1,
+                "label": "MERCHANT_NAME",
+                "validation_status": "NONE"
+            }
+        ]
+        
+        # This will only make 1 LLM call!
+        result = await validate_receipt_labels_optimized(
+            "TEST_001",
+            12345,
+            test_labels,
+            skip_database_update=True  # For testing
+        )
+        
+        print(f"Result: {result}")
+        print(f"LLM calls made: {result.get('llm_calls', 0)}")
+    
+    asyncio.run(test())
