@@ -65,7 +65,9 @@ class AIUsageEnvironmentConfig:
                 pass
 
         # Check Pulumi stack name - only care about production
-        stack_name = os.getenv("PULUMI_STACK", os.getenv("PULUMI_STACK_NAME", "")).lower()
+        stack_name = os.getenv(
+            "PULUMI_STACK", os.getenv("PULUMI_STACK_NAME", "")
+        ).lower()
         if stack_name and "prod" in stack_name:
             return Environment.PRODUCTION
 
@@ -217,7 +219,7 @@ class AIUsageEnvironmentConfig:
         # Only validate in production - development can use any table name
         if expected_environment != Environment.PRODUCTION:
             return True
-            
+
         # Production should not have development/staging suffixes
         return not any(
             table_name.endswith(f"-{env.value}")

@@ -23,7 +23,7 @@ class LabelHygieneResult:
         if isinstance(self.timestamp, datetime):
             # Keep as datetime - no conversion needed for this field
             pass
-        
+
         assert_valid_uuid(self.hygiene_id)
 
         if not isinstance(self.alias, str):
@@ -50,9 +50,7 @@ class LabelHygieneResult:
             raise ValueError("image_id must be a string")
 
         if not isinstance(self.receipt_id, int):
-            raise ValueError(
-                "receipt_id must be an integer"
-            )
+            raise ValueError("receipt_id must be an integer")
 
         if not isinstance(self.timestamp, datetime):
             raise ValueError("timestamp must be a datetime object")
@@ -127,7 +125,6 @@ class LabelHygieneResult:
         yield "image_id", self.image_id  # Include image_id in iteration
         yield "receipt_id", self.receipt_id  # Include receipt_id in iteration
         yield "timestamp", self.timestamp
-
 
     def __hash__(self) -> int:
         return hash(

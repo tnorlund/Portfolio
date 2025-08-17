@@ -13,7 +13,11 @@ import pytest
 from moto import mock_aws
 import boto3
 
-from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel, ReceiptMetadata
+from receipt_dynamo.entities import (
+    ReceiptWord,
+    ReceiptWordLabel,
+    ReceiptMetadata,
+)
 from receipt_label.utils.chroma_client import ChromaDBClient
 from receipt_label.utils.client_manager import ClientManager
 
@@ -29,6 +33,7 @@ def pytest_runtest_setup(item):
 
 # ===== Test Data Fixtures =====
 
+
 @pytest.fixture
 def sample_receipt_words():
     """Sample receipt words for testing."""
@@ -39,32 +44,44 @@ def sample_receipt_words():
             line_id=1,
             word_id=1,
             text="Walmart",
-            x1=100, y1=100, x2=200, y2=120
+            x1=100,
+            y1=100,
+            x2=200,
+            y2=120,
         ),
         ReceiptWord(
-            image_id="IMG001", 
+            image_id="IMG001",
             receipt_id=1,
             line_id=2,
             word_id=1,
             text="$12.99",
-            x1=150, y1=150, x2=200, y2=170
-        ),
-        ReceiptWord(
-            image_id="IMG001",
-            receipt_id=1, 
-            line_id=3,
-            word_id=1,
-            text="12/25/2023",
-            x1=100, y1=200, x2=180, y2=220
+            x1=150,
+            y1=150,
+            x2=200,
+            y2=170,
         ),
         ReceiptWord(
             image_id="IMG001",
             receipt_id=1,
-            line_id=4, 
+            line_id=3,
+            word_id=1,
+            text="12/25/2023",
+            x1=100,
+            y1=200,
+            x2=180,
+            y2=220,
+        ),
+        ReceiptWord(
+            image_id="IMG001",
+            receipt_id=1,
+            line_id=4,
             word_id=1,
             text="(555) 123-4567",
-            x1=100, y1=250, x2=220, y2=270
-        )
+            x1=100,
+            y1=250,
+            x2=220,
+            y2=270,
+        ),
     ]
 
 
@@ -75,25 +92,25 @@ def sample_receipt_labels():
         ReceiptWordLabel(
             image_id="IMG001",
             receipt_id=1,
-            line_id=1, 
+            line_id=1,
             word_id=1,
             label="MERCHANT_NAME",
             validation_status="NONE",
-            timestamp_added=datetime.now(timezone.utc)
+            timestamp_added=datetime.now(timezone.utc),
         ),
         ReceiptWordLabel(
             image_id="IMG001",
             receipt_id=1,
             line_id=2,
-            word_id=1, 
+            word_id=1,
             label="GRAND_TOTAL",
             validation_status="VALID",
-            timestamp_added=datetime.now(timezone.utc)
-        )
+            timestamp_added=datetime.now(timezone.utc),
+        ),
     ]
 
 
-@pytest.fixture 
+@pytest.fixture
 def sample_receipt_metadata():
     """Sample receipt metadata for testing."""
     return ReceiptMetadata(
@@ -102,11 +119,12 @@ def sample_receipt_metadata():
         canonical_merchant_name="Walmart",
         canonical_address="123 Main St, City, State 12345",
         phone_number="555-123-4567",
-        timestamp_processed=datetime.now(timezone.utc)
+        timestamp_processed=datetime.now(timezone.utc),
     )
 
 
 # ===== Pattern Detection Test Data =====
+
 
 @pytest.fixture
 def currency_test_cases():
@@ -121,7 +139,7 @@ def currency_test_cases():
         ("$1,234.56", True, 0.95),
         ("not-currency", False, 0.0),
         ("$", False, 0.0),
-        ("99", False, 0.0)
+        ("99", False, 0.0),
     ]
 
 
@@ -131,14 +149,14 @@ def date_test_cases():
     return [
         # (text, expected_match, confidence)
         ("12/25/2023", True, 0.95),
-        ("12-25-2023", True, 0.90), 
+        ("12-25-2023", True, 0.90),
         ("2023-12-25", True, 0.95),
         ("Dec 25, 2023", True, 0.85),
         ("December 25, 2023", True, 0.80),
         ("25/12/2023", True, 0.85),
         ("not-a-date", False, 0.0),
         ("13/32/2023", False, 0.0),
-        ("2023", False, 0.0)
+        ("2023", False, 0.0),
     ]
 
 
@@ -155,13 +173,13 @@ def phone_test_cases():
         ("+1 555 123 4567", True, 0.90),
         ("not-a-phone", False, 0.0),
         ("123", False, 0.0),
-        ("555-CALL", False, 0.0)
+        ("555-CALL", False, 0.0),
     ]
 
 
 @pytest.fixture
 def time_test_cases():
-    """Parameterized test cases for time detection.""" 
+    """Parameterized test cases for time detection."""
     return [
         # (text, expected_match, confidence)
         ("12:30 PM", True, 0.95),
@@ -171,37 +189,38 @@ def time_test_cases():
         ("3:45 am", True, 0.90),
         ("not-time", False, 0.0),
         ("25:00", False, 0.0),
-        ("12:60", False, 0.0)
+        ("12:60", False, 0.0),
     ]
 
 
 # ===== Mock Services =====
 
+
 @pytest.fixture
 def mock_chroma_client():
     """Mock ChromaDB client for testing."""
     client = Mock(spec=ChromaDBClient)
-    
+
     # Mock successful operations
     client.get_by_ids.return_value = {
-        'ids': ['test_id_1'],
-        'metadatas': [{'valid_labels': [], 'invalid_labels': []}],
-        'documents': ['test document']
+        "ids": ["test_id_1"],
+        "metadatas": [{"valid_labels": [], "invalid_labels": []}],
+        "documents": ["test document"],
     }
-    
+
     client.query_collection.return_value = {
-        'ids': [['test_id_1']],
-        'distances': [[0.1]], 
-        'metadatas': [[{'similarity': 0.9}]],
-        'documents': [['similar text']]
+        "ids": [["test_id_1"]],
+        "distances": [[0.1]],
+        "metadatas": [[{"similarity": 0.9}]],
+        "documents": [["similar text"]],
     }
-    
+
     # Mock collection operations
     mock_collection = Mock()
     mock_collection.update.return_value = None
     mock_collection.upsert.return_value = None
     client.get_collection.return_value = mock_collection
-    
+
     return client
 
 
@@ -209,39 +228,37 @@ def mock_chroma_client():
 def mock_openai_client():
     """Mock OpenAI client for testing."""
     client = Mock()
-    
+
     # Mock embeddings
     mock_embedding_response = SimpleNamespace(
         data=[SimpleNamespace(embedding=[0.1] * 1536)]
     )
     client.embeddings.create.return_value = mock_embedding_response
-    
+
     # Mock chat completion
     mock_completion_response = SimpleNamespace(
-        choices=[SimpleNamespace(
-            message=SimpleNamespace(content='{"result": "test"}'),
-            finish_reason="stop"
-        )],
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(content='{"result": "test"}'),
+                finish_reason="stop",
+            )
+        ],
         usage=SimpleNamespace(
-            prompt_tokens=100,
-            completion_tokens=50,
-            total_tokens=150
-        )
+            prompt_tokens=100, completion_tokens=50, total_tokens=150
+        ),
     )
     client.chat.completions.create.return_value = mock_completion_response
-    
+
     # Mock batch operations
     mock_batch = SimpleNamespace(
-        id="batch_123",
-        status="completed",
-        output_file_id="file_123"
+        id="batch_123", status="completed", output_file_id="file_123"
     )
     client.batches.create.return_value = mock_batch
     client.batches.retrieve.return_value = mock_batch
-    
+
     # Mock file operations
     client.files.content.return_value = b'{"custom_id": "test", "response": {"body": {"choices": [{"message": {"content": "{\\"results\\": []}"}}]}}}'
-    
+
     return client
 
 
@@ -249,21 +266,27 @@ def mock_openai_client():
 def mock_dynamo_client():
     """Mock DynamoDB client for testing."""
     client = Mock()
-    
+
     # Mock successful operations
-    client.put_item.return_value = {"ResponseMetadata": {"HTTPStatusCode": 200}}
-    client.batch_write_item.return_value = {"ResponseMetadata": {"HTTPStatusCode": 200}}
+    client.put_item.return_value = {
+        "ResponseMetadata": {"HTTPStatusCode": 200}
+    }
+    client.batch_write_item.return_value = {
+        "ResponseMetadata": {"HTTPStatusCode": 200}
+    }
     client.query.return_value = {
         "Items": [],
         "Count": 0,
-        "ResponseMetadata": {"HTTPStatusCode": 200}
+        "ResponseMetadata": {"HTTPStatusCode": 200},
     }
-    
+
     return client
 
 
-@pytest.fixture 
-def mock_client_manager(mock_chroma_client, mock_openai_client, mock_dynamo_client):
+@pytest.fixture
+def mock_client_manager(
+    mock_chroma_client, mock_openai_client, mock_dynamo_client
+):
     """Mock ClientManager with all services."""
     manager = Mock(spec=ClientManager)
     manager.chroma = mock_chroma_client
@@ -273,6 +296,7 @@ def mock_client_manager(mock_chroma_client, mock_openai_client, mock_dynamo_clie
 
 
 # ===== AWS Mocking with Moto =====
+
 
 @pytest.fixture
 def aws_credentials():
@@ -313,33 +337,30 @@ def dynamodb_tables(mock_dynamodb):
         TableName="receipt-word-labels",
         KeySchema=[
             {"AttributeName": "PK", "KeyType": "HASH"},
-            {"AttributeName": "SK", "KeyType": "RANGE"}
+            {"AttributeName": "SK", "KeyType": "RANGE"},
         ],
         AttributeDefinitions=[
             {"AttributeName": "PK", "AttributeType": "S"},
-            {"AttributeName": "SK", "AttributeType": "S"}
+            {"AttributeName": "SK", "AttributeType": "S"},
         ],
-        BillingMode="PAY_PER_REQUEST"
+        BillingMode="PAY_PER_REQUEST",
     )
-    
+
     # AI Usage Tracking table
     tracking_table = mock_dynamodb.create_table(
         TableName="ai-usage-tracking",
         KeySchema=[
             {"AttributeName": "PK", "KeyType": "HASH"},
-            {"AttributeName": "SK", "KeyType": "RANGE"}
+            {"AttributeName": "SK", "KeyType": "RANGE"},
         ],
         AttributeDefinitions=[
             {"AttributeName": "PK", "AttributeType": "S"},
-            {"AttributeName": "SK", "AttributeType": "S"}
+            {"AttributeName": "SK", "AttributeType": "S"},
         ],
-        BillingMode="PAY_PER_REQUEST"
+        BillingMode="PAY_PER_REQUEST",
     )
-    
-    return {
-        "labels": labels_table,
-        "tracking": tracking_table
-    }
+
+    return {"labels": labels_table, "tracking": tracking_table}
 
 
 @pytest.fixture
@@ -347,16 +368,17 @@ def s3_buckets(mock_s3):
     """Create mock S3 buckets for testing."""
     buckets = {
         "chroma-vectors": "test-chroma-vectors",
-        "batch-files": "test-batch-files"
+        "batch-files": "test-batch-files",
     }
-    
+
     for bucket_name in buckets.values():
         mock_s3.create_bucket(Bucket=bucket_name)
-    
+
     return buckets
 
 
 # ===== Test Environment Configuration =====
+
 
 @pytest.fixture
 def test_environment():
@@ -367,20 +389,20 @@ def test_environment():
         "CHROMA_DB_PATH": "/tmp/test_chroma",
         "AWS_REGION": "us-east-1",
         "ENVIRONMENT": "test",
-        "USE_STUB_APIS": "true"
+        "USE_STUB_APIS": "true",
     }
-    
+
     # Save original values
     for key in test_vars:
         if key in os.environ:
             original_env[key] = os.environ[key]
-    
+
     # Set test values
     for key, value in test_vars.items():
         os.environ[key] = value
-    
+
     yield test_vars
-    
+
     # Restore original values
     for key in test_vars:
         if key in original_env:
@@ -391,38 +413,43 @@ def test_environment():
 
 # ===== Performance Testing Fixtures =====
 
+
 @pytest.fixture
 def performance_timer():
     """Timer fixture for performance testing."""
     import time
-    
+
     class Timer:
         def __init__(self):
             self.start_time = None
             self.end_time = None
-        
+
         def start(self):
             self.start_time = time.time()
-        
+
         def stop(self):
             self.end_time = time.time()
             return self.elapsed()
-        
+
         def elapsed(self):
             if self.start_time and self.end_time:
                 return self.end_time - self.start_time
             return None
-    
+
     return Timer()
 
 
 # ===== Stub API Fixtures =====
 
+
 @pytest.fixture
 def stub_all_apis(mock_client_manager):
     """Stub all external APIs for cost-free testing."""
-    
-    with patch('receipt_label.utils.get_client_manager', return_value=mock_client_manager):
+
+    with patch(
+        "receipt_label.utils.get_client_manager",
+        return_value=mock_client_manager,
+    ):
         yield mock_client_manager
 
 
@@ -435,19 +462,31 @@ def pattern_detection_test_data():
                 "merchant": "Walmart",
                 "words": [
                     {"text": "Walmart", "expected_labels": ["MERCHANT_NAME"]},
-                    {"text": "$12.99", "expected_labels": ["CURRENCY", "GRAND_TOTAL"]}, 
+                    {
+                        "text": "$12.99",
+                        "expected_labels": ["CURRENCY", "GRAND_TOTAL"],
+                    },
                     {"text": "12/25/2023", "expected_labels": ["DATE"]},
-                    {"text": "(555) 123-4567", "expected_labels": ["PHONE_NUMBER"]}
-                ]
+                    {
+                        "text": "(555) 123-4567",
+                        "expected_labels": ["PHONE_NUMBER"],
+                    },
+                ],
             },
             {
-                "merchant": "McDonalds", 
+                "merchant": "McDonalds",
                 "words": [
-                    {"text": "McDonald's", "expected_labels": ["MERCHANT_NAME"]},
+                    {
+                        "text": "McDonald's",
+                        "expected_labels": ["MERCHANT_NAME"],
+                    },
                     {"text": "Big Mac", "expected_labels": ["PRODUCT_NAME"]},
-                    {"text": "$5.49", "expected_labels": ["CURRENCY", "UNIT_PRICE"]},
-                    {"text": "3:45 PM", "expected_labels": ["TIME"]}
-                ]
-            }
+                    {
+                        "text": "$5.49",
+                        "expected_labels": ["CURRENCY", "UNIT_PRICE"],
+                    },
+                    {"text": "3:45 PM", "expected_labels": ["TIME"]},
+                ],
+            },
         ]
     }

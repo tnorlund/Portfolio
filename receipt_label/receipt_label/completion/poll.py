@@ -304,16 +304,22 @@ def update_valid_labels(
     for id_batch in _chunk(valid_by_vector.keys(), 100):
         # Get vectors from ChromaDB
         results = client_manager.chroma.get_by_ids(
-            PINECONE_NS,
-            id_batch,
-            include=["metadatas"]
+            PINECONE_NS, id_batch, include=["metadatas"]
         )
         fetched = {}
-        if results and 'ids' in results:
-            for i, id_ in enumerate(results['ids']):
-                fetched[id_] = type('Vector', (), {
-                    'metadata': results['metadatas'][i] if 'metadatas' in results else {}
-                })
+        if results and "ids" in results:
+            for i, id_ in enumerate(results["ids"]):
+                fetched[id_] = type(
+                    "Vector",
+                    (),
+                    {
+                        "metadata": (
+                            results["metadatas"][i]
+                            if "metadatas" in results
+                            else {}
+                        )
+                    },
+                )
         for vid in id_batch:
             meta = (fetched[vid].metadata if vid in fetched else {}) or {}
             existing = meta.get("valid_labels", [])
@@ -336,10 +342,7 @@ def update_valid_labels(
     for vid, meta in vectors_needing_update:
         # Update metadata in ChromaDB
         collection = client_manager.chroma.get_collection(PINECONE_NS)
-        collection.update(
-            ids=[vid],
-            metadatas=[meta]
-        )
+        collection.update(ids=[vid], metadatas=[meta])
 
     # Chunk into 25 items and update
     for chunk in _chunk(
@@ -431,16 +434,22 @@ def update_invalid_labels(
     for id_batch in _chunk(invalid_by_vector.keys(), 100):
         # Get vectors from ChromaDB
         results = client_manager.chroma.get_by_ids(
-            PINECONE_NS,
-            id_batch,
-            include=["metadatas"]
+            PINECONE_NS, id_batch, include=["metadatas"]
         )
         fetched = {}
-        if results and 'ids' in results:
-            for i, id_ in enumerate(results['ids']):
-                fetched[id_] = type('Vector', (), {
-                    'metadata': results['metadatas'][i] if 'metadatas' in results else {}
-                })
+        if results and "ids" in results:
+            for i, id_ in enumerate(results["ids"]):
+                fetched[id_] = type(
+                    "Vector",
+                    (),
+                    {
+                        "metadata": (
+                            results["metadatas"][i]
+                            if "metadatas" in results
+                            else {}
+                        )
+                    },
+                )
         for vid in id_batch:
             meta = (fetched[vid].metadata if vid in fetched else {}) or {}
             existing_invalid = meta.get("invalid_labels", [])
@@ -466,10 +475,7 @@ def update_invalid_labels(
     for vid, meta in vectors_needing_update:
         # Update metadata in ChromaDB
         collection = client_manager.chroma.get_collection(PINECONE_NS)
-        collection.update(
-            ids=[vid],
-            metadatas=[meta]
-        )
+        collection.update(ids=[vid], metadatas=[meta])
 
     # ------------------------------------------------------------------ #
     # 3.  DynamoDB writes                                                 #

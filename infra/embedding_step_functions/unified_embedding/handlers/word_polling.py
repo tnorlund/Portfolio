@@ -27,7 +27,7 @@ logger = get_logger(__name__)
 
 
 def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-# pylint: disable=unused-argument
+    # pylint: disable=unused-argument
     """Poll a word embedding batch and save results as deltas to S3.
 
     This enhanced handler processes all OpenAI batch statuses including
