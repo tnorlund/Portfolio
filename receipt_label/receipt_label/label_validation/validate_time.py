@@ -131,16 +131,28 @@ def validate_time(
 
     chroma_id = chroma_id_from_label(label)
     # Get vector from ChromaDB
-    results = chroma_client.get_by_ids("words", [chroma_id], include=["embeddings", "metadatas"])
-    
+    results = chroma_client.get_by_ids(
+        "words", [chroma_id], include=["embeddings", "metadatas"]
+    )
+
     # Extract vector data
     vector_data = None
-    if results and 'ids' in results and len(results['ids']) > 0:
-        idx = results['ids'].index(chroma_id) if chroma_id in results['ids'] else -1
+    if results and "ids" in results and len(results["ids"]) > 0:
+        idx = (
+            results["ids"].index(chroma_id)
+            if chroma_id in results["ids"]
+            else -1
+        )
         if idx >= 0:
             vector_data = {
-                'values': results['embeddings'][idx] if 'embeddings' in results else None,
-                'metadata': results['metadatas'][idx] if 'metadatas' in results else {}
+                "values": (
+                    results["embeddings"][idx]
+                    if "embeddings" in results
+                    else None
+                ),
+                "metadata": (
+                    results["metadatas"][idx] if "metadatas" in results else {}
+                ),
             }
 
     if vector_data is None:

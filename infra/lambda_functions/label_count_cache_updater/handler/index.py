@@ -158,7 +158,7 @@ def handler(event, context):  # pylint: disable=unused-argument
     logger.info(
         "Successfully updated cache for %d labels out of %d total",
         len(cache_updates),
-        len(CORE_LABELS)
+        len(CORE_LABELS),
     )
     logger.info("Updated labels: %s", cache_updates)
 

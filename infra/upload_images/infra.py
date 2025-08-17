@@ -66,7 +66,7 @@ class UploadImages(ComponentResource):
             tags={"environment": stack},
             opts=ResourceOptions(parent=self),
         )
-        
+
         # Configure CORS as a separate resource
         image_bucket_cors = aws.s3.BucketCorsConfiguration(
             f"{name}-image-bucket-cors",
@@ -213,7 +213,9 @@ class UploadImages(ComponentResource):
                 }
             ),
             architectures=["arm64"],
-            layers=[upload_layer.arn],  # receipt-upload includes receipt-dynamo
+            layers=[
+                upload_layer.arn
+            ],  # receipt-upload includes receipt-dynamo
             tags={"environment": stack},
             environment=FunctionEnvironmentArgs(
                 variables={
@@ -390,7 +392,10 @@ class UploadImages(ComponentResource):
             timeout=300,  # 5 minutes
             memory_size=1024,  # 1GB
             architectures=["arm64"],
-            layers=[label_layer.arn, upload_layer.arn],  # Both include receipt-dynamo
+            layers=[
+                label_layer.arn,
+                upload_layer.arn,
+            ],  # Both include receipt-dynamo
             opts=ResourceOptions(parent=self, ignore_changes=["layers"]),
         )
 

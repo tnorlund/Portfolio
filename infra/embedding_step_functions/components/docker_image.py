@@ -26,10 +26,10 @@ class DockerImageComponent(ComponentResource):
 
     def get_handler_content_hash(self, handler_dir: Path) -> str:
         """Generate hash for handler code.
-        
+
         Args:
             handler_dir: Path to handler directory
-            
+
         Returns:
             Content-based hash string
         """
@@ -59,7 +59,7 @@ class DockerImageComponent(ComponentResource):
             return f"git-{commit}"
         except (subprocess.CalledProcessError, FileNotFoundError):
             pass
-        
+
         # Fallback to file hashing
         content_hash = hashlib.sha256()
         for file_path in sorted(handler_dir.rglob("*.py")):
@@ -111,7 +111,7 @@ class DockerImageComponent(ComponentResource):
         # Go up 4 levels from components/docker_image.py
         build_context_path = Path(__file__).parent.parent.parent.parent
         handler_dir = Path(__file__).parent.parent / "unified_embedding"
-        
+
         # Get content-based tag for the image
         image_tag = self.get_handler_content_hash(handler_dir)
         pulumi.log.info(
@@ -120,7 +120,7 @@ class DockerImageComponent(ComponentResource):
 
         # Get base image URI if available
         base_image_uri = None
-        if base_images and hasattr(base_images, 'label_base_image'):
+        if base_images and hasattr(base_images, "label_base_image"):
             # Use the base image tag from the base images component
             base_image_uri = base_images.label_base_image.tags[0]
             pulumi.log.info(
@@ -132,7 +132,7 @@ class DockerImageComponent(ComponentResource):
             pulumi.log.warn(
                 "Base images not available, using public Lambda image"
             )
-        
+
         # Build Docker image
         self.docker_image = docker_build.Image(
             f"{name}-image",

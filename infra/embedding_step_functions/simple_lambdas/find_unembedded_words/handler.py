@@ -66,12 +66,17 @@ def lambda_handler(event: Any, context: Any) -> Dict[str, Any]:
                     logger.warning(
                         "Duplicate words in image %s, receipt %s: "
                         "total %d, unique %d",
-                        image_id, receipt_id, total, unique
+                        image_id,
+                        receipt_id,
+                        total,
+                        unique,
                     )
                 else:
                     logger.info(
                         "Words count OK for image %s, receipt %s: %d words",
-                        image_id, receipt_id, total
+                        image_id,
+                        receipt_id,
+                        total,
                     )
 
         # Serialize and upload in one step
