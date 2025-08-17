@@ -14,13 +14,14 @@ import os
 from .graph_design import (
     create_validation_graph,
     validate_receipt_labels as graph_validate,
-    test_ollama_connection
+    test_ollama_connection,
 )
 
 
 @dataclass
 class SimpleConfig:
     """Simple configuration for the validator"""
+
     cache_enabled: bool = True
     batch_size: int = 10
     max_concurrent: int = 5
@@ -30,27 +31,24 @@ class SimpleReceiptValidator:
     """
     Simplified validator that actually uses LangChain
     """
-    
+
     def __init__(self, config: Optional[SimpleConfig] = None):
         """Initialize the validator"""
         self.config = config or SimpleConfig()
         self.cache: Dict[str, Any] = {}
         self.graph = create_validation_graph()
-    
+
     async def validate_single(
-        self,
-        image_id: str,
-        receipt_id: int,
-        labels: List[Dict[str, Any]]
+        self, image_id: str, receipt_id: int, labels: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """
         Validate a single receipt's labels
-        
+
         Args:
             image_id: Receipt image ID
             receipt_id: Receipt ID in database
             labels: Labels to validate
-        
+
         Returns:
             Validation results
         """
@@ -58,27 +56,26 @@ class SimpleReceiptValidator:
         cache_key = f"{image_id}:{receipt_id}"
         if self.config.cache_enabled and cache_key in self.cache:
             return self.cache[cache_key]
-        
+
         # Use the graph to validate
         result = await graph_validate(image_id, receipt_id, labels)
-        
+
         # Cache if successful
         if self.config.cache_enabled and result["success"]:
             self.cache[cache_key] = result
-        
+
         return result
-    
+
     async def validate_batch(
-        self,
-        receipts: List[Dict[str, Any]]
+        self, receipts: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
         """
         Validate multiple receipts concurrently
-        
+
         Args:
             receipts: List of receipts, each with:
                 - image_id, receipt_id, labels
-        
+
         Returns:
             List of validation results
         """
@@ -86,19 +83,17 @@ class SimpleReceiptValidator:
         tasks = []
         for receipt in receipts:
             task = self.validate_single(
-                receipt["image_id"],
-                receipt["receipt_id"],
-                receipt["labels"]
+                receipt["image_id"], receipt["receipt_id"], receipt["labels"]
             )
             tasks.append(task)
-        
+
         # Run concurrently with max limit
         results = []
         for i in range(0, len(tasks), self.config.max_concurrent):
-            batch = tasks[i:i + self.config.max_concurrent]
+            batch = tasks[i : i + self.config.max_concurrent]
             batch_results = await asyncio.gather(*batch)
             results.extend(batch_results)
-        
+
         return results
 
 
@@ -106,24 +101,25 @@ class SimpleReceiptValidator:
 # Example Usage
 # ============================================================================
 
+
 async def demo():
     """Demo showing how to use the validator"""
-    
+
     print("=" * 60)
     print("SIMPLE LANGCHAIN + OLLAMA VALIDATION DEMO")
     print("=" * 60)
-    
+
     # Test Ollama connection first
     print("\n1. Testing Ollama connection...")
     if not await test_ollama_connection():
         print("   Please make sure Ollama is running!")
         return
-    
+
     print("\n2. Creating validator...")
     validator = SimpleReceiptValidator()
-    
+
     print("\n3. Validating sample labels...")
-    
+
     # Sample data
     sample_labels = [
         {
@@ -132,7 +128,7 @@ async def demo():
             "line_id": 1,
             "word_id": 1,
             "label": "MERCHANT_NAME",
-            "validation_status": "NONE"
+            "validation_status": "NONE",
         },
         {
             "image_id": "TEST_001",
@@ -140,28 +136,26 @@ async def demo():
             "line_id": 5,
             "word_id": 2,
             "label": "TOTAL",
-            "validation_status": "NONE"
-        }
+            "validation_status": "NONE",
+        },
     ]
-    
+
     try:
         # Single validation
         result = await validator.validate_single(
-            "TEST_001",
-            12345,
-            sample_labels
+            "TEST_001", 12345, sample_labels
         )
-        
+
         print(f"\n✅ Validation complete!")
         print(f"   Success: {result['success']}")
         print(f"   Results: {result['validation_results']}")
-        
-        if result.get('error'):
+
+        if result.get("error"):
             print(f"   Error: {result['error']}")
-            
+
     except Exception as e:
         print(f"\n❌ Validation failed: {e}")
-    
+
     print("\n" + "=" * 60)
 
 
@@ -169,9 +163,11 @@ async def demo():
 # Quick Start Guide
 # ============================================================================
 
+
 def print_setup_guide():
     """Print setup instructions"""
-    print("""
+    print(
+        """
 QUICK START GUIDE
 =================
 
@@ -193,7 +189,8 @@ QUICK START GUIDE
    python -m receipt_label.langchain_validation.implementation_fixed
 
 That's it! The system will use LangChain + Ollama to validate labels.
-    """)
+    """
+    )
 
 
 if __name__ == "__main__":
