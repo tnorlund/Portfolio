@@ -24,6 +24,153 @@ from .models import ValidationResult, ValidationResponse
 # ============================================================================
 
 
+def get_quick_similar_words(
+    word_text: str, word_embedding_id: str = None, n_results: int = 3
+) -> List[dict]:
+    """
+    Quick similarity lookup for a single word using the working similarity analysis approach.
+    Returns top N similar words with their labels/context.
+
+    Args:
+        word_text: The word text to find similarities for
+        word_embedding_id: Optional ChromaDB ID if available
+        n_results: Number of similar words to return (default 3 for speed)
+
+    Returns:
+        List of similar words with context
+    """
+    try:
+        from receipt_label.utils.chroma_client import ChromaDBClient
+        import os
+
+        # Setup ChromaDB client - reuse working setup from our analysis script
+        word_bucket = "embedding-infra-chromadb-buckets-vectors-fc18686"
+        os.environ.setdefault("CHROMADB_BUCKET", word_bucket)
+
+        chroma_client = ChromaDBClient(
+            persist_directory="./chroma_words_local_words_specific",
+            collection_prefix="",
+            mode="read",
+        )
+        collection = chroma_client.client.get_collection("receipt_words")
+
+        # If we have the embedding ID, use it directly
+        if not word_embedding_id:
+            return []  # Skip if no ID provided
+
+        # Get the word's embedding using safe approach from working script
+        word_result = collection.get(
+            ids=[word_embedding_id], include=["embeddings"]
+        )
+
+        if (
+            word_result.get("ids") is None
+            or len(word_result.get("ids", [])) == 0
+        ):
+            return []  # Word not found
+
+        if (
+            word_result.get("embeddings") is None
+            or len(word_result.get("embeddings", [])) == 0
+        ):
+            return []  # No embedding found
+
+        embedding = word_result["embeddings"][0]
+
+        # Find similar words using safe approach
+        similar_results = collection.query(
+            query_embeddings=[embedding],
+            n_results=n_results + 1,  # +1 to account for self-match
+            include=["metadatas", "documents", "distances"],
+        )
+
+        # Use safe processing approach from working script
+        similar_words = []
+
+        # Extract results safely
+        ids = (
+            similar_results.get("ids", [[]])[0]
+            if similar_results.get("ids")
+            else []
+        )
+        docs = (
+            similar_results.get("documents", [[]])[0]
+            if similar_results.get("documents")
+            else []
+        )
+        distances = (
+            similar_results.get("distances", [[]])[0]
+            if similar_results.get("distances")
+            else []
+        )
+        metadata_list = (
+            similar_results.get("metadatas", [[]])[0]
+            if similar_results.get("metadatas")
+            else []
+        )
+
+        # Pad metadata if needed
+        if len(metadata_list) < len(ids):
+            metadata_list.extend([{}] * (len(ids) - len(metadata_list)))
+
+        for i in range(min(len(ids), len(docs), len(distances))):
+            distance = distances[i]
+
+            # Skip the original word (distance ≈ 0)
+            if distance < 0.0001:
+                continue
+
+            sim_doc = docs[i]
+            sim_metadata = metadata_list[i] if i < len(metadata_list) else {}
+
+            # Extract target word from document
+            target_word = sim_doc
+            if "<TARGET>" in sim_doc and "</TARGET>" in sim_doc:
+                start = sim_doc.find("<TARGET>") + 8
+                end = sim_doc.find("</TARGET>")
+                target_word = sim_doc[start:end] if start < end else sim_doc
+
+            similar_word = {
+                "text": target_word,
+                "distance": round(float(distance), 4),
+                "merchant": sim_metadata.get("merchant_name", "Unknown"),
+                "labels": sim_metadata.get("validated_labels", ""),
+            }
+
+            similar_words.append(similar_word)
+
+            # Stop once we have enough results
+            if len(similar_words) >= n_results:
+                break
+
+        return similar_words
+
+    except Exception as e:
+        # Don't break validation if similarity fails
+        print(
+            f"Warning: Quick similarity lookup failed for '{word_text}': {e}"
+        )
+        import traceback
+
+        traceback.print_exc()
+        return []
+
+
+def format_similar_examples(similar_words: List[dict]) -> str:
+    """Format similar words for inclusion in validation prompt."""
+    if not similar_words:
+        return "No similar examples found."
+
+    examples = []
+    for sim in similar_words:
+        example = f"- '{sim['text']}' (similarity: {1-sim['distance']:.2f}) from {sim['merchant']}"
+        if sim["labels"]:
+            example += f" [Labels: {sim['labels']}]"
+        examples.append(example)
+
+    return "\n".join(examples)
+
+
 def prepare_validation_context(
     image_id: str, receipt_id: int, labels_to_validate: List[dict]
 ) -> Dict[str, Any]:
@@ -44,19 +191,27 @@ def prepare_validation_context(
     # Fetch from database
     client_manager = get_client_manager()
 
-    _, lines, words, _, _, all_labels = (
-        client_manager.dynamo.getReceiptDetails(image_id, receipt_id)
+    # Get receipt details using correct method name
+    receipt_details = client_manager.dynamo.get_receipt_details(
+        image_id, receipt_id
     )
+    lines = receipt_details.lines
+    words = receipt_details.words
+    all_labels = []  # Labels would need separate query
 
-    metadata = client_manager.dynamo.getReceiptMetadata(image_id, receipt_id)
+    metadata = receipt_details  # Use receipt details as metadata source
 
     # Convert to dicts
     receipt_lines = [line.__dict__ for line in lines]
     receipt_words = [word.__dict__ for word in words]
-    receipt_metadata = metadata.__dict__
+    receipt_metadata = {
+        "merchant_name": getattr(metadata, "merchant_name", "Unknown"),
+        "image_id": image_id,
+        "receipt_id": receipt_id,
+    }
     all_labels_dict = [label.__dict__ for label in all_labels]
 
-    # Build validation targets
+    # Build validation targets with similarity context
     targets = []
     for label in labels_to_validate:
         # Find the word text
@@ -71,6 +226,19 @@ def prepare_validation_context(
         )
 
         if word:
+            # Generate the ChromaDB ID for similarity lookup
+            chromadb_id = (
+                f"IMAGE#{label['image_id']}#"
+                f"RECEIPT#{label['receipt_id']:05d}#"
+                f"LINE#{label['line_id']:05d}#"
+                f"WORD#{label['word_id']:05d}"
+            )
+
+            # Get quick similarity context (top 3 similar words)
+            similar_words = get_quick_similar_words(
+                word["text"], chromadb_id, n_results=3
+            )
+
             targets.append(
                 {
                     "id": f"IMAGE#{label['image_id']}#"
@@ -80,6 +248,7 @@ def prepare_validation_context(
                     f"LABEL#{label['label']}",
                     "text": word["text"],
                     "proposed_label": label["label"],
+                    "similar_words": similar_words,  # NEW: Add similarity context
                 }
             )
 
@@ -87,18 +256,19 @@ def prepare_validation_context(
     lines_obj = [ReceiptLine(**line) for line in receipt_lines]
     receipt_text = _format_receipt_lines(lines_obj)
 
-    # Format targets for display
+    # Format targets for display with similarity context
     targets_text = "\n".join(
         [
             f"- ID: {target['id']}"
             f"\n  Text: '{target['text']}'"
             f"\n  Proposed Label: {target['proposed_label']}"
+            f"\n  Similar Words: {format_similar_examples(target['similar_words'])}"
             for target in targets
         ]
     )
 
-    # Create the validation prompt
-    prompt = f"""You are validating receipt labels. 
+    # Create the validation prompt with similarity guidance
+    prompt = f"""You are validating receipt labels with similarity context to help your decisions.
 
 MERCHANT: {receipt_metadata['merchant_name']}
 
@@ -110,7 +280,13 @@ TARGETS TO VALIDATE:
 RECEIPT TEXT:
 {receipt_text}
 
-TASK: For each target, determine if the proposed_label is correct.
+VALIDATION GUIDANCE:
+- Use the "Similar Words" to understand how comparable words are labeled across different receipts
+- If similar words consistently use a certain label, consider that as supporting evidence
+- Pay attention to merchant context - words may be labeled differently across merchants
+- The similarity score shows how semantically related the words are (higher = more similar)
+
+TASK: For each target, determine if the proposed_label is correct using both the receipt context and similarity patterns.
 Return the results in the structured format. Each result must have:
 - "id": the exact id from the target
 - "is_valid": true if the label is correct, false otherwise
