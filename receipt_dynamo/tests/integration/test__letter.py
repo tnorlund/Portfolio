@@ -166,9 +166,7 @@ class TestLetterBasicOperations:
         # Assert
         assert retrieved == example_letter
 
-    def test_get_letter_not_found(
-        self, dynamodb_client: DynamoClient
-    ) -> None:
+    def test_get_letter_not_found(self, dynamodb_client: DynamoClient) -> None:
         """Test get letter raises EntityNotFoundError when not found."""
         with pytest.raises(EntityNotFoundError, match="not found"):
             dynamodb_client.get_letter(
@@ -247,19 +245,13 @@ class TestLetterBasicOperations:
 class TestLetterBatchOperations:
     """Test batch operations for letters."""
 
-    def test_add_letters_success(
-        self, dynamodb_client: DynamoClient
-    ) -> None:
+    def test_add_letters_success(self, dynamodb_client: DynamoClient) -> None:
         """Test successful batch addition of letters."""
         # Arrange
         letters = [
             Letter(**CORRECT_LETTER_PARAMS),
-            Letter(
-                **{**CORRECT_LETTER_PARAMS, "letter_id": 2, "text": "1"}
-            ),
-            Letter(
-                **{**CORRECT_LETTER_PARAMS, "letter_id": 3, "text": "2"}
-            ),
+            Letter(**{**CORRECT_LETTER_PARAMS, "letter_id": 2, "text": "1"}),
+            Letter(**{**CORRECT_LETTER_PARAMS, "letter_id": 3, "text": "2"}),
         ]
 
         # Act
@@ -300,9 +292,7 @@ class TestLetterBatchOperations:
         # Arrange
         letters = [
             Letter(**CORRECT_LETTER_PARAMS),
-            Letter(
-                **{**CORRECT_LETTER_PARAMS, "letter_id": 2, "text": "1"}
-            ),
+            Letter(**{**CORRECT_LETTER_PARAMS, "letter_id": 2, "text": "1"}),
         ]
         dynamodb_client.add_letters(letters)
 
@@ -326,9 +316,7 @@ class TestLetterBatchOperations:
         # Arrange - add letters to multiple words
         word1_letters = [
             Letter(**CORRECT_LETTER_PARAMS),
-            Letter(
-                **{**CORRECT_LETTER_PARAMS, "letter_id": 2, "text": "1"}
-            ),
+            Letter(**{**CORRECT_LETTER_PARAMS, "letter_id": 2, "text": "1"}),
         ]
         word2_letters = [
             Letter(
@@ -397,7 +385,7 @@ class TestLetterBatchOperations:
                 letter.image_id,
                 letter.line_id,
                 letter.word_id,
-                letter.letter_id
+                letter.letter_id,
             )
             assert retrieved.text == letter.text
 
@@ -446,23 +434,27 @@ class TestLetterAdvancedOperations:
         with pytest.raises(
             EntityValidationError, match="PK must start with 'IMAGE#'"
         ):
-            dynamodb_client.get_letters([
-                {
-                    "PK": {"S": "FOO#00001"},
-                    "SK": {"S": "LINE#00001#WORD#00001#LETTER#00001"},
-                }
-            ])
+            dynamodb_client.get_letters(
+                [
+                    {
+                        "PK": {"S": "FOO#00001"},
+                        "SK": {"S": "LINE#00001#WORD#00001#LETTER#00001"},
+                    }
+                ]
+            )
 
         # Test SK missing LETTER
         with pytest.raises(
             EntityValidationError, match="SK must contain 'LETTER'"
         ):
-            dynamodb_client.get_letters([
-                {
-                    "PK": {"S": "IMAGE#00001"},
-                    "SK": {"S": "LINE#00001#WORD#00001#FOO#00001"},
-                }
-            ])
+            dynamodb_client.get_letters(
+                [
+                    {
+                        "PK": {"S": "IMAGE#00001"},
+                        "SK": {"S": "LINE#00001#WORD#00001#FOO#00001"},
+                    }
+                ]
+            )
 
 
 # =============================================================================
@@ -474,24 +466,18 @@ class TestLetterAdvancedOperations:
 class TestLetterListOperations:
     """Test list and query operations for letters."""
 
-    def test_list_letters_empty(
-        self, dynamodb_client: DynamoClient
-    ) -> None:
+    def test_list_letters_empty(self, dynamodb_client: DynamoClient) -> None:
         """Test listing letters when table is empty."""
         letters, last_key = dynamodb_client.list_letters()
         assert letters == []
         assert last_key is None
 
-    def test_list_letters_success(
-        self, dynamodb_client: DynamoClient
-    ) -> None:
+    def test_list_letters_success(self, dynamodb_client: DynamoClient) -> None:
         """Test listing all letters."""
         # Arrange
         letters = [
             Letter(**CORRECT_LETTER_PARAMS),
-            Letter(
-                **{**CORRECT_LETTER_PARAMS, "letter_id": 2, "text": "1"}
-            ),
+            Letter(**{**CORRECT_LETTER_PARAMS, "letter_id": 2, "text": "1"}),
         ]
         dynamodb_client.add_letters(letters)
 

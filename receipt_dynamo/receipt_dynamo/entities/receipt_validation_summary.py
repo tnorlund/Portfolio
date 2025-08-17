@@ -48,7 +48,9 @@ class ReceiptValidationSummary:
         if not isinstance(self.field_summary, dict):
             raise ValueError("field_summary must be a dictionary")
 
-        if self.validation_timestamp is not None and not isinstance(self.validation_timestamp, str):
+        if self.validation_timestamp is not None and not isinstance(
+            self.validation_timestamp, str
+        ):
             raise ValueError("validation_timestamp must be a string")
 
         if not isinstance(self.version, str):
@@ -79,7 +81,9 @@ class ReceiptValidationSummary:
         elif isinstance(self.timestamp_added, str):
             pass  # Already a string
         elif self.timestamp_added is not None:
-            raise ValueError("timestamp_added must be a datetime, string, or None")
+            raise ValueError(
+                "timestamp_added must be a datetime, string, or None"
+            )
 
         if self.timestamp_updated is None:
             pass  # Leave as None
@@ -284,7 +288,6 @@ class ReceiptValidationSummary:
             timestamp_added=timestamp_added,
             timestamp_updated=timestamp_updated,
         )
-
 
     def __repr__(self) -> str:
         return (

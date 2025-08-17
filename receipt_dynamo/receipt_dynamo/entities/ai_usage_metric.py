@@ -162,24 +162,32 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
 
         # Custom field mappings for DynamoDB naming conventions
         custom_fields = {**gsi_keys}
-        
+
         # Add required fields
         custom_fields["request_id"] = self._serialize_value(self.request_id)
         custom_fields["api_calls"] = self._serialize_value(self.api_calls)
-        
+
         # Add optional fields only if they have values
         if self.input_tokens is not None:
-            custom_fields["input_tokens"] = self._serialize_value(self.input_tokens)
+            custom_fields["input_tokens"] = self._serialize_value(
+                self.input_tokens
+            )
         if self.output_tokens is not None:
-            custom_fields["output_tokens"] = self._serialize_value(self.output_tokens)
+            custom_fields["output_tokens"] = self._serialize_value(
+                self.output_tokens
+            )
         if self.total_tokens is not None:
-            custom_fields["total_tokens"] = self._serialize_value(self.total_tokens)
+            custom_fields["total_tokens"] = self._serialize_value(
+                self.total_tokens
+            )
         if self.cost_usd is not None:
             custom_fields["cost_usd"] = self._serialize_value(
                 self.cost_usd, serialize_decimal=True
             )
         if self.latency_ms is not None:
-            custom_fields["latency_ms"] = self._serialize_value(self.latency_ms)
+            custom_fields["latency_ms"] = self._serialize_value(
+                self.latency_ms
+            )
         if self.user_id is not None:
             custom_fields["user_id"] = self._serialize_value(self.user_id)
         if self.job_id is not None:
@@ -189,7 +197,9 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
         if self.github_pr is not None:
             custom_fields["github_pr"] = self._serialize_value(self.github_pr)
         if self.environment is not None:
-            custom_fields["environment"] = self._serialize_value(self.environment)
+            custom_fields["environment"] = self._serialize_value(
+                self.environment
+            )
         if self.error is not None:
             custom_fields["error"] = self._serialize_value(self.error)
         if self.metadata:
@@ -272,7 +282,7 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
 
         # No field mappings needed - using snake_case consistently
         field_mappings = {}
-        
+
         return EntityFactory.create_entity(
             entity_class=cls,
             item=item,

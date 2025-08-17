@@ -419,7 +419,8 @@ def test_batch_receipt_line_validation_mixed_types(
     mixed_list = [sample_receipt_line, "not-a-line", 123]
 
     with pytest.raises(
-        EntityValidationError, match=r"receipt_lines\[1\] must be an instance of ReceiptLine"
+        EntityValidationError,
+        match=r"receipt_lines\[1\] must be an instance of ReceiptLine",
     ):
         method(mixed_list)
 
@@ -721,7 +722,8 @@ def test_update_receipt_line_conditional_check_failed(
     )
 
     with pytest.raises(
-        EntityNotFoundError, match="receiptline not found during update_receipt_line"
+        EntityNotFoundError,
+        match="receiptline not found during update_receipt_line",
     ):
         client.update_receipt_line(sample_receipt_line)
 
@@ -966,7 +968,9 @@ def test_add_receipt_lines_unprocessed_items_retry(
 
     client.add_receipt_lines(lines)
 
-    assert call_count["value"] == 1, "Should have called transact_write_items once."
+    assert (
+        call_count["value"] == 1
+    ), "Should have called transact_write_items once."
 
 
 @pytest.mark.integration

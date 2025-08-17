@@ -19,7 +19,7 @@ logger = get_logger(__name__)
 
 
 def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-# pylint: disable=unused-argument
+    # pylint: disable=unused-argument
     """Find receipt lines without embeddings and prepare batches.
 
     Args:

@@ -28,7 +28,7 @@ logger = get_logger(__name__)
 
 
 def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-# pylint: disable=unused-argument
+    # pylint: disable=unused-argument
     """Poll a line embedding batch and save results as deltas to S3.
 
     This enhanced handler processes all OpenAI batch statuses including
@@ -97,7 +97,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         delta_result = save_line_embeddings_as_delta(
             results, descriptions, batch_id, bucket_name, sqs_queue_url
         )
-        
+
         # Check if delta creation failed
         if delta_result.get("status") == "failed":
             logger.error(
@@ -109,10 +109,12 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "openai_batch_id": openai_batch_id,
                 "batch_status": batch_status,
                 "action": "delta_save_failed",
-                "error": delta_result.get("error", "Failed to save embedding delta"),
+                "error": delta_result.get(
+                    "error", "Failed to save embedding delta"
+                ),
                 "results_count": len(results),
             }
-        
+
         logger.info(
             f"Saved delta {delta_result['delta_id']} with "
             f"{delta_result['embedding_count']} embeddings"
@@ -177,13 +179,13 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 bucket_name,
                 sqs_queue_url,
             )
-            
+
             # Check if delta creation failed
             if delta_result.get("status") == "failed":
                 logger.error(
                     "Failed to save partial delta for batch %s: %s",
                     batch_id,
-                    delta_result.get('error', 'Unknown error')
+                    delta_result.get("error", "Unknown error"),
                 )
                 # Don't return early - still need to mark failed items for retry
             else:
@@ -191,8 +193,11 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 update_line_embedding_status_to_success(
                     partial_results, descriptions
                 )
-                logger.info("Processed %s partial line embedding results", len(partial_results))
-        
+                logger.info(
+                    "Processed %s partial line embedding results",
+                    len(partial_results),
+                )
+
         # Mark failed items for retry
         if failed_ids:
             marked = mark_items_for_retry(failed_ids, "line", client_manager)
@@ -214,7 +219,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         logger.error(
             "Batch %s failed with %s errors",
             openai_batch_id,
-            error_info.get('error_count', 0)
+            error_info.get("error_count", 0),
         )
 
         # Could mark all items for retry here if needed
@@ -245,8 +250,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     else:
         # Unknown action
         logger.error(
-            "Unknown action from status handler: %s",
-            status_result['action']
+            "Unknown action from status handler: %s", status_result["action"]
         )
         return {
             "batch_id": batch_id,

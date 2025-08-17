@@ -4,6 +4,7 @@ ChromaDB client management module.
 This module provides ChromaDB integration for vector storage,
 replacing the previous Pinecone implementation.
 """
+
 from __future__ import annotations
 
 import logging
@@ -31,10 +32,13 @@ try:
     from chromadb.config import Settings
     from chromadb.utils import embedding_functions
     from chromadb.errors import NotFoundError
+
     CHROMADB_AVAILABLE = True
 except (ImportError, StopIteration) as e:
     # ChromaDB not available or telemetry initialization failed (common in Lambda)
-    print(f"Warning: ChromaDB import failed: {e}. ChromaDB features will be disabled.")
+    print(
+        f"Warning: ChromaDB import failed: {e}. ChromaDB features will be disabled."
+    )
     if not TYPE_CHECKING:
         chromadb = None
         Collection = None
@@ -74,7 +78,7 @@ class ChromaDBClient:
                 "that don't use ChromaDB features. Install chromadb-client with "
                 "proper dependencies if ChromaDB is needed."
             )
-        
+
         self.persist_directory = persist_directory
         self.collection_prefix = collection_prefix
         self.mode = mode.lower()
@@ -128,8 +132,10 @@ class ChromaDBClient:
             full_name = f"{self.collection_prefix}_{name}"
         else:
             full_name = name
-        
-        logger.debug(f"Getting/creating collection: '{full_name}' (prefix='{self.collection_prefix}', name='{name}')")
+
+        logger.debug(
+            f"Getting/creating collection: '{full_name}' (prefix='{self.collection_prefix}', name='{name}')"
+        )
 
         if full_name not in self._collections:
             try:
@@ -355,30 +361,34 @@ class ChromaDBClient:
         # ChromaDB's PersistentClient should auto-persist, but we need to ensure
         # the data is written before we try to upload
         logger.info(f"Persisting ChromaDB data to {self.persist_directory}")
-        
+
         # Try to explicitly persist if the method exists
-        if hasattr(self._client, 'persist'):
+        if hasattr(self._client, "persist"):
             try:
                 self._client.persist()
                 logger.info("Explicitly called client.persist()")
             except Exception as e:
                 logger.warning(f"Could not call persist(): {e}")
-        
+
         # Check if any files exist in the persist directory
         persist_path = Path(self.persist_directory)
         files_to_upload = list(persist_path.rglob("*"))
         files_to_upload = [f for f in files_to_upload if f.is_file()]
-        
+
         if not files_to_upload:
-            logger.error(f"No files found in persist directory: {self.persist_directory}")
+            logger.error(
+                f"No files found in persist directory: {self.persist_directory}"
+            )
             # List directory contents for debugging
             try:
                 all_items = list(persist_path.rglob("*"))
                 logger.error(f"Directory contents: {all_items}")
             except Exception as e:
                 logger.error(f"Could not list directory: {e}")
-            raise RuntimeError(f"No ChromaDB files found to upload in {self.persist_directory}")
-        
+            raise RuntimeError(
+                f"No ChromaDB files found to upload in {self.persist_directory}"
+            )
+
         logger.info(f"Found {len(files_to_upload)} files to upload to S3")
 
         # Create unique prefix for this delta
@@ -391,14 +401,18 @@ class ChromaDBClient:
             try:
                 relative_path = file_path.relative_to(persist_path)
                 s3_key = f"{prefix}{relative_path}"
-                logger.debug(f"Uploading {file_path} to s3://{bucket}/{s3_key}")
+                logger.debug(
+                    f"Uploading {file_path} to s3://{bucket}/{s3_key}"
+                )
                 s3_client.upload_file(str(file_path), bucket, s3_key)
                 uploaded_count += 1
             except Exception as e:
                 logger.error(f"Failed to upload {file_path} to S3: {e}")
                 raise RuntimeError(f"S3 upload failed for {file_path}: {e}")
-        
-        logger.info(f"Successfully uploaded {uploaded_count} files to S3 at {prefix}")
+
+        logger.info(
+            f"Successfully uploaded {uploaded_count} files to S3 at {prefix}"
+        )
         return prefix
 
     def reset(self) -> None:
@@ -429,7 +443,7 @@ def get_chroma_client(
     """
     if not CHROMADB_AVAILABLE:
         return None
-        
+
     global _chroma_client_instance
 
     if reset or _chroma_client_instance is None:

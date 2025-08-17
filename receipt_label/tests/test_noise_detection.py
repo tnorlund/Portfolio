@@ -300,7 +300,7 @@ class TestNoiseLineDetection:
             assert (
                 is_noise_text(line) is True
             ), f"'{line}' should be detected as noise line"
-        
+
         # These patterns might have meaning (CSV, lists, groupings) so they're not noise
         potentially_meaningful = [
             ", , , ,",  # Could be CSV format
@@ -308,7 +308,7 @@ class TestNoiseLineDetection:
             "( ) [ ]",  # Could be grouping symbols
             "{ } < >",  # Could be code or markup
         ]
-        
+
         for line in potentially_meaningful:
             # These are not detected as noise by the unified function
             # which is actually more conservative and correct
@@ -381,9 +381,13 @@ class TestNoiseLineDetection:
         custom_config = NoiseDetectionConfig(preserve_currency=False)
 
         # Single currency symbols are detected differently
-        assert is_noise_text("$", custom_config) is True  # Single $ is noise without preservation
-        assert is_noise_text("$") is False  # Single $ is not noise with preservation
-        
+        assert (
+            is_noise_text("$", custom_config) is True
+        )  # Single $ is noise without preservation
+        assert (
+            is_noise_text("$") is False
+        )  # Single $ is not noise with preservation
+
         # Multi-word patterns like "$ $ $ $" contain spaces so they're not pure noise
         # The unified function is more conservative - if it has meaningful structure
         # (like spaces between symbols), it might have meaning

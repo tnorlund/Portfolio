@@ -126,7 +126,9 @@ def test_addJobLog_raises_resource_not_found(
     )
 
     # Attempt to add the job log
-    with pytest.raises(OperationError, match="DynamoDB resource not found during add_job_log"):
+    with pytest.raises(
+        OperationError, match="DynamoDB resource not found during add_job_log"
+    ):
         job_log_dynamo.add_job_log(sample_job_log)
 
 
@@ -167,7 +169,8 @@ def test_addJobLogs_raises_value_error_logs_not_list_of_logs(
     items.
     """
     with pytest.raises(
-        EntityValidationError, match="All items in job_logs must be JobLog instances"
+        EntityValidationError,
+        match="All items in job_logs must be JobLog instances",
     ):
         job_log_dynamo.add_job_logs([sample_job_log, "not a job log"])
 
@@ -204,7 +207,9 @@ def test_getJobLog_raises_value_error_job_id_none(job_log_dynamo):
 @pytest.mark.integration
 def test_getJobLog_raises_value_error_timestamp_none(job_log_dynamo):
     """Test that getJobLog raises ValueError when timestamp is None."""
-    with pytest.raises(EntityValidationError, match="timestamp cannot be None"):
+    with pytest.raises(
+        EntityValidationError, match="timestamp cannot be None"
+    ):
         job_log_dynamo.get_job_log(job_id="some-job-id", timestamp=None)
 
 
@@ -339,7 +344,9 @@ def test_deleteJobLog_raises_conditional_check_failed(
     Test that deleteJobLog raises EntityNotFoundError when the job log does not exist.
     """
     # Try to delete a job log that doesn't exist
-    with pytest.raises(EntityNotFoundError, match="joblog not found during delete_job_log"):
+    with pytest.raises(
+        EntityNotFoundError, match="joblog not found during delete_job_log"
+    ):
         job_log_dynamo.delete_job_log(sample_job_log)
 
 
@@ -369,5 +376,8 @@ def test_listJobLogs_with_resource_not_found(job_log_dynamo, mocker):
 
     # Attempt to list the job logs
     job_id = str(uuid.uuid4())
-    with pytest.raises(OperationError, match="DynamoDB resource not found during list_job_logs"):
+    with pytest.raises(
+        OperationError,
+        match="DynamoDB resource not found during list_job_logs",
+    ):
         job_log_dynamo.list_job_logs(job_id=job_id)

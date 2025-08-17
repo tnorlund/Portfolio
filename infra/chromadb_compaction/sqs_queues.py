@@ -66,10 +66,12 @@ class ChromaDBQueues(ComponentResource):
             visibility_timeout_seconds=900,  # 15 minutes (match compaction timeout)
             receive_wait_time_seconds=20,  # Long polling for efficiency
             redrive_policy=Output.all(self.dlq.arn).apply(
-                lambda args: json.dumps({
-                    "deadLetterTargetArn": args[0],
-                    "maxReceiveCount": 3,  # Retry 3 times before DLQ
-                })
+                lambda args: json.dumps(
+                    {
+                        "deadLetterTargetArn": args[0],
+                        "maxReceiveCount": 3,  # Retry 3 times before DLQ
+                    }
+                )
             ),
             tags={
                 "Project": "ChromaDB",
@@ -82,36 +84,35 @@ class ChromaDBQueues(ComponentResource):
 
         # Create queue policy for Lambda access
         self.queue_policy_document = Output.all(
-            self.delta_queue.arn,
-            aws.get_caller_identity().account_id
+            self.delta_queue.arn, aws.get_caller_identity().account_id
         ).apply(
-            lambda args: json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Sid": "AllowLambdaAccess",
-                        "Effect": "Allow",
-                        "Principal": {
-                            "Service": "lambda.amazonaws.com"
+            lambda args: json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Sid": "AllowLambdaAccess",
+                            "Effect": "Allow",
+                            "Principal": {"Service": "lambda.amazonaws.com"},
+                            "Action": [
+                                "sqs:ReceiveMessage",
+                                "sqs:DeleteMessage",
+                                "sqs:GetQueueAttributes",
+                            ],
+                            "Resource": args[0],
                         },
-                        "Action": [
-                            "sqs:ReceiveMessage",
-                            "sqs:DeleteMessage",
-                            "sqs:GetQueueAttributes"
-                        ],
-                        "Resource": args[0],
-                    },
-                    {
-                        "Sid": "AllowAccountAccess",
-                        "Effect": "Allow",
-                        "Principal": {
-                            "AWS": f"arn:aws:iam::{args[1]}:root"
+                        {
+                            "Sid": "AllowAccountAccess",
+                            "Effect": "Allow",
+                            "Principal": {
+                                "AWS": f"arn:aws:iam::{args[1]}:root"
+                            },
+                            "Action": "sqs:*",
+                            "Resource": args[0],
                         },
-                        "Action": "sqs:*",
-                        "Resource": args[0],
-                    },
-                ],
-            })
+                    ],
+                }
+            )
         )
 
         self.queue_policy = aws.sqs.QueuePolicy(

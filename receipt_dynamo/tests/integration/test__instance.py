@@ -315,7 +315,8 @@ def test_getInstance_raises_value_error_instance_not_found(instance_dynamo):
     Test that getInstance raises ValueError when the instance doesn't exist.
     """
     with pytest.raises(
-        EntityNotFoundError, match="Instance with instance id .* does not exist"
+        EntityNotFoundError,
+        match="Instance with instance id .* does not exist",
     ):
         instance_dynamo.get_instance(str(uuid.uuid4()))
 
@@ -605,7 +606,9 @@ def test_listInstancesByStatus_success(instance_dynamo, sample_instance):
 
 
 @pytest.mark.integration
-@pytest.mark.skip(reason="Method list_instance_jobs not implemented in DynamoClient")
+@pytest.mark.skip(
+    reason="Method list_instance_jobs not implemented in DynamoClient"
+)
 def test_listInstanceJobs_success(
     instance_dynamo, sample_instance, sample_instance_job
 ):
@@ -637,7 +640,9 @@ def test_listInstanceJobs_success(
 
 
 @pytest.mark.integration
-@pytest.mark.skip(reason="Method list_instances_for_job not implemented in DynamoClient")
+@pytest.mark.skip(
+    reason="Method list_instances_for_job not implemented in DynamoClient"
+)
 def test_listInstancesForJob_success(
     instance_dynamo, sample_instance, sample_instance_job
 ):
