@@ -1,449 +1,353 @@
 """
-LangChain Graph Design for Real-Time Receipt Validation
+Fixed LangChain Graph Design - Actually uses LangChain + Ollama!
+================================================================
+
+This version properly uses LangChain's ChatOllama with LangGraph
+instead of making raw HTTP calls.
 """
 
-from typing import TypedDict, List, Optional, Any
-from langchain_core.messages import BaseMessage
+from typing import TypedDict, List, Optional, Any, Dict
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_ollama import ChatOllama
 from langgraph.graph import StateGraph, END
-from pydantic import BaseModel, Field
+import json
+import os
 
 
 # ============================================================================
-# State Definition
+# State Definition (same as before)
 # ============================================================================
-
 
 class ValidationState(TypedDict):
-    """State for the validation graph"""
-
+    """State that flows through the validation graph"""
     # Input
     image_id: str
     receipt_id: int
-    labels_to_validate: List[dict]  # ReceiptWordLabel objects
-
-    # Context (fetched)
+    labels_to_validate: List[dict]
+    
+    # Context (fetched from DB)
     receipt_lines: List[dict]
     receipt_words: List[dict]
     receipt_metadata: dict
-    all_labels: List[dict]  # For second-pass validation
-
+    all_labels: List[dict]
+    
     # Processing
-    first_pass_labels: List[dict]
-    second_pass_labels: List[dict]
     formatted_prompt: str
-
+    
     # Results
     validation_results: List[dict]
-    messages: List[BaseMessage]
-
+    
     # Status
     error: Optional[str]
     completed: bool
 
 
 # ============================================================================
-# Tool Definitions for LangChain
+# The LLM Instance - Created ONCE and reused
 # ============================================================================
 
-
-class LabelValidationResult(BaseModel):
-    """Single label validation result"""
-
-    id: str = Field(description="The original label identifier")
-    is_valid: bool = Field(description="True if the proposed label is correct")
-    correct_label: Optional[str] = Field(
-        description="If invalid, the suggested correct label", default=None
-    )
-
-
-class ValidateLabelsInput(BaseModel):
-    """Input for the validate_labels tool"""
-
-    results: List[LabelValidationResult] = Field(
-        description="Array of validation results for receipt labels"
-    )
-
-
-def validate_labels_tool(results: List[LabelValidationResult]) -> dict:
+def get_ollama_llm() -> ChatOllama:
     """
-    Tool for validating multiple receipt-word labels in one batch.
-    This replaces the OpenAI function calling pattern.
+    Get the Ollama LLM instance configured from environment
+    
+    For Ollama Turbo:
+        export OLLAMA_BASE_URL="https://api.ollama.com"
+        export OLLAMA_API_KEY="your-api-key"
+        export OLLAMA_MODEL="turbo"
+    
+    For local Ollama:
+        export OLLAMA_BASE_URL="http://localhost:11434"
+        export OLLAMA_MODEL="llama3.1:8b"
     """
-    return {
-        "validated_count": len(results),
-        "results": [r.dict() for r in results],
-    }
+    base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    api_key = os.getenv("OLLAMA_API_KEY")
+    model = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
+    
+    # Create the LangChain Ollama instance
+    llm = ChatOllama(
+        model=model,
+        base_url=base_url,
+        temperature=0,  # Deterministic for validation
+        format="json",  # Request JSON output
+    )
+    
+    # If using Ollama Turbo, set the API key
+    if api_key:
+        llm.auth = {"api_key": api_key}
+    
+    return llm
 
 
 # ============================================================================
 # Graph Node Functions
 # ============================================================================
 
-
 async def fetch_receipt_context(state: ValidationState) -> ValidationState:
     """
-    Node 1: Fetch all receipt context from DynamoDB
-    Equivalent to get_receipt_details() in current implementation
+    Node 1: Fetch receipt data from DynamoDB
     """
     from receipt_label.utils import get_client_manager
-
+    
     client_manager = get_client_manager()
-
-    # Fetch receipt details
-    (
-        _,
-        lines,
-        words,
-        _,
-        _,
-        labels,
-    ) = client_manager.dynamo.getReceiptDetails(
+    
+    # Get receipt details
+    _, lines, words, _, _, labels = client_manager.dynamo.getReceiptDetails(
         state["image_id"], state["receipt_id"]
     )
-
+    
     metadata = client_manager.dynamo.getReceiptMetadata(
         state["image_id"], state["receipt_id"]
     )
-
+    
     state["receipt_lines"] = [line.__dict__ for line in lines]
     state["receipt_words"] = [word.__dict__ for word in words]
     state["receipt_metadata"] = metadata.__dict__
     state["all_labels"] = [label.__dict__ for label in labels]
-
-    return state
-
-
-async def split_validation_passes(state: ValidationState) -> ValidationState:
-    """
-    Node 2: Split labels into first-pass and second-pass
-    Based on whether they have previous validation attempts
-    """
-    from receipt_dynamo.constants import ValidationStatus
-
-    first_pass = []
-    second_pass = []
-
-    for label in state["labels_to_validate"]:
-        # Check if this word has any invalid labels
-        other_labels = [
-            l
-            for l in state["all_labels"]
-            if l["word_id"] == label["word_id"]
-            and l["line_id"] == label["line_id"]
-        ]
-
-        has_invalid = any(
-            l["validation_status"] == ValidationStatus.INVALID.value
-            for l in other_labels
-        )
-
-        if has_invalid:
-            # Add invalid history for context
-            label["invalid_labels"] = [
-                l["label"]
-                for l in other_labels
-                if l["validation_status"] == ValidationStatus.INVALID.value
-            ]
-            second_pass.append(label)
-        else:
-            first_pass.append(label)
-
-    state["first_pass_labels"] = first_pass
-    state["second_pass_labels"] = second_pass
-
+    
     return state
 
 
 async def format_validation_prompt(state: ValidationState) -> ValidationState:
     """
-    Node 3: Format the validation prompt
-    Adapts _format_prompt() for streaming context
+    Node 2: Create the prompt for validation
     """
     from receipt_label.completion._format_prompt import (
         _format_receipt_lines,
         CORE_LABELS,
     )
-    import json
-
-    # Build targets array
+    from receipt_dynamo.entities import ReceiptLine
+    
+    # Build targets to validate
     targets = []
-    for label in state["first_pass_labels"] + state["second_pass_labels"]:
+    for label in state["labels_to_validate"]:
         word = next(
-            w
-            for w in state["receipt_words"]
+            w for w in state["receipt_words"]
             if w["line_id"] == label["line_id"]
             and w["word_id"] == label["word_id"]
         )
-
-        target = {
-            "id": (
-                f"IMAGE#{label['image_id']}#"
-                f"RECEIPT#{label['receipt_id']:05d}#"
-                f"LINE#{label['line_id']:05d}#"
-                f"WORD#{label['word_id']:05d}#"
-                f"LABEL#{label['label']}#"
-                f"VALIDATION_STATUS#{label['validation_status']}"
-            ),
+        
+        targets.append({
+            "id": f"IMAGE#{label['image_id']}#"
+                  f"RECEIPT#{label['receipt_id']:05d}#"
+                  f"LINE#{label['line_id']:05d}#"
+                  f"WORD#{label['word_id']:05d}#"
+                  f"LABEL#{label['label']}",
             "text": word["text"],
-            "line_id": label["line_id"],
             "proposed_label": label["label"],
-        }
-
-        if "invalid_labels" in label:
-            target["invalid_labels"] = label["invalid_labels"]
-
-        targets.append(target)
-
-    # Format the prompt
-    prompt_lines = []
-    merchant_name = state['receipt_metadata']['merchant_name']
-    prompt_lines.append(f"Validate labels for {merchant_name} receipt.")
-    prompt_lines.append("\nTargets to validate:")
-    prompt_lines.append(json.dumps(targets, indent=2))
-    prompt_lines.append("\nAllowed labels:")
-    prompt_lines.append(", ".join(CORE_LABELS.keys()))
-    prompt_lines.append("\nReceipt context:")
-
-    # Format receipt lines
-    from receipt_dynamo.entities import ReceiptLine
-
+        })
+    
+    # Format receipt lines for context
     lines = [ReceiptLine(**line) for line in state["receipt_lines"]]
-    prompt_lines.append(_format_receipt_lines(lines))
+    receipt_text = _format_receipt_lines(lines)
+    
+    # Create the prompt
+    prompt = f"""You are validating receipt labels. 
 
-    prompt_lines.append(
-        "\nUse the validate_labels tool to provide validation results."
-    )
+MERCHANT: {state['receipt_metadata']['merchant_name']}
 
-    state["formatted_prompt"] = "\n".join(prompt_lines)
+ALLOWED LABELS: {', '.join(CORE_LABELS.keys())}
 
+TARGETS TO VALIDATE:
+{json.dumps(targets, indent=2)}
+
+RECEIPT TEXT:
+{receipt_text}
+
+TASK: For each target, determine if the proposed_label is correct.
+Return a JSON object with a "results" array. Each result must have:
+- "id": the exact id from the target
+- "is_valid": true if the label is correct, false otherwise
+- "correct_label": (only if is_valid is false) the correct label from ALLOWED LABELS
+
+Example response:
+{{"results": [
+    {{"id": "IMAGE#abc#RECEIPT#00001#...", "is_valid": true}},
+    {{"id": "IMAGE#xyz#RECEIPT#00002#...", "is_valid": false, "correct_label": "TOTAL"}}
+]}}"""
+    
+    state["formatted_prompt"] = prompt
     return state
 
 
-async def call_llm_with_tools(state: ValidationState) -> ValidationState:
+async def validate_with_ollama(state: ValidationState) -> ValidationState:
     """
-    Node 4: Call LLM with tool calling capability
-    Uses Ollama (local or Turbo) instead of OpenAI
+    Node 3: Call Ollama using LangChain (properly!)
     """
-    import os
-    import httpx
-    import json
-    from langchain_core.messages import HumanMessage
-
-    # Get Ollama configuration from environment
-    base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-    api_key = os.getenv("OLLAMA_API_KEY")  # For Ollama Turbo
-    model = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
-
-    # Format prompt for Ollama (without tool calling for simplicity)
-    prompt = (
-        state["formatted_prompt"]
-        + """
-    
-    Respond with a JSON object containing a "results" array.
-    Each result should have:
-    - "id": the original label identifier
-    - "is_valid": true or false
-    - "correct_label": (only if invalid) the correct label from the allowed list
-    
-    Example response:
-    {"results": [
-        {"id": "IMAGE#...", "is_valid": true},
-        {"id": "IMAGE#...", "is_valid": false, "correct_label": "UNIT_PRICE"}
-    ]}
-    """
-    )
-
-    # Create message
-    message = HumanMessage(content=prompt)
-    state["messages"] = [message]
-
-    # Call Ollama API directly
-    async with httpx.AsyncClient() as client:
-        headers = {}
-        if api_key:  # Add auth header for Ollama Turbo
-            headers["Authorization"] = f"Bearer {api_key}"
-
-        response = await client.post(
-            f"{base_url}/api/generate",
-            headers=headers,
-            json={
-                "model": model,
-                "prompt": prompt,
-                "stream": False,
-                "format": "json",  # Request JSON response
-                "options": {"temperature": 0},
-            },
-            timeout=60.0,
-        )
-
-        if response.status_code == 200:
-            result = response.json()
-            response_text = result.get("response", "")
-
-            # Parse JSON response
-            try:
-                parsed = json.loads(response_text)
-                state["validation_results"] = parsed.get("results", [])
-            except json.JSONDecodeError:
-                # Fallback: try to extract JSON from the response
-                import re
-
-                json_match = re.search(r"\{.*\}", response_text, re.DOTALL)
-                if json_match:
-                    try:
-                        parsed = json.loads(json_match.group())
-                        state["validation_results"] = parsed.get("results", [])
-                    except (json.JSONDecodeError, KeyError):
-                        state["validation_results"] = []
-                        state["error"] = (
-                            f"Failed to parse response: {response_text[:200]}"
-                        )
-        else:
-            state["error"] = f"Ollama API error: {response.status_code}"
+    try:
+        # Get the configured LLM
+        llm = get_ollama_llm()
+        
+        # Create the messages
+        messages = [
+            SystemMessage(content="You are a receipt validation assistant. Always respond with valid JSON."),
+            HumanMessage(content=state["formatted_prompt"])
+        ]
+        
+        # Call the LLM using LangChain
+        response = await llm.ainvoke(messages)
+        
+        # Parse the response
+        try:
+            # response.content contains the JSON string
+            result = json.loads(response.content)
+            state["validation_results"] = result.get("results", [])
+        except json.JSONDecodeError as e:
+            state["error"] = f"Failed to parse LLM response: {e}"
             state["validation_results"] = []
-
+            
+    except Exception as e:
+        state["error"] = f"LLM call failed: {e}"
+        state["validation_results"] = []
+    
     return state
 
 
-async def update_validation_results(state: ValidationState) -> ValidationState:
+async def update_database(state: ValidationState) -> ValidationState:
     """
-    Node 5: Update DynamoDB with validation results
-    Replaces update_valid_labels() and update_invalid_labels()
+    Node 4: Update DynamoDB with validation results
     """
     from receipt_label.utils import get_client_manager
     from receipt_dynamo.constants import ValidationStatus
-
+    
+    if not state["validation_results"]:
+        state["completed"] = False
+        return state
+    
     client_manager = get_client_manager()
-
+    
     valid_labels = []
     invalid_labels = []
-
+    
     for result in state["validation_results"]:
-        # Parse the ID to get label coordinates
+        # Parse the ID to find the original label
         parts = result["id"].split("#")
-        kv = {parts[i]: parts[i + 1] for i in range(0, len(parts) - 1, 2)}
-
-        # Find the original label
+        kv = {parts[i]: parts[i+1] for i in range(0, len(parts)-1, 2)}
+        
+        # Find matching label
         label = next(
-            l
-            for l in state["labels_to_validate"]
-            if l["image_id"] == kv["IMAGE"]
-            and l["receipt_id"] == int(kv["RECEIPT"])
-            and l["line_id"] == int(kv["LINE"])
-            and l["word_id"] == int(kv["WORD"])
-            and l["label"] == kv["LABEL"]
+            (l for l in state["labels_to_validate"]
+             if l["image_id"] == kv["IMAGE"]
+             and l["receipt_id"] == int(kv["RECEIPT"])
+             and l["line_id"] == int(kv["LINE"])
+             and l["word_id"] == int(kv["WORD"])
+             and l["label"] == kv["LABEL"]),
+            None
         )
-
-        if result["is_valid"]:
-            label["validation_status"] = ValidationStatus.VALID.value
-            valid_labels.append(label)
-        else:
-            label["validation_status"] = ValidationStatus.INVALID.value
-            if result.get("correct_label"):
-                label["suggested_label"] = result["correct_label"]
-            invalid_labels.append(label)
-
-    # Update in DynamoDB
+        
+        if label:
+            if result["is_valid"]:
+                label["validation_status"] = ValidationStatus.VALID.value
+                valid_labels.append(label)
+            else:
+                label["validation_status"] = ValidationStatus.INVALID.value
+                if result.get("correct_label"):
+                    label["suggested_label"] = result["correct_label"]
+                invalid_labels.append(label)
+    
+    # Update the database
     if valid_labels:
         client_manager.dynamo.updateReceiptWordLabels(valid_labels)
     if invalid_labels:
         client_manager.dynamo.updateReceiptWordLabels(invalid_labels)
-
+    
     state["completed"] = True
     return state
 
 
-async def handle_error(state: ValidationState) -> ValidationState:
-    """
-    Error handling node
-    """
-    import traceback
-
-    state["error"] = traceback.format_exc()
-    state["completed"] = False
-    return state
-
-
 # ============================================================================
-# Graph Construction
+# Build the Graph
 # ============================================================================
-
 
 def create_validation_graph() -> Any:
     """
-    Create the LangChain graph for real-time validation
+    Create the LangGraph workflow for validation
     """
-    # Initialize graph
+    # Create the graph with our state
     graph = StateGraph(ValidationState)
-
-    # Add nodes
+    
+    # Add all the nodes
     graph.add_node("fetch_context", fetch_receipt_context)
-    graph.add_node("split_passes", split_validation_passes)
     graph.add_node("format_prompt", format_validation_prompt)
-    graph.add_node("call_llm", call_llm_with_tools)
-    graph.add_node("update_results", update_validation_results)
-    graph.add_node("handle_error", handle_error)
-
-    # Add edges
-    graph.add_edge("fetch_context", "split_passes")
-    graph.add_edge("split_passes", "format_prompt")
-    graph.add_edge("format_prompt", "call_llm")
-    graph.add_edge("call_llm", "update_results")
-    graph.add_edge("update_results", END)
-
-    # Set entry point
+    graph.add_node("validate", validate_with_ollama)
+    graph.add_node("update_db", update_database)
+    
+    # Define the flow
+    graph.add_edge("fetch_context", "format_prompt")
+    graph.add_edge("format_prompt", "validate")
+    graph.add_edge("validate", "update_db")
+    graph.add_edge("update_db", END)
+    
+    # Set where to start
     graph.set_entry_point("fetch_context")
-
-    # Add error handling
-    graph.add_conditional_edges(
-        "fetch_context",
-        lambda x: "handle_error" if x.get("error") else "split_passes",
-        {"handle_error": "handle_error", "split_passes": "split_passes"},
-    )
-
+    
+    # Compile and return
     return graph.compile()
 
 
 # ============================================================================
-# Usage Example
+# Simple Usage Function
 # ============================================================================
 
-
 async def validate_receipt_labels(
-    image_id: str, receipt_id: int, labels: List[dict]
-) -> dict:
+    image_id: str,
+    receipt_id: int,
+    labels: List[dict]
+) -> Dict[str, Any]:
     """
-    Main entry point for real-time validation using Ollama
+    Simple function to validate receipt labels
+    
+    Args:
+        image_id: The receipt image ID
+        receipt_id: The receipt ID
+        labels: List of labels to validate, each with:
+            - line_id, word_id, label, validation_status
+    
+    Returns:
+        Dictionary with:
+            - success: bool
+            - validation_results: list of results
+            - error: optional error message
     """
-    import os
-
-    # Check if Ollama is configured
-    if not os.getenv("OLLAMA_BASE_URL"):
-        return {
-            "success": False,
-            "error": (
-                "OLLAMA_BASE_URL not configured. "
-                "Set it to use Ollama or Ollama Turbo."
-            ),
-            "validation_results": [],
-        }
-
-    # Create graph
+    # Create the graph
     app = create_validation_graph()
-
-    # Initialize state
+    
+    # Set initial state
     initial_state = {
         "image_id": image_id,
         "receipt_id": receipt_id,
         "labels_to_validate": labels,
-        "completed": False,
+        "completed": False
     }
-
-    # Run graph
-    result = await app.ainvoke(initial_state)
-
+    
+    # Run the graph
+    final_state = await app.ainvoke(initial_state)
+    
     return {
-        "success": result["completed"],
-        "validation_results": result.get("validation_results", []),
-        "error": result.get("error"),
+        "success": final_state.get("completed", False),
+        "validation_results": final_state.get("validation_results", []),
+        "error": final_state.get("error")
     }
+
+
+# ============================================================================
+# Test Function
+# ============================================================================
+
+async def test_ollama_connection():
+    """Test if Ollama is working with LangChain"""
+    try:
+        llm = get_ollama_llm()
+        messages = [HumanMessage(content="Say 'Ollama is working!' in JSON format")]
+        response = await llm.ainvoke(messages)
+        print(f"✅ Ollama test successful: {response.content}")
+        return True
+    except Exception as e:
+        print(f"❌ Ollama test failed: {e}")
+        return False
+
+
+if __name__ == "__main__":
+    import asyncio
+    
+    # Test the connection
+    asyncio.run(test_ollama_connection())

@@ -6,14 +6,13 @@ from .graph_design import (
     create_validation_graph,
     validate_receipt_labels,
     ValidationState,
-    ValidateLabelsInput,
-    LabelValidationResult
+    get_ollama_llm,
+    test_ollama_connection
 )
 
 from .implementation import (
-    ReceiptValidator,
-    validate_receipt_labels_v2,
-    ValidationConfig as ConfigFromImplementation
+    SimpleReceiptValidator,
+    SimpleConfig
 )
 
 from .config import (
@@ -26,12 +25,12 @@ __all__ = [
     "create_validation_graph",
     "validate_receipt_labels",
     "ValidationState",
-    "ValidateLabelsInput",
-    "LabelValidationResult",
+    "get_ollama_llm",
+    "test_ollama_connection",
     
     # Implementation
-    "ReceiptValidator",
-    "validate_receipt_labels_v2",
+    "SimpleReceiptValidator",
+    "SimpleConfig",
     
     # Configuration
     "ValidationConfig",
