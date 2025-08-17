@@ -175,29 +175,32 @@ async def validate_receipt_labels(
 
 
 async def test_ollama_connection():
-    """Test if Ollama is working with structured output"""
+    """Test if Ollama is working"""
     try:
-        from langchain_core.output_parsers import PydanticOutputParser
-
         llm = get_ollama_llm()
+
+        # Simple connectivity test
+        test_prompt = """Validate this word label:
+        Word: 'August'
+        Label: DATE
         
-        # Test 1: Try with_structured_output
-        try:
-            structured_llm = llm.with_structured_output(ValidationResponse)
-            print(f"✅ Model supports with_structured_output")
-            return True
-        except (AttributeError, NotImplementedError):
-            print(f"ℹ️ Model doesn't support with_structured_output, trying parser...")
-        
-        # Test 2: Try with parser
-        parser = PydanticOutputParser(pydantic_object=ValidationResponse)
-        test_prompt = "Return validation results with this structure: {\"results\": []}"
+        Respond with JSON:
+        {"id": "TEST#001", "is_valid": true}
+        """
+
         response = await llm.ainvoke(test_prompt)
-        print(f"✅ Model works with output parser")
-        return True
-            
+
+        if response and response.content:
+            print(f"✅ Ollama connection successful")
+            print(f"   Model: {os.getenv('OLLAMA_MODEL', 'default')}")
+            print(f"   Base URL: {os.getenv('OLLAMA_BASE_URL', 'default')}")
+            return True
+        else:
+            print(f"❌ No response from Ollama")
+            return False
+
     except Exception as e:
-        print(f"❌ Structured output test failed: {e}")
+        print(f"❌ Ollama connection failed: {e}")
         return False
 
 
@@ -224,44 +227,109 @@ async def demo():
 
     print("\n3. Preparing sample data...")
 
-    # Sample data
-    sample_labels = [
-        {
-            "image_id": "TEST_001",
-            "receipt_id": 12345,
-            "line_id": 1,
-            "word_id": 1,
-            "label": "MERCHANT_NAME",
-            "validation_status": "NONE",
-        },
-        {
-            "image_id": "TEST_001",
-            "receipt_id": 12345,
-            "line_id": 5,
-            "word_id": 2,
-            "label": "TOTAL",
-            "validation_status": "NONE",
-        },
-    ]
+    # Get real receipt data for testing
+    print("   Fetching sample receipt from database...")
+    from receipt_label.utils import get_client_manager
+
+    try:
+        client_manager = get_client_manager()
+        receipts_result = client_manager.dynamo.list_receipts(limit=1)
+        receipts = (
+            receipts_result[0]
+            if isinstance(receipts_result, tuple)
+            else receipts_result
+        )
+
+        if not receipts:
+            print("   No receipts found in database, using mock data")
+            sample_labels = [
+                {
+                    "image_id": "TEST_001",
+                    "receipt_id": 12345,
+                    "line_id": 1,
+                    "word_id": 1,
+                    "label": "MERCHANT_NAME",
+                    "validation_status": "NONE",
+                }
+            ]
+            image_id = "TEST_001"
+            receipt_id = 12345
+        else:
+            receipt = receipts[0]
+            image_id = receipt.image_id
+            receipt_id = receipt.receipt_id
+
+            # Create a test label from first word
+            receipt_details = client_manager.dynamo.get_receipt_details(
+                image_id, receipt_id
+            )
+            if receipt_details and receipt_details.words:
+                first_word = receipt_details.words[0]
+                sample_labels = [
+                    {
+                        "image_id": image_id,
+                        "receipt_id": receipt_id,
+                        "line_id": first_word.line_id,
+                        "word_id": first_word.word_id,
+                        "label": "MERCHANT_NAME",
+                        "validation_status": "NONE",
+                    }
+                ]
+                print(f"   Using word '{first_word.text}' from real receipt")
+            else:
+                print("   No words found, using mock data")
+                sample_labels = [
+                    {
+                        "image_id": image_id,
+                        "receipt_id": receipt_id,
+                        "line_id": 1,
+                        "word_id": 1,
+                        "label": "MERCHANT_NAME",
+                        "validation_status": "NONE",
+                    }
+                ]
+    except Exception as e:
+        print(f"   Database error: {e}, using mock data")
+        sample_labels = [
+            {
+                "image_id": "TEST_001",
+                "receipt_id": 12345,
+                "line_id": 1,
+                "word_id": 1,
+                "label": "MERCHANT_NAME",
+                "validation_status": "NONE",
+            }
+        ]
+        image_id = "TEST_001"
+        receipt_id = 12345
 
     try:
         print("\n4. First validation (fetches context)...")
         result1 = await validator.validate_single(
-            "TEST_001", 12345, sample_labels, skip_database_update=True
+            image_id, receipt_id, sample_labels, skip_database_update=True
         )
 
         print(f"   Success: {result1['success']}")
         print(f"   LLM calls: {result1.get('llm_calls', 0)}")
         print(f"   Used cache: {result1.get('used_cache', False)}")
 
-        print("\n5. Second validation (uses cached context)...")
+        print("\n5. Second validation (uses cached context if enabled)...")
         result2 = await validator.validate_single(
-            "TEST_001", 12345, sample_labels, skip_database_update=True
+            image_id, receipt_id, sample_labels, skip_database_update=True
         )
 
         print(f"   Success: {result2['success']}")
         print(f"   LLM calls: {result2.get('llm_calls', 0)}")
-        print(f"   Used cache: {result2.get('used_cache', True)}")
+        print(f"   Used cache: {result2.get('used_cache', False)}")
+
+        # Show validation results
+        if result2.get("validation_results"):
+            print("\n   Validation Results:")
+            for r in result2["validation_results"]:
+                valid = "✅ VALID" if r.get("is_valid") else "❌ INVALID"
+                print(f"     {valid}")
+                if not r.get("is_valid") and r.get("correct_label"):
+                    print(f"     Suggested: {r['correct_label']}")
 
         print(f"\n6. Cache statistics:")
         stats = validator.get_cache_stats()

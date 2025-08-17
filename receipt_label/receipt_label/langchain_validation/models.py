@@ -13,58 +13,41 @@ from receipt_label.constants import CORE_LABELS
 class ValidationResult(BaseModel):
     """Single validation result for a receipt label"""
 
+    # Simple identifier - could be anything, just for tracking
     id: str = Field(
-        description="The exact ID from the target in format IMAGE#xxx#RECEIPT#xxxxx#LINE#xxxxx#WORD#xxxxx#LABEL#xxx"
+        description="Identifier for this validation (for tracking purposes)"
     )
     is_valid: bool = Field(
         description="Whether the proposed label is correct for this word"
     )
     correct_label: Optional[str] = Field(
         default=None,
-        description="The correct label if is_valid is false (must be from ALLOWED LABELS)",
+        description="The correct label if is_valid is false (must be from ALLOWED LABELS, or None if word shouldn't be labeled)",
     )
-    # Removed confidence and reasoning - keep it deterministic and simple
-
-    @field_validator("id")
-    @classmethod
-    def validate_id_format(cls, v: str) -> str:
-        """Ensure ID follows expected format"""
-        if not v or "#" not in v:
-            raise ValueError(f"ID must contain # separators, got: {v}")
-
-        # Check it has the expected parts
-        parts = v.split("#")
-        expected_keys = ["IMAGE", "RECEIPT", "LINE", "WORD", "LABEL"]
-
-        # Extract keys (every other element starting from 0)
-        keys = [parts[i] for i in range(0, len(parts), 2) if i < len(parts)]
-
-        if not all(k in keys for k in expected_keys):
-            raise ValueError(
-                f"ID must contain IMAGE, RECEIPT, LINE, WORD, and LABEL sections. Got: {v}"
-            )
-
-        return v
 
     @field_validator("correct_label")
     @classmethod
     def validate_correct_label(cls, v: Optional[str], info) -> Optional[str]:
-        """Ensure correct_label is only set when is_valid is False"""
+        """Validate the correct_label field"""
         if v is not None:
             # Check if is_valid is False (correct_label should only be set for invalid labels)
             is_valid = info.data.get("is_valid", True)
             if is_valid:
-                raise ValueError(
-                    "correct_label should only be set when is_valid is False"
-                )
+                # If valid, we don't need a correct_label
+                return None
 
-            # Use the actual CORE_LABELS from constants
-            if v.upper() not in CORE_LABELS:
-                raise ValueError(
-                    f"correct_label must be one of the CORE_LABELS. Got: {v}"
-                )
+            # Normalize to uppercase
+            v_upper = v.upper()
 
-            return v.upper()
+            # Check if it's a valid label (or explicitly None for "no label needed")
+            if v_upper in CORE_LABELS:
+                return v_upper
+            elif v_upper in ["NONE", "NULL", ""]:
+                # Word shouldn't be labeled
+                return None
+            else:
+                # Unknown label - default to None
+                return None
 
         return v
 

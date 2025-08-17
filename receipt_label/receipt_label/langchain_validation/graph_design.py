@@ -8,12 +8,9 @@ only handles LLM validation. This minimizes Ollama API calls.
 
 from typing import TypedDict, List, Optional, Any, Dict
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_core.output_parsers import PydanticOutputParser
-from langchain_core.prompts import PromptTemplate
 from langchain_ollama import ChatOllama
 from langgraph.graph import StateGraph, END
 
-# Removed json import - using structured output only
 import os
 
 from .models import ValidationResult, ValidationResponse
@@ -197,21 +194,64 @@ def prepare_validation_context(
     )
     lines = receipt_details.lines
     words = receipt_details.words
-    all_labels = []  # Labels would need separate query
+    all_labels = (
+        receipt_details.labels if hasattr(receipt_details, "labels") else []
+    )
 
-    metadata = receipt_details  # Use receipt details as metadata source
+    # Try to extract merchant name from labels
+    merchant_name = "Unknown"
+    merchant_words = []
+
+    # Collect all words labeled as MERCHANT_NAME or BUSINESS_NAME
+    for label in all_labels:
+        if label.label in ["MERCHANT_NAME", "BUSINESS_NAME"]:
+            for word in words:
+                if (
+                    word.line_id == label.line_id
+                    and word.word_id == label.word_id
+                ):
+                    merchant_words.append(word.text)
+                    break
+
+    # Combine merchant words intelligently
+    if merchant_words:
+        # Look for common patterns like "CVS" and "Pharmacy"
+        cvs_found = any("CVS" in w.upper() for w in merchant_words)
+        pharmacy_found = any("PHARMACY" in w.upper() for w in merchant_words)
+
+        if cvs_found and pharmacy_found:
+            merchant_name = "CVS Pharmacy"
+        elif cvs_found:
+            merchant_name = "CVS"
+        elif merchant_words:
+            # Use the first non-generic word, or combine related words
+            merchant_name = " ".join(set(merchant_words))
+
+    # If still unknown, look for merchant indicators in reasoning
+    if merchant_name == "Unknown":
+        for label in all_labels:
+            if hasattr(label, "reasoning") and label.reasoning:
+                if "CVS" in label.reasoning:
+                    merchant_name = "CVS"
+                    break
+                elif "Walmart" in label.reasoning:
+                    merchant_name = "Walmart"
+                    break
+                elif "Target" in label.reasoning:
+                    merchant_name = "Target"
+                    break
 
     # Convert to dicts
     receipt_lines = [line.__dict__ for line in lines]
     receipt_words = [word.__dict__ for word in words]
     receipt_metadata = {
-        "merchant_name": getattr(metadata, "merchant_name", "Unknown"),
+        "merchant_name": merchant_name,
         "image_id": image_id,
         "receipt_id": receipt_id,
     }
     all_labels_dict = [label.__dict__ for label in all_labels]
 
-    # Build validation targets with similarity context
+    # Build validation targets with similarity context and label history
     targets = []
     for label in labels_to_validate:
         # Find the word text
@@ -239,6 +279,28 @@ def prepare_validation_context(
                 word["text"], chromadb_id, n_results=3
             )
 
+            # Count invalid labels for this word
+            invalid_label_count = 0
+            previous_invalid_labels = []
+            for existing_label in all_labels:
+                if (
+                    existing_label.line_id == label["line_id"]
+                    and existing_label.word_id == label["word_id"]
+                ):
+                    if hasattr(existing_label, "validation_status"):
+                        if existing_label.validation_status in [
+                            "INVALID",
+                            "NEEDS_REVIEW",
+                        ]:
+                            invalid_label_count += 1
+                            if (
+                                existing_label.label
+                                not in previous_invalid_labels
+                            ):
+                                previous_invalid_labels.append(
+                                    existing_label.label
+                                )
+
             targets.append(
                 {
                     "id": f"IMAGE#{label['image_id']}#"
@@ -248,7 +310,9 @@ def prepare_validation_context(
                     f"LABEL#{label['label']}",
                     "text": word["text"],
                     "proposed_label": label["label"],
-                    "similar_words": similar_words,  # NEW: Add similarity context
+                    "similar_words": similar_words,
+                    "invalid_attempts": invalid_label_count,  # NEW: Track failed attempts
+                    "previous_invalid_labels": previous_invalid_labels,  # NEW: What labels failed before
                 }
             )
 
@@ -256,41 +320,62 @@ def prepare_validation_context(
     lines_obj = [ReceiptLine(**line) for line in receipt_lines]
     receipt_text = _format_receipt_lines(lines_obj)
 
-    # Format targets for display with similarity context
+    # Format targets for display with similarity context and history
     targets_text = "\n".join(
         [
             f"- ID: {target['id']}"
             f"\n  Text: '{target['text']}'"
             f"\n  Proposed Label: {target['proposed_label']}"
-            f"\n  Similar Words: {format_similar_examples(target['similar_words'])}"
+            + (
+                f"\n  Previous Invalid Attempts: {target['invalid_attempts']} "
+                f"({', '.join(target['previous_invalid_labels'])})"
+                if target["invalid_attempts"] > 0
+                else ""
+            )
+            + f"\n  Similar Words: {format_similar_examples(target['similar_words'])}"
             for target in targets
         ]
     )
 
-    # Create the validation prompt with similarity guidance
-    prompt = f"""You are validating receipt labels with similarity context to help your decisions.
+    # Format label definitions for the prompt
+    label_definitions = "\n".join(
+        [
+            f"- {label}: {definition}"
+            for label, definition in CORE_LABELS.items()
+        ]
+    )
+
+    # Create the validation prompt with similarity guidance and label definitions
+    prompt = f"""You are validating receipt labels. For each word, determine if the proposed label is correct based on the label definitions.
 
 MERCHANT: {receipt_metadata['merchant_name']}
 
-ALLOWED LABELS: {', '.join(CORE_LABELS.keys())}
+LABEL DEFINITIONS:
+{label_definitions}
 
-TARGETS TO VALIDATE:
+WORDS TO VALIDATE:
 {targets_text}
 
 RECEIPT TEXT:
 {receipt_text}
 
-VALIDATION GUIDANCE:
-- Use the "Similar Words" to understand how comparable words are labeled across different receipts
-- If similar words consistently use a certain label, consider that as supporting evidence
-- Pay attention to merchant context - words may be labeled differently across merchants
-- The similarity score shows how semantically related the words are (higher = more similar)
+VALIDATION RULES:
+- Use the label definitions above to determine if a word matches its proposed label
+- Consider the context of the word within the receipt
+- Use similar words (if provided) as guidance but not as strict rules
+- Some words may not need any label (e.g., punctuation, separators)
+- IMPORTANT: If a word has 5+ previous invalid label attempts, it likely doesn't fit any CORE_LABELS category and shouldn't be labeled
+- Words that are generic/noise (like single punctuation, random characters) shouldn't be labeled
 
-TASK: For each target, determine if the proposed_label is correct using both the receipt context and similarity patterns.
-Return the results in the structured format. Each result must have:
-- "id": the exact id from the target
-- "is_valid": true if the label is correct, false otherwise
-- "correct_label": (only if is_valid is false) the correct label from ALLOWED LABELS"""
+For each word, return one of these responses:
+1. Label is CORRECT: {{"id": "<id>", "is_valid": true}}
+2. Label is WRONG, here's the correct one: {{"id": "<id>", "is_valid": false, "correct_label": "<CORRECT_LABEL>"}}
+3. Word shouldn't be labeled: {{"id": "<id>", "is_valid": false}}
+
+Return ONLY a JSON array with your responses:
+[
+  {{"id": "...", "is_valid": true/false, "correct_label": "..."}}
+]"""
 
     return {
         "image_id": image_id,
@@ -329,25 +414,119 @@ class MinimalValidationState(TypedDict):
 
 
 # ============================================================================
+# Response Parsing Utilities
+# ============================================================================
+
+
+def parse_llm_response(
+    content: str, targets: List[dict]
+) -> Optional[ValidationResponse]:
+    """
+    Parse LLM response and convert to Pydantic models.
+
+    The LLM returns JSON, but we use Pydantic for validation and type safety.
+    This function bridges the gap between raw LLM output and our structured models.
+
+    Args:
+        content: Raw response content from LLM (JSON string)
+        targets: The validation targets we sent (for context)
+
+    Returns:
+        ValidationResponse object with validated data, or None if parsing fails
+    """
+    import json
+    import re
+    from pydantic import ValidationError
+
+    try:
+        # Clean up the content to extract JSON
+        content = content.strip()
+
+        # Remove markdown code blocks if present
+        if "```" in content:
+            content = re.sub(r"```(?:json)?\s*", "", content)
+
+        # Extract JSON from the content
+        json_match = re.search(r"[\[{].*[\]}]", content, re.DOTALL)
+        if json_match:
+            json_str = json_match.group()
+        else:
+            json_str = content
+
+        # Parse JSON to Python objects
+        data = json.loads(json_str)
+
+        # Convert to list of result dictionaries
+        if isinstance(data, list):
+            results_data = data
+        elif isinstance(data, dict):
+            if "results" in data:
+                results_data = data["results"]
+            elif "id" in data:  # Single result
+                results_data = [data]
+            else:
+                return None
+        else:
+            return None
+
+        # Use Pydantic to validate and create model instances
+        validated_results = []
+        for result_data in results_data:
+            try:
+                # Clean up the data before validation
+                # Remove null correct_label if present
+                if (
+                    "correct_label" in result_data
+                    and result_data["correct_label"] is None
+                ):
+                    del result_data["correct_label"]
+
+                # Pydantic will validate the data according to our model
+                result = ValidationResult(**result_data)
+                validated_results.append(result)
+            except ValidationError as e:
+                # Skip invalid results but log the error
+                print(f"Skipping invalid result: {e}")
+                continue
+
+        if not validated_results:
+            return None
+
+        # Create the ValidationResponse using Pydantic
+        return ValidationResponse(results=validated_results)
+
+    except (json.JSONDecodeError, ValidationError) as e:
+        # Parsing or validation failed
+        return None
+    except Exception:
+        # Unexpected error
+        return None
+
+
+# ============================================================================
 # LLM Configuration
 # ============================================================================
 
 
 def get_ollama_llm() -> ChatOllama:
     """Get configured Ollama instance for structured output"""
-    base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    base_url = os.getenv("OLLAMA_BASE_URL", "https://ollama.com")
     api_key = os.getenv("OLLAMA_API_KEY")
-    model = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
+    model = os.getenv("OLLAMA_MODEL", "gpt-oss:120b")
+
+    # Configure headers for Ollama Turbo API authentication
+    headers = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
 
     llm = ChatOllama(
         model=model,
         base_url=base_url,
         temperature=0,
+        # Configure client kwargs for authentication headers
+        client_kwargs={"headers": headers} if headers else {},
         # No format="json" - using structured output only
     )
-
-    if api_key:
-        llm.auth = {"api_key": api_key}
 
     return llm
 
@@ -361,60 +540,69 @@ async def validate_with_ollama(
     state: MinimalValidationState,
 ) -> MinimalValidationState:
     """
-    Node 1: Call Ollama to validate using structured output ONLY
-    This is the ONLY node that uses the LLM
+    Node 1: Call Ollama to validate labels.
+
+    This is the ONLY node that uses the LLM. It sends the prompt and
+    converts the JSON response to Pydantic models for type safety.
     """
     try:
         llm = get_ollama_llm()
 
-        # Attempt 1: Try with_structured_output (cleanest approach)
+        # Try with_structured_output if available (future-proofing)
+        # But catch parsing errors too since models may not return the expected format
         try:
             structured_llm = llm.with_structured_output(ValidationResponse)
             response = await structured_llm.ainvoke(state["formatted_prompt"])
 
-            # Response is already a ValidationResponse object
+            # Response is already a ValidationResponse Pydantic object
             state["validation_response"] = response
-            state["validation_results"] = [r.dict() for r in response.results]
+            state["validation_results"] = [
+                r.model_dump() for r in response.results
+            ]
             state["completed"] = True
             return state
 
-        except (AttributeError, NotImplementedError):
-            # Model doesn't support with_structured_output, try parser approach
+        except Exception:
+            # Either model doesn't support with_structured_output,
+            # or it does but returns incompatible format
+            # Fall through to manual parsing
             pass
 
-        # Attempt 2: Try with output parser
-        parser = PydanticOutputParser(pydantic_object=ValidationResponse)
+        # Direct invocation - the prompt asks for JSON, we parse to Pydantic
+        try:
+            response = await llm.ainvoke(state["formatted_prompt"])
+        except Exception as llm_error:
+            # Log the actual LLM error
+            state["error"] = f"LLM invocation failed: {str(llm_error)}"
+            state["validation_results"] = []
+            state["completed"] = False
+            return state
 
-        # Create prompt with format instructions
-        prompt_template = PromptTemplate(
-            template="{system_message}\n\n{query}\n\n{format_instructions}",
-            input_variables=["system_message", "query"],
-            partial_variables={
-                "format_instructions": parser.get_format_instructions()
-            },
+        # Convert JSON response to Pydantic models
+        validation_response = parse_llm_response(
+            response.content, state["validation_targets"]
         )
 
-        formatted = prompt_template.format(
-            system_message="You are a receipt validation assistant. Analyze the receipt labels and respond with the required structure.",
-            query=state["formatted_prompt"],
-        )
+        if validation_response:
+            # Store the Pydantic model
+            state["validation_response"] = validation_response
+            # Convert to dicts for compatibility
+            state["validation_results"] = [
+                r.model_dump() for r in validation_response.results
+            ]
+            state["completed"] = True
+        else:
+            state["error"] = f"Failed to parse response to Pydantic models"
+            state["validation_results"] = []
+            state["completed"] = False
 
-        response = await llm.ainvoke(formatted)
-        parsed_response = parser.parse(response.content)
-
-        state["validation_response"] = parsed_response
-        state["validation_results"] = [
-            r.dict() for r in parsed_response.results
-        ]
-        state["completed"] = True
         return state
 
     except Exception as e:
-        state["error"] = f"Structured validation failed: {e}"
+        state["error"] = f"Validation failed: {str(e)}"
         state["validation_results"] = []
         state["completed"] = False
-
-    return state
+        return state
 
 
 async def process_results(
