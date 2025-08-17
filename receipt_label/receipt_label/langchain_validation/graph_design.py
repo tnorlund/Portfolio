@@ -12,7 +12,7 @@ from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_ollama import ChatOllama
 from langgraph.graph import StateGraph, END
-import json
+# Removed json import - using structured output only
 import os
 
 from .models import ValidationResult, ValidationResponse
@@ -86,6 +86,14 @@ def prepare_validation_context(
     lines_obj = [ReceiptLine(**line) for line in receipt_lines]
     receipt_text = _format_receipt_lines(lines_obj)
 
+    # Format targets for display
+    targets_text = "\n".join([
+        f"- ID: {target['id']}"
+        f"\n  Text: '{target['text']}'"
+        f"\n  Proposed Label: {target['proposed_label']}"
+        for target in targets
+    ])
+    
     # Create the validation prompt
     prompt = f"""You are validating receipt labels. 
 
@@ -94,22 +102,16 @@ MERCHANT: {receipt_metadata['merchant_name']}
 ALLOWED LABELS: {', '.join(CORE_LABELS.keys())}
 
 TARGETS TO VALIDATE:
-{json.dumps(targets, indent=2)}
+{targets_text}
 
 RECEIPT TEXT:
 {receipt_text}
 
 TASK: For each target, determine if the proposed_label is correct.
-Return a JSON object with a "results" array. Each result must have:
+Return the results in the structured format. Each result must have:
 - "id": the exact id from the target
 - "is_valid": true if the label is correct, false otherwise
-- "correct_label": (only if is_valid is false) the correct label from ALLOWED LABELS
-
-Example response:
-{{"results": [
-    {{"id": "IMAGE#abc#RECEIPT#00001#...", "is_valid": true}},
-    {{"id": "IMAGE#xyz#RECEIPT#00002#...", "is_valid": false, "correct_label": "TOTAL"}}
-]}}"""
+- "correct_label": (only if is_valid is false) the correct label from ALLOWED LABELS"""
 
     return {
         "image_id": image_id,
@@ -152,28 +154,18 @@ class MinimalValidationState(TypedDict):
 # ============================================================================
 
 
-def get_ollama_llm(use_json_format: bool = False) -> ChatOllama:
-    """Get configured Ollama instance
-    
-    Args:
-        use_json_format: If True, use JSON format (fallback mode).
-                        If False, allow structured output.
-    """
+def get_ollama_llm() -> ChatOllama:
+    """Get configured Ollama instance for structured output"""
     base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     api_key = os.getenv("OLLAMA_API_KEY")
     model = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
 
-    kwargs = {
-        "model": model,
-        "base_url": base_url,
-        "temperature": 0,
-    }
-    
-    # Only add format="json" in fallback mode
-    if use_json_format:
-        kwargs["format"] = "json"
-    
-    llm = ChatOllama(**kwargs)
+    llm = ChatOllama(
+        model=model,
+        base_url=base_url,
+        temperature=0,
+        # No format="json" - using structured output only
+    )
 
     if api_key:
         llm.auth = {"api_key": api_key}
@@ -190,12 +182,11 @@ async def validate_with_ollama(
     state: MinimalValidationState,
 ) -> MinimalValidationState:
     """
-    Node 1: Call Ollama to validate using structured output
+    Node 1: Call Ollama to validate using structured output ONLY
     This is the ONLY node that uses the LLM
     """
     try:
-        # Try structured output first
-        llm = get_ollama_llm(use_json_format=False)
+        llm = get_ollama_llm()
         
         # Attempt 1: Try with_structured_output (cleanest approach)
         try:
@@ -213,69 +204,30 @@ async def validate_with_ollama(
             pass
         
         # Attempt 2: Try with output parser
-        try:
-            parser = PydanticOutputParser(pydantic_object=ValidationResponse)
-            
-            # Create prompt with format instructions
-            prompt_template = PromptTemplate(
-                template="{system_message}\n\n{query}\n\n{format_instructions}",
-                input_variables=["system_message", "query"],
-                partial_variables={"format_instructions": parser.get_format_instructions()}
-            )
-            
-            formatted = prompt_template.format(
-                system_message="You are a receipt validation assistant. Analyze the receipt labels and respond with structured JSON.",
-                query=state["formatted_prompt"]
-            )
-            
-            response = await llm.ainvoke(formatted)
-            parsed_response = parser.parse(response.content)
-            
-            state["validation_response"] = parsed_response
-            state["validation_results"] = [r.dict() for r in parsed_response.results]
-            state["completed"] = True
-            return state
-            
-        except Exception as parser_error:
-            # Parser failed, fall back to JSON mode
-            print(f"Structured output failed, falling back to JSON: {parser_error}")
+        parser = PydanticOutputParser(pydantic_object=ValidationResponse)
         
-        # Attempt 3: Fallback to JSON mode (original approach)
-        llm = get_ollama_llm(use_json_format=True)
-        messages = [
-            SystemMessage(
-                content="You are a receipt validation assistant. Always respond with valid JSON."
-            ),
-            HumanMessage(content=state["formatted_prompt"]),
-        ]
+        # Create prompt with format instructions
+        prompt_template = PromptTemplate(
+            template="{system_message}\n\n{query}\n\n{format_instructions}",
+            input_variables=["system_message", "query"],
+            partial_variables={"format_instructions": parser.get_format_instructions()}
+        )
         
-        response = await llm.ainvoke(messages)
+        formatted = prompt_template.format(
+            system_message="You are a receipt validation assistant. Analyze the receipt labels and respond with the required structure.",
+            query=state["formatted_prompt"]
+        )
         
-        try:
-            result = json.loads(response.content)
-            # Try to create ValidationResponse from JSON for consistency
-            try:
-                validation_response = ValidationResponse(
-                    results=[
-                        ValidationResult(**r) for r in result.get("results", [])
-                    ]
-                )
-                state["validation_response"] = validation_response
-                state["validation_results"] = [r.dict() for r in validation_response.results]
-            except Exception:
-                # Can't create structured response, use raw results
-                state["validation_results"] = result.get("results", [])
-                state["validation_response"] = None
+        response = await llm.ainvoke(formatted)
+        parsed_response = parser.parse(response.content)
+        
+        state["validation_response"] = parsed_response
+        state["validation_results"] = [r.dict() for r in parsed_response.results]
+        state["completed"] = True
+        return state
             
-            state["completed"] = True
-            
-        except json.JSONDecodeError as e:
-            state["error"] = f"Failed to parse JSON response: {e}"
-            state["validation_results"] = []
-            state["completed"] = False
-
     except Exception as e:
-        state["error"] = f"LLM call failed: {e}"
+        state["error"] = f"Structured validation failed: {e}"
         state["validation_results"] = []
         state["completed"] = False
 
