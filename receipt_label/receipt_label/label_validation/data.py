@@ -98,18 +98,18 @@ def _update_pinecone_metadata(
     """Update ChromaDB vector metadata with validation results."""
     all_chroma_ids = set(valid_by_id.keys()) | set(invalid_by_id.keys())
     vectors_by_id = {}
-    
+
     # Get vectors from ChromaDB
     results = client_manager.chroma.get_by_ids(
-        "words",
-        list(all_chroma_ids),
-        include=["metadatas"]
+        "words", list(all_chroma_ids), include=["metadatas"]
     )
-    
+
     # Process each vector
-    if results and 'ids' in results:
-        for i, chroma_id in enumerate(results['ids']):
-            metadata = results['metadatas'][i] if 'metadatas' in results else {}
+    if results and "ids" in results:
+        for i, chroma_id in enumerate(results["ids"]):
+            metadata = (
+                results["metadatas"][i] if "metadatas" in results else {}
+            )
             valid_labels = set(metadata.get("valid_labels", []))
             invalid_labels = set(metadata.get("invalid_labels", []))
 
@@ -133,10 +133,7 @@ def _update_pinecone_metadata(
     # Update metadata for each vector in ChromaDB
     collection = client_manager.chroma.get_collection("words")
     for chroma_id, metadata in vectors_by_id.items():
-        collection.update(
-            ids=[chroma_id],
-            metadatas=[metadata]
-        )
+        collection.update(ids=[chroma_id], metadatas=[metadata])
 
 
 def _update_dynamodb_labels(

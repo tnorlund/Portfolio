@@ -51,7 +51,7 @@ def _parse_left_right_from_formatted(fmt: str) -> tuple[str, str]:
 
 def _parse_metadata_from_custom_id(custom_id: str) -> dict:
     parts = custom_id.split("#")
-    
+
     # Validate we have the expected format for word embeddings
     if len(parts) < 8:
         raise ValueError(
@@ -59,13 +59,13 @@ def _parse_metadata_from_custom_id(custom_id: str) -> dict:
             f"Expected format: IMAGE#<id>#RECEIPT#<id>#LINE#<id>#WORD#<id>, "
             f"but got {len(parts)} parts"
         )
-    
+
     # Additional validation: check for WORD component
     if "WORD" not in parts:
         raise ValueError(
             f"Custom ID appears to be for line embedding, not word embedding: {custom_id}"
         )
-    
+
     return {
         "image_id": parts[1],
         "receipt_id": int(parts[3]),
@@ -222,8 +222,6 @@ def _get_unique_receipt_and_image_ids(
     )
 
 
-
-
 def write_embedding_results_to_dynamo(
     results: List[dict],
     descriptions: dict[str, dict[int, dict]],
@@ -313,10 +311,10 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
 ) -> dict:
     """
     Save word embedding results as a delta file to S3 for ChromaDB compaction.
-    
+
     This replaces the direct Pinecone upsert with a delta file that will be
     processed later by the compaction job.
-    
+
     Args:
         results (List[dict]): The list of embedding results, each containing:
             - custom_id (str)
@@ -328,7 +326,7 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
         sqs_queue_url (Optional[str]): SQS queue URL for compaction notification.
             If None, skips SQS notification.
         client_manager (ClientManager, optional): Client manager for AWS services.
-            
+
     Returns:
         dict: Delta creation result with keys:
             - delta_id: Unique identifier for the delta
@@ -340,7 +338,7 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
     embeddings = []
     metadatas = []
     documents = []
-    
+
     for result in results:
         # parse our metadata fields
         _meta = _parse_metadata_from_custom_id(result["custom_id"])
@@ -349,13 +347,13 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
         line_id = _meta["line_id"]
         word_id = _meta["word_id"]
         source = "openai_embedding_batch"
-        
+
         # From the descriptions, get the receipt details for this result
         receipt_details = descriptions[image_id][receipt_id]
         words = receipt_details["words"]
         labels = receipt_details["labels"]
         metadata = receipt_details["metadata"]
-        
+
         # Get the target word from the list of words
         target_word = next(
             (
@@ -371,7 +369,7 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
                 f"receipt_id={receipt_id}, line_id={line_id}, "
                 f"word_id={word_id}"
             )
-        
+
         # label_status — overall state for this word
         if any(
             lbl.validation_status == ValidationStatus.VALID.value
@@ -385,36 +383,38 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
             label_status = "auto_suggested"
         else:
             label_status = "unvalidated"
-            
+
         auto_suggestions = [
             lbl
             for lbl in labels
             if lbl.validation_status == ValidationStatus.PENDING.value
         ]
-        
+
         # label_confidence & label_proposed_by
         if auto_suggestions:
-            last = sorted(auto_suggestions, key=lambda l: l.timestamp_added)[-1]
+            last = sorted(auto_suggestions, key=lambda l: l.timestamp_added)[
+                -1
+            ]
             label_confidence = getattr(last, "confidence", None)
             label_proposed_by = last.label_proposed_by
         else:
             label_confidence = None
             label_proposed_by = None
-            
+
         # validated_labels — all labels with status VALID
         validated_labels = [
             lbl.label
             for lbl in labels
             if lbl.validation_status == ValidationStatus.VALID.value
         ]
-        
+
         # invalid_labels — all labels with status INVALID
         invalid_labels = [
             lbl.label
             for lbl in labels
             if lbl.validation_status == ValidationStatus.INVALID.value
         ]
-        
+
         # label_validated_at — timestamp of the most recent VALID
         valids = [
             lbl
@@ -426,7 +426,7 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
             if valids
             else None
         )
-        
+
         # Get word details and context
         text = target_word.text
         _word_centroid = target_word.calculate_centroid()
@@ -434,15 +434,15 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
         width = target_word.bounding_box["width"]
         height = target_word.bounding_box["height"]
         confidence = target_word.confidence
-        
+
         # Import locally to avoid circular import
         from receipt_label.embedding.word.submit import (  # pylint: disable=import-outside-toplevel
             _format_word_context_embedding_input,
         )
-        
+
         _embedding = _format_word_context_embedding_input(target_word, words)
         left_text, right_text = _parse_left_right_from_formatted(_embedding)
-        
+
         # Priority: canonical name > regular merchant name
         if (
             hasattr(metadata, "canonical_merchant_name")
@@ -451,11 +451,11 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
             merchant_name = metadata.canonical_merchant_name
         else:
             merchant_name = metadata.merchant_name
-            
+
         # Standardize the merchant name format
         if merchant_name:
             merchant_name = merchant_name.strip().title()
-            
+
         # Build metadata for ChromaDB
         word_metadata = {
             "image_id": image_id,
@@ -474,36 +474,38 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
             "merchant_name": merchant_name,
             "label_status": label_status,
         }
-        
+
         # Add optional fields
         if label_confidence is not None:
             word_metadata["label_confidence"] = label_confidence
         if label_proposed_by is not None:
             word_metadata["label_proposed_by"] = label_proposed_by
-        
+
         # Store validated labels with delimiters for exact matching
         if validated_labels:
             # Use comma delimiters to enable exact matching with $contains
-            word_metadata["validated_labels"] = f",{','.join(validated_labels)},"
+            word_metadata["validated_labels"] = (
+                f",{','.join(validated_labels)},"
+            )
         else:
             word_metadata["validated_labels"] = ""
-            
+
         # Store invalid labels with delimiters for exact matching
         if invalid_labels:
             # Use comma delimiters to enable exact matching with $contains
             word_metadata["invalid_labels"] = f",{','.join(invalid_labels)},"
         else:
             word_metadata["invalid_labels"] = ""
-            
+
         if label_validated_at is not None:
             word_metadata["label_validated_at"] = label_validated_at
-            
+
         # Add to delta arrays
         ids.append(result["custom_id"])
         embeddings.append(result["embedding"])
         metadatas.append(word_metadata)
         documents.append(text)
-    
+
     # Produce the delta file
     delta_result = produce_embedding_delta(
         ids=ids,
@@ -516,5 +518,5 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
         sqs_queue_url=sqs_queue_url,
         batch_id=batch_id,
     )
-    
+
     return delta_result

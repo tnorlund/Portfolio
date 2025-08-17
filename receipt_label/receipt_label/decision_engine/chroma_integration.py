@@ -104,11 +104,11 @@ class ChromaDecisionHelper:
             # Create ChromaDB filter
             # Only look at receipts from last 90 days for relevance
             cutoff_date = (datetime.now() - timedelta(days=90)).isoformat()
-            
+
             where_filter = {
                 "$and": [
                     {"merchant_name": {"$eq": normalized_merchant}},
-                    {"timestamp": {"$gte": cutoff_date}}
+                    {"timestamp": {"$gte": cutoff_date}},
                 ]
             }
 
@@ -116,7 +116,7 @@ class ChromaDecisionHelper:
             query_response = await self._execute_chroma_query(
                 where=where_filter,
                 n_results=100,  # Get up to 100 recent receipts
-                include=["metadatas", "documents"]
+                include=["metadatas", "documents"],
             )
 
             if not query_response or not query_response.get("metadatas"):
@@ -146,14 +146,14 @@ class ChromaDecisionHelper:
         try:
             # For metadata-only filtering, we can use get() with where clause
             collection = self.client.get_collection("words")
-            
+
             # ChromaDB doesn't support metadata-only queries without vectors
             # So we'll use a semantic search with the merchant name
             response = collection.query(
                 query_texts=[where["$and"][0]["merchant_name"]["$eq"]],
                 where=where,
                 n_results=n_results,
-                include=include or ["metadatas", "documents", "distances"]
+                include=include or ["metadatas", "documents", "distances"],
             )
 
             return response
@@ -172,7 +172,7 @@ class ChromaDecisionHelper:
         for metadata in metadatas:
             if metadata and "receipt_id" in metadata:
                 receipt_ids.add(metadata["receipt_id"])
-        
+
         total_receipts = len(receipt_ids)
 
         # Count valid vs invalid labels
@@ -297,11 +297,11 @@ class ChromaDecisionHelper:
         try:
             # Query for similar values of this label type for this merchant
             normalized_merchant = self._normalize_merchant_name(merchant_name)
-            
+
             where_filter = {
                 "$and": [
                     {"merchant_name": {"$eq": normalized_merchant}},
-                    {"valid_labels": {"$contains": label_type}}
+                    {"valid_labels": {"$contains": label_type}},
                 ]
             }
 
@@ -309,7 +309,7 @@ class ChromaDecisionHelper:
             response = await self._execute_chroma_query(
                 where=where_filter,
                 n_results=20,  # Get top 20 similar instances
-                include=["metadatas"]
+                include=["metadatas"],
             )
 
             if not response or not response.get("metadatas"):
@@ -319,9 +319,7 @@ class ChromaDecisionHelper:
             # This is a simplified implementation - Phase 2 can enhance with
             # semantic similarity using actual embeddings
             matches_found = len(response["metadatas"][0])
-            confidence_boost = min(
-                0.3, matches_found / 20.0
-            )  # Max 30% boost
+            confidence_boost = min(0.3, matches_found / 20.0)  # Max 30% boost
 
             logger.debug(
                 f"Pattern validation for {label_type}='{detected_value}' "
