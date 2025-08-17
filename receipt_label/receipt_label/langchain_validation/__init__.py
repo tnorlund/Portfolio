@@ -13,13 +13,12 @@ from .graph_design import (
 from .implementation import (
     ReceiptValidator,
     validate_receipt_labels_v2,
-    ProcessingMode
+    ValidationConfig as ConfigFromImplementation
 )
 
 from .config import (
     ValidationConfig,
-    OllamaConfig,
-    OpenAIConfig
+    OllamaConfig
 )
 
 __all__ = [
@@ -33,10 +32,8 @@ __all__ = [
     # Implementation
     "ReceiptValidator",
     "validate_receipt_labels_v2",
-    "ProcessingMode",
     
     # Configuration
     "ValidationConfig",
-    "OllamaConfig", 
-    "OpenAIConfig"
+    "OllamaConfig"
 ]

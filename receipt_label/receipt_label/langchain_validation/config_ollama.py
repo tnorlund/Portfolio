@@ -227,17 +227,3 @@ class ValidationConfig:
 def get_ollama_config() -> ValidationConfig:
     """Get validation configuration from environment"""
     return ValidationConfig.from_env()
-
-
-# For backward compatibility with old imports
-def get_config() -> ValidationConfig:
-    """Get validated configuration instance"""
-    config = ValidationConfig.from_env()
-    
-    # Validate configuration
-    errors = config.validate()
-    if errors:
-        error_msg = "\n".join([f"  - {error}" for error in errors])
-        raise ValueError(f"Configuration validation failed:\n{error_msg}")
-    
-    return config

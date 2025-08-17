@@ -209,30 +209,81 @@ async def format_validation_prompt(state: ValidationState) -> ValidationState:
 async def call_llm_with_tools(state: ValidationState) -> ValidationState:
     """
     Node 4: Call LLM with tool calling capability
-    Replaces OpenAI batch API call
+    Uses Ollama (local or Turbo) instead of OpenAI
     """
-    from langchain_openai import ChatOpenAI
-    from langchain_core.messages import HumanMessage, AIMessage
+    import os
+    import httpx
+    import json
+    from langchain_core.messages import HumanMessage
     
-    # Initialize LLM with tools
-    llm = ChatOpenAI(
-        model="gpt-4o-mini",
-        temperature=0
-    ).bind_tools([ValidateLabelsInput])
+    # Get Ollama configuration from environment
+    base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    api_key = os.getenv("OLLAMA_API_KEY")  # For Ollama Turbo
+    model = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
+    
+    # Format prompt for Ollama (without tool calling for simplicity)
+    prompt = state["formatted_prompt"] + """
+    
+    Respond with a JSON object containing a "results" array.
+    Each result should have:
+    - "id": the original label identifier
+    - "is_valid": true or false
+    - "correct_label": (only if invalid) the correct label from the allowed list
+    
+    Example response:
+    {"results": [
+        {"id": "IMAGE#...", "is_valid": true},
+        {"id": "IMAGE#...", "is_valid": false, "correct_label": "UNIT_PRICE"}
+    ]}
+    """
     
     # Create message
-    message = HumanMessage(content=state["formatted_prompt"])
+    message = HumanMessage(content=prompt)
     state["messages"] = [message]
     
-    # Get response with tool call
-    response = await llm.ainvoke([message])
-    state["messages"].append(response)
-    
-    # Extract tool calls
-    if response.tool_calls:
-        tool_call = response.tool_calls[0]
-        if tool_call["name"] == "ValidateLabelsInput":
-            state["validation_results"] = tool_call["args"]["results"]
+    # Call Ollama API directly
+    async with httpx.AsyncClient() as client:
+        headers = {}
+        if api_key:  # Add auth header for Ollama Turbo
+            headers["Authorization"] = f"Bearer {api_key}"
+        
+        response = await client.post(
+            f"{base_url}/api/generate",
+            headers=headers,
+            json={
+                "model": model,
+                "prompt": prompt,
+                "stream": False,
+                "format": "json",  # Request JSON response
+                "options": {
+                    "temperature": 0
+                }
+            },
+            timeout=60.0
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            response_text = result.get("response", "")
+            
+            # Parse JSON response
+            try:
+                parsed = json.loads(response_text)
+                state["validation_results"] = parsed.get("results", [])
+            except json.JSONDecodeError:
+                # Fallback: try to extract JSON from the response
+                import re
+                json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+                if json_match:
+                    try:
+                        parsed = json.loads(json_match.group())
+                        state["validation_results"] = parsed.get("results", [])
+                    except:
+                        state["validation_results"] = []
+                        state["error"] = f"Failed to parse response: {response_text[:200]}"
+        else:
+            state["error"] = f"Ollama API error: {response.status_code}"
+            state["validation_results"] = []
     
     return state
 
@@ -346,8 +397,18 @@ async def validate_receipt_labels(
     labels: List[dict]
 ) -> dict:
     """
-    Main entry point for real-time validation
+    Main entry point for real-time validation using Ollama
     """
+    import os
+    
+    # Check if Ollama is configured
+    if not os.getenv("OLLAMA_BASE_URL"):
+        return {
+            "success": False,
+            "error": "OLLAMA_BASE_URL not configured. Set it to use Ollama or Ollama Turbo.",
+            "validation_results": []
+        }
+    
     # Create graph
     app = create_validation_graph()
     

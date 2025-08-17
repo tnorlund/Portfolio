@@ -3,8 +3,8 @@ LangChain Receipt Validation Implementation
 ==========================================
 
 This module provides a practical implementation of the LangChain validation system
-for receipt processing. It demonstrates how to use the designed graph with both
-OpenAI and Ollama models, with proper environment configuration.
+for receipt processing. It demonstrates how to use the designed graph with
+Ollama models (local or Turbo), with proper environment configuration.
 
 Usage:
     # Real-time validation
@@ -23,7 +23,6 @@ from typing import List, Dict, Optional, Union, Any
 from dataclasses import dataclass
 from enum import Enum
 
-from langchain_openai import ChatOpenAI
 from langchain_ollama import ChatOllama
 from langchain_core.language_models.base import BaseLanguageModel
 from langsmith import Client
@@ -37,15 +36,14 @@ from .graph_design import (
 
 class LLMProvider(Enum):
     """Supported LLM providers"""
-    OPENAI = "openai"
     OLLAMA = "ollama"
 
 
 @dataclass
 class ValidationConfig:
     """Configuration for receipt validation"""
-    llm_provider: LLMProvider = LLMProvider.OPENAI
-    model_name: str = "gpt-4o-mini"
+    llm_provider: LLMProvider = LLMProvider.OLLAMA
+    model_name: str = "llama3.1:8b"
     temperature: float = 0.0
     max_tokens: Optional[int] = None
     timeout: int = 30
@@ -65,13 +63,10 @@ class ValidationConfig:
     @classmethod
     def from_env(cls) -> "ValidationConfig":
         """Load configuration from environment variables"""
-        provider = LLMProvider(os.getenv("LLM_PROVIDER", "openai"))
+        provider = LLMProvider.OLLAMA  # Only Ollama supported
         
-        # Model selection based on provider
-        if provider == LLMProvider.OPENAI:
-            model_name = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-        else:
-            model_name = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
+        # Model selection for Ollama
+        model_name = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
         
         return cls(
             llm_provider=provider,
@@ -103,19 +98,7 @@ class LLMFactory:
         if config.max_tokens:
             base_kwargs["max_tokens"] = config.max_tokens
         
-        if config.llm_provider == LLMProvider.OPENAI:
-            # Ensure OpenAI API key is available
-            api_key = os.getenv("OPENAI_API_KEY")
-            if not api_key:
-                raise ValueError("OPENAI_API_KEY environment variable is required for OpenAI provider")
-            
-            return ChatOpenAI(
-                model=config.model_name,
-                api_key=api_key,
-                **base_kwargs
-            )
-        
-        elif config.llm_provider == LLMProvider.OLLAMA:
+        if config.llm_provider == LLMProvider.OLLAMA:
             return ChatOllama(
                 model=config.model_name,
                 base_url=config.ollama_base_url,
@@ -380,14 +363,9 @@ class ReceiptValidator:
     
     def _estimate_cost(self, tokens: int) -> float:
         """Estimate cost based on token usage and provider"""
-        if self.config.llm_provider == LLMProvider.OPENAI:
-            # GPT-4o-mini pricing (as of 2024)
-            input_cost_per_1k = 0.00015  # $0.15 per 1M tokens
-            output_cost_per_1k = 0.0006  # $0.60 per 1M tokens
-            return (tokens * (input_cost_per_1k + output_cost_per_1k)) / 1000
-        else:
-            # Ollama is typically free for local usage
-            return 0.0
+        # Ollama is typically free for local usage
+        # Ollama Turbo may have costs but they are not per-token based
+        return 0.0
     
     def get_metrics_summary(self) -> Dict[str, Any]:
         """Get comprehensive metrics summary"""
@@ -411,7 +389,7 @@ async def validate_receipt_labels_v2(
     image_id: str,
     receipt_id: int,
     labels: List[Dict[str, Any]],
-    llm_provider: str = "openai",
+    llm_provider: str = "ollama",
     model_name: Optional[str] = None
 ) -> Dict[str, Any]:
     """
@@ -421,14 +399,14 @@ async def validate_receipt_labels_v2(
         image_id: Receipt image identifier
         receipt_id: Receipt ID in database  
         labels: List of labels to validate
-        llm_provider: "openai" or "ollama"
+        llm_provider: Always "ollama" (only supported provider)
         model_name: Optional model override
         
     Returns:
         Validation results
     """
     config = ValidationConfig.from_env()
-    config.llm_provider = LLMProvider(llm_provider)
+    config.llm_provider = LLMProvider.OLLAMA  # Only Ollama supported
     
     if model_name:
         config.model_name = model_name
@@ -462,20 +440,7 @@ if __name__ == "__main__":
             }
         ]
         
-        # Test with OpenAI
-        print("Testing with OpenAI...")
-        try:
-            openai_result = await validate_receipt_labels_v2(
-                "IMG_001",
-                12345,
-                sample_labels,
-                llm_provider="openai"
-            )
-            print(f"OpenAI Result: {json.dumps(openai_result, indent=2)}")
-        except Exception as e:
-            print(f"OpenAI Error: {e}")
-        
-        # Test with Ollama (if available)
+        # Test with Ollama
         print("\nTesting with Ollama...")
         try:
             ollama_result = await validate_receipt_labels_v2(
