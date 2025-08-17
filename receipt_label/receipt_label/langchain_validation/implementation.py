@@ -2,14 +2,16 @@
 LangChain Receipt Validation Implementation
 ==========================================
 
-This module provides a practical implementation of the LangChain validation system
-for receipt processing. It demonstrates how to use the designed graph with
+This module provides a practical implementation of the LangChain
+validation system for receipt processing. It demonstrates how to use
 Ollama models (local or Turbo), with proper environment configuration.
 
 Usage:
     # Real-time validation
     validator = ReceiptValidator()
-    result = await validator.validate_receipt_labels(image_id, receipt_id, labels)
+    result = await validator.validate_receipt_labels(
+        image_id, receipt_id, labels
+    )
 
     # Batch validation with cost optimization
     results = await validator.validate_batch(receipt_list)
@@ -19,7 +21,7 @@ import asyncio
 import json
 import os
 import time
-from typing import List, Dict, Optional, Union, Any
+from typing import List, Dict, Optional, Any
 from dataclasses import dataclass
 from enum import Enum
 
@@ -27,11 +29,7 @@ from langchain_ollama import ChatOllama
 from langchain_core.language_models.base import BaseLanguageModel
 from langsmith import Client
 
-from .graph_design import (
-    create_validation_graph,
-    validate_receipt_labels,
-    ValidationState,
-)
+from .graph_design import create_validation_graph
 
 
 class LLMProvider(Enum):
@@ -118,17 +116,15 @@ class LLMFactory:
                 base_url=config.ollama_base_url,
                 **base_kwargs,
             )
-
-        else:
-            raise ValueError(
-                f"Unsupported LLM provider: {config.llm_provider}"
-            )
+        raise ValueError(
+            f"Unsupported LLM provider: {config.llm_provider}"
+        )
 
 
 class ValidationMetrics:
     """Tracks validation performance metrics"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.validation_count = 0
         self.total_time = 0.0
         self.success_count = 0
@@ -142,7 +138,7 @@ class ValidationMetrics:
         success: bool,
         tokens: int = 0,
         cost: float = 0.0,
-    ):
+    ) -> None:
         """Record validation metrics"""
         self.validation_count += 1
         self.total_time += duration
@@ -199,7 +195,7 @@ class ReceiptValidator:
         if self.config.enable_langsmith:
             try:
                 self.langsmith_client = Client()
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-exception-caught
                 print(f"Warning: Could not initialize LangSmith: {e}")
 
     async def validate_single_receipt(
@@ -234,9 +230,8 @@ class ReceiptValidator:
 
         try:
             # Set up LangSmith tracing if enabled
-            trace_context = {}
             if self.langsmith_client:
-                trace_context = {
+                _ = {  # trace_context for future use
                     "project_name": self.config.langsmith_project,
                     "metadata": {
                         "image_id": image_id,
@@ -295,7 +290,7 @@ class ReceiptValidator:
 
             return final_result
 
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             duration = time.time() - start_time
             self.metrics.record_validation(duration, False)
 
@@ -326,8 +321,7 @@ class ReceiptValidator:
         """
         if self.config.enable_smart_batching:
             return await self._smart_batch_validate(receipts, max_concurrent)
-        else:
-            return await self._concurrent_validate(receipts, max_concurrent)
+        return await self._concurrent_validate(receipts, max_concurrent)
 
     async def _smart_batch_validate(
         self, receipts: List[Dict[str, Any]], max_concurrent: int
@@ -368,7 +362,7 @@ class ReceiptValidator:
         """Process receipts concurrently"""
         semaphore = asyncio.Semaphore(max_concurrent)
 
-        async def validate_with_semaphore(receipt):
+        async def validate_with_semaphore(receipt: Dict[str, Any]) -> Dict[str, Any]:
             async with semaphore:
                 return await self.validate_single_receipt(
                     receipt["image_id"],
@@ -380,7 +374,7 @@ class ReceiptValidator:
         tasks = [validate_with_semaphore(receipt) for receipt in receipts]
         return await asyncio.gather(*tasks)
 
-    def _create_custom_graph(self):
+    def _create_custom_graph(self) -> Any:
         """Create validation graph with custom LLM"""
         # This would be modified to inject our LLM into the graph
         # For now, we'll use the standard graph
@@ -395,7 +389,7 @@ class ReceiptValidator:
         output_tokens = len(str(result.get("validation_results", []))) // 4
         return input_tokens + output_tokens
 
-    def _estimate_cost(self, tokens: int) -> float:
+    def _estimate_cost(self, tokens: int) -> float:  # pylint: disable=unused-argument
         """Estimate cost based on token usage and provider"""
         # Ollama is typically free for local usage
         # Ollama Turbo may have costs but they are not per-token based
@@ -421,7 +415,7 @@ async def validate_receipt_labels_v2(
     image_id: str,
     receipt_id: int,
     labels: List[Dict[str, Any]],
-    llm_provider: str = "ollama",
+    llm_provider: str = "ollama",  # pylint: disable=unused-argument
     model_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
@@ -452,7 +446,7 @@ async def validate_receipt_labels_v2(
 # Example usage
 if __name__ == "__main__":
 
-    async def demo():
+    async def demo() -> None:
         """Demonstration of the validation system"""
 
         # Sample receipt data
@@ -482,7 +476,7 @@ if __name__ == "__main__":
                 "IMG_001", 12345, sample_labels, llm_provider="ollama"
             )
             print(f"Ollama Result: {json.dumps(ollama_result, indent=2)}")
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             print(f"Ollama Error: {e}")
 
         # Test batch validation
@@ -512,7 +506,7 @@ if __name__ == "__main__":
             metrics = validator.get_metrics_summary()
             print(f"\nMetrics: {json.dumps(metrics, indent=2)}")
 
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             print(f"Batch validation error: {e}")
 
     # Run demo

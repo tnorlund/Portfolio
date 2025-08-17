@@ -2,8 +2,8 @@
 LangChain Graph Design for Real-Time Receipt Validation
 """
 
-from typing import TypedDict, List, Dict, Optional, Annotated
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
+from typing import TypedDict, List, Optional, Any
+from langchain_core.messages import BaseMessage
 from langgraph.graph import StateGraph, END
 from pydantic import BaseModel, Field
 
@@ -196,9 +196,8 @@ async def format_validation_prompt(state: ValidationState) -> ValidationState:
 
     # Format the prompt
     prompt_lines = []
-    prompt_lines.append(
-        f"Validate labels for {state['receipt_metadata']['merchant_name']} receipt."
-    )
+    merchant_name = state['receipt_metadata']['merchant_name']
+    prompt_lines.append(f"Validate labels for {merchant_name} receipt.")
     prompt_lines.append("\nTargets to validate:")
     prompt_lines.append(json.dumps(targets, indent=2))
     prompt_lines.append("\nAllowed labels:")
@@ -294,7 +293,7 @@ async def call_llm_with_tools(state: ValidationState) -> ValidationState:
                     try:
                         parsed = json.loads(json_match.group())
                         state["validation_results"] = parsed.get("results", [])
-                    except:
+                    except (json.JSONDecodeError, KeyError):
                         state["validation_results"] = []
                         state["error"] = (
                             f"Failed to parse response: {response_text[:200]}"
@@ -370,7 +369,7 @@ async def handle_error(state: ValidationState) -> ValidationState:
 # ============================================================================
 
 
-def create_validation_graph() -> StateGraph:
+def create_validation_graph() -> Any:
     """
     Create the LangChain graph for real-time validation
     """
@@ -422,7 +421,10 @@ async def validate_receipt_labels(
     if not os.getenv("OLLAMA_BASE_URL"):
         return {
             "success": False,
-            "error": "OLLAMA_BASE_URL not configured. Set it to use Ollama or Ollama Turbo.",
+            "error": (
+                "OLLAMA_BASE_URL not configured. "
+                "Set it to use Ollama or Ollama Turbo."
+            ),
             "validation_results": [],
         }
 
