@@ -137,7 +137,7 @@ class DecisionEngineOrchestrator:
                 logger.warning(
                     f"Failed to initialize ChromaDB integration: {e}"
                 )
-        
+
         # Keep pinecone_helper as alias for backward compatibility
         self.pinecone_helper = self.chroma_helper
 
@@ -405,7 +405,6 @@ class DecisionEngineOrchestrator:
             grand_total_found=grand_total_found,
             product_name_found=product_found,
         )
-
 
     def _finalize_pattern_labels(
         self, pattern_results: Dict[str, Any]

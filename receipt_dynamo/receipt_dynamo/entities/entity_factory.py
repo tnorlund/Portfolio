@@ -91,12 +91,12 @@ class EntityFactory(SerializationMixin):
         # Extract fields using custom extractors first
         for field_name, extractor in custom_extractors.items():
             kwargs[field_name] = extractor(item)
-        
+
         # Extract remaining required fields
         for field_name in required_keys:
             if field_name in {"PK", "SK", "TYPE"}:
                 continue  # Already handled by key parsers or not a constructor param
-            
+
             if field_name in custom_extractors:
                 continue  # Already handled above
 
@@ -243,15 +243,15 @@ class EntityFactory(SerializationMixin):
 
         extracted_data = item["extracted_data"]["M"]
         result: Dict[str, Any] = {}
-        
+
         # Extract type if present
         if "type" in extracted_data and "S" in extracted_data["type"]:
             result["type"] = cast(str, extracted_data["type"]["S"])
-        
+
         # Extract value if present
         if "value" in extracted_data and "S" in extracted_data["value"]:
             result["value"] = cast(str, extracted_data["value"]["S"])
-        
+
         return result if result else None
 
     @staticmethod

@@ -150,15 +150,23 @@ def validate_address(
     )
 
     # Get vector from ChromaDB
-    results = chroma_client.get_by_ids("words", [chroma_id], include=["metadatas"])
-    
+    results = chroma_client.get_by_ids(
+        "words", [chroma_id], include=["metadatas"]
+    )
+
     # Extract vector data
     vector_data = None
-    if results and 'ids' in results and len(results['ids']) > 0:
-        idx = results['ids'].index(chroma_id) if chroma_id in results['ids'] else -1
+    if results and "ids" in results and len(results["ids"]) > 0:
+        idx = (
+            results["ids"].index(chroma_id)
+            if chroma_id in results["ids"]
+            else -1
+        )
         if idx >= 0:
             vector_data = {
-                'metadata': results['metadatas'][idx] if 'metadatas' in results else {}
+                "metadata": (
+                    results["metadatas"][idx] if "metadatas" in results else {}
+                )
             }
     if vector_data is None:
         return LabelValidationResult(
@@ -174,7 +182,7 @@ def validate_address(
             pinecone_id=chroma_id,
         )
 
-    variants = _merged_address_variants(word, vector_data['metadata'])
+    variants = _merged_address_variants(word, vector_data["metadata"])
 
     looks_like_address = False
     for v in variants:
