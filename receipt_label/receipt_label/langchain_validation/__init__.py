@@ -41,8 +41,6 @@ from .config import (
 from .models import (
     ValidationResult,
     ValidationResponse,
-    ValidationRequest,
-    ValidationState,
 )
 
 __all__ = [
@@ -70,8 +68,6 @@ __all__ = [
     # Pydantic Models
     "ValidationResult",
     "ValidationResponse",
-    "ValidationRequest",
-    "ValidationState",
     
     # Utilities
     "get_ollama_llm",

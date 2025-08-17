@@ -203,7 +203,6 @@ async def validate_with_ollama(
             response = await structured_llm.ainvoke(state["formatted_prompt"])
             
             # Response is already a ValidationResponse object
-            response.compute_statistics()
             state["validation_response"] = response
             state["validation_results"] = [r.dict() for r in response.results]
             state["completed"] = True
@@ -232,8 +231,6 @@ async def validate_with_ollama(
             response = await llm.ainvoke(formatted)
             parsed_response = parser.parse(response.content)
             
-            # Compute statistics
-            parsed_response.compute_statistics()
             state["validation_response"] = parsed_response
             state["validation_results"] = [r.dict() for r in parsed_response.results]
             state["completed"] = True
@@ -263,7 +260,6 @@ async def validate_with_ollama(
                         ValidationResult(**r) for r in result.get("results", [])
                     ]
                 )
-                validation_response.compute_statistics()
                 state["validation_response"] = validation_response
                 state["validation_results"] = [r.dict() for r in validation_response.results]
             except Exception:
@@ -296,15 +292,11 @@ async def process_results(
     if not state.get("validation_results"):
         return state
 
-    # If we have a structured response, we can access rich information
+    # If we have a structured response, we can access the results directly
     if state.get("validation_response"):
         response = state["validation_response"]
-        # Log statistics if available
-        if hasattr(response, 'valid_count'):
-            print(f"Validated {response.total_validated} labels: "
-                  f"{response.valid_count} valid, {response.invalid_count} invalid")
-        if hasattr(response, 'average_confidence') and response.average_confidence:
-            print(f"Average confidence: {response.average_confidence:.2f}")
+        # Could add logging here if needed
+        pass
 
     return state
 

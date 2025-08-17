@@ -7,6 +7,7 @@ These models ensure type-safe, validated responses from the LLM.
 
 from typing import List, Optional
 from pydantic import BaseModel, Field, field_validator
+from receipt_label.constants import CORE_LABELS
 
 
 class ValidationResult(BaseModel):
@@ -22,16 +23,7 @@ class ValidationResult(BaseModel):
         default=None,
         description="The correct label if is_valid is false (must be from ALLOWED LABELS)"
     )
-    confidence: Optional[float] = Field(
-        default=None,
-        ge=0.0,
-        le=1.0,
-        description="Confidence score between 0 and 1 for this validation"
-    )
-    reasoning: Optional[str] = Field(
-        default=None,
-        description="Brief explanation for the validation decision"
-    )
+    # Removed confidence and reasoning - keep it deterministic and simple
     
     @field_validator('id')
     @classmethod
@@ -66,19 +58,10 @@ class ValidationResult(BaseModel):
                     "correct_label should only be set when is_valid is False"
                 )
             
-            # List of allowed labels from CORE_LABELS
-            allowed_labels = [
-                'ADDRESS', 'CASHIER', 'CATEGORY', 'CITY', 'COUNTRY', 'CURRENCY',
-                'DATE', 'DESCRIPTION', 'DISCOUNT', 'EMAIL', 'MERCHANT_NAME',
-                'PAYMENT_METHOD', 'PHONE_NUMBER', 'PRODUCT_NAME', 'QUANTITY',
-                'RECEIPT_NUMBER', 'REGISTER', 'STATE', 'STORE_NUMBER', 'SUBTOTAL',
-                'TAX', 'TAX_RATE', 'TIME', 'TIPS', 'TOTAL', 'TRANSACTION_NUMBER',
-                'UNIT_PRICE', 'URL', 'ZIP_CODE', 'OTHER', 'NONE'
-            ]
-            
-            if v.upper() not in allowed_labels:
+            # Use the actual CORE_LABELS from constants
+            if v.upper() not in CORE_LABELS:
                 raise ValueError(
-                    f"correct_label must be one of the allowed labels. Got: {v}"
+                    f"correct_label must be one of the CORE_LABELS. Got: {v}"
                 )
             
             return v.upper()
@@ -93,44 +76,6 @@ class ValidationResponse(BaseModel):
         description="List of validation results for each target"
     )
     
-    total_validated: Optional[int] = Field(
-        default=None,
-        description="Total number of labels validated"
-    )
-    
-    valid_count: Optional[int] = Field(
-        default=None,
-        description="Number of labels that were valid"
-    )
-    
-    invalid_count: Optional[int] = Field(
-        default=None,
-        description="Number of labels that were invalid"
-    )
-    
-    average_confidence: Optional[float] = Field(
-        default=None,
-        ge=0.0,
-        le=1.0,
-        description="Average confidence across all validations"
-    )
-    
-    processing_notes: Optional[str] = Field(
-        default=None,
-        description="Any notes about the validation process"
-    )
-    
-    def compute_statistics(self) -> None:
-        """Compute statistics from results"""
-        if self.results:
-            self.total_validated = len(self.results)
-            self.valid_count = sum(1 for r in self.results if r.is_valid)
-            self.invalid_count = sum(1 for r in self.results if not r.is_valid)
-            
-            confidences = [r.confidence for r in self.results if r.confidence is not None]
-            if confidences:
-                self.average_confidence = sum(confidences) / len(confidences)
-    
     class Config:
         # This helps with JSON serialization
         json_schema_extra = {
@@ -138,51 +83,17 @@ class ValidationResponse(BaseModel):
                 "results": [
                     {
                         "id": "IMAGE#abc123#RECEIPT#00001#LINE#00001#WORD#00001#LABEL#MERCHANT_NAME",
-                        "is_valid": True,
-                        "confidence": 0.95
+                        "is_valid": True
                     },
                     {
-                        "id": "IMAGE#abc123#RECEIPT#00001#LINE#00005#WORD#00002#LABEL#TOTAL",
+                        "id": "IMAGE#abc123#RECEIPT#00001#LINE#00005#WORD#00002#LABEL#GRAND_TOTAL",
                         "is_valid": False,
-                        "correct_label": "SUBTOTAL",
-                        "confidence": 0.88,
-                        "reasoning": "This appears before tax, so it's a subtotal not total"
+                        "correct_label": "SUBTOTAL"
                     }
-                ],
-                "total_validated": 2,
-                "valid_count": 1,
-                "invalid_count": 1,
-                "average_confidence": 0.915
+                ]
             }
         }
 
 
-class ValidationRequest(BaseModel):
-    """Request model for validation (for API usage)"""
-    
-    image_id: str = Field(description="Receipt image ID")
-    receipt_id: int = Field(description="Receipt ID in database")
-    labels: List[dict] = Field(
-        description="List of labels to validate with line_id, word_id, label fields"
-    )
-    use_cache: bool = Field(
-        default=True,
-        description="Whether to use context caching"
-    )
-    skip_database_update: bool = Field(
-        default=False,
-        description="If True, don't update database after validation"
-    )
-
-
-class ValidationState(BaseModel):
-    """State model for validation workflow"""
-    
-    formatted_prompt: str
-    validation_targets: List[dict]
-    validation_response: Optional[ValidationResponse] = None
-    error: Optional[str] = None
-    completed: bool = False
-    llm_calls: int = 0
-    used_cache: bool = False
-    database_updated: bool = False
+# Removed ValidationRequest and ValidationState - keeping models minimal
+# Only ValidationResult and ValidationResponse are needed for structured output

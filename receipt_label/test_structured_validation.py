@@ -72,13 +72,11 @@ Return a JSON object with a "results" array. Each result must have:
 - "id": the exact id from the target
 - "is_valid": true if the label is correct, false otherwise
 - "correct_label": (only if is_valid is false) the correct label from ALLOWED LABELS
-- "confidence": (optional) confidence score between 0 and 1
-- "reasoning": (optional) brief explanation
 
 Example response:
 {"results": [
-    {"id": "IMAGE#abc#RECEIPT#00001#...", "is_valid": true, "confidence": 0.95},
-    {"id": "IMAGE#xyz#RECEIPT#00002#...", "is_valid": false, "correct_label": "SUBTOTAL", "reasoning": "Appears before tax"}
+    {"id": "IMAGE#abc#RECEIPT#00001#...", "is_valid": true},
+    {"id": "IMAGE#xyz#RECEIPT#00002#...", "is_valid": false, "correct_label": "SUBTOTAL"}
 ]}""",
         validation_targets=[
             {
