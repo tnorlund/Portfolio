@@ -562,11 +562,6 @@ class _ReceiptWord(
         self, embedding_status: EmbeddingStatus | str
     ) -> list[ReceiptWord]:
         """Returns all ReceiptWords that match the given embedding status."""
-        import logging
-        logger = logging.getLogger(__name__)
-        
-        logger.info(f"Starting list_receipt_words_by_embedding_status with status: {embedding_status}")
-        
         # Validate and normalize embedding_status argument
         if isinstance(embedding_status, EmbeddingStatus):
             status_str = embedding_status.value
@@ -584,9 +579,6 @@ class _ReceiptWord(
                 f" Got: {status_str}"
             )
 
-        logger.info(f"Normalized status_str: {status_str}")
-        logger.info(f"GSI1PK value will be: EMBEDDING_STATUS#{status_str}")
-
         try:
             results, _ = self._query_entities(
                 index_name="GSI1",
@@ -597,10 +589,7 @@ class _ReceiptWord(
                 },
                 converter_func=item_to_receipt_word,
             )
-            logger.info(f"Query completed successfully, found {len(results)} results")
             return results
         except Exception as e:
-            logger.error(f"Error in _query_entities: {type(e).__name__}: {str(e)}")
-            logger.error(f"Query parameters: index_name=GSI1, status=EMBEDDING_STATUS#{status_str}")
             # Re-raise with more context
             raise RuntimeError(f"Unexpected error during list_receipt_words_by_embedding_status: {str(e)}") from e

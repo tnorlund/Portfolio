@@ -356,27 +356,17 @@ def create_receipt_line_word_sk_parser() -> KeyParser:
     """Create a type-safe SK parser for RECEIPT#/LINE#/WORD# pattern."""
 
     def parser(sk: str) -> Dict[str, Any]:
-        import logging
-        logger = logging.getLogger(__name__)
-        
-        logger.info(f"Parsing SK: {sk}")
-        
         parsed = EntityFactory.parse_image_receipt_key("IMAGE#dummy", sk)
         sk_parts = sk.split("#")
-        
-        logger.info(f"SK parts: {sk_parts} (length: {len(sk_parts)})")
         
         # Expected format: RECEIPT#123#LINE#456#WORD#789
         # Should have 6 parts: ['RECEIPT', '123', 'LINE', '456', 'WORD', '789']
         if len(sk_parts) < 6:
-            logger.error(f"Invalid SK format: expected at least 6 parts, got {len(sk_parts)}: {sk_parts}")
             raise ValueError(f"Invalid SK format for receipt word: '{sk}'. Expected format: RECEIPT#id#LINE#id#WORD#id")
         
         try:
             line_id = int(sk_parts[3])  # LINE is at position 3
             word_id = int(sk_parts[5])  # WORD is at position 5
-            
-            logger.info(f"Parsed successfully: receipt_id={parsed['receipt_id']}, line_id={line_id}, word_id={word_id}")
             
             return {
                 "receipt_id": parsed["receipt_id"],
@@ -384,8 +374,6 @@ def create_receipt_line_word_sk_parser() -> KeyParser:
                 "word_id": word_id,
             }
         except (ValueError, IndexError) as e:
-            logger.error(f"Error parsing SK parts: {e}")
-            logger.error(f"SK: {sk}, Parts: {sk_parts}")
             raise ValueError(f"Invalid SK format for receipt word: '{sk}'. Error: {e}") from e
 
     return parser
