@@ -23,7 +23,7 @@ LAMBDA_CONFIGS = {
         "name": "line-poll",
         "memory": 3008,
         "timeout": 900,
-        "ephemeral_storage": 3072,
+        "ephemeral_storage": 5120,
         "description": "Poll OpenAI for line embedding batch results",
         "env_vars": {
             "HANDLER_TYPE": "line_polling",
