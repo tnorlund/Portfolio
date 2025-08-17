@@ -17,10 +17,9 @@ from .implementation import (
 )
 
 from .config import (
-    LangChainConfig,
+    ValidationConfig,
     OllamaConfig,
-    OpenAIConfig,
-    get_config
+    OpenAIConfig
 )
 
 __all__ = [
@@ -37,8 +36,7 @@ __all__ = [
     "ProcessingMode",
     
     # Configuration
-    "LangChainConfig",
+    "ValidationConfig",
     "OllamaConfig", 
-    "OpenAIConfig",
-    "get_config"
+    "OpenAIConfig"
 ]
