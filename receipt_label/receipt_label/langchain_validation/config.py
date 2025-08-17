@@ -69,12 +69,14 @@ class OpenAIConfig:
 
 @dataclass  
 class OllamaConfig:
-    """Ollama-specific configuration"""
+    """Ollama-specific configuration (supports both local and Turbo)"""
     base_url: str = "http://localhost:11434"
     model: str = "llama3.1:8b"
+    api_key: Optional[str] = None  # For Ollama Turbo authentication
     temperature: float = 0.0
     timeout: int = 60  # Ollama can be slower
     max_retries: int = 3
+    is_turbo: bool = False  # Whether using Ollama Turbo (hosted)
     
     # Ollama-specific options
     num_ctx: Optional[int] = None  # Context length
@@ -235,13 +237,19 @@ class ValidationConfig:
             max_requests_per_minute=int(os.getenv("OPENAI_MAX_REQUESTS_PER_MINUTE")) if os.getenv("OPENAI_MAX_REQUESTS_PER_MINUTE") else None,
         )
         
-        # Ollama configuration
+        # Ollama configuration (supports both local and Turbo)
+        base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        api_key = os.getenv("OLLAMA_API_KEY")
+        is_turbo = api_key is not None or "api.ollama" in base_url
+        
         ollama_config = OllamaConfig(
-            base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
-            model=os.getenv("OLLAMA_MODEL", "llama3.1:8b"),
+            base_url=base_url,
+            model=os.getenv("OLLAMA_MODEL", "turbo" if is_turbo else "llama3.1:8b"),
+            api_key=api_key,
             temperature=float(os.getenv("OLLAMA_TEMPERATURE", "0.0")),
             timeout=int(os.getenv("OLLAMA_TIMEOUT", "60")),
             max_retries=int(os.getenv("OLLAMA_MAX_RETRIES", "3")),
+            is_turbo=is_turbo,
             num_ctx=int(os.getenv("OLLAMA_NUM_CTX")) if os.getenv("OLLAMA_NUM_CTX") else None,
             num_predict=int(os.getenv("OLLAMA_NUM_PREDICT")) if os.getenv("OLLAMA_NUM_PREDICT") else None,
             top_k=int(os.getenv("OLLAMA_TOP_K")) if os.getenv("OLLAMA_TOP_K") else None,
