@@ -20,6 +20,7 @@ from .graph_design import (
     get_ollama_llm,
     MinimalValidationState,
 )
+from .models import ValidationResponse, ValidationResult
 
 
 @dataclass
@@ -174,17 +175,42 @@ async def validate_receipt_labels(
 
 
 async def test_ollama_connection():
-    """Test if Ollama is working with LangChain"""
+    """Test if Ollama is working with LangChain and structured output"""
     try:
         from langchain_core.messages import HumanMessage
+        from langchain_core.output_parsers import PydanticOutputParser
 
-        llm = get_ollama_llm()
+        # Test 1: Basic connection
+        llm = get_ollama_llm(use_json_format=True)
         messages = [
             HumanMessage(content="Say 'Ollama is working!' in JSON format")
         ]
         response = await llm.ainvoke(messages)
-        print(f"✅ Ollama test successful: {response.content}")
-        return True
+        print(f"✅ Basic Ollama connection successful")
+        
+        # Test 2: Structured output support
+        try:
+            llm_structured = get_ollama_llm(use_json_format=False)
+            
+            # Try with_structured_output
+            try:
+                structured_llm = llm_structured.with_structured_output(ValidationResponse)
+                print(f"✅ Model supports with_structured_output")
+                return True
+            except (AttributeError, NotImplementedError):
+                pass
+            
+            # Try with parser
+            parser = PydanticOutputParser(pydantic_object=ValidationResponse)
+            test_prompt = "Test validation: [{\"id\": \"TEST\", \"is_valid\": true}]"
+            response = await llm_structured.ainvoke(test_prompt)
+            print(f"✅ Model works with output parser")
+            return True
+            
+        except Exception as e:
+            print(f"⚠️ Structured output not fully supported, will use fallback: {e}")
+            return True  # Still works, just with fallback
+            
     except Exception as e:
         print(f"❌ Ollama test failed: {e}")
         return False

@@ -8,10 +8,14 @@ only handles LLM validation. This minimizes Ollama API calls.
 
 from typing import TypedDict, List, Optional, Any, Dict
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.output_parsers import PydanticOutputParser
+from langchain_core.prompts import PromptTemplate
 from langchain_ollama import ChatOllama
 from langgraph.graph import StateGraph, END
 import json
 import os
+
+from .models import ValidationResult, ValidationResponse
 
 
 # ============================================================================
@@ -136,6 +140,7 @@ class MinimalValidationState(TypedDict):
 
     # Results from LLM
     validation_results: List[dict]
+    validation_response: Optional[ValidationResponse]  # Structured response
 
     # Status
     error: Optional[str]
@@ -147,18 +152,28 @@ class MinimalValidationState(TypedDict):
 # ============================================================================
 
 
-def get_ollama_llm() -> ChatOllama:
-    """Get configured Ollama instance"""
+def get_ollama_llm(use_json_format: bool = False) -> ChatOllama:
+    """Get configured Ollama instance
+    
+    Args:
+        use_json_format: If True, use JSON format (fallback mode).
+                        If False, allow structured output.
+    """
     base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     api_key = os.getenv("OLLAMA_API_KEY")
     model = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
 
-    llm = ChatOllama(
-        model=model,
-        base_url=base_url,
-        temperature=0,
-        format="json",
-    )
+    kwargs = {
+        "model": model,
+        "base_url": base_url,
+        "temperature": 0,
+    }
+    
+    # Only add format="json" in fallback mode
+    if use_json_format:
+        kwargs["format"] = "json"
+    
+    llm = ChatOllama(**kwargs)
 
     if api_key:
         llm.auth = {"api_key": api_key}
@@ -175,28 +190,91 @@ async def validate_with_ollama(
     state: MinimalValidationState,
 ) -> MinimalValidationState:
     """
-    Node 1: Call Ollama to validate
+    Node 1: Call Ollama to validate using structured output
     This is the ONLY node that uses the LLM
     """
     try:
-        llm = get_ollama_llm()
-
+        # Try structured output first
+        llm = get_ollama_llm(use_json_format=False)
+        
+        # Attempt 1: Try with_structured_output (cleanest approach)
+        try:
+            structured_llm = llm.with_structured_output(ValidationResponse)
+            response = await structured_llm.ainvoke(state["formatted_prompt"])
+            
+            # Response is already a ValidationResponse object
+            response.compute_statistics()
+            state["validation_response"] = response
+            state["validation_results"] = [r.dict() for r in response.results]
+            state["completed"] = True
+            return state
+            
+        except (AttributeError, NotImplementedError):
+            # Model doesn't support with_structured_output, try parser approach
+            pass
+        
+        # Attempt 2: Try with output parser
+        try:
+            parser = PydanticOutputParser(pydantic_object=ValidationResponse)
+            
+            # Create prompt with format instructions
+            prompt_template = PromptTemplate(
+                template="{system_message}\n\n{query}\n\n{format_instructions}",
+                input_variables=["system_message", "query"],
+                partial_variables={"format_instructions": parser.get_format_instructions()}
+            )
+            
+            formatted = prompt_template.format(
+                system_message="You are a receipt validation assistant. Analyze the receipt labels and respond with structured JSON.",
+                query=state["formatted_prompt"]
+            )
+            
+            response = await llm.ainvoke(formatted)
+            parsed_response = parser.parse(response.content)
+            
+            # Compute statistics
+            parsed_response.compute_statistics()
+            state["validation_response"] = parsed_response
+            state["validation_results"] = [r.dict() for r in parsed_response.results]
+            state["completed"] = True
+            return state
+            
+        except Exception as parser_error:
+            # Parser failed, fall back to JSON mode
+            print(f"Structured output failed, falling back to JSON: {parser_error}")
+        
+        # Attempt 3: Fallback to JSON mode (original approach)
+        llm = get_ollama_llm(use_json_format=True)
         messages = [
             SystemMessage(
                 content="You are a receipt validation assistant. Always respond with valid JSON."
             ),
             HumanMessage(content=state["formatted_prompt"]),
         ]
-
-        # The ONLY LLM call in the entire system
+        
         response = await llm.ainvoke(messages)
-
+        
         try:
             result = json.loads(response.content)
-            state["validation_results"] = result.get("results", [])
+            # Try to create ValidationResponse from JSON for consistency
+            try:
+                validation_response = ValidationResponse(
+                    results=[
+                        ValidationResult(**r) for r in result.get("results", [])
+                    ]
+                )
+                validation_response.compute_statistics()
+                state["validation_response"] = validation_response
+                state["validation_results"] = [r.dict() for r in validation_response.results]
+            except Exception:
+                # Can't create structured response, use raw results
+                state["validation_results"] = result.get("results", [])
+                state["validation_response"] = None
+            
             state["completed"] = True
+            
         except json.JSONDecodeError as e:
-            state["error"] = f"Failed to parse LLM response: {e}"
+            state["error"] = f"Failed to parse JSON response: {e}"
             state["validation_results"] = []
             state["completed"] = False
 
@@ -218,8 +296,15 @@ async def process_results(
     if not state.get("validation_results"):
         return state
 
-    # Add any post-processing here if needed
-    # For now, just pass through
+    # If we have a structured response, we can access rich information
+    if state.get("validation_response"):
+        response = state["validation_response"]
+        # Log statistics if available
+        if hasattr(response, 'valid_count'):
+            print(f"Validated {response.total_validated} labels: "
+                  f"{response.valid_count} valid, {response.invalid_count} invalid")
+        if hasattr(response, 'average_confidence') and response.average_confidence:
+            print(f"Average confidence: {response.average_confidence:.2f}")
 
     return state
 

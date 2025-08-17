@@ -38,6 +38,13 @@ from .config import (
     OllamaConfig
 )
 
+from .models import (
+    ValidationResult,
+    ValidationResponse,
+    ValidationRequest,
+    ValidationState,
+)
+
 __all__ = [
     # Context and database (no LLM usage)
     "prepare_validation_context",
@@ -59,6 +66,12 @@ __all__ = [
     # Configuration
     "ValidationConfig",
     "OllamaConfig",
+    
+    # Pydantic Models
+    "ValidationResult",
+    "ValidationResponse",
+    "ValidationRequest",
+    "ValidationState",
     
     # Utilities
     "get_ollama_llm",
