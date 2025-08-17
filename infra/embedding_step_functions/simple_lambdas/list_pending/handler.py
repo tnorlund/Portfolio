@@ -8,7 +8,7 @@ import logging
 from typing import Any, Dict, List
 from receipt_label.embedding.line import list_pending_line_embedding_batches
 from receipt_label.embedding.word import (
-    list_pending_embedding_batches as list_pending_word_embedding_batches
+    list_pending_embedding_batches as list_pending_word_embedding_batches,
 )
 
 # Set up logging
@@ -20,8 +20,8 @@ def lambda_handler(
     event: Dict[str, Any], context: Any
 ) -> List[Dict[str, str]]:
     """List pending embedding batches from DynamoDB.
-    
-    Supports both line and word embedding batches based on the 
+
+    Supports both line and word embedding batches based on the
     batch_type parameter in the event.
 
     Args:
@@ -50,7 +50,8 @@ def lambda_handler(
 
         logger.info(
             "Found %d pending %s embedding batches",
-            len(pending_batches), batch_type
+            len(pending_batches),
+            batch_type,
         )
 
         # Format response for Step Function

@@ -36,9 +36,9 @@ class CurrencyPatternDetector(PatternDetector):
         currency_words = []
         for word in words:
             # Validate input type
-            if not hasattr(word, 'is_noise') or not hasattr(word, 'text'):
+            if not hasattr(word, "is_noise") or not hasattr(word, "text"):
                 continue  # Skip invalid objects
-            
+
             if word.is_noise:
                 continue
 

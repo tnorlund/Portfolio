@@ -221,7 +221,9 @@ class ClientManager:
         return self._chroma_client
 
     @property
-    def pinecone(self) -> Any:  # Returns ChromaDB client for backward compatibility
+    def pinecone(
+        self,
+    ) -> Any:  # Returns ChromaDB client for backward compatibility
         """
         Get ChromaDB client for backward compatibility.
 
@@ -235,7 +237,7 @@ class ClientManager:
             DeprecationWarning,
             stacklevel=2,
         )
-        
+
         # Return ChromaDB client instead of trying to import Pinecone
         return self.chroma
 

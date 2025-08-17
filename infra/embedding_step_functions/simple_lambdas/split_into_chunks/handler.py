@@ -41,7 +41,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         logger.info(
             "Processing %d delta results for batch %s",
-            len(poll_results), batch_id
+            len(poll_results),
+            batch_id,
         )
 
         # Filter out any invalid results
@@ -79,11 +80,13 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
             # Log chunk details for debugging
             collections = set(
-                d.get('collection', 'unknown') for d in chunk_deltas
+                d.get("collection", "unknown") for d in chunk_deltas
             )
             logger.info(
                 "Chunk %d: %d deltas, collections: %s",
-                chunk['chunk_index'], len(chunk_deltas), collections
+                chunk["chunk_index"],
+                len(chunk_deltas),
+                collections,
             )
 
         logger.info(

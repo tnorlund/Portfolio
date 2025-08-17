@@ -369,8 +369,9 @@ class _ReceiptWord(
                 )
             if limit <= 0:
                 raise EntityValidationError("limit must be greater than 0.")
-        if (last_evaluated_key is not None
-            and not isinstance(last_evaluated_key, dict)):
+        if last_evaluated_key is not None and not isinstance(
+            last_evaluated_key, dict
+        ):
             raise EntityValidationError(
                 "last_evaluated_key must be a dictionary or None."
             )
@@ -484,9 +485,7 @@ class _ReceiptWord(
                 ) from e
             if error_code == "InternalServerError":
                 raise DynamoDBServerError(f"Internal server error: {e}") from e
-            raise OperationError(
-                f"Error listing receipt words: {e}"
-            ) from e
+            raise OperationError(f"Error listing receipt words: {e}") from e
 
     @handle_dynamodb_errors("list_receipt_words_by_embedding_status")
     def list_receipt_words_by_embedding_status(

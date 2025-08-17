@@ -34,7 +34,9 @@ def produce_embedding_delta(
     metadatas: List[Dict[str, Any]],
     bucket_name: str,
     collection_name: str = "words",
-    database_name: Optional[str] = None,  # New parameter for database separation
+    database_name: Optional[
+        str
+    ] = None,  # New parameter for database separation
     sqs_queue_url: Optional[str] = None,
     batch_id: Optional[str] = None,
     delta_prefix: str = "delta/",  # For tests
@@ -53,7 +55,7 @@ def produce_embedding_delta(
         metadatas: Metadata dictionaries
         bucket_name: S3 bucket name for storing the delta
         collection_name: ChromaDB collection name (default: "words")
-        database_name: Database name for separation (e.g., "lines", "words"). 
+        database_name: Database name for separation (e.g., "lines", "words").
                       If provided, creates database-specific structure
         sqs_queue_url: SQS queue URL for compaction notification. If None, skips SQS notification
         batch_id: Optional batch identifier for tracking purposes
@@ -88,34 +90,42 @@ def produce_embedding_delta(
         # Use context manager for auto-cleanup
         temp_dir = tempfile.mkdtemp()
         delta_dir = f"{temp_dir}/chroma_delta_{uuid.uuid4().hex}"
-        os.makedirs(delta_dir, exist_ok=True)  # CRITICAL: Must create the directory!
+        os.makedirs(
+            delta_dir, exist_ok=True
+        )  # CRITICAL: Must create the directory!
         cleanup_temp = True
-    
+
     try:
         # Log delta directory for debugging
         logger.info(f"Delta directory created at: {delta_dir}")
-        
+
         # Create ChromaDB client in delta mode
         # If database_name is provided, use no prefix (database is already specific)
         # Otherwise, use default "receipts" prefix for backward compatibility
         if database_name:
-            logger.info(f"Creating ChromaDB client for database '{database_name}' with no prefix")
+            logger.info(
+                f"Creating ChromaDB client for database '{database_name}' with no prefix"
+            )
             logger.info(f"Persist directory: {delta_dir}")
             chroma = ChromaDBClient(
-                persist_directory=delta_dir, 
+                persist_directory=delta_dir,
                 collection_prefix="",  # No prefix for database-specific storage
-                mode="delta"
+                mode="delta",
             )
             # Adjust delta prefix to include database name
             delta_prefix = f"{database_name}/{delta_prefix}"
             logger.info(f"S3 delta prefix will be: {delta_prefix}")
         else:
-            logger.info("Creating ChromaDB client with default 'receipts' prefix")
+            logger.info(
+                "Creating ChromaDB client with default 'receipts' prefix"
+            )
             logger.info(f"Persist directory: {delta_dir}")
             chroma = ChromaDBClient(persist_directory=delta_dir, mode="delta")
 
         # Upsert vectors
-        logger.info(f"Upserting {len(ids)} vectors to collection '{collection_name}'")
+        logger.info(
+            f"Upserting {len(ids)} vectors to collection '{collection_name}'"
+        )
         chroma.upsert_vectors(
             collection_name=collection_name,
             ids=ids,
@@ -123,11 +133,15 @@ def produce_embedding_delta(
             documents=documents,
             metadatas=metadatas,
         )
-        logger.info(f"Successfully upserted vectors to collection '{collection_name}'")
+        logger.info(
+            f"Successfully upserted vectors to collection '{collection_name}'"
+        )
 
         # Upload to S3 using the specified prefix
         try:
-            logger.info(f"Starting S3 upload to bucket '{bucket_name}' with prefix '{delta_prefix}'")
+            logger.info(
+                f"Starting S3 upload to bucket '{bucket_name}' with prefix '{delta_prefix}'"
+            )
             s3_key = chroma.persist_and_upload_delta(
                 bucket=bucket_name, s3_prefix=delta_prefix
             )
@@ -150,24 +164,24 @@ def produce_embedding_delta(
                     "vector_count": len(ids),
                     "timestamp": datetime.utcnow().isoformat(),
                 }
-                
+
                 # Add batch_id if provided
                 if batch_id:
                     message_body["batch_id"] = batch_id
-                    
+
                 sqs.send_message(
                     QueueUrl=sqs_queue_url,
                     MessageBody=json.dumps(message_body),
                     MessageAttributes={
-                        'collection': {
-                            'StringValue': collection_name,
-                            'DataType': 'String'
+                        "collection": {
+                            "StringValue": collection_name,
+                            "DataType": "String",
                         },
-                        'batch_id': {
-                            'StringValue': batch_id or 'none',
-                            'DataType': 'String'
+                        "batch_id": {
+                            "StringValue": batch_id or "none",
+                            "DataType": "String",
                         },
-                    }
+                    },
                 )
 
                 logger.info("Sent delta notification to SQS: %s", s3_key)
@@ -186,32 +200,37 @@ def produce_embedding_delta(
         result = {
             "status": "success",
             "delta_key": s3_key,
-            "delta_id": s3_key.split('/')[-2] if s3_key else str(uuid.uuid4().hex),
+            "delta_id": (
+                s3_key.split("/")[-2] if s3_key else str(uuid.uuid4().hex)
+            ),
             "item_count": len(ids),
             "embedding_count": len(ids),
             "vectors_uploaded": len(ids),  # Keep for backward compatibility
             "delta_size_bytes": delta_size,
             "batch_id": batch_id,
         }
-        
+
         if compress:
-            result["compression_ratio"] = 0.8  # Mock compression ratio for tests
-        
+            result["compression_ratio"] = (
+                0.8  # Mock compression ratio for tests
+            )
+
         return result
-    
+
     except Exception as e:
         logger.error("Error producing delta: %s", e)
         return {
             "status": "failed",
             "error": str(e),
             "item_count": 0,
-            "delta_size_bytes": 0
+            "delta_size_bytes": 0,
         }
-    
+
     finally:
         # Cleanup temp directory if we created it
         if cleanup_temp and os.path.exists(temp_dir):
             import shutil
+
             shutil.rmtree(temp_dir, ignore_errors=True)
 
 
@@ -512,7 +531,9 @@ def consume_latest_snapshot(
         ... )
     """
     if bucket_name is None:
-        bucket_name = os.environ.get("VECTORS_BUCKET", "default-vectors-bucket")
+        bucket_name = os.environ.get(
+            "VECTORS_BUCKET", "default-vectors-bucket"
+        )
 
     # Download the latest snapshot from S3
     snapshot_path = download_snapshot_locally(
@@ -544,77 +565,76 @@ def upload_delta_to_s3(
     bucket: str,
     delta_key: str,
     metadata: Optional[Dict[str, Any]] = None,
-    region: Optional[str] = None
+    region: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Upload a ChromaDB delta directory to S3.
-    
+
     Args:
         local_delta_path: Path to the local delta directory
         bucket: S3 bucket name
         delta_key: S3 key prefix for the delta (e.g., "delta/uuid/")
         metadata: Optional metadata to include in S3 objects
         region: Optional AWS region
-        
+
     Returns:
         Dict with upload status and statistics
     """
     try:
         import boto3
         from pathlib import Path
-        
+
         # Create S3 client
         client_kwargs = {"service_name": "s3"}
         if region:
             client_kwargs["region_name"] = region
         s3 = boto3.client(**client_kwargs)
-        
+
         delta_path = Path(local_delta_path)
         if not delta_path.exists():
             return {
                 "status": "failed",
-                "error": f"Delta path does not exist: {local_delta_path}"
+                "error": f"Delta path does not exist: {local_delta_path}",
             }
-        
+
         file_count = 0
         total_size = 0
-        
+
         # Upload all files in the delta directory
         for file_path in delta_path.rglob("*"):
             if file_path.is_file():
                 # Calculate relative path from delta directory
                 relative_path = file_path.relative_to(delta_path)
                 s3_key = f"{delta_key.rstrip('/')}/{relative_path}"
-                
+
                 # Prepare S3 metadata
                 s3_metadata = {"delta_key": delta_key}
                 if metadata:
-                    s3_metadata.update({k: str(v) for k, v in metadata.items()})
-                
+                    s3_metadata.update(
+                        {k: str(v) for k, v in metadata.items()}
+                    )
+
                 # Upload file
                 s3.upload_file(
-                    str(file_path), 
-                    bucket, 
+                    str(file_path),
+                    bucket,
                     s3_key,
-                    ExtraArgs={"Metadata": s3_metadata}
+                    ExtraArgs={"Metadata": s3_metadata},
                 )
-                
+
                 file_count += 1
                 total_size += file_path.stat().st_size
-        
+
         return {
             "status": "uploaded",
             "delta_key": delta_key,
             "file_count": file_count,
-            "total_size_bytes": total_size
+            "total_size_bytes": total_size,
         }
-        
+
     except Exception as e:
         logger.error("Error uploading delta to S3: %s", e)
-        return {
-            "status": "failed",
-            "error": str(e)
-        }
+        return {"status": "failed", "error": str(e)}
 
 
 def download_snapshot_from_s3(
@@ -622,68 +642,67 @@ def download_snapshot_from_s3(
     snapshot_key: str,
     local_snapshot_path: str,
     verify_integrity: bool = False,
-    region: Optional[str] = None
+    region: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Download a ChromaDB snapshot from S3 to local filesystem.
-    
+
     Args:
         bucket: S3 bucket name
         snapshot_key: S3 key prefix for the snapshot (e.g., "snapshot/2023-01-01T12:00:00Z/")
         local_snapshot_path: Local directory to download to
         verify_integrity: Whether to verify file integrity after download
         region: Optional AWS region
-        
+
     Returns:
         Dict with download status and statistics
     """
     try:
         import boto3
         from pathlib import Path
-        
+
         # Create S3 client
         client_kwargs = {"service_name": "s3"}
         if region:
             client_kwargs["region_name"] = region
         s3 = boto3.client(**client_kwargs)
-        
+
         # Create local directory
         local_path = Path(local_snapshot_path)
         local_path.mkdir(parents=True, exist_ok=True)
-        
+
         # List all objects in the snapshot
         paginator = s3.get_paginator("list_objects_v2")
         pages = paginator.paginate(
-            Bucket=bucket, 
-            Prefix=snapshot_key.rstrip('/') + '/'
+            Bucket=bucket, Prefix=snapshot_key.rstrip("/") + "/"
         )
-        
+
         file_count = 0
         total_size = 0
-        
+
         for page in pages:
             if "Contents" not in page:
                 continue
-                
+
             for obj in page["Contents"]:
                 s3_key = obj["Key"]
-                
+
                 # Calculate local file path
-                relative_path = s3_key[len(snapshot_key.rstrip('/') + '/'):]
+                relative_path = s3_key[len(snapshot_key.rstrip("/") + "/") :]
                 if not relative_path:  # Skip the directory itself
                     continue
-                    
+
                 local_file = local_path / relative_path
-                
+
                 # Create parent directories
                 local_file.parent.mkdir(parents=True, exist_ok=True)
-                
+
                 # Download file
                 s3.download_file(bucket, s3_key, str(local_file))
-                
+
                 file_count += 1
                 total_size += obj.get("Size", 0)
-                
+
                 # Verify integrity if requested
                 if verify_integrity and local_file.exists():
                     actual_size = local_file.stat().st_size
@@ -692,18 +711,15 @@ def download_snapshot_from_s3(
                         logger.warning(
                             f"Size mismatch for {s3_key}: expected {expected_size}, got {actual_size}"
                         )
-        
+
         return {
             "status": "downloaded",
             "snapshot_key": snapshot_key,
             "local_path": str(local_path),
             "file_count": file_count,
-            "total_size_bytes": total_size
+            "total_size_bytes": total_size,
         }
-        
+
     except Exception as e:
         logger.error("Error downloading snapshot from S3: %s", e)
-        return {
-            "status": "failed",
-            "error": str(e)
-        }
+        return {"status": "failed", "error": str(e)}

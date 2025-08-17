@@ -46,7 +46,7 @@ lock_duration_minutes = int(os.environ.get("LOCK_DURATION_MINUTES", "5"))
 
 
 def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-# pylint: disable=unused-argument
+    # pylint: disable=unused-argument
     """Main entry point for Lambda handler.
 
     Routes to either chunk processing or final merge based on operation.
@@ -215,7 +215,9 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
 
     batch_id = event.get("batch_id")
     total_chunks = event.get("total_chunks", 1)
-    database_name = event.get("database", "lines")  # Get database from event with default
+    database_name = event.get(
+        "database", "lines"
+    )  # Get database from event with default
 
     if not batch_id:
         return {
@@ -243,7 +245,9 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         lock_manager.start_heartbeat()
 
         # Perform final merge with database awareness
-        merge_result = perform_final_merge(batch_id, total_chunks, database_name)
+        merge_result = perform_final_merge(
+            batch_id, total_chunks, database_name
+        )
 
         # Clean up intermediate chunks
         cleanup_intermediate_chunks(batch_id, total_chunks)
@@ -406,10 +410,12 @@ def download_and_merge_delta(
         shutil.rmtree(delta_temp, ignore_errors=True)
 
 
-def perform_final_merge(batch_id: str, total_chunks: int, database_name: Optional[str] = None) -> Dict[str, Any]:
+def perform_final_merge(
+    batch_id: str, total_chunks: int, database_name: Optional[str] = None
+) -> Dict[str, Any]:
     """
     Perform the final merge of all intermediate chunks into a snapshot.
-    
+
     Args:
         batch_id: Unique identifier for this batch
         total_chunks: Number of chunks to merge
@@ -525,10 +531,12 @@ def perform_final_merge(batch_id: str, total_chunks: int, database_name: Optiona
         # Create timestamped snapshot with dedicated prefix for
         # lifecycle management
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        
+
         # Use database-specific path if provided
         if database_name:
-            timestamped_key = f"{database_name}/snapshot/timestamped/{timestamp}/"
+            timestamped_key = (
+                f"{database_name}/snapshot/timestamped/{timestamp}/"
+            )
         else:
             # Backward compatibility
             timestamped_key = f"snapshot/timestamped/{timestamp}/"

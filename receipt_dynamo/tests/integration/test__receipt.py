@@ -728,7 +728,9 @@ def test_add_receipt_conditional_check_failed(
         ),
     )
 
-    with pytest.raises(EntityAlreadyExistsError, match="receipt already exists"):
+    with pytest.raises(
+        EntityAlreadyExistsError, match="receipt already exists"
+    ):
         client.add_receipt(sample_receipt)
     mock_put.assert_called_once()
 
@@ -885,7 +887,9 @@ def test_add_receipt_duplicate_raises(
     client = DynamoClient(dynamodb_table)
     client.add_receipt(sample_receipt)
 
-    with pytest.raises(EntityAlreadyExistsError, match="receipt already exists"):
+    with pytest.raises(
+        EntityAlreadyExistsError, match="receipt already exists"
+    ):
         client.add_receipt(sample_receipt)
 
 

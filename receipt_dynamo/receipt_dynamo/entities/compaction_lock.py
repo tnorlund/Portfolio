@@ -63,7 +63,11 @@ class CompactionLock(DynamoDBEntity):
     @property
     def gsi1_key(self) -> Dict[str, Any]:
         # Enables "list all active locks by expiry" admin queries
-        expires_str = self.expires if isinstance(self.expires, str) else self.expires.isoformat()
+        expires_str = (
+            self.expires
+            if isinstance(self.expires, str)
+            else self.expires.isoformat()
+        )
         return {
             "GSI1PK": {"S": "LOCK"},
             "GSI1SK": {"S": f"EXPIRES#{expires_str}"},
@@ -72,11 +76,19 @@ class CompactionLock(DynamoDBEntity):
     # ───────────────────── DynamoDB marshalling ───────────────────────
     def to_item(self) -> Dict[str, Any]:
         # Ensure datetime fields are converted to ISO strings
-        expires_str = self.expires if isinstance(self.expires, str) else self.expires.isoformat()
+        expires_str = (
+            self.expires
+            if isinstance(self.expires, str)
+            else self.expires.isoformat()
+        )
         heartbeat_str = None
         if self.heartbeat:
-            heartbeat_str = self.heartbeat if isinstance(self.heartbeat, str) else self.heartbeat.isoformat()
-        
+            heartbeat_str = (
+                self.heartbeat
+                if isinstance(self.heartbeat, str)
+                else self.heartbeat.isoformat()
+            )
+
         return {
             **self.key,
             **self.gsi1_key,

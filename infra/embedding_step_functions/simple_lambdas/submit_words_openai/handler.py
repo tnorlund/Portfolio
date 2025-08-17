@@ -79,7 +79,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         all_words_in_receipt = query_receipt_words(image_id, receipt_id)
         logger.info(
             "Found %d words in receipt %s of image %s",
-            len(all_words_in_receipt), receipt_id, image_id
+            len(all_words_in_receipt),
+            receipt_id,
+            image_id,
         )
 
         # Format words with context for embedding
@@ -94,8 +96,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Upload NDJSON file to OpenAI
         openai_file = upload_to_openai(input_file)
-        logger.info("Uploaded input file to OpenAI with ID: %s",
-                     openai_file.id)
+        logger.info(
+            "Uploaded input file to OpenAI with ID: %s", openai_file.id
+        )
 
         # Submit batch job to OpenAI
         openai_batch = submit_openai_batch(openai_file.id)

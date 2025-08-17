@@ -83,7 +83,10 @@ class Job:
             "cancelled",
             "interrupted",
         ]
-        if not isinstance(self.status, str) or self.status.lower() not in valid_statuses:
+        if (
+            not isinstance(self.status, str)
+            or self.status.lower() not in valid_statuses
+        ):
             raise ValueError(f"status must be one of {valid_statuses}")
         self.status = self.status.lower()
 
@@ -197,7 +200,6 @@ class Job:
         yield "job_config", self.job_config
         yield "estimated_duration", self.estimated_duration
         yield "tags", self.tags
-
 
     def __hash__(self) -> int:
         """Returns the hash value of the Job object.

@@ -27,7 +27,7 @@ logger.setLevel(logging.INFO)
 
 
 def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-# pylint: disable=unused-argument
+    # pylint: disable=unused-argument
     """Submit a word embedding batch to OpenAI.
 
     This function downloads word data from S3, formats it for OpenAI's
@@ -66,7 +66,6 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             {
                 "s3_bucket": s3_bucket,
                 "s3_key": s3_key,
-
                 # Include the original ndjson path so the helper can write to it
                 "ndjson_path": f"/tmp/{Path(s3_key).name}",
             }
@@ -96,8 +95,9 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Upload NDJSON file to OpenAI
         openai_file = upload_to_openai(input_file)
-        logger.info("Uploaded input file to OpenAI with ID: %s",
-            openai_file.id)
+        logger.info(
+            "Uploaded input file to OpenAI with ID: %s", openai_file.id
+        )
 
         # Submit batch job to OpenAI
         openai_batch = submit_openai_batch(openai_file.id)

@@ -18,10 +18,7 @@ from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities.receipt_structure_analysis import ReceiptSection
 
 # This entity is not used in production infrastructure
-pytestmark = [
-    pytest.mark.integration,
-    pytest.mark.unused_in_production
-]
+pytestmark = [pytest.mark.integration, pytest.mark.unused_in_production]
 
 
 @pytest.fixture

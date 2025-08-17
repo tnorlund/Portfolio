@@ -192,7 +192,6 @@ class JobMetric:
         yield "step", self.step
         yield "epoch", self.epoch
 
-
     def __hash__(self) -> int:
         """Returns the hash value of the JobMetric object.
 

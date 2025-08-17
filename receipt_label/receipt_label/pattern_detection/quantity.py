@@ -33,7 +33,11 @@ class QuantityPatternDetector(PatternDetector):
 
             # Skip if already matched as part of multi-word quantity
             # Check both word_id and line_id to avoid false positives
-            if any(match.word.word_id == word.word_id and match.word.line_id == word.line_id for match in matches):
+            if any(
+                match.word.word_id == word.word_id
+                and match.word.line_id == word.line_id
+                for match in matches
+            ):
                 continue
 
             # Check for explicit quantity patterns
@@ -212,34 +216,34 @@ class QuantityPatternDetector(PatternDetector):
         """Match weight patterns like '3.5 lbs' or '2.3 kg'."""
         if match := self._compiled_patterns["weight"].search(text):
             quantity, unit = match.groups()
-            
+
             # Convert fraction characters to float
             try:
                 # Handle fraction characters
-                if '½' in quantity:
-                    quantity = quantity.replace('½', '.5')
-                elif '¼' in quantity:
-                    quantity = quantity.replace('¼', '.25')
-                elif '¾' in quantity:
-                    quantity = quantity.replace('¾', '.75')
-                elif '⅓' in quantity:
-                    quantity = quantity.replace('⅓', '.333')
-                elif '⅔' in quantity:
-                    quantity = quantity.replace('⅔', '.667')
-                elif '⅛' in quantity:
-                    quantity = quantity.replace('⅛', '.125')
-                elif '⅜' in quantity:
-                    quantity = quantity.replace('⅜', '.375')
-                elif '⅝' in quantity:
-                    quantity = quantity.replace('⅝', '.625')
-                elif '⅞' in quantity:
-                    quantity = quantity.replace('⅞', '.875')
-                    
+                if "½" in quantity:
+                    quantity = quantity.replace("½", ".5")
+                elif "¼" in quantity:
+                    quantity = quantity.replace("¼", ".25")
+                elif "¾" in quantity:
+                    quantity = quantity.replace("¾", ".75")
+                elif "⅓" in quantity:
+                    quantity = quantity.replace("⅓", ".333")
+                elif "⅔" in quantity:
+                    quantity = quantity.replace("⅔", ".667")
+                elif "⅛" in quantity:
+                    quantity = quantity.replace("⅛", ".125")
+                elif "⅜" in quantity:
+                    quantity = quantity.replace("⅜", ".375")
+                elif "⅝" in quantity:
+                    quantity = quantity.replace("⅝", ".625")
+                elif "⅞" in quantity:
+                    quantity = quantity.replace("⅞", ".875")
+
                 quantity_float = float(quantity)
             except ValueError:
                 # If conversion fails, return as string
                 quantity_float = quantity
-                
+
             return {
                 "matched_text": match.group(0),
                 "quantity": quantity_float,
@@ -409,9 +413,12 @@ class QuantityPatternDetector(PatternDetector):
                 continue
 
             # Check if words are on the same line (same line_id and similar y coordinates)
-            if word1.line_id != word2.line_id or word2.line_id != word3.line_id:
+            if (
+                word1.line_id != word2.line_id
+                or word2.line_id != word3.line_id
+            ):
                 continue
-                
+
             y_tolerance = 5
             if (
                 abs(word1.bounding_box["y"] - word2.bounding_box["y"])
@@ -479,7 +486,7 @@ class QuantityPatternDetector(PatternDetector):
             # Check same line (by line_id) and proximity
             if word1.line_id != word2.line_id:
                 continue
-                
+
             y_tolerance = 5
             if (
                 abs(word1.bounding_box["y"] - word2.bounding_box["y"])

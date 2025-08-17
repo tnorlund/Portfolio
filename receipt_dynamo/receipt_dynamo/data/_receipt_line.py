@@ -300,9 +300,7 @@ class _ReceiptLine(FlattenedStandardMixin):
                     "limit must be an integer or None."
                 )
             if limit <= 0:
-                raise EntityValidationError(
-                    "limit must be greater than 0."
-                )
+                raise EntityValidationError("limit must be greater than 0.")
         if last_evaluated_key is not None and not isinstance(
             last_evaluated_key, dict
         ):

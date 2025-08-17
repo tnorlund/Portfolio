@@ -53,6 +53,7 @@ stage = aws.apigateway.Stage(
     # Cache TTL is set per method
 )
 
+
 # In your Lambda, return cache headers
 def handler(event, context):
     return {
