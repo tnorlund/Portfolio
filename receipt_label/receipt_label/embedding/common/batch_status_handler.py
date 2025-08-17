@@ -261,10 +261,16 @@ def handle_failed_status(
     # Mark all failed items for retry based on batch type
     marked_count = 0
     if error_info["error_details"]:
-        failed_ids = [detail["custom_id"] for detail in error_info["error_details"]]
+        failed_ids = [
+            detail["custom_id"] for detail in error_info["error_details"]
+        ]
         # Determine entity type from batch_type
-        entity_type = "line" if batch_summary.batch_type == "LINE_EMBEDDING" else "word"
-        marked_count = mark_items_for_retry(failed_ids, entity_type, client_manager)
+        entity_type = (
+            "line" if batch_summary.batch_type == "LINE_EMBEDDING" else "word"
+        )
+        marked_count = mark_items_for_retry(
+            failed_ids, entity_type, client_manager
+        )
         logger.info(
             "Marked %d failed items from failed batch %s for retry",
             marked_count,
@@ -321,8 +327,12 @@ def handle_expired_status(
     marked_count = 0
     if failed_ids:
         # Determine entity type from batch_type
-        entity_type = "line" if batch_summary.batch_type == "LINE_EMBEDDING" else "word"
-        marked_count = mark_items_for_retry(failed_ids, entity_type, client_manager)
+        entity_type = (
+            "line" if batch_summary.batch_type == "LINE_EMBEDDING" else "word"
+        )
+        marked_count = mark_items_for_retry(
+            failed_ids, entity_type, client_manager
+        )
         logger.info(
             "Marked %d failed items from expired batch %s for retry",
             marked_count,
@@ -542,7 +552,8 @@ def mark_items_for_retry(
 
 
 def should_retry_batch(
-    batch_summary: BatchSummary, max_retries: int = 3  # pylint: disable=unused-argument
+    batch_summary: BatchSummary,
+    max_retries: int = 3,  # pylint: disable=unused-argument
 ) -> bool:
     """
     Determine if a failed batch should be retried.

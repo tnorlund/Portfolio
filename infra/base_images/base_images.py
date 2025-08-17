@@ -107,19 +107,21 @@ class BaseImages(ComponentResource):
                 if status:
                     has_changes = True
                     break
-            
+
             if has_changes:
                 return f"git-{commit}-dirty"
             return f"git-{commit}"
         except (subprocess.CalledProcessError, FileNotFoundError):
             pass
-        
+
         # Option 2: Hash all package files (fallback)
         content_hash = hashlib.sha256()
         for package_dir in sorted(package_dirs):
             package_files = list(package_dir.rglob("*.py"))
             for file_path in sorted(package_files):
-                if file_path.is_file() and not file_path.name.startswith("test_"):
+                if file_path.is_file() and not file_path.name.startswith(
+                    "test_"
+                ):
                     # Include package name and relative path for consistency
                     rel_path = file_path.relative_to(package_dir.parent)
                     content_hash.update(str(rel_path).encode())
@@ -158,7 +160,9 @@ class BaseImages(ComponentResource):
         )
         return hash_tag
 
-    def get_combined_image_tag(self, package_name: str, package_dirs: list[Path]) -> str:
+    def get_combined_image_tag(
+        self, package_name: str, package_dirs: list[Path]
+    ) -> str:
         """Get the image tag for a package that includes multiple directories.
 
         Args:
@@ -238,11 +242,17 @@ class BaseImages(ComponentResource):
         label_package_dir = build_context_path / "receipt_label"
         dynamo_tag = self.get_image_tag("receipt_dynamo", dynamo_package_dir)
         # For label image, use combined hash since it includes both packages
-        label_tag = self.get_combined_image_tag("receipt_label", [dynamo_package_dir, label_package_dir])
-        
+        label_tag = self.get_combined_image_tag(
+            "receipt_label", [dynamo_package_dir, label_package_dir]
+        )
+
         # Store Dockerfile paths once to ensure consistency
-        dynamo_dockerfile = str(Path(__file__).parent / "dockerfiles" / "Dockerfile.receipt_dynamo")
-        label_dockerfile = str(Path(__file__).parent / "dockerfiles" / "Dockerfile.receipt_label")
+        dynamo_dockerfile = str(
+            Path(__file__).parent / "dockerfiles" / "Dockerfile.receipt_dynamo"
+        )
+        label_dockerfile = str(
+            Path(__file__).parent / "dockerfiles" / "Dockerfile.receipt_label"
+        )
 
         # Build receipt_dynamo base image with content-based tag
         # .dockerignore at project root ensures only receipt_dynamo/ and receipt_label/ are included
@@ -285,7 +295,9 @@ class BaseImages(ComponentResource):
             registries=[
                 {
                     "address": self.dynamo_base_repo.repository_url.apply(
-                        lambda url: url.split("/")[0]  # Extract registry address
+                        lambda url: url.split("/")[
+                            0
+                        ]  # Extract registry address
                     ),
                     "password": ecr_auth_token.password,
                     "username": ecr_auth_token.user_name,
@@ -345,7 +357,9 @@ class BaseImages(ComponentResource):
             registries=[
                 {
                     "address": self.label_base_repo.repository_url.apply(
-                        lambda url: url.split("/")[0]  # Extract registry address
+                        lambda url: url.split("/")[
+                            0
+                        ]  # Extract registry address
                     ),
                     "password": ecr_auth_token.password,
                     "username": ecr_auth_token.user_name,
@@ -359,7 +373,9 @@ class BaseImages(ComponentResource):
             ],
             opts=ResourceOptions(
                 parent=self,
-                depends_on=[self.label_base_repo],  # Only depends on ECR repo, not dynamo image
+                depends_on=[
+                    self.label_base_repo
+                ],  # Only depends on ECR repo, not dynamo image
             ),
         )
 

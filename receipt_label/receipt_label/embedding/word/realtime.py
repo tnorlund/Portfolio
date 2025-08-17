@@ -328,7 +328,7 @@ def embed_receipt_words_realtime(
                 ids=ids,
                 embeddings=embeddings,
                 documents=documents,
-                metadatas=metadatas
+                metadatas=metadatas,
             )
 
             logger.info(
