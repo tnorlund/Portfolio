@@ -12,6 +12,7 @@ from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_ollama import ChatOllama
 from langgraph.graph import StateGraph, END
+
 # Removed json import - using structured output only
 import os
 
@@ -87,13 +88,15 @@ def prepare_validation_context(
     receipt_text = _format_receipt_lines(lines_obj)
 
     # Format targets for display
-    targets_text = "\n".join([
-        f"- ID: {target['id']}"
-        f"\n  Text: '{target['text']}'"
-        f"\n  Proposed Label: {target['proposed_label']}"
-        for target in targets
-    ])
-    
+    targets_text = "\n".join(
+        [
+            f"- ID: {target['id']}"
+            f"\n  Text: '{target['text']}'"
+            f"\n  Proposed Label: {target['proposed_label']}"
+            for target in targets
+        ]
+    )
+
     # Create the validation prompt
     prompt = f"""You are validating receipt labels. 
 
@@ -187,45 +190,49 @@ async def validate_with_ollama(
     """
     try:
         llm = get_ollama_llm()
-        
+
         # Attempt 1: Try with_structured_output (cleanest approach)
         try:
             structured_llm = llm.with_structured_output(ValidationResponse)
             response = await structured_llm.ainvoke(state["formatted_prompt"])
-            
+
             # Response is already a ValidationResponse object
             state["validation_response"] = response
             state["validation_results"] = [r.dict() for r in response.results]
             state["completed"] = True
             return state
-            
+
         except (AttributeError, NotImplementedError):
             # Model doesn't support with_structured_output, try parser approach
             pass
-        
+
         # Attempt 2: Try with output parser
         parser = PydanticOutputParser(pydantic_object=ValidationResponse)
-        
+
         # Create prompt with format instructions
         prompt_template = PromptTemplate(
             template="{system_message}\n\n{query}\n\n{format_instructions}",
             input_variables=["system_message", "query"],
-            partial_variables={"format_instructions": parser.get_format_instructions()}
+            partial_variables={
+                "format_instructions": parser.get_format_instructions()
+            },
         )
-        
+
         formatted = prompt_template.format(
             system_message="You are a receipt validation assistant. Analyze the receipt labels and respond with the required structure.",
-            query=state["formatted_prompt"]
+            query=state["formatted_prompt"],
         )
-        
+
         response = await llm.ainvoke(formatted)
         parsed_response = parser.parse(response.content)
-        
+
         state["validation_response"] = parsed_response
-        state["validation_results"] = [r.dict() for r in parsed_response.results]
+        state["validation_results"] = [
+            r.dict() for r in parsed_response.results
+        ]
         state["completed"] = True
         return state
-            
+
     except Exception as e:
         state["error"] = f"Structured validation failed: {e}"
         state["validation_results"] = []
