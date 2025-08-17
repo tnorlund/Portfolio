@@ -783,10 +783,7 @@ echo "🎉 Parallel function updates completed!"'''
                                     "codebuild:BatchGetBuilds",
                                     "codebuild:BatchGetBuildBatches",
                                 ],
-                                "Resource": [
-                                    f"arn:aws:codebuild:{aws.config.region}:{aws.get_caller_identity().account_id}:project/{self.name}-publish",
-                                    f"arn:aws:codebuild:{aws.config.region}:{aws.get_caller_identity().account_id}:project/{self.name}-*",
-                                ],
+                                "Resource": f"arn:aws:codebuild:{aws.config.region}:{aws.get_caller_identity().account_id}:project/*",
                             },
                         ],
                     }
@@ -884,7 +881,7 @@ echo "🎉 Parallel function updates completed!"'''
                                     "codebuild:BatchGetProjects",
                                     "codebuild:ListBuildsForProject",
                                 ],
-                                "Resource": f"arn:aws:codebuild:{args[0]}:{args[1]}:project/{self.name}-*",
+                                "Resource": f"arn:aws:codebuild:{args[0]}:{args[1]}:project/*",
                             }
                         ],
                     }
@@ -895,10 +892,10 @@ echo "🎉 Parallel function updates completed!"'''
 
         # Create a CodeBuild project for each Python version
         build_projects = {}
+        stack_name = pulumi.get_stack()
         for v in self.python_versions:
             project = aws.codebuild.Project(
-                resource_name=f"{self.name}-build-py{v.replace('.', '')}",
-                name=f"{self.name}-build-py{v.replace('.', '')}",
+                f"{self.name}-build-py{v.replace('.', '')}-{stack_name}",  # Pulumi logical name with stack
                 service_role=codebuild_role.arn,
                 source=aws.codebuild.ProjectSourceArgs(
                     type="S3",
@@ -956,8 +953,7 @@ echo "🎉 Parallel function updates completed!"'''
                 logs_config=aws.codebuild.ProjectLogsConfigArgs(
                     cloudwatch_logs=aws.codebuild.ProjectLogsConfigCloudwatchLogsArgs(
                         status="ENABLED",
-                        group_name=f"/aws/codebuild/{self.name}-build-py{v.replace('.', '')}",
-                        stream_name=f"{self.name}-build-stream",
+                        # Auto-generate log group name
                     ),
                 ),
                 opts=pulumi.ResourceOptions(parent=self),
@@ -1047,8 +1043,7 @@ echo "🎉 Parallel function updates completed!"'''
 
         # Create the publish CodeBuild project
         publish_project = aws.codebuild.Project(
-            f"{self.name}-publish",
-            name=f"{self.name}-publish",
+            f"{self.name}-publish-{stack_name}",  # Pulumi logical name with stack
             service_role=codebuild_role.arn,
             source=aws.codebuild.ProjectSourceArgs(
                 type="CODEPIPELINE",
@@ -1084,8 +1079,7 @@ echo "🎉 Parallel function updates completed!"'''
             logs_config=aws.codebuild.ProjectLogsConfigArgs(
                 cloudwatch_logs=aws.codebuild.ProjectLogsConfigCloudwatchLogsArgs(
                     status="ENABLED",
-                    group_name=f"/aws/codebuild/{self.name}-publish",
-                    stream_name=f"{self.name}-publish-stream",
+                    # Auto-generate log group name
                 ),
             ),
             opts=pulumi.ResourceOptions(parent=self),
@@ -1093,8 +1087,7 @@ echo "🎉 Parallel function updates completed!"'''
 
         # Define CodePipeline to run all builds in parallel and then publish layer versions
         pipeline = aws.codepipeline.Pipeline(
-            resource_name=f"{self.name}-pipeline",
-            name=f"{self.name}-pipeline",
+            f"{self.name}-pipeline-{stack_name}",  # Pulumi logical name with stack
             role_arn=pipeline_role.arn,
             artifact_stores=[
                 aws.codepipeline.PipelineArtifactStoreArgs(
