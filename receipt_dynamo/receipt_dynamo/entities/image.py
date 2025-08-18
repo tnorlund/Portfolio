@@ -47,6 +47,7 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
     timestamp_added: str | datetime
     raw_s3_bucket: str
     raw_s3_key: str
+    receipt_count: int = 0
     sha256: Optional[str] = None
     cdn_s3_bucket: Optional[str] = None
     cdn_s3_key: Optional[str] = None
@@ -74,6 +75,16 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
         """Validate and normalize initialization arguments."""
         assert_valid_uuid(self.image_id)
         validate_positive_dimensions(self.width, self.height)
+
+        # Normalize and validate receipt_count
+        if self.receipt_count is None:
+            self.receipt_count = 0
+        try:
+            self.receipt_count = int(self.receipt_count)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("receipt_count must be an integer") from exc
+        if self.receipt_count < 0:
+            raise ValueError("receipt_count must be non-negative")
 
         if isinstance(self.timestamp_added, datetime):
             self.timestamp_added = self.timestamp_added.isoformat()
@@ -151,7 +162,12 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
         """
         return {
             "GSI3PK": {"S": f"IMAGE#{self.image_type}"},
-            "GSI3SK": {"S": f"IMAGE#{self.image_id}"},
+            "GSI3SK": {
+                "S": (
+                    f"RECEIPT_COUNT#{self.receipt_count:05d}"
+                    f"#IMAGE#{self.image_id}"
+                )
+            },
         }
 
     def to_item(self) -> Dict[str, Any]:
@@ -172,6 +188,7 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
             "timestamp_added": {"S": self.timestamp_added},
             "raw_s3_bucket": {"S": self.raw_s3_bucket},
             "raw_s3_key": {"S": self.raw_s3_key},
+            "receipt_count": {"N": str(self.receipt_count)},
             "sha256": {"S": self.sha256} if self.sha256 else {"NULL": True},
             "cdn_s3_bucket": (
                 {"S": self.cdn_s3_bucket}
@@ -191,6 +208,7 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
             f"timestamp_added={self.timestamp_added}, "
             f"raw_s3_bucket={_repr_str(self.raw_s3_bucket)}, "
             f"raw_s3_key={_repr_str(self.raw_s3_key)}, "
+            f"receipt_count={self.receipt_count}, "
             f"sha256={_repr_str(self.sha256)}, "
             f"cdn_s3_bucket={_repr_str(self.cdn_s3_bucket)}, "
             f"cdn_s3_key={_repr_str(self.cdn_s3_key)}, "
@@ -253,6 +271,7 @@ def item_to_image(item: Dict[str, Any]) -> Image:
             ),
             raw_s3_bucket=item["raw_s3_bucket"]["S"],
             raw_s3_key=item["raw_s3_key"]["S"],
+            receipt_count=int(item.get("receipt_count", {}).get("N", "0")),
             sha256=item.get("sha256", {}).get("S"),
             cdn_s3_bucket=item.get("cdn_s3_bucket", {}).get("S"),
             cdn_s3_key=item.get("cdn_s3_key", {}).get("S"),

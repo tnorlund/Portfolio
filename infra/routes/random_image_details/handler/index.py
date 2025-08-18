@@ -1,3 +1,5 @@
+"""Lambda handler for retrieving random image details with specific receipt counts."""
+
 import json
 import logging
 import os
@@ -5,6 +7,10 @@ import random
 
 from receipt_dynamo.constants import ImageType
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.data.shared_exceptions import (
+    EntityNotFoundError,
+    OperationError,
+)
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -13,7 +19,16 @@ dynamodb_table_name = os.environ["DYNAMODB_TABLE_NAME"]
 QUERY_LIMIT = 500
 
 
-def handler(event, context):
+def handler(event, _context):
+    """Handle API Gateway requests for random image details.
+
+    Args:
+        event: API Gateway event containing HTTP request details
+        context: Lambda context (unused but required by Lambda)
+
+    Returns:
+        dict: HTTP response with status code and body
+    """
     logger.info("Received event: %s", event)
     http_method = event["requestContext"]["http"]["method"].upper()
 
@@ -31,76 +46,96 @@ def handler(event, context):
     except KeyError:
         return {
             "statusCode": 400,
-            "body": f"Invalid image_type '{image_type_str}'. Must be one of {[t.value for t in ImageType]}",
+            "body": (
+                f"Invalid image_type '{image_type_str}'. Must be one of "
+                f"{[t.value for t in ImageType]}"
+            ),
         }
 
     if http_method == "GET":
-        try:
-            # Use the client to list the first 50 images
-            client = DynamoClient(dynamodb_table_name)
-            receipts, lek = client.list_receipts(QUERY_LIMIT)
-            while lek:
-                next_receipts, lek = client.list_receipts(QUERY_LIMIT, lek)
-                receipts.extend(next_receipts)
+        return handle_get_request(image_type)
 
-            # Group all receipts by their image_id
-            # Set the value to the dict to the number of receipts with that image_id
-            receipts_by_image_id = {}
-            for receipt in receipts:
-                if receipt.image_id not in receipts_by_image_id:
-                    receipts_by_image_id[receipt.image_id] = 0
-                receipts_by_image_id[receipt.image_id] += 1
+    if http_method == "POST":
+        return {"statusCode": 405, "body": "Method not allowed"}
+    return {"statusCode": 405, "body": f"Method {http_method} not allowed"}
 
-            # If the requested type is SCAN, only keep images that have ≥2 receipts
-            if image_type == ImageType.SCAN:
-                receipts_by_image_id = {
-                    key: value
-                    for key, value in receipts_by_image_id.items()
-                    if value >= 2
-                }
 
-            # List all images of the requested type
-            images, last_evaluated_key = client.list_images_by_type(image_type)
-            images = [
-                image
-                for image in images
-                if image.image_id in receipts_by_image_id
-            ]
+def handle_get_request(image_type):
+    """Handle GET request to retrieve random image details.
 
-            # Randomly chose an image_id of the images with 2 receipts
-            if len(images) == 0:
-                return {
-                    "statusCode": 404,
-                    "body": "No images with 2 receipts found",
-                }
+    Args:
+        image_type: ImageType enum specifying the type of image to retrieve
 
-            image_id = random.choice([image.image_id for image in images])
+    Returns:
+        dict: HTTP response with image details or error
+    """
+    try:
+        client = DynamoClient(dynamodb_table_name)
 
-            # Get all details for the randomly selected image
-            image_details = client.get_image_details(image_id)
+        # For SCAN type, we want images with exactly 2 receipts
+        # For PHOTO type, we want images with exactly 1 receipt
+        target_receipt_count = 2 if image_type == ImageType.SCAN else 1
 
-            # Extract relevant fields from ImageDetails object
-            image = (
-                dict(image_details.images[0]) if image_details.images else None
+        # Query images with the exact receipt count using GSI3
+        all_images = []
+
+        images, lek = client.list_images_by_type(
+            image_type,
+            receipt_count=target_receipt_count,
+            limit=QUERY_LIMIT,
+        )
+        all_images.extend(images)
+
+        # Continue pagination if needed
+        while lek:
+            images, lek = client.list_images_by_type(
+                image_type,
+                receipt_count=target_receipt_count,
+                limit=QUERY_LIMIT,
+                last_evaluated_key=lek,
             )
-            lines = [dict(line) for line in image_details.lines]
-            receipts = [dict(receipt) for receipt in image_details.receipts]
+            all_images.extend(images)
+
+        # Check if we found any matching images
+        if not all_images:
             return {
-                "statusCode": 200,
-                "body": json.dumps(
-                    {
-                        "image": image,
-                        "lines": lines,
-                        "receipts": receipts,
-                    }
+                "statusCode": 404,
+                "body": (
+                    f"No {image_type.value} images with exactly "
+                    f"{target_receipt_count} receipt(s) found"
                 ),
             }
-        except Exception as e:
-            return {
-                "statusCode": 500,
-                "body": f"Internal server error: {str(e)}",
-            }
-    elif http_method == "POST":
-        return {"statusCode": 405, "body": "Method not allowed"}
-    else:
-        return {"statusCode": 405, "body": f"Method {http_method} not allowed"}
+
+        # Randomly select one image
+        selected_image = random.choice(all_images)
+        image_id = selected_image.image_id
+
+        # Get all details for the randomly selected image
+        image_details = client.get_image_details(image_id)
+
+        # Extract relevant fields from ImageDetails object
+        image = dict(image_details.images[0]) if image_details.images else None
+        lines = [dict(line) for line in image_details.lines]
+        receipts = [dict(receipt) for receipt in image_details.receipts]
+        return {
+            "statusCode": 200,
+            "body": json.dumps(
+                {
+                    "image": image,
+                    "lines": lines,
+                    "receipts": receipts,
+                }
+            ),
+        }
+    except (EntityNotFoundError, OperationError) as exc:
+        logger.error("Database operation failed: %s", exc)
+        return {
+            "statusCode": 500,
+            "body": f"Database error: {str(exc)}",
+        }
+    except (KeyError, ValueError) as exc:
+        logger.error("Data processing error: %s", exc)
+        return {
+            "statusCode": 500,
+            "body": f"Data processing error: {str(exc)}",
+        }
