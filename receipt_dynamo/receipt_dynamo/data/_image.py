@@ -7,7 +7,7 @@ This refactored version reduces code from ~792 lines to ~250 lines
 (68% reduction)
 while maintaining full backward compatibility and all functionality.
 """
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.constants import ImageType
 from receipt_dynamo.data.base_operations import (
@@ -38,11 +38,6 @@ from receipt_dynamo.entities import (
 from receipt_dynamo.entities.image import Image
 from receipt_dynamo.entities.line import Line
 from receipt_dynamo.entities.receipt import Receipt
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import (
-        QueryInputTypeDef,
-    )
 
 
 class _Image(FlattenedStandardMixin):
@@ -105,9 +100,11 @@ class _Image(FlattenedStandardMixin):
         self, image_id: str, increment: int = 1
     ) -> Image:
         """
-        Increments the receipt_count for an Image and returns the updated Image.
+        Increments the receipt_count for an Image and returns the updated
+        Image.
 
-        NOTE: This method is NOT atomic due to GSI3SK needing to be recalculated
+        NOTE: This method is NOT atomic due to GSI3SK needing to be
+        recalculated
         based on the new receipt_count. For true atomicity, consider using
         update_image() directly after modifying the image object.
 
@@ -118,7 +115,8 @@ class _Image(FlattenedStandardMixin):
 
         Args:
             image_id: The ID of the image to update
-            increment: The amount to increment by (default 1, use negative for decrement)
+            increment: The amount to increment by (default 1, use negative
+                for decrement)
 
         Returns:
             Image: The updated Image object with new receipt_count
@@ -134,7 +132,8 @@ class _Image(FlattenedStandardMixin):
         current_count = getattr(image, "receipt_count", 0) or 0
         image.receipt_count = max(0, current_count + increment)
 
-        # Use update_image which will properly set all GSI keys including GSI3SK
+        # Use update_image which will properly set all GSI keys including
+        # GSI3SK
         self.update_image(image)
 
         return image

@@ -81,8 +81,8 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
             self.receipt_count = 0
         try:
             self.receipt_count = int(self.receipt_count)
-        except (TypeError, ValueError):
-            raise ValueError("receipt_count must be an integer")
+        except (TypeError, ValueError) as exc:
+            raise ValueError("receipt_count must be an integer") from exc
         if self.receipt_count < 0:
             raise ValueError("receipt_count must be non-negative")
 

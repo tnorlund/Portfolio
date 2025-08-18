@@ -284,7 +284,9 @@ def test_image_to_item(example_image):
         "GSI2PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "GSI2SK": {"S": "IMAGE"},
         "GSI3PK": {"S": "IMAGE#SCAN"},
-        "GSI3SK": {"S": "RECEIPT_COUNT#00000#IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "GSI3SK": {
+            "S": "RECEIPT_COUNT#00000#IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+        },
         "TYPE": {"S": "IMAGE"},
         "width": {"N": "10"},
         "height": {"N": "20"},
@@ -325,7 +327,9 @@ def test_image_to_item_no_sha(example_image_no_sha):
         "GSI2PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "GSI2SK": {"S": "IMAGE"},
         "GSI3PK": {"S": "IMAGE#SCAN"},
-        "GSI3SK": {"S": "RECEIPT_COUNT#00000#IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "GSI3SK": {
+            "S": "RECEIPT_COUNT#00000#IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+        },
         "TYPE": {"S": "IMAGE"},
         "width": {"N": "10"},
         "height": {"N": "20"},
@@ -366,7 +370,9 @@ def test_image_to_item_no_cdn_bucket(example_image_no_cdn_bucket):
         "GSI2PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "GSI2SK": {"S": "IMAGE"},
         "GSI3PK": {"S": "IMAGE#SCAN"},
-        "GSI3SK": {"S": "RECEIPT_COUNT#00000#IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "GSI3SK": {
+            "S": "RECEIPT_COUNT#00000#IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+        },
         "TYPE": {"S": "IMAGE"},
         "width": {"N": "10"},
         "height": {"N": "20"},
@@ -407,7 +413,9 @@ def test_image_to_item_no_cdn_key(example_image_no_cdn_key):
         "GSI2PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "GSI2SK": {"S": "IMAGE"},
         "GSI3PK": {"S": "IMAGE#SCAN"},
-        "GSI3SK": {"S": "RECEIPT_COUNT#00000#IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "GSI3SK": {
+            "S": "RECEIPT_COUNT#00000#IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+        },
         "TYPE": {"S": "IMAGE"},
         "width": {"N": "10"},
         "height": {"N": "20"},
