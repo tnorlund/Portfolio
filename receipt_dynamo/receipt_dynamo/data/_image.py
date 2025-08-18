@@ -7,7 +7,7 @@ This refactored version reduces code from ~792 lines to ~250 lines
 (68% reduction)
 while maintaining full backward compatibility and all functionality.
 """
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.constants import ImageType
 from receipt_dynamo.data.base_operations import (
@@ -38,11 +38,6 @@ from receipt_dynamo.entities import (
 from receipt_dynamo.entities.image import Image
 from receipt_dynamo.entities.line import Line
 from receipt_dynamo.entities.receipt import Receipt
-
-if TYPE_CHECKING:
-    from receipt_dynamo.data.base_operations import (
-        QueryInputTypeDef,
-    )
 
 
 class _Image(FlattenedStandardMixin):
@@ -99,6 +94,49 @@ class _Image(FlattenedStandardMixin):
     def update_images(self, images: List[Image]) -> None:
         """Updates multiple Image items in the database."""
         self._update_entities(images, Image, "images")
+
+    @handle_dynamodb_errors("increment_image_receipt_count")
+    def increment_image_receipt_count(
+        self, image_id: str, increment: int = 1
+    ) -> Image:
+        """
+        Increments the receipt_count for an Image and returns the updated
+        Image.
+
+        NOTE: This method is NOT atomic due to GSI3SK needing to be
+        recalculated
+        based on the new receipt_count. For true atomicity, consider using
+        update_image() directly after modifying the image object.
+
+        This method:
+        1. Gets the current image
+        2. Updates the receipt_count
+        3. Calls update_image() which properly sets all GSI keys
+
+        Args:
+            image_id: The ID of the image to update
+            increment: The amount to increment by (default 1, use negative
+                for decrement)
+
+        Returns:
+            Image: The updated Image object with new receipt_count
+
+        Raises:
+            EntityNotFoundError: If the image doesn't exist
+            OperationError: If there's an error updating the item
+        """
+        # Get current image
+        image = self.get_image(image_id)
+
+        # Update the receipt count
+        current_count = getattr(image, "receipt_count", 0) or 0
+        image.receipt_count = max(0, current_count + increment)
+
+        # Use update_image which will properly set all GSI keys including
+        # GSI3SK
+        self.update_image(image)
+
+        return image
 
     @handle_dynamodb_errors("get_image_details")
     def get_image_details(self, image_id: str) -> ImageDetails:
@@ -254,6 +292,7 @@ class _Image(FlattenedStandardMixin):
     def list_images_by_type(
         self,
         image_type: str | ImageType,
+        receipt_count: Optional[int] = None,
         limit: Optional[int] = None,
         last_evaluated_key: Optional[Dict] = None,
     ) -> Tuple[List[Image], Optional[Dict]]:
@@ -273,11 +312,25 @@ class _Image(FlattenedStandardMixin):
         if isinstance(image_type, ImageType):
             image_type = image_type.value
 
+        if receipt_count is not None:
+            key_condition_expression = "#t = :val AND begins_with(#r, :rc)"
+            expression_attribute_names = {"#t": "GSI3PK", "#r": "GSI3SK"}
+            expression_attribute_values = {
+                ":val": {"S": f"IMAGE#{image_type}"},
+                ":rc": {"S": f"RECEIPT_COUNT#{receipt_count:05d}"},
+            }
+        else:
+            key_condition_expression = "#t = :val"
+            expression_attribute_names = {"#t": "GSI3PK"}
+            expression_attribute_values = {
+                ":val": {"S": f"IMAGE#{image_type}"}
+            }
+
         return self._query_entities(
             index_name="GSI3",
-            key_condition_expression="#t = :val",
-            expression_attribute_names={"#t": "GSI3PK"},
-            expression_attribute_values={":val": {"S": f"IMAGE#{image_type}"}},
+            key_condition_expression=key_condition_expression,
+            expression_attribute_names=expression_attribute_names,
+            expression_attribute_values=expression_attribute_values,
             converter_func=item_to_image,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
