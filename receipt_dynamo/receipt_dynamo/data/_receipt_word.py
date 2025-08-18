@@ -131,6 +131,76 @@ class _ReceiptWord(
                 )
         self._update_entities(receipt_words, ReceiptWord, "receipt_words")
 
+    @handle_dynamodb_errors("increment_receipt_word_valid_label_count")
+    def increment_receipt_word_valid_label_count(
+        self, receipt_word: ReceiptWord
+    ) -> ReceiptWord:
+        """Increments the valid_label_count for a ReceiptWord and returns
+        the updated ReceiptWord."""
+        self._validate_entity(receipt_word, ReceiptWord, "receipt_word")
+        response = self._client.update_item(
+            TableName=self.table_name,
+            Key=receipt_word.key,
+            UpdateExpression=(
+                "SET valid_label_count = if_not_exists("
+                "valid_label_count, :zero"
+                ") + :inc"
+            ),
+            ExpressionAttributeValues={
+                ":inc": {"N": "1"},
+                ":zero": {"N": "0"},
+            },
+            ConditionExpression=(
+                "attribute_exists(#pk) AND attribute_exists(#sk) "
+                "AND (attribute_not_exists(#valid_label_count) "
+                "OR #valid_label_count >= :zero)"
+            ),
+            ExpressionAttributeNames={
+                "#pk": "PK",
+                "#sk": "SK",
+                "#valid_label_count": "valid_label_count",
+            },
+            ReturnValues="ALL_NEW",
+        )
+        if "Attributes" in response:
+            return item_to_receipt_word(response["Attributes"])
+        return receipt_word
+
+    @handle_dynamodb_errors("increment_receipt_word_invalid_label_count")
+    def increment_receipt_word_invalid_label_count(
+        self, receipt_word: ReceiptWord
+    ) -> ReceiptWord:
+        """Increments the invalid_label_count for a ReceiptWord and returns
+        the updated ReceiptWord."""
+        self._validate_entity(receipt_word, ReceiptWord, "receipt_word")
+        response = self._client.update_item(
+            TableName=self.table_name,
+            Key=receipt_word.key,
+            UpdateExpression=(
+                "SET invalid_label_count = if_not_exists("
+                "invalid_label_count, :zero"
+                ") + :inc"
+            ),
+            ExpressionAttributeValues={
+                ":inc": {"N": "1"},
+                ":zero": {"N": "0"},
+            },
+            ConditionExpression=(
+                "attribute_exists(#pk) AND attribute_exists(#sk) "
+                "AND (attribute_not_exists(#invalid_label_count) "
+                "OR #invalid_label_count >= :zero)"
+            ),
+            ExpressionAttributeNames={
+                "#pk": "PK",
+                "#sk": "SK",
+                "#invalid_label_count": "invalid_label_count",
+            },
+            ReturnValues="ALL_NEW",
+        )
+        if "Attributes" in response:
+            return item_to_receipt_word(response["Attributes"])
+        return receipt_word
+
     @handle_dynamodb_errors("delete_receipt_word")
     def delete_receipt_word(self, receipt_word: ReceiptWord) -> None:
         """Deletes a single ReceiptWord by IDs."""
