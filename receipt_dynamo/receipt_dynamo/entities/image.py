@@ -47,7 +47,7 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
     timestamp_added: str | datetime
     raw_s3_bucket: str
     raw_s3_key: str
-    receipt_count: Optional[int] = 0
+    receipt_count: int = 0
     sha256: Optional[str] = None
     cdn_s3_bucket: Optional[str] = None
     cdn_s3_key: Optional[str] = None
@@ -75,6 +75,16 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
         """Validate and normalize initialization arguments."""
         assert_valid_uuid(self.image_id)
         validate_positive_dimensions(self.width, self.height)
+
+        # Normalize and validate receipt_count
+        if self.receipt_count is None:
+            self.receipt_count = 0
+        try:
+            self.receipt_count = int(self.receipt_count)
+        except (TypeError, ValueError):
+            raise ValueError("receipt_count must be an integer")
+        if self.receipt_count < 0:
+            raise ValueError("receipt_count must be non-negative")
 
         if isinstance(self.timestamp_added, datetime):
             self.timestamp_added = self.timestamp_added.isoformat()
