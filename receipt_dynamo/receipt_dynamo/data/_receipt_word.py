@@ -143,9 +143,19 @@ class _ReceiptWord(
                 TableName=self.table_name,
                 Key=receipt_word.key,
                 UpdateExpression=(
-                    "SET valid_label_count = valid_label_count + :inc"
+                    "SET valid_label_count = if_not_exists("
+                    "valid_label_count, :zero"
+                    ") + :inc"
                 ),
-                ExpressionAttributeValues={":inc": {"N": "1"}},
+                ExpressionAttributeValues={
+                    ":inc": {"N": "1"},
+                    ":zero": {"N": "0"},
+                },
+                ConditionExpression=(
+                    "attribute_exists(#pk) AND attribute_exists(#sk) "
+                    "AND #valid_label_count >= 0"
+                ),
+                ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
                 ReturnValues="ALL_NEW",
             )
             if "Attributes" in response:
@@ -168,9 +178,19 @@ class _ReceiptWord(
                 TableName=self.table_name,
                 Key=receipt_word.key,
                 UpdateExpression=(
-                    "SET invalid_label_count = invalid_label_count + :inc"
+                    "SET invalid_label_count = if_not_exists("
+                    "invalid_label_count, :zero"
+                    ") + :inc"
                 ),
-                ExpressionAttributeValues={":inc": {"N": "1"}},
+                ExpressionAttributeValues={
+                    ":inc": {"N": "1"},
+                    ":zero": {"N": "0"},
+                },
+                ConditionExpression=(
+                    "attribute_exists(#pk) AND attribute_exists(#sk) "
+                    "AND #valid_label_count >= 0"
+                ),
+                ExpressionAttributeNames={"#pk": "PK", "#sk": "SK"},
                 ReturnValues="ALL_NEW",
             )
             if "Attributes" in response:
