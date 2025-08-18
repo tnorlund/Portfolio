@@ -109,8 +109,7 @@ def produce_embedding_delta(
             logger.info(f"Persist directory: {delta_dir}")
             chroma = ChromaDBClient(
                 persist_directory=delta_dir,
-                collection_prefix="",  # No prefix for database-specific storage
-                mode="delta",
+                mode="write",  # Changed from "delta" to "write"
             )
             # Adjust delta prefix to include database name
             delta_prefix = f"{database_name}/{delta_prefix}"
@@ -120,7 +119,7 @@ def produce_embedding_delta(
                 "Creating ChromaDB client with default 'receipts' prefix"
             )
             logger.info(f"Persist directory: {delta_dir}")
-            chroma = ChromaDBClient(persist_directory=delta_dir, mode="delta")
+            chroma = ChromaDBClient(persist_directory=delta_dir, mode="write")
 
         # Upsert vectors
         logger.info(
@@ -138,13 +137,31 @@ def produce_embedding_delta(
         )
 
         # Upload to S3 using the specified prefix
+        # ChromaDB PersistentClient auto-persists, no manual persist needed
+        
+        # Generate a unique delta ID
+        delta_id = str(uuid.uuid4())
+        s3_delta_key = f"{delta_prefix}{delta_id}/"
+
         try:
             logger.info(
-                f"Starting S3 upload to bucket '{bucket_name}' with prefix '{delta_prefix}'"
+                f"Starting S3 upload to bucket '{bucket_name}' with prefix '{s3_delta_key}'"
             )
-            s3_key = chroma.persist_and_upload_delta(
-                bucket=bucket_name, s3_prefix=delta_prefix
+
+            # Upload the delta directory to S3
+            upload_result = upload_delta_to_s3(
+                local_delta_path=delta_dir,
+                bucket=bucket_name,
+                delta_key=s3_delta_key,
+                metadata={"batch_id": batch_id} if batch_id else None,
             )
+
+            if upload_result["status"] != "uploaded":
+                raise RuntimeError(
+                    f"Failed to upload delta: {upload_result.get('error')}"
+                )
+
+            s3_key = s3_delta_key
             logger.info("Successfully uploaded delta to S3: %s", s3_key)
         except Exception as e:
             logger.error(f"Failed to upload delta to S3: {e}")
@@ -285,6 +302,7 @@ def query_snapshot(
 def batch_produce_embeddings(
     word_batches: List[Tuple[str, List[Dict[str, Any]]]],
     embedding_model: Any,  # OpenAI client or similar
+    bucket_name: str,  # Required for delta upload
     collection_name: str = "words",
 ) -> Dict[str, Any]:
     """
@@ -342,6 +360,7 @@ def batch_produce_embeddings(
         embeddings=all_embeddings,
         documents=all_documents,
         metadatas=all_metadatas,
+        bucket_name=bucket_name,
         collection_name=collection_name,
     )
 
@@ -366,9 +385,6 @@ def download_snapshot_locally(
         bucket_name = os.environ["VECTORS_BUCKET"]
 
     try:
-
-        import boto3
-
         s3 = boto3.client("s3")
 
         # Create local directory
@@ -409,7 +425,7 @@ def download_snapshot_locally(
 
 
 def embedding_producer_handler(
-    event: Dict[str, Any], _context: Any
+    event: Dict[str, Any], context: Any  # pylint: disable=unused-argument
 ) -> Dict[str, Any]:
     """
     Example Lambda handler for producing embeddings.
@@ -458,12 +474,15 @@ def embedding_producer_handler(
         embeddings=embeddings,
         documents=documents,
         metadatas=metadatas,
+        bucket_name=os.environ.get("CHROMADB_BUCKET", "chromadb-vectors"),
     )
 
     return {"statusCode": 200, "body": json.dumps(result)}
 
 
-def query_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
+def query_handler(
+    event: Dict[str, Any], context: Any  # pylint: disable=unused-argument
+) -> Dict[str, Any]:
     """
     Example Lambda handler for querying vectors.
 
@@ -506,7 +525,7 @@ def consume_latest_snapshot(
     local_path: str = "/tmp/chroma_snapshot",
     bucket_name: Optional[str] = None,
     collection_name: str = "words",
-) -> ChromaDBClient:
+) -> Any:  # Returns ChromaDBClient when available
     """
     Download and setup ChromaDB client from the latest S3 snapshot.
 
@@ -547,15 +566,16 @@ def consume_latest_snapshot(
     try:
         collection = chroma.get_collection(collection_name)
         logger.info(
-            f"Successfully loaded collection '{collection_name}' "
-            f"with {collection.count()} vectors"
+            "Successfully loaded collection '%s' with %d vectors",
+            collection_name,
+            collection.count(),
         )
     except Exception as e:
         logger.warning(
-            f"Collection '{collection_name}' not found or empty: {e}"
+            "Collection '%s' not found or empty: %s", collection_name, e
         )
-        # Create empty collection for compatibility
-        chroma.create_collection(collection_name)
+        # ChromaDB client in read mode cannot create collections
+        logger.info("Skipping collection creation - client in read mode")
 
     return chroma
 
@@ -581,9 +601,6 @@ def upload_delta_to_s3(
         Dict with upload status and statistics
     """
     try:
-        import boto3
-        from pathlib import Path
-
         # Create S3 client
         client_kwargs = {"service_name": "s3"}
         if region:
@@ -649,7 +666,8 @@ def download_snapshot_from_s3(
 
     Args:
         bucket: S3 bucket name
-        snapshot_key: S3 key prefix for the snapshot (e.g., "snapshot/2023-01-01T12:00:00Z/")
+        snapshot_key: S3 key prefix for the snapshot
+            (e.g., "snapshot/2023-01-01T12:00:00Z/")
         local_snapshot_path: Local directory to download to
         verify_integrity: Whether to verify file integrity after download
         region: Optional AWS region
@@ -658,9 +676,6 @@ def download_snapshot_from_s3(
         Dict with download status and statistics
     """
     try:
-        import boto3
-        from pathlib import Path
-
         # Create S3 client
         client_kwargs = {"service_name": "s3"}
         if region:
@@ -709,7 +724,10 @@ def download_snapshot_from_s3(
                     expected_size = obj.get("Size", 0)
                     if actual_size != expected_size:
                         logger.warning(
-                            f"Size mismatch for {s3_key}: expected {expected_size}, got {actual_size}"
+                            "Size mismatch for %s: expected %d, got %d",
+                            s3_key,
+                            expected_size,
+                            actual_size,
                         )
 
         return {

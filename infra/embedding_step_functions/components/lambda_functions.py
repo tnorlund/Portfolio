@@ -274,17 +274,17 @@ class LambdaFunctionsComponent(ComponentResource):
             "embedding-line-poll": {
                 "memory": 3008,
                 "timeout": 900,
-                "ephemeral_storage": 3072,
+                "ephemeral_storage": 10240,  # Increased to max for large batches
                 "handler_type": "line_polling",
             },
             "embedding-word-poll": {
                 "memory": 3008,
                 "timeout": 900,
-                "ephemeral_storage": 3072,
+                "ephemeral_storage": 10240,  # Increased to max for large batches
                 "handler_type": "word_polling",
             },
             "embedding-vector-compact": {
-                "memory": 8192,
+                "memory": 10240,  # Increased to maximum for large word batches
                 "timeout": 900,
                 "ephemeral_storage": 10240,
                 "handler_type": "compaction",
