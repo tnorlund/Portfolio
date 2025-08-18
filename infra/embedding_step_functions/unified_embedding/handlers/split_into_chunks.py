@@ -16,7 +16,7 @@ CHUNK_SIZE = 10  # Max deltas per chunk as per compaction requirements
 
 
 def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-# pylint: disable=unused-argument
+    # pylint: disable=unused-argument
     """Split delta results into chunks for parallel processing.
 
     Args:

@@ -7,7 +7,7 @@ from typing import Any, Dict, Generator, Optional, Tuple
 @dataclass(eq=True, unsafe_hash=False)
 class LabelCountCache:
     """Represents cached label validation counts stored in DynamoDB."""
-    
+
     label: str
     valid_count: int
     invalid_count: int
@@ -26,7 +26,10 @@ class LabelCountCache:
             raise ValueError("invalid_count must be a non-negative integer")
         if not isinstance(self.pending_count, int) or self.pending_count < 0:
             raise ValueError("pending_count must be a non-negative integer")
-        if not isinstance(self.needs_review_count, int) or self.needs_review_count < 0:
+        if (
+            not isinstance(self.needs_review_count, int)
+            or self.needs_review_count < 0
+        ):
             raise ValueError(
                 "needs_review_count must be a non-negative integer"
             )
@@ -89,7 +92,6 @@ class LabelCountCache:
         return base + ")"
 
 
-
 def item_to_label_count_cache(
     item: Dict[str, Any],
 ) -> LabelCountCache:
@@ -118,13 +120,13 @@ def item_to_label_count_cache(
         ttl = int(item["TimeToLive"]["N"])
     elif "time_to_live" in item:
         ttl = int(item["time_to_live"]["N"])
-    
+
     # When loading from DynamoDB, expired TTLs should be allowed
     # DynamoDB doesn't immediately delete expired items
     # Set expired TTLs to None to avoid validation errors
     if ttl is not None and ttl < int(time.time()):
         ttl = None
-    
+
     return LabelCountCache(
         label=label,
         valid_count=valid_count,

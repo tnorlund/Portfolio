@@ -173,7 +173,7 @@ class TestDateTimePatternDetector:
 
         # Test ambiguous years that should be rejected
         ambiguous_cases = ["01/15/99"]  # Ambiguous - could be 1999 or 2099
-        
+
         for i, text in enumerate(ambiguous_cases):
             word = create_word(text, word_id=i + 100)
             matches = await detector.detect([word])
