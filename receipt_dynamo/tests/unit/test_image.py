@@ -12,15 +12,16 @@ from receipt_dynamo import Image, item_to_image
 def example_image():
     """Provides a sample Image for testing."""
     return Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
-        "cdn_bucket",
-        "cdn_key",
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        width=10,
+        height=20,
+        timestamp_added="2021-01-01T00:00:00",
+        raw_s3_bucket="bucket",
+        raw_s3_key="key",
+        receipt_count=0,
+        sha256="abc123",
+        cdn_s3_bucket="cdn_bucket",
+        cdn_s3_key="cdn_key",
     )
 
 
@@ -28,12 +29,13 @@ def example_image():
 def example_image_no_sha():
     """Provides a sample Image for testing."""
     return Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        width=10,
+        height=20,
+        timestamp_added="2021-01-01T00:00:00",
+        raw_s3_bucket="bucket",
+        raw_s3_key="key",
+        receipt_count=0,
         cdn_s3_bucket="cdn_bucket",
         cdn_s3_key="cdn_key",
     )
@@ -43,13 +45,14 @@ def example_image_no_sha():
 def example_image_no_cdn_bucket():
     """Provides a sample Image for testing."""
     return Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        width=10,
+        height=20,
+        timestamp_added="2021-01-01T00:00:00",
+        raw_s3_bucket="bucket",
+        raw_s3_key="key",
+        receipt_count=0,
+        sha256="abc123",
         cdn_s3_key="cdn_key",
     )
 
@@ -58,14 +61,15 @@ def example_image_no_cdn_bucket():
 def example_image_no_cdn_key():
     """Provides a sample Image for testing."""
     return Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
-        "cdn_bucket",
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        width=10,
+        height=20,
+        timestamp_added="2021-01-01T00:00:00",
+        raw_s3_bucket="bucket",
+        raw_s3_key="key",
+        receipt_count=0,
+        sha256="abc123",
+        cdn_s3_bucket="cdn_bucket",
     )
 
 
@@ -181,13 +185,13 @@ def test_image_init_invalid_s3_bucket():
     """Test that the s3 bucket is a str in the constructor"""
     with pytest.raises(ValueError, match="raw_s3_bucket must be a string"):
         Image(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            10,
-            20,
-            "2021-01-01T00:00:00",
-            10,  # Should be a string
-            "key",
-            "abc123",
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            width=10,
+            height=20,
+            timestamp_added="2021-01-01T00:00:00",
+            raw_s3_bucket=10,  # Should be a string
+            raw_s3_key="key",
+            sha256="abc123",
         )
 
 
@@ -196,13 +200,13 @@ def test_image_init_invalid_s3_key():
     """Test that the s3 key is a str in the constructor"""
     with pytest.raises(ValueError, match="raw_s3_key must be a string"):
         Image(
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            10,
-            20,
-            "2021-01-01T00:00:00",
-            "bucket",
-            10,  # Should be a string
-            "abc123",
+            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            width=10,
+            height=20,
+            timestamp_added="2021-01-01T00:00:00",
+            raw_s3_bucket="bucket",
+            raw_s3_key=10,  # Should be a string
+            sha256="abc123",
         )
 
 
@@ -280,13 +284,16 @@ def test_image_to_item(example_image):
         "GSI2PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "GSI2SK": {"S": "IMAGE"},
         "GSI3PK": {"S": "IMAGE#SCAN"},
-        "GSI3SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "GSI3SK": {
+            "S": "RECEIPT_COUNT#00000#IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+        },
         "TYPE": {"S": "IMAGE"},
         "width": {"N": "10"},
         "height": {"N": "20"},
         "timestamp_added": {"S": "2021-01-01T00:00:00"},
         "raw_s3_bucket": {"S": "bucket"},
         "raw_s3_key": {"S": "key"},
+        "receipt_count": {"N": "0"},
         "sha256": {"S": "abc123"},
         "cdn_s3_bucket": {"S": "cdn_bucket"},
         "cdn_s3_key": {"S": "cdn_key"},
@@ -320,13 +327,16 @@ def test_image_to_item_no_sha(example_image_no_sha):
         "GSI2PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "GSI2SK": {"S": "IMAGE"},
         "GSI3PK": {"S": "IMAGE#SCAN"},
-        "GSI3SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "GSI3SK": {
+            "S": "RECEIPT_COUNT#00000#IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+        },
         "TYPE": {"S": "IMAGE"},
         "width": {"N": "10"},
         "height": {"N": "20"},
         "timestamp_added": {"S": "2021-01-01T00:00:00"},
         "raw_s3_bucket": {"S": "bucket"},
         "raw_s3_key": {"S": "key"},
+        "receipt_count": {"N": "0"},
         "sha256": {"NULL": True},
         "cdn_s3_bucket": {"S": "cdn_bucket"},
         "cdn_s3_key": {"S": "cdn_key"},
@@ -360,13 +370,16 @@ def test_image_to_item_no_cdn_bucket(example_image_no_cdn_bucket):
         "GSI2PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "GSI2SK": {"S": "IMAGE"},
         "GSI3PK": {"S": "IMAGE#SCAN"},
-        "GSI3SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "GSI3SK": {
+            "S": "RECEIPT_COUNT#00000#IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+        },
         "TYPE": {"S": "IMAGE"},
         "width": {"N": "10"},
         "height": {"N": "20"},
         "timestamp_added": {"S": "2021-01-01T00:00:00"},
         "raw_s3_bucket": {"S": "bucket"},
         "raw_s3_key": {"S": "key"},
+        "receipt_count": {"N": "0"},
         "sha256": {"S": "abc123"},
         "cdn_s3_bucket": {"NULL": True},
         "cdn_s3_key": {"S": "cdn_key"},
@@ -400,13 +413,16 @@ def test_image_to_item_no_cdn_key(example_image_no_cdn_key):
         "GSI2PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "GSI2SK": {"S": "IMAGE"},
         "GSI3PK": {"S": "IMAGE#SCAN"},
-        "GSI3SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "GSI3SK": {
+            "S": "RECEIPT_COUNT#00000#IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+        },
         "TYPE": {"S": "IMAGE"},
         "width": {"N": "10"},
         "height": {"N": "20"},
         "timestamp_added": {"S": "2021-01-01T00:00:00"},
         "raw_s3_bucket": {"S": "bucket"},
         "raw_s3_key": {"S": "key"},
+        "receipt_count": {"N": "0"},
         "sha256": {"S": "abc123"},
         "cdn_s3_bucket": {"S": "cdn_bucket"},
         "cdn_s3_key": {"NULL": True},
@@ -439,6 +455,7 @@ def test_image_repr(example_image):
         "timestamp_added=2021-01-01T00:00:00, "
         "raw_s3_bucket='bucket', "
         "raw_s3_key='key', "
+        "receipt_count=0, "
         "sha256='abc123', "
         "cdn_s3_bucket='cdn_bucket', "
         "cdn_s3_key='cdn_key', "
@@ -469,6 +486,7 @@ def test_image_iter(example_image):
         "timestamp_added": "2021-01-01T00:00:00",
         "raw_s3_bucket": "bucket",
         "raw_s3_key": "key",
+        "receipt_count": 0,
         "sha256": "abc123",
         "cdn_s3_bucket": "cdn_bucket",
         "cdn_s3_key": "cdn_key",
@@ -492,125 +510,136 @@ def test_image_eq():
     """Test the Image.__eq__() method"""
 
     i1 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
-        "cdn_bucket",
-        "cdn_key",
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        width=10,
+        height=20,
+        timestamp_added="2021-01-01T00:00:00",
+        raw_s3_bucket="bucket",
+        raw_s3_key="key",
+        receipt_count=0,
+        sha256="abc123",
+        cdn_s3_bucket="cdn_bucket",
+        cdn_s3_key="cdn_key",
     )
     i2 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
-        "cdn_bucket",
-        "cdn_key",
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        width=10,
+        height=20,
+        timestamp_added="2021-01-01T00:00:00",
+        raw_s3_bucket="bucket",
+        raw_s3_key="key",
+        receipt_count=0,
+        sha256="abc123",
+        cdn_s3_bucket="cdn_bucket",
+        cdn_s3_key="cdn_key",
     )
     i3 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed4",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
-        "cdn_bucket",
-        "cdn_key",
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed4",
+        width=10,
+        height=20,
+        timestamp_added="2021-01-01T00:00:00",
+        raw_s3_bucket="bucket",
+        raw_s3_key="key",
+        receipt_count=0,
+        sha256="abc123",
+        cdn_s3_bucket="cdn_bucket",
+        cdn_s3_key="cdn_key",
     )  # different id
     i4 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        20,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
-        "cdn_bucket",
-        "cdn_key",
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        width=20,
+        height=20,
+        timestamp_added="2021-01-01T00:00:00",
+        raw_s3_bucket="bucket",
+        raw_s3_key="key",
+        receipt_count=0,
+        sha256="abc123",
+        cdn_s3_bucket="cdn_bucket",
+        cdn_s3_key="cdn_key",
     )  # different width
     i5 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        30,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
-        "cdn_bucket",
-        "cdn_key",
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        width=10,
+        height=30,
+        timestamp_added="2021-01-01T00:00:00",
+        raw_s3_bucket="bucket",
+        raw_s3_key="key",
+        receipt_count=0,
+        sha256="abc123",
+        cdn_s3_bucket="cdn_bucket",
+        cdn_s3_key="cdn_key",
     )  # different height
     i6 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:01",
-        "bucket",
-        "key",
-        "abc123",
-        "cdn_bucket",
-        "cdn_key",
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        width=10,
+        height=20,
+        timestamp_added="2021-01-01T00:00:01",
+        raw_s3_bucket="bucket",
+        raw_s3_key="key",
+        receipt_count=0,
+        sha256="abc123",
+        cdn_s3_bucket="cdn_bucket",
+        cdn_s3_key="cdn_key",
     )  # different timestamp
     i7 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "Bucket",
-        "key",
-        "abc123",
-        "cdn_bucket",
-        "cdn_key",
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        width=10,
+        height=20,
+        timestamp_added="2021-01-01T00:00:00",
+        raw_s3_bucket="Bucket",
+        raw_s3_key="key",
+        receipt_count=0,
+        sha256="abc123",
+        cdn_s3_bucket="cdn_bucket",
+        cdn_s3_key="cdn_key",
     )  # different raw_s3_bucket
     i8 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "Key",
-        "abc123",
-        "cdn_bucket",
-        "cdn_key",
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        width=10,
+        height=20,
+        timestamp_added="2021-01-01T00:00:00",
+        raw_s3_bucket="bucket",
+        raw_s3_key="Key",
+        receipt_count=0,
+        sha256="abc123",
+        cdn_s3_bucket="cdn_bucket",
+        cdn_s3_key="cdn_key",
     )  # different raw_s3_key
     i9 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc124",
-        "cdn_bucket",
-        "cdn_key",
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        width=10,
+        height=20,
+        timestamp_added="2021-01-01T00:00:00",
+        raw_s3_bucket="bucket",
+        raw_s3_key="key",
+        receipt_count=0,
+        sha256="abc124",
+        cdn_s3_bucket="cdn_bucket",
+        cdn_s3_key="cdn_key",
     )  # different sha256
     i10 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
-        "Cdn_bucket",
-        "cdn_key",
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        width=10,
+        height=20,
+        timestamp_added="2021-01-01T00:00:00",
+        raw_s3_bucket="bucket",
+        raw_s3_key="key",
+        receipt_count=0,
+        sha256="abc123",
+        cdn_s3_bucket="Cdn_bucket",
+        cdn_s3_key="cdn_key",
     )  # different cdn_bucket
     i11 = Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
-        "cdn_bucket",
-        "Cdn_key",
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        width=10,
+        height=20,
+        timestamp_added="2021-01-01T00:00:00",
+        raw_s3_bucket="bucket",
+        raw_s3_key="key",
+        receipt_count=0,
+        sha256="abc123",
+        cdn_s3_bucket="cdn_bucket",
+        cdn_s3_key="Cdn_key",
     )  # different cdn_key
 
     assert i1 == i2, "Should be equal"
