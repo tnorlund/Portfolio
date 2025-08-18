@@ -50,7 +50,6 @@ from base_images.base_images import BaseImages
 # from job_queue import JobQueue
 # from ml_packages import MLPackageBuilder
 # from networking import VpcForCodeBuild  # Import the new VPC component
-from word_label_step_functions import WordLabelStepFunctions
 
 # Import other necessary components
 try:
@@ -97,7 +96,6 @@ notification_system = NotificationSystem(
 # Create base images first - they're used by multiple components
 base_images = BaseImages("base-images", stack=pulumi.get_stack())
 
-word_label_step_functions = WordLabelStepFunctions("word-label-step-functions")
 validate_merchant_step_functions = ValidateMerchantStepFunctions(
     "validate-merchant"
 )
