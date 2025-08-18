@@ -62,8 +62,10 @@
     }
   },
   "isort.args": ["--profile", "black", "--line-length", "79"],
+  "black-formatter.args": ["--line-length=79"],
   "pylint.args": ["--max-line-length=79"],
   "python.linting.pylintArgs": ["--max-line-length=79"],
+  "python.linting.lintOnSave": true,
   "editor.rulers": [79],
   "files.associations": {
     "*.toml": "toml"
