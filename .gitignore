@@ -230,3 +230,23 @@ receipt_label/test_results/
 .venv_test/
 # Local ChromaDB databases
 chroma_words_local_words_specific/
+
+# Local ChromaDB test databases
+dev.word_chroma/
+dev.line_chroma/
+dev.chroma_local/
+dev.chroma_words_local/
+chroma_words_test/
+
+# Test scripts (keep these local for now)
+check_*.py
+query_*.py
+list_*.py
+test_*.py
+run_*.py
+consensus_*.py
+simple_*.py
+
+# Backup files
+*_old.py
+*_refactored.py
