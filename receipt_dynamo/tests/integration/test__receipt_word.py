@@ -1171,3 +1171,187 @@ def test_list_receipt_words_from_receipt(client: DynamoClient):
     assert "Receipt word 1" in word_texts
     assert "Receipt word 2" in word_texts
     assert "Different receipt" not in word_texts
+
+
+# =============================================================================
+# LABEL COUNT INCREMENT TESTS
+# =============================================================================
+
+
+@pytest.mark.integration
+def test_increment_receipt_word_valid_label_count_first_increment(
+    client: DynamoClient, sample_receipt_word: ReceiptWord
+):
+    """Test incrementing valid_label_count when attribute doesn't exist."""
+    # Add the word without label counts
+    client.add_receipt_word(sample_receipt_word)
+    
+    # Increment valid label count (should create attribute with value 1)
+    updated_word = client.increment_receipt_word_valid_label_count(
+        sample_receipt_word
+    )
+    
+    # Verify the count was incremented
+    assert updated_word.valid_label_count == 1
+    assert updated_word.invalid_label_count == 0
+    
+    # Verify in database
+    fetched_word = client.get_receipt_word(
+        sample_receipt_word.receipt_id,
+        sample_receipt_word.image_id,
+        sample_receipt_word.line_id,
+        sample_receipt_word.word_id,
+    )
+    assert fetched_word.valid_label_count == 1
+
+
+@pytest.mark.integration
+def test_increment_receipt_word_valid_label_count_existing_value(
+    client: DynamoClient
+):
+    """Test incrementing valid_label_count when it already has a value."""
+    # Create word with existing count
+    word = ReceiptWord(
+        receipt_id=2,
+        image_id=FIXED_IMAGE_ID,
+        line_id=20,
+        word_id=10,
+        text="Word with count",
+        bounding_box={"x": 0.1, "y": 0.2, "width": 0.2, "height": 0.03},
+        top_left={"x": 0.1, "y": 0.2},
+        top_right={"x": 0.3, "y": 0.2},
+        bottom_left={"x": 0.1, "y": 0.23},
+        bottom_right={"x": 0.3, "y": 0.23},
+        angle_degrees=0.0,
+        angle_radians=0.0,
+        confidence=0.95,
+        valid_label_count=5,
+        invalid_label_count=2,
+    )
+    client.add_receipt_word(word)
+    
+    # Increment valid label count
+    updated_word = client.increment_receipt_word_valid_label_count(word)
+    
+    # Verify the count was incremented
+    assert updated_word.valid_label_count == 6
+    assert updated_word.invalid_label_count == 2
+
+
+@pytest.mark.integration
+def test_increment_receipt_word_invalid_label_count_first_increment(
+    client: DynamoClient
+):
+    """Test incrementing invalid_label_count when attribute doesn't exist."""
+    word = ReceiptWord(
+        receipt_id=3,
+        image_id=FIXED_IMAGE_ID,
+        line_id=30,
+        word_id=15,
+        text="Word for invalid",
+        bounding_box={"x": 0.1, "y": 0.2, "width": 0.2, "height": 0.03},
+        top_left={"x": 0.1, "y": 0.2},
+        top_right={"x": 0.3, "y": 0.2},
+        bottom_left={"x": 0.1, "y": 0.23},
+        bottom_right={"x": 0.3, "y": 0.23},
+        angle_degrees=0.0,
+        angle_radians=0.0,
+        confidence=0.95,
+    )
+    client.add_receipt_word(word)
+    
+    # Increment invalid label count (should create attribute with value 1)
+    updated_word = client.increment_receipt_word_invalid_label_count(word)
+    
+    # Verify the count was incremented
+    assert updated_word.invalid_label_count == 1
+    assert updated_word.valid_label_count == 0
+    
+    # Verify in database
+    fetched_word = client.get_receipt_word(
+        word.receipt_id, word.image_id, word.line_id, word.word_id
+    )
+    assert fetched_word.invalid_label_count == 1
+
+
+@pytest.mark.integration
+def test_increment_receipt_word_invalid_label_count_existing_value(
+    client: DynamoClient
+):
+    """Test incrementing invalid_label_count when it already has a value."""
+    # Create word with existing counts
+    word = ReceiptWord(
+        receipt_id=4,
+        image_id=FIXED_IMAGE_ID,
+        line_id=40,
+        word_id=20,
+        text="Word with counts",
+        bounding_box={"x": 0.1, "y": 0.2, "width": 0.2, "height": 0.03},
+        top_left={"x": 0.1, "y": 0.2},
+        top_right={"x": 0.3, "y": 0.2},
+        bottom_left={"x": 0.1, "y": 0.23},
+        bottom_right={"x": 0.3, "y": 0.23},
+        angle_degrees=0.0,
+        angle_radians=0.0,
+        confidence=0.95,
+        valid_label_count=3,
+        invalid_label_count=7,
+    )
+    client.add_receipt_word(word)
+    
+    # Increment invalid label count
+    updated_word = client.increment_receipt_word_invalid_label_count(word)
+    
+    # Verify the count was incremented
+    assert updated_word.invalid_label_count == 8
+    assert updated_word.valid_label_count == 3
+
+
+@pytest.mark.integration
+def test_increment_valid_count_word_not_found(client: DynamoClient):
+    """Test incrementing valid count for non-existent word raises error."""
+    non_existent_word = ReceiptWord(
+        receipt_id=999,
+        image_id=FIXED_IMAGE_ID,
+        line_id=999,
+        word_id=999,
+        text="Non-existent",
+        bounding_box={"x": 0, "y": 0, "width": 0.1, "height": 0.1},
+        top_left={"x": 0, "y": 0},
+        top_right={"x": 0.1, "y": 0},
+        bottom_left={"x": 0, "y": 0.1},
+        bottom_right={"x": 0.1, "y": 0.1},
+        angle_degrees=0.0,
+        angle_radians=0.0,
+        confidence=0.95,
+    )
+    
+    with pytest.raises(
+        EntityNotFoundError, match="receipt_word not found"
+    ):
+        client.increment_receipt_word_valid_label_count(non_existent_word)
+
+
+@pytest.mark.integration
+def test_increment_invalid_count_word_not_found(client: DynamoClient):
+    """Test incrementing invalid count for non-existent word raises error."""
+    non_existent_word = ReceiptWord(
+        receipt_id=998,
+        image_id=FIXED_IMAGE_ID,
+        line_id=998,
+        word_id=998,
+        text="Non-existent",
+        bounding_box={"x": 0, "y": 0, "width": 0.1, "height": 0.1},
+        top_left={"x": 0, "y": 0},
+        top_right={"x": 0.1, "y": 0},
+        bottom_left={"x": 0, "y": 0.1},
+        bottom_right={"x": 0.1, "y": 0.1},
+        angle_degrees=0.0,
+        angle_radians=0.0,
+        confidence=0.95,
+    )
+    
+    with pytest.raises(
+        EntityNotFoundError, match="receipt_word not found"
+    ):
+        client.increment_receipt_word_invalid_label_count(non_existent_word)

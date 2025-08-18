@@ -66,6 +66,9 @@ class ErrorMessageConfig:
         "delete_entities": (
             "Cannot delete {entity_name}: one or more {entity_name} not found"
         ),
+        # Increment operations for receipt_word
+        "increment_receipt_word_valid_label_count": "receipt_word not found",
+        "increment_receipt_word_invalid_label_count": "receipt_word not found",
     }
 
     # Operation-specific error messages
@@ -204,7 +207,7 @@ class ErrorHandler:
                 entity_type = operation.replace("add_", "")
                 # Keep snake_case to match parameter naming convention
                 raise EntityAlreadyExistsError(f"{entity_type} already exists")
-            if any(op in operation for op in ["update_", "delete_"]):
+            if any(op in operation for op in ["update_", "delete_", "increment_"]):
                 self._raise_not_found_error(operation, context_kwargs)
                 return
 
