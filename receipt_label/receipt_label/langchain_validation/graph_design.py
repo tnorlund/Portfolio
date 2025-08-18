@@ -22,7 +22,7 @@ from .models import ValidationResult, ValidationResponse
 
 
 def get_quick_similar_words(
-    word_text: str, word_embedding_id: Optional[str] = None, n_results: int = 3
+    word_text: str, word_embedding_id: Optional[str] = None, n_results: int = 3, s3_bucket: str
 ) -> List[dict]:
     """
     Quick similarity lookup for a single word using the working similarity analysis approach.

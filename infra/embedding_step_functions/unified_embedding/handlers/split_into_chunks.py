@@ -12,7 +12,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Configuration
-CHUNK_SIZE = 10  # Max deltas per chunk as per compaction requirements
+CHUNK_SIZE = 25  # Increased from 10 to reduce number of chunks and memory usage
 
 
 def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:

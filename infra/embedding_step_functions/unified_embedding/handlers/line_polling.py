@@ -68,6 +68,19 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         client_manager=client_manager,
     )
 
+    # Get configuration from environment (needed for all paths)
+    bucket_name = os.environ.get("CHROMADB_BUCKET")
+    if not bucket_name:
+        raise ValueError("CHROMADB_BUCKET environment variable not set")
+
+    # Determine SQS queue URL based on skip_sqs flag
+    if skip_sqs:
+        logger.info("Skipping SQS notification for this delta")
+        sqs_queue_url = None
+    else:
+        sqs_queue_url = os.environ.get("COMPACTION_QUEUE_URL")
+        logger.info("Will send SQS notification to: %s", sqs_queue_url)
+
     # Process based on the action determined by status handler
     if (
         status_result["action"] == "process_results"
@@ -81,21 +94,8 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         descriptions = get_receipt_descriptions(results)
         logger.info("Retrieved details for %s receipts", len(descriptions))
 
-        # Get configuration from environment
-        bucket_name = os.environ.get("CHROMADB_BUCKET")
-        if not bucket_name:
-            raise ValueError("CHROMADB_BUCKET environment variable not set")
-
-        # Determine SQS queue URL based on skip_sqs flag
-        if skip_sqs:
-            logger.info("Skipping SQS notification for this delta")
-            sqs_queue_url = None
-        else:
-            sqs_queue_url = os.environ.get("COMPACTION_QUEUE_URL")
-            logger.info("Will send SQS notification to: %s", sqs_queue_url)
-
         delta_result = save_line_embeddings_as_delta(
-            results, descriptions, batch_id, bucket_name, sqs_queue_url
+            results, descriptions, batch_id, bucket_name, sqs_queue_url, client_manager
         )
 
         # Check if delta creation failed
@@ -157,20 +157,6 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             # Get receipt details for successful results
             descriptions = get_receipt_descriptions(partial_results)
 
-            # Get configuration from environment
-            bucket_name = os.environ.get("CHROMADB_BUCKET")
-            if not bucket_name:
-                raise ValueError(
-                    "CHROMADB_BUCKET environment variable not set"
-                )
-
-            # Determine SQS queue URL based on skip_sqs flag
-            if skip_sqs:
-                logger.info("Skipping SQS notification for partial delta")
-                sqs_queue_url = None
-            else:
-                sqs_queue_url = os.environ.get("COMPACTION_QUEUE_URL")
-
             # Save partial results
             delta_result = save_line_embeddings_as_delta(
                 partial_results,
@@ -178,6 +164,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 batch_id,
                 bucket_name,
                 sqs_queue_url,
+                client_manager,
             )
 
             # Check if delta creation failed

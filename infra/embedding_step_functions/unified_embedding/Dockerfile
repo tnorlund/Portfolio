@@ -6,7 +6,7 @@ FROM ${BASE_IMAGE}
 # Set environment variable to avoid compilation issues
 ENV HNSWLIB_NO_NATIVE=1
 
-# Copy the unified embedding handler module
+# Copy the embedding handler module
 COPY infra/embedding_step_functions/unified_embedding/ ${LAMBDA_TASK_ROOT}/
 
 # Set the handler

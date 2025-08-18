@@ -479,7 +479,7 @@ def perform_final_merge(
                         )
 
                     # Process embeddings in batches to reduce memory usage
-                    batch_size = 1000  # Process 1000 embeddings at a time
+                    batch_size = 500  # Reduced batch size to save memory
                     chunk_count = chunk_collection.count()
 
                     if chunk_count > 0:
@@ -527,6 +527,13 @@ def perform_final_merge(
 
             finally:
                 shutil.rmtree(chunk_temp, ignore_errors=True)
+                
+            # Periodically persist to disk to free memory (every 5 chunks)
+            if chunk_index > 0 and chunk_index % 5 == 0:
+                logger.info(f"Persisting after chunk {chunk_index} to free memory")
+                # ChromaDB PersistentClient auto-persists, but we can force cleanup
+                import gc
+                gc.collect()
 
         # Create timestamped snapshot with dedicated prefix for
         # lifecycle management

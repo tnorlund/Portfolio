@@ -298,13 +298,12 @@ class LineEmbeddingWorkflow(ComponentResource):
                                 },
                             },
                         },
-                        "ResultPath": "$.chunk_results",
+                        "ResultPath": None,
                         "Next": "PrepareFinalMerge",
                         "Catch": [
                             {
                                 "ErrorEquals": ["States.ALL"],
                                 "Next": "ChunkProcessingFailed",
-                                "ResultPath": "$.error",
                             }
                         ],
                     },

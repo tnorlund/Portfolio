@@ -6,14 +6,15 @@ Simple test to verify LangChain + Ollama validation works
 import asyncio
 import os
 
-# Set environment for local Ollama (change these for Ollama Turbo)
-os.environ["OLLAMA_BASE_URL"] = "http://localhost:11434"
-os.environ["OLLAMA_MODEL"] = "llama3.1:8b"
+# Set environment for Ollama Turbo (these will be overridden by .env if it exists)
+# Comment these out to use settings from .env file
+# os.environ["OLLAMA_BASE_URL"] = "http://localhost:11434"
+# os.environ["OLLAMA_MODEL"] = "llama3.1:8b"
 
 from receipt_label.langchain_validation import (
     test_ollama_connection,
     get_ollama_llm,
-    SimpleReceiptValidator
+    OptimizedReceiptValidator
 )
 
 
@@ -25,7 +26,7 @@ async def main():
     # Test 1: Check Ollama connection
     print("\n1. Testing Ollama connection...")
     if await test_ollama_connection():
-        print("   ✅ Ollama is working with LangChain\!")
+        print("   ✅ Ollama is working with LangChain!")
     else:
         print("   ❌ Ollama connection failed")
         print("   Make sure Ollama is running: ollama serve")
@@ -40,11 +41,11 @@ async def main():
     
     # Test 3: Create validator
     print("\n3. Creating validator...")
-    validator = SimpleReceiptValidator()
+    validator = OptimizedReceiptValidator()
     print("   ✅ Validator created successfully")
     
     print("\n" + "=" * 60)
-    print("All tests passed\! LangChain + Ollama is properly configured.")
+    print("All tests passed! LangChain + Ollama is properly configured.")
     print("\nTo use with Ollama Turbo instead:")
     print('  export OLLAMA_BASE_URL="https://api.ollama.com"')
     print('  export OLLAMA_API_KEY="your-api-key"')
@@ -53,4 +54,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-EOF < /dev/null
