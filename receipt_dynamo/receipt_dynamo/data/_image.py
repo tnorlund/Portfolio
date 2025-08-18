@@ -254,6 +254,7 @@ class _Image(FlattenedStandardMixin):
     def list_images_by_type(
         self,
         image_type: str | ImageType,
+        receipt_count: Optional[int] = None,
         limit: Optional[int] = None,
         last_evaluated_key: Optional[Dict] = None,
     ) -> Tuple[List[Image], Optional[Dict]]:
@@ -273,11 +274,25 @@ class _Image(FlattenedStandardMixin):
         if isinstance(image_type, ImageType):
             image_type = image_type.value
 
+        if receipt_count is not None:
+            key_condition_expression = "#t = :val AND begins_with(#r, :rc)"
+            expression_attribute_names = {"#t": "GSI3PK", "#r": "GSI3SK"}
+            expression_attribute_values = {
+                ":val": {"S": f"IMAGE#{image_type}"},
+                ":rc": {"S": f"RECEIPT_COUNT#{receipt_count:05d}"},
+            }
+        else:
+            key_condition_expression = "#t = :val"
+            expression_attribute_names = {"#t": "GSI3PK"}
+            expression_attribute_values = {
+                ":val": {"S": f"IMAGE#{image_type}"}
+            }
+
         return self._query_entities(
             index_name="GSI3",
-            key_condition_expression="#t = :val",
-            expression_attribute_names={"#t": "GSI3PK"},
-            expression_attribute_values={":val": {"S": f"IMAGE#{image_type}"}},
+            key_condition_expression=key_condition_expression,
+            expression_attribute_names=expression_attribute_names,
+            expression_attribute_values=expression_attribute_values,
             converter_func=item_to_image,
             limit=limit,
             last_evaluated_key=last_evaluated_key,

@@ -31,50 +31,53 @@ def handler(event, context):
     except KeyError:
         return {
             "statusCode": 400,
-            "body": f"Invalid image_type '{image_type_str}'. Must be one of {[t.value for t in ImageType]}",
+            "body": (
+                f"Invalid image_type '{image_type_str}'. Must be one of "
+                f"{[t.value for t in ImageType]}"
+            ),
         }
 
     if http_method == "GET":
         try:
-            # Use the client to list the first 50 images
             client = DynamoClient(dynamodb_table_name)
-            receipts, lek = client.list_receipts(QUERY_LIMIT)
+
+            # For SCAN type, we want images with exactly 2 receipts
+            # For PHOTO type, we want images with exactly 1 receipt
+            target_receipt_count = 2 if image_type == ImageType.SCAN else 1
+
+            # Query images with the exact receipt count using GSI3
+            all_images = []
+
+            images, lek = client.list_images_by_type(
+                image_type,
+                receipt_count=target_receipt_count,
+                limit=QUERY_LIMIT,
+            )
+            all_images.extend(images)
+
+            # Continue pagination if needed
             while lek:
-                next_receipts, lek = client.list_receipts(QUERY_LIMIT, lek)
-                receipts.extend(next_receipts)
+                images, lek = client.list_images_by_type(
+                    image_type,
+                    receipt_count=target_receipt_count,
+                    limit=QUERY_LIMIT,
+                    last_evaluated_key=lek,
+                )
+                all_images.extend(images)
 
-            # Group all receipts by their image_id
-            # Set the value to the dict to the number of receipts with that image_id
-            receipts_by_image_id = {}
-            for receipt in receipts:
-                if receipt.image_id not in receipts_by_image_id:
-                    receipts_by_image_id[receipt.image_id] = 0
-                receipts_by_image_id[receipt.image_id] += 1
-
-            # If the requested type is SCAN, only keep images that have ≥2 receipts
-            if image_type == ImageType.SCAN:
-                receipts_by_image_id = {
-                    key: value
-                    for key, value in receipts_by_image_id.items()
-                    if value >= 2
-                }
-
-            # List all images of the requested type
-            images, last_evaluated_key = client.list_images_by_type(image_type)
-            images = [
-                image
-                for image in images
-                if image.image_id in receipts_by_image_id
-            ]
-
-            # Randomly chose an image_id of the images with 2 receipts
-            if len(images) == 0:
+            # Check if we found any matching images
+            if not all_images:
                 return {
                     "statusCode": 404,
-                    "body": "No images with 2 receipts found",
+                    "body": (
+                        f"No {image_type.value} images with exactly "
+                        f"{target_receipt_count} receipt(s) found"
+                    ),
                 }
 
-            image_id = random.choice([image.image_id for image in images])
+            # Randomly select one image
+            selected_image = random.choice(all_images)
+            image_id = selected_image.image_id
 
             # Get all details for the randomly selected image
             image_details = client.get_image_details(image_id)
