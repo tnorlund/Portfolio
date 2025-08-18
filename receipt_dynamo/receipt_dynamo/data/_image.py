@@ -100,6 +100,44 @@ class _Image(FlattenedStandardMixin):
         """Updates multiple Image items in the database."""
         self._update_entities(images, Image, "images")
 
+    def increment_image_receipt_count(
+        self, image_id: str, increment: int = 1
+    ) -> Image:
+        """
+        Increments the receipt_count for an Image and returns the updated Image.
+        
+        NOTE: This method is NOT atomic due to GSI3SK needing to be recalculated
+        based on the new receipt_count. For true atomicity, consider using
+        update_image() directly after modifying the image object.
+        
+        This method:
+        1. Gets the current image
+        2. Updates the receipt_count
+        3. Calls update_image() which properly sets all GSI keys
+        
+        Args:
+            image_id: The ID of the image to update
+            increment: The amount to increment by (default 1, use negative for decrement)
+        
+        Returns:
+            Image: The updated Image object with new receipt_count
+            
+        Raises:
+            EntityNotFoundError: If the image doesn't exist
+            OperationError: If there's an error updating the item
+        """
+        # Get current image
+        image = self.get_image(image_id)
+        
+        # Update the receipt count
+        current_count = getattr(image, 'receipt_count', 0) or 0
+        image.receipt_count = max(0, current_count + increment)
+        
+        # Use update_image which will properly set all GSI keys including GSI3SK
+        self.update_image(image)
+        
+        return image
+
     @handle_dynamodb_errors("get_image_details")
     def get_image_details(self, image_id: str) -> ImageDetails:
         """Retrieves detailed information about an Image from the database."""

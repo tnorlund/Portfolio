@@ -12,15 +12,16 @@ from receipt_dynamo import Image, item_to_image
 def example_image():
     """Provides a sample Image for testing."""
     return Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
-        "cdn_bucket",
-        "cdn_key",
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        width=10,
+        height=20,
+        timestamp_added="2021-01-01T00:00:00",
+        raw_s3_bucket="bucket",
+        raw_s3_key="key",
+        receipt_count=0,
+        sha256="abc123",
+        cdn_s3_bucket="cdn_bucket",
+        cdn_s3_key="cdn_key",
     )
 
 
@@ -28,12 +29,13 @@ def example_image():
 def example_image_no_sha():
     """Provides a sample Image for testing."""
     return Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        width=10,
+        height=20,
+        timestamp_added="2021-01-01T00:00:00",
+        raw_s3_bucket="bucket",
+        raw_s3_key="key",
+        receipt_count=0,
         cdn_s3_bucket="cdn_bucket",
         cdn_s3_key="cdn_key",
     )
@@ -43,13 +45,14 @@ def example_image_no_sha():
 def example_image_no_cdn_bucket():
     """Provides a sample Image for testing."""
     return Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        width=10,
+        height=20,
+        timestamp_added="2021-01-01T00:00:00",
+        raw_s3_bucket="bucket",
+        raw_s3_key="key",
+        receipt_count=0,
+        sha256="abc123",
         cdn_s3_key="cdn_key",
     )
 
@@ -58,14 +61,15 @@ def example_image_no_cdn_bucket():
 def example_image_no_cdn_key():
     """Provides a sample Image for testing."""
     return Image(
-        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        10,
-        20,
-        "2021-01-01T00:00:00",
-        "bucket",
-        "key",
-        "abc123",
-        "cdn_bucket",
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        width=10,
+        height=20,
+        timestamp_added="2021-01-01T00:00:00",
+        raw_s3_bucket="bucket",
+        raw_s3_key="key",
+        receipt_count=0,
+        sha256="abc123",
+        cdn_s3_bucket="cdn_bucket",
     )
 
 
@@ -280,13 +284,14 @@ def test_image_to_item(example_image):
         "GSI2PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "GSI2SK": {"S": "IMAGE"},
         "GSI3PK": {"S": "IMAGE#SCAN"},
-        "GSI3SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "GSI3SK": {"S": "RECEIPT_COUNT#00000#IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "TYPE": {"S": "IMAGE"},
         "width": {"N": "10"},
         "height": {"N": "20"},
         "timestamp_added": {"S": "2021-01-01T00:00:00"},
         "raw_s3_bucket": {"S": "bucket"},
         "raw_s3_key": {"S": "key"},
+        "receipt_count": {"N": "0"},
         "sha256": {"S": "abc123"},
         "cdn_s3_bucket": {"S": "cdn_bucket"},
         "cdn_s3_key": {"S": "cdn_key"},
@@ -320,13 +325,14 @@ def test_image_to_item_no_sha(example_image_no_sha):
         "GSI2PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "GSI2SK": {"S": "IMAGE"},
         "GSI3PK": {"S": "IMAGE#SCAN"},
-        "GSI3SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "GSI3SK": {"S": "RECEIPT_COUNT#00000#IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "TYPE": {"S": "IMAGE"},
         "width": {"N": "10"},
         "height": {"N": "20"},
         "timestamp_added": {"S": "2021-01-01T00:00:00"},
         "raw_s3_bucket": {"S": "bucket"},
         "raw_s3_key": {"S": "key"},
+        "receipt_count": {"N": "0"},
         "sha256": {"NULL": True},
         "cdn_s3_bucket": {"S": "cdn_bucket"},
         "cdn_s3_key": {"S": "cdn_key"},
@@ -360,13 +366,14 @@ def test_image_to_item_no_cdn_bucket(example_image_no_cdn_bucket):
         "GSI2PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "GSI2SK": {"S": "IMAGE"},
         "GSI3PK": {"S": "IMAGE#SCAN"},
-        "GSI3SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "GSI3SK": {"S": "RECEIPT_COUNT#00000#IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "TYPE": {"S": "IMAGE"},
         "width": {"N": "10"},
         "height": {"N": "20"},
         "timestamp_added": {"S": "2021-01-01T00:00:00"},
         "raw_s3_bucket": {"S": "bucket"},
         "raw_s3_key": {"S": "key"},
+        "receipt_count": {"N": "0"},
         "sha256": {"S": "abc123"},
         "cdn_s3_bucket": {"NULL": True},
         "cdn_s3_key": {"S": "cdn_key"},
@@ -400,13 +407,14 @@ def test_image_to_item_no_cdn_key(example_image_no_cdn_key):
         "GSI2PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "GSI2SK": {"S": "IMAGE"},
         "GSI3PK": {"S": "IMAGE#SCAN"},
-        "GSI3SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "GSI3SK": {"S": "RECEIPT_COUNT#00000#IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "TYPE": {"S": "IMAGE"},
         "width": {"N": "10"},
         "height": {"N": "20"},
         "timestamp_added": {"S": "2021-01-01T00:00:00"},
         "raw_s3_bucket": {"S": "bucket"},
         "raw_s3_key": {"S": "key"},
+        "receipt_count": {"N": "0"},
         "sha256": {"S": "abc123"},
         "cdn_s3_bucket": {"S": "cdn_bucket"},
         "cdn_s3_key": {"NULL": True},
@@ -439,6 +447,7 @@ def test_image_repr(example_image):
         "timestamp_added=2021-01-01T00:00:00, "
         "raw_s3_bucket='bucket', "
         "raw_s3_key='key', "
+        "receipt_count=0, "
         "sha256='abc123', "
         "cdn_s3_bucket='cdn_bucket', "
         "cdn_s3_key='cdn_key', "
@@ -469,6 +478,7 @@ def test_image_iter(example_image):
         "timestamp_added": "2021-01-01T00:00:00",
         "raw_s3_bucket": "bucket",
         "raw_s3_key": "key",
+        "receipt_count": 0,
         "sha256": "abc123",
         "cdn_s3_bucket": "cdn_bucket",
         "cdn_s3_key": "cdn_key",
