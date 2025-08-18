@@ -174,7 +174,7 @@ async def validate_receipt_labels(
     )
 
 
-async def test_ollama_connection():
+async def test_ollama_connection() -> bool:
     """Test if Ollama is working"""
     try:
         llm = get_ollama_llm()
@@ -209,7 +209,7 @@ async def test_ollama_connection():
 # ============================================================================
 
 
-async def demo():
+async def demo() -> None:
     """Demo showing the optimized validation"""
 
     print("=" * 60)
@@ -346,7 +346,7 @@ async def demo():
     print("3. Only calling LLM when necessary")
 
 
-def print_setup_guide():
+def print_setup_guide() -> None:
     """Print setup instructions"""
     print(
         """

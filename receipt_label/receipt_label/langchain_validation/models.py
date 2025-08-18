@@ -5,7 +5,7 @@ Pydantic models for structured validation responses
 These models ensure type-safe, validated responses from the LLM.
 """
 
-from typing import List, Optional
+from typing import List, Optional, Any
 from pydantic import BaseModel, Field, field_validator
 from receipt_label.constants import CORE_LABELS
 
@@ -27,7 +27,9 @@ class ValidationResult(BaseModel):
 
     @field_validator("correct_label")
     @classmethod
-    def validate_correct_label(cls, v: Optional[str], info) -> Optional[str]:
+    def validate_correct_label(
+        cls, v: Optional[str], info: Any
+    ) -> Optional[str]:
         """Validate the correct_label field"""
         if v is not None:
             # Check if is_valid is False (correct_label should only be set for invalid labels)

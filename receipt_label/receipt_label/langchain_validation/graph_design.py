@@ -6,7 +6,7 @@ This version prepares all context OUTSIDE the graph, so the graph
 only handles LLM validation. This minimizes Ollama API calls.
 """
 
-from typing import TypedDict, List, Optional, Any, Dict
+from typing import TypedDict, List, Optional, Any, Dict, cast
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama
 from langgraph.graph import StateGraph, END
@@ -22,7 +22,7 @@ from .models import ValidationResult, ValidationResponse
 
 
 def get_quick_similar_words(
-    word_text: str, word_embedding_id: str = None, n_results: int = 3
+    word_text: str, word_embedding_id: Optional[str] = None, n_results: int = 3
 ) -> List[dict]:
     """
     Quick similarity lookup for a single word using the working similarity analysis approach.
@@ -845,7 +845,7 @@ class CachedValidator:
 if __name__ == "__main__":
     import asyncio
 
-    async def test():
+    async def test() -> None:
         print("Testing optimized validation...")
 
         # Test data
