@@ -695,3 +695,7 @@ pulumi.export("chromadb_bucket_name", chromadb_storage.bucket_name)
 pulumi.export("chromadb_bucket_arn", chromadb_storage.bucket_arn)
 pulumi.export("chromadb_delta_queue_url", chromadb_queues.delta_queue_url)
 pulumi.export("chromadb_delta_queue_arn", chromadb_queues.delta_queue_arn)
+
+# Export the embedding infrastructure ChromaDB bucket (the one actually used!)
+pulumi.export("embedding_chromadb_bucket_name", embedding_infrastructure.chromadb_buckets.bucket_name)
+pulumi.export("embedding_chromadb_bucket_arn", embedding_infrastructure.chromadb_buckets.bucket_arn)
