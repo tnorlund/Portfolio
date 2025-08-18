@@ -131,6 +131,56 @@ class _ReceiptWord(
                 )
         self._update_entities(receipt_words, ReceiptWord, "receipt_words")
 
+    @handle_dynamodb_errors("increment_receipt_word_label_count")
+    def increment_receipt_word_valid_label_count(
+        self, receipt_word: ReceiptWord
+    ) -> ReceiptWord:
+        """Increments the valid_label_count or invalid_label_count for a
+        ReceiptWord and returns the updated ReceiptWord."""
+        self._validate_entity(receipt_word, ReceiptWord, "receipt_word")
+        try:
+            response = self._client.update_item(
+                TableName=self.table_name,
+                Key=receipt_word.key,
+                UpdateExpression=(
+                    "SET valid_label_count = valid_label_count + :inc"
+                ),
+                ExpressionAttributeValues={":inc": {"N": "1"}},
+                ReturnValues="ALL_NEW",
+            )
+            if "Attributes" in response:
+                return item_to_receipt_word(response["Attributes"])
+            return receipt_word
+        except ClientError as e:
+            raise OperationError(
+                f"Error incrementing receipt word valid label count: {e}"
+            ) from e
+
+    @handle_dynamodb_errors("increment_receipt_word_invalid_label_count")
+    def increment_receipt_word_invalid_label_count(
+        self, receipt_word: ReceiptWord
+    ) -> ReceiptWord:
+        """Increments the invalid_label_count for a ReceiptWord and returns
+        the updated ReceiptWord."""
+        self._validate_entity(receipt_word, ReceiptWord, "receipt_word")
+        try:
+            response = self._client.update_item(
+                TableName=self.table_name,
+                Key=receipt_word.key,
+                UpdateExpression=(
+                    "SET invalid_label_count = invalid_label_count + :inc"
+                ),
+                ExpressionAttributeValues={":inc": {"N": "1"}},
+                ReturnValues="ALL_NEW",
+            )
+            if "Attributes" in response:
+                return item_to_receipt_word(response["Attributes"])
+            return receipt_word
+        except ClientError as e:
+            raise OperationError(
+                f"Error incrementing receipt word invalid label count: {e}"
+            ) from e
+
     @handle_dynamodb_errors("delete_receipt_word")
     def delete_receipt_word(self, receipt_word: ReceiptWord) -> None:
         """Deletes a single ReceiptWord by IDs."""
