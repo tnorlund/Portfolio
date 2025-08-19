@@ -36,6 +36,7 @@ import {
   DockerLogo,
   OllamaLogo,
   LangChainLogo,
+  GithubActionsLogo,
 } from "../components/ui/Logos";
 
 interface ReceiptPageProps {
@@ -426,24 +427,24 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       <h2>Semantic Understanding</h2>
 
       <p>
-        I’ve found that these “AI agents” are pretty dumb on their own: the meme
-        is a dumb intern that needs more information to figure out how to do the
-        job. Retrieval-Augmented Generation gives the intern a window of context
-        through a set of tools, but the answers can still be non-deterministic.
-        The fix is to encode the data so the retrieval is precise and learning
-        is repeatable.
+        I&apos;ve found that these &ldquo;AI agents&rdquo; are pretty dumb on
+        their own: the meme is a dumb intern that needs more information to
+        figure out how to do the job. Retrieval-Augmented Generation gives the
+        intern a window of context through a set of tools, but the answers can
+        still be non-deterministic. The fix is to encode the data so the
+        retrieval is precise and learning is repeatable.
       </p>
 
       <h3>Tools</h3>
       <p>
-        One of the best tools I’ve found has been semantic search. I found the
-        best way I can understand it is this example:
+        One of the best tools I&apos;ve found has been semantic search. I found
+        the best way I can understand it is this example:
       </p>
       <blockquote>King is to queen as man is to woman</blockquote>
       <p>
         This shows how king and queen have a similar meaning as man and woman
         (gender). This relationship is semantically explained by embeddings,
-        which place related words near each other.{" "}
+        which place related words near each other.
       </p>
       <p>I embed the words with OpenAI.</p>
       <ClientOnly>
@@ -452,9 +453,9 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         </AnimatedInView>
       </ClientOnly>
       <p>
-        The relationships can be queried using a database like Chroma, and I’ve
-        been able to run it for less than a dollar a month using docker and
-        Amazon’s serverless service, Fargate.
+        The relationships can be queried using a database like Chroma, and
+        I&apos;ve been able to run it for less than a dollar a month using
+        docker and Amazon&apos;s serverless service, Fargate.
       </p>
 
       <ClientOnly>
@@ -468,7 +469,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         </AnimatedInView>
       </ClientOnly>
       <p>
-        I’ve also learned how powerful Google Maps is with very little
+        I&apos;ve also learned how powerful Google Maps is with very little
         information.
       </p>
 
@@ -489,10 +490,11 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         The dumb-intern still needs review. The data I get through Google Maps
         is disorganized. The Google Maps data is cleaned using entity
         resolution: build a small graph of merchants where the edges between
-        them mean “same phone,” “same address,” or “name similarity.” Stronger
-        signals (phone + address) outweigh weaker ones (name only). I pick a
-        “golden” merchant in these clustered groups to ensure all receipts from
-        a specific store have the most correct data.
+        them mean &ldquo;same phone,&rdquo; &ldquo;same address,&rdquo; or
+        &ldquo;name similarity.&rdquo; Stronger signals (phone + address)
+        outweigh weaker ones (name only). I pick a &ldquo;golden&rdquo; merchant
+        in these clustered groups to ensure all receipts from a specific store
+        have the most correct data.
       </p>
       <MerchantCount />
 
@@ -595,15 +597,15 @@ Receipt context: Line 45, Word 1
             <HuggingFaceLogo />
           </AnimatedInView>
         </ClientOnly>
-        <h2>What’s on the Receipts?</h2>
+        <h2>What&apos;s on the Receipts?</h2>
         <p>
-          I’m still working on this part. My experience in data engineering gave
-          me a great head start into structuring and organizing data.
+          I&apos;m still working on this part. My experience in data engineering
+          gave me a great head start into structuring and organizing data.
         </p>
         <p>
-          Optimizing this has been fun. I’ve learned a lot about open source
-          models. I’ve used Ollama to organize how I deploy the models and
-          LangChain to explain how the models are using the tools.
+          Optimizing this has been fun. I&apos;ve learned a lot about open
+          source models. I&apos;ve used Ollama to organize how I deploy the
+          models and LangChain to explain how the models are using the tools.
         </p>
         <ClientOnly>
           <AnimatedInView>
@@ -617,13 +619,42 @@ Receipt context: Line 45, Word 1
         </ClientOnly>
       </p>
       <h1>Conclusion</h1>
-      <h2>Moving Fast and Breaking Things</h2>
+
       <p>
-        This project was a great learning experience. The best way for me to
-        learn is by actually doing. Experimenting with different tools and
-        techniques allowed me to reflect on what worked and what didn&apos;t.
+        AI has made <i>typing</i> cheap, but the bottlenecks remain{" "}
+        <i>understanding</i>, <i>testing</i>, <i>reviewing</i>, and{" "}
+        <i>trusting</i>. By shifting my focus from typing code to testing,
+        understanding, and architecting solutions, I prototype and experiment
+        faster. I can talk to AI, try a new approach, and see my changes in the
+        cloud. With a 10-second feedback loop and tests gate production deploys,
+        I meet the no-downtime requirement while iterating quickly. I no longer
+        spend most of my time researching how to accomplish the task, I just
+        build it.
       </p>
-      <p>I used Github and Pulumi to manage the cloud and code.</p>
+
+      <p>
+        I&apos;ve been able to iterate quickly using Pulumi&apos;s
+        Infrastructure as Code (IaC).
+      </p>
+
+      <ClientOnly>
+        <AnimatedInView>
+          <PulumiLogo />
+        </AnimatedInView>
+      </ClientOnly>
+
+      <p>
+        This has allowed me to try something new <i>at scale</i> quickly. These
+        cheap tries are allowing me to &ldquo;skill-max&ldquo; my cloud
+        expertise.
+      </p>
+
+      <p>
+        This rapid iteration with developer best practices allows me to
+        prototype in a safe environment, review and test my changes, and ship
+        with confidence using GitHub and Pulumi.
+      </p>
+
       <div className={styles.logosContainer}>
         <ClientOnly>
           <AnimatedInView>
@@ -632,38 +663,18 @@ Receipt context: Line 45, Word 1
         </ClientOnly>
         <ClientOnly>
           <AnimatedInView>
-            <PulumiLogo />
+            <GithubActionsLogo />
           </AnimatedInView>
         </ClientOnly>
       </div>
-      <p>
-        I got my build time down to ~10 seconds. This allows me to make a change
-        locally and get feedback in seconds. Github allows me to track my
-        changes and deploy to production.
-      </p>
-      <p>
-        I&apos;m using React to build the frontend. It&apos;s a great way to get
-        started, but I wanted to continue to increase my tech stack. I ended up
-        porting to NextJS.
-      </p>
-      <ClientOnly>
-        <AnimatedInView replacement={<NextJSLogo />} replaceAfterMs={1000}>
-          <ReactLogo />
-        </AnimatedInView>
-      </ClientOnly>
-      <p>
-        Moving to NextJS was really easy. Using a combination of Cursor and
-        OpenAI&apos;s Codex allowed me to move this from one framework to
-        another with minimal effort.
-      </p>
 
-      <h2>A New Era of Coding</h2>
       <p>
-        Artificial intelligence is advancing quickly and changing how we write
-        software. However, no matter how smart computers become, we still need
-        solid engineering practices, clever problem-solving, and expert
-        knowledge. I&apos;m excited to see a future where people and AI work
-        together to make programming faster, smarter, and easier for everyone.
+        Understanding how software works, testing to make sure it works, and
+        trusting that changes don&apos;t break things still takes a long time.
+        Prototyping and shipping to cloud to test new features in seconds speeds
+        up development, makes learning fun, and allows me to focus on trying
+        something new without being afraid of breaking things. I now optimize
+        development loop speed, not keystrokes.
       </p>
 
       <div style={{ marginBottom: "2rem", textAlign: "center" }}>
