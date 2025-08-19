@@ -48,8 +48,7 @@ def stub_label_analysis():
             "processing_time_ms": 150,
             "model": "gpt-4-stub",
             "stub_response": True,
-        },
-    )
+        })
 
 
 @pytest.fixture
@@ -67,8 +66,7 @@ def stub_validation_analysis():
                 "severity": "warning",
             }
         ],
-        metadata={"validation_time_ms": 75, "stub_response": True},
-    )
+        metadata={"validation_time_ms": 75, "stub_response": True})
 
 
 @pytest.fixture
@@ -96,8 +94,7 @@ def stub_structure_analysis():
             "processing_time_ms": 100,
             "model": "gpt-4-stub",
             "stub_response": True,
-        },
-    )
+        })
 
 
 @pytest.fixture
@@ -128,8 +125,7 @@ def stub_line_item_analysis():
             "processing_time_ms": 125,
             "model": "gpt-4-stub",
             "stub_response": True,
-        },
-    )
+        })
 
 
 @pytest.fixture
@@ -137,8 +133,7 @@ def stub_openai_client(
     stub_label_analysis,
     stub_validation_analysis,
     stub_structure_analysis,
-    stub_line_item_analysis,
-):
+    stub_line_item_analysis):
     """Create a stubbed OpenAI client that returns canned responses."""
     mock_client = MagicMock()
 

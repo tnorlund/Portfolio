@@ -21,8 +21,7 @@ from receipt_label.utils.cost_calculator import AICostCalculator
 from tests.utils.ai_usage_helpers import (
     create_mock_anthropic_response,
     create_mock_openai_response,
-    create_test_tracking_context,
-)
+    create_test_tracking_context)
 
 
 @pytest.mark.unit
@@ -35,12 +34,10 @@ class TestAIUsageTrackerInitialization:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
             user_id="test-user",
             track_to_dynamo=True,
             track_to_file=True,
-            log_file="/tmp/test.jsonl",
-        )
+            log_file="/tmp/test.jsonl")
 
         assert tracker.dynamo_client == mock_dynamo
         assert tracker.table_name == "test-table"
@@ -91,8 +88,7 @@ class TestAIUsageTrackerInitialization:
             {
                 "DYNAMODB_TABLE_NAME": "env-table",
                 "USER_ID": "env-user",
-            },
-        ):
+            }):
             tracker = AIUsageTracker()
             # Table name should have environment suffix (could be -development or -cicd depending on environment)
             assert tracker.table_name.startswith("env-table-")
@@ -119,8 +115,7 @@ class TestAIUsageTrackerContext:
             job_id="job-123",
             batch_id="batch-456",
             github_pr=789,
-            user_id="new-user",
-        )
+            user_id="new-user")
 
         assert tracker.current_job_id == "job-123"
         assert tracker.current_batch_id == "batch-456"
@@ -159,9 +154,7 @@ class TestAIUsageTrackerStorage:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
-            track_to_dynamo=True,
-        )
+            track_to_dynamo=True)
 
         metric = AIUsageMetric(
             service="openai",
@@ -171,8 +164,7 @@ class TestAIUsageTrackerStorage:
             input_tokens=100,
             output_tokens=50,
             cost_usd=0.001,
-            user_id="test-user",
-        )
+            user_id="test-user")
 
         tracker._store_metric(metric)
 
@@ -189,17 +181,14 @@ class TestAIUsageTrackerStorage:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
-            track_to_dynamo=True,
-        )
+            track_to_dynamo=True)
 
         metric = AIUsageMetric(
             service="openai",
             model="gpt-3.5-turbo",
             operation="completion",
             timestamp=datetime.now(timezone.utc),
-            user_id="test-user",
-        )
+            user_id="test-user")
 
         tracker._store_metric(metric)
 
@@ -217,8 +206,7 @@ class TestAIUsageTrackerStorage:
         try:
             tracker = AIUsageTracker(
                 track_to_file=True,
-                log_file=temp_file,
-            )
+                log_file=temp_file)
 
             metric = AIUsageMetric(
                 service="openai",
@@ -232,8 +220,7 @@ class TestAIUsageTrackerStorage:
                 latency_ms=500,
                 user_id="test-user",
                 job_id="job-123",
-                batch_id="batch-456",
-            )
+                batch_id="batch-456")
 
             tracker._store_metric(metric)
 
@@ -261,16 +248,14 @@ class TestAIUsageTrackerStorage:
         """Test handling of file storage failure."""
         tracker = AIUsageTracker(
             track_to_file=True,
-            log_file="/invalid/path/file.jsonl",
-        )
+            log_file="/invalid/path/file.jsonl")
 
         metric = AIUsageMetric(
             service="openai",
             model="gpt-3.5-turbo",
             operation="completion",
             timestamp=datetime.now(timezone.utc),
-            user_id="test-user",
-        )
+            user_id="test-user")
 
         tracker._store_metric(metric)
 
@@ -287,19 +272,16 @@ class TestAIUsageTrackerStorage:
             tracker = AIUsageTracker(
                 dynamo_client=mock_dynamo,
                 table_name="test-table",
-                validate_table_environment=False,  # Disable validation for test table
                 track_to_dynamo=True,
                 track_to_file=True,
-                log_file=temp_file,
-            )
+                log_file=temp_file)
 
             metric = AIUsageMetric(
                 service="openai",
                 model="gpt-3.5-turbo",
                 operation="completion",
                 timestamp=datetime.now(timezone.utc),
-                user_id="test-user",
-            )
+                user_id="test-user")
 
             tracker._store_metric(metric)
 
@@ -327,10 +309,8 @@ class TestOpenAICompletionTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
-            user_id="test-user",
-        )
+            user_id="test-user")
         tracker.set_tracking_context(job_id="job-123", batch_id="batch-456")
 
         # Create a mock response
@@ -338,8 +318,7 @@ class TestOpenAICompletionTracking:
             prompt_tokens=100,
             completion_tokens=50,
             model="gpt-3.5-turbo",
-            content="Test response",
-        )
+            content="Test response")
 
         @tracker.track_openai_completion
         def call_openai(**kwargs):
@@ -350,8 +329,7 @@ class TestOpenAICompletionTracking:
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": "Hello"}],
             temperature=0.7,
-            max_tokens=100,
-        )
+            max_tokens=100)
 
         assert response == mock_response
 
@@ -383,9 +361,7 @@ class TestOpenAICompletionTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
-            track_to_dynamo=True,
-        )
+            track_to_dynamo=True)
 
         @tracker.track_openai_completion
         def call_openai(**kwargs):
@@ -407,15 +383,12 @@ class TestOpenAICompletionTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
-            track_to_dynamo=True,
-        )
+            track_to_dynamo=True)
 
         mock_response = create_mock_openai_response(
             prompt_tokens=1000,
             completion_tokens=500,
-            model="gpt-3.5-turbo",
-        )
+            model="gpt-3.5-turbo")
 
         @tracker.track_openai_completion
         def call_openai(**kwargs):
@@ -441,9 +414,7 @@ class TestOpenAICompletionTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
-            track_to_dynamo=True,
-        )
+            track_to_dynamo=True)
 
         # Response without usage attribute
         mock_response = Mock()
@@ -477,10 +448,8 @@ class TestOpenAIEmbeddingTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
-            user_id="test-user",
-        )
+            user_id="test-user")
 
         # Create a mock embedding response
         mock_response = Mock()
@@ -494,8 +463,7 @@ class TestOpenAIEmbeddingTracking:
         # Call the wrapped function
         response = create_embedding(
             model="text-embedding-3-small",
-            input=["text1", "text2", "text3"],
-        )
+            input=["text1", "text2", "text3"])
 
         assert response == mock_response
 
@@ -520,9 +488,7 @@ class TestOpenAIEmbeddingTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
-            track_to_dynamo=True,
-        )
+            track_to_dynamo=True)
 
         @tracker.track_openai_embedding
         def create_embedding(**kwargs):
@@ -543,9 +509,7 @@ class TestOpenAIEmbeddingTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
-            track_to_dynamo=True,
-        )
+            track_to_dynamo=True)
 
         mock_response = Mock()
         mock_response.model = "text-embedding-3-large"
@@ -559,15 +523,13 @@ class TestOpenAIEmbeddingTracking:
         create_embedding(
             model="text-embedding-3-large",
             input=["text"],
-            is_batch=True,
-        )
+            is_batch=True)
 
         # Calculate expected batch cost
         expected_cost = AICostCalculator.calculate_openai_cost(
             model="text-embedding-3-large",
             total_tokens=2000,
-            is_batch=True,
-        )
+            is_batch=True)
 
         call_args = mock_dynamo.put_item.call_args
         item = call_args.kwargs["Item"]
@@ -586,10 +548,8 @@ class TestAnthropicTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
-            user_id="test-user",
-        )
+            user_id="test-user")
         tracker.set_tracking_context(github_pr=123)
 
         # Create a mock Anthropic response
@@ -597,8 +557,7 @@ class TestAnthropicTracking:
             input_tokens=200,
             output_tokens=100,
             model="claude-3-opus-20240229",
-            content="Test response",
-        )
+            content="Test response")
 
         @tracker.track_anthropic_completion
         def call_claude(**kwargs):
@@ -606,8 +565,7 @@ class TestAnthropicTracking:
 
         response = call_claude(
             model="claude-3-opus-20240229",
-            max_tokens=1000,
-        )
+            max_tokens=1000)
 
         assert response == mock_response
 
@@ -633,9 +591,7 @@ class TestAnthropicTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
-            track_to_dynamo=True,
-        )
+            track_to_dynamo=True)
 
         @tracker.track_anthropic_completion
         def call_claude(**kwargs):
@@ -656,9 +612,7 @@ class TestAnthropicTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
-            track_to_dynamo=True,
-        )
+            track_to_dynamo=True)
 
         models = [
             "claude-3-opus-20240229",
@@ -671,8 +625,7 @@ class TestAnthropicTracking:
             mock_response = create_mock_anthropic_response(
                 input_tokens=100,
                 output_tokens=50,
-                model=model,
-            )
+                model=model)
 
             @tracker.track_anthropic_completion
             def call_claude(**kwargs):
@@ -699,10 +652,8 @@ class TestGooglePlacesTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
-            user_id="test-user",
-        )
+            user_id="test-user")
 
         @tracker.track_google_places("Place Details")
         def get_place_details(place_id):
@@ -739,9 +690,7 @@ class TestGooglePlacesTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
-            track_to_dynamo=True,
-        )
+            track_to_dynamo=True)
 
         @tracker.track_google_places("Nearby Search")
         def search_nearby(**kwargs):
@@ -762,9 +711,7 @@ class TestGooglePlacesTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
-            track_to_dynamo=True,
-        )
+            track_to_dynamo=True)
 
         operations = [
             "Place Details",
@@ -813,9 +760,7 @@ class TestGitHubClaudeReview:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
-            track_to_dynamo=True,
-        )
+            track_to_dynamo=True)
 
         tracker.track_github_claude_review(pr_number=123)
 
@@ -844,15 +789,12 @@ class TestGitHubClaudeReview:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
-            track_to_dynamo=True,
-        )
+            track_to_dynamo=True)
 
         tracker.track_github_claude_review(
             pr_number=456,
             model="claude-3-haiku",
-            estimated_tokens=10000,
-        )
+            estimated_tokens=10000)
 
         # Verify metric was stored
         mock_dynamo.put_item.assert_called_once()
@@ -883,8 +825,7 @@ class TestWrappedOpenAIClient:
         mock_response = create_mock_openai_response(
             prompt_tokens=100,
             completion_tokens=50,
-            model="gpt-3.5-turbo",
-        )
+            model="gpt-3.5-turbo")
         mock_completions.create.return_value = mock_response
 
         # Create tracker
@@ -892,9 +833,7 @@ class TestWrappedOpenAIClient:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
-            track_to_dynamo=True,
-        )
+            track_to_dynamo=True)
 
         # Create wrapped client
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
@@ -904,16 +843,14 @@ class TestWrappedOpenAIClient:
         # Make a call
         response = wrapped_client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": "Hello"}],
-        )
+            messages=[{"role": "user", "content": "Hello"}])
 
         assert response == mock_response
 
         # Verify original client was called
         mock_completions.create.assert_called_once_with(
             model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": "Hello"}],
-        )
+            messages=[{"role": "user", "content": "Hello"}])
 
         # Verify tracking occurred
         mock_dynamo.put_item.assert_called_once()
@@ -940,9 +877,7 @@ class TestWrappedOpenAIClient:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
-            track_to_dynamo=True,
-        )
+            track_to_dynamo=True)
 
         # Create wrapped client
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
@@ -952,16 +887,14 @@ class TestWrappedOpenAIClient:
         # Make a call
         response = wrapped_client.embeddings.create(
             model="text-embedding-3-small",
-            input=["test text"],
-        )
+            input=["test text"])
 
         assert response == mock_response
 
         # Verify original client was called
         mock_embeddings.create.assert_called_once_with(
             model="text-embedding-3-small",
-            input=["test text"],
-        )
+            input=["test text"])
 
         # Verify tracking occurred
         mock_dynamo.put_item.assert_called_once()
@@ -1001,16 +934,13 @@ class TestWrappedOpenAIClient:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
-            track_to_dynamo=True,
-        )
+            track_to_dynamo=True)
 
         # Set context
         tracker.set_tracking_context(
             job_id="job-123",
             batch_id="batch-456",
-            user_id="context-user",
-        )
+            user_id="context-user")
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
             mock_client, tracker
@@ -1039,16 +969,14 @@ class TestConcurrentTracking:
             dynamo_client=mock_dynamo1,
             table_name="table1",
             track_to_dynamo=True,
-            user_id="user1",
-            validate_table_environment=False,  # Disable validation for test table
+            user_id="user1"
         )
 
         tracker2 = AIUsageTracker(
             dynamo_client=mock_dynamo2,
             table_name="table2",
             track_to_dynamo=True,
-            user_id="user2",
-            validate_table_environment=False,  # Disable validation for test table
+            user_id="user2"
         )
 
         # Set different contexts
@@ -1062,8 +990,7 @@ class TestConcurrentTracking:
             operation="completion",
             timestamp=datetime.now(timezone.utc),
             user_id=tracker1.user_id,
-            job_id=tracker1.current_job_id,
-        )
+            job_id=tracker1.current_job_id)
 
         metric2 = AIUsageMetric(
             service="anthropic",
@@ -1071,8 +998,7 @@ class TestConcurrentTracking:
             operation="completion",
             timestamp=datetime.now(timezone.utc),
             user_id=tracker2.user_id,
-            job_id=tracker2.current_job_id,
-        )
+            job_id=tracker2.current_job_id)
 
         tracker1._store_metric(metric1)
         tracker2._store_metric(metric2)
@@ -1096,9 +1022,7 @@ class TestConcurrentTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
-            track_to_dynamo=True,
-        )
+            track_to_dynamo=True)
 
         # Simulate multiple rapid calls
         @tracker.track_openai_completion
@@ -1128,9 +1052,7 @@ class TestLatencyTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
-            track_to_dynamo=True,
-        )
+            track_to_dynamo=True)
 
         # Create a function with known delay
         @tracker.track_openai_completion
@@ -1156,9 +1078,7 @@ class TestLatencyTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
-            track_to_dynamo=True,
-        )
+            track_to_dynamo=True)
 
         @tracker.track_openai_completion
         def failing_call(**kwargs):
@@ -1187,9 +1107,7 @@ class TestEdgeCases:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
-            track_to_dynamo=True,
-        )
+            track_to_dynamo=True)
 
         @tracker.track_openai_completion
         def return_none(**kwargs):
@@ -1207,9 +1125,7 @@ class TestEdgeCases:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
-            track_to_dynamo=True,
-        )
+            track_to_dynamo=True)
 
         # Response with missing attributes
         @tracker.track_openai_completion
@@ -1228,9 +1144,7 @@ class TestEdgeCases:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
-            track_to_dynamo=True,
-        )
+            track_to_dynamo=True)
 
         @tracker.track_openai_completion
         def call_with_long_metadata(**kwargs):
@@ -1240,8 +1154,7 @@ class TestEdgeCases:
         very_long_string = "x" * 10000
         call_with_long_metadata(
             model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": very_long_string}],
-        )
+            messages=[{"role": "user", "content": very_long_string}])
 
         # Should not crash and should store metric
         mock_dynamo.put_item.assert_called_once()
@@ -1252,9 +1165,7 @@ class TestEdgeCases:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
-            track_to_dynamo=True,
-        )
+            track_to_dynamo=True)
 
         @tracker.track_anthropic_completion
         def call_with_unicode(**kwargs):
@@ -1265,8 +1176,7 @@ class TestEdgeCases:
         # Call with unicode parameters
         call_with_unicode(
             model="claude-3-opus",
-            messages=[{"content": "Hello 世界 🌍 مرحبا"}],
-        )
+            messages=[{"content": "Hello 世界 🌍 مرحبا"}])
 
         # Should handle unicode properly
         mock_dynamo.put_item.assert_called_once()
@@ -1277,9 +1187,7 @@ class TestEdgeCases:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
-            track_to_dynamo=True,
-        )
+            track_to_dynamo=True)
 
         @tracker.track_openai_completion
         def zero_tokens(**kwargs):
@@ -1319,17 +1227,14 @@ class TestIntegrationWithCostCalculator:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
-            track_to_dynamo=True,
-        )
+            track_to_dynamo=True)
 
         @tracker.track_openai_completion
         def call_openai(**kwargs):
             return create_mock_openai_response(
                 prompt_tokens=1000,
                 completion_tokens=500,
-                model="gpt-4",
-            )
+                model="gpt-4")
 
         call_openai(model="gpt-4", is_batch=True)
 
@@ -1338,8 +1243,7 @@ class TestIntegrationWithCostCalculator:
             model="gpt-4",
             input_tokens=1000,
             output_tokens=500,
-            is_batch=True,
-        )
+            is_batch=True)
 
         # Verify calculated cost was stored
         call_args = mock_dynamo.put_item.call_args
@@ -1357,17 +1261,14 @@ class TestIntegrationWithCostCalculator:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
-            track_to_dynamo=True,
-        )
+            track_to_dynamo=True)
 
         @tracker.track_anthropic_completion
         def call_claude(**kwargs):
             return create_mock_anthropic_response(
                 input_tokens=2000,
                 output_tokens=1000,
-                model="claude-3.5-sonnet-20240620",
-            )
+                model="claude-3.5-sonnet-20240620")
 
         call_claude(model="claude-3.5-sonnet-20240620")
 
@@ -1375,8 +1276,7 @@ class TestIntegrationWithCostCalculator:
         mock_calculator_class.calculate_anthropic_cost.assert_called_once_with(
             model="claude-3.5-sonnet-20240620",
             input_tokens=2000,
-            output_tokens=1000,
-        )
+            output_tokens=1000)
 
         # Verify calculated cost was stored
         call_args = mock_dynamo.put_item.call_args
@@ -1394,9 +1294,7 @@ class TestIntegrationWithCostCalculator:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
-            track_to_dynamo=True,
-        )
+            track_to_dynamo=True)
 
         @tracker.track_google_places("Place Details")
         def get_place(**kwargs):
@@ -1407,8 +1305,7 @@ class TestIntegrationWithCostCalculator:
         # Verify cost calculator was called
         mock_calculator_class.calculate_google_places_cost.assert_called_once_with(
             operation="Place Details",
-            api_calls=1,
-        )
+            api_calls=1)
 
         # Verify calculated cost was stored
         call_args = mock_dynamo.put_item.call_args
@@ -1432,11 +1329,9 @@ class TestBackendFallback:
             tracker = AIUsageTracker(
                 dynamo_client=mock_dynamo,
                 table_name="test-table",
-                validate_table_environment=False,  # Disable validation for test table
                 track_to_dynamo=True,
                 track_to_file=True,
-                log_file=temp_file,
-            )
+                log_file=temp_file)
 
             metric = AIUsageMetric(
                 service="openai",
@@ -1444,8 +1339,7 @@ class TestBackendFallback:
                 operation="completion",
                 timestamp=datetime.now(timezone.utc),
                 cost_usd=0.001,
-                user_id="test-user",
-            )
+                user_id="test-user")
 
             tracker._store_metric(metric)
 
@@ -1470,19 +1364,16 @@ class TestBackendFallback:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
             track_to_dynamo=True,
             track_to_file=True,
-            log_file="/invalid/path/file.jsonl",
-        )
+            log_file="/invalid/path/file.jsonl")
 
         metric = AIUsageMetric(
             service="openai",
             model="gpt-3.5-turbo",
             operation="completion",
             timestamp=datetime.now(timezone.utc),
-            user_id="test-user",
-        )
+            user_id="test-user")
 
         # Should not raise exception
         tracker._store_metric(metric)
@@ -1496,8 +1387,7 @@ class TestBackendFallback:
         """Test behavior when no tracking backends are enabled."""
         tracker = AIUsageTracker(
             track_to_dynamo=False,
-            track_to_file=False,
-        )
+            track_to_file=False)
 
         @tracker.track_openai_completion
         def call_openai(**kwargs):
@@ -1518,9 +1408,7 @@ class TestMetadataHandling:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
-            track_to_dynamo=True,
-        )
+            track_to_dynamo=True)
 
         @tracker.track_openai_completion
         def my_custom_function(**kwargs):
@@ -1537,9 +1425,7 @@ class TestMetadataHandling:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
-            track_to_dynamo=True,
-        )
+            track_to_dynamo=True)
 
         @tracker.track_openai_completion
         def call_with_complex_params(**kwargs):
@@ -1552,8 +1438,7 @@ class TestMetadataHandling:
             max_tokens=None,
             stop=["\n", "END"],
             presence_penalty=0.5,
-            custom_param={"nested": {"value": 123}},
-        )
+            custom_param={"nested": {"value": 123}})
 
         # Verify metadata was serialized
         call_args = mock_dynamo.put_item.call_args
@@ -1572,9 +1457,7 @@ class TestMetadataHandling:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            validate_table_environment=False,  # Disable validation for test table
-            track_to_dynamo=True,
-        )
+            track_to_dynamo=True)
 
         @tracker.track_openai_completion
         def call_with_object(**kwargs):
@@ -1587,8 +1470,7 @@ class TestMetadataHandling:
         # This should not crash
         call_with_object(
             model="gpt-3.5-turbo",
-            custom_object=CustomObject(),
-        )
+            custom_object=CustomObject())
 
         # Metric should still be stored
         mock_dynamo.put_item.assert_called_once()
