@@ -56,9 +56,7 @@ class TestPerformanceBaseline:
 
     def test_decorator_overhead_minimal(self):
         """Test that decorator overhead is minimal for successful calls."""
-        tracker = AIUsageTracker(
-            track_to_dynamo=False,
-            track_to_file=False)
+        tracker = AIUsageTracker(track_to_dynamo=False, track_to_file=False)
 
         # Undecorated function
         def baseline_function():
@@ -98,14 +96,14 @@ class TestPerformanceBaseline:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         @tracker.track_openai_completion
         def fast_call():
             return create_mock_openai_response(
-                prompt_tokens=100,
-                completion_tokens=50)
+                prompt_tokens=100, completion_tokens=50
+            )
 
         # Time multiple metric creations
         iterations = 100
@@ -126,9 +124,7 @@ class TestPerformanceBaseline:
             temp_file = f.name
 
         try:
-            tracker = AIUsageTracker(
-                track_to_file=True,
-                log_file=temp_file)
+            tracker = AIUsageTracker(track_to_file=True, log_file=temp_file)
 
             @tracker.track_openai_completion
             def logged_call():
@@ -158,7 +154,7 @@ class TestPerformanceBaseline:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         # Complex metadata
@@ -192,14 +188,15 @@ class TestHighVolumeTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         @tracker.track_openai_completion
         def burst_call(request_id):
             return create_mock_openai_response(
                 prompt_tokens=100 + request_id,
-                completion_tokens=50 + request_id)
+                completion_tokens=50 + request_id,
+            )
 
         # Simulate burst of 1000 requests
         start = time.time()
@@ -219,7 +216,7 @@ class TestHighVolumeTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         @tracker.track_openai_completion
@@ -246,7 +243,7 @@ class TestHighVolumeTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         tracker.set_tracking_context(batch_id="large-batch-001")
@@ -257,8 +254,8 @@ class TestHighVolumeTracking:
         @tracker.track_openai_completion
         def batch_item(tokens):
             return create_mock_openai_response(
-                prompt_tokens=tokens,
-                completion_tokens=tokens // 2)
+                prompt_tokens=tokens, completion_tokens=tokens // 2
+            )
 
         start = time.time()
         for batch_size in batch_sizes:
@@ -283,14 +280,14 @@ class TestConcurrentPerformance:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         @tracker.track_openai_completion
         def concurrent_call(thread_id, call_id):
             return create_mock_openai_response(
-                prompt_tokens=100 + call_id,
-                completion_tokens=50 + call_id)
+                prompt_tokens=100 + call_id, completion_tokens=50 + call_id
+            )
 
         # Use thread pool for concurrent execution
         num_threads = 10
@@ -333,8 +330,8 @@ class TestConcurrentPerformance:
             nonlocal call_counter
             call_counter += 1
             return create_mock_openai_response(
-                prompt_tokens=100,
-                completion_tokens=50)
+                prompt_tokens=100, completion_tokens=50
+            )
 
         mock_completions.create = thread_safe_create
 
@@ -342,7 +339,7 @@ class TestConcurrentPerformance:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
@@ -352,7 +349,8 @@ class TestConcurrentPerformance:
         def make_concurrent_call(call_id):
             return wrapped_client.chat.completions.create(
                 model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": f"Message {call_id}"}])
+                messages=[{"role": "user", "content": f"Message {call_id}"}],
+            )
 
         # Concurrent calls through wrapped client
         num_threads = 5
@@ -380,7 +378,7 @@ class TestConcurrentPerformance:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         @tracker.track_openai_completion
@@ -442,14 +440,14 @@ class TestMemoryEfficiency:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         @tracker.track_openai_completion
         def memory_test_call():
             return create_mock_openai_response(
-                prompt_tokens=1000,
-                completion_tokens=500)
+                prompt_tokens=1000, completion_tokens=500
+            )
 
         # Run many operations
         for batch in range(10):
@@ -474,7 +472,7 @@ class TestMemoryEfficiency:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         @tracker.track_openai_completion
@@ -484,7 +482,8 @@ class TestMemoryEfficiency:
             response.usage = Mock(
                 prompt_tokens=50000,
                 completion_tokens=25000,
-                total_tokens=75000)
+                total_tokens=75000,
+            )
             # Simulate large response content
             response.choices = [Mock(message=Mock(content="x" * 100000))]
             return response
@@ -505,9 +504,7 @@ class TestMemoryEfficiency:
             temp_file = f.name
 
         try:
-            tracker = AIUsageTracker(
-                track_to_file=True,
-                log_file=temp_file)
+            tracker = AIUsageTracker(track_to_file=True, log_file=temp_file)
 
             @tracker.track_openai_completion
             def logged_call():
@@ -549,7 +546,7 @@ class TestScalabilityLimits:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         @tracker.track_openai_completion
@@ -574,7 +571,7 @@ class TestScalabilityLimits:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         @tracker.track_openai_completion
@@ -617,7 +614,7 @@ class TestScalabilityLimits:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         @tracker.track_openai_completion

@@ -10,7 +10,8 @@ import pytest
 from receipt_label.utils.environment_config import (
     AIUsageEnvironmentConfig,
     Environment,
-    EnvironmentConfig)
+    EnvironmentConfig,
+)
 
 
 class TestEnvironmentDetection:
@@ -53,7 +54,8 @@ class TestEnvironmentDetection:
                 "AWS_EXECUTION_ENV": "AWS_Lambda_python3.12",
                 "PULUMI_STACK_NAME": "tnorlund/portfolio/prod",
             },
-            clear=False):
+            clear=False,
+        ):
             env = AIUsageEnvironmentConfig.detect_environment()
             assert env == Environment.PRODUCTION
 
@@ -65,7 +67,8 @@ class TestEnvironmentDetection:
                 "AWS_EXECUTION_ENV": "AWS_Lambda_python3.12",
                 "PULUMI_STACK_NAME": "tnorlund/portfolio/staging",
             },
-            clear=False):
+            clear=False,
+        ):
             env = AIUsageEnvironmentConfig.detect_environment()
             assert env == Environment.STAGING
 
@@ -126,7 +129,8 @@ class TestEnvironmentConfig:
                 "GITHUB_SHA": "abc123",
                 "GITHUB_REPOSITORY": "user/repo",
             },
-            clear=False):
+            clear=False,
+        ):
             config = AIUsageEnvironmentConfig.get_config(Environment.CICD)
 
             assert config.environment == Environment.CICD
@@ -148,7 +152,8 @@ class TestEnvironmentConfig:
                 "HOSTNAME": "dev-machine",
                 "GIT_BRANCH": "feature-branch",
             },
-            clear=False):
+            clear=False,
+        ):
             config = AIUsageEnvironmentConfig.get_config(
                 Environment.DEVELOPMENT
             )
@@ -170,7 +175,8 @@ class TestEnvironmentConfig:
                 "APP_VERSION": "1.2.3",
                 "AWS_REGION": "us-east-1",
             },
-            clear=False):
+            clear=False,
+        ):
             config = AIUsageEnvironmentConfig.get_config(
                 Environment.PRODUCTION
             )
@@ -304,7 +310,8 @@ class TestEnvironmentConfigDataclass:
             environment=Environment.PRODUCTION,
             table_suffix="",
             require_context=True,
-            auto_tag={"env": "prod"})
+            auto_tag={"env": "prod"},
+        )
 
         assert config.table_name_suffix == ""
         assert config.is_production is True
@@ -314,7 +321,8 @@ class TestEnvironmentConfigDataclass:
             environment=Environment.STAGING,
             table_suffix="-staging",
             require_context=False,
-            auto_tag={"env": "staging"})
+            auto_tag={"env": "staging"},
+        )
 
         assert config_staging.table_name_suffix == "-staging"
         assert config_staging.is_production is False
@@ -324,7 +332,8 @@ class TestEnvironmentConfigDataclass:
             environment=Environment.CICD,
             table_suffix="-cicd",
             require_context=False,
-            auto_tag={"env": "cicd"})
+            auto_tag={"env": "cicd"},
+        )
 
         assert config_cicd.table_name_suffix == "-cicd"
         assert config_cicd.is_production is False

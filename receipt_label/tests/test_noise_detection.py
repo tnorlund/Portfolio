@@ -4,7 +4,8 @@ import pytest
 
 from receipt_label.utils.noise_detection import (
     NoiseDetectionConfig,
-    is_noise_text)
+    is_noise_text,
+)
 
 
 class TestNoiseDetection:

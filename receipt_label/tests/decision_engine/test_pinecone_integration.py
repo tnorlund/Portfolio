@@ -8,7 +8,8 @@ import pytest
 from receipt_label.decision_engine import (
     DecisionEngineConfig,
     MerchantReliabilityData,
-    PineconeDecisionHelper)
+    PineconeDecisionHelper,
+)
 
 
 class TestPineconeDecisionHelper:
@@ -207,7 +208,8 @@ class TestPineconeDecisionHelper:
             merchant_name="Walmart",
             label_type="GRAND_TOTAL",
             detected_value="12.99",
-            context={})
+            context={},
+        )
 
         # Boost should be based on number of matches: min(0.3, 15/20) = 0.3 (max boost)
         expected_boost = min(0.3, 15 / 20.0)  # Should be 0.3
@@ -273,7 +275,8 @@ class TestPineconeDecisionHelper:
             common_labels=set(),
             rarely_present_labels=set(),
             typical_receipt_structure={},
-            last_updated=datetime.now())
+            last_updated=datetime.now(),
+        )
 
         self.helper._reliability_cache["test"] = test_data
 

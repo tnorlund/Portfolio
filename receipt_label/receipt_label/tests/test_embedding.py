@@ -11,7 +11,8 @@ from receipt_dynamo.entities import (
     BatchSummary,
     Receipt,
     ReceiptMetadata,
-    ReceiptWord)
+    ReceiptWord,
+)
 
 from receipt_label.embedding.word import poll as poll_batch
 from receipt_label.embedding.word import submit as submit_batch
@@ -44,7 +45,8 @@ def receipt_words():
             angle_degrees=0.0,
             angle_radians=0.0,
             confidence=0.5,
-            embedding_status="NONE"),
+            embedding_status="NONE",
+        ),
         ReceiptWord(
             receipt_id=1,
             image_id="2c9b770c-9407-4cdc-b0eb-3a5b27f0af15",
@@ -64,7 +66,8 @@ def receipt_words():
             angle_degrees=0.0,
             angle_radians=0.0,
             confidence=0.5,
-            embedding_status="NONE"),
+            embedding_status="NONE",
+        ),
         ReceiptWord(
             receipt_id=1,
             image_id="2c9b770c-9407-4cdc-b0eb-3a5b27f0af15",
@@ -84,7 +87,8 @@ def receipt_words():
             angle_degrees=0.0,
             angle_radians=0.0,
             confidence=0.5,
-            embedding_status="NONE"),
+            embedding_status="NONE",
+        ),
         ReceiptWord(
             receipt_id=1,
             image_id="2c9b770c-9407-4cdc-b0eb-3a5b27f0af15",
@@ -104,7 +108,8 @@ def receipt_words():
             angle_degrees=0.0,
             angle_radians=0.0,
             confidence=0.5,
-            embedding_status="NONE"),
+            embedding_status="NONE",
+        ),
         ReceiptWord(
             receipt_id=1,
             image_id="2c9b770c-9407-4cdc-b0eb-3a5b27f0af15",
@@ -124,7 +129,8 @@ def receipt_words():
             angle_degrees=0.0,
             angle_radians=0.0,
             confidence=0.5,
-            embedding_status="NONE"),
+            embedding_status="NONE",
+        ),
         ReceiptWord(
             receipt_id=1,
             image_id="ae0d9a91-ee91-4b88-aa68-881799eb9ab2",
@@ -144,7 +150,8 @@ def receipt_words():
             angle_degrees=0.0,
             angle_radians=0.0,
             confidence=1.0,
-            embedding_status="NONE"),
+            embedding_status="NONE",
+        ),
         ReceiptWord(
             receipt_id=1,
             image_id="ae0d9a91-ee91-4b88-aa68-881799eb9ab2",
@@ -164,7 +171,8 @@ def receipt_words():
             angle_degrees=0.0,
             angle_radians=0.0,
             confidence=1.0,
-            embedding_status="NONE"),
+            embedding_status="NONE",
+        ),
         ReceiptWord(
             receipt_id=1,
             image_id="ae0d9a91-ee91-4b88-aa68-881799eb9ab2",
@@ -184,7 +192,8 @@ def receipt_words():
             angle_degrees=0.0,
             angle_radians=0.0,
             confidence=0.5,
-            embedding_status="NONE"),
+            embedding_status="NONE",
+        ),
         ReceiptWord(
             receipt_id=1,
             image_id="ae0d9a91-ee91-4b88-aa68-881799eb9ab2",
@@ -204,7 +213,8 @@ def receipt_words():
             angle_degrees=0.0,
             angle_radians=0.0,
             confidence=0.5,
-            embedding_status="NONE"),
+            embedding_status="NONE",
+        ),
         ReceiptWord(
             receipt_id=1,
             image_id="ae0d9a91-ee91-4b88-aa68-881799eb9ab2",
@@ -224,7 +234,8 @@ def receipt_words():
             angle_degrees=0.0,
             angle_radians=0.0,
             confidence=1.0,
-            embedding_status="NONE"),
+            embedding_status="NONE",
+        ),
         ReceiptWord(
             receipt_id=2,
             image_id="909a2b84-0b9d-496a-adf9-16588602a055",
@@ -244,7 +255,8 @@ def receipt_words():
             angle_degrees=0.0,
             angle_radians=0.0,
             confidence=0.5,
-            embedding_status="NONE"),
+            embedding_status="NONE",
+        ),
         ReceiptWord(
             receipt_id=2,
             image_id="909a2b84-0b9d-496a-adf9-16588602a055",
@@ -264,7 +276,8 @@ def receipt_words():
             angle_degrees=0.0,
             angle_radians=0.0,
             confidence=1.0,
-            embedding_status="NONE"),
+            embedding_status="NONE",
+        ),
         ReceiptWord(
             receipt_id=2,
             image_id="909a2b84-0b9d-496a-adf9-16588602a055",
@@ -284,7 +297,8 @@ def receipt_words():
             angle_degrees=0.0,
             angle_radians=0.0,
             confidence=1.0,
-            embedding_status="NONE"),
+            embedding_status="NONE",
+        ),
         ReceiptWord(
             receipt_id=2,
             image_id="909a2b84-0b9d-496a-adf9-16588602a055",
@@ -304,7 +318,8 @@ def receipt_words():
             angle_degrees=0.0,
             angle_radians=0.0,
             confidence=1.0,
-            embedding_status="NONE"),
+            embedding_status="NONE",
+        ),
         ReceiptWord(
             receipt_id=2,
             image_id="909a2b84-0b9d-496a-adf9-16588602a055",
@@ -324,7 +339,8 @@ def receipt_words():
             angle_degrees=0.0,
             angle_radians=0.0,
             confidence=1.0,
-            embedding_status="NONE"),
+            embedding_status="NONE",
+        ),
         ReceiptWord(
             receipt_id=1,
             image_id="29c1d8af-035c-431f-9d80-e4053cf28a00",
@@ -344,7 +360,8 @@ def receipt_words():
             angle_degrees=0.0,
             angle_radians=0.0,
             confidence=1.0,
-            embedding_status="NONE"),
+            embedding_status="NONE",
+        ),
         ReceiptWord(
             receipt_id=1,
             image_id="29c1d8af-035c-431f-9d80-e4053cf28a00",
@@ -364,7 +381,8 @@ def receipt_words():
             angle_degrees=0.0,
             angle_radians=0.0,
             confidence=1.0,
-            embedding_status="NONE"),
+            embedding_status="NONE",
+        ),
         ReceiptWord(
             receipt_id=1,
             image_id="29c1d8af-035c-431f-9d80-e4053cf28a00",
@@ -384,7 +402,8 @@ def receipt_words():
             angle_degrees=0.0,
             angle_radians=0.0,
             confidence=1.0,
-            embedding_status="NONE"),
+            embedding_status="NONE",
+        ),
         ReceiptWord(
             receipt_id=1,
             image_id="29c1d8af-035c-431f-9d80-e4053cf28a00",
@@ -404,7 +423,8 @@ def receipt_words():
             angle_degrees=0.0,
             angle_radians=0.0,
             confidence=1.0,
-            embedding_status="NONE"),
+            embedding_status="NONE",
+        ),
         ReceiptWord(
             receipt_id=1,
             image_id="29c1d8af-035c-431f-9d80-e4053cf28a00",
@@ -424,7 +444,8 @@ def receipt_words():
             angle_degrees=0.0,
             angle_radians=0.0,
             confidence=1.0,
-            embedding_status="NONE"),
+            embedding_status="NONE",
+        ),
         ReceiptWord(
             receipt_id=1,
             image_id="41885f70-0a10-4897-8840-8f7373d150cd",
@@ -444,7 +465,8 @@ def receipt_words():
             angle_degrees=0.0,
             angle_radians=0.0,
             confidence=0.5,
-            embedding_status="NONE"),
+            embedding_status="NONE",
+        ),
         ReceiptWord(
             receipt_id=1,
             image_id="41885f70-0a10-4897-8840-8f7373d150cd",
@@ -464,7 +486,8 @@ def receipt_words():
             angle_degrees=0.0,
             angle_radians=0.0,
             confidence=1.0,
-            embedding_status="NONE"),
+            embedding_status="NONE",
+        ),
         ReceiptWord(
             receipt_id=1,
             image_id="41885f70-0a10-4897-8840-8f7373d150cd",
@@ -484,7 +507,8 @@ def receipt_words():
             angle_degrees=0.0,
             angle_radians=0.0,
             confidence=1.0,
-            embedding_status="NONE"),
+            embedding_status="NONE",
+        ),
         ReceiptWord(
             receipt_id=1,
             image_id="41885f70-0a10-4897-8840-8f7373d150cd",
@@ -504,7 +528,8 @@ def receipt_words():
             angle_degrees=0.0,
             angle_radians=0.0,
             confidence=1.0,
-            embedding_status="NONE"),
+            embedding_status="NONE",
+        ),
         ReceiptWord(
             receipt_id=1,
             image_id="41885f70-0a10-4897-8840-8f7373d150cd",
@@ -524,7 +549,8 @@ def receipt_words():
             angle_degrees=0.0,
             angle_radians=0.0,
             confidence=1.0,
-            embedding_status="NONE"),
+            embedding_status="NONE",
+        ),
     ]
 
 
@@ -538,7 +564,8 @@ def receipt_word_labels():
             word_id=1,
             label="MERCHANT_NAME",
             validation_status=ValidationStatus.VALID,
-            timestamp_added=datetime.now()),
+            timestamp_added=datetime.now(),
+        ),
         ReceiptWordLabel(
             image_id="29c1d8af-035c-431f-9d80-e4053cf28a00",
             receipt_id=1,
@@ -546,7 +573,8 @@ def receipt_word_labels():
             word_id=1,
             label="ADDRESS",
             validation_status=ValidationStatus.PENDING,
-            timestamp_added=datetime.now()),
+            timestamp_added=datetime.now(),
+        ),
         ReceiptWordLabel(
             image_id="29c1d8af-035c-431f-9d80-e4053cf28a00",
             receipt_id=1,
@@ -554,7 +582,8 @@ def receipt_word_labels():
             word_id=1,
             label="ADDRESS_LINE",
             validation_status=ValidationStatus.PENDING,
-            timestamp_added=datetime.now()),
+            timestamp_added=datetime.now(),
+        ),
     ]
 
 
@@ -575,7 +604,8 @@ def receipt_and_metadata():
             bottom_right={"x": 100, "y": 100},
             sha256="test_sha256",
             cdn_s3_bucket="test_cdn_bucket",
-            cdn_s3_key="test_cdn_key"),
+            cdn_s3_key="test_cdn_key",
+        ),
         Receipt(
             image_id="29c1d8af-035c-431f-9d80-e4053cf28a00",
             receipt_id=2,
@@ -590,7 +620,8 @@ def receipt_and_metadata():
             bottom_right={"x": 100, "y": 100},
             sha256="test_sha256",
             cdn_s3_bucket="test_cdn_bucket",
-            cdn_s3_key="test_cdn_key"),
+            cdn_s3_key="test_cdn_key",
+        ),
         Receipt(
             image_id="29c1d8af-035c-431f-9d80-e4053cf28a00",
             receipt_id=3,
@@ -605,7 +636,8 @@ def receipt_and_metadata():
             bottom_right={"x": 100, "y": 100},
             sha256="test_sha256",
             cdn_s3_bucket="test_cdn_bucket",
-            cdn_s3_key="test_cdn_key"),
+            cdn_s3_key="test_cdn_key",
+        ),
     ]
     metadatas = [
         ReceiptMetadata(
@@ -619,7 +651,8 @@ def receipt_and_metadata():
             address="test_address",
             phone_number="test_phone_number",
             validated_by="NEARBY_LOOKUP",
-            reasoning="test_reasoning"),
+            reasoning="test_reasoning",
+        ),
         ReceiptMetadata(
             image_id="29c1d8af-035c-431f-9d80-e4053cf28a00",
             receipt_id=2,
@@ -631,7 +664,8 @@ def receipt_and_metadata():
             address="test_address",
             phone_number="test_phone_number",
             validated_by="NEARBY_LOOKUP",
-            reasoning="test_reasoning"),
+            reasoning="test_reasoning",
+        ),
         ReceiptMetadata(
             image_id="29c1d8af-035c-431f-9d80-e4053cf28a00",
             receipt_id=3,
@@ -643,7 +677,8 @@ def receipt_and_metadata():
             address="test_address",
             phone_number="test_phone_number",
             validated_by="NEARBY_LOOKUP",
-            reasoning="test_reasoning"),
+            reasoning="test_reasoning",
+        ),
     ]
     return receipts, metadatas
 
@@ -654,7 +689,8 @@ def test_embedding_batch_poll(
     receipt_words: list[ReceiptWord],
     receipt_and_metadata: tuple[Receipt, ReceiptMetadata],
     mocker,
-    patch_clients):
+    patch_clients,
+):
     # Arrange: point the handler at your Moto table
     # Get our mocked clients
     fake_openai, fake_index = patch_clients
@@ -670,7 +706,8 @@ def test_embedding_batch_poll(
     # Patch get_client_manager specifically for the embedding module
     mocker.patch(
         "receipt_label.embedding.word.poll.get_client_manager",
-        return_value=mock_client_manager)
+        return_value=mock_client_manager,
+    )
 
     for word in receipt_words:
         word.embedding_status = EmbeddingStatus.PENDING
@@ -688,7 +725,8 @@ def test_embedding_batch_poll(
                 ("29c1d8af-035c-431f-9d80-e4053cf28a00", 1),
                 ("29c1d8af-035c-431f-9d80-e4053cf28a00", 2),
                 ("29c1d8af-035c-431f-9d80-e4053cf28a00", 3),
-            ])
+            ],
+        )
     )
     moto_client.add_receipts(receipt_and_metadata[0])
     moto_client.add_receipt_metadatas(receipt_and_metadata[1])
@@ -781,5 +819,6 @@ def test_embedding_batch_poll(
             image_id=image_id,
             receipt_id=receipt_id,
             line_id=line_id,
-            word_id=word_id)
+            word_id=word_id,
+        )
         assert embedding_result is not None
