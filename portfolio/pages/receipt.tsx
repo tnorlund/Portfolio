@@ -498,26 +498,71 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
 
       <p>
         Next, I narrow the vocabulary to receipt words (totals, taxes, dates,
-        phone, address) and add a couple of simple checks:
+        phone, address). The AI Agent is given the definition per label and
+        gives an initial guess. The Agent then validates the guess using the
+        tools we spoke of earlier.
       </p>
 
-      <ul>
-        <li>sum(items) ~= subtotal</li>
-        <li>Subtotal + tax + fees - discounts ~= total</li>
-      </ul>
+      <div
+        style={{
+          width: "100%",
+          maxWidth: "900px",
+          margin: "2rem auto",
+          fontFamily: "'Monaco', 'Menlo', 'Consolas', monospace",
+          whiteSpace: "pre-wrap",
+          background: "var(--code-background)",
+          color: "var(--text-color)",
+          borderRadius: "8px",
+          lineHeight: 1.4,
+          fontSize: "14px",
+          overflowX: "auto",
+          border: "1px solid var(--text-color)",
+        }}
+      >
+        <pre>{`Word needing validation: 'GO'
+Label being validated: DATE
+Image: 8388d1f1...
+Receipt context: Line 45, Word 1
+📄 Receipt Context:
+  42: Whse: 117 Trm:201 Trn: 266 OP:701
+  43: Aga in
+  44: Items Sold: 2
+→ 45: →GO← 06/17/2024 ← TARGET LINE
+
+📊 Evidence Analysis:
+🎯 EXACT MATCHES:
+  ❌ 'GO' was previously marked INVALID
+🧠 SEMANTIC SIMILARITY:
+  Similar words where 'DATE' was VALID: (10 found)
+    ✓ '06/27/2024' (distance: 0.169) - Sprouts Farmers Market
+    ✓ '06/20/2024' (distance: 0.170) - Sprouts Farmers Market
+    ✓ '06/17/2024' (distance: 0.170) - Sprouts Farmers Market
+  Similar words where 'DATE' was INVALID: (3 found)
+    ✗ 'GO' (distance: 0.000) - Costco Wholesale
+    ✗ '20:23' (distance: 0.176) - Costco Wholesale
+    ✗ '20:23' (distance: 0.176) - Costco Wholesale
+
+🎯 DECISION:
+  ❌ REJECT this label
+  🔒 DEFINITIVE - Strong evidence
+  💡 Same text 'GO' was previously marked invalid
+  ✨ Recommended action: Apply this decision automatically`}</pre>
+      </div>
 
       <p>
-        Asking ChatGPT if this word is Sprout’s phone number is an easy way to
-        bootstrap, but it’s incredibly expensive. Instead, I use these AI agents
-        to generate and verify the token labels, and treat the labels as
-        supervision to train a purpose-built model.
+        This technique not only gives the AI enough context to make the right
+        decision but also helps it learn from its mistakes. This approach has
+        allowed me to increase accuracy and use less compute and time.
       </p>
+
       <LabelValidationCount />
 
       <p>
-        LayoutLM is a document understanding model that takes text and layout.
-        Trained on my agent-validated labels, it predicts a token, address,
-        date, total, etc. in one forward pass. In production this gives me:
+        I&apos;ve been able to speed up the receipt labeling even further by
+        using LayoutLM, a document understanding model that takes both text and
+        layout into account. Trained on my agent-validated labels, it predicts a
+        token, address, date, total, etc. in one forward pass. In production
+        this gives me:
       </p>
 
       <ul>
