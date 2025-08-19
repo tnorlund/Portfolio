@@ -56,12 +56,16 @@ class ChromaDBClient:
 
         self.persist_directory = persist_directory
         self.mode = mode.lower()
+        if self.mode not in {"read", "write"}:
+            raise ValueError(
+                f"Invalid mode '{mode}'. Expected 'read' or 'write'."
+            )
         self.use_persistent_client = persist_directory is not None
         self._client: Optional[chromadb.Client] = None
         self._collections: Dict[str, Collection] = {}
         
         # Only set embedding function if in write mode
-        if mode == "write" and embedding_function is None:
+        if self.mode == "write" and embedding_function is None:
             # Default to OpenAI for backward compatibility
             api_key = os.environ.get("OPENAI_API_KEY")
             if not api_key:

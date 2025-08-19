@@ -87,7 +87,7 @@ class EmbeddingInfrastructure(ComponentResource):
 
 1. **Update `EmbeddingInfrastructure.__init__`** to accept ChromaDB resources
 2. **Update `__main__.py`** to pass the shared resources
-3. **Remove duplicate `ChromaDBBuckets` creation** from `__main__.py` 
+3. **Remove duplicate `ChromaDBBuckets` creation** from `EmbeddingInfrastructure`
 4. **Update Lambda environment variables** to use the single bucket
 5. **Test with `pulumi preview`** to verify only one bucket
 6. **Migrate existing data** if needed (from old bucket to new)
