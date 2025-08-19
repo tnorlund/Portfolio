@@ -5,8 +5,7 @@ from receipt_dynamo.entities import ReceiptWord
 
 from receipt_label.pattern_detection import (
     DateTimePatternDetector,
-    PatternType,
-)
+    PatternType)
 
 
 class TestDateTimePatternDetector:
@@ -40,8 +39,7 @@ class TestDateTimePatternDetector:
                 bottom_right={"x": 50, "y": y_pos + 20},
                 angle_degrees=0.0,
                 angle_radians=0.0,
-                confidence=0.95,
-            )
+                confidence=0.95)
 
         return _create_word
 
@@ -119,14 +117,12 @@ class TestDateTimePatternDetector:
             (
                 "01/15/2024 2:30 PM",
                 PatternType.DATETIME,
-                "2024-01-15T14:30:00",
-            ),
+                "2024-01-15T14:30:00"),
             ("2024-01-15 14:30", PatternType.DATETIME, "2024-01-15T14:30:00"),
             (
                 "Jan 15, 2024 2:30PM",
                 PatternType.DATETIME,
-                "2024-01-15T14:30:00",
-            ),
+                "2024-01-15T14:30:00"),
             # Date and time as separate but adjacent words
             ("01/15/2024", "2:30 PM", "2024-01-15", "14:30:00"),
             ("2024-01-15", "14:30:00", "2024-01-15", "14:30:00"),

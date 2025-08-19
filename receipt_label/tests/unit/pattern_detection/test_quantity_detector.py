@@ -61,8 +61,7 @@ class TestQuantityPatternDetector:
             ("", False, None, 0.0),  # Empty
             ("$5.99", False, None, 0.0),  # Just price, no quantity
             ("2", False, None, 0.0),  # Just number, no context
-        ],
-    )
+        ])
     async def test_quantity_pattern_detection(
         self, detector, text, expected_match, expected_label, min_confidence
     ):
@@ -75,8 +74,7 @@ class TestQuantityPatternDetector:
             x1=100,
             y1=100,
             x2=200,
-            y2=120,
-        )
+            y2=120)
 
         results = await detector.detect([word])
 
@@ -105,17 +103,14 @@ class TestQuantityPatternDetector:
             ("2 @ $5.99", {"quantity": 2, "unit_price": 5.99, "total": 11.98}),
             (
                 "1 @ $12.99",
-                {"quantity": 1, "unit_price": 12.99, "total": 12.99},
-            ),
+                {"quantity": 1, "unit_price": 12.99, "total": 12.99}),
             ("3 @ $2.50", {"quantity": 3, "unit_price": 2.50, "total": 7.50}),
             (
                 "0.5 @ $8.99",
-                {"quantity": 0.5, "unit_price": 8.99, "total": 4.495},
-            ),
+                {"quantity": 0.5, "unit_price": 8.99, "total": 4.495}),
             (
                 "10 @ $1.00",
-                {"quantity": 10, "unit_price": 1.00, "total": 10.00},
-            ),
+                {"quantity": 10, "unit_price": 1.00, "total": 10.00}),
         ]
 
         for text, expected_values in at_price_cases:
@@ -127,8 +122,7 @@ class TestQuantityPatternDetector:
                 x1=100,
                 y1=100,
                 x2=200,
-                y2=120,
-            )
+                y2=120)
 
             results = await detector.detect([word])
             assert len(results) > 0, f"Failed to detect: {text}"
@@ -180,8 +174,7 @@ class TestQuantityPatternDetector:
                 x1=100,
                 y1=100,
                 x2=200,
-                y2=120,
-            )
+                y2=120)
 
             results = await detector.detect([word])
             assert len(results) > 0, f"Failed to detect measurement: {text}"
@@ -221,8 +214,7 @@ class TestQuantityPatternDetector:
                 x1=100,
                 y1=100,
                 x2=200,
-                y2=120,
-            )
+                y2=120)
 
             results = await detector.detect([word])
 
@@ -259,8 +251,7 @@ class TestQuantityPatternDetector:
                     x1=100,
                     y1=100,
                     x2=200,
-                    y2=120,
-                )
+                    y2=120)
 
                 results = await detector.detect([word])
                 if results:  # Some low confidence cases might not match
@@ -303,8 +294,7 @@ class TestQuantityPatternDetector:
                     x1=100,
                     y1=100 + i * 5,
                     x2=200,
-                    y2=120 + i * 5,
-                )
+                    y2=120 + i * 5)
             )
 
         start = time.time()
@@ -354,8 +344,7 @@ class TestQuantityPatternDetector:
                 x1=100,
                 y1=100,
                 x2=200,
-                y2=120,
-            )
+                y2=120)
 
             try:
                 results = await detector.detect([word])
@@ -385,8 +374,7 @@ class TestQuantityPatternDetector:
         for (
             text,
             expected_pattern_type,
-            expected_labels,
-        ) in type_consistency_cases:
+            expected_labels) in type_consistency_cases:
             word = create_test_receipt_word(
                 receipt_id=1,
                 line_id=1,
@@ -395,8 +383,7 @@ class TestQuantityPatternDetector:
                 x1=100,
                 y1=100,
                 x2=200,
-                y2=120,
-            )
+                y2=120)
 
             results = await detector.detect([word])
             assert len(results) > 0, f"Failed to detect: {text}"
