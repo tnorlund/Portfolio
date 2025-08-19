@@ -3,9 +3,7 @@
 import pytest
 from receipt_dynamo.entities import ReceiptWord
 
-from receipt_label.pattern_detection import (
-    ContactPatternDetector,
-    PatternType)
+from receipt_label.pattern_detection import ContactPatternDetector, PatternType
 
 
 class TestContactPatternDetector:
@@ -39,7 +37,8 @@ class TestContactPatternDetector:
                 bottom_right={"x": 50, "y": y_pos + 20},
                 angle_degrees=0.0,
                 angle_radians=0.0,
-                confidence=0.95)
+                confidence=0.95,
+            )
 
         return _create_word
 
@@ -63,7 +62,8 @@ class TestContactPatternDetector:
             (
                 "Phone: (555) 123-4567",
                 PatternType.PHONE_NUMBER,
-                "555-123-4567"),
+                "555-123-4567",
+            ),
             ("Call 555-123-4567", PatternType.PHONE_NUMBER, "555-123-4567"),
         ]
 
