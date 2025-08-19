@@ -100,9 +100,6 @@ validate_merchant_step_functions = ValidateMerchantStepFunctions(
     "validate-merchant"
 )
 validation_pipeline = ValidationPipeline("validation-pipeline")
-embedding_infrastructure = EmbeddingInfrastructure(
-    "embedding-infra", base_images=base_images
-)
 validation_by_merchant_step_functions = ValidationByMerchantStepFunction(
     "validation-by-merchant"
 )
@@ -156,14 +153,22 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
     policy_arn="arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
 )
 
-# Create ChromaDB S3 buckets
+# Create shared ChromaDB resources ONCE
 chromadb_storage = ChromaDBBuckets(
-    "chromadb-test",
+    "chromadb",  # Changed from "chromadb-test" to "chromadb" for clarity
 )
 
-# Create ChromaDB SQS queues
+# Create shared ChromaDB SQS queues
 chromadb_queues = ChromaDBQueues(
-    "chromadb-test",
+    "chromadb",  # Changed from "chromadb-test" to "chromadb" for clarity
+)
+
+# Create embedding infrastructure with shared ChromaDB resources
+embedding_infrastructure = EmbeddingInfrastructure(
+    "embedding-infra",
+    base_images=base_images,
+    chromadb_buckets=chromadb_storage,  # Pass shared ChromaDB buckets
+    chromadb_queues=chromadb_queues,    # Pass shared ChromaDB queues
 )
 
 # Create spot interruption handler
