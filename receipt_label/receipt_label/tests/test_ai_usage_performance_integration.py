@@ -31,8 +31,7 @@ from receipt_label.utils.client_manager import ClientConfig, ClientManager
 from receipt_label.utils.cost_calculator import AICostCalculator
 from tests.utils.ai_usage_helpers import (
     MockServiceFactory,
-    create_mock_openai_response,
-)
+    create_mock_openai_response)
 
 
 @pytest.fixture
@@ -120,9 +119,7 @@ class TestAIUsagePerformanceIntegration:
                         index=0,
                         message=ChatCompletionMessage(
                             content=f"Response {i}",
-                            role="assistant",
-                        ),
-                    )
+                            role="assistant"))
                 ],
                 created=int(time.time()),
                 model="gpt-3.5-turbo",
@@ -130,21 +127,17 @@ class TestAIUsagePerformanceIntegration:
                 usage=CompletionUsage(
                     prompt_tokens=10,
                     completion_tokens=5,
-                    total_tokens=15,
-                ),
-            )
+                    total_tokens=15))
 
         responses = [create_fast_response(i) for i in range(1000)]
         mock_openai.chat.completions.create.side_effect = responses
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
-            return_value=mock_high_performance_dynamo,
-        ):
+            return_value=mock_high_performance_dynamo):
             with patch(
                 "receipt_label.utils.client_manager.OpenAI",
-                return_value=mock_openai,
-            ):
+                return_value=mock_openai):
                 manager = ClientManager(config)
                 openai_client = manager.openai
 
@@ -154,8 +147,7 @@ class TestAIUsagePerformanceIntegration:
                 for i in range(1000):
                     openai_client.chat.completions.create(
                         model="gpt-3.5-turbo",
-                        messages=[{"role": "user", "content": f"Message {i}"}],
-                    )
+                        messages=[{"role": "user", "content": f"Message {i}"}])
 
                 elapsed = time.perf_counter() - start_time
 
@@ -171,8 +163,7 @@ class TestAIUsagePerformanceIntegration:
                 # Performance assertions using environment-aware thresholds
                 from receipt_label.tests.utils.performance_utils import (
                     AdaptiveThresholds,
-                    EnvironmentProfile,
-                )
+                    EnvironmentProfile)
 
                 thresholds = AdaptiveThresholds()
                 perf_class = EnvironmentProfile.get_performance_class()
@@ -231,9 +222,7 @@ class TestAIUsagePerformanceIntegration:
                         index=0,
                         message=ChatCompletionMessage(
                             content=f"Response {count}",
-                            role="assistant",
-                        ),
-                    )
+                            role="assistant"))
                 ],
                 created=int(time.time()),
                 model="gpt-3.5-turbo",
@@ -241,20 +230,16 @@ class TestAIUsagePerformanceIntegration:
                 usage=CompletionUsage(
                     prompt_tokens=50,
                     completion_tokens=25,
-                    total_tokens=75,
-                ),
-            )
+                    total_tokens=75))
 
         mock_openai.chat.completions.create = thread_safe_response
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
-            return_value=mock_high_performance_dynamo,
-        ):
+            return_value=mock_high_performance_dynamo):
             with patch(
                 "receipt_label.utils.client_manager.OpenAI",
-                return_value=mock_openai,
-            ):
+                return_value=mock_openai):
 
                 def worker_task(worker_id: int, num_requests: int):
                     """Worker function for concurrent testing."""
@@ -273,8 +258,7 @@ class TestAIUsagePerformanceIntegration:
                                     "role": "user",
                                     "content": f"Worker {worker_id} msg {i}",
                                 }
-                            ],
-                        )
+                            ])
                         latency = (time.perf_counter() - start) * 1000
                         latencies.append(latency)
 
@@ -312,8 +296,7 @@ class TestAIUsagePerformanceIntegration:
                 # Performance assertions with environment awareness
                 from receipt_label.tests.utils.performance_utils import (
                     AdaptiveThresholds,
-                    EnvironmentProfile,
-                )
+                    EnvironmentProfile)
 
                 thresholds = AdaptiveThresholds()
                 perf_class = EnvironmentProfile.get_performance_class()
@@ -379,9 +362,7 @@ class TestAIUsagePerformanceIntegration:
                     index=0,
                     message=ChatCompletionMessage(
                         content="Response",
-                        role="assistant",
-                    ),
-                )
+                        role="assistant"))
             ],
             created=int(time.time()),
             model="gpt-3.5-turbo",
@@ -389,18 +370,14 @@ class TestAIUsagePerformanceIntegration:
             usage=CompletionUsage(
                 prompt_tokens=100,
                 completion_tokens=50,
-                total_tokens=150,
-            ),
-        )
+                total_tokens=150))
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
-            return_value=mock_high_performance_dynamo,
-        ):
+            return_value=mock_high_performance_dynamo):
             with patch(
                 "receipt_label.utils.client_manager.OpenAI",
-                return_value=mock_openai,
-            ):
+                return_value=mock_openai):
                 manager = ClientManager(config)
                 openai_client = manager.openai
 
@@ -427,8 +404,7 @@ class TestAIUsagePerformanceIntegration:
                                     "role": "user",
                                     "content": f"Batch {batch} msg {i}",
                                 }
-                            ],
-                        )
+                            ])
 
                     # Force garbage collection between batches
                     gc.collect()
@@ -440,8 +416,7 @@ class TestAIUsagePerformanceIntegration:
                 # Memory efficiency assertions with environment awareness
                 from receipt_label.tests.utils.performance_utils import (
                     AdaptiveThresholds,
-                    EnvironmentProfile,
-                )
+                    EnvironmentProfile)
 
                 thresholds = AdaptiveThresholds()
                 perf_class = EnvironmentProfile.get_performance_class()
@@ -498,9 +473,7 @@ class TestAIUsagePerformanceIntegration:
                         index=0,
                         message=ChatCompletionMessage(
                             content="Burst response",
-                            role="assistant",
-                        ),
-                    )
+                            role="assistant"))
                 ],
                 created=int(time.time()),
                 model="gpt-3.5-turbo",
@@ -508,9 +481,7 @@ class TestAIUsagePerformanceIntegration:
                 usage=CompletionUsage(
                     prompt_tokens=100,
                     completion_tokens=50,
-                    total_tokens=150,
-                ),
-            )
+                    total_tokens=150))
 
         mock_openai.chat.completions.create.side_effect = (
             variable_latency_response
@@ -518,12 +489,10 @@ class TestAIUsagePerformanceIntegration:
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
-            return_value=mock_high_performance_dynamo,
-        ):
+            return_value=mock_high_performance_dynamo):
             with patch(
                 "receipt_label.utils.client_manager.OpenAI",
-                return_value=mock_openai,
-            ):
+                return_value=mock_openai):
                 manager = ClientManager(config)
                 openai_client = manager.openai
 
@@ -549,8 +518,7 @@ class TestAIUsagePerformanceIntegration:
                                     "role": "user",
                                     "content": f"{phase_name} {i}",
                                 }
-                            ],
-                        )
+                            ])
                         latencies.append(
                             (time.perf_counter() - req_start) * 1000
                         )
@@ -624,8 +592,7 @@ class TestAIUsagePerformanceIntegration:
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
-            return_value=mock_high_performance_dynamo,
-        ):
+            return_value=mock_high_performance_dynamo):
             manager = ClientManager(config)
 
             # Test various query patterns
@@ -647,8 +614,7 @@ class TestAIUsagePerformanceIntegration:
                     manager.dynamo,
                     service="openai",
                     start_date=start_date,
-                    end_date=end_date,
-                )
+                    end_date=end_date)
 
                 query_time = (time.perf_counter() - start) * 1000  # ms
 
@@ -672,8 +638,7 @@ class TestAIUsagePerformanceIntegration:
 
             # Performance assertions using relative thresholds
             from receipt_label.tests.utils.performance_utils import (
-                EnvironmentProfile,
-            )
+                EnvironmentProfile)
 
             # Establish baseline with simplest query
             baseline_time = query_performance["single_day"]["total_time_ms"]
@@ -747,12 +712,10 @@ class TestAIUsagePerformanceIntegration:
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
-            return_value=mock_dynamo,
-        ):
+            return_value=mock_dynamo):
             with patch(
                 "receipt_label.utils.client_manager.OpenAI",
-                return_value=mock_openai,
-            ):
+                return_value=mock_openai):
                 manager = ClientManager(config)
                 openai_client = manager.openai
 
@@ -774,8 +737,7 @@ class TestAIUsagePerformanceIntegration:
                                         "role": "user",
                                         "content": f"Stress test {window_num}-{i}",
                                     }
-                                ],
-                            )
+                                ])
                             successes += 1
                         except:
                             failures += 1
@@ -893,16 +855,13 @@ class TestAIUsagePerformanceIntegration:
 
         with patch(
             "receipt_label.utils.ai_usage_tracker_resilient.ResilientDynamoClient",
-            return_value=mock_dynamo,
-        ):
+            return_value=mock_dynamo):
             with patch(
                 "receipt_label.utils.client_manager.DynamoClient",
-                return_value=mock_dynamo,
-            ):
+                return_value=mock_dynamo):
                 with patch(
                     "receipt_label.utils.client_manager.OpenAI",
-                    return_value=mock_openai,
-                ):
+                    return_value=mock_openai):
                     manager = ClientManager(config)
                     openai_client = manager.openai
 
@@ -918,8 +877,7 @@ class TestAIUsagePerformanceIntegration:
                                 model="gpt-3.5-turbo",
                                 messages=[
                                     {"role": "user", "content": f"Test {i}"}
-                                ],
-                            )
+                                ])
                             # Exclude the OpenAI mock latency from throughput measurement
                             # We only care about tracker overhead
                             request_end = time.perf_counter()

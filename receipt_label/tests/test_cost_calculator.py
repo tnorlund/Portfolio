@@ -182,8 +182,7 @@ class TestAICostCalculator:
             model="gpt-4o",
             input_tokens=1000,
             output_tokens=500,
-            is_batch=False,
-        )
+            is_batch=False)
 
         batch_cost = self.calculator.calculate_openai_cost(
             model="gpt-4o", input_tokens=1000, output_tokens=500, is_batch=True
@@ -198,15 +197,13 @@ class TestAICostCalculator:
             model="gpt-3.5-turbo",
             input_tokens=2000,
             output_tokens=1000,
-            is_batch=False,
-        )
+            is_batch=False)
 
         batch_cost = self.calculator.calculate_openai_cost(
             model="gpt-3.5-turbo",
             input_tokens=2000,
             output_tokens=1000,
-            is_batch=True,
-        )
+            is_batch=True)
 
         assert batch_cost == pytest.approx(regular_cost * 0.5, rel=1e-6)
 
@@ -240,8 +237,7 @@ class TestAICostCalculator:
         cost = self.calculator.calculate_anthropic_cost(
             model="claude-3-5-sonnet-20241022",
             input_tokens=2000,
-            output_tokens=1000,
-        )
+            output_tokens=1000)
         # $0.003 * 2 + $0.015 * 1 = $0.006 + $0.015 = $0.021
         assert cost == pytest.approx(0.021, rel=1e-6)
 
@@ -270,8 +266,7 @@ class TestAICostCalculator:
         cost = self.calculator.calculate_anthropic_cost(
             model="claude-3-haiku-20240307",
             input_tokens=5000,
-            output_tokens=2500,
-        )
+            output_tokens=2500)
         # $0.00025 * 5 + $0.00125 * 2.5 = $0.00125 + $0.003125 = $0.004375
         assert cost == pytest.approx(0.004375, rel=1e-6)
 
@@ -300,8 +295,7 @@ class TestAICostCalculator:
         cost = self.calculator.calculate_anthropic_cost(
             model="claude-3-opus-20240229",
             input_tokens=1000,
-            output_tokens=500,
-        )
+            output_tokens=500)
         # $0.015 input + $0.075 output = $0.015 + $0.0375 = $0.0525
         assert cost == pytest.approx(0.0525, rel=1e-6)
 
@@ -330,8 +324,7 @@ class TestAICostCalculator:
         cost = self.calculator.calculate_anthropic_cost(
             model="claude-3-sonnet-20240229",
             input_tokens=1000,
-            output_tokens=500,
-        )
+            output_tokens=500)
         # $0.003 input + $0.015 output = $0.003 + $0.0075 = $0.0105
         assert cost == pytest.approx(0.0105, rel=1e-6)
 
@@ -600,8 +593,7 @@ class TestAICostCalculator:
             cost = self.calculator.calculate_anthropic_cost(
                 model="claude-3.5-sonnet",
                 input_tokens=1000 + i,
-                output_tokens=500 + i,
-            )
+                output_tokens=500 + i)
             costs.append(cost)
 
         end_time = time.time()
@@ -840,8 +832,7 @@ class TestAICostCalculator:
         cost = self.calculator.calculate_anthropic_cost(
             model="claude-3-sonnet-with-extra-suffix",
             input_tokens=1000,
-            output_tokens=500,
-        )
+            output_tokens=500)
         # Should match "claude-3-sonnet" and use its pricing
         expected_cost = self.calculator.calculate_anthropic_cost(
             "claude-3-sonnet", input_tokens=1000, output_tokens=500

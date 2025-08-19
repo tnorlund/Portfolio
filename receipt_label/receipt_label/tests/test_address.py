@@ -4,8 +4,7 @@ from receipt_label.utils.address import (
     compare_addresses,
     format_address,
     normalize_address,
-    parse_address,
-)
+    parse_address)
 
 
 @pytest.mark.unit

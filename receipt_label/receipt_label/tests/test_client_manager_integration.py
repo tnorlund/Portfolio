@@ -29,8 +29,7 @@ from tests.utils.ai_usage_helpers import (
     assert_usage_metric_equal,
     create_mock_anthropic_response,
     create_mock_openai_response,
-    create_test_tracking_context,
-)
+    create_test_tracking_context)
 
 
 def get_dynamo_call_count(mock_dynamo):
@@ -140,8 +139,7 @@ class TestClientManagerIntegration:
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
-            return_value=mock_dynamo_client,
-        ):
+            return_value=mock_dynamo_client):
             manager = ClientManager(config)
 
             # Verify lazy initialization
@@ -170,8 +168,7 @@ class TestClientManagerIntegration:
             pinecone_api_key="test-key",
             pinecone_index_name="test-index",
             pinecone_host="test.pinecone.io",
-            track_usage=False,
-        )
+            track_usage=False)
 
         manager = ClientManager(config)
 
@@ -187,12 +184,10 @@ class TestClientManagerIntegration:
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
-            return_value=mock_dynamo_client,
-        ):
+            return_value=mock_dynamo_client):
             with patch(
                 "receipt_label.utils.client_manager.OpenAI",
-                return_value=mock_openai_client,
-            ):
+                return_value=mock_openai_client):
                 manager = ClientManager(config)
 
                 # Get wrapped OpenAI client
@@ -218,34 +213,29 @@ class TestClientManagerIntegration:
             prompt_tokens=100,
             completion_tokens=50,
             model="gpt-3.5-turbo",
-            content="Test response",
-        )
+            content="Test response")
 
         mock_openai_client.chat.completions.create.return_value = mock_response
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
-            return_value=mock_dynamo_client,
-        ):
+            return_value=mock_dynamo_client):
             with patch(
                 "receipt_label.utils.client_manager.OpenAI",
-                return_value=mock_openai_client,
-            ):
+                return_value=mock_openai_client):
                 manager = ClientManager(config)
 
                 # Set tracking context
                 manager.set_tracking_context(
                     job_id="test-job-123",
-                    batch_id="test-batch-456",
-                )
+                    batch_id="test-batch-456")
 
                 # Make API call
                 openai = manager.openai
                 response = openai.chat.completions.create(
                     model="gpt-3.5-turbo",
                     messages=[{"role": "user", "content": "Hello"}],
-                    temperature=0.7,
-                )
+                    temperature=0.7)
 
                 # Verify response
                 assert response.id == "chatcmpl-test123"
@@ -291,8 +281,7 @@ class TestClientManagerIntegration:
                     model="gpt-3.5-turbo",
                     input_tokens=100,
                     output_tokens=50,
-                    is_batch=False,
-                )
+                    is_batch=False)
                 assert abs(cost - expected_cost) < 0.0001
 
     @pytest.mark.integration
@@ -312,20 +301,17 @@ class TestClientManagerIntegration:
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
-            return_value=mock_dynamo_client,
-        ):
+            return_value=mock_dynamo_client):
             with patch(
                 "receipt_label.utils.client_manager.OpenAI",
-                return_value=mock_openai_client,
-            ):
+                return_value=mock_openai_client):
                 manager = ClientManager(config)
 
                 # Make embedding call
                 openai = manager.openai
                 response = openai.embeddings.create(
                     model="text-embedding-ada-002",
-                    input="Test text",
-                )
+                    input="Test text")
 
                 # Verify response
                 assert len(response.data) == 1
@@ -380,19 +366,16 @@ class TestClientManagerIntegration:
                 prompt_tokens=100 + call_count["count"],
                 completion_tokens=50 + call_count["count"],
                 model="gpt-3.5-turbo",
-                content=f"Response {call_count['count']}",
-            )
+                content=f"Response {call_count['count']}")
 
         mock_openai_client.chat.completions.create = mock_create
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
-            return_value=mock_dynamo_client,
-        ):
+            return_value=mock_dynamo_client):
             with patch(
                 "receipt_label.utils.client_manager.OpenAI",
-                return_value=mock_openai_client,
-            ):
+                return_value=mock_openai_client):
                 manager = ClientManager(config)
 
                 def make_api_call(job_id: str):
@@ -404,8 +387,7 @@ class TestClientManagerIntegration:
                         model="gpt-3.5-turbo",
                         messages=[
                             {"role": "user", "content": f"Hello from {job_id}"}
-                        ],
-                    )
+                        ])
                     return response
 
                 # Make concurrent calls
@@ -458,12 +440,10 @@ class TestClientManagerIntegration:
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
-            return_value=mock_dynamo_client,
-        ):
+            return_value=mock_dynamo_client):
             with patch(
                 "receipt_label.utils.client_manager.OpenAI",
-                return_value=mock_openai_client,
-            ):
+                return_value=mock_openai_client):
                 manager = ClientManager(config)
 
                 # Make API call that will fail
@@ -471,8 +451,7 @@ class TestClientManagerIntegration:
                 with pytest.raises(Exception, match="API rate limit exceeded"):
                     openai.chat.completions.create(
                         model="gpt-3.5-turbo",
-                        messages=[{"role": "user", "content": "Hello"}],
-                    )
+                        messages=[{"role": "user", "content": "Hello"}])
 
                 # Verify error metric was still stored (check both interfaces)
                 assert mock_dynamo_client.put_item.called or (
@@ -513,19 +492,16 @@ class TestClientManagerIntegration:
             prompt_tokens=1000,
             completion_tokens=500,
             model="gpt-3.5-turbo",
-            content="Batch response",
-        )
+            content="Batch response")
 
         mock_openai_client.chat.completions.create.return_value = mock_response
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
-            return_value=mock_dynamo_client,
-        ):
+            return_value=mock_dynamo_client):
             with patch(
                 "receipt_label.utils.client_manager.OpenAI",
-                return_value=mock_openai_client,
-            ):
+                return_value=mock_openai_client):
                 manager = ClientManager(config)
 
                 # Set batch context
@@ -568,14 +544,12 @@ class TestClientManagerIntegration:
                     model="gpt-3.5-turbo",
                     input_tokens=1000,
                     output_tokens=500,
-                    is_batch=False,
-                )
+                    is_batch=False)
                 batch_cost = AICostCalculator.calculate_openai_cost(
                     model="gpt-3.5-turbo",
                     input_tokens=1000,
                     output_tokens=500,
-                    is_batch=True,
-                )
+                    is_batch=True)
 
                 assert batch_cost == regular_cost * 0.5
                 assert float(item["costUSD"]["N"]) == batch_cost
@@ -595,35 +569,30 @@ class TestClientManagerIntegration:
                     prompt_tokens=100,
                     completion_tokens=50,
                     model="gpt-3.5-turbo",
-                    content=f"Response {i}",
-                )
+                    content=f"Response {i}")
             )
 
         mock_openai_client.chat.completions.create.side_effect = responses
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
-            return_value=mock_dynamo_client,
-        ):
+            return_value=mock_dynamo_client):
             with patch(
                 "receipt_label.utils.client_manager.OpenAI",
-                return_value=mock_openai_client,
-            ):
+                return_value=mock_openai_client):
                 manager = ClientManager(config)
 
                 # Set context once
                 manager.set_tracking_context(
                     job_id="persistent-job",
-                    batch_id="persistent-batch",
-                )
+                    batch_id="persistent-batch")
 
                 # Make multiple calls
                 openai = manager.openai
                 for i in range(3):
                     openai.chat.completions.create(
                         model="gpt-3.5-turbo",
-                        messages=[{"role": "user", "content": f"Message {i}"}],
-                    )
+                        messages=[{"role": "user", "content": f"Message {i}"}])
 
                 # Verify all calls have same context
                 assert get_dynamo_call_count(mock_dynamo_client) == 3
@@ -644,8 +613,7 @@ class TestClientManagerIntegration:
             pinecone_api_key="test-key",
             pinecone_index_name="test-index",
             pinecone_host="test.pinecone.io",
-            track_usage=True,
-        )
+            track_usage=True)
 
         # Mock response
         mock_openai_client = MagicMock(spec=OpenAI)
@@ -655,18 +623,15 @@ class TestClientManagerIntegration:
             prompt_tokens=100,
             completion_tokens=50,
             model="gpt-3.5-turbo",
-            content="Test response",
-        )
+            content="Test response")
         mock_openai_client.chat.completions.create.return_value = mock_response
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
-            return_value=mock_dynamo_client,
-        ):
+            return_value=mock_dynamo_client):
             with patch(
                 "receipt_label.utils.client_manager.OpenAI",
-                return_value=mock_openai_client,
-            ):
+                return_value=mock_openai_client):
                 with patch.dict(os.environ, {"TRACK_TO_FILE": "true"}):
                     manager = ClientManager(config)
 
@@ -677,8 +642,7 @@ class TestClientManagerIntegration:
                     openai = manager.openai
                     openai.chat.completions.create(
                         model="gpt-3.5-turbo",
-                        messages=[{"role": "user", "content": "Hello"}],
-                    )
+                        messages=[{"role": "user", "content": "Hello"}])
 
                     # Verify log file was created
                     assert log_file.exists()
@@ -735,8 +699,7 @@ class TestClientManagerIntegration:
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
-            return_value=mock_dynamo_client,
-        ):
+            return_value=mock_dynamo_client):
             manager = ClientManager(config)
 
             # Query metrics
@@ -744,8 +707,7 @@ class TestClientManagerIntegration:
                 manager.dynamo,
                 service="openai",
                 start_date="2024-01-15",
-                end_date="2024-01-15",
-            )
+                end_date="2024-01-15")
 
             assert len(metrics) == 2
             assert all(m.service == "openai" for m in metrics)
