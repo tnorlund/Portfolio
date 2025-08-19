@@ -2,10 +2,14 @@
 
 This handler efficiently compacts multiple ChromaDB deltas created during
 parallel embedding processing, with support for collection-aware processing.
+
+Memory optimization: Supports both parallel and sequential processing modes
+to handle memory-constrained environments.
 """
 
 from typing import Optional
 
+import gc
 import json
 import os
 import shutil
@@ -43,6 +47,64 @@ dynamo_client = DynamoClient(os.environ["DYNAMODB_TABLE_NAME"])
 # Get configuration from environment
 heartbeat_interval = int(os.environ.get("HEARTBEAT_INTERVAL_SECONDS", "60"))
 lock_duration_minutes = int(os.environ.get("LOCK_DURATION_MINUTES", "5"))
+
+# Memory optimization configuration
+USE_SEQUENTIAL = (
+    os.environ.get("USE_SEQUENTIAL_PROCESSING", "false").lower() == "true"
+)
+EMBEDDING_BATCH_SIZE = int(os.environ.get("EMBEDDING_BATCH_SIZE", "100"))
+GC_INTERVAL = int(os.environ.get("GC_INTERVAL", "3"))
+
+
+def should_use_sequential_processing(
+    delta_results: List[Dict[str, Any]],
+) -> bool:
+    """Determine whether to use sequential processing based on workload characteristics.
+
+    Decision is based on:
+    - Environment configuration (USE_SEQUENTIAL flag)
+    - Total number of embeddings to process
+    - Collection type (word embeddings use more memory than lines)
+
+    Args:
+        delta_results: List of delta results to process
+
+    Returns:
+        True if sequential processing should be used
+    """
+    # Always use sequential if explicitly configured
+    if USE_SEQUENTIAL:
+        logger.info("Using sequential processing (configured via environment)")
+        return True
+
+    # Estimate total embeddings
+    total_embeddings = sum(d.get("embedding_count", 0) for d in delta_results)
+
+    # Check if we're processing word embeddings (typically larger)
+    has_words = any(
+        d.get("collection") == "receipt_words" for d in delta_results
+    )
+
+    # Use sequential for large batches
+    if total_embeddings > 1500:
+        logger.info(
+            "Using sequential processing for %d embeddings (threshold: 1500)",
+            total_embeddings,
+        )
+        return True
+
+    # Lower threshold for word embeddings due to higher memory usage
+    if has_words and total_embeddings > 1000:
+        logger.info(
+            "Using sequential processing for %d word embeddings (threshold: 1000)",
+            total_embeddings,
+        )
+        return True
+
+    logger.info(
+        "Using parallel processing for %d embeddings", total_embeddings
+    )
+    return False
 
 
 def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -144,15 +206,15 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             "message": "Empty chunk processed",
         }
 
-    # With Map state, each chunk should already be limited to 10 deltas
-    # But we'll enforce the limit here as a safety measure
-    chunk_deltas = delta_results[:10]
-    if len(delta_results) > 10:
-        logger.warning(
-            "Chunk %d has %d deltas, expected max 10. Processing first 10.",
-            chunk_index,
-            len(delta_results),
-        )
+    # Process all deltas provided in this chunk
+    # The split_into_chunks handler already applies appropriate limits
+    chunk_deltas = delta_results
+
+    logger.info(
+        "Chunk %d contains %d deltas to process",
+        chunk_index,
+        len(delta_results),
+    )
 
     # Group chunk deltas by collection name for collection-aware processing
     deltas_by_collection: dict[str, list] = {}
@@ -174,10 +236,18 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     )
 
     try:
-        # Process chunk deltas with collection awareness
-        chunk_result = process_chunk_deltas(
-            batch_id, chunk_index, chunk_deltas, deltas_by_collection
-        )
+        # Decide processing strategy based on data characteristics
+        use_sequential = should_use_sequential_processing(chunk_deltas)
+
+        # Process chunk deltas with appropriate strategy
+        if use_sequential:
+            chunk_result = process_chunk_deltas_sequential(
+                batch_id, chunk_index, chunk_deltas, deltas_by_collection
+            )
+        else:
+            chunk_result = process_chunk_deltas(
+                batch_id, chunk_index, chunk_deltas, deltas_by_collection
+            )
 
         # Prepare response for Map state
         # No need for continuation logic since all chunks process in parallel
@@ -353,6 +423,203 @@ def process_chunk_deltas(
     finally:
         # Clean up temp directory
         shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def process_chunk_deltas_sequential(
+    batch_id: str,
+    chunk_index: int,
+    chunk_deltas: List[Dict[str, Any]],
+    deltas_by_collection: Dict[str, List[Dict[str, Any]]],
+) -> Dict[str, Any]:
+    """
+    Process a chunk of deltas sequentially to minimize memory usage.
+
+    This function processes one delta at a time and explicitly manages memory
+    through garbage collection and cleanup.
+
+    Args:
+        batch_id: Unique batch identifier
+        chunk_index: Index of this chunk
+        chunk_deltas: List of delta results
+        deltas_by_collection: Deltas grouped by collection name
+
+    Returns:
+        Dictionary with processing results
+    """
+    start_time = time.time()
+    bucket = os.environ["CHROMADB_BUCKET"]
+    temp_dir = tempfile.mkdtemp()
+    total_embeddings = 0
+    deltas_processed = 0
+
+    try:
+        # Initialize ChromaDB once for all deltas
+        chroma_client = chromadb.PersistentClient(path=temp_dir)
+
+        # Process each collection sequentially
+        for collection_name, collection_deltas in deltas_by_collection.items():
+            logger.info(
+                "Sequential processing %d deltas for collection '%s'",
+                len(collection_deltas),
+                collection_name,
+            )
+
+            # Get or create collection once
+            try:
+                collection = chroma_client.get_collection(collection_name)
+            except Exception:
+                collection = chroma_client.create_collection(
+                    collection_name,
+                    metadata={
+                        "chunk_index": chunk_index,
+                        "batch_id": batch_id,
+                    },
+                )
+
+            # Process deltas one at a time
+            for i, delta in enumerate(collection_deltas):
+                delta_key = delta["delta_key"]
+                logger.info(
+                    "Processing delta %d/%d: %s",
+                    i + 1,
+                    len(collection_deltas),
+                    delta_key,
+                )
+
+                # Process single delta with streaming
+                embeddings_added = download_and_merge_delta_sequential(
+                    bucket, delta_key, collection, temp_dir
+                )
+                total_embeddings += embeddings_added
+                deltas_processed += 1
+
+                logger.info(
+                    "Merged %d embeddings from delta %s (total: %d)",
+                    embeddings_added,
+                    delta_key,
+                    total_embeddings,
+                )
+
+                # Periodic garbage collection to free memory
+                if deltas_processed % GC_INTERVAL == 0:
+                    gc.collect()
+                    logger.info(
+                        "Garbage collection performed after %d deltas",
+                        deltas_processed,
+                    )
+
+        # Upload intermediate chunk to S3
+        intermediate_key = f"intermediate/{batch_id}/chunk-{chunk_index}/"
+        upload_to_s3(temp_dir, bucket, intermediate_key)
+
+        processing_time = time.time() - start_time
+        logger.info(
+            "Sequential chunk %d processed: %d embeddings in %.2f seconds",
+            chunk_index,
+            total_embeddings,
+            processing_time,
+        )
+
+        return {
+            "intermediate_key": intermediate_key,
+            "embeddings_processed": total_embeddings,
+            "processing_time": processing_time,
+            "processing_mode": "sequential",
+        }
+
+    finally:
+        # Explicit cleanup
+        if "chroma_client" in locals():
+            del chroma_client
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        gc.collect()
+
+
+def download_and_merge_delta_sequential(
+    bucket: str, delta_key: str, collection: Any, temp_dir: str
+) -> int:
+    """
+    Download and merge a delta using sequential/streaming approach.
+
+    Processes embeddings in batches to minimize memory footprint.
+
+    Args:
+        bucket: S3 bucket name
+        delta_key: S3 key for delta
+        collection: Target ChromaDB collection
+        temp_dir: Temporary directory for delta
+
+    Returns:
+        Number of embeddings processed
+    """
+    delta_temp = tempfile.mkdtemp(dir=temp_dir)
+
+    try:
+        # Download delta from S3
+        download_from_s3(bucket, delta_key, delta_temp)
+
+        # Load delta ChromaDB
+        delta_client = chromadb.PersistentClient(path=delta_temp)
+        delta_collections = delta_client.list_collections()
+
+        if not delta_collections:
+            logger.warning("No collections found in delta %s", delta_key)
+            return 0
+
+        delta_collection = delta_collections[0]
+        total_count = delta_collection.count()
+
+        if total_count == 0:
+            return 0
+
+        logger.info(
+            "Streaming %d embeddings from delta %s in batches of %d",
+            total_count,
+            delta_key,
+            EMBEDDING_BATCH_SIZE,
+        )
+
+        # First get all IDs (lightweight operation)
+        all_ids = delta_collection.get(include=[])["ids"]
+        processed = 0
+
+        # Process in batches to minimize memory usage
+        for i in range(0, len(all_ids), EMBEDDING_BATCH_SIZE):
+            batch_ids = all_ids[i : i + EMBEDDING_BATCH_SIZE]
+
+            # Get batch of embeddings
+            batch_results = delta_collection.get(
+                ids=batch_ids, include=["embeddings", "documents", "metadatas"]
+            )
+
+            # Upsert batch to main collection
+            collection.upsert(
+                ids=batch_results["ids"],
+                embeddings=batch_results["embeddings"],
+                documents=batch_results["documents"],
+                metadatas=batch_results["metadatas"],
+            )
+
+            processed += len(batch_results["ids"])
+
+            # Clear batch from memory immediately
+            del batch_results
+
+            # Log progress for large deltas
+            if total_count > 500 and processed % 500 == 0:
+                logger.info(
+                    "Progress: %d/%d embeddings processed",
+                    processed,
+                    total_count,
+                )
+
+        return processed
+
+    finally:
+        # Explicit cleanup
+        if "delta_client" in locals():
+            del delta_client
+        shutil.rmtree(delta_temp, ignore_errors=True)
 
 
 def download_and_merge_delta(
@@ -533,6 +800,16 @@ def perform_final_merge(
                 logger.info(f"Persisting after chunk {chunk_index} to free memory")
                 # ChromaDB PersistentClient auto-persists, but we can force cleanup
                 import gc
+                gc.collect()
+
+            # Periodically persist to disk to free memory (every 5 chunks)
+            if chunk_index > 0 and chunk_index % 5 == 0:
+                logger.info(
+                    f"Persisting after chunk {chunk_index} to free memory"
+                )
+                # ChromaDB PersistentClient auto-persists, but we can force cleanup
+                import gc
+
                 gc.collect()
 
         # Create timestamped snapshot with dedicated prefix for

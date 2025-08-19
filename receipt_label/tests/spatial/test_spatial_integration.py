@@ -16,8 +16,7 @@ from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_label.pattern_detection.base import PatternMatch, PatternType
 from receipt_label.spatial.math_solver_detector import MathSolverDetector
 from receipt_label.spatial.vertical_alignment_detector import (
-    VerticalAlignmentDetector,
-)
+    VerticalAlignmentDetector)
 
 
 def create_receipt_word(
@@ -33,8 +32,7 @@ def create_receipt_word(
     bottom_right: dict = None,
     angle_degrees: float = 0.0,
     angle_radians: float = 0.0,
-    confidence: float = 0.9,
-) -> ReceiptWord:
+    confidence: float = 0.9) -> ReceiptWord:
     """Helper function to create ReceiptWord objects for testing."""
     if bounding_box is None:
         bounding_box = {"x": 0.1, "y": 0.1, "width": 0.15, "height": 0.02}
@@ -69,8 +67,7 @@ def create_receipt_word(
         bottom_left=bottom_left,
         angle_degrees=angle_degrees,
         angle_radians=angle_radians,
-        confidence=confidence,
-    )
+        confidence=confidence)
 
 
 class TestSpatialIntegration:
@@ -108,8 +105,7 @@ class TestSpatialIntegration:
                     "width": 0.4,
                     "height": 0.03,
                 },
-                confidence=0.95,
-            )
+                confidence=0.95)
         )
 
         # Items section
@@ -136,8 +132,7 @@ class TestSpatialIntegration:
                     },
                     top_left={"x": 0.1, "y": 0.1 + line_id * 0.03},
                     bottom_right={"x": 0.25, "y": 0.12 + line_id * 0.03},
-                    confidence=0.9,
-                )
+                    confidence=0.9)
             )
 
             # Price
@@ -156,8 +151,7 @@ class TestSpatialIntegration:
                     },
                     top_left={"x": 0.8, "y": 0.1 + line_id * 0.03},
                     bottom_right={"x": 0.86, "y": 0.12 + line_id * 0.03},
-                    confidence=0.9,
-                )
+                    confidence=0.9)
             )
 
         # Totals section
@@ -176,8 +170,7 @@ class TestSpatialIntegration:
                 },
                 top_left={"x": 0.1, "y": 0.5},
                 bottom_right={"x": 0.22, "y": 0.52},
-                confidence=0.9,
-            )
+                confidence=0.9)
         )
 
         words.append(
@@ -195,8 +188,7 @@ class TestSpatialIntegration:
                 },
                 top_left={"x": 0.8, "y": 0.5},
                 bottom_right={"x": 0.86, "y": 0.52},
-                confidence=0.9,
-            )
+                confidence=0.9)
         )
 
         words.append(
@@ -214,8 +206,7 @@ class TestSpatialIntegration:
                 },
                 top_left={"x": 0.1, "y": 0.53},
                 bottom_right={"x": 0.15, "y": 0.55},
-                confidence=0.9,
-            )
+                confidence=0.9)
         )
 
         words.append(
@@ -233,8 +224,7 @@ class TestSpatialIntegration:
                 },
                 top_left={"x": 0.8, "y": 0.53},
                 bottom_right={"x": 0.86, "y": 0.55},
-                confidence=0.9,
-            )
+                confidence=0.9)
         )
 
         words.append(
@@ -252,8 +242,7 @@ class TestSpatialIntegration:
                 },  # Larger font
                 top_left={"x": 0.1, "y": 0.58},
                 bottom_right={"x": 0.18, "y": 0.605},
-                confidence=0.9,
-            )
+                confidence=0.9)
         )
 
         words.append(
@@ -271,8 +260,7 @@ class TestSpatialIntegration:
                 },  # Larger font
                 top_left={"x": 0.8, "y": 0.58},
                 bottom_right={"x": 0.86, "y": 0.605},
-                confidence=0.9,
-            )
+                confidence=0.9)
         )
 
         return words
@@ -306,8 +294,7 @@ class TestSpatialIntegration:
                     confidence=0.9,
                     matched_text=word.text,
                     extracted_value=word.text,
-                    metadata={},
-                )
+                    metadata={})
             )
 
         return patterns
@@ -318,8 +305,7 @@ class TestSpatialIntegration:
         math_solver,
         alignment_detector,
         sample_receipt_data,
-        sample_pattern_matches,
-    ):
+        sample_pattern_matches):
         """Test complete spatial detection workflow."""
         # Step 1: Detect price columns using vertical alignment
         currency_patterns = [
@@ -386,8 +372,7 @@ class TestSpatialIntegration:
         math_solver,
         alignment_detector,
         sample_receipt_data,
-        sample_pattern_matches,
-    ):
+        sample_pattern_matches):
         """Test spatial detection combined with mathematical validation."""
         # Get spatial analysis results
         spatial_result = alignment_detector.detect_line_items_with_alignment(
@@ -478,8 +463,7 @@ class TestSpatialIntegration:
         math_solver,
         alignment_detector,
         sample_receipt_data,
-        sample_pattern_matches,
-    ):
+        sample_pattern_matches):
         """Test that the system achieves cost reduction goals."""
 
         # Simulate the simplified confidence classification
@@ -590,9 +574,7 @@ class TestSpatialIntegration:
                         confidence=0.9,
                         matched_text=f"{i+1}.99",
                         extracted_value=f"{i+1}.99",
-                        metadata={},
-                    ),
-                )
+                        metadata={}))
             )
 
         # Add a realistic total
@@ -609,9 +591,7 @@ class TestSpatialIntegration:
                     confidence=0.9,
                     matched_text="78.00",
                     extracted_value="78.00",
-                    metadata={},
-                ),
-            )
+                    metadata={}))
         )
 
         # Test both optimized and non-optimized
@@ -647,8 +627,7 @@ class TestSpatialIntegration:
         math_solver,
         alignment_detector,
         sample_receipt_data,
-        sample_pattern_matches,
-    ):
+        sample_pattern_matches):
         """Test performance of integrated spatial detection."""
         import time
 

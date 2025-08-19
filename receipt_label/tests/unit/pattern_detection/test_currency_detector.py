@@ -30,8 +30,7 @@ class TestCurrencyPatternDetector:
                 x1=100,
                 y1=100,
                 x2=150,
-                y2=120,
-            ),
+                y2=120),
             create_test_receipt_word(
                 text="not-currency",
                 receipt_id=1,
@@ -40,8 +39,7 @@ class TestCurrencyPatternDetector:
                 x1=100,
                 y1=130,
                 x2=180,
-                y2=150,
-            ),
+                y2=150),
         ]
 
     @pytest.mark.parametrize(
@@ -52,8 +50,7 @@ class TestCurrencyPatternDetector:
                 "$12.99",
                 True,
                 "$12.99",
-                0.50,
-            ),  # Adjusted to match actual detector
+                0.50),  # Adjusted to match actual detector
             ("€45.50", True, "€45.50", 0.50),
             ("£100.00", True, "£100.00", 0.50),
             ("¥1,500", True, "¥1,500", 0.50),
@@ -71,16 +68,14 @@ class TestCurrencyPatternDetector:
             ("", False, None, 0.0),
             ("$12.999", True, "$12.99", 0.30),  # Truncates to valid currency
             ("$12,34", True, "$12", 0.30),  # Partial match only
-        ],
-    )
+        ])
     async def test_currency_pattern_detection(
         self,
         detector,
         text,
         expected_match,
         expected_matched_text,
-        min_confidence,
-    ):
+        min_confidence):
         """Test currency pattern detection with various formats."""
         # Create mock word
         word = create_test_receipt_word(
@@ -91,8 +86,7 @@ class TestCurrencyPatternDetector:
             x1=100,
             y1=100,
             x2=150,
-            y2=120,
-        )
+            y2=120)
 
         # Detect patterns
         results = await detector.detect([word])
@@ -131,8 +125,7 @@ class TestCurrencyPatternDetector:
                     x1=100,
                     y1=100 + i * 20,
                     x2=150,
-                    y2=120 + i * 20,
-                )
+                    y2=120 + i * 20)
             )
 
         # Time the detection
@@ -164,8 +157,7 @@ class TestCurrencyPatternDetector:
                 x1=100,
                 y1=100,
                 x2=150,
-                y2=120,
-            )
+                y2=120)
 
             results = await detector.detect([word])
             assert len(results) == 1
@@ -206,8 +198,7 @@ class TestCurrencyPatternDetector:
                 x1=100,
                 y1=100,
                 x2=150,
-                y2=120,
-            )
+                y2=120)
 
             results = await detector.detect([word])
             assert len(results) == 1

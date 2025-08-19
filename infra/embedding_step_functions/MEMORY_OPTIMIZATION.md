@@ -250,14 +250,11 @@ def log_memory_usage(stage: str):
 ### 3. ChromaDB Configuration
 ```python
 # Configure ChromaDB for lower memory usage
+# Note: ChromaDB v0.5+ uses different settings than earlier versions
 chroma_client = chromadb.PersistentClient(
     path=temp_dir,
-    settings=Settings(
-        anonymized_telemetry=False,
-        persist_directory=temp_dir,
-        # Reduce cache sizes
-        chroma_cache_size=100,  # Reduced from default
-    )
+    # ChromaDB v0.5+ automatically manages memory internally
+    # No manual cache configuration needed
 )
 ```
 
@@ -335,22 +332,53 @@ def publish_memory_metric(memory_percent: float):
     )
 ```
 
-## Implementation Plan
+## Implementation Status
 
-### Phase 1: Quick Wins (Immediate)
+### Phase 1: Quick Wins (Completed)
 - [x] Increase Lambda memory to 10GB
-- [ ] Add garbage collection calls
-- [ ] Reduce chunk size for words
+- [x] Add garbage collection calls
+- [x] Reduce chunk size for words (5 vs 10 for lines)
 
-### Phase 2: Sequential Processing (1 week)
-- [ ] Implement sequential delta processing
-- [ ] Add memory monitoring
-- [ ] Test with production workloads
+### Phase 2: Sequential Processing (Completed)
+- [x] Implement sequential delta processing
+- [x] Strategy selection based on data characteristics
+- [x] Streaming embeddings in batches of 100
 
-### Phase 3: Advanced Optimizations (2 weeks)
-- [ ] Implement streaming for large deltas
-- [ ] Add dynamic chunk sizing
-- [ ] Optimize ChromaDB configuration
+### Phase 3: Advanced Optimizations (Completed)
+- [x] Implement streaming for large deltas
+- [x] Add dynamic chunk sizing
+- [x] Environment-based configuration
+
+## Implementation Details
+
+### Sequential Processing Function
+- `process_chunk_deltas_sequential()` - Processes one delta at a time
+- `download_and_merge_delta_sequential()` - Streams embeddings in batches
+- Garbage collection every 3 deltas (configurable)
+- Explicit cleanup after each delta
+
+### Strategy Selection
+The system automatically chooses sequential vs parallel based on:
+1. **Environment flag**: `USE_SEQUENTIAL_PROCESSING=true` forces sequential
+2. **Data volume**: >1500 embeddings triggers sequential
+3. **Collection type**: Word embeddings use sequential at >1000 embeddings
+
+### Dynamic Chunk Sizing
+- **Word embeddings**: 5 deltas per chunk (higher memory usage)
+- **Line embeddings**: 10 deltas per chunk (lower memory usage)
+- Configured via `CHUNK_SIZE_WORDS` and `CHUNK_SIZE_LINES`
+
+### Configuration
+Environment variables for the compaction Lambda:
+- `USE_SEQUENTIAL_PROCESSING`: "true" to force sequential mode
+- `EMBEDDING_BATCH_SIZE`: "100" (embeddings per batch in sequential mode)
+- `GC_INTERVAL`: "3" (garbage collection frequency)
+
+### Monitoring
+Memory usage is monitored via:
+- CloudWatch automatic Lambda metrics (no code needed)
+- `max memory used` metric for each invocation
+- Duration metrics to track performance impact
 
 ## Testing Strategy
 

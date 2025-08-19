@@ -221,6 +221,10 @@ class LambdaFunctionsComponent(ComponentResource):
                 "memory": 512,
                 "timeout": 60,
                 "source_dir": "split_into_chunks",
+                "env_vars": {
+                    "CHUNK_SIZE_WORDS": "5",  # Smaller chunks for word embeddings
+                    "CHUNK_SIZE_LINES": "10",  # Standard chunks for line embeddings
+                },
             },
         }
 
@@ -244,6 +248,10 @@ class LambdaFunctionsComponent(ComponentResource):
             "OPENAI_API_KEY": openai_api_key,
             "S3_BUCKET": self.batch_bucket.bucket,
         }
+
+        # Add any custom environment variables from config
+        if "env_vars" in config:
+            env_vars.update(config["env_vars"])
 
         # Create the Lambda function
         layers = []
@@ -313,11 +321,14 @@ class LambdaFunctionsComponent(ComponentResource):
         if config["handler_type"] == "compaction":
             env_vars.update(
                 {
-                    "CHUNK_SIZE": "10",
                     "HEARTBEAT_INTERVAL_SECONDS": "60",
                     "LOCK_DURATION_MINUTES": "5",
                     "DELETE_PROCESSED_DELTAS": "false",
                     "DELETE_INTERMEDIATE_CHUNKS": "true",
+                    # Memory optimization settings
+                    "USE_SEQUENTIAL_PROCESSING": "true",  # Enable sequential by default
+                    "EMBEDDING_BATCH_SIZE": "100",
+                    "GC_INTERVAL": "3",
                 }
             )
 

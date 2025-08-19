@@ -139,7 +139,7 @@ def validate_currency(
         else 0.0
     )
     variants = _merged_currency_candidates_from_text(
-        word, vector_data.metadata
+        word, vector_data.get("metadata", {})
     )
     looks_like_currency = any(_is_currency(v) for v in variants)
 
@@ -155,5 +155,5 @@ def validate_currency(
         is_consistent=is_consistent,
         avg_similarity=avg_similarity,
         neighbors=[match.id for match in matches],
-        pinecone_id=pinecone_id,
+        pinecone_id=chroma_id,
     )

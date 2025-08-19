@@ -174,13 +174,13 @@ def validate_date(
             is_consistent=False,
             avg_similarity=0.0,
             neighbors=[],
-            chroma_id=chroma_id,
+            pinecone_id=chroma_id,
         )
 
     vector = vector_data["values"]
 
     # Query ChromaDB for similar vectors
-    query_results = chroma_client.query_collection(
+    query_results = chroma_client.query(
         collection_name="words",
         query_embeddings=[vector],
         n_results=10,
@@ -232,5 +232,5 @@ def validate_date(
         is_consistent=is_consistent,
         avg_similarity=avg_similarity,
         neighbors=[match.id for match in matches],
-        chroma_id=chroma_id,
+        pinecone_id=chroma_id,
     )
