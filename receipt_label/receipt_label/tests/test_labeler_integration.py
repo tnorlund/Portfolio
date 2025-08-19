@@ -10,8 +10,7 @@ from receipt_label.models.line_item import (
     LineItem,
     LineItemAnalysis,
     Price,
-    Quantity,
-)
+    Quantity)
 from receipt_label.models.receipt import Receipt, ReceiptLine, ReceiptWord
 from receipt_label.models.structure import StructureAnalysis
 
@@ -43,15 +42,13 @@ def sample_receipt_data():
             bottom_right={"x": 50, "y": 10},
             bottom_left={"x": 0, "y": 10},
             angle_degrees=0.0,
-            angle_radians=0.0,
-        )
+            angle_radians=0.0)
     ]
     receipt = Receipt(
         receipt_id=TEST_RECEIPT_ID,
         image_id=TEST_IMAGE_ID,
         words=receipt_words,
-        lines=receipt_lines,
-    )
+        lines=receipt_lines)
     return receipt, receipt_words, receipt_lines
 
 
@@ -73,8 +70,7 @@ def test_label_receipt_returns_labeling_result(mocker, sample_receipt_data):
         price=Price(unit_price=TEST_PRICE, extended_price=TEST_PRICE),
         line_ids=[1],
         reasoning="good",
-        metadata={},
-    )
+        metadata={})
     line_item_analysis = LineItemAnalysis(
         items=[line_item],
         total_found=1,
@@ -82,8 +78,7 @@ def test_label_receipt_returns_labeling_result(mocker, sample_receipt_data):
         tax=Decimal("0"),
         total=TEST_PRICE,
         discrepancies=[],
-        reasoning="ok",
-    )
+        reasoning="ok")
 
     mock_analyzer = MagicMock()
     mock_analyzer.analyze_structure.return_value = structure_analysis
@@ -105,14 +100,12 @@ def test_label_receipt_returns_labeling_result(mocker, sample_receipt_data):
             "OPENAI_API_KEY": TEST_API_KEY,
             "PINECONE_INDEX_NAME": "test-index",
             "PINECONE_HOST": "test-host.pinecone.io",
-        },
-    ):
+        }):
         labeler = ReceiptLabeler(
             places_api_key=TEST_API_KEY,
             gpt_api_key=TEST_API_KEY,
             dynamodb_table_name=os.environ.get("DYNAMODB_TABLE_NAME", "Test"),
-            validation_level="none",
-        )
+            validation_level="none")
         # Replace the processors with mocks
         labeler.receipt_analyzer = mock_analyzer
         labeler.line_item_processor = mock_line_processor
@@ -199,14 +192,12 @@ def test_label_receipt_handles_processor_failures(mocker, sample_receipt_data):
             "OPENAI_API_KEY": TEST_API_KEY,
             "PINECONE_INDEX_NAME": "test-index",
             "PINECONE_HOST": "test-host.pinecone.io",
-        },
-    ):
+        }):
         labeler = ReceiptLabeler(
             places_api_key=TEST_API_KEY,
             gpt_api_key=TEST_API_KEY,
             dynamodb_table_name=os.environ.get("DYNAMODB_TABLE_NAME", "Test"),
-            validation_level="none",
-        )
+            validation_level="none")
         # Replace the processors with mocks
         labeler.receipt_analyzer = mock_analyzer
         labeler.line_item_processor = mock_line_processor
@@ -278,8 +269,7 @@ def test_label_receipt_validation_levels(
         price=Price(unit_price=TEST_PRICE, extended_price=TEST_PRICE),
         line_ids=[1],
         reasoning="good",
-        metadata={},
-    )
+        metadata={})
     line_item_analysis = LineItemAnalysis(
         items=[line_item],
         total_found=1,
@@ -287,8 +277,7 @@ def test_label_receipt_validation_levels(
         tax=Decimal("0"),
         total=TEST_PRICE,
         discrepancies=[],
-        reasoning="ok",
-    )
+        reasoning="ok")
 
     mock_analyzer = MagicMock()
     mock_analyzer.analyze_structure.return_value = structure_analysis
@@ -310,14 +299,12 @@ def test_label_receipt_validation_levels(
             "OPENAI_API_KEY": TEST_API_KEY,
             "PINECONE_INDEX_NAME": "test-index",
             "PINECONE_HOST": "test-host.pinecone.io",
-        },
-    ):
+        }):
         labeler = ReceiptLabeler(
             places_api_key=TEST_API_KEY,
             gpt_api_key=TEST_API_KEY,
             dynamodb_table_name=os.environ.get("DYNAMODB_TABLE_NAME", "Test"),
-            validation_level=validation_level,
-        )
+            validation_level=validation_level)
         # Replace the processors with mocks
         labeler.receipt_analyzer = mock_analyzer
         labeler.line_item_processor = mock_line_processor
@@ -349,8 +336,7 @@ def test_label_receipt_places_api_disabled(mocker, sample_receipt_data):
         tax=Decimal("0"),
         total=TEST_PRICE,
         discrepancies=[],
-        reasoning="ok",
-    )
+        reasoning="ok")
 
     mock_analyzer = MagicMock()
     mock_analyzer.analyze_structure.return_value = structure_analysis
@@ -369,14 +355,12 @@ def test_label_receipt_places_api_disabled(mocker, sample_receipt_data):
             "OPENAI_API_KEY": TEST_API_KEY,
             "PINECONE_INDEX_NAME": "test-index",
             "PINECONE_HOST": "test-host.pinecone.io",
-        },
-    ):
+        }):
         labeler = ReceiptLabeler(
             places_api_key=TEST_API_KEY,
             gpt_api_key=TEST_API_KEY,
             dynamodb_table_name=os.environ.get("DYNAMODB_TABLE_NAME", "Test"),
-            validation_level="none",
-        )
+            validation_level="none")
         # Replace the processors with mocks
         labeler.receipt_analyzer = mock_analyzer
         labeler.line_item_processor = mock_line_processor
@@ -440,8 +424,7 @@ def test_label_receipt_with_large_receipt(mocker):
                 text=word_text,
                 line_id=line_id,
                 word_id=word_id,
-                confidence=0.95,
-            )
+                confidence=0.95)
             receipt_words.append(word)
             line_words.append(word)
 
@@ -461,16 +444,14 @@ def test_label_receipt_with_large_receipt(mocker):
             bottom_right={"x": 200, "y": line_id * 20 + 18},
             bottom_left={"x": 0, "y": line_id * 20 + 18},
             angle_degrees=0.0,
-            angle_radians=0.0,
-        )
+            angle_radians=0.0)
         receipt_lines.append(line)
 
     receipt = Receipt(
         receipt_id="large-receipt-001",
         image_id="large-image-001",
         words=receipt_words,
-        lines=receipt_lines,
-    )
+        lines=receipt_lines)
 
     # Mock the processors to return quickly
     mock_analyzer = MagicMock()
@@ -489,8 +470,7 @@ def test_label_receipt_with_large_receipt(mocker):
         tax=Decimal("0"),
         total=Decimal("0"),
         discrepancies=[],
-        reasoning="Large receipt analysis",
-    )
+        reasoning="Large receipt analysis")
 
     mock_places_processor = MagicMock()
     mock_places_processor.process_receipt_batch.return_value = [{}]
@@ -503,14 +483,12 @@ def test_label_receipt_with_large_receipt(mocker):
             "OPENAI_API_KEY": TEST_API_KEY,
             "PINECONE_INDEX_NAME": "test-index",
             "PINECONE_HOST": "test-host.pinecone.io",
-        },
-    ):
+        }):
         labeler = ReceiptLabeler(
             places_api_key=TEST_API_KEY,
             gpt_api_key=TEST_API_KEY,
             dynamodb_table_name=TEST_DYNAMO_TABLE,
-            validation_level="none",
-        )
+            validation_level="none")
         # Replace the processors with mocks
         labeler.receipt_analyzer = mock_analyzer
         labeler.line_item_processor = mock_line_processor
@@ -568,8 +546,7 @@ def test_label_receipt_with_malformed_data(mocker):
             bottom_right=None,
             bottom_left=None,
             angle_degrees=None,
-            angle_radians=None,
-        ),
+            angle_radians=None),
         ReceiptLine(
             line_id=-1,  # Invalid line_id
             text=None,  # None text
@@ -591,8 +568,7 @@ def test_label_receipt_with_malformed_data(mocker):
         receipt_id="malformed-001",
         image_id="",  # Empty image_id
         words=receipt_words,
-        lines=receipt_lines,
-    )
+        lines=receipt_lines)
 
     # Mock processors to handle malformed data
     mock_analyzer = MagicMock()
@@ -611,8 +587,7 @@ def test_label_receipt_with_malformed_data(mocker):
         tax=Decimal("0"),
         total=Decimal("0"),
         discrepancies=["Malformed data detected"],
-        reasoning="Processed with errors",
-    )
+        reasoning="Processed with errors")
 
     mock_places_processor = MagicMock()
     mock_places_processor.process_receipt_batch.return_value = [{}]
@@ -625,14 +600,12 @@ def test_label_receipt_with_malformed_data(mocker):
             "OPENAI_API_KEY": TEST_API_KEY,
             "PINECONE_INDEX_NAME": "test-index",
             "PINECONE_HOST": "test-host.pinecone.io",
-        },
-    ):
+        }):
         labeler = ReceiptLabeler(
             places_api_key=TEST_API_KEY,
             gpt_api_key=TEST_API_KEY,
             dynamodb_table_name=TEST_DYNAMO_TABLE,
-            validation_level="none",
-        )
+            validation_level="none")
         # Replace the processors with mocks
         labeler.receipt_analyzer = mock_analyzer
         labeler.line_item_processor = mock_line_processor
@@ -678,19 +651,16 @@ def test_label_receipt_concurrent_processing(mocker):
                 bottom_right={"x": 100, "y": 20},
                 bottom_left={"x": 0, "y": 20},
                 angle_degrees=0.0,
-                angle_radians=0.0,
-            )
+                angle_radians=0.0)
         ]
         return (
             Receipt(
                 receipt_id=receipt_id,
                 image_id=f"image-{receipt_id}",
                 words=words,
-                lines=lines,
-            ),
+                lines=lines),
             words,
-            lines,
-        )
+            lines)
 
     # Mock processors
     def create_mocked_labeler():
@@ -710,8 +680,7 @@ def test_label_receipt_concurrent_processing(mocker):
             tax=Decimal("0"),
             total=Decimal("10.00"),
             discrepancies=[],
-            reasoning="ok",
-        )
+            reasoning="ok")
 
         mock_places_processor = MagicMock()
         mock_places_processor.process_receipt_batch.return_value = [
@@ -726,14 +695,12 @@ def test_label_receipt_concurrent_processing(mocker):
                 "OPENAI_API_KEY": TEST_API_KEY,
                 "PINECONE_INDEX_NAME": "test-index",
                 "PINECONE_HOST": "test-host.pinecone.io",
-            },
-        ):
+            }):
             labeler = ReceiptLabeler(
                 places_api_key=TEST_API_KEY,
                 gpt_api_key=TEST_API_KEY,
                 dynamodb_table_name=TEST_DYNAMO_TABLE,
-                validation_level="none",
-            )
+                validation_level="none")
             # Replace the processors with mocks
             labeler.receipt_analyzer = mock_analyzer
             labeler.line_item_processor = mock_line_processor

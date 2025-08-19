@@ -5,8 +5,7 @@ from receipt_label.merchant_validation.utils.normalization import (
     normalize_address,
     normalize_phone,
     normalize_text,
-    preprocess_for_comparison,
-)
+    preprocess_for_comparison)
 
 
 @pytest.mark.unit

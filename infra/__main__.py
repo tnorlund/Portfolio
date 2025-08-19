@@ -100,9 +100,6 @@ validate_merchant_step_functions = ValidateMerchantStepFunctions(
     "validate-merchant"
 )
 validation_pipeline = ValidationPipeline("validation-pipeline")
-embedding_infrastructure = EmbeddingInfrastructure(
-    "embedding-infra", base_images=base_images
-)
 validation_by_merchant_step_functions = ValidationByMerchantStepFunction(
     "validation-by-merchant"
 )
@@ -156,14 +153,22 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
     policy_arn="arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
 )
 
-# Create ChromaDB S3 buckets
+# Create shared ChromaDB resources ONCE
 chromadb_storage = ChromaDBBuckets(
-    "chromadb-test",
+    "chromadb",  # Changed from "chromadb-test" to "chromadb" for clarity
 )
 
-# Create ChromaDB SQS queues
+# Create shared ChromaDB SQS queues
 chromadb_queues = ChromaDBQueues(
-    "chromadb-test",
+    "chromadb",  # Changed from "chromadb-test" to "chromadb" for clarity
+)
+
+# Create embedding infrastructure with shared ChromaDB resources
+embedding_infrastructure = EmbeddingInfrastructure(
+    "embedding-infra",
+    base_images=base_images,
+    chromadb_buckets=chromadb_storage,  # Pass shared ChromaDB buckets
+    chromadb_queues=chromadb_queues,  # Pass shared ChromaDB queues
 )
 
 # Create spot interruption handler
@@ -695,3 +700,13 @@ pulumi.export("chromadb_bucket_name", chromadb_storage.bucket_name)
 pulumi.export("chromadb_bucket_arn", chromadb_storage.bucket_arn)
 pulumi.export("chromadb_delta_queue_url", chromadb_queues.delta_queue_url)
 pulumi.export("chromadb_delta_queue_arn", chromadb_queues.delta_queue_arn)
+
+# Export the embedding infrastructure ChromaDB bucket (the one actually used!)
+pulumi.export(
+    "embedding_chromadb_bucket_name",
+    embedding_infrastructure.chromadb_buckets.bucket_name,
+)
+pulumi.export(
+    "embedding_chromadb_bucket_arn",
+    embedding_infrastructure.chromadb_buckets.bucket_arn,
+)

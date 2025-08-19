@@ -20,8 +20,7 @@ from receipt_label.merchant_validation.result_processor import (
     build_receipt_metadata_from_partial_result,
     extract_best_partial_match,
     sanitize_metadata_strings,
-    sanitize_string,
-)
+    sanitize_string)
 
 
 @pytest.mark.unit
@@ -259,14 +258,12 @@ def test_build_receipt_metadata_from_partial_result():
     mock_metadata = Mock()
     with patch(
         "receipt_label.merchant_validation.result_processor.ReceiptMetadata",
-        return_value=mock_metadata,
-    ) as meta:
+        return_value=mock_metadata) as meta:
         result = build_receipt_metadata_from_partial_result(
             "img",
             1,
             partial,
-            ["raw"],
-        )
+            ["raw"])
         meta.assert_called_once()
         kwargs = meta.call_args.kwargs
         assert kwargs["image_id"] == "img"
@@ -320,8 +317,7 @@ def test_sanitize_string_various_cases():
         ('"', '"'),  # Single quote char
         (
             '""',
-            '""',
-        ),  # Empty quotes - sanitize_string preserves original if result would be empty
+            '""'),  # Empty quotes - sanitize_string preserves original if result would be empty
         ("'\"'", '"'),  # Quote inside quotes
         # Non-string inputs
         (123, "123"),
@@ -336,10 +332,8 @@ def test_sanitize_string_various_cases():
         ('"\\"quoted\\""', "quoted"),  # JSON parsing removes escaped quotes
         (
             '"{\\"key\\": \\"value\\"}"',
-            '{"key": "value"}',
-        ),  # JSON parsing handles escapes
-    ],
-)
+            '{"key": "value"}'),  # JSON parsing handles escapes
+    ])
 def test_sanitize_string_comprehensive(input_value, expected):
     """Comprehensive test cases for sanitize_string."""
     assert sanitize_string(input_value) == expected

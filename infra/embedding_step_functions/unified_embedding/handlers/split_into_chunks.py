@@ -1,6 +1,10 @@
 """Handler for splitting delta results into chunks for parallel processing.
 
-This handler takes a list of delta results and splits them into chunks of 10
+NOTE: This handler is part of the unified Docker container but is NOT currently used.
+The active split_into_chunks handler is in simple_lambdas/split_into_chunks/handler.py
+which uses dynamic chunk sizing (5 for words, 10 for lines).
+
+This handler takes a list of delta results and splits them into chunks of 25
 for efficient parallel processing by the compaction Lambda.
 """
 
@@ -12,7 +16,9 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Configuration
-CHUNK_SIZE = 10  # Max deltas per chunk as per compaction requirements
+CHUNK_SIZE = (
+    25  # Increased from 10 to reduce number of chunks and memory usage
+)
 
 
 def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:

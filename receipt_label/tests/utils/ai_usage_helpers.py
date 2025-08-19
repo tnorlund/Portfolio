@@ -40,8 +40,7 @@ def create_mock_openai_response(
     prompt_tokens: int = 100,
     completion_tokens: int = 50,
     model: str = "gpt-3.5-turbo",
-    content: str = "Test response",
-) -> Mock:
+    content: str = "Test response") -> Mock:
     """Factory for creating mock OpenAI API responses.
 
     Args:
@@ -57,8 +56,7 @@ def create_mock_openai_response(
     response.usage = Mock(
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
-        total_tokens=prompt_tokens + completion_tokens,
-    )
+        total_tokens=prompt_tokens + completion_tokens)
     response.model = model
     response.choices = [
         Mock(message=Mock(content=content), index=0, finish_reason="stop")
@@ -72,8 +70,7 @@ def create_mock_anthropic_response(
     input_tokens: int = 100,
     output_tokens: int = 50,
     model: str = "claude-3-opus-20240229",
-    content: str = "Test response",
-) -> Mock:
+    content: str = "Test response") -> Mock:
     """Factory for creating mock Anthropic API responses.
 
     Args:
@@ -100,8 +97,7 @@ def create_mock_anthropic_response(
 def create_mock_google_places_response(
     place_id: str = "ChIJtest123",
     name: str = "Test Restaurant",
-    address: str = "123 Test St",
-) -> Dict[str, Any]:
+    address: str = "123 Test St") -> Dict[str, Any]:
     """Factory for creating mock Google Places API responses.
 
     Args:
@@ -127,8 +123,7 @@ def create_mock_google_places_response(
 def assert_usage_metric_equal(
     metric1: AIUsageMetric,
     metric2: AIUsageMetric,
-    ignore_fields: Optional[list] = None,
-) -> None:
+    ignore_fields: Optional[list] = None) -> None:
     """Compare two AIUsageMetric objects for equality.
 
     Args:
@@ -160,8 +155,7 @@ def assert_usage_metric_equal(
 def create_test_tracking_context(
     job_id: Optional[str] = "test-job-123",
     batch_id: Optional[str] = None,
-    user_id: Optional[str] = "test-user",
-) -> Dict[str, Any]:
+    user_id: Optional[str] = "test-user") -> Dict[str, Any]:
     """Create a test tracking context dictionary.
 
     Args:
@@ -188,8 +182,7 @@ class MockServiceFactory:
     @staticmethod
     def create_openai_client(
         completion_response: Optional[Mock] = None,
-        embedding_response: Optional[Mock] = None,
-    ) -> Mock:
+        embedding_response: Optional[Mock] = None) -> Mock:
         """Create a properly configured mock OpenAI client.
 
         Args:
@@ -262,8 +255,7 @@ class MockServiceFactory:
         place_id: str = "ChIJtest123",
         name: str = "Test Restaurant",
         address: str = "123 Test St",
-        status: str = "OK",
-    ) -> Dict[str, Any]:
+        status: str = "OK") -> Dict[str, Any]:
         """Create a comprehensive Google Places API response.
 
         Args:
@@ -328,8 +320,7 @@ class MockServiceFactory:
     @staticmethod
     def create_dynamo_client(
         put_response: Optional[Dict] = None,
-        query_response: Optional[Dict] = None,
-    ) -> Mock:
+        query_response: Optional[Dict] = None) -> Mock:
         """Create a properly configured mock DynamoDB client.
 
         Args:
@@ -361,8 +352,7 @@ class MockServiceFactory:
 def create_mock_embedding_response(
     model: str = "text-embedding-3-small",
     total_tokens: int = 100,
-    embeddings_count: int = 1,
-) -> Mock:
+    embeddings_count: int = 1) -> Mock:
     """Factory for creating mock OpenAI embedding responses.
 
     Args:

@@ -49,8 +49,7 @@ def mock_places_api(mocker):
             return None
 
     mocker.patch(
-        "receipt_label.merchant_validation.google_places.PlacesAPI",
-        DummyAPI,
+        "receipt_label.merchant_validation.google_places.PlacesAPI", DummyAPI
     )
     return DummyAPI
 
@@ -129,9 +128,7 @@ def test_query_google_places_branches(
         gp.PlacesAPI, "search_by_phone", lambda self, phone: phone_resp
     )
     mocker.patch.object(
-        gp.PlacesAPI,
-        "search_by_address",
-        lambda self, address: address_resp,
+        gp.PlacesAPI, "search_by_address", lambda self, address: address_resp
     )
     data = {
         "phone": "p",
@@ -390,8 +387,7 @@ def test_retry_google_search_with_inferred_data_phone(mocker):
             pytest.skip("Should not call address when phone match succeeds")
 
     mocker.patch(
-        "receipt_label.merchant_validation.google_places.PlacesAPI",
-        DummyAPI,
+        "receipt_label.merchant_validation.google_places.PlacesAPI", DummyAPI
     )
     mocker.patch(
         "receipt_label.merchant_validation.google_places.is_match_found",
@@ -440,8 +436,7 @@ def test_retry_google_search_with_inferred_data_address(mocker):
             ]
 
     mocker.patch(
-        "receipt_label.merchant_validation.google_places.PlacesAPI",
-        DummyAPI,
+        "receipt_label.merchant_validation.google_places.PlacesAPI", DummyAPI
     )
     mocker.patch(
         "receipt_label.merchant_validation.google_places.is_match_found",
@@ -469,8 +464,7 @@ def test_retry_google_search_no_match(mocker):
             return None
 
     mocker.patch(
-        "receipt_label.merchant_validation.google_places.PlacesAPI",
-        DummyAPI,
+        "receipt_label.merchant_validation.google_places.PlacesAPI", DummyAPI
     )
     result = mv.retry_google_search_with_inferred_data({}, "APIKEY")
     assert result is None

@@ -17,8 +17,7 @@ def create_test_receipt_word(
     y2: float = 120,
     confidence: float = 0.95,
     is_noise: bool = False,
-    embedding_status: str = "NONE",
-) -> ReceiptWord:
+    embedding_status: str = "NONE") -> ReceiptWord:
     """Create a ReceiptWord with simplified parameters for testing.
 
     This helper abstracts away the complex bounding box structure required
@@ -49,5 +48,4 @@ def create_test_receipt_word(
         angle_radians=0.0,
         confidence=confidence,
         embedding_status=embedding_status,
-        is_noise=is_noise,
-    )
+        is_noise=is_noise)

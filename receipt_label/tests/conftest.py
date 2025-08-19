@@ -16,8 +16,7 @@ import boto3
 from receipt_dynamo.entities import (
     ReceiptWord,
     ReceiptWordLabel,
-    ReceiptMetadata,
-)
+    ReceiptMetadata)
 from receipt_label.utils.chroma_client import ChromaDBClient
 from receipt_label.utils.client_manager import ClientManager
 
@@ -47,8 +46,7 @@ def sample_receipt_words():
             x1=100,
             y1=100,
             x2=200,
-            y2=120,
-        ),
+            y2=120),
         ReceiptWord(
             image_id="IMG001",
             receipt_id=1,
@@ -58,8 +56,7 @@ def sample_receipt_words():
             x1=150,
             y1=150,
             x2=200,
-            y2=170,
-        ),
+            y2=170),
         ReceiptWord(
             image_id="IMG001",
             receipt_id=1,
@@ -69,8 +66,7 @@ def sample_receipt_words():
             x1=100,
             y1=200,
             x2=180,
-            y2=220,
-        ),
+            y2=220),
         ReceiptWord(
             image_id="IMG001",
             receipt_id=1,
@@ -80,8 +76,7 @@ def sample_receipt_words():
             x1=100,
             y1=250,
             x2=220,
-            y2=270,
-        ),
+            y2=270),
     ]
 
 
@@ -96,8 +91,7 @@ def sample_receipt_labels():
             word_id=1,
             label="MERCHANT_NAME",
             validation_status="NONE",
-            timestamp_added=datetime.now(timezone.utc),
-        ),
+            timestamp_added=datetime.now(timezone.utc)),
         ReceiptWordLabel(
             image_id="IMG001",
             receipt_id=1,
@@ -105,8 +99,7 @@ def sample_receipt_labels():
             word_id=1,
             label="GRAND_TOTAL",
             validation_status="VALID",
-            timestamp_added=datetime.now(timezone.utc),
-        ),
+            timestamp_added=datetime.now(timezone.utc)),
     ]
 
 
@@ -119,8 +112,7 @@ def sample_receipt_metadata():
         canonical_merchant_name="Walmart",
         canonical_address="123 Main St, City, State 12345",
         phone_number="555-123-4567",
-        timestamp_processed=datetime.now(timezone.utc),
-    )
+        timestamp_processed=datetime.now(timezone.utc))
 
 
 # ===== Pattern Detection Test Data =====
@@ -240,13 +232,11 @@ def mock_openai_client():
         choices=[
             SimpleNamespace(
                 message=SimpleNamespace(content='{"result": "test"}'),
-                finish_reason="stop",
-            )
+                finish_reason="stop")
         ],
         usage=SimpleNamespace(
             prompt_tokens=100, completion_tokens=50, total_tokens=150
-        ),
-    )
+        ))
     client.chat.completions.create.return_value = mock_completion_response
 
     # Mock batch operations
@@ -343,8 +333,7 @@ def dynamodb_tables(mock_dynamodb):
             {"AttributeName": "PK", "AttributeType": "S"},
             {"AttributeName": "SK", "AttributeType": "S"},
         ],
-        BillingMode="PAY_PER_REQUEST",
-    )
+        BillingMode="PAY_PER_REQUEST")
 
     # AI Usage Tracking table
     tracking_table = mock_dynamodb.create_table(
@@ -357,8 +346,7 @@ def dynamodb_tables(mock_dynamodb):
             {"AttributeName": "PK", "AttributeType": "S"},
             {"AttributeName": "SK", "AttributeType": "S"},
         ],
-        BillingMode="PAY_PER_REQUEST",
-    )
+        BillingMode="PAY_PER_REQUEST")
 
     return {"labels": labels_table, "tracking": tracking_table}
 
@@ -448,8 +436,7 @@ def stub_all_apis(mock_client_manager):
 
     with patch(
         "receipt_label.utils.get_client_manager",
-        return_value=mock_client_manager,
-    ):
+        return_value=mock_client_manager):
         yield mock_client_manager
 
 

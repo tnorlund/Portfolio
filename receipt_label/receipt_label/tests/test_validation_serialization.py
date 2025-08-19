@@ -6,16 +6,14 @@ import pytest
 from receipt_dynamo import (
     ReceiptValidationCategory,
     ReceiptValidationResult,
-    ReceiptValidationSummary,
-)
+    ReceiptValidationSummary)
 
 from receipt_label.models.validation import (
     FieldValidation,
     ValidationAnalysis,
     ValidationResult,
     ValidationResultType,
-    ValidationStatus,
-)
+    ValidationStatus)
 
 
 @pytest.fixture
@@ -28,8 +26,7 @@ def sample_validation_result() -> ValidationResult:
         field="business_name",
         expected_value="Store A",
         actual_value="Store B",
-        metadata={"confidence": 0.9},
-    )
+        metadata={"confidence": 0.9})
 
 
 @pytest.fixture
@@ -40,8 +37,7 @@ def sample_field_validation(sample_validation_result) -> FieldValidation:
         results=[sample_validation_result],
         status=ValidationStatus.INVALID,
         reasoning="Business identity validation failed with 1 error",
-        metadata={"field_key": "business_identity"},
-    )
+        metadata={"field_key": "business_identity"})
 
 
 @pytest.fixture
@@ -61,8 +57,7 @@ def sample_validation_analysis(sample_field_validation) -> ValidationAnalysis:
                 "model_name": "gpt-4",
                 "model_version": "0.5.0",
             },
-        },
-    )
+        })
 
     # Add a warning to another field
     warning_result = ValidationResult(
@@ -71,8 +66,7 @@ def sample_validation_analysis(sample_field_validation) -> ValidationAnalysis:
         reasoning="Address format is non-standard",
         field="address",
         expected_value="Standard format",
-        actual_value="Non-standard format",
-    )
+        actual_value="Non-standard format")
     analysis.address_verification.add_result(warning_result)
 
     return analysis
@@ -118,8 +112,7 @@ def sample_validation_summary() -> ReceiptValidationSummary:
             },
         },
         timestamp_added=datetime(2023, 3, 15, 12, 0, 0),
-        timestamp_updated=datetime(2023, 3, 15, 13, 0, 0),
-    )
+        timestamp_updated=datetime(2023, 3, 15, 13, 0, 0))
 
 
 @pytest.fixture
@@ -146,8 +139,7 @@ def sample_validation_categories() -> List[ReceiptValidationCategory]:
                     "processing_time_ms": 150,
                     "api_calls": 2,
                 }
-            },
-        ),
+            }),
         ReceiptValidationCategory(
             receipt_id=123,
             image_id="550e8400-e29b-41d4-a716-446655440000",
@@ -168,8 +160,7 @@ def sample_validation_categories() -> List[ReceiptValidationCategory]:
                     "processing_time_ms": 150,
                     "api_calls": 2,
                 }
-            },
-        ),
+            }),
     ]
 
 
@@ -189,8 +180,7 @@ def sample_validation_results() -> List[ReceiptValidationResult]:
             expected_value="Store A",
             actual_value="Store B",
             validation_timestamp="2023-03-15T12:00:00",
-            metadata={"confidence": 0.9},
-        ),
+            metadata={"confidence": 0.9}),
         ReceiptValidationResult(
             receipt_id=123,
             image_id="550e8400-e29b-41d4-a716-446655440000",
@@ -203,8 +193,7 @@ def sample_validation_results() -> List[ReceiptValidationResult]:
             expected_value="Standard format",
             actual_value="Non-standard format",
             validation_timestamp="2023-03-15T12:00:00",
-            metadata={},
-        ),
+            metadata={}),
     ]
 
 
@@ -341,14 +330,12 @@ class TestValidationAnalysisSerialization:
         self,
         sample_validation_summary,
         sample_validation_categories,
-        sample_validation_results,
-    ):
+        sample_validation_results):
         """Test reconstruction from DynamoDB items."""
         analysis = ValidationAnalysis.from_dynamo_items(
             sample_validation_summary,
             sample_validation_categories,
-            sample_validation_results,
-        )
+            sample_validation_results)
 
         # Check that we got the right type of object
         assert isinstance(analysis, ValidationAnalysis)
@@ -417,8 +404,7 @@ class TestValidationAnalysisSerialization:
         sample_validation_analysis,
         sample_validation_summary,
         sample_validation_categories,
-        sample_validation_results,
-    ):
+        sample_validation_results):
         """Test roundtrip conversion from ValidationAnalysis to DynamoDB items and back."""
         # Convert to DynamoDB objects
         summary = sample_validation_analysis.to_dynamo_validation_summary()

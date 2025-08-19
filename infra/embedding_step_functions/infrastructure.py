@@ -39,6 +39,8 @@ class EmbeddingInfrastructure(ComponentResource):
         self,
         name: str,
         base_images=None,
+        chromadb_buckets: Optional[ChromaDBBuckets] = None,
+        chromadb_queues: Optional[ChromaDBQueues] = None,
         opts: Optional[ResourceOptions] = None,
     ):
         """Initialize embedding infrastructure.
@@ -46,6 +48,8 @@ class EmbeddingInfrastructure(ComponentResource):
         Args:
             name: Component name
             base_images: Optional base images for Docker builds
+            chromadb_buckets: Optional ChromaDB buckets (creates new if not provided)
+            chromadb_queues: Optional ChromaDB queues (creates new if not provided)
             opts: Pulumi resource options
         """
         super().__init__(
@@ -57,16 +61,22 @@ class EmbeddingInfrastructure(ComponentResource):
 
         self.base_images = base_images
 
-        # Create ChromaDB infrastructure
-        self.chromadb_buckets = ChromaDBBuckets(
-            f"{name}-chromadb-buckets",
-            opts=ResourceOptions(parent=self),
-        )
+        # Use provided ChromaDB resources or create new ones
+        if chromadb_buckets:
+            self.chromadb_buckets = chromadb_buckets
+        else:
+            self.chromadb_buckets = ChromaDBBuckets(
+                f"{name}-chromadb-buckets",
+                opts=ResourceOptions(parent=self),
+            )
 
-        self.chromadb_queues = ChromaDBQueues(
-            f"{name}-chromadb-queues",
-            opts=ResourceOptions(parent=self),
-        )
+        if chromadb_queues:
+            self.chromadb_queues = chromadb_queues
+        else:
+            self.chromadb_queues = ChromaDBQueues(
+                f"{name}-chromadb-queues",
+                opts=ResourceOptions(parent=self),
+            )
 
         # Create Docker image component
         self.docker = DockerImageComponent(

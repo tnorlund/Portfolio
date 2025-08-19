@@ -298,13 +298,12 @@ class WordEmbeddingWorkflow(ComponentResource):
                                 },
                             },
                         },
-                        "ResultPath": "$.chunk_results",
+                        "ResultPath": None,
                         "Next": "PrepareWordFinalMerge",
                         "Catch": [
                             {
                                 "ErrorEquals": ["States.ALL"],
                                 "Next": "WordChunkProcessingFailed",
-                                "ResultPath": "$.error",
                             }
                         ],
                     },
