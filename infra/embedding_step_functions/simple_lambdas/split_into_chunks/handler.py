@@ -1,18 +1,68 @@
 """Lambda handler for splitting delta results into chunks.
 
-This function takes a list of delta results and splits them into chunks of 10
+This function takes a list of delta results and splits them into chunks
 for efficient parallel processing by the compaction Lambda.
+
+Memory optimization: Uses smaller chunks for word embeddings which typically
+consume more memory than line embeddings.
 """
 
 import logging
+import os
 from typing import Any, Dict, List
 
 # Set up logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# Configuration
-CHUNK_SIZE = 10  # Max deltas per chunk as per compaction requirements
+# Configuration with dynamic chunk sizing
+DEFAULT_CHUNK_SIZE = 10  # Default for backward compatibility
+CHUNK_SIZE_WORDS = int(os.environ.get("CHUNK_SIZE_WORDS", "5"))  # Smaller for words
+CHUNK_SIZE_LINES = int(os.environ.get("CHUNK_SIZE_LINES", "10"))  # Standard for lines
+
+
+def get_chunk_size(delta_results: List[Dict[str, Any]]) -> int:
+    """Determine optimal chunk size based on collection type.
+    
+    Word embeddings typically consume more memory due to:
+    - Higher volume per receipt
+    - More metadata (bounding boxes, labels)
+    - Larger documents (word text vs line text)
+    
+    Args:
+        delta_results: List of delta results to analyze
+        
+    Returns:
+        Optimal chunk size for this batch
+    """
+    # Check if this batch contains word embeddings
+    has_words = any(
+        d.get("collection") == "receipt_words" for d in delta_results
+    )
+    
+    # Check if this batch contains line embeddings  
+    has_lines = any(
+        d.get("collection") == "receipt_lines" for d in delta_results
+    )
+    
+    # Mixed batch - use smaller chunk size to be safe
+    if has_words and has_lines:
+        logger.info("Mixed word/line batch detected, using word chunk size")
+        return CHUNK_SIZE_WORDS
+    
+    # Pure word batch
+    if has_words:
+        logger.info("Word embedding batch detected, using chunk size: %d", CHUNK_SIZE_WORDS)
+        return CHUNK_SIZE_WORDS
+    
+    # Pure line batch
+    if has_lines:
+        logger.info("Line embedding batch detected, using chunk size: %d", CHUNK_SIZE_LINES)
+        return CHUNK_SIZE_LINES
+    
+    # Unknown or legacy batch - use default
+    logger.info("Unknown batch type, using default chunk size: %d", DEFAULT_CHUNK_SIZE)
+    return DEFAULT_CHUNK_SIZE
 
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -66,10 +116,13 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "total_chunks": 0,
             }
 
+        # Determine optimal chunk size based on content
+        chunk_size = get_chunk_size(valid_deltas)
+        
         # Split into chunks
         chunks: List[Dict[str, Any]] = []
-        for i in range(0, len(valid_deltas), CHUNK_SIZE):
-            chunk_deltas = valid_deltas[i : i + CHUNK_SIZE]
+        for i in range(0, len(valid_deltas), chunk_size):
+            chunk_deltas = valid_deltas[i : i + chunk_size]
             chunk = {
                 "chunk_index": len(chunks),
                 "batch_id": batch_id,
