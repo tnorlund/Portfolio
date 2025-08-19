@@ -208,7 +208,7 @@ def validate_time(
         else 0.0
     )
 
-    variants = _merged_time_candidate_from_text(word, vector_data.metadata)
+    variants = _merged_time_candidate_from_text(word, vector_data.get("metadata", {}))
     looks_like_time = any(_is_time(v) for v in variants)
 
     is_consistent = avg_similarity > 0.7 and looks_like_time

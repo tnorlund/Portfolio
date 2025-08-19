@@ -44,6 +44,76 @@ DEFAULT_LINE_ID = 1
 DEFAULT_WORD_ID = 1
 
 
+class FakeChromaClient:
+    """Mock ChromaDB client for testing validation functions."""
+    
+    def __init__(
+        self, metadata=None, query_score=DEFAULT_QUERY_SCORE, has_vector=True
+    ):
+        self.metadata = metadata or {}
+        self.query_score = query_score
+        self.has_vector = has_vector
+
+    def get_by_ids(self, collection_name, ids, include=None):
+        """Mock ChromaDB get_by_ids method."""
+        if not self.has_vector:
+            return {"ids": [], "embeddings": [], "metadatas": []}
+        
+        # Return embeddings and metadata for the requested IDs
+        return {
+            "ids": ids,
+            "embeddings": [[0.1] * 1536] * len(ids),  # Mock embedding vectors
+            "metadatas": [self.metadata] * len(ids)
+        }
+
+    def query(
+        self,
+        collection_name,
+        query_embeddings,
+        n_results=10,
+        where=None,
+        include=None
+    ):
+        """Mock ChromaDB query method."""
+        if not self.has_vector:
+            return {"ids": [[]], "distances": [[]], "metadatas": [[]]}
+        
+        # Generate mock results based on the query
+        ids = [f"test_id_{i}" for i in range(n_results)]
+        distances = [1.0 - self.query_score] * n_results  # ChromaDB uses distance (lower = more similar)
+        metadatas = [
+            {
+                "text": "test text",
+                "label": "PHONE_NUMBER" if where and "PHONE_NUMBER" in str(where) else "ADDRESS",
+                "left": "neighbor_left",
+                "right": "neighbor_right"
+            }
+        ] * n_results
+        
+        return {
+            "ids": [ids],
+            "distances": [distances],
+            "metadatas": [metadatas]
+        }
+
+    def query_collection(
+        self,
+        collection_name,
+        query_embeddings,
+        n_results=10,
+        where=None,
+        include=None
+    ):
+        """Mock ChromaDB query_collection method - alias for query."""
+        return self.query(
+            collection_name=collection_name,
+            query_embeddings=query_embeddings,
+            n_results=n_results,
+            where=where,
+            include=include
+        )
+
+
 class FakePineconeIndex:
     def __init__(
         self, metadata=None, query_score=DEFAULT_QUERY_SCORE, has_vector=True
@@ -239,10 +309,15 @@ def test_validate_address(mocker):
     from receipt_label.label_validation.validate_address import (
         validate_address)
 
-    fake_index = FakePineconeIndex()
-    # Create a mock client manager with our fake index
+    # Create a fake ChromaDB client instead of Pinecone
+    fake_chroma = FakeChromaClient(
+        metadata={"left": "neighbor_left", "right": "neighbor_right"},
+        query_score=DEFAULT_QUERY_SCORE
+    )
+    
+    # Create a mock client manager with our fake ChromaDB client
     mock_client_manager = MagicMock()
-    mock_client_manager.pinecone = fake_index
+    mock_client_manager.chroma = fake_chroma
 
     # Mock get_client_manager to return our mock
     mocker.patch(
@@ -273,10 +348,12 @@ def test_validate_address_no_vector(mocker):
     from receipt_label.label_validation.validate_address import (
         validate_address)
 
-    fake_index = FakePineconeIndex(has_vector=False)
-    # Create a mock client manager with our fake index
+    # Create a fake ChromaDB client that returns no vector
+    fake_chroma = FakeChromaClient(has_vector=False)
+    
+    # Create a mock client manager with our fake ChromaDB client
     mock_client_manager = MagicMock()
-    mock_client_manager.pinecone = fake_index
+    mock_client_manager.chroma = fake_chroma
 
     # Mock get_client_manager to return our mock
     mocker.patch(
@@ -329,13 +406,16 @@ def test_validate_address_no_vector(mocker):
 def test_validate_currency(mocker, text, expected_consistent):
     from receipt_label.label_validation.validate_currency import (
         validate_currency)
-    from receipt_label.utils import ClientConfig, ClientManager
 
-    # Create a mock client manager with our fake index
-    fake_index = FakePineconeIndex(query_score=HIGH_QUERY_SCORE)
-    mock_config = MagicMock(spec=ClientConfig)
-    mock_client_manager = MagicMock(spec=ClientManager)
-    mock_client_manager.pinecone = fake_index
+    # Create a fake ChromaDB client instead of Pinecone
+    fake_chroma = FakeChromaClient(
+        metadata={"left": "neighbor_left", "right": "neighbor_right"},
+        query_score=HIGH_QUERY_SCORE
+    )
+    
+    # Create a mock client manager with our fake ChromaDB client
+    mock_client_manager = MagicMock()
+    mock_client_manager.chroma = fake_chroma
 
     # Mock get_client_manager to return our mock
     mocker.patch(
@@ -360,16 +440,16 @@ def test_validate_currency(mocker, text, expected_consistent):
 
 @pytest.mark.unit
 def test_validate_currency_no_vector(mocker):
-    """Test currency validation when no vector is found in Pinecone."""
+    """Test currency validation when no vector is found in ChromaDB."""
     from receipt_label.label_validation.validate_currency import (
         validate_currency)
-    from receipt_label.utils import ClientConfig, ClientManager
 
-    # Create a mock client manager with our fake index
-    fake_index = FakePineconeIndex(has_vector=False)
-    mock_config = MagicMock(spec=ClientConfig)
-    mock_client_manager = MagicMock(spec=ClientManager)
-    mock_client_manager.pinecone = fake_index
+    # Create a fake ChromaDB client that returns no vector
+    fake_chroma = FakeChromaClient(has_vector=False)
+    
+    # Create a mock client manager with our fake ChromaDB client
+    mock_client_manager = MagicMock()
+    mock_client_manager.chroma = fake_chroma
 
     # Mock get_client_manager to return our mock
     mocker.patch(
@@ -416,10 +496,15 @@ def test_validate_phone_number(mocker, text, expected_consistent):
     from receipt_label.label_validation.validate_phone_number import (
         validate_phone_number)
 
-    fake_index = FakePineconeIndex(query_score=MEDIUM_QUERY_SCORE)
-    # Create a mock client manager with our fake index
+    # Create a fake ChromaDB client instead of Pinecone
+    fake_chroma = FakeChromaClient(
+        metadata={"left": "neighbor_left", "right": "neighbor_right"},
+        query_score=MEDIUM_QUERY_SCORE
+    )
+    
+    # Create a mock client manager with our fake ChromaDB client
     mock_client_manager = MagicMock()
-    mock_client_manager.pinecone = fake_index
+    mock_client_manager.chroma = fake_chroma
 
     # Mock get_client_manager to return our mock
     mocker.patch(
@@ -444,14 +529,16 @@ def test_validate_phone_number(mocker, text, expected_consistent):
 
 @pytest.mark.unit
 def test_validate_phone_number_no_vector(mocker):
-    """Test phone number validation when no vector is found in Pinecone."""
+    """Test phone number validation when no vector is found in ChromaDB."""
     from receipt_label.label_validation.validate_phone_number import (
         validate_phone_number)
 
-    fake_index = FakePineconeIndex(has_vector=False)
-    # Create a mock client manager with our fake index
+    # Create a fake ChromaDB client that returns no vector
+    fake_chroma = FakeChromaClient(has_vector=False)
+    
+    # Create a mock client manager with our fake ChromaDB client
     mock_client_manager = MagicMock()
-    mock_client_manager.pinecone = fake_index
+    mock_client_manager.chroma = fake_chroma
 
     # Mock get_client_manager to return our mock
     mocker.patch(
@@ -606,10 +693,15 @@ def test_validate_merchant_name_no_vector(mocker):
 def test_validate_date(mocker, text, expected_consistent):
     from receipt_label.label_validation.validate_date import validate_date
 
-    fake_index = FakePineconeIndex(query_score=LOW_QUERY_SCORE)
-    # Create a mock client manager with our fake index
+    # Create a fake ChromaDB client instead of Pinecone
+    fake_chroma = FakeChromaClient(
+        metadata={"left": "neighbor_left", "right": "neighbor_right"},
+        query_score=LOW_QUERY_SCORE
+    )
+    
+    # Create a mock client manager with our fake ChromaDB client
     mock_client_manager = MagicMock()
-    mock_client_manager.pinecone = fake_index
+    mock_client_manager.chroma = fake_chroma
 
     # Mock get_client_manager to return our mock
     mocker.patch(
@@ -634,13 +726,15 @@ def test_validate_date(mocker, text, expected_consistent):
 
 @pytest.mark.unit
 def test_validate_date_no_vector(mocker):
-    """Test date validation when no vector is found in Pinecone."""
+    """Test date validation when no vector is found in ChromaDB."""
     from receipt_label.label_validation.validate_date import validate_date
 
-    fake_index = FakePineconeIndex(has_vector=False)
-    # Create a mock client manager with our fake index
+    # Create a fake ChromaDB client that returns no vector
+    fake_chroma = FakeChromaClient(has_vector=False)
+    
+    # Create a mock client manager with our fake ChromaDB client
     mock_client_manager = MagicMock()
-    mock_client_manager.pinecone = fake_index
+    mock_client_manager.chroma = fake_chroma
 
     # Mock get_client_manager to return our mock
     mocker.patch(
@@ -700,10 +794,15 @@ def test_validate_date_no_vector(mocker):
 def test_validate_time(mocker, text, expected_consistent):
     from receipt_label.label_validation.validate_time import validate_time
 
-    fake_index = FakePineconeIndex(query_score=LOW_QUERY_SCORE)
-    # Create a mock client manager with our fake index
+    # Create a fake ChromaDB client instead of Pinecone
+    fake_chroma = FakeChromaClient(
+        metadata={"left": "neighbor_left", "right": "neighbor_right"},
+        query_score=LOW_QUERY_SCORE
+    )
+    
+    # Create a mock client manager with our fake ChromaDB client
     mock_client_manager = MagicMock()
-    mock_client_manager.pinecone = fake_index
+    mock_client_manager.chroma = fake_chroma
 
     # Mock get_client_manager to return our mock
     mocker.patch(
@@ -728,13 +827,15 @@ def test_validate_time(mocker, text, expected_consistent):
 
 @pytest.mark.unit
 def test_validate_time_no_vector(mocker):
-    """Test time validation when no vector is found in Pinecone."""
+    """Test time validation when no vector is found in ChromaDB."""
     from receipt_label.label_validation.validate_time import validate_time
 
-    fake_index = FakePineconeIndex(has_vector=False)
-    # Create a mock client manager with our fake index
+    # Create a fake ChromaDB client that returns no vector
+    fake_chroma = FakeChromaClient(has_vector=False)
+    
+    # Create a mock client manager with our fake ChromaDB client
     mock_client_manager = MagicMock()
-    mock_client_manager.pinecone = fake_index
+    mock_client_manager.chroma = fake_chroma
 
     # Mock get_client_manager to return our mock
     mocker.patch(
