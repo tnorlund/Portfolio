@@ -4,24 +4,19 @@ from typing import Dict, List, Optional
 
 import pytest
 from receipt_dynamo.entities.receipt_structure_analysis import (
-    ContentPattern as DynamoContentPattern,
-)
+    ContentPattern as DynamoContentPattern)
 from receipt_dynamo.entities.receipt_structure_analysis import (
-    ReceiptSection as DynamoReceiptSection,
-)
+    ReceiptSection as DynamoReceiptSection)
 from receipt_dynamo.entities.receipt_structure_analysis import (
-    ReceiptStructureAnalysis,
-)
+    ReceiptStructureAnalysis)
 from receipt_dynamo.entities.receipt_structure_analysis import (
-    SpatialPattern as DynamoSpatialPattern,
-)
+    SpatialPattern as DynamoSpatialPattern)
 
 from receipt_label.models.structure import (
     ContentPattern,
     ReceiptSection,
     SpatialPattern,
-    StructureAnalysis,
-)
+    StructureAnalysis)
 
 
 # Test data fixtures
@@ -37,8 +32,7 @@ def sample_content_pattern() -> ContentPattern:
     return ContentPattern(
         pattern_type="semantic",
         description="contains business name",
-        examples=["Store", "Market", "Shop"],
-    )
+        examples=["Store", "Market", "Shop"])
 
 
 @pytest.fixture
@@ -51,8 +45,7 @@ def sample_receipt_section(
         line_ids=[1, 2, 3],
         spatial_patterns=[sample_spatial_pattern],
         content_patterns=[sample_content_pattern],
-        reasoning="Clear header section with business name and address",
-    )
+        reasoning="Clear header section with business name and address")
 
 
 @pytest.fixture
@@ -61,8 +54,7 @@ def sample_structure_analysis(sample_receipt_section) -> StructureAnalysis:
     return StructureAnalysis(
         sections=[sample_receipt_section],
         overall_reasoning="Receipt has clear header, body, and footer sections",
-        metadata={"model_version": "1.0.0", "processing_time_ms": 150},
-    )
+        metadata={"model_version": "1.0.0", "processing_time_ms": 150})
 
 
 @pytest.fixture
@@ -76,8 +68,7 @@ def sample_dynamo_receipt_structure_analysis() -> ReceiptStructureAnalysis:
     content_pattern = DynamoContentPattern(
         pattern_type="semantic",
         description="contains business name",
-        examples=["Store", "Market", "Shop"],
-    )
+        examples=["Store", "Market", "Shop"])
 
     # Create the section
     section = DynamoReceiptSection(
@@ -85,8 +76,7 @@ def sample_dynamo_receipt_structure_analysis() -> ReceiptStructureAnalysis:
         line_ids=[1, 2, 3],
         spatial_patterns=[spatial_pattern],
         content_patterns=[content_pattern],
-        reasoning="Clear header section with business name and address",
-    )
+        reasoning="Clear header section with business name and address")
 
     # Create the ReceiptStructureAnalysis
     return ReceiptStructureAnalysis(
@@ -99,8 +89,7 @@ def sample_dynamo_receipt_structure_analysis() -> ReceiptStructureAnalysis:
         timestamp_added=datetime.fromisoformat("2023-03-15T12:00:00"),
         timestamp_updated=datetime.fromisoformat("2023-03-15T12:30:00"),
         processing_metrics={"section_count": 1},
-        source_info={"model": "gpt-4"},
-    )
+        source_info={"model": "gpt-4"})
 
 
 @pytest.fixture
@@ -195,15 +184,13 @@ class TestStructureAnalysis:
             line_ids=[1, 2],
             spatial_patterns=["top-aligned", "indented"],
             content_patterns=["contains prices"],
-            reasoning="Test section with string patterns",
-        )
+            reasoning="Test section with string patterns")
 
         analysis = StructureAnalysis(
             sections=[section],
             overall_reasoning="Test analysis",
             receipt_id=123,
-            image_id="abc123",
-        )
+            image_id="abc123")
 
         # Convert to DynamoDB object
         dynamo_obj = analysis.to_dynamo()
