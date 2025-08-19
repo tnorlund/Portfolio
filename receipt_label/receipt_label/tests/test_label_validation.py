@@ -46,24 +46,47 @@ DEFAULT_WORD_ID = 1
 
 class FakeChromaClient:
     """Mock ChromaDB client for testing validation functions."""
-    
+
     def __init__(
-        self, metadata=None, query_score=DEFAULT_QUERY_SCORE, has_vector=True
+        self,
+        metadata=None,
+        query_score=DEFAULT_QUERY_SCORE,
+        has_vector=True,
+        raise_timeout=False,
+        raise_query_error=False,
+        raise_connection_error=False,
+        raise_malformed_error=False,
+        raise_partial_failure=False,
     ):
         self.metadata = metadata or {}
         self.query_score = query_score
         self.has_vector = has_vector
+        self.raise_timeout = raise_timeout
+        self.raise_query_error = raise_query_error
+        self.raise_connection_error = raise_connection_error
+        self.raise_malformed_error = raise_malformed_error
+        self.raise_partial_failure = raise_partial_failure
 
     def get_by_ids(self, collection_name, ids, include=None):
         """Mock ChromaDB get_by_ids method."""
+        if self.raise_timeout:
+            raise TimeoutError("ChromaDB fetch timeout")
+        if self.raise_connection_error:
+            raise ConnectionError("ChromaDB connection failed")
+        if self.raise_malformed_error:
+            # Return malformed response that will cause an exception when accessed as dict
+            return {
+                "ids": None
+            }  # Will cause exception when trying to index or check len
+
         if not self.has_vector:
             return {"ids": [], "embeddings": [], "metadatas": []}
-        
+
         # Return embeddings and metadata for the requested IDs
         return {
             "ids": ids,
             "embeddings": [[0.1] * 1536] * len(ids),  # Mock embedding vectors
-            "metadatas": [self.metadata] * len(ids)
+            "metadatas": [self.metadata] * len(ids),
         }
 
     def query(
@@ -72,28 +95,46 @@ class FakeChromaClient:
         query_embeddings,
         n_results=10,
         where=None,
-        include=None
+        include=None,
     ):
         """Mock ChromaDB query method."""
+        if self.raise_query_error:
+            raise Exception("ChromaDB API error: Rate limit exceeded")
+        if self.raise_connection_error:
+            raise ConnectionError("Failed to connect to ChromaDB")
+        if self.raise_timeout:
+            raise TimeoutError("ChromaDB query timeout")
+        if self.raise_malformed_error:
+            # Return malformed response that will cause AttributeError
+            return {}  # Missing expected fields
+        if self.raise_partial_failure:
+            raise Exception("Query failed")
+
         if not self.has_vector:
             return {"ids": [[]], "distances": [[]], "metadatas": [[]]}
-        
+
         # Generate mock results based on the query
         ids = [f"test_id_{i}" for i in range(n_results)]
-        distances = [1.0 - self.query_score] * n_results  # ChromaDB uses distance (lower = more similar)
+        distances = [
+            1.0 - self.query_score
+        ] * n_results  # ChromaDB uses distance (lower = more similar)
         metadatas = [
             {
                 "text": "test text",
-                "label": "PHONE_NUMBER" if where and "PHONE_NUMBER" in str(where) else "ADDRESS",
+                "label": (
+                    "PHONE_NUMBER"
+                    if where and "PHONE_NUMBER" in str(where)
+                    else "ADDRESS"
+                ),
                 "left": "neighbor_left",
-                "right": "neighbor_right"
+                "right": "neighbor_right",
             }
         ] * n_results
-        
+
         return {
             "ids": [ids],
             "distances": [distances],
-            "metadatas": [metadatas]
+            "metadatas": [metadatas],
         }
 
     def query_collection(
@@ -102,15 +143,16 @@ class FakeChromaClient:
         query_embeddings,
         n_results=10,
         where=None,
-        include=None
+        include=None,
     ):
         """Mock ChromaDB query_collection method - alias for query."""
+        # Use same error handling as query method
         return self.query(
             collection_name=collection_name,
             query_embeddings=query_embeddings,
             n_results=n_results,
             where=where,
-            include=include
+            include=include,
         )
 
 
@@ -136,7 +178,8 @@ class FakePineconeIndex:
         top_k=10,
         include_metadata=True,
         filter=None,
-        namespace="words"):
+        namespace="words",
+    ):
         if not self.has_vector:
             return SimpleNamespace(matches=[])
         # Return metadata that includes the fields expected by validation
@@ -183,7 +226,8 @@ def sample_label():
         receipt_id=42,
         line_id=1,
         word_id=5,
-        label="ADDRESS")
+        label="ADDRESS",
+    )
 
 
 @pytest.fixture
@@ -200,7 +244,8 @@ def realistic_address_label():
         receipt_id=12345,
         line_id=3,
         word_id=15,
-        label="ADDRESS")
+        label="ADDRESS",
+    )
 
 
 @pytest.fixture
@@ -211,7 +256,8 @@ def realistic_phone_label():
         receipt_id=98765,
         line_id=8,
         word_id=42,
-        label="PHONE_NUMBER")
+        label="PHONE_NUMBER",
+    )
 
 
 @pytest.fixture
@@ -222,7 +268,8 @@ def realistic_currency_label():
         receipt_id=55555,
         line_id=12,
         word_id=3,
-        label="TOTAL")
+        label="TOTAL",
+    )
 
 
 @pytest.fixture
@@ -233,7 +280,8 @@ def realistic_merchant_label():
         receipt_id=33333,
         line_id=1,
         word_id=1,
-        label="MERCHANT_NAME")
+        label="MERCHANT_NAME",
+    )
 
 
 @pytest.fixture
@@ -244,7 +292,8 @@ def realistic_date_label():
         receipt_id=77777,
         line_id=2,
         word_id=8,
-        label="DATE")
+        label="DATE",
+    )
 
 
 @pytest.fixture
@@ -255,7 +304,8 @@ def realistic_time_label():
         receipt_id=44444,
         line_id=2,
         word_id=12,
-        label="TIME")
+        label="TIME",
+    )
 
 
 def _make_label(
@@ -263,14 +313,16 @@ def _make_label(
     image_id=DEFAULT_IMAGE_ID,
     receipt_id=DEFAULT_RECEIPT_ID,
     line_id=DEFAULT_LINE_ID,
-    word_id=DEFAULT_WORD_ID) -> SimpleNamespace:
+    word_id=DEFAULT_WORD_ID,
+) -> SimpleNamespace:
     """Helper function to create labels with custom IDs."""
     return SimpleNamespace(
         image_id=image_id,
         receipt_id=receipt_id,
         line_id=line_id,
         word_id=word_id,
-        label=label)
+        label=label,
+    )
 
 
 def assert_complete_validation_result(
@@ -307,14 +359,15 @@ def assert_complete_validation_result(
 def test_validate_address(mocker):
     # Import here after mocks are set up
     from receipt_label.label_validation.validate_address import (
-        validate_address)
+        validate_address,
+    )
 
     # Create a fake ChromaDB client instead of Pinecone
     fake_chroma = FakeChromaClient(
         metadata={"left": "neighbor_left", "right": "neighbor_right"},
-        query_score=DEFAULT_QUERY_SCORE
+        query_score=DEFAULT_QUERY_SCORE,
     )
-    
+
     # Create a mock client manager with our fake ChromaDB client
     mock_client_manager = MagicMock()
     mock_client_manager.chroma = fake_chroma
@@ -322,7 +375,8 @@ def test_validate_address(mocker):
     # Mock get_client_manager to return our mock
     mocker.patch(
         "receipt_label.label_validation.validate_address.get_client_manager",
-        return_value=mock_client_manager)
+        return_value=mock_client_manager,
+    )
 
     word = SimpleNamespace(text=TEST_ADDRESS_TEXT)
     label = _make_label("ADDRESS")
@@ -346,11 +400,12 @@ def test_validate_address(mocker):
 def test_validate_address_no_vector(mocker):
     """Test address validation when no vector is found in Pinecone."""
     from receipt_label.label_validation.validate_address import (
-        validate_address)
+        validate_address,
+    )
 
     # Create a fake ChromaDB client that returns no vector
     fake_chroma = FakeChromaClient(has_vector=False)
-    
+
     # Create a mock client manager with our fake ChromaDB client
     mock_client_manager = MagicMock()
     mock_client_manager.chroma = fake_chroma
@@ -358,7 +413,8 @@ def test_validate_address_no_vector(mocker):
     # Mock get_client_manager to return our mock
     mocker.patch(
         "receipt_label.label_validation.validate_address.get_client_manager",
-        return_value=mock_client_manager)
+        return_value=mock_client_manager,
+    )
 
     word = SimpleNamespace(text=TEST_ADDRESS_TEXT)
     label = _make_label("ADDRESS")
@@ -402,17 +458,19 @@ def test_validate_address_no_vector(mocker):
         ("$10. 00", False),  # Space in decimal
         ("$1,2345.00", False),  # Wrong grouping (4 digits)
         ("$12,34.56", False),  # Wrong grouping (2 digits)
-    ])
+    ],
+)
 def test_validate_currency(mocker, text, expected_consistent):
     from receipt_label.label_validation.validate_currency import (
-        validate_currency)
+        validate_currency,
+    )
 
     # Create a fake ChromaDB client instead of Pinecone
     fake_chroma = FakeChromaClient(
         metadata={"left": "neighbor_left", "right": "neighbor_right"},
-        query_score=HIGH_QUERY_SCORE
+        query_score=HIGH_QUERY_SCORE,
     )
-    
+
     # Create a mock client manager with our fake ChromaDB client
     mock_client_manager = MagicMock()
     mock_client_manager.chroma = fake_chroma
@@ -420,7 +478,8 @@ def test_validate_currency(mocker, text, expected_consistent):
     # Mock get_client_manager to return our mock
     mocker.patch(
         "receipt_label.label_validation.validate_currency.get_client_manager",
-        return_value=mock_client_manager)
+        return_value=mock_client_manager,
+    )
 
     word = SimpleNamespace(text=text)
     label = _make_label("TOTAL")
@@ -442,11 +501,12 @@ def test_validate_currency(mocker, text, expected_consistent):
 def test_validate_currency_no_vector(mocker):
     """Test currency validation when no vector is found in ChromaDB."""
     from receipt_label.label_validation.validate_currency import (
-        validate_currency)
+        validate_currency,
+    )
 
     # Create a fake ChromaDB client that returns no vector
     fake_chroma = FakeChromaClient(has_vector=False)
-    
+
     # Create a mock client manager with our fake ChromaDB client
     mock_client_manager = MagicMock()
     mock_client_manager.chroma = fake_chroma
@@ -454,7 +514,8 @@ def test_validate_currency_no_vector(mocker):
     # Mock get_client_manager to return our mock
     mocker.patch(
         "receipt_label.label_validation.validate_currency.get_client_manager",
-        return_value=mock_client_manager)
+        return_value=mock_client_manager,
+    )
 
     word = SimpleNamespace(text="$10.00")
     label = _make_label("TOTAL")
@@ -491,17 +552,19 @@ def test_validate_currency_no_vector(mocker):
         ("555-12-34567", False),  # Wrong formatting
         ("(555) 123-456", False),  # Missing digit
         ("(555) 123-45678", False),  # Extra digit
-    ])
+    ],
+)
 def test_validate_phone_number(mocker, text, expected_consistent):
     from receipt_label.label_validation.validate_phone_number import (
-        validate_phone_number)
+        validate_phone_number,
+    )
 
     # Create a fake ChromaDB client instead of Pinecone
     fake_chroma = FakeChromaClient(
         metadata={"left": "neighbor_left", "right": "neighbor_right"},
-        query_score=MEDIUM_QUERY_SCORE
+        query_score=MEDIUM_QUERY_SCORE,
     )
-    
+
     # Create a mock client manager with our fake ChromaDB client
     mock_client_manager = MagicMock()
     mock_client_manager.chroma = fake_chroma
@@ -509,7 +572,8 @@ def test_validate_phone_number(mocker, text, expected_consistent):
     # Mock get_client_manager to return our mock
     mocker.patch(
         "receipt_label.label_validation.validate_phone_number.get_client_manager",
-        return_value=mock_client_manager)
+        return_value=mock_client_manager,
+    )
 
     word = SimpleNamespace(text=text)
     label = _make_label("PHONE_NUMBER")
@@ -531,11 +595,12 @@ def test_validate_phone_number(mocker, text, expected_consistent):
 def test_validate_phone_number_no_vector(mocker):
     """Test phone number validation when no vector is found in ChromaDB."""
     from receipt_label.label_validation.validate_phone_number import (
-        validate_phone_number)
+        validate_phone_number,
+    )
 
     # Create a fake ChromaDB client that returns no vector
     fake_chroma = FakeChromaClient(has_vector=False)
-    
+
     # Create a mock client manager with our fake ChromaDB client
     mock_client_manager = MagicMock()
     mock_client_manager.chroma = fake_chroma
@@ -543,7 +608,8 @@ def test_validate_phone_number_no_vector(mocker):
     # Mock get_client_manager to return our mock
     mocker.patch(
         "receipt_label.label_validation.validate_phone_number.get_client_manager",
-        return_value=mock_client_manager)
+        return_value=mock_client_manager,
+    )
 
     word = SimpleNamespace(text="(555) 123-4567")
     label = _make_label("PHONE_NUMBER")
@@ -557,17 +623,24 @@ def test_validate_phone_number_no_vector(mocker):
 @pytest.mark.unit
 def test_validate_merchant_name_pinecone(mocker):
     from receipt_label.label_validation.validate_merchant_name import (
-        validate_merchant_name_pinecone)
+        validate_merchant_name_pinecone,
+    )
 
-    fake_index = FakePineconeIndex(query_score=DEFAULT_QUERY_SCORE)
-    # Create a mock client manager with our fake index
+    # Create a fake ChromaDB client instead of Pinecone
+    fake_chroma = FakeChromaClient(
+        metadata={"merchant_name": TEST_MERCHANT_CANONICAL},
+        query_score=DEFAULT_QUERY_SCORE,
+    )
+
+    # Create a mock client manager with our fake ChromaDB client
     mock_client_manager = MagicMock()
-    mock_client_manager.pinecone = fake_index
+    mock_client_manager.chroma = fake_chroma
 
     # Mock get_client_manager to return our mock
     mocker.patch(
         "receipt_label.label_validation.validate_merchant_name.get_client_manager",
-        return_value=mock_client_manager)
+        return_value=mock_client_manager,
+    )
 
     word = SimpleNamespace(text=TEST_MERCHANT)
     label = _make_label("MERCHANT_NAME")
@@ -595,7 +668,8 @@ def test_validate_merchant_name_pinecone(mocker):
 @pytest.mark.unit
 def test_validate_merchant_name_google(mocker):
     from receipt_label.label_validation.validate_merchant_name import (
-        validate_merchant_name_google)
+        validate_merchant_name_google,
+    )
 
     fake_index = FakePineconeIndex(query_score=DEFAULT_QUERY_SCORE)
     # Create a mock client manager with our fake index
@@ -605,7 +679,8 @@ def test_validate_merchant_name_google(mocker):
     # Mock get_client_manager to return our mock
     mocker.patch(
         "receipt_label.label_validation.validate_merchant_name.get_client_manager",
-        return_value=mock_client_manager)
+        return_value=mock_client_manager,
+    )
 
     word = SimpleNamespace(text=TEST_MERCHANT)
     label = _make_label("MERCHANT_NAME")
@@ -635,7 +710,8 @@ def test_validate_merchant_name_google(mocker):
 def test_validate_merchant_name_no_vector(mocker):
     """Test merchant name validation when no vector is found in Pinecone."""
     from receipt_label.label_validation.validate_merchant_name import (
-        validate_merchant_name_pinecone)
+        validate_merchant_name_pinecone,
+    )
 
     fake_index = FakePineconeIndex(has_vector=False)
     # Create a mock client manager with our fake index
@@ -645,7 +721,8 @@ def test_validate_merchant_name_no_vector(mocker):
     # Mock get_client_manager to return our mock
     mocker.patch(
         "receipt_label.label_validation.validate_merchant_name.get_client_manager",
-        return_value=mock_client_manager)
+        return_value=mock_client_manager,
+    )
 
     word = SimpleNamespace(text=TEST_MERCHANT)
     label = _make_label("MERCHANT_NAME")
@@ -689,16 +766,17 @@ def test_validate_merchant_name_no_vector(mocker):
         ("2024/05", False),  # Incomplete date
         ("05/2024", False),  # Missing day
         ("2024", False),  # Year only
-    ])
+    ],
+)
 def test_validate_date(mocker, text, expected_consistent):
     from receipt_label.label_validation.validate_date import validate_date
 
     # Create a fake ChromaDB client instead of Pinecone
     fake_chroma = FakeChromaClient(
         metadata={"left": "neighbor_left", "right": "neighbor_right"},
-        query_score=LOW_QUERY_SCORE
+        query_score=LOW_QUERY_SCORE,
     )
-    
+
     # Create a mock client manager with our fake ChromaDB client
     mock_client_manager = MagicMock()
     mock_client_manager.chroma = fake_chroma
@@ -706,7 +784,8 @@ def test_validate_date(mocker, text, expected_consistent):
     # Mock get_client_manager to return our mock
     mocker.patch(
         "receipt_label.label_validation.validate_date.get_client_manager",
-        return_value=mock_client_manager)
+        return_value=mock_client_manager,
+    )
 
     label = _make_label("DATE")
     word_date = SimpleNamespace(text=text)
@@ -731,7 +810,7 @@ def test_validate_date_no_vector(mocker):
 
     # Create a fake ChromaDB client that returns no vector
     fake_chroma = FakeChromaClient(has_vector=False)
-    
+
     # Create a mock client manager with our fake ChromaDB client
     mock_client_manager = MagicMock()
     mock_client_manager.chroma = fake_chroma
@@ -739,7 +818,8 @@ def test_validate_date_no_vector(mocker):
     # Mock get_client_manager to return our mock
     mocker.patch(
         "receipt_label.label_validation.validate_date.get_client_manager",
-        return_value=mock_client_manager)
+        return_value=mock_client_manager,
+    )
 
     label = _make_label("DATE")
     word_date = SimpleNamespace(text="2024-05-01")
@@ -790,16 +870,17 @@ def test_validate_date_no_vector(mocker):
         ("12:", False),  # Incomplete time
         (":30", False),  # Missing hour
         ("12:30:", False),  # Trailing colon
-    ])
+    ],
+)
 def test_validate_time(mocker, text, expected_consistent):
     from receipt_label.label_validation.validate_time import validate_time
 
     # Create a fake ChromaDB client instead of Pinecone
     fake_chroma = FakeChromaClient(
         metadata={"left": "neighbor_left", "right": "neighbor_right"},
-        query_score=LOW_QUERY_SCORE
+        query_score=LOW_QUERY_SCORE,
     )
-    
+
     # Create a mock client manager with our fake ChromaDB client
     mock_client_manager = MagicMock()
     mock_client_manager.chroma = fake_chroma
@@ -807,7 +888,8 @@ def test_validate_time(mocker, text, expected_consistent):
     # Mock get_client_manager to return our mock
     mocker.patch(
         "receipt_label.label_validation.validate_time.get_client_manager",
-        return_value=mock_client_manager)
+        return_value=mock_client_manager,
+    )
 
     label_time = _make_label("TIME")
     word_time = SimpleNamespace(text=text)
@@ -832,7 +914,7 @@ def test_validate_time_no_vector(mocker):
 
     # Create a fake ChromaDB client that returns no vector
     fake_chroma = FakeChromaClient(has_vector=False)
-    
+
     # Create a mock client manager with our fake ChromaDB client
     mock_client_manager = MagicMock()
     mock_client_manager.chroma = fake_chroma
@@ -840,7 +922,8 @@ def test_validate_time_no_vector(mocker):
     # Mock get_client_manager to return our mock
     mocker.patch(
         "receipt_label.label_validation.validate_time.get_client_manager",
-        return_value=mock_client_manager)
+        return_value=mock_client_manager,
+    )
 
     label_time = _make_label("TIME")
     word_time = SimpleNamespace(text="12:30 PM")
@@ -858,17 +941,24 @@ class TestTextNormalizationInValidation:
     def test_validate_address_with_normalization_edge_cases(self, mocker):
         """Test address validation with various normalization scenarios."""
         from receipt_label.label_validation.validate_address import (
-            validate_address)
+            validate_address,
+        )
 
-        fake_index = FakePineconeIndex()
-        # Create a mock client manager with our fake index
+        # Create a fake ChromaDB client instead of Pinecone
+        fake_chroma = FakeChromaClient(
+            metadata={"canonical_address": "123 main street"},
+            query_score=DEFAULT_QUERY_SCORE,
+        )
+
+        # Create a mock client manager with our fake ChromaDB client
         mock_client_manager = MagicMock()
-        mock_client_manager.pinecone = fake_index
+        mock_client_manager.chroma = fake_chroma
 
         # Mock get_client_manager to return our mock
         mocker.patch(
             "receipt_label.label_validation.validate_address.get_client_manager",
-            return_value=mock_client_manager)
+            return_value=mock_client_manager,
+        )
 
         # Test with different address formats that should match after normalization
         test_cases = [
@@ -902,17 +992,24 @@ class TestTextNormalizationInValidation:
     def test_validate_phone_with_edge_formats(self, mocker):
         """Test phone validation with unusual formats."""
         from receipt_label.label_validation.validate_phone_number import (
-            validate_phone_number)
+            validate_phone_number,
+        )
 
-        fake_index = FakePineconeIndex(query_score=MEDIUM_QUERY_SCORE)
-        # Create a mock client manager with our fake index
+        # Create a fake ChromaDB client instead of Pinecone
+        fake_chroma = FakeChromaClient(
+            metadata={"left": "neighbor_left", "right": "neighbor_right"},
+            query_score=MEDIUM_QUERY_SCORE,
+        )
+
+        # Create a mock client manager with our fake ChromaDB client
         mock_client_manager = MagicMock()
-        mock_client_manager.pinecone = fake_index
+        mock_client_manager.chroma = fake_chroma
 
         # Mock get_client_manager to return our mock
         mocker.patch(
             "receipt_label.label_validation.validate_phone_number.get_client_manager",
-            return_value=mock_client_manager)
+            return_value=mock_client_manager,
+        )
 
         # Edge case phone formats
         edge_cases = [
@@ -942,17 +1039,24 @@ class TestTextNormalizationInValidation:
     def test_validate_currency_with_unicode_symbols(self, mocker):
         """Test currency validation with various currency symbols."""
         from receipt_label.label_validation.validate_currency import (
-            validate_currency)
+            validate_currency,
+        )
 
-        fake_index = FakePineconeIndex(query_score=HIGH_QUERY_SCORE)
-        # Create a mock client manager with our fake index
+        # Create a fake ChromaDB client instead of Pinecone
+        fake_chroma = FakeChromaClient(
+            metadata={"left": "neighbor_left", "right": "neighbor_right"},
+            query_score=HIGH_QUERY_SCORE,
+        )
+
+        # Create a mock client manager with our fake ChromaDB client
         mock_client_manager = MagicMock()
-        mock_client_manager.pinecone = fake_index
+        mock_client_manager.chroma = fake_chroma
 
         # Mock get_client_manager to return our mock
         mocker.patch(
             "receipt_label.label_validation.validate_currency.get_client_manager",
-            return_value=mock_client_manager)
+            return_value=mock_client_manager,
+        )
 
         # Currency formats with different symbols
         currency_formats = [
@@ -975,17 +1079,24 @@ class TestTextNormalizationInValidation:
     def test_validate_merchant_name_normalization(self, mocker):
         """Test merchant name validation with normalization edge cases."""
         from receipt_label.label_validation.validate_merchant_name import (
-            validate_merchant_name_pinecone)
+            validate_merchant_name_pinecone,
+        )
 
-        fake_index = FakePineconeIndex(query_score=DEFAULT_QUERY_SCORE)
-        # Create a mock client manager with our fake index
+        # Create a fake ChromaDB client instead of Pinecone
+        fake_chroma = FakeChromaClient(
+            metadata={"merchant_name": "starbucks coffee"},
+            query_score=DEFAULT_QUERY_SCORE,
+        )
+
+        # Create a mock client manager with our fake ChromaDB client
         mock_client_manager = MagicMock()
-        mock_client_manager.pinecone = fake_index
+        mock_client_manager.chroma = fake_chroma
 
         # Mock get_client_manager to return our mock
         mocker.patch(
             "receipt_label.label_validation.validate_merchant_name.get_client_manager",
-            return_value=mock_client_manager)
+            return_value=mock_client_manager,
+        )
 
         # Test various merchant name formats
         test_cases = [
@@ -1017,25 +1128,24 @@ class TestTextNormalizationInValidation:
 class TestAPIErrorHandling:
     """Test handling of API errors and network issues."""
 
-    def test_pinecone_fetch_timeout(self, mocker):
-        """Test handling of Pinecone fetch timeout."""
+    def test_chroma_fetch_timeout(self, mocker):
+        """Test handling of ChromaDB fetch timeout."""
         from receipt_label.label_validation.validate_address import (
-            validate_address)
-
-        # Create a fake index that raises timeout
-        fake_index = FakePineconeIndex()
-        fake_index.fetch = lambda ids, namespace: (_ for _ in ()).throw(
-            TimeoutError("Network timeout")
+            validate_address,
         )
 
-        # Create a mock client manager with our fake index
+        # Create a fake ChromaDB client that raises timeout on get_by_ids
+        fake_chroma = FakeChromaClient(raise_timeout=True)
+
+        # Create a mock client manager with our fake ChromaDB client
         mock_client_manager = MagicMock()
-        mock_client_manager.pinecone = fake_index
+        mock_client_manager.chroma = fake_chroma
 
         # Mock get_client_manager to return our mock
         mocker.patch(
             "receipt_label.label_validation.validate_address.get_client_manager",
-            return_value=mock_client_manager)
+            return_value=mock_client_manager,
+        )
 
         word = SimpleNamespace(text=TEST_ADDRESS_TEXT)
         label = _make_label("ADDRESS")
@@ -1045,52 +1155,50 @@ class TestAPIErrorHandling:
         with pytest.raises(TimeoutError):
             validate_address(word, label, metadata)
 
-    def test_pinecone_query_error(self, mocker):
-        """Test handling of Pinecone query errors."""
+    def test_chroma_query_error(self, mocker):
+        """Test handling of ChromaDB query errors."""
         from receipt_label.label_validation.validate_currency import (
-            validate_currency)
-
-        # Create a fake index that raises API error
-        fake_index = FakePineconeIndex()
-        fake_index.query = lambda **kwargs: (_ for _ in ()).throw(
-            Exception("Pinecone API error: Rate limit exceeded")
+            validate_currency,
         )
 
-        # Create a mock client manager with our fake index
+        # Create a fake ChromaDB client that raises API error on query
+        fake_chroma = FakeChromaClient(raise_query_error=True)
+
+        # Create a mock client manager with our fake ChromaDB client
         mock_client_manager = MagicMock()
-        mock_client_manager.pinecone = fake_index
+        mock_client_manager.chroma = fake_chroma
 
         # Mock get_client_manager to return our mock
         mocker.patch(
             "receipt_label.label_validation.validate_currency.get_client_manager",
-            return_value=mock_client_manager)
+            return_value=mock_client_manager,
+        )
 
         word = SimpleNamespace(text="$10.00")
         label = _make_label("TOTAL")
 
         # Should handle API error gracefully
-        with pytest.raises(Exception, match="Pinecone API error"):
+        with pytest.raises(Exception, match="ChromaDB API error"):
             validate_currency(word, label)
 
-    def test_pinecone_connection_error(self, mocker):
+    def test_chroma_connection_error(self, mocker):
         """Test handling of connection errors."""
         from receipt_label.label_validation.validate_phone_number import (
-            validate_phone_number)
-
-        # Create a fake index that raises connection error
-        fake_index = FakePineconeIndex()
-        fake_index.query = lambda **kwargs: (_ for _ in ()).throw(
-            ConnectionError("Failed to connect to Pinecone")
+            validate_phone_number,
         )
 
-        # Create a mock client manager with our fake index
+        # Create a fake ChromaDB client that raises connection error
+        fake_chroma = FakeChromaClient(raise_connection_error=True)
+
+        # Create a mock client manager with our fake ChromaDB client
         mock_client_manager = MagicMock()
-        mock_client_manager.pinecone = fake_index
+        mock_client_manager.chroma = fake_chroma
 
         # Mock get_client_manager to return our mock
         mocker.patch(
             "receipt_label.label_validation.validate_phone_number.get_client_manager",
-            return_value=mock_client_manager)
+            return_value=mock_client_manager,
+        )
 
         word = SimpleNamespace(text="555-123-4567")
         label = _make_label("PHONE_NUMBER")
@@ -1099,81 +1207,77 @@ class TestAPIErrorHandling:
         with pytest.raises(ConnectionError):
             validate_phone_number(word, label)
 
-    def test_pinecone_malformed_response(self, mocker):
-        """Test handling of malformed Pinecone responses."""
+    def test_chroma_malformed_response(self, mocker):
+        """Test handling of malformed ChromaDB responses."""
         from receipt_label.label_validation.validate_date import validate_date
 
-        # Create a fake index that returns malformed response
-        class MalformedPineconeIndex(FakePineconeIndex):
-            def query(self, **kwargs):
-                # Return response missing expected fields
-                return SimpleNamespace()  # No 'matches' field
+        # Create a fake ChromaDB client that returns malformed response
+        fake_chroma = FakeChromaClient(raise_malformed_error=True)
 
-            def fetch(self, ids, namespace):
-                # Return response missing expected structure
-                return SimpleNamespace()  # No 'vectors' field
-
-        fake_index = MalformedPineconeIndex()
-        # Create a mock client manager with our fake index
+        # Create a mock client manager with our fake ChromaDB client
         mock_client_manager = MagicMock()
-        mock_client_manager.pinecone = fake_index
+        mock_client_manager.chroma = fake_chroma
 
         # Mock get_client_manager to return our mock
         mocker.patch(
             "receipt_label.label_validation.validate_date.get_client_manager",
-            return_value=mock_client_manager)
+            return_value=mock_client_manager,
+        )
 
         word = SimpleNamespace(text="2024-01-01")
         label = _make_label("DATE")
 
         # Should handle malformed response gracefully
-        with pytest.raises(AttributeError):
+        with pytest.raises(
+            TypeError
+        ):  # Expected when trying to call len() on None
             validate_date(word, label)
 
-    def test_empty_pinecone_response(self, mocker):
-        """Test handling of empty Pinecone responses."""
+    def test_empty_chroma_response(self, mocker):
+        """Test handling of empty ChromaDB responses."""
         from receipt_label.label_validation.validate_time import validate_time
 
-        # Create a fake index that returns empty results
-        fake_index = FakePineconeIndex()
-        fake_index.query = lambda **kwargs: SimpleNamespace(matches=[])
+        # Create a fake ChromaDB client that returns empty results
+        fake_chroma = FakeChromaClient(has_vector=False)
 
-        # Create a mock client manager with our fake index
+        # Create a mock client manager with our fake ChromaDB client
         mock_client_manager = MagicMock()
-        mock_client_manager.pinecone = fake_index
+        mock_client_manager.chroma = fake_chroma
 
         # Mock get_client_manager to return our mock
         mocker.patch(
             "receipt_label.label_validation.validate_time.get_client_manager",
-            return_value=mock_client_manager)
+            return_value=mock_client_manager,
+        )
 
         word = SimpleNamespace(text="12:30 PM")
         label = _make_label("TIME")
 
         result = validate_time(word, label)
         # Should handle empty results gracefully
-        assert result.status == "VALIDATED"
+        assert (
+            result.status == "NO_VECTOR"
+        )  # ChromaDB returns NO_VECTOR when no vector found
         assert result.avg_similarity == 0.0  # No matches means 0 similarity
 
-    def test_pinecone_partial_failure(self, mocker):
-        """Test handling when some Pinecone operations succeed and others fail."""
+    def test_chroma_partial_failure(self, mocker):
+        """Test handling when some ChromaDB operations succeed and others fail."""
         from receipt_label.label_validation.validate_merchant_name import (
-            validate_merchant_name_pinecone)
-
-        # Create a fake index where fetch works but query fails
-        fake_index = FakePineconeIndex()
-        fake_index.query = lambda **kwargs: (_ for _ in ()).throw(
-            Exception("Query failed")
+            validate_merchant_name_pinecone,
         )
 
-        # Create a mock client manager with our fake index
+        # Create a fake ChromaDB client where get_by_ids works but query fails
+        fake_chroma = FakeChromaClient(raise_partial_failure=True)
+
+        # Create a mock client manager with our fake ChromaDB client
         mock_client_manager = MagicMock()
-        mock_client_manager.pinecone = fake_index
+        mock_client_manager.chroma = fake_chroma
 
         # Mock get_client_manager to return our mock
         mocker.patch(
             "receipt_label.label_validation.validate_merchant_name.get_client_manager",
-            return_value=mock_client_manager)
+            return_value=mock_client_manager,
+        )
 
         word = SimpleNamespace(text=TEST_MERCHANT)
         label = _make_label("MERCHANT_NAME")
@@ -1185,36 +1289,37 @@ class TestAPIErrorHandling:
     def test_retry_logic_simulation(self, mocker):
         """Test that validation functions could support retry logic."""
         from receipt_label.label_validation.validate_address import (
-            validate_address)
+            validate_address,
+        )
 
-        # Track call count
+        # Track call count for retry simulation
         call_count = 0
 
-        def flaky_fetch(ids, namespace):
+        def flaky_get_by_ids(collection_name, ids, include=None):
             nonlocal call_count
             call_count += 1
             if call_count < 3:
                 raise ConnectionError("Temporary network issue")
             # Success on third try
-            return SimpleNamespace(
-                vectors={
-                    ids[0]: SimpleNamespace(
-                        id=ids[0], values=[0.0], metadata={}
-                    )
-                }
-            )
+            return {
+                "ids": ids,
+                "embeddings": [[0.1] * 1536] * len(ids),
+                "metadatas": [{}] * len(ids),
+            }
 
-        fake_index = FakePineconeIndex()
-        fake_index.fetch = flaky_fetch
+        # Create a fake ChromaDB client with custom get_by_ids method
+        fake_chroma = FakeChromaClient()
+        fake_chroma.get_by_ids = flaky_get_by_ids
 
-        # Create a mock client manager with our fake index
+        # Create a mock client manager with our fake ChromaDB client
         mock_client_manager = MagicMock()
-        mock_client_manager.pinecone = fake_index
+        mock_client_manager.chroma = fake_chroma
 
         # Mock get_client_manager to return our mock
         mocker.patch(
             "receipt_label.label_validation.validate_address.get_client_manager",
-            return_value=mock_client_manager)
+            return_value=mock_client_manager,
+        )
 
         word = SimpleNamespace(text=TEST_ADDRESS_TEXT)
         label = _make_label("ADDRESS")
@@ -1235,43 +1340,60 @@ class TestValidationIntegrationScenarios:
         """Test validating all fields of a complete receipt."""
         # Import validation functions
         from receipt_label.label_validation.validate_address import (
-            validate_address)
+            validate_address,
+        )
         from receipt_label.label_validation.validate_currency import (
-            validate_currency)
+            validate_currency,
+        )
         from receipt_label.label_validation.validate_date import validate_date
         from receipt_label.label_validation.validate_merchant_name import (
             validate_merchant_name_google,
-            validate_merchant_name_pinecone)
+            validate_merchant_name_pinecone,
+        )
         from receipt_label.label_validation.validate_phone_number import (
-            validate_phone_number)
+            validate_phone_number,
+        )
         from receipt_label.label_validation.validate_time import validate_time
 
         # Create a shared mock client manager for all validation functions
         mock_client_manager = MagicMock()
-        # Set different pinecone indexes for different validation needs
-        # But since all functions use the same client_manager.pinecone, we'll use a versatile fake index
-        fake_index = FakePineconeIndex(query_score=DEFAULT_QUERY_SCORE)
-        mock_client_manager.pinecone = fake_index
+        # Create a versatile fake ChromaDB client for all validation needs
+        fake_chroma = FakeChromaClient(
+            metadata={
+                "canonical_address": "456 oak avenue suite 200",
+                "merchant_name": "walmart",
+                "left": "neighbor_left",
+                "right": "neighbor_right",
+            },
+            query_score=DEFAULT_QUERY_SCORE,
+        )
+        mock_client_manager.chroma = fake_chroma
 
         # Mock get_client_manager for all validation modules
         mocker.patch(
             "receipt_label.label_validation.validate_address.get_client_manager",
-            return_value=mock_client_manager)
+            return_value=mock_client_manager,
+        )
         mocker.patch(
             "receipt_label.label_validation.validate_currency.get_client_manager",
-            return_value=mock_client_manager)
+            return_value=mock_client_manager,
+        )
         mocker.patch(
             "receipt_label.label_validation.validate_date.get_client_manager",
-            return_value=mock_client_manager)
+            return_value=mock_client_manager,
+        )
         mocker.patch(
             "receipt_label.label_validation.validate_merchant_name.get_client_manager",
-            return_value=mock_client_manager)
+            return_value=mock_client_manager,
+        )
         mocker.patch(
             "receipt_label.label_validation.validate_phone_number.get_client_manager",
-            return_value=mock_client_manager)
+            return_value=mock_client_manager,
+        )
         mocker.patch(
             "receipt_label.label_validation.validate_time.get_client_manager",
-            return_value=mock_client_manager)
+            return_value=mock_client_manager,
+        )
 
         # Create a complete receipt
         receipt = {
@@ -1348,7 +1470,8 @@ class TestValidationIntegrationScenarios:
                 **vars(base_label),
                 line_id=10 + line_offset,
                 word_id=20 + line_offset,
-                label=field.upper())
+                label=field.upper(),
+            )
             labels[field] = label
             validation_results[field] = validate_currency(word, label)
 
@@ -1374,28 +1497,33 @@ class TestValidationIntegrationScenarios:
     def test_partial_receipt_validation(self, mocker):
         """Test validation when some receipt fields are missing."""
         from receipt_label.label_validation.validate_currency import (
-            validate_currency)
+            validate_currency,
+        )
         from receipt_label.label_validation.validate_merchant_name import (
-            validate_merchant_name_pinecone)
+            validate_merchant_name_pinecone,
+        )
 
         # Create mock client managers for different scenarios
         currency_client_manager = MagicMock()
-        currency_client_manager.pinecone = FakePineconeIndex(
-            query_score=HIGH_QUERY_SCORE
+        currency_client_manager.chroma = FakeChromaClient(
+            metadata={"left": "neighbor_left", "right": "neighbor_right"},
+            query_score=HIGH_QUERY_SCORE,
         )
 
         merchant_client_manager = MagicMock()
-        merchant_client_manager.pinecone = FakePineconeIndex(
+        merchant_client_manager.chroma = FakeChromaClient(
             has_vector=False
         )  # Simulate missing vector
 
         # Mock get_client_manager for different modules
         mocker.patch(
             "receipt_label.label_validation.validate_currency.get_client_manager",
-            return_value=currency_client_manager)
+            return_value=currency_client_manager,
+        )
         mocker.patch(
             "receipt_label.label_validation.validate_merchant_name.get_client_manager",
-            return_value=merchant_client_manager)
+            return_value=merchant_client_manager,
+        )
 
         # Partial receipt data
         base_label = SimpleNamespace(image_id="partial_001", receipt_id=99999)
