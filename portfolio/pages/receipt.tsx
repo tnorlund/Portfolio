@@ -626,10 +626,10 @@ Receipt context: Line 45, Word 1
         <i>trusting</i>. By shifting my focus from typing code to testing,
         understanding, and architecting solutions, I prototype and experiment
         faster. I can talk to AI, try a new approach, and see my changes in the
-        cloud. With a 10-second feedback loop and tests gate production deploys,
-        I meet the no-downtime requirement while iterating quickly. I no longer
-        spend most of my time researching how to accomplish the task, I just
-        build it.
+        cloud. With a 10-second feedback loop and tests gating production
+        deploys, I meet the no-downtime requirement while iterating quickly. I
+        no longer spend most of my time researching how to accomplish the task,
+        I just build it.
       </p>
 
       <p>
