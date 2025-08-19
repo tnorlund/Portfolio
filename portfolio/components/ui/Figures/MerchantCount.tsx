@@ -48,7 +48,7 @@ export default function MerchantCount() {
       style={{
         width: "100%",
         maxWidth: "900px",
-        margin: "0 auto",
+        margin: "2rem auto",
         fontFamily: "sans-serif",
       }}
     >
