@@ -370,15 +370,25 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
                 f"word_id={word_id}"
             )
 
+        # Filter labels to only those for this specific word
+        word_labels = [
+            lbl
+            for lbl in labels
+            if lbl.image_id == image_id
+            and lbl.receipt_id == receipt_id
+            and lbl.line_id == line_id
+            and lbl.word_id == word_id
+        ]
+
         # label_status — overall state for this word
         if any(
             lbl.validation_status == ValidationStatus.VALID.value
-            for lbl in labels
+            for lbl in word_labels
         ):
             label_status = "validated"
         elif any(
             lbl.validation_status == ValidationStatus.PENDING.value
-            for lbl in labels
+            for lbl in word_labels
         ):
             label_status = "auto_suggested"
         else:
@@ -386,7 +396,7 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
 
         auto_suggestions = [
             lbl
-            for lbl in labels
+            for lbl in word_labels
             if lbl.validation_status == ValidationStatus.PENDING.value
         ]
 
@@ -404,21 +414,21 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
         # validated_labels — all labels with status VALID
         validated_labels = [
             lbl.label
-            for lbl in labels
+            for lbl in word_labels
             if lbl.validation_status == ValidationStatus.VALID.value
         ]
 
         # invalid_labels — all labels with status INVALID
         invalid_labels = [
             lbl.label
-            for lbl in labels
+            for lbl in word_labels
             if lbl.validation_status == ValidationStatus.INVALID.value
         ]
 
         # label_validated_at — timestamp of the most recent VALID
         valids = [
             lbl
-            for lbl in labels
+            for lbl in word_labels
             if lbl.validation_status == ValidationStatus.VALID.value
         ]
         label_validated_at = (

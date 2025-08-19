@@ -25,8 +25,7 @@ def _build_metadata(
     place_id: str = "",
     name: str = "",
     address: str = "",
-    phone: str = "",
-) -> ReceiptMetadata:
+    phone: str = "") -> ReceiptMetadata:
     """Build a ReceiptMetadata object with deterministic test data."""
     # Generate a deterministic but valid UUID v4 based on receipt_id
     namespace = uuid_module.UUID("12345678-1234-5678-1234-567812345678")
@@ -45,8 +44,7 @@ def _build_metadata(
         timestamp=datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
         address=address,
         phone_number=phone,
-        validated_by="INFERENCE",
-    )
+        validated_by="INFERENCE")
 
 
 from receipt_label.merchant_validation.clustering import cluster_by_metadata
@@ -60,33 +58,28 @@ def test_cluster_by_metadata_groups_similar_records() -> None:
             place_id="PID1",
             name="Starbucks",
             address="123 Main St",
-            phone="111-222-3333",
-        ),
+            phone="111-222-3333"),
         _build_metadata(
             2,
             place_id="PID1",
             name="Starbucks Coffee",
             address="123 Main Street",
-            phone="1112223333",
-        ),
+            phone="1112223333"),
         _build_metadata(
             3,
             name="Starbucks Coffee",
             address="123 Main St.",
-            phone="111 222 3333",
-        ),
+            phone="111 222 3333"),
         _build_metadata(
             4,
             name="Dunkin",
             address="456 Elm St",
-            phone="444-555-6666",
-        ),
+            phone="444-555-6666"),
         _build_metadata(
             5,
             name="Dunkin Donuts",
             address="456 Elm Street",
-            phone="4445556666",
-        ),
+            phone="4445556666"),
     ]
 
     clusters = cluster_by_metadata(records)
@@ -152,15 +145,13 @@ def test_cluster_by_place_id_takes_precedence() -> None:
             place_id="SAME_PLACE_ID",
             name="Different Name 1",
             address="Different Address 1",
-            phone="111-111-1111",
-        ),
+            phone="111-111-1111"),
         _build_metadata(
             2,
             place_id="SAME_PLACE_ID",
             name="Different Name 2",
             address="Different Address 2",
-            phone="222-222-2222",
-        ),
+            phone="222-222-2222"),
     ]
 
     clusters = cluster_by_metadata(records)
@@ -179,8 +170,7 @@ def test_cluster_partial_similarity() -> None:
             1,
             name="Walmart Supercenter",
             address="1234 Market Street",
-            phone="555-1234",
-        ),
+            phone="555-1234"),
         _build_metadata(
             2,
             name="Walmart",
@@ -315,8 +305,7 @@ def test_cluster_large_dataset_performance() -> None:
                 i + 1,
                 name="Starbucks" if i % 2 == 0 else "Starbucks Coffee",
                 address=starbucks_addresses[i],
-                phone=starbucks_phones[i],
-            )
+                phone=starbucks_phones[i])
         )
 
     # Group 2: McDonald's variations (5 records)
@@ -326,8 +315,7 @@ def test_cluster_large_dataset_performance() -> None:
                 i + 6,
                 name="McDonald's" if i % 2 == 0 else "McDonalds",
                 address=f"200 Oak Ave{' #' + str(i) if i > 0 else ''}",
-                phone="925-555-0002",
-            )
+                phone="925-555-0002")
         )
 
     # Group 3: Target variations (5 records)
@@ -337,8 +325,7 @@ def test_cluster_large_dataset_performance() -> None:
                 i + 11,
                 name="Target",
                 address=f"300 Pine Blvd{' Suite ' + str(i) if i > 0 else ''}",
-                phone="510-555-0003",
-            )
+                phone="510-555-0003")
         )
 
     # Add 5 more distinct single-record merchants

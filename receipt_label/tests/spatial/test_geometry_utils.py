@@ -17,8 +17,7 @@ from receipt_label.spatial.geometry_utils import (
     RowGrouper,
     SpatialLine,
     SpatialRow,
-    SpatialWord,
-)
+    SpatialWord)
 from receipt_label.pattern_detection.base import PatternMatch, PatternType
 
 
@@ -35,8 +34,7 @@ def create_receipt_word(
     bottom_right: dict = None,
     angle_degrees: float = 0.0,
     angle_radians: float = 0.0,
-    confidence: float = 0.9,
-) -> ReceiptWord:
+    confidence: float = 0.9) -> ReceiptWord:
     """Helper function to create ReceiptWord objects for testing."""
     if bounding_box is None:
         bounding_box = {"x": 0.1, "y": 0.1, "width": 0.15, "height": 0.02}
@@ -71,8 +69,7 @@ def create_receipt_word(
         bottom_left=bottom_left,
         angle_degrees=angle_degrees,
         angle_radians=angle_radians,
-        confidence=confidence,
-    )
+        confidence=confidence)
 
 
 class TestSpatialWord:
@@ -83,8 +80,7 @@ class TestSpatialWord:
         """Create a sample ReceiptWord for testing."""
         return create_receipt_word(
             text="Big Mac",
-            bounding_box={"x": 0.1, "y": 0.1, "width": 0.15, "height": 0.02},
-        )
+            bounding_box={"x": 0.1, "y": 0.1, "width": 0.15, "height": 0.02})
 
     @pytest.mark.unit
     def test_spatial_word_creation(self, sample_word):
@@ -126,8 +122,7 @@ class TestSpatialWord:
                 "height": 0.02,
             },  # Slightly different Y
             top_left={"x": 0.8, "y": 0.105},
-            bottom_right={"x": 0.86, "y": 0.125},
-        )
+            bottom_right={"x": 0.86, "y": 0.125})
         spatial_word2 = SpatialWord(word2)
 
         # Should be on same line (within tolerance)
@@ -145,8 +140,7 @@ class TestSpatialWord:
                 "height": 0.02,
             },  # Much different Y
             top_left={"x": 0.8, "y": 0.15},
-            bottom_right={"x": 0.86, "y": 0.17},
-        )
+            bottom_right={"x": 0.86, "y": 0.17})
         spatial_word3 = SpatialWord(word3)
 
         # Should not be on same line with strict tolerance
@@ -169,8 +163,7 @@ class TestSpatialWord:
             text="5.99",
             bounding_box={"x": 0.8, "y": 0.1, "width": 0.06, "height": 0.02},
             top_left={"x": 0.8, "y": 0.1},
-            bottom_right={"x": 0.86, "y": 0.12},
-        )
+            bottom_right={"x": 0.86, "y": 0.12})
         spatial_word2 = SpatialWord(word2)
 
         distance = spatial_word1.get_horizontal_distance_to(spatial_word2)
@@ -200,8 +193,7 @@ class TestSpatialWord:
                 },
                 top_left={"x": 0.105, "y": 0.1 + i * 0.03},
                 bottom_right={"x": 0.225, "y": 0.12 + i * 0.03},
-                confidence=0.9,
-            )
+                confidence=0.9)
             aligned_words.append(SpatialWord(word))
 
         # Should detect left alignment
@@ -220,8 +212,7 @@ class TestSpatialWord:
             bounding_box={"x": 0.8, "y": 0.1, "width": 0.06, "height": 0.02},
             top_left={"x": 0.8, "y": 0.1},
             bottom_right={"x": 0.86, "y": 0.12},
-            confidence=0.9,
-        )
+            confidence=0.9)
         spatial_word = SpatialWord(word)
 
         # Create other words with similar right alignment
@@ -241,8 +232,7 @@ class TestSpatialWord:
                 },
                 top_left={"x": 0.8, "y": 0.1 + i * 0.03},
                 bottom_right={"x": 0.86, "y": 0.12 + i * 0.03},
-                confidence=0.9,
-            )
+                confidence=0.9)
             aligned_words.append(SpatialWord(aligned_word))
 
         # Should detect right alignment
@@ -270,8 +260,7 @@ class TestSpatialWord:
                 },
                 top_left={"x": x_pos, "y": 0.1},
                 bottom_right={"x": x_pos + 0.05, "y": 0.12},
-                confidence=0.9,
-            )
+                confidence=0.9)
             line_words.append(SpatialWord(word))
 
         # First word should be at position 0.0 (leftmost)
@@ -295,8 +284,7 @@ class TestSpatialWord:
             bounding_box={"x": 0.8, "y": 0.1, "width": 0.06, "height": 0.02},
             top_left={"x": 0.8, "y": 0.1},
             bottom_right={"x": 0.86, "y": 0.12},
-            confidence=0.9,
-        )
+            confidence=0.9)
 
         # Create pattern match for currency word
         currency_pattern_match = PatternMatch(
@@ -305,8 +293,7 @@ class TestSpatialWord:
             confidence=0.95,
             matched_text="5.99",
             extracted_value=5.99,
-            metadata={},
-        )
+            metadata={})
 
         spatial_word = SpatialWord(currency_word, currency_pattern_match)
         assert spatial_word.is_currency_word()
@@ -321,8 +308,7 @@ class TestSpatialWord:
             bounding_box={"x": 0.1, "y": 0.1, "width": 0.15, "height": 0.02},
             top_left={"x": 0.1, "y": 0.1},
             bottom_right={"x": 0.25, "y": 0.12},
-            confidence=0.9,
-        )
+            confidence=0.9)
         spatial_word_text = SpatialWord(text_word)  # No pattern match
 
         assert not spatial_word_text.is_currency_word()
@@ -340,8 +326,7 @@ class TestSpatialWord:
             bounding_box={"x": 0.5, "y": 0.1, "width": 0.04, "height": 0.02},
             top_left={"x": 0.5, "y": 0.1},
             bottom_right={"x": 0.54, "y": 0.12},
-            confidence=0.9,
-        )
+            confidence=0.9)
 
         # Create pattern match for quantity word
         quantity_pattern_match = PatternMatch(
@@ -350,8 +335,7 @@ class TestSpatialWord:
             confidence=0.9,
             matched_text="2x",
             extracted_value=2,
-            metadata={},
-        )
+            metadata={})
 
         spatial_word = SpatialWord(quantity_word, quantity_pattern_match)
         assert spatial_word.is_quantity_word()
@@ -366,8 +350,7 @@ class TestSpatialWord:
             bounding_box={"x": 0.1, "y": 0.1, "width": 0.05, "height": 0.02},
             top_left={"x": 0.1, "y": 0.1},
             bottom_right={"x": 0.15, "y": 0.12},
-            confidence=0.9,
-        )
+            confidence=0.9)
         spatial_word_no_qty = SpatialWord(
             non_quantity_word
         )  # No pattern match
@@ -403,8 +386,7 @@ class TestSpatialLine:
                 },
                 top_left={"x": x, "y": 0.1},
                 bottom_right={"x": x + width, "y": 0.12},
-                confidence=0.9,
-            )
+                confidence=0.9)
             words.append(word)
 
         return words
@@ -422,8 +404,7 @@ class TestSpatialLine:
                 confidence=0.9,
                 matched_text="2x",
                 extracted_value=2,
-                metadata={},
-            )
+                metadata={})
         )
 
         # "5.99" is a currency pattern
@@ -434,8 +415,7 @@ class TestSpatialLine:
                 confidence=0.95,
                 matched_text="5.99",
                 extracted_value=5.99,
-                metadata={},
-            )
+                metadata={})
         )
 
         return matches
@@ -607,8 +587,7 @@ class TestRowGrouper:
                 bounding_box={"x": x, "y": y, "width": 0.05, "height": 0.02},
                 top_left={"x": x, "y": y},
                 bottom_right={"x": x + 0.05, "y": y + 0.02},
-                confidence=0.9,
-            )
+                confidence=0.9)
             words.append(word)
 
         return words
@@ -697,16 +676,14 @@ class TestColumnDetector:
                     },
                     top_left={"x": x, "y": 0.1 + row_idx * 0.05},
                     bottom_right={"x": x + 0.05, "y": 0.12 + row_idx * 0.05},
-                    confidence=0.9,
-                )
+                    confidence=0.9)
                 words.append(word)
 
             row = SpatialRow(
                 y_position=0.1 + row_idx * 0.05,
                 height=0.02,
                 words=words,
-                columns={},
-            )
+                columns={})
             rows.append(row)
 
         return rows
@@ -791,8 +768,7 @@ class TestLineItemSpatialDetector:
                     },
                     top_left={"x": item_x, "y": item_y},
                     bottom_right={"x": item_x + 0.1, "y": item_y + 0.02},
-                    confidence=0.9,
-                )
+                    confidence=0.9)
             )
             word_id += 1
 
@@ -812,8 +788,7 @@ class TestLineItemSpatialDetector:
                     },
                     top_left={"x": price_x, "y": price_y},
                     bottom_right={"x": price_x + 0.06, "y": price_y + 0.02},
-                    confidence=0.9,
-                )
+                    confidence=0.9)
             )
             word_id += 1
 

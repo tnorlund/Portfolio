@@ -63,8 +63,7 @@ class TestPerformanceTarget:
                 bottom_right={"x": (i % 5) * 60 + 50, "y": (i // 5) * 20 + 20},
                 angle_degrees=0.0,
                 angle_radians=0.0,
-                confidence=0.95,
-            )
+                confidence=0.95)
             words.append(word)
 
         return words
@@ -199,8 +198,7 @@ class TestPerformanceTarget:
                 ContactPatternDetector,
                 CurrencyPatternDetector,
                 DateTimePatternDetector,
-                QuantityPatternDetector,
-            )
+                QuantityPatternDetector)
 
             detectors = [
                 CurrencyPatternDetector(),

@@ -3,8 +3,7 @@
 import pytest
 
 from receipt_label.pattern_detection.datetime_patterns import (
-    DateTimePatternDetector,
-)
+    DateTimePatternDetector)
 from tests.markers import unit, fast, pattern_detection
 from tests.helpers import create_test_receipt_word
 
@@ -30,8 +29,7 @@ class TestDateTimePatternDetector:
                 "2023-12-25",
                 True,
                 "DATE",
-                0.40,
-            ),  # ISO format - highest confidence
+                0.40),  # ISO format - highest confidence
             ("Dec 25, 2023", True, "DATE", 0.35),
             ("December 25, 2023", True, "DATE", 0.30),
             ("25/12/2023", True, "DATE", 0.35),  # European format
@@ -61,8 +59,7 @@ class TestDateTimePatternDetector:
             ("12", False, None, 0.0),  # Number only
             ("", False, None, 0.0),  # Empty
             ("abc/def/ghi", False, None, 0.0),  # Non-numeric
-        ],
-    )
+        ])
     async def test_datetime_pattern_detection(
         self, detector, text, expected_match, expected_label, min_confidence
     ):
@@ -75,8 +72,7 @@ class TestDateTimePatternDetector:
             x1=100,
             y1=100,
             x2=200,
-            y2=120,
-        )
+            y2=120)
 
         results = await detector.detect([word])
 
@@ -120,8 +116,7 @@ class TestDateTimePatternDetector:
                 x1=100,
                 y1=100,
                 x2=200,
-                y2=120,
-            )
+                y2=120)
 
             results = await detector.detect([word])
             assert (
@@ -158,8 +153,7 @@ class TestDateTimePatternDetector:
                 x1=100,
                 y1=100,
                 x2=200,
-                y2=120,
-            )
+                y2=120)
 
             results = await detector.detect([word])
             assert len(results) > 0, f"Failed to detect: {text}"
@@ -205,8 +199,7 @@ class TestDateTimePatternDetector:
                 x1=100,
                 y1=100,
                 x2=200,
-                y2=120,
-            )
+                y2=120)
 
             results = await detector.detect([word])
             assert len(results) > 0, f"Should detect valid time format: {text}"
@@ -224,8 +217,7 @@ class TestDateTimePatternDetector:
                 x1=100,
                 y1=100,
                 x2=200,
-                y2=120,
-            )
+                y2=120)
 
             results = await detector.detect([word])
             assert (
@@ -258,8 +250,7 @@ class TestDateTimePatternDetector:
                     x1=100,
                     y1=100 + i * 10,
                     x2=200,
-                    y2=120 + i * 10,
-                )
+                    y2=120 + i * 10)
             )
 
         import time  # pylint: disable=import-outside-toplevel
@@ -307,8 +298,7 @@ class TestDateTimePatternDetector:
                 x1=100,
                 y1=100,
                 x2=200,
-                y2=120,
-            )
+                y2=120)
 
             results = await detector.detect([word])
 
@@ -351,8 +341,7 @@ class TestDateTimePatternDetector:
                 x1=100,
                 y1=100,
                 x2=200,
-                y2=120,
-            )
+                y2=120)
 
             results = await detector.detect([word])
 
@@ -401,8 +390,7 @@ class TestDateTimePatternDetector:
             ("2:30 PM", "TIME"),
             (
                 "2023-12-25T14:30:00",
-                "DATE",
-            ),  # Detector returns DATE for datetime
+                "DATE"),  # Detector returns DATE for datetime
         ]
 
         for text, expected_type in test_cases:
@@ -414,8 +402,7 @@ class TestDateTimePatternDetector:
                 x1=100,
                 y1=100,
                 x2=200,
-                y2=120,
-            )
+                y2=120)
 
             results = await detector.detect([word])
             assert len(results) > 0
