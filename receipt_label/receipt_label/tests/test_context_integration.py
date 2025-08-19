@@ -15,7 +15,8 @@ from receipt_label.utils import (
     ClientConfig,
     ClientManager,
     ai_usage_context,
-    ai_usage_tracked)
+    ai_usage_tracked,
+)
 
 
 class TestContextIntegration:
@@ -31,16 +32,17 @@ class TestContextIntegration:
                     finish_reason="stop",
                     index=0,
                     message=ChatCompletionMessage(
-                        content="Test response",
-                        role="assistant"))
+                        content="Test response", role="assistant"
+                    ),
+                )
             ],
             created=1234567890,
             model="gpt-3.5-turbo",
             object="chat.completion",
             usage=CompletionUsage(
-                prompt_tokens=50,
-                completion_tokens=25,
-                total_tokens=75))
+                prompt_tokens=50, completion_tokens=25, total_tokens=75
+            ),
+        )
 
     @pytest.fixture
     def mock_dynamo_client(self):
@@ -70,14 +72,17 @@ class TestContextIntegration:
             pinecone_index_name="test-index",
             pinecone_host="test.pinecone.io",
             track_usage=True,
-            user_id="test-user")
+            user_id="test-user",
+        )
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
-            return_value=mock_dynamo_client):
+            return_value=mock_dynamo_client,
+        ):
             with patch(
                 "receipt_label.utils.client_manager.OpenAI",
-                return_value=mock_openai):
+                return_value=mock_openai,
+            ):
                 manager = ClientManager(config)
 
                 # Use context manager
@@ -85,12 +90,14 @@ class TestContextIntegration:
                     "test_operation",
                     job_id="job-123",
                     batch_id="batch-456",
-                    custom_field="custom_value"):
+                    custom_field="custom_value",
+                ):
                     # Make API call through wrapped client
                     openai_client = manager.openai
                     response = openai_client.chat.completions.create(
                         model="gpt-3.5-turbo",
-                        messages=[{"role": "user", "content": "Hello"}])
+                        messages=[{"role": "user", "content": "Hello"}],
+                    )
 
                     # Verify response
                     assert (
@@ -122,14 +129,17 @@ class TestContextIntegration:
             pinecone_api_key="test-key",
             pinecone_index_name="test-index",
             pinecone_host="test.pinecone.io",
-            track_usage=True)
+            track_usage=True,
+        )
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
-            return_value=mock_dynamo_client):
+            return_value=mock_dynamo_client,
+        ):
             with patch(
                 "receipt_label.utils.client_manager.OpenAI",
-                return_value=mock_openai):
+                return_value=mock_openai,
+            ):
                 manager = ClientManager(config)
 
                 @ai_usage_tracked(
@@ -139,7 +149,8 @@ class TestContextIntegration:
                     openai_client = manager.openai
                     return openai_client.chat.completions.create(
                         model="gpt-3.5-turbo",
-                        messages=[{"role": "user", "content": text}])
+                        messages=[{"role": "user", "content": text}],
+                    )
 
                 # Call decorated function
                 process_with_ai("Test input")
@@ -177,14 +188,17 @@ class TestContextIntegration:
             pinecone_api_key="test-key",
             pinecone_index_name="test-index",
             pinecone_host="test.pinecone.io",
-            track_usage=True)
+            track_usage=True,
+        )
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
-            return_value=mock_dynamo_client):
+            return_value=mock_dynamo_client,
+        ):
             with patch(
                 "receipt_label.utils.client_manager.OpenAI",
-                return_value=mock_openai):
+                return_value=mock_openai,
+            ):
                 manager = ClientManager(config)
 
                 # Nested contexts
@@ -194,13 +208,15 @@ class TestContextIntegration:
                     # First call in outer context
                     openai_client.chat.completions.create(
                         model="gpt-3.5-turbo",
-                        messages=[{"role": "user", "content": "Outer"}])
+                        messages=[{"role": "user", "content": "Outer"}],
+                    )
 
                     with ai_usage_context("inner_op", job_id="job-inner"):
                         # Second call in inner context
                         openai_client.chat.completions.create(
                             model="gpt-3.5-turbo",
-                            messages=[{"role": "user", "content": "Inner"}])
+                            messages=[{"role": "user", "content": "Inner"}],
+                        )
 
                 # Verify both calls were made without metadata
                 assert call_count == 2
@@ -224,14 +240,17 @@ class TestContextIntegration:
             pinecone_api_key="test-key",
             pinecone_index_name="test-index",
             pinecone_host="test.pinecone.io",
-            track_usage=True)
+            track_usage=True,
+        )
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
-            return_value=mock_dynamo_client):
+            return_value=mock_dynamo_client,
+        ):
             with patch(
                 "receipt_label.utils.client_manager.OpenAI",
-                return_value=mock_openai):
+                return_value=mock_openai,
+            ):
                 manager = ClientManager(config)
 
                 @ai_usage_tracked
@@ -241,7 +260,8 @@ class TestContextIntegration:
                     openai_client = manager.openai
                     return openai_client.chat.completions.create(
                         model="gpt-3.5-turbo",
-                        messages=[{"role": "user", "content": text}])
+                        messages=[{"role": "user", "content": text}],
+                    )
 
                 # Call with runtime context
                 process_with_context(
