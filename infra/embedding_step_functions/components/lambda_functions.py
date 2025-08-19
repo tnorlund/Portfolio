@@ -321,7 +321,6 @@ class LambdaFunctionsComponent(ComponentResource):
         if config["handler_type"] == "compaction":
             env_vars.update(
                 {
-                    "CHUNK_SIZE": "10",
                     "HEARTBEAT_INTERVAL_SECONDS": "60",
                     "LOCK_DURATION_MINUTES": "5",
                     "DELETE_PROCESSED_DELTAS": "false",

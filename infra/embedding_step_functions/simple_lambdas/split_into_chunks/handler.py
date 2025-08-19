@@ -1,10 +1,10 @@
 """Lambda handler for splitting delta results into chunks.
 
-This function takes a list of delta results and splits them into chunks
-for efficient parallel processing by the compaction Lambda.
+This function takes a list of delta results and splits them into dynamically-sized
+chunks for efficient parallel processing by the compaction Lambda.
 
-Memory optimization: Uses smaller chunks for word embeddings which typically
-consume more memory than line embeddings.
+Memory optimization: Uses smaller chunks (5) for word embeddings which typically
+consume more memory than line embeddings (10).
 """
 
 import logging

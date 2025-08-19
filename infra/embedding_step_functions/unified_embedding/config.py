@@ -40,7 +40,6 @@ LAMBDA_CONFIGS = {
         "env_vars": {
             "HANDLER_TYPE": "compaction",
             "CHROMA_PERSIST_DIRECTORY": "/tmp/chroma",
-            "CHUNK_SIZE": "10",
             "HEARTBEAT_INTERVAL_SECONDS": "60",
             "LOCK_DURATION_MINUTES": "5",
             "DELETE_PROCESSED_DELTAS": "false",

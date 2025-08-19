@@ -205,15 +205,15 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             "message": "Empty chunk processed",
         }
 
-    # With Map state, each chunk should already be limited to 10 deltas
-    # But we'll enforce the limit here as a safety measure
-    chunk_deltas = delta_results[:10]
-    if len(delta_results) > 10:
-        logger.warning(
-            "Chunk %d has %d deltas, expected max 10. Processing first 10.",
-            chunk_index,
-            len(delta_results),
-        )
+    # Process all deltas provided in this chunk
+    # The split_into_chunks handler already applies appropriate limits
+    chunk_deltas = delta_results
+    
+    logger.info(
+        "Chunk %d contains %d deltas to process",
+        chunk_index,
+        len(delta_results),
+    )
 
     # Group chunk deltas by collection name for collection-aware processing
     deltas_by_collection: dict[str, list] = {}
