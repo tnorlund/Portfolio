@@ -9,7 +9,6 @@ This module provides a simplified interface to ChromaDB with support for:
 
 import logging
 import os
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 try:
@@ -64,8 +63,13 @@ class ChromaDBClient:
         # Only set embedding function if in write mode
         if mode == "write" and embedding_function is None:
             # Default to OpenAI for backward compatibility
+            api_key = os.environ.get("OPENAI_API_KEY")
+            if not api_key:
+                raise RuntimeError(
+                    "OPENAI_API_KEY must be set when using default OpenAI embeddings in write mode"
+                )
             self._embedding_function = embedding_functions.OpenAIEmbeddingFunction(
-                api_key=os.environ.get("OPENAI_API_KEY"),
+                api_key=api_key,
                 model_name="text-embedding-3-small",
             )
         else:
@@ -131,7 +135,7 @@ class ChromaDBClient:
                     )
                     logger.info(f"Created new collection: {name}")
                 else:
-                    raise ValueError(f"Collection '{name}' not found. Error: {e}")
+                    raise ValueError(f"Collection '{name}' not found. Error: {e}") from e
         
         return self._collections[name]
 

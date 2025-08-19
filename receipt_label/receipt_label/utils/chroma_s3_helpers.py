@@ -100,6 +100,11 @@ def produce_embedding_delta(
         logger.info(f"Delta directory created at: {delta_dir}")
 
         # Create ChromaDB client in delta mode
+        if not CHROMADB_AVAILABLE:
+            raise RuntimeError(
+                "ChromaDB is not available. Install with: pip install chromadb"
+            )
+        
         # If database_name is provided, use no prefix (database is already specific)
         # Otherwise, use default "receipts" prefix for backward compatibility
         if database_name:

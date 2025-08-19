@@ -579,17 +579,13 @@ class _ReceiptWord(
                 f" Got: {status_str}"
             )
 
-        try:
-            results, _ = self._query_entities(
-                index_name="GSI1",
-                key_condition_expression="#gsi1pk = :status",
-                expression_attribute_names={"#gsi1pk": "GSI1PK"},
-                expression_attribute_values={
-                    ":status": {"S": f"EMBEDDING_STATUS#{status_str}"}
-                },
-                converter_func=item_to_receipt_word,
-            )
-            return results
-        except Exception as e:
-            # Re-raise with more context
-            raise RuntimeError(f"Unexpected error during list_receipt_words_by_embedding_status: {str(e)}") from e
+        results, _ = self._query_entities(
+            index_name="GSI1",
+            key_condition_expression="#gsi1pk = :status",
+            expression_attribute_names={"#gsi1pk": "GSI1PK"},
+            expression_attribute_values={
+                ":status": {"S": f"EMBEDDING_STATUS#{status_str}"}
+            },
+            converter_func=item_to_receipt_word,
+        )
+        return results

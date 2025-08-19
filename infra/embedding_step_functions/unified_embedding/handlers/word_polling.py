@@ -67,24 +67,24 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         client_manager=client_manager,
     )
 
-    # Get configuration from environment (needed for all paths)
-    bucket_name = os.environ.get("CHROMADB_BUCKET")
-    if not bucket_name:
-        raise ValueError("CHROMADB_BUCKET environment variable not set")
-
-    # Determine SQS queue URL based on skip_sqs flag
-    if skip_sqs:
-        logger.info("Skipping SQS notification for this delta")
-        sqs_queue_url = None
-    else:
-        sqs_queue_url = os.environ.get("COMPACTION_QUEUE_URL")
-        logger.info("Will send SQS notification to: %s", sqs_queue_url)
-
     # Process based on the action determined by status handler
     if (
         status_result["action"] == "process_results"
         and batch_status == "completed"
     ):
+        # Get configuration from environment (only needed when processing results)
+        bucket_name = os.environ.get("CHROMADB_BUCKET")
+        if not bucket_name:
+            raise ValueError("CHROMADB_BUCKET environment variable not set")
+
+        # Determine SQS queue URL based on skip_sqs flag
+        if skip_sqs:
+            logger.info("Skipping SQS notification for this delta")
+            sqs_queue_url = None
+        else:
+            sqs_queue_url = os.environ.get("COMPACTION_QUEUE_URL")
+            logger.info("Will send SQS notification to: %s", sqs_queue_url)
+
         # Download the batch results
         results = download_openai_batch_result(openai_batch_id)
         logger.info("Downloaded %s embedding results", len(results))
@@ -129,6 +129,19 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         status_result["action"] == "process_partial"
         and batch_status == "expired"
     ):
+        # Get configuration from environment (only needed when processing results)
+        bucket_name = os.environ.get("CHROMADB_BUCKET")
+        if not bucket_name:
+            raise ValueError("CHROMADB_BUCKET environment variable not set")
+
+        # Determine SQS queue URL based on skip_sqs flag
+        if skip_sqs:
+            logger.info("Skipping SQS notification for this delta")
+            sqs_queue_url = None
+        else:
+            sqs_queue_url = os.environ.get("COMPACTION_QUEUE_URL")
+            logger.info("Will send SQS notification to: %s", sqs_queue_url)
+
         # Handle expired batch with partial results
         partial_results = status_result.get("partial_results", [])
         failed_ids = status_result.get("failed_ids", [])

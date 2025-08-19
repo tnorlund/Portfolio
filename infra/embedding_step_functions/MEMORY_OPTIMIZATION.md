@@ -250,14 +250,11 @@ def log_memory_usage(stage: str):
 ### 3. ChromaDB Configuration
 ```python
 # Configure ChromaDB for lower memory usage
+# Note: ChromaDB v0.5+ uses different settings than earlier versions
 chroma_client = chromadb.PersistentClient(
     path=temp_dir,
-    settings=Settings(
-        anonymized_telemetry=False,
-        persist_directory=temp_dir,
-        # Reduce cache sizes
-        chroma_cache_size=100,  # Reduced from default
-    )
+    # ChromaDB v0.5+ automatically manages memory internally
+    # No manual cache configuration needed
 )
 ```
 
