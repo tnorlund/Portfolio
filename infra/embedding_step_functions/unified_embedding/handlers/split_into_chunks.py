@@ -4,7 +4,7 @@ NOTE: This handler is part of the unified Docker container but is NOT currently 
 The active split_into_chunks handler is in simple_lambdas/split_into_chunks/handler.py
 which uses dynamic chunk sizing (5 for words, 10 for lines).
 
-This handler takes a list of delta results and splits them into chunks of 10
+This handler takes a list of delta results and splits them into chunks of 25
 for efficient parallel processing by the compaction Lambda.
 """
 

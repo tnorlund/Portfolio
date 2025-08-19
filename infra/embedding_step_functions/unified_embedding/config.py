@@ -35,7 +35,7 @@ LAMBDA_CONFIGS = {
         "name": "compact",
         "memory": 4096,
         "timeout": 900,
-        "ephemeral_storage": 5120,
+        "ephemeral_storage": 10240,
         "description": "Compact ChromaDB deltas into snapshots",
         "env_vars": {
             "HANDLER_TYPE": "compaction",
