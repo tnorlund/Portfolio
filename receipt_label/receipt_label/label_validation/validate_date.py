@@ -180,7 +180,7 @@ def validate_date(
     vector = vector_data["values"]
 
     # Query ChromaDB for similar vectors
-    query_results = chroma_client.query_collection(
+    query_results = chroma_client.query(
         collection_name="words",
         query_embeddings=[vector],
         n_results=10,

@@ -98,7 +98,12 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         logger.info("Retrieved details for %s receipts", len(descriptions))
 
         delta_result = save_line_embeddings_as_delta(
-            results, descriptions, batch_id, bucket_name, sqs_queue_url, client_manager
+            results,
+            descriptions,
+            batch_id,
+            bucket_name,
+            sqs_queue_url,
+            client_manager,
         )
 
         # Check if delta creation failed

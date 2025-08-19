@@ -168,7 +168,7 @@ embedding_infrastructure = EmbeddingInfrastructure(
     "embedding-infra",
     base_images=base_images,
     chromadb_buckets=chromadb_storage,  # Pass shared ChromaDB buckets
-    chromadb_queues=chromadb_queues,    # Pass shared ChromaDB queues
+    chromadb_queues=chromadb_queues,  # Pass shared ChromaDB queues
 )
 
 # Create spot interruption handler
@@ -702,5 +702,11 @@ pulumi.export("chromadb_delta_queue_url", chromadb_queues.delta_queue_url)
 pulumi.export("chromadb_delta_queue_arn", chromadb_queues.delta_queue_arn)
 
 # Export the embedding infrastructure ChromaDB bucket (the one actually used!)
-pulumi.export("embedding_chromadb_bucket_name", embedding_infrastructure.chromadb_buckets.bucket_name)
-pulumi.export("embedding_chromadb_bucket_arn", embedding_infrastructure.chromadb_buckets.bucket_arn)
+pulumi.export(
+    "embedding_chromadb_bucket_name",
+    embedding_infrastructure.chromadb_buckets.bucket_name,
+)
+pulumi.export(
+    "embedding_chromadb_bucket_arn",
+    embedding_infrastructure.chromadb_buckets.bucket_arn,
+)

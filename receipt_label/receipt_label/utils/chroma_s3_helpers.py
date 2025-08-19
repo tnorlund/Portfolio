@@ -104,7 +104,7 @@ def produce_embedding_delta(
             raise RuntimeError(
                 "ChromaDB is not available. Install with: pip install chromadb"
             )
-        
+
         # If database_name is provided, use no prefix (database is already specific)
         # Otherwise, use default "receipts" prefix for backward compatibility
         if database_name:
@@ -143,7 +143,7 @@ def produce_embedding_delta(
 
         # Upload to S3 using the specified prefix
         # ChromaDB PersistentClient auto-persists, no manual persist needed
-        
+
         # Generate a unique delta ID
         delta_id = str(uuid.uuid4())
         s3_delta_key = f"{delta_prefix}{delta_id}/"

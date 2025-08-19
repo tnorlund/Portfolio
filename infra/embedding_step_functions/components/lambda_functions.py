@@ -224,7 +224,7 @@ class LambdaFunctionsComponent(ComponentResource):
                 "env_vars": {
                     "CHUNK_SIZE_WORDS": "5",  # Smaller chunks for word embeddings
                     "CHUNK_SIZE_LINES": "10",  # Standard chunks for line embeddings
-                }
+                },
             },
         }
 
@@ -248,7 +248,7 @@ class LambdaFunctionsComponent(ComponentResource):
             "OPENAI_API_KEY": openai_api_key,
             "S3_BUCKET": self.batch_bucket.bucket,
         }
-        
+
         # Add any custom environment variables from config
         if "env_vars" in config:
             env_vars.update(config["env_vars"])
