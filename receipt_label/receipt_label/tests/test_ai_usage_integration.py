@@ -36,7 +36,8 @@ from tests.utils.ai_usage_helpers import (
     create_mock_anthropic_response,
     create_mock_google_places_response,
     create_mock_openai_response,
-    create_test_tracking_context)
+    create_test_tracking_context,
+)
 
 
 @pytest.fixture
@@ -149,10 +150,12 @@ class TestAIUsageSystemIntegration:
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
-            return_value=mock_dynamo_with_data):
+            return_value=mock_dynamo_with_data,
+        ):
             with patch(
                 "receipt_label.utils.client_manager.OpenAI",
-                return_value=mock_openai):
+                return_value=mock_openai,
+            ):
                 manager = ClientManager(config)
 
                 # Track a job with multiple API calls
@@ -165,7 +168,8 @@ class TestAIUsageSystemIntegration:
                     model="gpt-3.5-turbo",
                     messages=[
                         {"role": "user", "content": "Analyze this receipt"}
-                    ])
+                    ],
+                )
 
                 # Make Anthropic call (would need anthropic wrapper in real implementation)
                 # For now, manually track it
@@ -180,9 +184,11 @@ class TestAIUsageSystemIntegration:
                     cost_usd=AICostCalculator.calculate_anthropic_cost(
                         model="claude-3-opus-20240229",
                         input_tokens=150,
-                        output_tokens=75),
+                        output_tokens=75,
+                    ),
                     job_id=job_id,
-                    user_id="integration-test-user")
+                    user_id="integration-test-user",
+                )
                 manager.usage_tracker._store_metric(anthropic_metric)
 
                 # Make Google Places call
@@ -196,7 +202,8 @@ class TestAIUsageSystemIntegration:
                     ),
                     api_calls=1,
                     job_id=job_id,
-                    user_id="integration-test-user")
+                    user_id="integration-test-user",
+                )
                 manager.usage_tracker._store_metric(places_metric)
 
                 # Verify all metrics were stored
@@ -249,8 +256,9 @@ class TestAIUsageSystemIntegration:
                         finish_reason="stop",
                         index=0,
                         message=ChatCompletionMessage(
-                            content=f"Batch response {i}",
-                            role="assistant"))
+                            content=f"Batch response {i}", role="assistant"
+                        ),
+                    )
                 ],
                 created=int(time.time()),
                 model="gpt-3.5-turbo",
@@ -258,17 +266,21 @@ class TestAIUsageSystemIntegration:
                 usage=CompletionUsage(
                     prompt_tokens=50 + i,
                     completion_tokens=25 + i,
-                    total_tokens=75 + i * 2))
+                    total_tokens=75 + i * 2,
+                ),
+            )
             batch_responses.append(response)
 
         mock_openai.chat.completions.create.side_effect = batch_responses
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
-            return_value=mock_dynamo_with_data):
+            return_value=mock_dynamo_with_data,
+        ):
             with patch(
                 "receipt_label.utils.client_manager.OpenAI",
-                return_value=mock_openai):
+                return_value=mock_openai,
+            ):
                 manager = ClientManager(config)
                 manager.set_tracking_context(batch_id=batch_id)
 
@@ -353,25 +365,28 @@ class TestAIUsageSystemIntegration:
                         finish_reason="stop",
                         index=0,
                         message=ChatCompletionMessage(
-                            content="Success",
-                            role="assistant"))
+                            content="Success", role="assistant"
+                        ),
+                    )
                 ],
                 created=int(time.time()),
                 model="gpt-3.5-turbo",
                 object="chat.completion",
                 usage=CompletionUsage(
-                    prompt_tokens=100,
-                    completion_tokens=50,
-                    total_tokens=150))
+                    prompt_tokens=100, completion_tokens=50, total_tokens=150
+                ),
+            )
 
         mock_openai.chat.completions.create.side_effect = mock_api_call
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
-            return_value=mock_dynamo_with_data):
+            return_value=mock_dynamo_with_data,
+        ):
             with patch(
                 "receipt_label.utils.client_manager.OpenAI",
-                return_value=mock_openai):
+                return_value=mock_openai,
+            ):
                 manager = ClientManager(config)
 
                 success_count = 0
@@ -386,7 +401,8 @@ class TestAIUsageSystemIntegration:
                                 model="gpt-3.5-turbo",
                                 messages=[
                                     {"role": "user", "content": f"Request {i}"}
-                                ])
+                                ],
+                            )
                             success_count += 1
                             break
                         except Exception as e:
@@ -443,7 +459,9 @@ class TestAIUsageSystemIntegration:
                             index=0,
                             message=ChatCompletionMessage(
                                 content=f"Response {response_count['count']}",
-                                role="assistant"))
+                                role="assistant",
+                            ),
+                        )
                     ],
                     created=int(time.time()),
                     model="gpt-3.5-turbo",
@@ -451,7 +469,9 @@ class TestAIUsageSystemIntegration:
                     usage=CompletionUsage(
                         prompt_tokens=100,
                         completion_tokens=50,
-                        total_tokens=150))
+                        total_tokens=150,
+                    ),
+                )
 
         mock_openai.chat.completions.create.side_effect = (
             lambda *args, **kwargs: create_response()
@@ -459,10 +479,12 @@ class TestAIUsageSystemIntegration:
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
-            return_value=mock_dynamo_with_data):
+            return_value=mock_dynamo_with_data,
+        ):
             with patch(
                 "receipt_label.utils.client_manager.OpenAI",
-                return_value=mock_openai):
+                return_value=mock_openai,
+            ):
 
                 def process_batch(batch_id: str, num_items: int):
                     """Process a batch of items."""
@@ -479,7 +501,8 @@ class TestAIUsageSystemIntegration:
                                     "role": "user",
                                     "content": f"Batch {batch_id} item {i}",
                                 }
-                            ])
+                            ],
+                        )
 
                     return batch_id
 
@@ -566,8 +589,9 @@ class TestAIUsageSystemIntegration:
                         finish_reason="stop",
                         index=0,
                         message=ChatCompletionMessage(
-                            content="Expensive response",
-                            role="assistant"))
+                            content="Expensive response", role="assistant"
+                        ),
+                    )
                 ],
                 created=int(time.time()),
                 model="gpt-4",  # More expensive model
@@ -575,7 +599,9 @@ class TestAIUsageSystemIntegration:
                 usage=CompletionUsage(
                     prompt_tokens=1000,  # Large request
                     completion_tokens=500,
-                    total_tokens=1500))
+                    total_tokens=1500,
+                ),
+            )
             expensive_responses.append(response)
 
         mock_openai.chat.completions.create.side_effect = expensive_responses
@@ -589,10 +615,12 @@ class TestAIUsageSystemIntegration:
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
-            return_value=mock_dynamo_with_data):
+            return_value=mock_dynamo_with_data,
+        ):
             with patch(
                 "receipt_label.utils.client_manager.OpenAI",
-                return_value=mock_openai):
+                return_value=mock_openai,
+            ):
                 with patch.object(
                     AIUsageTracker, "_store_metric", store_with_threshold_check
                 ):
@@ -609,7 +637,8 @@ class TestAIUsageSystemIntegration:
                                         "role": "user",
                                         "content": "Expensive request",
                                     }
-                                ])
+                                ],
+                            )
                         except:
                             pass  # Continue even if we hit limits
 
@@ -661,18 +690,20 @@ class TestAIUsageSystemIntegration:
         for i in range(20):
             responses.append(
                 create_mock_openai_response(
-                    prompt_tokens=100 + i,
-                    completion_tokens=50 + i)
+                    prompt_tokens=100 + i, completion_tokens=50 + i
+                )
             )
 
         mock_openai.chat.completions.create.side_effect = responses
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
-            return_value=mock_dynamo_with_data):
+            return_value=mock_dynamo_with_data,
+        ):
             with patch(
                 "receipt_label.utils.client_manager.OpenAI",
-                return_value=mock_openai):
+                return_value=mock_openai,
+            ):
                 manager = ClientManager(config)
 
                 # Track successful API calls vs stored metrics
@@ -685,7 +716,8 @@ class TestAIUsageSystemIntegration:
                             model="gpt-3.5-turbo",
                             messages=[
                                 {"role": "user", "content": f"Request {i}"}
-                            ])
+                            ],
+                        )
                         api_call_count += 1
                     except:
                         pass  # API call succeeded but metric storage might fail
@@ -722,20 +754,22 @@ class TestAIUsageSystemIntegration:
                         finish_reason="stop",
                         index=0,
                         message=ChatCompletionMessage(
-                            content=f"Async response {i}",
-                            role="assistant"))
+                            content=f"Async response {i}", role="assistant"
+                        ),
+                    )
                 ],
                 created=int(time.time()),
                 model="gpt-3.5-turbo",
                 object="chat.completion",
                 usage=CompletionUsage(
-                    prompt_tokens=100,
-                    completion_tokens=50,
-                    total_tokens=150))
+                    prompt_tokens=100, completion_tokens=50, total_tokens=150
+                ),
+            )
 
         with patch(
             "receipt_label.utils.client_manager.DynamoClient",
-            return_value=mock_dynamo_with_data):
+            return_value=mock_dynamo_with_data,
+        ):
             manager = ClientManager(config)
 
             async def process_async_batch():
@@ -763,10 +797,12 @@ class TestAIUsageSystemIntegration:
                         cost_usd=AICostCalculator.calculate_openai_cost(
                             model="gpt-3.5-turbo",
                             input_tokens=100,
-                            output_tokens=50),
+                            output_tokens=50,
+                        ),
                         latency_ms=10,  # Async is fast!
                         user_id="async-test-user",
-                        metadata={"async": True, "batch_index": i})
+                        metadata={"async": True, "batch_index": i},
+                    )
                     manager.usage_tracker._store_metric(metric)
 
                 return len(responses)

@@ -85,5 +85,6 @@ class TestEnvironmentVariableMigration:
         with patch.dict(os.environ, env_vars, clear=True):
             with pytest.raises(
                 KeyError,
-                match="Either DYNAMODB_TABLE_NAME or DYNAMO_TABLE_NAME must be set"):
+                match="Either DYNAMODB_TABLE_NAME or DYNAMO_TABLE_NAME must be set",
+            ):
                 ClientConfig.from_env()

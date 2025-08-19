@@ -17,7 +17,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 from tests.utils.ai_usage_helpers import (
     create_mock_openai_response,
-    create_test_tracking_context)
+    create_test_tracking_context,
+)
 
 
 @pytest.mark.unit
@@ -95,7 +96,8 @@ class TestWrappedChatCompletions:
             prompt_tokens=150,
             completion_tokens=75,
             model="gpt-4",
-            content="Test response content")
+            content="Test response content",
+        )
         mock_completions.create.return_value = mock_response
 
         # Setup tracker with DynamoDB
@@ -104,7 +106,7 @@ class TestWrappedChatCompletions:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
-            user_id="test-user"
+            user_id="test-user",
         )
 
         # Create wrapped client
@@ -123,7 +125,8 @@ class TestWrappedChatCompletions:
             messages=messages,
             temperature=0.8,
             max_tokens=500,
-            top_p=0.9)
+            top_p=0.9,
+        )
 
         # Verify response
         assert response == mock_response
@@ -134,7 +137,8 @@ class TestWrappedChatCompletions:
             messages=messages,
             temperature=0.8,
             max_tokens=500,
-            top_p=0.9)
+            top_p=0.9,
+        )
 
         # Verify tracking occurred
         mock_dynamo.put_item.assert_called_once()
@@ -170,7 +174,7 @@ class TestWrappedChatCompletions:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
@@ -181,7 +185,8 @@ class TestWrappedChatCompletions:
         response = wrapped_client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": "Hello"}],
-            stream=True)
+            stream=True,
+        )
 
         assert response == mock_stream
 
@@ -214,7 +219,8 @@ class TestWrappedChatCompletions:
                         name="get_weather", arguments='{"location": "Boston"}'
                     )
                 ),
-                finish_reason="function_call")
+                finish_reason="function_call",
+            )
         ]
         mock_completions.create.return_value = mock_response
 
@@ -222,7 +228,7 @@ class TestWrappedChatCompletions:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
@@ -249,7 +255,8 @@ class TestWrappedChatCompletions:
                 {"role": "user", "content": "What's the weather in Boston?"}
             ],
             functions=functions,
-            function_call="auto")
+            function_call="auto",
+        )
 
         assert response == mock_response
 
@@ -279,7 +286,7 @@ class TestWrappedChatCompletions:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
@@ -289,8 +296,8 @@ class TestWrappedChatCompletions:
         # Call should raise exception
         with pytest.raises(Exception, match="API rate limit exceeded"):
             wrapped_client.chat.completions.create(
-                model="gpt-4",
-                messages=[{"role": "user", "content": "Hello"}])
+                model="gpt-4", messages=[{"role": "user", "content": "Hello"}]
+            )
 
         # Error should be tracked
         mock_dynamo.put_item.assert_called_once()
@@ -326,7 +333,7 @@ class TestWrappedEmbeddings:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
-            user_id="embed-user"
+            user_id="embed-user",
         )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
@@ -338,7 +345,8 @@ class TestWrappedEmbeddings:
         response = wrapped_client.embeddings.create(
             model="text-embedding-3-small",
             input=input_texts,
-            encoding_format="float")
+            encoding_format="float",
+        )
 
         assert response == mock_response
 
@@ -346,7 +354,8 @@ class TestWrappedEmbeddings:
         mock_embeddings.create.assert_called_once_with(
             model="text-embedding-3-small",
             input=input_texts,
-            encoding_format="float")
+            encoding_format="float",
+        )
 
         # Verify tracking
         mock_dynamo.put_item.assert_called_once()
@@ -378,7 +387,7 @@ class TestWrappedEmbeddings:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
@@ -421,7 +430,7 @@ class TestWrappedEmbeddings:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
@@ -430,8 +439,8 @@ class TestWrappedEmbeddings:
 
         # Single string input (not a list)
         response = wrapped_client.embeddings.create(
-            model="text-embedding-ada-002",
-            input="Single text input")
+            model="text-embedding-ada-002", input="Single text input"
+        )
 
         # Verify metadata handles single input
         call_args = mock_dynamo.put_item.call_args
@@ -453,7 +462,7 @@ class TestWrappedEmbeddings:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
@@ -462,8 +471,8 @@ class TestWrappedEmbeddings:
 
         with pytest.raises(ValueError, match="Invalid model"):
             wrapped_client.embeddings.create(
-                model="invalid-model",
-                input=["test"])
+                model="invalid-model", input=["test"]
+            )
 
         # Error should be tracked
         mock_dynamo.put_item.assert_called_once()
@@ -491,7 +500,7 @@ class TestWrapperWithContext:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         # Set context before wrapping
@@ -499,7 +508,8 @@ class TestWrapperWithContext:
             job_id="job-999",
             batch_id="batch-888",
             github_pr=777,
-            user_id="context-user")
+            user_id="context-user",
+        )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
             mock_client, tracker
@@ -529,7 +539,7 @@ class TestWrapperWithContext:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
@@ -645,9 +655,7 @@ class TestWrapperEdgeCases:
     def test_multiple_wrapped_clients(self):
         """Test multiple wrapped clients with same tracker."""
         tracker = AIUsageTracker(
-            dynamo_client=Mock(),
-            table_name="test-table",
-            track_to_dynamo=True
+            dynamo_client=Mock(), table_name="test-table", track_to_dynamo=True
         )
 
         # Create multiple clients
@@ -702,9 +710,7 @@ class TestWrapperPerformance:
         mock_completions.create = fast_create
 
         # Tracker without any backends (minimal overhead)
-        tracker = AIUsageTracker(
-            track_to_dynamo=False,
-            track_to_file=False)
+        tracker = AIUsageTracker(track_to_dynamo=False, track_to_file=False)
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
             mock_client, tracker
@@ -739,16 +745,15 @@ class TestWrapperPerformance:
         # Large response
         large_content = "x" * 10000
         mock_response = create_mock_openai_response(
-            prompt_tokens=5000,
-            completion_tokens=5000,
-            content=large_content)
+            prompt_tokens=5000, completion_tokens=5000, content=large_content
+        )
         mock_completions.create.return_value = mock_response
 
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
