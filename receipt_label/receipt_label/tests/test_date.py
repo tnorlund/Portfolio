@@ -9,7 +9,8 @@ from receipt_label.utils.date import (
     get_time_difference,
     is_valid_date,
     is_valid_time,
-    parse_datetime)
+    parse_datetime,
+)
 
 
 @pytest.mark.unit

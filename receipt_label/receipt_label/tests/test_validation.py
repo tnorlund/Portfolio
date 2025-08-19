@@ -10,7 +10,8 @@ from receipt_label.utils.validation import (
     validate_datetime,
     validate_phone_number,
     validate_receipt_data,
-    validate_receipt_format)
+    validate_receipt_format,
+)
 
 
 @pytest.mark.unit
@@ -198,7 +199,8 @@ class TestValidationUtils:
         custom_fields = ["business_name", "total"]
         is_valid, missing, confidence = validate_receipt_data(
             {"business_name": "Test Store", "total": "110.00"},
-            required_fields=custom_fields)
+            required_fields=custom_fields,
+        )
         assert is_valid
         assert len(missing) == 0
         assert confidence == 1.0
@@ -218,7 +220,8 @@ class TestValidationUtils:
                 bottom_right={"x": 100, "y": 20},
                 bottom_left={"x": 0, "y": 20},
                 angle_degrees=0.0,
-                angle_radians=0.0)
+                angle_radians=0.0,
+            )
         ]
 
         # Test with default rules

@@ -4,14 +4,16 @@ from typing import Dict
 
 import pytest
 from receipt_dynamo.entities.receipt_line_item_analysis import (
-    ReceiptLineItemAnalysis)
+    ReceiptLineItemAnalysis,
+)
 
 from receipt_label.models.line_item import (
     ItemModifier,
     LineItem,
     LineItemAnalysis,
     Price,
-    Quantity)
+    Quantity,
+)
 
 
 # Test data fixtures
@@ -65,7 +67,8 @@ def sample_line_item_analysis_data(sample_line_item_data: Dict) -> Dict:
 
 @pytest.fixture
 def complete_line_item_analysis(
-    sample_line_item_analysis_data: Dict) -> LineItemAnalysis:
+    sample_line_item_analysis_data: Dict,
+) -> LineItemAnalysis:
     """Creates a complete LineItemAnalysis with all required fields for DynamoDB conversion."""
     analysis = LineItemAnalysis(**sample_line_item_analysis_data)
     analysis.image_id = "550e8400-e29b-41d4-a716-446655440000"
@@ -464,7 +467,8 @@ class TestLineItemAnalysis:
                     setattr(
                         mock_entity,
                         attr_name,
-                        getattr(dynamo_entity, attr_name))
+                        getattr(dynamo_entity, attr_name),
+                    )
 
             # Convert back to LineItemAnalysis using our mocked entity
             round_trip = LineItemAnalysis.from_dynamo(mock_entity)
@@ -507,7 +511,8 @@ class TestLineItemAnalysis:
                     setattr(
                         mock_entity,
                         attr_name,
-                        getattr(dynamo_entity, attr_name))
+                        getattr(dynamo_entity, attr_name),
+                    )
 
             # Convert back
             round_trip = LineItemAnalysis.from_dynamo(mock_entity)

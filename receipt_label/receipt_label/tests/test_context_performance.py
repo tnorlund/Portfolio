@@ -16,7 +16,8 @@ from receipt_label.utils import (
     ai_usage_context,
     ai_usage_tracked,
     get_current_context,
-    set_current_context)
+    set_current_context,
+)
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 
 
@@ -35,7 +36,8 @@ class TestContextPerformance:
         with patch(
             "receipt_label.utils.ai_usage_context.AIUsageTracker."
             "create_for_environment",
-            return_value=tracker):
+            return_value=tracker,
+        ):
             yield tracker
 
     def test_context_manager_overhead(self, mock_tracker):

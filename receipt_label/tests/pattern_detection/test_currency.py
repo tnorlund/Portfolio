@@ -5,7 +5,8 @@ from receipt_dynamo.entities import ReceiptWord
 
 from receipt_label.pattern_detection import (
     CurrencyPatternDetector,
-    PatternType)
+    PatternType,
+)
 
 
 class TestCurrencyPatternDetector:
@@ -60,7 +61,8 @@ class TestCurrencyPatternDetector:
                 bottom_right={"x": 50, "y": data["y"] + 20},
                 angle_degrees=0.0,
                 angle_radians=0.0,
-                confidence=0.95)
+                confidence=0.95,
+            )
             words.append(word)
 
         return words
@@ -174,7 +176,8 @@ class TestCurrencyPatternDetector:
                 bottom_right={"x": 50, "y": 20},
                 angle_degrees=0.0,
                 angle_radians=0.0,
-                confidence=0.95)
+                confidence=0.95,
+            )
         ]
 
         # Mark word as noise
@@ -209,7 +212,8 @@ class TestCurrencyPatternDetector:
                 bottom_right={"x": 50, "y": 20},
                 angle_degrees=0.0,
                 angle_radians=0.0,
-                confidence=0.95)
+                confidence=0.95,
+            )
 
             matches = await detector.detect([word])
             assert len(matches) == 1

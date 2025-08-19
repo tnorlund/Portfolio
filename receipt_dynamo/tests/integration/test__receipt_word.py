@@ -1185,16 +1185,16 @@ def test_increment_receipt_word_valid_label_count_first_increment(
     """Test incrementing valid_label_count when attribute doesn't exist."""
     # Add the word without label counts
     client.add_receipt_word(sample_receipt_word)
-    
+
     # Increment valid label count (should create attribute with value 1)
     updated_word = client.increment_receipt_word_valid_label_count(
         sample_receipt_word
     )
-    
+
     # Verify the count was incremented
     assert updated_word.valid_label_count == 1
     assert updated_word.invalid_label_count == 0
-    
+
     # Verify in database
     fetched_word = client.get_receipt_word(
         sample_receipt_word.receipt_id,
@@ -1207,7 +1207,7 @@ def test_increment_receipt_word_valid_label_count_first_increment(
 
 @pytest.mark.integration
 def test_increment_receipt_word_valid_label_count_existing_value(
-    client: DynamoClient
+    client: DynamoClient,
 ):
     """Test incrementing valid_label_count when it already has a value."""
     # Create word with existing count
@@ -1229,10 +1229,10 @@ def test_increment_receipt_word_valid_label_count_existing_value(
         invalid_label_count=2,
     )
     client.add_receipt_word(word)
-    
+
     # Increment valid label count
     updated_word = client.increment_receipt_word_valid_label_count(word)
-    
+
     # Verify the count was incremented
     assert updated_word.valid_label_count == 6
     assert updated_word.invalid_label_count == 2
@@ -1240,7 +1240,7 @@ def test_increment_receipt_word_valid_label_count_existing_value(
 
 @pytest.mark.integration
 def test_increment_receipt_word_invalid_label_count_first_increment(
-    client: DynamoClient
+    client: DynamoClient,
 ):
     """Test incrementing invalid_label_count when attribute doesn't exist."""
     word = ReceiptWord(
@@ -1259,14 +1259,14 @@ def test_increment_receipt_word_invalid_label_count_first_increment(
         confidence=0.95,
     )
     client.add_receipt_word(word)
-    
+
     # Increment invalid label count (should create attribute with value 1)
     updated_word = client.increment_receipt_word_invalid_label_count(word)
-    
+
     # Verify the count was incremented
     assert updated_word.invalid_label_count == 1
     assert updated_word.valid_label_count == 0
-    
+
     # Verify in database
     fetched_word = client.get_receipt_word(
         word.receipt_id, word.image_id, word.line_id, word.word_id
@@ -1276,7 +1276,7 @@ def test_increment_receipt_word_invalid_label_count_first_increment(
 
 @pytest.mark.integration
 def test_increment_receipt_word_invalid_label_count_existing_value(
-    client: DynamoClient
+    client: DynamoClient,
 ):
     """Test incrementing invalid_label_count when it already has a value."""
     # Create word with existing counts
@@ -1298,10 +1298,10 @@ def test_increment_receipt_word_invalid_label_count_existing_value(
         invalid_label_count=7,
     )
     client.add_receipt_word(word)
-    
+
     # Increment invalid label count
     updated_word = client.increment_receipt_word_invalid_label_count(word)
-    
+
     # Verify the count was incremented
     assert updated_word.invalid_label_count == 8
     assert updated_word.valid_label_count == 3
@@ -1325,10 +1325,8 @@ def test_increment_valid_count_word_not_found(client: DynamoClient):
         angle_radians=0.0,
         confidence=0.95,
     )
-    
-    with pytest.raises(
-        EntityNotFoundError, match="receipt_word not found"
-    ):
+
+    with pytest.raises(EntityNotFoundError, match="receipt_word not found"):
         client.increment_receipt_word_valid_label_count(non_existent_word)
 
 
@@ -1350,8 +1348,6 @@ def test_increment_invalid_count_word_not_found(client: DynamoClient):
         angle_radians=0.0,
         confidence=0.95,
     )
-    
-    with pytest.raises(
-        EntityNotFoundError, match="receipt_word not found"
-    ):
+
+    with pytest.raises(EntityNotFoundError, match="receipt_word not found"):
         client.increment_receipt_word_invalid_label_count(non_existent_word)

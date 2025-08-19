@@ -87,7 +87,9 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if sqs_queue_url:
                 logger.info("Will send SQS notification to: %s", sqs_queue_url)
             else:
-                logger.info("No COMPACTION_QUEUE_URL set, skipping SQS notification")
+                logger.info(
+                    "No COMPACTION_QUEUE_URL set, skipping SQS notification"
+                )
 
         # Download the batch results
         results = download_openai_batch_result(openai_batch_id)
@@ -169,7 +171,9 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if sqs_queue_url:
                 logger.info("Will send SQS notification to: %s", sqs_queue_url)
             else:
-                logger.info("No COMPACTION_QUEUE_URL set, skipping SQS notification")
+                logger.info(
+                    "No COMPACTION_QUEUE_URL set, skipping SQS notification"
+                )
 
         # Handle expired batch with partial results
         partial_results = status_result.get("partial_results", [])

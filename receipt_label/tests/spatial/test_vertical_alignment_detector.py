@@ -18,7 +18,8 @@ from receipt_label.spatial.vertical_alignment_detector import (
     AlignedLineItem,
     FontMetrics,
     PriceColumn,
-    VerticalAlignmentDetector)
+    VerticalAlignmentDetector,
+)
 
 
 def create_receipt_word(
@@ -34,7 +35,8 @@ def create_receipt_word(
     bottom_right: dict = None,
     angle_degrees: float = 0.0,
     angle_radians: float = 0.0,
-    confidence: float = 0.9) -> ReceiptWord:
+    confidence: float = 0.9,
+) -> ReceiptWord:
     """Helper function to create ReceiptWord objects for testing."""
     if bounding_box is None:
         bounding_box = {"x": 0.1, "y": 0.1, "width": 0.15, "height": 0.02}
@@ -69,7 +71,8 @@ def create_receipt_word(
         bottom_left=bottom_left,
         angle_degrees=angle_degrees,
         angle_radians=angle_radians,
-        confidence=confidence)
+        confidence=confidence,
+    )
 
 
 class TestVerticalAlignmentDetector:
@@ -105,7 +108,8 @@ class TestVerticalAlignmentDetector:
                     "y": 0.1,
                     "width": 0.05,
                     "height": 0.02,
-                })
+                },
+            )
         )
 
         words.append(
@@ -123,7 +127,8 @@ class TestVerticalAlignmentDetector:
                 },
                 top_left={"x": 0.16, "y": 0.1},
                 bottom_right={"x": 0.21, "y": 0.12},
-                confidence=0.9)
+                confidence=0.9,
+            )
         )
 
         words.append(
@@ -141,7 +146,8 @@ class TestVerticalAlignmentDetector:
                 },
                 top_left={"x": 0.8, "y": 0.1},
                 bottom_right={"x": 0.86, "y": 0.12},
-                confidence=0.9)
+                confidence=0.9,
+            )
         )
 
         # Create words for line 2: "Fries           2.99"
@@ -160,7 +166,8 @@ class TestVerticalAlignmentDetector:
                 },
                 top_left={"x": 0.1, "y": 0.15},
                 bottom_right={"x": 0.18, "y": 0.17},
-                confidence=0.9)
+                confidence=0.9,
+            )
         )
 
         words.append(
@@ -178,7 +185,8 @@ class TestVerticalAlignmentDetector:
                 },
                 top_left={"x": 0.81, "y": 0.15},
                 bottom_right={"x": 0.87, "y": 0.17},
-                confidence=0.9)
+                confidence=0.9,
+            )
         )
 
         # Create words for line 3: "  Extra sauce   0.50" (indented)
@@ -197,7 +205,8 @@ class TestVerticalAlignmentDetector:
                 },  # Smaller font
                 top_left={"x": 0.15, "y": 0.18},
                 bottom_right={"x": 0.23, "y": 0.195},
-                confidence=0.9)
+                confidence=0.9,
+            )
         )
 
         words.append(
@@ -215,7 +224,8 @@ class TestVerticalAlignmentDetector:
                 },  # Smaller font
                 top_left={"x": 0.24, "y": 0.18},
                 bottom_right={"x": 0.32, "y": 0.195},
-                confidence=0.9)
+                confidence=0.9,
+            )
         )
 
         # Create words for line 4: "TOTAL          8.99" (larger font)
@@ -234,7 +244,8 @@ class TestVerticalAlignmentDetector:
                 },  # Larger font
                 top_left={"x": 0.1, "y": 0.25},
                 bottom_right={"x": 0.22, "y": 0.28},
-                confidence=0.9)
+                confidence=0.9,
+            )
         )
 
         words.append(
@@ -252,7 +263,8 @@ class TestVerticalAlignmentDetector:
                 },  # Larger font
                 top_left={"x": 0.8, "y": 0.25},
                 bottom_right={"x": 0.86, "y": 0.28},
-                confidence=0.9)
+                confidence=0.9,
+            )
         )
 
         return words
@@ -282,7 +294,8 @@ class TestVerticalAlignmentDetector:
                     confidence=0.9,
                     matched_text=word.text,
                     extracted_value=word.text,
-                    metadata={})
+                    metadata={},
+                )
             )
 
         return patterns
@@ -375,7 +388,8 @@ class TestVerticalAlignmentDetector:
             confidence=0.9,
             matched_text="5.99",
             extracted_value="5.99",
-            metadata={})
+            metadata={},
+        )
 
         font_metrics = detector._analyze_font_metrics(pattern)
 
@@ -485,9 +499,11 @@ class TestVerticalAlignmentDetector:
                     confidence=0.9,
                     matched_text="5.99",
                     extracted_value="5.99",
-                    metadata={})
+                    metadata={},
+                )
             ],
-            confidence=0.8)
+            confidence=0.8,
+        )
 
         right_column = PriceColumn(
             column_id=1,
@@ -501,9 +517,11 @@ class TestVerticalAlignmentDetector:
                     confidence=0.9,
                     matched_text="2.99",
                     extracted_value="2.99",
-                    metadata={})
+                    metadata={},
+                )
             ],
-            confidence=0.8)
+            confidence=0.8,
+        )
 
         columns = [left_column, right_column]
 
@@ -536,9 +554,11 @@ class TestVerticalAlignmentDetector:
                     confidence=0.9,
                     matched_text="5.99",
                     extracted_value="5.99",
-                    metadata={})
+                    metadata={},
+                )
             ],
-            confidence=0.8)
+            confidence=0.8,
+        )
 
         col2 = PriceColumn(
             column_id=1,
@@ -552,9 +572,11 @@ class TestVerticalAlignmentDetector:
                     confidence=0.9,
                     matched_text="2.99",
                     extracted_value="2.99",
-                    metadata={})
+                    metadata={},
+                )
             ],
-            confidence=0.8)
+            confidence=0.8,
+        )
 
         overlap = detector._calculate_y_overlap(col1, col2)
 
@@ -599,7 +621,8 @@ class TestVerticalAlignmentDetector:
             bounding_box={"x": 0.8, "y": 0.1, "width": 0.06, "height": 0.02},
             top_left={"x": 0.8, "y": 0.1},
             bottom_right={"x": 0.86, "y": 0.12},
-            confidence=0.9)
+            confidence=0.9,
+        )
 
         mock_word2 = create_receipt_word(
             receipt_id=1,
@@ -615,7 +638,8 @@ class TestVerticalAlignmentDetector:
             },  # Slightly different X
             top_left={"x": 0.83, "y": 0.15},
             bottom_right={"x": 0.89, "y": 0.17},
-            confidence=0.9)
+            confidence=0.9,
+        )
 
         patterns = [
             PatternMatch(
@@ -624,14 +648,16 @@ class TestVerticalAlignmentDetector:
                 confidence=0.9,
                 matched_text="5.99",
                 extracted_value="5.99",
-                metadata={}),
+                metadata={},
+            ),
             PatternMatch(
                 word=mock_word2,
                 pattern_type=PatternType.CURRENCY,
                 confidence=0.9,
                 matched_text="2.99",
                 extracted_value="2.99",
-                metadata={}),
+                metadata={},
+            ),
         ]
 
         strict_columns = strict_detector.detect_price_columns(patterns)
@@ -665,9 +691,11 @@ class TestPriceColumn:
                     confidence=0.9,
                     matched_text="5.99",
                     extracted_value="5.99",
-                    metadata={})
+                    metadata={},
+                )
             ],
-            confidence=0.8)
+            confidence=0.8,
+        )
 
         assert column.column_id == 0
         assert column.x_center == 0.8
@@ -688,7 +716,8 @@ class TestPriceColumn:
             height_variance=0.001,
             is_larger_than_normal=False,
             is_smaller_than_normal=False,
-            confidence=0.8)
+            confidence=0.8,
+        )
 
         column = PriceColumn(
             column_id=0,
@@ -702,12 +731,14 @@ class TestPriceColumn:
                     confidence=0.9,
                     matched_text="5.99",
                     extracted_value="5.99",
-                    metadata={})
+                    metadata={},
+                )
             ],
             confidence=0.8,
             y_span=0.15,
             x_alignment_tightness=0.95,
-            font_consistency=font_metrics)
+            font_consistency=font_metrics,
+        )
 
         assert column.y_span == 0.15
         assert column.x_alignment_tightness == 0.95
@@ -740,12 +771,14 @@ class TestAlignedLineItem:
                 confidence=0.9,
                 matched_text="5.99",
                 extracted_value="5.99",
-                metadata={}),
+                metadata={},
+            ),
             product_line=1,
             price_line=1,
             line_distance=0,
             alignment_confidence=0.8,
-            column_id=0)
+            column_id=0,
+        )
 
         assert item.product_text == "Big Mac"
         assert len(item.product_words) == 1
@@ -778,14 +811,16 @@ class TestAlignedLineItem:
                 confidence=0.9,
                 matched_text="5.99",
                 extracted_value="5.99",
-                metadata={}),
+                metadata={},
+            ),
             product_line=1,
             price_line=1,
             line_distance=0,
             alignment_confidence=0.8,
             column_id=0,
             has_indented_description=True,
-            description_lines=["Extra sauce", "No pickles"])
+            description_lines=["Extra sauce", "No pickles"],
+        )
 
         assert item.has_indented_description is True
         assert item.description_lines == ["Extra sauce", "No pickles"]
@@ -803,7 +838,8 @@ class TestFontMetrics:
             height_variance=0.001,
             is_larger_than_normal=False,
             is_smaller_than_normal=False,
-            confidence=0.8)
+            confidence=0.8,
+        )
 
         assert metrics.avg_height == 0.02
         assert metrics.height_variance == 0.001
@@ -819,7 +855,8 @@ class TestFontMetrics:
             height_variance=0.002,
             is_larger_than_normal=True,
             is_smaller_than_normal=False,
-            confidence=0.9)
+            confidence=0.9,
+        )
 
         assert metrics.is_larger_than_normal is True
         assert metrics.confidence == 0.9
@@ -832,7 +869,8 @@ class TestFontMetrics:
             height_variance=0.0005,
             is_larger_than_normal=False,
             is_smaller_than_normal=True,
-            confidence=0.3)
+            confidence=0.3,
+        )
 
         assert metrics.is_smaller_than_normal is True
         assert metrics.confidence == 0.3
