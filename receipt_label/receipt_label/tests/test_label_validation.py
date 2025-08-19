@@ -74,7 +74,8 @@ class FakeChromaClient:
         if self.raise_connection_error:
             raise ConnectionError("ChromaDB connection failed")
         if self.raise_malformed_error:
-            # Return malformed response that will cause an exception when accessed as dict
+            # Return malformed response that will cause an exception when
+            # accessed as dict
             return {
                 "ids": None
             }  # Will cause exception when trying to index or check len
@@ -328,7 +329,8 @@ def _make_label(
 def assert_complete_validation_result(
     result, expected_label, expected_status="VALIDATED"
 ):
-    """Comprehensive helper to validate all fields of a LabelValidationResult."""
+    """Comprehensive helper to validate all fields of a
+    LabelValidationResult."""
     # Check all label identification fields
     assert result.image_id == expected_label.image_id
     assert result.receipt_id == expected_label.receipt_id
@@ -347,7 +349,8 @@ def assert_complete_validation_result(
 
     # Check neighbors list
     assert isinstance(result.neighbors, list)
-    # Note: validate_address doesn't populate neighbors, so we don't check length
+    # Note: validate_address doesn't populate neighbors, so we don't check
+    # length
 
     # Check pinecone_id
     assert result.pinecone_id is not None
@@ -960,7 +963,8 @@ class TestTextNormalizationInValidation:
             return_value=mock_client_manager,
         )
 
-        # Test with different address formats that should match after normalization
+        # Test with different address formats that should match after
+        # normalization
         test_cases = [
             # (receipt_text, canonical_address, should_match)
             ("123 N. Main St.", "123 north main street", True),
@@ -1261,7 +1265,8 @@ class TestAPIErrorHandling:
         assert result.avg_similarity == 0.0  # No matches means 0 similarity
 
     def test_chroma_partial_failure(self, mocker):
-        """Test handling when some ChromaDB operations succeed and others fail."""
+        """Test handling when some ChromaDB operations succeed and others
+        fail."""
         from receipt_label.label_validation.validate_merchant_name import (
             validate_merchant_name_pinecone,
         )
