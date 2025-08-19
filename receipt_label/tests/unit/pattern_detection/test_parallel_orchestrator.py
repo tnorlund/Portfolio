@@ -5,12 +5,15 @@ from unittest.mock import patch
 import pytest
 
 from receipt_label.pattern_detection.orchestrator import (
-    ParallelPatternOrchestrator)
+    ParallelPatternOrchestrator,
+)
 from tests.markers import unit, fast, pattern_detection, cost_optimization
 from tests.helpers import create_test_receipt_word
 
 
-@pytest.mark.skip(reason="ChromaDB migration in progress - API mismatches with mocks")
+@pytest.mark.skip(
+    reason="ChromaDB migration in progress - API mismatches with mocks"
+)
 @unit
 @fast
 @pattern_detection
@@ -36,7 +39,8 @@ class TestParallelPatternOrchestrator:
                 x1=100,
                 y1=50,
                 x2=200,
-                y2=70),
+                y2=70,
+            ),
             # Currency amounts
             create_test_receipt_word(
                 text="$12.99",
@@ -46,7 +50,8 @@ class TestParallelPatternOrchestrator:
                 x1=250,
                 y1=300,
                 x2=300,
-                y2=320),
+                y2=320,
+            ),
             create_test_receipt_word(
                 text="$45.67",
                 receipt_id=1,
@@ -55,7 +60,8 @@ class TestParallelPatternOrchestrator:
                 x1=250,
                 y1=500,
                 x2=300,
-                y2=520),
+                y2=520,
+            ),
             # Date/time
             create_test_receipt_word(
                 text="12/25/2023",
@@ -65,7 +71,8 @@ class TestParallelPatternOrchestrator:
                 x1=100,
                 y1=600,
                 x2=180,
-                y2=620),
+                y2=620,
+            ),
             create_test_receipt_word(
                 text="2:34 PM",
                 receipt_id=1,
@@ -74,7 +81,8 @@ class TestParallelPatternOrchestrator:
                 x1=100,
                 y1=625,
                 x2=160,
-                y2=645),
+                y2=645,
+            ),
             # Contact info
             create_test_receipt_word(
                 text="(555) 123-4567",
@@ -84,7 +92,8 @@ class TestParallelPatternOrchestrator:
                 x1=100,
                 y1=150,
                 x2=220,
-                y2=170),
+                y2=170,
+            ),
             # Quantities
             create_test_receipt_word(
                 text="2 @ $5.99",
@@ -94,7 +103,8 @@ class TestParallelPatternOrchestrator:
                 x1=50,
                 y1=350,
                 x2=150,
-                y2=370),
+                y2=370,
+            ),
             # Noise words (should be ignored)
             create_test_receipt_word(
                 text="___",
@@ -104,7 +114,8 @@ class TestParallelPatternOrchestrator:
                 x1=100,
                 y1=700,
                 x2=130,
-                y2=720),
+                y2=720,
+            ),
             create_test_receipt_word(
                 receipt_id=1,
                 line_id=31,
@@ -113,7 +124,8 @@ class TestParallelPatternOrchestrator:
                 x1=100,
                 y1=725,
                 x2=100,
-                y2=725),
+                y2=725,
+            ),
         ]
 
     async def test_orchestrator_initialization(self, orchestrator):
@@ -130,7 +142,8 @@ class TestParallelPatternOrchestrator:
         """Test basic pattern detection across all detector types."""
         with patch(
             "receipt_label.utils.get_client_manager",
-            return_value=stub_all_apis):
+            return_value=stub_all_apis,
+        ):
             results = await orchestrator.detect_all_patterns(
                 words=sample_words
             )
@@ -164,7 +177,8 @@ class TestParallelPatternOrchestrator:
         """Test that parallel execution is faster than sequential."""
         with patch(
             "receipt_label.utils.get_client_manager",
-            return_value=stub_all_apis):
+            return_value=stub_all_apis,
+        ):
 
             # Test parallel execution
             import time  # pylint: disable=import-outside-toplevel
@@ -193,7 +207,8 @@ class TestParallelPatternOrchestrator:
         """Test that orchestrator runs detectors successfully."""
         with patch(
             "receipt_label.utils.get_client_manager",
-            return_value=stub_all_apis):
+            return_value=stub_all_apis,
+        ):
             # Test with currency-heavy content
             currency_words = [w for w in sample_words if "$" in w.text]
             results = await orchestrator.detect_all_patterns(currency_words)
@@ -216,18 +231,21 @@ class TestParallelPatternOrchestrator:
             ("Shell", ["MERCHANT_NAME", "CURRENCY"]),
             ("Target", ["MERCHANT_NAME", "CURRENCY"]),
             (None, ["CURRENCY"]),  # Generic patterns without merchant
-        ])
+        ],
+    )
     async def test_merchant_specific_detection(
         self,
         orchestrator,
         sample_words,
         merchant_name,  # pylint: disable=unused-argument
         expected_patterns,  # pylint: disable=unused-argument
-        stub_all_apis):
+        stub_all_apis,
+    ):
         """Test merchant-specific pattern detection."""
         with patch(
             "receipt_label.utils.get_client_manager",
-            return_value=stub_all_apis):
+            return_value=stub_all_apis,
+        ):
             results = await orchestrator.detect_all_patterns(
                 words=sample_words
             )
@@ -257,7 +275,8 @@ class TestParallelPatternOrchestrator:
                 x1=100,
                 y1=100,
                 x2=150,
-                y2=120),  # Perfect currency
+                y2=120,
+            ),  # Perfect currency
             create_test_receipt_word(
                 text="Walmart",
                 receipt_id=1,
@@ -266,7 +285,8 @@ class TestParallelPatternOrchestrator:
                 x1=100,
                 y1=130,
                 x2=160,
-                y2=150),  # Clear merchant
+                y2=150,
+            ),  # Clear merchant
         ]
 
         # Lower confidence patterns
@@ -279,7 +299,8 @@ class TestParallelPatternOrchestrator:
                 x1=100,
                 y1=160,
                 x2=150,
-                y2=180),  # Currency without symbol
+                y2=180,
+            ),  # Currency without symbol
             create_test_receipt_word(
                 text="WAL",
                 receipt_id=1,
@@ -288,12 +309,14 @@ class TestParallelPatternOrchestrator:
                 x1=100,
                 y1=190,
                 x2=130,
-                y2=210),  # Partial merchant name
+                y2=210,
+            ),  # Partial merchant name
         ]
 
         with patch(
             "receipt_label.utils.get_client_manager",
-            return_value=stub_all_apis):
+            return_value=stub_all_apis,
+        ):
             high_results = await orchestrator.detect_all_patterns(
                 high_conf_words
             )
@@ -333,7 +356,8 @@ class TestParallelPatternOrchestrator:
                 x1=100,
                 y1=100,
                 x2=100,
-                y2=100),  # Empty
+                y2=100,
+            ),  # Empty
             create_test_receipt_word(
                 text="___",
                 receipt_id=1,
@@ -342,7 +366,8 @@ class TestParallelPatternOrchestrator:
                 x1=100,
                 y1=120,
                 x2=130,
-                y2=140),  # Separators
+                y2=140,
+            ),  # Separators
             create_test_receipt_word(
                 text="...",
                 receipt_id=1,
@@ -351,7 +376,8 @@ class TestParallelPatternOrchestrator:
                 x1=100,
                 y1=150,
                 x2=130,
-                y2=170),  # Dots
+                y2=170,
+            ),  # Dots
             create_test_receipt_word(
                 text="$12.99",
                 receipt_id=1,
@@ -360,12 +386,14 @@ class TestParallelPatternOrchestrator:
                 x1=100,
                 y1=180,
                 x2=150,
-                y2=200),  # Valid currency
+                y2=200,
+            ),  # Valid currency
         ]
 
         with patch(
             "receipt_label.utils.get_client_manager",
-            return_value=stub_all_apis):
+            return_value=stub_all_apis,
+        ):
             results = await orchestrator.detect_all_patterns(noise_words)
 
         # Should only detect the valid currency, not the noise
@@ -391,14 +419,16 @@ class TestParallelPatternOrchestrator:
         """Test error handling when detectors fail."""
         with patch(
             "receipt_label.utils.get_client_manager",
-            return_value=stub_all_apis):
+            return_value=stub_all_apis,
+        ):
 
             # Test that orchestrator handles errors gracefully
             # Mock a detector to fail
             with patch.object(
                 orchestrator,
                 "_run_detector_with_timeout",
-                side_effect=Exception("Detector failed")):
+                side_effect=Exception("Detector failed"),
+            ):
                 try:
                     results = await orchestrator.detect_all_patterns(
                         sample_words
@@ -415,7 +445,8 @@ class TestParallelPatternOrchestrator:
         """Test that pattern detection provides measurable cost optimization."""
         with patch(
             "receipt_label.utils.get_client_manager",
-            return_value=stub_all_apis):
+            return_value=stub_all_apis,
+        ):
             results = await orchestrator.detect_all_patterns(sample_words)
 
         # Calculate pattern coverage
@@ -457,7 +488,8 @@ class TestParallelPatternOrchestrator:
             (25, 1.0),  # Medium receipts
             (50, 2.0),  # Large receipts
             (100, 3.0),  # Very large receipts
-        ])
+        ],
+    )
     async def test_scalability_performance(
         self, orchestrator, word_count, expected_time_limit, stub_all_apis
     ):
@@ -476,12 +508,14 @@ class TestParallelPatternOrchestrator:
                     x1=100,
                     y1=100 + i * 20,
                     x2=200,
-                    y2=120 + i * 20)
+                    y2=120 + i * 20,
+                )
             )
 
         with patch(
             "receipt_label.utils.get_client_manager",
-            return_value=stub_all_apis):
+            return_value=stub_all_apis,
+        ):
             import time  # pylint: disable=import-outside-toplevel
 
             start = time.time()
@@ -501,7 +535,8 @@ class TestParallelPatternOrchestrator:
         """Test that pattern results have correct data structure."""
         with patch(
             "receipt_label.utils.get_client_manager",
-            return_value=stub_all_apis):
+            return_value=stub_all_apis,
+        ):
             results = await orchestrator.detect_all_patterns(sample_words)
 
         for key, matches in results.items():
