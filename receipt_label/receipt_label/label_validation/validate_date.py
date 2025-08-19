@@ -174,7 +174,7 @@ def validate_date(
             is_consistent=False,
             avg_similarity=0.0,
             neighbors=[],
-            chroma_id=chroma_id,
+            pinecone_id=chroma_id,
         )
 
     vector = vector_data["values"]
@@ -232,5 +232,5 @@ def validate_date(
         is_consistent=is_consistent,
         avg_similarity=avg_similarity,
         neighbors=[match.id for match in matches],
-        chroma_id=chroma_id,
+        pinecone_id=chroma_id,
     )

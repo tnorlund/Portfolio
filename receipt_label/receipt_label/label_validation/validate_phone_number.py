@@ -114,7 +114,7 @@ def validate_phone_number(
             is_consistent=False,
             avg_similarity=0.0,
             neighbors=[],
-            chroma_id=chroma_id,
+            pinecone_id=chroma_id,
         )
     vector = vector_data.values
     query_response = pinecone_index.query(

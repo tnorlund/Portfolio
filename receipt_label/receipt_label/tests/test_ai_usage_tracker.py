@@ -33,7 +33,7 @@ class TestAIUsageTrackerInitialization:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             user_id="test-user",
             track_to_dynamo=True,
             track_to_file=True,
@@ -153,7 +153,7 @@ class TestAIUsageTrackerStorage:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True)
 
         metric = AIUsageMetric(
@@ -180,7 +180,7 @@ class TestAIUsageTrackerStorage:
 
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True)
 
         metric = AIUsageMetric(
@@ -271,7 +271,7 @@ class TestAIUsageTrackerStorage:
         try:
             tracker = AIUsageTracker(
                 dynamo_client=mock_dynamo,
-                table_name="test-table"
+                table_name="test-table",
                 track_to_dynamo=True,
                 track_to_file=True,
                 log_file=temp_file)
@@ -308,7 +308,7 @@ class TestOpenAICompletionTracking:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True,
             user_id="test-user")
         tracker.set_tracking_context(job_id="job-123", batch_id="batch-456")
@@ -360,7 +360,7 @@ class TestOpenAICompletionTracking:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True)
 
         @tracker.track_openai_completion
@@ -382,7 +382,7 @@ class TestOpenAICompletionTracking:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True)
 
         mock_response = create_mock_openai_response(
@@ -413,7 +413,7 @@ class TestOpenAICompletionTracking:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True)
 
         # Response without usage attribute
@@ -447,7 +447,7 @@ class TestOpenAIEmbeddingTracking:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True,
             user_id="test-user")
 
@@ -487,7 +487,7 @@ class TestOpenAIEmbeddingTracking:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True)
 
         @tracker.track_openai_embedding
@@ -508,7 +508,7 @@ class TestOpenAIEmbeddingTracking:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True)
 
         mock_response = Mock()
@@ -547,7 +547,7 @@ class TestAnthropicTracking:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True,
             user_id="test-user")
         tracker.set_tracking_context(github_pr=123)
@@ -590,7 +590,7 @@ class TestAnthropicTracking:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True)
 
         @tracker.track_anthropic_completion
@@ -611,7 +611,7 @@ class TestAnthropicTracking:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True)
 
         models = [
@@ -651,7 +651,7 @@ class TestGooglePlacesTracking:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True,
             user_id="test-user")
 
@@ -689,7 +689,7 @@ class TestGooglePlacesTracking:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True)
 
         @tracker.track_google_places("Nearby Search")
@@ -710,7 +710,7 @@ class TestGooglePlacesTracking:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True)
 
         operations = [
@@ -759,7 +759,7 @@ class TestGitHubClaudeReview:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True)
 
         tracker.track_github_claude_review(pr_number=123)
@@ -788,7 +788,7 @@ class TestGitHubClaudeReview:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True)
 
         tracker.track_github_claude_review(
@@ -832,7 +832,7 @@ class TestWrappedOpenAIClient:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True)
 
         # Create wrapped client
@@ -876,7 +876,7 @@ class TestWrappedOpenAIClient:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True)
 
         # Create wrapped client
@@ -933,7 +933,7 @@ class TestWrappedOpenAIClient:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True)
 
         # Set context
@@ -1021,7 +1021,7 @@ class TestConcurrentTracking:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True)
 
         # Simulate multiple rapid calls
@@ -1051,7 +1051,7 @@ class TestLatencyTracking:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True)
 
         # Create a function with known delay
@@ -1077,7 +1077,7 @@ class TestLatencyTracking:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True)
 
         @tracker.track_openai_completion
@@ -1106,7 +1106,7 @@ class TestEdgeCases:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True)
 
         @tracker.track_openai_completion
@@ -1124,7 +1124,7 @@ class TestEdgeCases:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True)
 
         # Response with missing attributes
@@ -1143,7 +1143,7 @@ class TestEdgeCases:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True)
 
         @tracker.track_openai_completion
@@ -1164,7 +1164,7 @@ class TestEdgeCases:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True)
 
         @tracker.track_anthropic_completion
@@ -1186,7 +1186,7 @@ class TestEdgeCases:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True)
 
         @tracker.track_openai_completion
@@ -1226,7 +1226,7 @@ class TestIntegrationWithCostCalculator:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True)
 
         @tracker.track_openai_completion
@@ -1260,7 +1260,7 @@ class TestIntegrationWithCostCalculator:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True)
 
         @tracker.track_anthropic_completion
@@ -1293,7 +1293,7 @@ class TestIntegrationWithCostCalculator:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True)
 
         @tracker.track_google_places("Place Details")
@@ -1328,7 +1328,7 @@ class TestBackendFallback:
         try:
             tracker = AIUsageTracker(
                 dynamo_client=mock_dynamo,
-                table_name="test-table"
+                table_name="test-table",
                 track_to_dynamo=True,
                 track_to_file=True,
                 log_file=temp_file)
@@ -1363,7 +1363,7 @@ class TestBackendFallback:
 
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True,
             track_to_file=True,
             log_file="/invalid/path/file.jsonl")
@@ -1407,7 +1407,7 @@ class TestMetadataHandling:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True)
 
         @tracker.track_openai_completion
@@ -1424,7 +1424,7 @@ class TestMetadataHandling:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True)
 
         @tracker.track_openai_completion
@@ -1456,7 +1456,7 @@ class TestMetadataHandling:
         mock_dynamo = Mock()
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
-            table_name="test-table"
+            table_name="test-table",
             track_to_dynamo=True)
 
         @tracker.track_openai_completion
