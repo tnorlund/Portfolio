@@ -15,7 +15,8 @@ from receipt_label.utils.ai_usage_context import (
     ai_usage_context,
     batch_ai_usage_context,
     get_current_context,
-    set_current_context)
+    set_current_context,
+)
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 from receipt_label.utils.environment_config import Environment
 
@@ -133,13 +134,15 @@ class TestAIUsageContext:
             dynamo_client=mock_dynamo,
             table_name="AIUsageMetrics-development",
             track_to_dynamo=True,
-            track_to_file=False)
+            track_to_file=False,
+        )
 
         with ai_usage_context(
             "test_operation",
             tracker=tracker,
             request_id="req-123",
-            custom_tag="important"):
+            custom_tag="important",
+        ):
             # Simulate tracking a metric
             metadata = tracker._create_base_metadata()
 
@@ -188,7 +191,8 @@ class TestAIUsageContext:
             Environment.STAGING,
             Environment.CICD,
             Environment.DEVELOPMENT,
-        ])
+        ],
+    )
     def test_environment_specific_contexts(self, environment):
         """Test context manager respects environment configuration."""
         with ai_usage_context("env_test", environment=environment) as tracker:
@@ -306,7 +310,8 @@ class TestAIUsageDecorator:
             operation_type="batch_process",
             tracker=mock_tracker,
             batch_id="batch-123",
-            priority="high")
+            priority="high",
+        )
         def batch_operation(items: list) -> int:
             return len(items)
 
@@ -460,7 +465,8 @@ class TestErrorRecoveryAndPartialFailures:
         with patch(
             "receipt_label.utils.ai_usage_context.AIUsageTracker."
             "create_for_environment",
-            return_value=tracker):
+            return_value=tracker,
+        ):
             yield tracker
 
     def test_context_manager_error_recovery(self, mock_tracker):
@@ -499,7 +505,8 @@ class TestErrorRecoveryAndPartialFailures:
     def test_partial_failure_context_basic(self, mock_tracker):
         """Test basic partial failure context functionality."""
         from receipt_label.utils.ai_usage_context import (
-            partial_failure_context)
+            partial_failure_context,
+        )
 
         with partial_failure_context("batch_op", tracker=mock_tracker) as ctx:
             # Process some items successfully
@@ -535,7 +542,8 @@ class TestErrorRecoveryAndPartialFailures:
     def test_partial_failure_continue_on_error(self, mock_tracker):
         """Test partial failure context with continue_on_error=True."""
         from receipt_label.utils.ai_usage_context import (
-            partial_failure_context)
+            partial_failure_context,
+        )
 
         items = ["item1", "item2", "item3", "item4"]
         processed = []
@@ -573,7 +581,8 @@ class TestErrorRecoveryAndPartialFailures:
     def test_partial_failure_stop_on_error(self, mock_tracker):
         """Test partial failure context with continue_on_error=False."""
         from receipt_label.utils.ai_usage_context import (
-            partial_failure_context)
+            partial_failure_context,
+        )
 
         items = ["item1", "item2", "item3", "item4"]
         processed = []
@@ -601,7 +610,8 @@ class TestErrorRecoveryAndPartialFailures:
     def test_partial_failure_error_limit(self, mock_tracker):
         """Test that partial failure context limits stored errors to 10."""
         from receipt_label.utils.ai_usage_context import (
-            partial_failure_context)
+            partial_failure_context,
+        )
 
         with partial_failure_context("batch_op", tracker=mock_tracker) as ctx:
             # Add 15 errors

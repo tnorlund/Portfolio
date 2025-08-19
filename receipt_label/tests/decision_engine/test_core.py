@@ -15,7 +15,8 @@ from receipt_label.decision_engine import (
     MerchantReliabilityData,
     PatternDetectionSummary,
     create_aggressive_config,
-    create_conservative_config)
+    create_conservative_config,
+)
 
 
 class TestDecisionEngine:
@@ -27,7 +28,8 @@ class TestDecisionEngine:
             enabled=True,
             min_coverage_percentage=90.0,
             max_unlabeled_words=5,
-            rollout_percentage=100.0)
+            rollout_percentage=100.0,
+        )
         self.engine = DecisionEngine(self.config)
 
     def test_engine_initialization(self):
@@ -48,7 +50,9 @@ class TestDecisionEngine:
                 merchant_name_found=True,
                 date_found=True,
                 grand_total_found=True,
-                product_name_found=True))
+                product_name_found=True,
+            ),
+        )
 
         result = engine.decide(pattern_summary)
 
@@ -65,7 +69,9 @@ class TestDecisionEngine:
                 merchant_name_found=False,  # Missing critical field
                 date_found=True,
                 grand_total_found=True,
-                product_name_found=True))
+                product_name_found=True,
+            ),
+        )
 
         result = self.engine.decide(pattern_summary)
 
@@ -83,7 +89,9 @@ class TestDecisionEngine:
                 merchant_name_found=True,
                 date_found=True,
                 grand_total_found=True,
-                product_name_found=True))
+                product_name_found=True,
+            ),
+        )
 
         result = self.engine.decide(pattern_summary)
 
@@ -105,7 +113,8 @@ class TestDecisionEngine:
                 date_found=True,
                 grand_total_found=True,
                 product_name_found=False,  # Missing product name
-            ))
+            ),
+        )
 
         result = self.engine.decide(pattern_summary)
 
@@ -123,7 +132,9 @@ class TestDecisionEngine:
                 merchant_name_found=True,
                 date_found=True,
                 grand_total_found=True,
-                product_name_found=True))
+                product_name_found=True,
+            ),
+        )
 
         result = self.engine.decide(pattern_summary)
 
@@ -140,7 +151,9 @@ class TestDecisionEngine:
                 merchant_name_found=True,
                 date_found=True,
                 grand_total_found=True,
-                product_name_found=True))
+                product_name_found=True,
+            ),
+        )
 
         result = self.engine.decide(pattern_summary)
 
@@ -157,7 +170,9 @@ class TestDecisionEngine:
                 merchant_name_found=True,
                 date_found=True,
                 grand_total_found=True,
-                product_name_found=True))
+                product_name_found=True,
+            ),
+        )
 
         reliable_merchant = MerchantReliabilityData(
             merchant_name="Walmart",
@@ -166,7 +181,8 @@ class TestDecisionEngine:
             common_labels={"PRODUCT_NAME", "GRAND_TOTAL"},
             rarely_present_labels=set(),
             typical_receipt_structure={},
-            last_updated=datetime.now())
+            last_updated=datetime.now(),
+        )
 
         result = self.engine.decide(pattern_summary, reliable_merchant)
 
@@ -191,7 +207,9 @@ class TestDecisionEngine:
                 merchant_name_found=True,
                 date_found=True,
                 grand_total_found=True,
-                product_name_found=True))
+                product_name_found=True,
+            ),
+        )
 
         result = engine.decide(pattern_summary)
 
@@ -207,7 +225,9 @@ class TestDecisionEngine:
                 merchant_name_found=True,
                 date_found=True,
                 grand_total_found=True,
-                product_name_found=True))
+                product_name_found=True,
+            ),
+        )
 
         # Mock an error in the decision process
         with patch.object(
@@ -224,7 +244,8 @@ class TestDecisionEngine:
         config = DecisionEngineConfig(
             enabled=True,
             enable_performance_timing=True,
-            rollout_percentage=100.0)
+            rollout_percentage=100.0,
+        )
         engine = DecisionEngine(config)
 
         pattern_summary = self._create_pattern_summary(
@@ -234,7 +255,9 @@ class TestDecisionEngine:
                 merchant_name_found=True,
                 date_found=True,
                 grand_total_found=True,
-                product_name_found=True))
+                product_name_found=True,
+            ),
+        )
 
         result = engine.decide(pattern_summary)
 
@@ -284,7 +307,8 @@ class TestDecisionEngine:
         unlabeled_words: int,
         essential_fields: EssentialFieldsStatus,
         total_words: int = 50,
-        detected_merchant: str = "Test Merchant") -> PatternDetectionSummary:
+        detected_merchant: str = "Test Merchant",
+    ) -> PatternDetectionSummary:
         """Helper to create PatternDetectionSummary for testing."""
         labeled_words = int((total_words * coverage_percentage) / 100)
         noise_words = 5  # Assume 5 noise words
@@ -313,7 +337,8 @@ class TestDecisionEngine:
             ),
             merchant_confidence=(
                 0.8 if essential_fields.merchant_name_found else None
-            ))
+            ),
+        )
 
 
 class TestEssentialFieldsStatus:
@@ -325,7 +350,8 @@ class TestEssentialFieldsStatus:
             merchant_name_found=True,
             date_found=True,
             grand_total_found=True,
-            product_name_found=False)
+            product_name_found=False,
+        )
 
         assert status.all_critical_found is True
         assert status.all_essential_found is False
@@ -336,7 +362,8 @@ class TestEssentialFieldsStatus:
             merchant_name_found=False,
             date_found=True,
             grand_total_found=False,
-            product_name_found=True)
+            product_name_found=True,
+        )
 
         missing = status.missing_critical_fields
         assert "MERCHANT_NAME" in missing
@@ -350,7 +377,8 @@ class TestEssentialFieldsStatus:
             merchant_name_found=True,
             date_found=False,
             grand_total_found=True,
-            product_name_found=True)
+            product_name_found=True,
+        )
 
         found = status.found_essential_fields
         assert "MERCHANT_NAME" in found
@@ -372,7 +400,8 @@ class TestPatternDetectionSummary:
             meaningful_unlabeled_words=10,
             labels_by_type={},
             confidence_scores={},
-            essential_fields=EssentialFieldsStatus())
+            essential_fields=EssentialFieldsStatus(),
+        )
 
         # Meaningful words = 100 - 10 = 90
         # Coverage = 80 / 90 = 88.89%
@@ -387,7 +416,8 @@ class TestPatternDetectionSummary:
             meaningful_unlabeled_words=5,
             labels_by_type={},
             confidence_scores={},
-            essential_fields=EssentialFieldsStatus())
+            essential_fields=EssentialFieldsStatus(),
+        )
 
         # Coverage = 85 / 90 = 94.44%
         assert summary.is_high_coverage(90.0) is True
@@ -408,7 +438,8 @@ class TestMerchantReliabilityData:
             common_labels=set(),
             rarely_present_labels=set(),
             typical_receipt_structure={},
-            last_updated=datetime.now())
+            last_updated=datetime.now(),
+        )
 
         assert data.is_reliable is True
         assert (
@@ -424,7 +455,8 @@ class TestMerchantReliabilityData:
             common_labels=set(),
             rarely_present_labels=set(),
             typical_receipt_structure={},
-            last_updated=datetime.now())
+            last_updated=datetime.now(),
+        )
 
         assert data.is_reliable is False  # Not enough receipts
         # Reliability = 0.9 * (2/20) = 0.09

@@ -32,14 +32,16 @@ class TestContactPatternDetector:
                 True,
                 "555-123-4567",
                 "PHONE_NUMBER",
-                0.40),  # Strips country code
+                0.40,
+            ),  # Strips country code
             ("+1 555 123 4567", True, "+1 555 123 4567", "PHONE_NUMBER", 0.40),
             (
                 "+1 (555) 123-4567",
                 True,
                 "+1 (555) 123-4567",
                 "PHONE_NUMBER",
-                0.40),
+                0.40,
+            ),
             ("555 123 4567", True, "555 123 4567", "PHONE_NUMBER", 0.35),
             # International formats
             (
@@ -47,19 +49,22 @@ class TestContactPatternDetector:
                 True,
                 "+44 20 7946 0958",
                 "PHONE_NUMBER",
-                0.40),  # UK
+                0.40,
+            ),  # UK
             (
                 "+33 1 42 86 83 26",
                 True,
                 "+33 1 42 86 83 26",
                 "PHONE_NUMBER",
-                0.35),  # France
+                0.35,
+            ),  # France
             (
                 "+49 30 12345678",
                 True,
                 "+49 30 12345678",
                 "PHONE_NUMBER",
-                0.35),  # Germany
+                0.35,
+            ),  # Germany
             # Email addresses
             ("test@example.com", True, "test@example.com", "EMAIL", 0.40),
             (
@@ -67,20 +72,23 @@ class TestContactPatternDetector:
                 True,
                 "user.name@company.org",
                 "EMAIL",
-                0.40),
+                0.40,
+            ),
             (
                 "support@walmart.com",
                 True,
                 "support@walmart.com",
                 "EMAIL",
-                0.40),
+                0.40,
+            ),
             ("info@mcdonalds.net", True, "info@mcdonalds.net", "EMAIL", 0.40),
             (
                 "customer_service@target.co.uk",
                 True,
                 "customer_service@target.co.uk",
                 "EMAIL",
-                0.35),
+                0.35,
+            ),
             # Website URLs
             ("www.walmart.com", True, "www.walmart.com", "WEBSITE", 0.40),
             (
@@ -88,13 +96,15 @@ class TestContactPatternDetector:
                 True,
                 "https://www.target.com",
                 "WEBSITE",
-                0.40),
+                0.40,
+            ),
             (
                 "http://mcdonalds.com",
                 True,
                 "http://mcdonalds.com",
                 "WEBSITE",
-                0.40),
+                0.40,
+            ),
             ("target.com", True, "target.com", "WEBSITE", 0.35),
             ("www.company.co.uk", True, "www.company.co.uk", "WEBSITE", 0.35),
             # Invalid formats that should NOT match
@@ -106,7 +116,8 @@ class TestContactPatternDetector:
             ("http://", False, None, None, 0.0),
             ("", False, None, None, 0.0),  # Empty
             ("random text", False, None, None, 0.0),
-        ])
+        ],
+    )
     async def test_contact_pattern_detection(
         self,
         detector,
@@ -114,7 +125,8 @@ class TestContactPatternDetector:
         expected_match,
         expected_matched_text,
         expected_label,
-        min_confidence):
+        min_confidence,
+    ):
         """Test contact pattern detection with various formats."""
         word = create_test_receipt_word(
             receipt_id=1,
@@ -124,7 +136,8 @@ class TestContactPatternDetector:
             x1=100,
             y1=100,
             x2=200,
-            y2=120)
+            y2=120,
+        )
 
         results = await detector.detect([word])
 
@@ -171,7 +184,8 @@ class TestContactPatternDetector:
                 x1=100,
                 y1=100,
                 x2=200,
-                y2=120)
+                y2=120,
+            )
 
             results = await detector.detect([word])
             assert len(results) > 0, f"Failed to detect: {text}"
@@ -223,7 +237,8 @@ class TestContactPatternDetector:
                 x1=100,
                 y1=100,
                 x2=200,
-                y2=120)
+                y2=120,
+            )
 
             results = await detector.detect([word])
             assert len(results) > 0, f"Should detect valid email: {email}"
@@ -241,7 +256,8 @@ class TestContactPatternDetector:
                 x1=100,
                 y1=100,
                 x2=200,
-                y2=120)
+                y2=120,
+            )
 
             results = await detector.detect([word])
             if results:
@@ -280,7 +296,8 @@ class TestContactPatternDetector:
                 x1=100,
                 y1=100,
                 x2=200,
-                y2=120)
+                y2=120,
+            )
 
             results = await detector.detect([word])
 
@@ -330,7 +347,8 @@ class TestContactPatternDetector:
                 x1=100,
                 y1=100,
                 x2=200,
-                y2=120)
+                y2=120,
+            )
 
             results = await detector.detect([word])
 
@@ -365,7 +383,8 @@ class TestContactPatternDetector:
             text,
             should_match,
             _,
-            min_confidence) in business_cases:  # expected_label not used
+            min_confidence,
+        ) in business_cases:  # expected_label not used
             word = create_test_receipt_word(
                 receipt_id=1,
                 line_id=1,
@@ -374,7 +393,8 @@ class TestContactPatternDetector:
                 x1=100,
                 y1=100,
                 x2=200,
-                y2=120)
+                y2=120,
+            )
 
             results = await detector.detect([word])
 
@@ -430,7 +450,8 @@ class TestContactPatternDetector:
                     x1=100,
                     y1=100,
                     x2=200,
-                    y2=120)
+                    y2=120,
+                )
 
                 results = await detector.detect([word])
                 assert (
@@ -467,7 +488,8 @@ class TestContactPatternDetector:
                     x1=100,
                     y1=100 + i * 10,
                     x2=200,
-                    y2=120 + i * 10)
+                    y2=120 + i * 10,
+                )
             )
 
         import time  # pylint: disable=import-outside-toplevel
@@ -519,7 +541,8 @@ class TestContactPatternDetector:
                 x1=100,
                 y1=100,
                 x2=200,
-                y2=120)
+                y2=120,
+            )
 
             results = await detector.detect([word])
 
@@ -543,7 +566,8 @@ class TestContactPatternDetector:
         for (
             text,
             _,
-            expected_labels) in type_consistency_cases:  # expected_pattern_type not used
+            expected_labels,
+        ) in type_consistency_cases:  # expected_pattern_type not used
             word = create_test_receipt_word(
                 receipt_id=1,
                 line_id=1,
@@ -552,7 +576,8 @@ class TestContactPatternDetector:
                 x1=100,
                 y1=100,
                 x2=200,
-                y2=120)
+                y2=120,
+            )
 
             results = await detector.detect([word])
             assert len(results) > 0, f"Failed to detect: {text}"

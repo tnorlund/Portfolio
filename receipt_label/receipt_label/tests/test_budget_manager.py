@@ -12,7 +12,8 @@ import pytest
 from receipt_label.utils.cost_monitoring import (
     Budget,
     BudgetManager,
-    BudgetPeriod)
+    BudgetPeriod,
+)
 
 
 class TestBudgetManager:
@@ -45,7 +46,8 @@ class TestBudgetManager:
             effective_from=datetime.now(timezone.utc),
             rollover_enabled=False,
             alert_thresholds=[50, 80, 95, 100],
-            is_active=True)
+            is_active=True,
+        )
 
     def test_create_budget(self, budget_manager, mock_dynamo_client):
         """Test creating a new budget."""
@@ -54,7 +56,8 @@ class TestBudgetManager:
             amount=Decimal("100.00"),
             period=BudgetPeriod.DAILY,
             rollover_enabled=True,
-            metadata={"department": "engineering"})
+            metadata={"department": "engineering"},
+        )
 
         assert budget.scope == "user:test-user"
         assert budget.amount == Decimal("100.00")
@@ -105,7 +108,8 @@ class TestBudgetManager:
             created_at=datetime.now(timezone.utc) - timedelta(days=30),
             effective_from=datetime.now(timezone.utc) - timedelta(days=30),
             effective_until=datetime.now(timezone.utc) - timedelta(days=1),
-            is_active=True)
+            is_active=True,
+        )
 
         mock_dynamo_client._client.query.return_value = {
             "Items": [
@@ -133,7 +137,8 @@ class TestBudgetManager:
             budget_id=sample_budget.budget_id,
             amount=Decimal("150.00"),
             alert_thresholds=[60, 85, 95, 100],
-            metadata_updates={"notes": "Increased budget"})
+            metadata_updates={"notes": "Increased budget"},
+        )
 
         assert updated_budget.amount == Decimal("150.00")
         assert updated_budget.alert_thresholds == [60, 85, 95, 100]
@@ -171,7 +176,8 @@ class TestBudgetManager:
                 period=BudgetPeriod.DAILY,
                 created_at=datetime.now(timezone.utc) - timedelta(days=i),
                 effective_from=datetime.now(timezone.utc) - timedelta(days=i),
-                is_active=(i == 0))
+                is_active=(i == 0),
+            )
             budgets_data.append(
                 {
                     "budget_data": {"S": json.dumps(budget.to_dict())},

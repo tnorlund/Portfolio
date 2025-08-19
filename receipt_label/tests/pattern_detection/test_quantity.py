@@ -5,7 +5,8 @@ from receipt_dynamo.entities import ReceiptWord
 
 from receipt_label.pattern_detection import (
     PatternType,
-    QuantityPatternDetector)
+    QuantityPatternDetector,
+)
 
 
 class TestQuantityPatternDetector:
@@ -39,7 +40,8 @@ class TestQuantityPatternDetector:
                 bottom_right={"x": x_pos + 50, "y": y_pos + 20},
                 angle_degrees=0.0,
                 angle_radians=0.0,
-                confidence=0.95)
+                confidence=0.95,
+            )
 
         return _create_word
 

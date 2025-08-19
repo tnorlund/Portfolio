@@ -21,7 +21,8 @@ from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 from receipt_label.utils.cost_calculator import AICostCalculator
 from tests.utils.ai_usage_helpers import (
     create_mock_anthropic_response,
-    create_mock_openai_response)
+    create_mock_openai_response,
+)
 
 
 @pytest.mark.unit
@@ -34,7 +35,7 @@ class TestConcurrentTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         results = []
@@ -73,7 +74,7 @@ class TestConcurrentTracking:
                 table_name="test-table",
                 track_to_dynamo=True,
                 track_to_file=True,
-                log_file=temp_file
+                log_file=temp_file,
             )
 
             @tracker.track_openai_completion
@@ -83,7 +84,8 @@ class TestConcurrentTracking:
                 response.usage = Mock(
                     prompt_tokens=100 + call_id,
                     completion_tokens=50 + call_id,
-                    total_tokens=150 + call_id * 2)
+                    total_tokens=150 + call_id * 2,
+                )
                 return response
 
             # Use ThreadPoolExecutor for concurrent calls
@@ -126,7 +128,8 @@ class TestConcurrentTracking:
             call_count += 1
             return create_mock_openai_response(
                 prompt_tokens=100 + call_count,
-                completion_tokens=50 + call_count)
+                completion_tokens=50 + call_count,
+            )
 
         mock_completions.create = mock_create
 
@@ -134,7 +137,7 @@ class TestConcurrentTracking:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
@@ -145,7 +148,8 @@ class TestConcurrentTracking:
         def make_call(thread_id):
             return wrapped_client.chat.completions.create(
                 model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": f"Message {thread_id}"}])
+                messages=[{"role": "user", "content": f"Message {thread_id}"}],
+            )
 
         with ThreadPoolExecutor(max_workers=5) as executor:
             futures = [executor.submit(make_call, i) for i in range(10)]
@@ -167,20 +171,21 @@ class TestBatchProcessing:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         # Set batch context
         tracker.set_tracking_context(
             job_id="job-batch-001",
             batch_id="batch-large-001",
-            user_id="batch-user")
+            user_id="batch-user",
+        )
 
         @tracker.track_openai_completion
         def process_item(item_id):
             return create_mock_openai_response(
-                prompt_tokens=100,
-                completion_tokens=50)
+                prompt_tokens=100, completion_tokens=50
+            )
 
         # Process batch
         for i in range(100):
@@ -209,7 +214,7 @@ class TestBatchProcessing:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         @tracker.track_openai_completion
@@ -219,7 +224,8 @@ class TestBatchProcessing:
             response.usage = Mock(
                 prompt_tokens=tokens,
                 completion_tokens=tokens // 2,
-                total_tokens=tokens + tokens // 2)
+                total_tokens=tokens + tokens // 2,
+            )
             return response
 
         # Process items with varying token counts
@@ -238,7 +244,7 @@ class TestBatchProcessing:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         tracker.set_tracking_context(batch_id="mixed-batch-001")
@@ -290,7 +296,7 @@ class TestMemoryManagement:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         # Create large metadata
@@ -305,7 +311,8 @@ class TestMemoryManagement:
         call_with_large_data(
             model="gpt-3.5-turbo",
             large_param=large_list,
-            nested_data=large_dict)
+            nested_data=large_dict,
+        )
 
         # Should complete without error
         mock_dynamo.put_item.assert_called_once()
@@ -319,8 +326,8 @@ class TestMemoryManagement:
             # Create and use multiple trackers
             for i in range(10):
                 tracker = AIUsageTracker(
-                    track_to_file=True,
-                    log_file=temp_file)
+                    track_to_file=True, log_file=temp_file
+                )
 
                 @tracker.track_openai_completion
                 def call_api():
@@ -360,7 +367,7 @@ class TestErrorRecovery:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         @tracker.track_openai_completion
@@ -399,7 +406,7 @@ class TestErrorRecovery:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         @tracker.track_openai_completion
@@ -424,9 +431,7 @@ class TestErrorRecovery:
             f.write('{"partial": "json\n')
 
         try:
-            tracker = AIUsageTracker(
-                track_to_file=True,
-                log_file=temp_file)
+            tracker = AIUsageTracker(track_to_file=True, log_file=temp_file)
 
             @tracker.track_openai_completion
             def make_call():
@@ -456,11 +461,10 @@ class TestPerformanceOptimization:
         """Test minimal overhead when tracking is disabled."""
         from receipt_label.tests.utils.performance_utils import (
             assert_performance_within_bounds,
-            measure_operation_overhead)
+            measure_operation_overhead,
+        )
 
-        tracker = AIUsageTracker(
-            track_to_dynamo=False,
-            track_to_file=False)
+        tracker = AIUsageTracker(track_to_dynamo=False, track_to_file=False)
 
         @tracker.track_openai_completion
         def fast_function():
@@ -474,7 +478,8 @@ class TestPerformanceOptimization:
         metrics = measure_operation_overhead(
             baseline_op=baseline_function,
             test_op=fast_function,
-            iterations=1000)
+            iterations=1000,
+        )
 
         # When tracking is disabled, decorator overhead should be minimal
         # The overhead is primarily from the decorator wrapper itself
@@ -484,7 +489,8 @@ class TestPerformanceOptimization:
         assert_performance_within_bounds(
             metrics,
             max_overhead_ratio=6.0,  # CI-tuned: decorators can add up to 6x overhead in constrained environments
-            custom_message="Decorator overhead with tracking disabled")
+            custom_message="Decorator overhead with tracking disabled",
+        )
 
         # Also verify absolute performance
         print(f"Decorator overhead: {metrics['overhead_ms']:.3f}ms per call")
@@ -503,7 +509,7 @@ class TestPerformanceOptimization:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         # Create response with various data types
@@ -519,7 +525,8 @@ class TestPerformanceOptimization:
             nested={"a": {"b": {"c": "deep"}}},
             unicode="Hello 世界 🌍",
             empty_list=[],
-            empty_dict={})
+            empty_dict={},
+        )
 
         # Should serialize efficiently
         mock_dynamo.put_item.assert_called_once()
@@ -531,7 +538,7 @@ class TestPerformanceOptimization:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         timestamps = []
@@ -567,7 +574,7 @@ class TestAdvancedIntegration:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         # Apply multiple decorators
@@ -595,7 +602,7 @@ class TestAdvancedIntegration:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         @tracker.track_openai_completion
@@ -628,7 +635,7 @@ class TestAdvancedIntegration:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
-            track_to_dynamo=True
+            track_to_dynamo=True,
         )
 
         class CustomException(Exception):
@@ -654,14 +661,14 @@ class TestAdvancedIntegration:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
-            user_id="parent-user"
+            user_id="parent-user",
         )
 
         child_tracker = AIUsageTracker(
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
-            user_id="child-user"
+            user_id="child-user",
         )
 
         # Set different contexts

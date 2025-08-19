@@ -246,7 +246,8 @@ class AdaptiveThresholds:
 def measure_operation_overhead(
     baseline_op: Callable[[], None],
     test_op: Callable[[], None],
-    iterations: int = 1000) -> Dict[str, float]:
+    iterations: int = 1000,
+) -> Dict[str, float]:
     """
     Measure the overhead of an operation compared to a baseline.
 
@@ -287,7 +288,8 @@ def assert_performance_within_bounds(
     max_overhead_ratio: Optional[float] = None,
     max_latency_ms: Optional[float] = None,
     min_throughput: Optional[float] = None,
-    custom_message: str = "") -> None:
+    custom_message: str = "",
+) -> None:
     """
     Assert that performance metrics are within acceptable bounds.
 

@@ -6,7 +6,8 @@ from receipt_dynamo.entities import ReceiptWord
 from receipt_label.pattern_detection.base import (
     PatternDetector,
     PatternMatch,
-    PatternType)
+    PatternType,
+)
 
 
 class TestPatternMatch:
@@ -28,7 +29,8 @@ class TestPatternMatch:
             bottom_right={"x": 50, "y": 20},
             angle_degrees=0.0,
             angle_radians=0.0,
-            confidence=0.95)
+            confidence=0.95,
+        )
 
     @pytest.mark.unit
     def test_pattern_match_creation(self, sample_word):
@@ -39,7 +41,8 @@ class TestPatternMatch:
             confidence=0.95,
             matched_text="$5.99",
             extracted_value=5.99,
-            metadata={"currency_symbol": "$"})
+            metadata={"currency_symbol": "$"},
+        )
 
         assert match.word == sample_word
         assert match.pattern_type == PatternType.CURRENCY
@@ -61,7 +64,8 @@ class TestPatternMatch:
                 confidence=1.5,  # Too high
                 matched_text="$5.99",
                 extracted_value=5.99,
-                metadata={})
+                metadata={},
+            )
 
         with pytest.raises(
             ValueError, match="Confidence must be between 0 and 1"
@@ -72,7 +76,8 @@ class TestPatternMatch:
                 confidence=-0.1,  # Too low
                 matched_text="$5.99",
                 extracted_value=5.99,
-                metadata={})
+                metadata={},
+            )
 
     @pytest.mark.unit
     def test_pattern_match_edge_confidence(self, sample_word):
@@ -84,7 +89,8 @@ class TestPatternMatch:
             confidence=0.0,  # Minimum valid
             matched_text="$5.99",
             extracted_value=5.99,
-            metadata={})
+            metadata={},
+        )
         assert match_low.confidence == 0.0
 
         match_high = PatternMatch(
@@ -93,7 +99,8 @@ class TestPatternMatch:
             confidence=1.0,  # Maximum valid
             matched_text="$5.99",
             extracted_value=5.99,
-            metadata={})
+            metadata={},
+        )
         assert match_high.confidence == 1.0
 
 
@@ -143,7 +150,8 @@ class TestPatternDetector:
                 bottom_right={"x": i * 60 + 50, "y": (i // 2) * 25 + 20},
                 angle_degrees=0.0,
                 angle_radians=0.0,
-                confidence=0.95)
+                confidence=0.95,
+            )
             words.append(word)
         return words
 
@@ -210,7 +218,8 @@ class TestPatternDetector:
             bottom_right={"x": 50, "y": 70},
             angle_degrees=0.0,
             angle_radians=0.0,
-            confidence=0.95)
+            confidence=0.95,
+        )
 
         context = detector._calculate_position_context(word, [word])
 
@@ -283,7 +292,8 @@ class TestPatternDetector:
                 bottom_right={"x": 50, "y": i * 20 + 15},
                 angle_degrees=0.0,
                 angle_radians=0.0,
-                confidence=0.95)
+                confidence=0.95,
+            )
             words.append(word)
 
         # Test word at top
@@ -314,7 +324,8 @@ class TestPatternDetector:
                 bottom_right={"x": x + 40, "y": 70},
                 angle_degrees=0.0,
                 angle_radians=0.0,
-                confidence=0.95)
+                confidence=0.95,
+            )
             words.append(word)
 
         # Check each word's line position

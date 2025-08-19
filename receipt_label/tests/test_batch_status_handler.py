@@ -25,7 +25,8 @@ from receipt_label.embedding.common.batch_status_handler import (
     mark_items_for_retry,
     process_error_file,
     process_partial_results,
-    should_retry_batch)
+    should_retry_batch,
+)
 
 
 class TestMapOpenAIToDynamoStatus:
@@ -42,11 +43,11 @@ class TestMapOpenAIToDynamoStatus:
             ("expired", BatchStatus.EXPIRED),
             ("canceling", BatchStatus.CANCELING),
             ("cancelled", BatchStatus.CANCELLED),
-        ])
+        ],
+    )
     def test_valid_status_mapping(
-        self,
-        openai_status: str,
-        expected_dynamo_status: BatchStatus) -> None:
+        self, openai_status: str, expected_dynamo_status: BatchStatus
+    ) -> None:
         """Test that valid OpenAI statuses map correctly."""
         result = map_openai_to_dynamo_status(openai_status)
         assert result == expected_dynamo_status
@@ -287,7 +288,8 @@ class TestStatusHandlers:
             submitted_at=datetime.now(timezone.utc),
             status=BatchStatus.PENDING,
             result_file_id="",
-            receipt_refs=[])
+            receipt_refs=[],
+        )
         client_manager.dynamo.get_batch_summary.return_value = (
             mock_batch_summary
         )
@@ -330,7 +332,8 @@ class TestStatusHandlers:
             submitted_at=datetime.now(timezone.utc),
             status=BatchStatus.PENDING,
             result_file_id="",
-            receipt_refs=[])
+            receipt_refs=[],
+        )
         client_manager.dynamo.get_batch_summary.return_value = (
             mock_batch_summary
         )
@@ -372,7 +375,8 @@ class TestStatusHandlers:
             submitted_at=submitted_time,
             status=BatchStatus.PENDING,
             result_file_id="",
-            receipt_refs=[])
+            receipt_refs=[],
+        )
         client_manager.dynamo.get_batch_summary.return_value = (
             mock_batch_summary
         )
@@ -405,7 +409,8 @@ class TestStatusHandlers:
             submitted_at=submitted_time,
             status=BatchStatus.PENDING,
             result_file_id="",
-            receipt_refs=[])
+            receipt_refs=[],
+        )
         client_manager.dynamo.get_batch_summary.return_value = (
             mock_batch_summary
         )
@@ -434,7 +439,8 @@ class TestStatusHandlers:
             submitted_at=datetime.now(timezone.utc),
             status=BatchStatus.PENDING,
             result_file_id="",
-            receipt_refs=[])
+            receipt_refs=[],
+        )
         client_manager.dynamo.get_batch_summary.return_value = (
             mock_batch_summary
         )
@@ -466,11 +472,11 @@ class TestHandleBatchStatus:
             ("finalizing", "wait"),
             ("canceling", "handle_cancellation"),
             ("cancelled", "handle_cancellation"),
-        ])
+        ],
+    )
     def test_handle_batch_status_routing(
-        self,
-        status: str,
-        expected_action: str) -> None:
+        self, status: str, expected_action: str
+    ) -> None:
         """Test that statuses route to correct handlers."""
         client_manager = MagicMock()
 
@@ -482,7 +488,8 @@ class TestHandleBatchStatus:
             submitted_at=datetime.now(timezone.utc),
             status=BatchStatus.PENDING,
             result_file_id="",
-            receipt_refs=[])
+            receipt_refs=[],
+        )
         client_manager.dynamo.get_batch_summary.return_value = (
             mock_batch_summary
         )
@@ -518,7 +525,8 @@ class TestHandleBatchStatus:
                 "batch_123",
                 "openai_batch_456",
                 "unknown_status",
-                client_manager)
+                client_manager,
+            )
 
 
 class TestMarkItemsForRetry:
@@ -583,7 +591,8 @@ class TestShouldRetryBatch:
             submitted_at=datetime.now(timezone.utc),
             status=BatchStatus.FAILED,
             result_file_id="",
-            receipt_refs=[])
+            receipt_refs=[],
+        )
 
         assert should_retry_batch(batch_summary) is True
 
@@ -596,7 +605,8 @@ class TestShouldRetryBatch:
             submitted_at=datetime.now(timezone.utc),
             status=BatchStatus.EXPIRED,
             result_file_id="",
-            receipt_refs=[])
+            receipt_refs=[],
+        )
 
         assert should_retry_batch(batch_summary) is True
 
@@ -609,6 +619,7 @@ class TestShouldRetryBatch:
             submitted_at=datetime.now(timezone.utc),
             status=BatchStatus.COMPLETED,
             result_file_id="",
-            receipt_refs=[])
+            receipt_refs=[],
+        )
 
         assert should_retry_batch(batch_summary) is False

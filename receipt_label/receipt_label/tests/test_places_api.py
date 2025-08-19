@@ -8,7 +8,8 @@ from receipt_label.data.places_api import (
     BatchPlacesProcessor,
     ConfidenceLevel,
     PlacesAPI,
-    ValidationResult)
+    ValidationResult,
+)
 
 
 @pytest.fixture
@@ -109,7 +110,8 @@ def test_process_high_priority_receipt(
             "phone": ["(555) 123-4567"],
             "url": [],
             "date": [],
-        })
+        },
+    )
 
     assert isinstance(result, ValidationResult)
     assert result.confidence == ConfidenceLevel.HIGH
@@ -137,7 +139,8 @@ def test_process_medium_priority_receipt(
             "phone": [],
             "url": ["https://www.walmart.com"],
             "date": [],
-        })
+        },
+    )
 
     assert isinstance(result, ValidationResult)
     assert result.confidence == ConfidenceLevel.MEDIUM
@@ -154,7 +157,8 @@ def test_process_low_priority_receipt(mocker, sample_receipt, dynamodb_table):
     processor = BatchPlacesProcessor("test_api_key", dynamodb_table)
     result = processor._process_low_priority_receipt(
         sample_receipt,
-        {"address": ["123 Main St"], "phone": [], "url": [], "date": []})
+        {"address": ["123 Main St"], "phone": [], "url": [], "date": []},
+    )
 
     assert isinstance(result, ValidationResult)
     assert result.confidence == ConfidenceLevel.LOW

@@ -6,7 +6,8 @@ from .ai_usage_helpers import (
     create_mock_google_places_response,
     create_mock_openai_response,
     create_mock_usage_metric,
-    create_test_tracking_context)
+    create_test_tracking_context,
+)
 
 __all__ = [
     "create_mock_usage_metric",

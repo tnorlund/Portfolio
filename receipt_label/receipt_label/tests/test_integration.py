@@ -20,7 +20,8 @@ from receipt_label.models.line_item import (
     LineItem,
     LineItemAnalysis,
     Price,
-    Quantity)
+    Quantity,
+)
 from receipt_label.models.receipt import Receipt, ReceiptLine, ReceiptWord
 from receipt_label.models.structure import StructureAnalysis
 from receipt_label.models.validation import ValidationAnalysis
@@ -40,13 +41,15 @@ def receipt_words():
             text="Total",
             line_id=1,
             confidence=0.99,
-            bounding_box={"x": 100, "y": 300, "width": 50, "height": 20}),
+            bounding_box={"x": 100, "y": 300, "width": 50, "height": 20},
+        ),
         ReceiptWord(
             word_id=2,
             text="$15.99",
             line_id=1,
             confidence=0.99,
-            bounding_box={"x": 200, "y": 300, "width": 60, "height": 20}),
+            bounding_box={"x": 200, "y": 300, "width": 60, "height": 20},
+        ),
     ]
 
 
@@ -64,7 +67,8 @@ def receipt_lines(receipt_words):
             bottom_right={"x": 260, "y": 320},
             bottom_left={"x": 100, "y": 320},
             angle_degrees=0.0,
-            angle_radians=0.0),
+            angle_radians=0.0,
+        ),
     ]
 
 
@@ -80,7 +84,8 @@ def receipt(receipt_words, receipt_lines):
             "merchant_name": "Test Store",
             "date": "2023-01-01",
             "time": "12:00:00",
-        })
+        },
+    )
 
 
 @pytest.fixture
@@ -142,7 +147,8 @@ def mock_line_items():
             ),
             reasoning="Single test item",
             line_ids=[1],
-            metadata={})
+            metadata={},
+        )
     ]
 
 
@@ -156,7 +162,8 @@ def mock_line_item_analysis(mock_line_items):
         tax=Decimal("0"),
         total=Decimal("15.99"),
         discrepancies=[],
-        reasoning="Found a single item with price matching the total.")
+        reasoning="Found a single item with price matching the total.",
+    )
 
 
 @pytest.mark.asyncio
@@ -185,7 +192,8 @@ def test_labeling_result_with_base_classes(
     receipt_lines,
     mock_structure_analysis,
     mock_field_analysis,
-    mock_line_item_analysis):
+    mock_line_item_analysis,
+):
     """Test that LabelingResult correctly uses our base classes."""
     # Set up mocks - these functions don't exist in the current implementation
     # so we'll create the analysis objects directly
@@ -203,7 +211,8 @@ def test_labeling_result_with_base_classes(
         line_item_analysis=mock_line_item_analysis,
         validation_analysis=ValidationAnalysis(
             overall_reasoning="No discrepancies found"
-        ))
+        ),
+    )
 
     # Set up the mock to return our result
     mock_label_receipt.return_value = result
