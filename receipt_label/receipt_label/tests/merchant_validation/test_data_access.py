@@ -13,8 +13,7 @@ from receipt_label.merchant_validation.data_access import (
     list_receipts_for_merchant_validation,
     persist_alias_updates,
     query_records_by_place_id,
-    write_receipt_metadata_to_dynamo,
-)
+    write_receipt_metadata_to_dynamo)
 
 
 class TestListReceiptMetadatas:
@@ -31,8 +30,7 @@ class TestListReceiptMetadatas:
         mock_client_manager = Mock()
         mock_client_manager.dynamo.listReceiptMetadatas.return_value = (
             mock_metadatas,
-            None,
-        )
+            None)
         mock_get_client_manager.return_value = mock_client_manager
 
         # Act
@@ -68,8 +66,7 @@ class TestListReceiptMetadatas:
         mock_client_manager.dynamo.listReceiptMetadatas.side_effect = (
             ClientError(
                 {"Error": {"Code": "ValidationException"}},
-                "listReceiptMetadatas",
-            )
+                "listReceiptMetadatas")
         )
         mock_get_client_manager.return_value = mock_client_manager
 
@@ -112,8 +109,7 @@ class TestGetReceiptDetails:
             mock_lines,
             mock_words,
             mock_letters,
-            mock_labels,
-        )
+            mock_labels)
         mock_dynamo.getReceipt.assert_called_once_with(image_id, receipt_id)
         mock_dynamo.getReceiptLines.assert_called_once_with(
             image_id, receipt_id

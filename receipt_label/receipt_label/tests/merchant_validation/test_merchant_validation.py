@@ -50,8 +50,7 @@ def mock_places_api(mocker):
 
     mocker.patch(
         "receipt_label.merchant_validation.google_places.PlacesAPI",
-        DummyAPI,
-    )
+        DummyAPI)
     return DummyAPI
 
 
@@ -69,8 +68,7 @@ def mock_openai(mocker):
 
     mocker.patch(
         "receipt_label.merchant_validation.gpt_integration.get_client_manager",
-        return_value=mock_client_manager,
-    )
+        return_value=mock_client_manager)
     return fake_resp
 
 
@@ -83,8 +81,7 @@ def mock_dynamo(mocker):
 
     mocker.patch(
         "receipt_label.merchant_validation.data_access.get_client_manager",
-        return_value=mock_client_manager,
-    )
+        return_value=mock_client_manager)
     return mock_dynamo_client
 
 
@@ -112,16 +109,13 @@ class DummyWord:
                 "foo": 1,
                 "place_id": "test_id",
                 "name": "Test Place",
-            },
-        ),
+            }),
         (
             {"status": "NO_RESULTS"},
             {"bar": 2, "place_id": "test_id2", "name": "Test Place 2"},
-            {"bar": 2, "place_id": "test_id2", "name": "Test Place 2"},
-        ),
+            {"bar": 2, "place_id": "test_id2", "name": "Test Place 2"}),
         (None, None, None),
-    ],
-)
+    ])
 def test_query_google_places_branches(
     phone_resp, address_resp, expected, mocker
 ):
@@ -131,8 +125,7 @@ def test_query_google_places_branches(
     mocker.patch.object(
         gp.PlacesAPI,
         "search_by_address",
-        lambda self, address: address_resp,
-    )
+        lambda self, address: address_resp)
     data = {
         "phone": "p",
         "address": "a",
@@ -151,8 +144,7 @@ def test_query_google_places_branches(
                 "address": "",
                 "phone_number": "",
                 "confidence": 0.0,
-            },
-        ),
+            }),
         (
             True,
             {
@@ -166,8 +158,7 @@ def test_query_google_places_branches(
                 "address": "Y",
                 "phone_number": "Z",
                 "confidence": 0.5,
-            },
-        ),
+            }),
         (
             True,
             "badjson",
@@ -176,10 +167,8 @@ def test_query_google_places_branches(
                 "address": "",
                 "phone_number": "",
                 "confidence": 0.0,
-            },
-        ),
-    ],
-)
+            }),
+    ])
 
 # Tests for infer_merchant_with_gpt
 def test_infer_merchant_with_gpt_branches(
@@ -209,8 +198,7 @@ def test_infer_merchant_with_gpt_branches(
                 "matched_fields": ["name"],
                 "reason": "r",
             },
-            ["name"],
-        ),
+            ["name"]),
         (
             {
                 "decision": "YES",
@@ -218,8 +206,7 @@ def test_infer_merchant_with_gpt_branches(
                 "matched_fields": [],
                 "reason": "r",
             },
-            ["name", "phone", "address"],
-        ),
+            ["name", "phone", "address"]),
         (
             {
                 "decision": "NO",
@@ -227,8 +214,7 @@ def test_infer_merchant_with_gpt_branches(
                 "matched_fields": [],
                 "reason": "r",
             },
-            [],
-        ),
+            []),
         (
             {
                 "decision": "UNSURE",
@@ -236,10 +222,8 @@ def test_infer_merchant_with_gpt_branches(
                 "matched_fields": [],
                 "reason": "r",
             },
-            [],
-        ),
-    ],
-)
+            []),
+    ])
 
 # Tests for validate_match_with_gpt
 def test_validate_match_with_gpt_branches(
@@ -252,8 +236,7 @@ def test_validate_match_with_gpt_branches(
     # COMPLETELY replace the function - no inheritance issues to worry about
     mocker.patch(
         "receipt_label.merchant_validation.merchant_validation.validate_match_with_gpt",
-        return_value=result,
-    )
+        return_value=result)
 
     # Now call the mocked function
     rf = {"name": "N", "address": "A", "phone": "P"}
@@ -334,8 +317,7 @@ def test_extract_candidate_merchant_fields():
         (
             {"place_id": "id", "formatted_address": "123 A"},
             {"address": ""},
-            True,
-        ),
+            True),
         (
             {
                 "place_id": "id",
@@ -344,8 +326,7 @@ def test_extract_candidate_merchant_fields():
                 "types": ["street_address"],
             },
             {"address": "123"},
-            True,
-        ),
+            True),
         (
             {
                 "place_id": "id",
@@ -353,8 +334,7 @@ def test_extract_candidate_merchant_fields():
                 "types": ["route"],
             },
             {"address": "123"},
-            True,
-        ),
+            True),
         (
             {
                 "place_id": "id",
@@ -362,10 +342,8 @@ def test_extract_candidate_merchant_fields():
                 "types": ["establishment"],
             },
             {"address": "Main"},
-            True,
-        ),
-    ],
-)
+            True),
+    ])
 
 # Tests for is_valid_google_match
 def test_is_valid_google_match(place, extract, expected):
@@ -391,16 +369,13 @@ def test_retry_google_search_with_inferred_data_phone(mocker):
 
     mocker.patch(
         "receipt_label.merchant_validation.google_places.PlacesAPI",
-        DummyAPI,
-    )
+        DummyAPI)
     mocker.patch(
         "receipt_label.merchant_validation.google_places.is_match_found",
-        return_value=True,
-    )
+        return_value=True)
     mocker.patch(
         "receipt_label.merchant_validation.google_places.is_valid_google_match",
-        return_value=True,
-    )
+        return_value=True)
     data = {"phone_number": "555-0000"}
     result = mv.retry_google_search_with_inferred_data(data, "APIKEY")
     assert result is not None
@@ -441,16 +416,13 @@ def test_retry_google_search_with_inferred_data_address(mocker):
 
     mocker.patch(
         "receipt_label.merchant_validation.google_places.PlacesAPI",
-        DummyAPI,
-    )
+        DummyAPI)
     mocker.patch(
         "receipt_label.merchant_validation.google_places.is_match_found",
-        return_value=True,
-    )
+        return_value=True)
     mocker.patch(
         "receipt_label.merchant_validation.google_places.is_valid_google_match",
-        return_value=True,
-    )
+        return_value=True)
     data = {"phone_number": "none", "address": "123 Example Ave"}
     result = mv.retry_google_search_with_inferred_data(data, "APIKEY")
     assert result is not None
@@ -470,8 +442,7 @@ def test_retry_google_search_no_match(mocker):
 
     mocker.patch(
         "receipt_label.merchant_validation.google_places.PlacesAPI",
-        DummyAPI,
-    )
+        DummyAPI)
     result = mv.retry_google_search_with_inferred_data({}, "APIKEY")
     assert result is None
 
@@ -489,8 +460,7 @@ def test_build_receipt_metadata_from_result_no_match_defaults(mocker):
     # Mock the entire function
     mocker.patch(
         "receipt_label.merchant_validation.merchant_validation.build_receipt_metadata_from_result_no_match",
-        return_value=mock_metadata,
-    )
+        return_value=mock_metadata)
 
     # Call and verify
     image_id = str(uuid4())
@@ -513,8 +483,7 @@ def test_build_receipt_metadata_from_result_integrity(mocker):
     # Mock the function
     mocker.patch(
         "receipt_label.merchant_validation.merchant_validation.build_receipt_metadata_from_result",
-        return_value=mock_metadata,
-    )
+        return_value=mock_metadata)
 
     # Test data
     gpt = {
@@ -549,8 +518,7 @@ def test_build_receipt_metadata_from_result_category_and_timestamp(mocker):
     # Mock the function
     mocker.patch(
         "receipt_label.merchant_validation.merchant_validation.build_receipt_metadata_from_result",
-        return_value=mock_metadata,
-    )
+        return_value=mock_metadata)
 
     # Test data
     google = {
@@ -586,8 +554,7 @@ def test_validate_match_with_gpt_no_function_call(mock_openai):
         delattr(fake_msg, "function_call")
     res = mv.validate_match_with_gpt(
         {"name": "N", "address": "A", "phone_number": "P"},
-        {"name": "N", "formatted_address": "A", "formatted_phone_number": "P"},
-    )
+        {"name": "N", "formatted_address": "A", "formatted_phone_number": "P"})
     assert res["decision"] == "UNSURE"
     assert res["confidence"] == 0.0
 
@@ -600,12 +567,10 @@ def test_validate_match_with_gpt_bad_json(mock_openai):
         (),
         {
             "arguments": "<<<bad>>>",
-        },
-    )()
+        })()
     res = mv.validate_match_with_gpt(
         {"name": "N", "address": "A", "phone_number": "P"},
-        {"name": "N", "formatted_address": "A", "formatted_phone_number": "P"},
-    )
+        {"name": "N", "formatted_address": "A", "formatted_phone_number": "P"})
     assert res["decision"] == "UNSURE"
     assert res["confidence"] == 0.0
 
@@ -640,8 +605,7 @@ def test_write_receipt_metadata_to_dynamo_success(mock_dynamo):
         matched_fields=[],
         validated_by="TEXT_SEARCH",
         timestamp=datetime.now(timezone.utc),
-        reasoning="test",
-    )
+        reasoning="test")
     mv.write_receipt_metadata_to_dynamo(meta)
     mock_dynamo.addReceiptMetadata.assert_called_once_with(meta)
 

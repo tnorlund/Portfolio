@@ -66,8 +66,7 @@ class FakePineconeIndex:
         top_k=10,
         include_metadata=True,
         filter=None,
-        namespace="words",
-    ):
+        namespace="words"):
         if not self.has_vector:
             return SimpleNamespace(matches=[])
         # Return metadata that includes the fields expected by validation
@@ -114,8 +113,7 @@ def sample_label():
         receipt_id=42,
         line_id=1,
         word_id=5,
-        label="ADDRESS",
-    )
+        label="ADDRESS")
 
 
 @pytest.fixture
@@ -132,8 +130,7 @@ def realistic_address_label():
         receipt_id=12345,
         line_id=3,
         word_id=15,
-        label="ADDRESS",
-    )
+        label="ADDRESS")
 
 
 @pytest.fixture
@@ -144,8 +141,7 @@ def realistic_phone_label():
         receipt_id=98765,
         line_id=8,
         word_id=42,
-        label="PHONE_NUMBER",
-    )
+        label="PHONE_NUMBER")
 
 
 @pytest.fixture
@@ -156,8 +152,7 @@ def realistic_currency_label():
         receipt_id=55555,
         line_id=12,
         word_id=3,
-        label="TOTAL",
-    )
+        label="TOTAL")
 
 
 @pytest.fixture
@@ -168,8 +163,7 @@ def realistic_merchant_label():
         receipt_id=33333,
         line_id=1,
         word_id=1,
-        label="MERCHANT_NAME",
-    )
+        label="MERCHANT_NAME")
 
 
 @pytest.fixture
@@ -180,8 +174,7 @@ def realistic_date_label():
         receipt_id=77777,
         line_id=2,
         word_id=8,
-        label="DATE",
-    )
+        label="DATE")
 
 
 @pytest.fixture
@@ -192,8 +185,7 @@ def realistic_time_label():
         receipt_id=44444,
         line_id=2,
         word_id=12,
-        label="TIME",
-    )
+        label="TIME")
 
 
 def _make_label(
@@ -201,16 +193,14 @@ def _make_label(
     image_id=DEFAULT_IMAGE_ID,
     receipt_id=DEFAULT_RECEIPT_ID,
     line_id=DEFAULT_LINE_ID,
-    word_id=DEFAULT_WORD_ID,
-) -> SimpleNamespace:
+    word_id=DEFAULT_WORD_ID) -> SimpleNamespace:
     """Helper function to create labels with custom IDs."""
     return SimpleNamespace(
         image_id=image_id,
         receipt_id=receipt_id,
         line_id=line_id,
         word_id=word_id,
-        label=label,
-    )
+        label=label)
 
 
 def assert_complete_validation_result(
@@ -247,8 +237,7 @@ def assert_complete_validation_result(
 def test_validate_address(mocker):
     # Import here after mocks are set up
     from receipt_label.label_validation.validate_address import (
-        validate_address,
-    )
+        validate_address)
 
     fake_index = FakePineconeIndex()
     # Create a mock client manager with our fake index
@@ -258,8 +247,7 @@ def test_validate_address(mocker):
     # Mock get_client_manager to return our mock
     mocker.patch(
         "receipt_label.label_validation.validate_address.get_client_manager",
-        return_value=mock_client_manager,
-    )
+        return_value=mock_client_manager)
 
     word = SimpleNamespace(text=TEST_ADDRESS_TEXT)
     label = _make_label("ADDRESS")
@@ -283,8 +271,7 @@ def test_validate_address(mocker):
 def test_validate_address_no_vector(mocker):
     """Test address validation when no vector is found in Pinecone."""
     from receipt_label.label_validation.validate_address import (
-        validate_address,
-    )
+        validate_address)
 
     fake_index = FakePineconeIndex(has_vector=False)
     # Create a mock client manager with our fake index
@@ -294,8 +281,7 @@ def test_validate_address_no_vector(mocker):
     # Mock get_client_manager to return our mock
     mocker.patch(
         "receipt_label.label_validation.validate_address.get_client_manager",
-        return_value=mock_client_manager,
-    )
+        return_value=mock_client_manager)
 
     word = SimpleNamespace(text=TEST_ADDRESS_TEXT)
     label = _make_label("ADDRESS")
@@ -339,12 +325,10 @@ def test_validate_address_no_vector(mocker):
         ("$10. 00", False),  # Space in decimal
         ("$1,2345.00", False),  # Wrong grouping (4 digits)
         ("$12,34.56", False),  # Wrong grouping (2 digits)
-    ],
-)
+    ])
 def test_validate_currency(mocker, text, expected_consistent):
     from receipt_label.label_validation.validate_currency import (
-        validate_currency,
-    )
+        validate_currency)
     from receipt_label.utils import ClientConfig, ClientManager
 
     # Create a mock client manager with our fake index
@@ -356,8 +340,7 @@ def test_validate_currency(mocker, text, expected_consistent):
     # Mock get_client_manager to return our mock
     mocker.patch(
         "receipt_label.label_validation.validate_currency.get_client_manager",
-        return_value=mock_client_manager,
-    )
+        return_value=mock_client_manager)
 
     word = SimpleNamespace(text=text)
     label = _make_label("TOTAL")
@@ -379,8 +362,7 @@ def test_validate_currency(mocker, text, expected_consistent):
 def test_validate_currency_no_vector(mocker):
     """Test currency validation when no vector is found in Pinecone."""
     from receipt_label.label_validation.validate_currency import (
-        validate_currency,
-    )
+        validate_currency)
     from receipt_label.utils import ClientConfig, ClientManager
 
     # Create a mock client manager with our fake index
@@ -392,8 +374,7 @@ def test_validate_currency_no_vector(mocker):
     # Mock get_client_manager to return our mock
     mocker.patch(
         "receipt_label.label_validation.validate_currency.get_client_manager",
-        return_value=mock_client_manager,
-    )
+        return_value=mock_client_manager)
 
     word = SimpleNamespace(text="$10.00")
     label = _make_label("TOTAL")
@@ -430,12 +411,10 @@ def test_validate_currency_no_vector(mocker):
         ("555-12-34567", False),  # Wrong formatting
         ("(555) 123-456", False),  # Missing digit
         ("(555) 123-45678", False),  # Extra digit
-    ],
-)
+    ])
 def test_validate_phone_number(mocker, text, expected_consistent):
     from receipt_label.label_validation.validate_phone_number import (
-        validate_phone_number,
-    )
+        validate_phone_number)
 
     fake_index = FakePineconeIndex(query_score=MEDIUM_QUERY_SCORE)
     # Create a mock client manager with our fake index
@@ -445,8 +424,7 @@ def test_validate_phone_number(mocker, text, expected_consistent):
     # Mock get_client_manager to return our mock
     mocker.patch(
         "receipt_label.label_validation.validate_phone_number.get_client_manager",
-        return_value=mock_client_manager,
-    )
+        return_value=mock_client_manager)
 
     word = SimpleNamespace(text=text)
     label = _make_label("PHONE_NUMBER")
@@ -468,8 +446,7 @@ def test_validate_phone_number(mocker, text, expected_consistent):
 def test_validate_phone_number_no_vector(mocker):
     """Test phone number validation when no vector is found in Pinecone."""
     from receipt_label.label_validation.validate_phone_number import (
-        validate_phone_number,
-    )
+        validate_phone_number)
 
     fake_index = FakePineconeIndex(has_vector=False)
     # Create a mock client manager with our fake index
@@ -479,8 +456,7 @@ def test_validate_phone_number_no_vector(mocker):
     # Mock get_client_manager to return our mock
     mocker.patch(
         "receipt_label.label_validation.validate_phone_number.get_client_manager",
-        return_value=mock_client_manager,
-    )
+        return_value=mock_client_manager)
 
     word = SimpleNamespace(text="(555) 123-4567")
     label = _make_label("PHONE_NUMBER")
@@ -494,8 +470,7 @@ def test_validate_phone_number_no_vector(mocker):
 @pytest.mark.unit
 def test_validate_merchant_name_pinecone(mocker):
     from receipt_label.label_validation.validate_merchant_name import (
-        validate_merchant_name_pinecone,
-    )
+        validate_merchant_name_pinecone)
 
     fake_index = FakePineconeIndex(query_score=DEFAULT_QUERY_SCORE)
     # Create a mock client manager with our fake index
@@ -505,8 +480,7 @@ def test_validate_merchant_name_pinecone(mocker):
     # Mock get_client_manager to return our mock
     mocker.patch(
         "receipt_label.label_validation.validate_merchant_name.get_client_manager",
-        return_value=mock_client_manager,
-    )
+        return_value=mock_client_manager)
 
     word = SimpleNamespace(text=TEST_MERCHANT)
     label = _make_label("MERCHANT_NAME")
@@ -534,8 +508,7 @@ def test_validate_merchant_name_pinecone(mocker):
 @pytest.mark.unit
 def test_validate_merchant_name_google(mocker):
     from receipt_label.label_validation.validate_merchant_name import (
-        validate_merchant_name_google,
-    )
+        validate_merchant_name_google)
 
     fake_index = FakePineconeIndex(query_score=DEFAULT_QUERY_SCORE)
     # Create a mock client manager with our fake index
@@ -545,8 +518,7 @@ def test_validate_merchant_name_google(mocker):
     # Mock get_client_manager to return our mock
     mocker.patch(
         "receipt_label.label_validation.validate_merchant_name.get_client_manager",
-        return_value=mock_client_manager,
-    )
+        return_value=mock_client_manager)
 
     word = SimpleNamespace(text=TEST_MERCHANT)
     label = _make_label("MERCHANT_NAME")
@@ -576,8 +548,7 @@ def test_validate_merchant_name_google(mocker):
 def test_validate_merchant_name_no_vector(mocker):
     """Test merchant name validation when no vector is found in Pinecone."""
     from receipt_label.label_validation.validate_merchant_name import (
-        validate_merchant_name_pinecone,
-    )
+        validate_merchant_name_pinecone)
 
     fake_index = FakePineconeIndex(has_vector=False)
     # Create a mock client manager with our fake index
@@ -587,8 +558,7 @@ def test_validate_merchant_name_no_vector(mocker):
     # Mock get_client_manager to return our mock
     mocker.patch(
         "receipt_label.label_validation.validate_merchant_name.get_client_manager",
-        return_value=mock_client_manager,
-    )
+        return_value=mock_client_manager)
 
     word = SimpleNamespace(text=TEST_MERCHANT)
     label = _make_label("MERCHANT_NAME")
@@ -632,8 +602,7 @@ def test_validate_merchant_name_no_vector(mocker):
         ("2024/05", False),  # Incomplete date
         ("05/2024", False),  # Missing day
         ("2024", False),  # Year only
-    ],
-)
+    ])
 def test_validate_date(mocker, text, expected_consistent):
     from receipt_label.label_validation.validate_date import validate_date
 
@@ -645,8 +614,7 @@ def test_validate_date(mocker, text, expected_consistent):
     # Mock get_client_manager to return our mock
     mocker.patch(
         "receipt_label.label_validation.validate_date.get_client_manager",
-        return_value=mock_client_manager,
-    )
+        return_value=mock_client_manager)
 
     label = _make_label("DATE")
     word_date = SimpleNamespace(text=text)
@@ -677,8 +645,7 @@ def test_validate_date_no_vector(mocker):
     # Mock get_client_manager to return our mock
     mocker.patch(
         "receipt_label.label_validation.validate_date.get_client_manager",
-        return_value=mock_client_manager,
-    )
+        return_value=mock_client_manager)
 
     label = _make_label("DATE")
     word_date = SimpleNamespace(text="2024-05-01")
@@ -729,8 +696,7 @@ def test_validate_date_no_vector(mocker):
         ("12:", False),  # Incomplete time
         (":30", False),  # Missing hour
         ("12:30:", False),  # Trailing colon
-    ],
-)
+    ])
 def test_validate_time(mocker, text, expected_consistent):
     from receipt_label.label_validation.validate_time import validate_time
 
@@ -742,8 +708,7 @@ def test_validate_time(mocker, text, expected_consistent):
     # Mock get_client_manager to return our mock
     mocker.patch(
         "receipt_label.label_validation.validate_time.get_client_manager",
-        return_value=mock_client_manager,
-    )
+        return_value=mock_client_manager)
 
     label_time = _make_label("TIME")
     word_time = SimpleNamespace(text=text)
@@ -774,8 +739,7 @@ def test_validate_time_no_vector(mocker):
     # Mock get_client_manager to return our mock
     mocker.patch(
         "receipt_label.label_validation.validate_time.get_client_manager",
-        return_value=mock_client_manager,
-    )
+        return_value=mock_client_manager)
 
     label_time = _make_label("TIME")
     word_time = SimpleNamespace(text="12:30 PM")
@@ -793,8 +757,7 @@ class TestTextNormalizationInValidation:
     def test_validate_address_with_normalization_edge_cases(self, mocker):
         """Test address validation with various normalization scenarios."""
         from receipt_label.label_validation.validate_address import (
-            validate_address,
-        )
+            validate_address)
 
         fake_index = FakePineconeIndex()
         # Create a mock client manager with our fake index
@@ -804,8 +767,7 @@ class TestTextNormalizationInValidation:
         # Mock get_client_manager to return our mock
         mocker.patch(
             "receipt_label.label_validation.validate_address.get_client_manager",
-            return_value=mock_client_manager,
-        )
+            return_value=mock_client_manager)
 
         # Test with different address formats that should match after normalization
         test_cases = [
@@ -839,8 +801,7 @@ class TestTextNormalizationInValidation:
     def test_validate_phone_with_edge_formats(self, mocker):
         """Test phone validation with unusual formats."""
         from receipt_label.label_validation.validate_phone_number import (
-            validate_phone_number,
-        )
+            validate_phone_number)
 
         fake_index = FakePineconeIndex(query_score=MEDIUM_QUERY_SCORE)
         # Create a mock client manager with our fake index
@@ -850,8 +811,7 @@ class TestTextNormalizationInValidation:
         # Mock get_client_manager to return our mock
         mocker.patch(
             "receipt_label.label_validation.validate_phone_number.get_client_manager",
-            return_value=mock_client_manager,
-        )
+            return_value=mock_client_manager)
 
         # Edge case phone formats
         edge_cases = [
@@ -881,8 +841,7 @@ class TestTextNormalizationInValidation:
     def test_validate_currency_with_unicode_symbols(self, mocker):
         """Test currency validation with various currency symbols."""
         from receipt_label.label_validation.validate_currency import (
-            validate_currency,
-        )
+            validate_currency)
 
         fake_index = FakePineconeIndex(query_score=HIGH_QUERY_SCORE)
         # Create a mock client manager with our fake index
@@ -892,8 +851,7 @@ class TestTextNormalizationInValidation:
         # Mock get_client_manager to return our mock
         mocker.patch(
             "receipt_label.label_validation.validate_currency.get_client_manager",
-            return_value=mock_client_manager,
-        )
+            return_value=mock_client_manager)
 
         # Currency formats with different symbols
         currency_formats = [
@@ -916,8 +874,7 @@ class TestTextNormalizationInValidation:
     def test_validate_merchant_name_normalization(self, mocker):
         """Test merchant name validation with normalization edge cases."""
         from receipt_label.label_validation.validate_merchant_name import (
-            validate_merchant_name_pinecone,
-        )
+            validate_merchant_name_pinecone)
 
         fake_index = FakePineconeIndex(query_score=DEFAULT_QUERY_SCORE)
         # Create a mock client manager with our fake index
@@ -927,8 +884,7 @@ class TestTextNormalizationInValidation:
         # Mock get_client_manager to return our mock
         mocker.patch(
             "receipt_label.label_validation.validate_merchant_name.get_client_manager",
-            return_value=mock_client_manager,
-        )
+            return_value=mock_client_manager)
 
         # Test various merchant name formats
         test_cases = [
@@ -963,8 +919,7 @@ class TestAPIErrorHandling:
     def test_pinecone_fetch_timeout(self, mocker):
         """Test handling of Pinecone fetch timeout."""
         from receipt_label.label_validation.validate_address import (
-            validate_address,
-        )
+            validate_address)
 
         # Create a fake index that raises timeout
         fake_index = FakePineconeIndex()
@@ -979,8 +934,7 @@ class TestAPIErrorHandling:
         # Mock get_client_manager to return our mock
         mocker.patch(
             "receipt_label.label_validation.validate_address.get_client_manager",
-            return_value=mock_client_manager,
-        )
+            return_value=mock_client_manager)
 
         word = SimpleNamespace(text=TEST_ADDRESS_TEXT)
         label = _make_label("ADDRESS")
@@ -993,8 +947,7 @@ class TestAPIErrorHandling:
     def test_pinecone_query_error(self, mocker):
         """Test handling of Pinecone query errors."""
         from receipt_label.label_validation.validate_currency import (
-            validate_currency,
-        )
+            validate_currency)
 
         # Create a fake index that raises API error
         fake_index = FakePineconeIndex()
@@ -1009,8 +962,7 @@ class TestAPIErrorHandling:
         # Mock get_client_manager to return our mock
         mocker.patch(
             "receipt_label.label_validation.validate_currency.get_client_manager",
-            return_value=mock_client_manager,
-        )
+            return_value=mock_client_manager)
 
         word = SimpleNamespace(text="$10.00")
         label = _make_label("TOTAL")
@@ -1022,8 +974,7 @@ class TestAPIErrorHandling:
     def test_pinecone_connection_error(self, mocker):
         """Test handling of connection errors."""
         from receipt_label.label_validation.validate_phone_number import (
-            validate_phone_number,
-        )
+            validate_phone_number)
 
         # Create a fake index that raises connection error
         fake_index = FakePineconeIndex()
@@ -1038,8 +989,7 @@ class TestAPIErrorHandling:
         # Mock get_client_manager to return our mock
         mocker.patch(
             "receipt_label.label_validation.validate_phone_number.get_client_manager",
-            return_value=mock_client_manager,
-        )
+            return_value=mock_client_manager)
 
         word = SimpleNamespace(text="555-123-4567")
         label = _make_label("PHONE_NUMBER")
@@ -1070,8 +1020,7 @@ class TestAPIErrorHandling:
         # Mock get_client_manager to return our mock
         mocker.patch(
             "receipt_label.label_validation.validate_date.get_client_manager",
-            return_value=mock_client_manager,
-        )
+            return_value=mock_client_manager)
 
         word = SimpleNamespace(text="2024-01-01")
         label = _make_label("DATE")
@@ -1095,8 +1044,7 @@ class TestAPIErrorHandling:
         # Mock get_client_manager to return our mock
         mocker.patch(
             "receipt_label.label_validation.validate_time.get_client_manager",
-            return_value=mock_client_manager,
-        )
+            return_value=mock_client_manager)
 
         word = SimpleNamespace(text="12:30 PM")
         label = _make_label("TIME")
@@ -1109,8 +1057,7 @@ class TestAPIErrorHandling:
     def test_pinecone_partial_failure(self, mocker):
         """Test handling when some Pinecone operations succeed and others fail."""
         from receipt_label.label_validation.validate_merchant_name import (
-            validate_merchant_name_pinecone,
-        )
+            validate_merchant_name_pinecone)
 
         # Create a fake index where fetch works but query fails
         fake_index = FakePineconeIndex()
@@ -1125,8 +1072,7 @@ class TestAPIErrorHandling:
         # Mock get_client_manager to return our mock
         mocker.patch(
             "receipt_label.label_validation.validate_merchant_name.get_client_manager",
-            return_value=mock_client_manager,
-        )
+            return_value=mock_client_manager)
 
         word = SimpleNamespace(text=TEST_MERCHANT)
         label = _make_label("MERCHANT_NAME")
@@ -1138,8 +1084,7 @@ class TestAPIErrorHandling:
     def test_retry_logic_simulation(self, mocker):
         """Test that validation functions could support retry logic."""
         from receipt_label.label_validation.validate_address import (
-            validate_address,
-        )
+            validate_address)
 
         # Track call count
         call_count = 0
@@ -1168,8 +1113,7 @@ class TestAPIErrorHandling:
         # Mock get_client_manager to return our mock
         mocker.patch(
             "receipt_label.label_validation.validate_address.get_client_manager",
-            return_value=mock_client_manager,
-        )
+            return_value=mock_client_manager)
 
         word = SimpleNamespace(text=TEST_ADDRESS_TEXT)
         label = _make_label("ADDRESS")
@@ -1190,19 +1134,15 @@ class TestValidationIntegrationScenarios:
         """Test validating all fields of a complete receipt."""
         # Import validation functions
         from receipt_label.label_validation.validate_address import (
-            validate_address,
-        )
+            validate_address)
         from receipt_label.label_validation.validate_currency import (
-            validate_currency,
-        )
+            validate_currency)
         from receipt_label.label_validation.validate_date import validate_date
         from receipt_label.label_validation.validate_merchant_name import (
             validate_merchant_name_google,
-            validate_merchant_name_pinecone,
-        )
+            validate_merchant_name_pinecone)
         from receipt_label.label_validation.validate_phone_number import (
-            validate_phone_number,
-        )
+            validate_phone_number)
         from receipt_label.label_validation.validate_time import validate_time
 
         # Create a shared mock client manager for all validation functions
@@ -1215,28 +1155,22 @@ class TestValidationIntegrationScenarios:
         # Mock get_client_manager for all validation modules
         mocker.patch(
             "receipt_label.label_validation.validate_address.get_client_manager",
-            return_value=mock_client_manager,
-        )
+            return_value=mock_client_manager)
         mocker.patch(
             "receipt_label.label_validation.validate_currency.get_client_manager",
-            return_value=mock_client_manager,
-        )
+            return_value=mock_client_manager)
         mocker.patch(
             "receipt_label.label_validation.validate_date.get_client_manager",
-            return_value=mock_client_manager,
-        )
+            return_value=mock_client_manager)
         mocker.patch(
             "receipt_label.label_validation.validate_merchant_name.get_client_manager",
-            return_value=mock_client_manager,
-        )
+            return_value=mock_client_manager)
         mocker.patch(
             "receipt_label.label_validation.validate_phone_number.get_client_manager",
-            return_value=mock_client_manager,
-        )
+            return_value=mock_client_manager)
         mocker.patch(
             "receipt_label.label_validation.validate_time.get_client_manager",
-            return_value=mock_client_manager,
-        )
+            return_value=mock_client_manager)
 
         # Create a complete receipt
         receipt = {
@@ -1313,8 +1247,7 @@ class TestValidationIntegrationScenarios:
                 **vars(base_label),
                 line_id=10 + line_offset,
                 word_id=20 + line_offset,
-                label=field.upper(),
-            )
+                label=field.upper())
             labels[field] = label
             validation_results[field] = validate_currency(word, label)
 
@@ -1340,11 +1273,9 @@ class TestValidationIntegrationScenarios:
     def test_partial_receipt_validation(self, mocker):
         """Test validation when some receipt fields are missing."""
         from receipt_label.label_validation.validate_currency import (
-            validate_currency,
-        )
+            validate_currency)
         from receipt_label.label_validation.validate_merchant_name import (
-            validate_merchant_name_pinecone,
-        )
+            validate_merchant_name_pinecone)
 
         # Create mock client managers for different scenarios
         currency_client_manager = MagicMock()
@@ -1360,12 +1291,10 @@ class TestValidationIntegrationScenarios:
         # Mock get_client_manager for different modules
         mocker.patch(
             "receipt_label.label_validation.validate_currency.get_client_manager",
-            return_value=currency_client_manager,
-        )
+            return_value=currency_client_manager)
         mocker.patch(
             "receipt_label.label_validation.validate_merchant_name.get_client_manager",
-            return_value=merchant_client_manager,
-        )
+            return_value=merchant_client_manager)
 
         # Partial receipt data
         base_label = SimpleNamespace(image_id="partial_001", receipt_id=99999)
