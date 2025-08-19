@@ -22,8 +22,7 @@ from receipt_label.utils.cost_monitoring import (
     CostMonitor,
     ThresholdLevel,
     TrendDirection,
-    create_cost_monitored_tracker,
-)
+    create_cost_monitored_tracker)
 
 
 @pytest.mark.asyncio
@@ -52,14 +51,12 @@ class TestCostMonitoringIntegration:
             total_tokens=150,
             cost_usd=Decimal("1.50"),
             user_id="test-user",
-            job_id="test-job",
-        )
+            job_id="test-job")
 
     async def test_cost_aware_tracker_integration(
         self,
         mock_dynamo_client,
-        sample_metric,
-    ):
+        sample_metric):
         """Test CostAwareAIUsageTracker with all components."""
         # Create components
         cost_monitor = CostMonitor(mock_dynamo_client)
@@ -74,8 +71,7 @@ class TestCostMonitoringIntegration:
             created_at=datetime.now(timezone.utc),
             effective_from=datetime.now(timezone.utc),
             alert_thresholds=[50, 80, 95, 100],
-            is_active=True,
-        )
+            is_active=True)
 
         # Mock budget manager to return our budget
         budget_manager.get_active_budget = MagicMock(return_value=budget)
@@ -88,8 +84,7 @@ class TestCostMonitoringIntegration:
             alert_channel = AlertChannel(
                 channel_type="email",
                 destination="test@example.com",
-                enabled=True,
-            )
+                enabled=True)
             alert_manager = AlertManager([alert_channel])
 
             # Mock alert sending
@@ -104,8 +99,7 @@ class TestCostMonitoringIntegration:
                 budget_manager=budget_manager,
                 alert_manager=alert_manager,
                 enable_cost_monitoring=True,
-                track_to_dynamo=True,
-            )
+                track_to_dynamo=True)
 
             # Track the metric (this should trigger budget check)
             tracker._store_metric(sample_metric)
@@ -134,8 +128,7 @@ class TestCostMonitoringIntegration:
             enable_slack_alerts=True,
             slack_webhook_url="https://hooks.slack.com/test",
             table_name="test-table",
-            user_id="test-user",
-            validate_table_environment=False,  # Disable validation for test table
+            user_id="test-user"
         )
 
         assert isinstance(tracker, CostAwareAIUsageTracker)
@@ -189,8 +182,7 @@ class TestCostMonitoringIntegration:
                 scope="service:openai",
                 period="daily",
                 lookback_days=30,
-                forecast_days=7,
-            )
+                forecast_days=7)
 
             assert (
                 trend.direction == TrendDirection.INCREASING
@@ -210,8 +202,7 @@ class TestCostMonitoringIntegration:
             amount=Decimal("1000.00"),
             period=BudgetPeriod.MONTHLY,
             rollover_enabled=True,
-            metadata={"team": "engineering"},
-        )
+            metadata={"team": "engineering"})
 
         assert budget.scope == "service:openai"
         assert budget.amount == Decimal("1000.00")
@@ -224,8 +215,7 @@ class TestCostMonitoringIntegration:
         updated_budget = budget_manager.update_budget(
             budget_id=budget.budget_id,
             amount=Decimal("1500.00"),
-            metadata_updates={"approved_by": "finance"},
-        )
+            metadata_updates={"approved_by": "finance"})
 
         assert updated_budget.amount == Decimal("1500.00")
         assert updated_budget.metadata["team"] == "engineering"
@@ -281,8 +271,7 @@ class TestCostMonitoringIntegration:
             anomalies = analytics.detect_anomalies(
                 scope="global:all",
                 sensitivity=2.0,
-                lookback_days=30,
-            )
+                lookback_days=30)
 
             assert len(anomalies) >= 2  # Should detect at least 2 anomalies
 
@@ -323,8 +312,7 @@ class TestCostMonitoringIntegration:
         ):
             recommendations = analytics.generate_optimization_recommendations(
                 scope="global:all",
-                lookback_days=30,
-            )
+                lookback_days=30)
 
             assert len(recommendations) > 0
 
@@ -335,8 +323,7 @@ class TestCostMonitoringIntegration:
                     for r in recommendations
                     if r.category == "model_selection"
                 ),
-                None,
-            )
+                None)
             assert model_rec is not None
             assert model_rec.potential_savings > Decimal("0")
             assert "GPT-3.5" in " ".join(model_rec.specific_actions)
@@ -423,8 +410,7 @@ class TestCostMonitoringIntegration:
             channel3 = AlertChannel(
                 channel_type="email",
                 destination="test@example.com",
-                min_level="INVALID_LEVEL",
-            )
+                min_level="INVALID_LEVEL")
             assert channel3.min_level == ThresholdLevel.INFO
             mock_logger.warning.assert_called_once()
 
@@ -432,6 +418,5 @@ class TestCostMonitoringIntegration:
         channel4 = AlertChannel(
             channel_type="email",
             destination="test@example.com",
-            min_level=ThresholdLevel.EXCEEDED,
-        )
+            min_level=ThresholdLevel.EXCEEDED)
         assert channel4.min_level == ThresholdLevel.EXCEEDED

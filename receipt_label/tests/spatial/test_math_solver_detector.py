@@ -12,8 +12,7 @@ import pytest
 from receipt_label.pattern_detection.base import PatternMatch, PatternType
 from receipt_label.spatial.math_solver_detector import (
     MathSolution,
-    MathSolverDetector,
-)
+    MathSolverDetector)
 
 
 def create_pattern_match(mock_word, pattern_type, value):
@@ -24,8 +23,7 @@ def create_pattern_match(mock_word, pattern_type, value):
         confidence=0.9,
         matched_text=str(value),
         extracted_value=str(value),
-        metadata={},
-    )
+        metadata={})
 
 
 class TestMathSolverDetector:
@@ -55,19 +53,16 @@ class TestMathSolverDetector:
         return [
             (
                 2.99,
-                create_pattern_match(mock_word, PatternType.CURRENCY, "2.99"),
-            ),
+                create_pattern_match(mock_word, PatternType.CURRENCY, "2.99")),
             (
                 4.50,
-                create_pattern_match(mock_word, PatternType.CURRENCY, "4.50"),
-            ),
+                create_pattern_match(mock_word, PatternType.CURRENCY, "4.50")),
             (0.60, create_pattern_match(mock_word, PatternType.TAX, "0.60")),
             (
                 8.09,
                 create_pattern_match(
                     mock_word, PatternType.GRAND_TOTAL, "8.09"
-                ),
-            ),
+                )),
         ]
 
     @pytest.mark.unit
@@ -124,9 +119,7 @@ class TestMathSolverDetector:
                     confidence=0.9,
                     matched_text="1.11",
                     extracted_value="1.11",
-                    metadata={},
-                ),
-            ),
+                    metadata={})),
             (
                 2.22,
                 PatternMatch(
@@ -135,9 +128,7 @@ class TestMathSolverDetector:
                     confidence=0.9,
                     matched_text="2.22",
                     extracted_value="2.22",
-                    metadata={},
-                ),
-            ),
+                    metadata={})),
             (
                 9.99,
                 PatternMatch(
@@ -146,9 +137,7 @@ class TestMathSolverDetector:
                     confidence=0.9,
                     matched_text="9.99",
                     extracted_value="9.99",
-                    metadata={},
-                ),
-            ),
+                    metadata={})),
         ]
 
         solutions = detector.solve_receipt_math(currency_values)
@@ -178,9 +167,7 @@ class TestMathSolverDetector:
                         confidence=0.9,
                         matched_text=str(i + 1),
                         extracted_value=str(i + 1),
-                        metadata={},
-                    ),
-                )
+                        metadata={}))
             )
 
         # Add a total that's the sum of first 5 values
@@ -194,16 +181,13 @@ class TestMathSolverDetector:
                     confidence=0.9,
                     matched_text=str(total_value),
                     extracted_value=str(total_value),
-                    metadata={},
-                ),
-            )
+                    metadata={}))
         )
 
         with patch.object(
             detector,
             "_find_solutions_numpy_optimized",
-            wraps=detector._find_solutions_numpy_optimized,
-        ) as mock_numpy:
+            wraps=detector._find_solutions_numpy_optimized) as mock_numpy:
             solutions = detector.solve_receipt_math(currency_values)
 
             # Should have called NumPy optimization
@@ -227,9 +211,7 @@ class TestMathSolverDetector:
                     confidence=0.9,
                     matched_text="2.99",
                     extracted_value="2.99",
-                    metadata={},
-                ),
-            ),
+                    metadata={})),
             (
                 4.50,
                 PatternMatch(
@@ -238,9 +220,7 @@ class TestMathSolverDetector:
                     confidence=0.9,
                     matched_text="4.50",
                     extracted_value="4.50",
-                    metadata={},
-                ),
-            ),
+                    metadata={})),
             (
                 1.25,
                 PatternMatch(
@@ -249,9 +229,7 @@ class TestMathSolverDetector:
                     confidence=0.9,
                     matched_text="1.25",
                     extracted_value="1.25",
-                    metadata={},
-                ),
-            ),
+                    metadata={})),
             (
                 0.60,
                 PatternMatch(
@@ -260,9 +238,7 @@ class TestMathSolverDetector:
                     confidence=0.9,
                     matched_text="0.60",
                     extracted_value="0.60",
-                    metadata={},
-                ),
-            ),
+                    metadata={})),
             (
                 8.09,
                 PatternMatch(
@@ -271,9 +247,7 @@ class TestMathSolverDetector:
                     confidence=0.9,
                     matched_text="8.09",
                     extracted_value="8.09",
-                    metadata={},
-                ),
-            ),
+                    metadata={})),
         ]
 
         numpy_solutions = detector.solve_receipt_math(currency_values)
@@ -308,9 +282,7 @@ class TestMathSolverDetector:
                     confidence=0.9,
                     matched_text="3.00",
                     extracted_value="3.00",
-                    metadata={},
-                ),
-            ),
+                    metadata={})),
             (
                 5.00,
                 PatternMatch(
@@ -319,9 +291,7 @@ class TestMathSolverDetector:
                     confidence=0.9,
                     matched_text="5.00",
                     extracted_value="5.00",
-                    metadata={},
-                ),
-            ),
+                    metadata={})),
             (
                 8.01,
                 PatternMatch(
@@ -330,9 +300,7 @@ class TestMathSolverDetector:
                     confidence=0.9,
                     matched_text="8.01",
                     extracted_value="8.01",
-                    metadata={},
-                ),
-            ),
+                    metadata={})),
         ]
 
         solutions = detector.solve_receipt_math(currency_values)
@@ -365,9 +333,7 @@ class TestMathSolverDetector:
                         confidence=0.9,
                         matched_text=str(i),
                         extracted_value=str(i),
-                        metadata={},
-                    ),
-                )
+                        metadata={}))
             )
 
         # Multiple possible totals
@@ -381,9 +347,7 @@ class TestMathSolverDetector:
                         confidence=0.9,
                         matched_text=str(total),
                         extracted_value=str(total),
-                        metadata={},
-                    ),
-                )
+                        metadata={}))
             )
 
         solutions = limited_detector.solve_receipt_math(currency_values)
@@ -410,9 +374,7 @@ class TestMathSolverDetector:
                             confidence=0.9,
                             matched_text="2.99",
                             extracted_value="2.99",
-                            metadata={},
-                        ),
-                    )
+                            metadata={}))
                 ],
                 subtotal=2.99,
                 tax=None,
@@ -424,11 +386,8 @@ class TestMathSolverDetector:
                         confidence=0.9,
                         matched_text="2.99",
                         extracted_value="2.99",
-                        metadata={},
-                    ),
-                ),
-                confidence=0.8,
-            ),
+                        metadata={})),
+                confidence=0.8),
             MathSolution(
                 item_prices=[
                     (
@@ -439,9 +398,7 @@ class TestMathSolverDetector:
                             confidence=0.9,
                             matched_text="2.99",
                             extracted_value="2.99",
-                            metadata={},
-                        ),
-                    )
+                            metadata={}))
                 ],
                 subtotal=2.99,
                 tax=(
@@ -452,9 +409,7 @@ class TestMathSolverDetector:
                         confidence=0.9,
                         matched_text="0.30",
                         extracted_value="0.30",
-                        metadata={},
-                    ),
-                ),
+                        metadata={})),
                 grand_total=(
                     3.29,
                     PatternMatch(
@@ -463,11 +418,8 @@ class TestMathSolverDetector:
                         confidence=0.9,
                         matched_text="3.29",
                         extracted_value="3.29",
-                        metadata={},
-                    ),
-                ),
-                confidence=0.9,
-            ),
+                        metadata={})),
+                confidence=0.9),
         ]
 
         best_solution = detector.find_best_solution(solutions)
@@ -494,9 +446,7 @@ class TestMathSolverDetector:
                         confidence=0.9,
                         matched_text="2.99",
                         extracted_value="2.99",
-                        metadata={},
-                    ),
-                ),
+                        metadata={})),
                 (
                     4.50,
                     PatternMatch(
@@ -505,9 +455,7 @@ class TestMathSolverDetector:
                         confidence=0.9,
                         matched_text="4.50",
                         extracted_value="4.50",
-                        metadata={},
-                    ),
-                ),
+                        metadata={})),
                 (
                     1.25,
                     PatternMatch(
@@ -516,9 +464,7 @@ class TestMathSolverDetector:
                         confidence=0.9,
                         matched_text="1.25",
                         extracted_value="1.25",
-                        metadata={},
-                    ),
-                ),
+                        metadata={})),
             ],
             subtotal=8.74,
             tax=(
@@ -529,9 +475,7 @@ class TestMathSolverDetector:
                     confidence=0.9,
                     matched_text="0.70",
                     extracted_value="0.70",
-                    metadata={},
-                ),
-            ),
+                    metadata={})),
             grand_total=(
                 9.44,
                 PatternMatch(
@@ -540,11 +484,8 @@ class TestMathSolverDetector:
                     confidence=0.9,
                     matched_text="9.44",
                     extracted_value="9.44",
-                    metadata={},
-                ),
-            ),
-            confidence=0.9,
-        )
+                    metadata={})),
+            confidence=0.9)
 
         scored_solution = detector.find_best_solution([solution])
 
@@ -578,9 +519,7 @@ class TestMathSolverDetector:
                     confidence=0.9,
                     matched_text="0.001",
                     extracted_value="0.001",
-                    metadata={},
-                ),
-            ),  # Too small
+                    metadata={})),  # Too small
             (
                 50000.0,
                 PatternMatch(
@@ -589,9 +528,7 @@ class TestMathSolverDetector:
                     confidence=0.9,
                     matched_text="50000.0",
                     extracted_value="50000.0",
-                    metadata={},
-                ),
-            ),  # Too large
+                    metadata={})),  # Too large
         ]
 
         solutions = detector.solve_receipt_math(currency_values)
@@ -623,24 +560,21 @@ class TestMathSolverDetector:
                 confidence=0.9,
                 matched_text="$5.99",
                 extracted_value="$5.99",
-                metadata={},
-            ),
+                metadata={}),
             PatternMatch(
                 word=mock_word2,
                 pattern_type=PatternType.GRAND_TOTAL,
                 confidence=0.9,
                 matched_text="$15.99",
                 extracted_value="$15.99",
-                metadata={},
-            ),
+                metadata={}),
             PatternMatch(
                 word=mock_word3,
                 pattern_type=PatternType.UNIT_PRICE,
                 confidence=0.9,
                 matched_text="$2.50",
                 extracted_value="$2.50",
-                metadata={},
-            ),
+                metadata={}),
         ]
 
         currency_values = detector.extract_currency_values(pattern_matches)
@@ -671,9 +605,7 @@ class TestMathSolverDetector:
                         confidence=0.9,
                         matched_text=str(i + 1),
                         extracted_value=str(i + 1),
-                        metadata={},
-                    ),
-                )
+                        metadata={}))
             )
 
         # Add a total
@@ -686,9 +618,7 @@ class TestMathSolverDetector:
                     confidence=0.9,
                     matched_text="210.0",
                     extracted_value="210.0",
-                    metadata={},
-                ),
-            )
+                    metadata={}))
         )
 
         # Test NumPy optimization
@@ -734,9 +664,7 @@ class TestMathSolution:
                         confidence=0.9,
                         matched_text="2.99",
                         extracted_value="2.99",
-                        metadata={},
-                    ),
-                )
+                        metadata={}))
             ],
             subtotal=2.99,
             tax=None,
@@ -748,11 +676,8 @@ class TestMathSolution:
                     confidence=0.9,
                     matched_text="2.99",
                     extracted_value="2.99",
-                    metadata={},
-                ),
-            ),
-            confidence=0.8,
-        )
+                    metadata={})),
+            confidence=0.8)
 
         assert solution.subtotal == 2.99
         assert solution.tax is None
@@ -777,9 +702,7 @@ class TestMathSolution:
                         confidence=0.9,
                         matched_text="2.99",
                         extracted_value="2.99",
-                        metadata={},
-                    ),
-                ),
+                        metadata={})),
                 (
                     4.50,
                     PatternMatch(
@@ -788,9 +711,7 @@ class TestMathSolution:
                         confidence=0.9,
                         matched_text="4.50",
                         extracted_value="4.50",
-                        metadata={},
-                    ),
-                ),
+                        metadata={})),
             ],
             subtotal=7.49,
             tax=(
@@ -801,9 +722,7 @@ class TestMathSolution:
                     confidence=0.9,
                     matched_text="0.60",
                     extracted_value="0.60",
-                    metadata={},
-                ),
-            ),
+                    metadata={})),
             grand_total=(
                 8.09,
                 PatternMatch(
@@ -812,11 +731,8 @@ class TestMathSolution:
                     confidence=0.9,
                     matched_text="8.09",
                     extracted_value="8.09",
-                    metadata={},
-                ),
-            ),
-            confidence=0.9,
-        )
+                    metadata={})),
+            confidence=0.9)
 
         assert solution.subtotal == 7.49
         assert solution.tax[0] == 0.60

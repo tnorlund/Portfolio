@@ -71,8 +71,7 @@ class TestPlacesWrapper:
             "location_processing",
             job_id="job-123",
             batch_id="batch-456",
-            track_to_dynamo=True,
-        ) as tracker:
+            track_to_dynamo=True) as tracker:
             # Replace the dynamo client
             tracker.dynamo_client = dynamo_client
             tracker.track_to_dynamo = True
@@ -122,8 +121,7 @@ class TestPlacesWrapper:
                 "inner_operation",
                 tracker=outer_tracker,
                 job_id="inner-job",
-                track_to_dynamo=True,
-            ):
+                track_to_dynamo=True):
                 # Second call in inner context
                 wrapped_client.place("place_id_2")
 
@@ -251,7 +249,7 @@ class TestPlacesWrapper:
         # Run in threads
         threads = []
         for i in range(3):
-            t = threading.Thread(target=thread_func, args=(f"job-{i}",))
+            t = threading.Thread(target=thread_func, args=(f"job-{i}"))
             threads.append(t)
             t.start()
 

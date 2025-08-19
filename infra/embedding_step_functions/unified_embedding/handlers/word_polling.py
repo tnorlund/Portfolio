@@ -72,15 +72,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         status_result["action"] == "process_results"
         and batch_status == "completed"
     ):
-        # Download the batch results
-        results = download_openai_batch_result(openai_batch_id)
-        logger.info("Downloaded %s embedding results", len(results))
-
-        # Get receipt details
-        descriptions = get_receipt_descriptions(results)
-        logger.info("Retrieved details for %s receipts", len(descriptions))
-
-        # Get configuration from environment
+        # Get configuration from environment (only needed when processing results)
         bucket_name = os.environ.get("CHROMADB_BUCKET")
         if not bucket_name:
             raise ValueError("CHROMADB_BUCKET environment variable not set")
@@ -90,11 +82,27 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             logger.info("Skipping SQS notification for this delta")
             sqs_queue_url = None
         else:
-            sqs_queue_url = os.environ.get("COMPACTION_QUEUE_URL")
-            logger.info("Will send SQS notification to: %s", sqs_queue_url)
+            sqs_queue_url = os.environ.get("COMPACTION_QUEUE_URL") or None
+            if sqs_queue_url:
+                logger.info("Will send SQS notification to: %s", sqs_queue_url)
+            else:
+                logger.info("No COMPACTION_QUEUE_URL set, skipping SQS notification")
+
+        # Download the batch results
+        results = download_openai_batch_result(openai_batch_id)
+        logger.info("Downloaded %s embedding results", len(results))
+
+        # Get receipt details
+        descriptions = get_receipt_descriptions(results)
+        logger.info("Retrieved details for %s receipts", len(descriptions))
 
         delta_result = save_word_embeddings_as_delta(
-            results, descriptions, batch_id, bucket_name, sqs_queue_url
+            results,
+            descriptions,
+            batch_id,
+            bucket_name,
+            sqs_queue_url,
+            client_manager,
         )
         logger.info(
             f"Saved delta {delta_result['delta_id']} with "
@@ -124,6 +132,22 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         status_result["action"] == "process_partial"
         and batch_status == "expired"
     ):
+        # Get configuration from environment (only needed when processing results)
+        bucket_name = os.environ.get("CHROMADB_BUCKET")
+        if not bucket_name:
+            raise ValueError("CHROMADB_BUCKET environment variable not set")
+
+        # Determine SQS queue URL based on skip_sqs flag
+        if skip_sqs:
+            logger.info("Skipping SQS notification for this delta")
+            sqs_queue_url = None
+        else:
+            sqs_queue_url = os.environ.get("COMPACTION_QUEUE_URL") or None
+            if sqs_queue_url:
+                logger.info("Will send SQS notification to: %s", sqs_queue_url)
+            else:
+                logger.info("No COMPACTION_QUEUE_URL set, skipping SQS notification")
+
         # Handle expired batch with partial results
         partial_results = status_result.get("partial_results", [])
         failed_ids = status_result.get("failed_ids", [])
@@ -136,7 +160,12 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
             # Save partial results
             delta_result = save_word_embeddings_as_delta(
-                partial_results, descriptions, batch_id
+                partial_results,
+                descriptions,
+                batch_id,
+                bucket_name,
+                sqs_queue_url,
+                client_manager,
             )
 
             # Skip writing to DynamoDB - we only store in ChromaDB now

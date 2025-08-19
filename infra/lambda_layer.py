@@ -688,11 +688,11 @@ echo "🎉 Parallel function updates completed!"'''
         )
 
         # Configure versioning as a separate resource
-        aws.s3.BucketVersioning(
+        aws.s3.BucketVersioningV2(
             f"{self.name}-artifacts-versioning",
             bucket=build_bucket.id,
             versioning_configuration=(
-                aws.s3.BucketVersioningVersioningConfigurationArgs(
+                aws.s3.BucketVersioningV2VersioningConfigurationArgs(
                     status="Enabled"
                 )
             ),

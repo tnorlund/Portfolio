@@ -96,8 +96,7 @@ def dynamodb_table_and_s3_bucket():
                         "WriteCapacityUnits": 5,
                     },
                 },
-            ],
-        )
+            ])
 
         # Wait for the table to be created
         dynamodb.meta.client.get_waiter("table_exists").wait(
@@ -191,14 +190,12 @@ def patch_clients(mocker, dynamodb_table_and_s3_bucket):
     # Patch get_client_manager to return our mock
     mocker.patch(
         "receipt_label.utils.clients.get_client_manager",
-        return_value=mock_client_manager,
-    )
+        return_value=mock_client_manager)
 
     # Also patch it in the main utils module
     mocker.patch(
         "receipt_label.utils.get_client_manager",
-        return_value=mock_client_manager,
-    )
+        return_value=mock_client_manager)
 
     # Legacy support - keep get_clients patched for any old code
     def fake_get_clients():

@@ -14,8 +14,7 @@ from receipt_dynamo.entities.ai_usage_metric import AIUsageMetric
 from receipt_label.utils.ai_usage_tracker import AIUsageTracker
 from receipt_label.utils.environment_config import (
     Environment,
-    EnvironmentConfig,
-)
+    EnvironmentConfig)
 
 
 class TestAIUsageTrackerEnvironmentIntegration:
@@ -24,9 +23,9 @@ class TestAIUsageTrackerEnvironmentIntegration:
     def test_tracker_creation_with_environment_detection(self):
         """Test tracker creation with automatic environment detection."""
         with patch.dict(os.environ, {"ENVIRONMENT": "staging"}, clear=False):
-            # When table_name is provided, it's used as-is but validation should be disabled
+            # When table_name is provided, it's used as-is
             tracker = AIUsageTracker.create_for_environment(
-                table_name="AIUsageMetrics", validate_table_environment=False
+                table_name="AIUsageMetrics"
             )
 
             assert (
@@ -60,20 +59,19 @@ class TestAIUsageTrackerEnvironmentIntegration:
         assert tracker.environment_config.require_context
 
     def test_tracker_environment_isolation_validation(self):
-        """Test that tracker validates environment isolation on creation."""
+        """Test that tracker accepts any table name (validation removed - Pulumi handles isolation)."""
         # This should work - staging environment with staging table
         tracker = AIUsageTracker(
             table_name="AIUsageMetrics-staging",
-            environment=Environment.STAGING,
-        )
+            environment=Environment.STAGING)
         assert tracker.table_name == "AIUsageMetrics-staging"
 
-        # This should fail - production environment with staging table
-        with pytest.raises(ValueError, match="does not match environment"):
-            AIUsageTracker(
-                table_name="AIUsageMetrics-staging",
-                environment=Environment.PRODUCTION,
-            )
+        # This now also works - validation removed, Pulumi handles table isolation
+        # Previously would raise ValueError, but validation was removed
+        tracker = AIUsageTracker(
+            table_name="AIUsageMetrics-staging",
+            environment=Environment.PRODUCTION)
+        assert tracker.table_name == "AIUsageMetrics-staging"
 
     def test_production_table_name_no_suffix(self):
         """Test that production environment doesn't add table suffix."""
@@ -99,14 +97,11 @@ class TestAIUsageTrackerEnvironmentIntegration:
                 "GITHUB_WORKFLOW": "test-workflow",
                 "APP_VERSION": "1.0.0",
             },
-            clear=False,
-        ):
+            clear=False):
             tracker = AIUsageTracker(
                 environment=Environment.CICD,
                 table_name="AIUsageMetrics",
-                track_to_dynamo=False,
-                validate_table_environment=False,  # Disable validation for test
-            )
+                track_to_dynamo=False)
 
             # Mock OpenAI response
             mock_response = Mock()
@@ -138,9 +133,7 @@ class TestAIUsageTrackerEnvironmentIntegration:
         tracker = AIUsageTracker(
             dynamo_client=mock_dynamo_client,
             environment=Environment.STAGING,
-            table_name="AIUsageMetrics",
-            validate_table_environment=False,  # Disable validation for test
-        )
+            table_name="AIUsageMetrics")
 
         # Mock OpenAI response
         mock_response = Mock()
@@ -215,9 +208,7 @@ class TestAIUsageTrackerEnvironmentIntegration:
                 table_name="AIUsageMetrics",
                 track_to_dynamo=False,
                 track_to_file=True,
-                log_file=log_file,
-                validate_table_environment=False,  # Disable validation for test
-            )
+                log_file=log_file)
 
             # Mock OpenAI response
             mock_response = Mock()
@@ -252,20 +243,19 @@ class TestAIUsageTrackerEnvironmentErrorHandling:
     """Test error handling in environment-based tracking."""
 
     def test_invalid_table_environment_combination_raises_error(self):
-        """Test that invalid table/environment combinations raise errors."""
-        # Production environment should not accept staging table
-        with pytest.raises(ValueError, match="does not match environment"):
-            AIUsageTracker(
-                table_name="AIUsageMetrics-staging",
-                environment=Environment.PRODUCTION,
-            )
+        """Test that invalid table/environment combinations no longer raise errors (validation removed)."""
+        # Validation removed - Pulumi handles table isolation via stack naming
+        # Production environment now accepts staging table (no validation)
+        tracker = AIUsageTracker(
+            table_name="AIUsageMetrics-staging",
+            environment=Environment.PRODUCTION)
+        assert tracker.table_name == "AIUsageMetrics-staging"
 
-        # Staging environment should not accept development table
-        with pytest.raises(ValueError, match="does not match environment"):
-            AIUsageTracker(
-                table_name="AIUsageMetrics-development",
-                environment=Environment.STAGING,
-            )
+        # Staging environment now accepts development table (no validation)
+        tracker = AIUsageTracker(
+            table_name="AIUsageMetrics-development",
+            environment=Environment.STAGING)
+        assert tracker.table_name == "AIUsageMetrics-development"
 
     def test_production_require_context_behavior(self):
         """Test that production environment has stricter context requirements."""
@@ -273,15 +263,13 @@ class TestAIUsageTrackerEnvironmentErrorHandling:
             environment=Environment.PRODUCTION,
             table_suffix="",
             require_context=True,
-            auto_tag={},
-        )
+            auto_tag={})
 
         dev_config = EnvironmentConfig(
             environment=Environment.DEVELOPMENT,
             table_suffix="-development",
             require_context=False,
-            auto_tag={},
-        )
+            auto_tag={})
 
         assert prod_config.require_context is True
         assert dev_config.require_context is False
@@ -304,8 +292,7 @@ class TestMetricEnvironmentIntegration:
             input_tokens=100,
             output_tokens=50,
             cost_usd=0.001,
-            metadata=metadata,
-        )
+            metadata=metadata)
 
         assert metric.metadata["environment"] == "production"
 
@@ -320,8 +307,7 @@ class TestMetricEnvironmentIntegration:
             input_tokens=100,
             output_tokens=50,
             cost_usd=0.001,
-            metadata=metadata,
-        )
+            metadata=metadata)
 
         item = metric.to_dynamodb_item()
         assert "metadata" in item
@@ -329,8 +315,7 @@ class TestMetricEnvironmentIntegration:
         assert metadata_map["environment"]["S"] == "staging"
 
     def test_metric_dynamodb_deserialization_with_environment_in_metadata(
-        self,
-    ):
+        self):
         """Test that environment field is properly deserialized from DynamoDB metadata."""
         # Create a DynamoDB item with environment in metadata
         metadata = {"environment": "staging", "service": "receipt-processing"}
@@ -374,8 +359,7 @@ class TestMetricEnvironmentIntegration:
             timestamp=datetime.now(timezone.utc),
             input_tokens=100,
             output_tokens=50,
-            cost_usd=0.001,
-        )
+            cost_usd=0.001)
 
         # Should work without metadata (defaults to empty dict)
         assert metric.metadata == {}
@@ -422,9 +406,7 @@ class TestTrackerFactoryMethods:
             user_id="test-user",
             track_to_dynamo=True,
             track_to_file=True,
-            environment=Environment.STAGING,
-            validate_table_environment=False,  # Custom table names require validation to be disabled
-        )
+            environment=Environment.STAGING)
 
         assert tracker.dynamo_client == mock_client
         assert tracker.table_name == "CustomTable"  # Used as-is, no suffix

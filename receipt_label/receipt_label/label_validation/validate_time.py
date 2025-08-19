@@ -166,28 +166,49 @@ def validate_time(
             is_consistent=False,
             avg_similarity=0.0,
             neighbors=[],
-            chroma_id=chroma_id,
+            pinecone_id=chroma_id,
         )
 
-    vector = vector_data.values
-    query_response = pinecone_index.query(
-        vector=vector,
-        top_k=10,
-        include_metadata=True,
-        filter={
-            "valid_labels": {"$in": ["TIME"]},
-        },
-        namespace="words",
+    vector = vector_data["values"]
+
+    # Query ChromaDB for similar vectors
+    query_results = chroma_client.query(
+        collection_name="words",
+        query_embeddings=[vector],
+        n_results=10,
+        where={"valid_labels": {"$in": ["TIME"]}},
+        include=["metadatas", "distances"],
     )
 
-    matches = query_response.matches
+    # Convert results to match objects
+    matches = []
+    if (
+        query_results
+        and "ids" in query_results
+        and len(query_results["ids"]) > 0
+    ):
+        for i, id_ in enumerate(query_results["ids"][0]):
+            match = type(
+                "Match",
+                (),
+                {
+                    "id": id_,
+                    "score": 1.0 - query_results["distances"][0][i],
+                    "metadata": (
+                        query_results["metadatas"][0][i]
+                        if "metadatas" in query_results
+                        else {}
+                    ),
+                },
+            )
+            matches.append(match)
     avg_similarity = (
         sum(match.score for match in matches) / len(matches)
         if matches
         else 0.0
     )
 
-    variants = _merged_time_candidate_from_text(word, vector_data.metadata)
+    variants = _merged_time_candidate_from_text(word, vector_data.get("metadata", {}))
     looks_like_time = any(_is_time(v) for v in variants)
 
     is_consistent = avg_similarity > 0.7 and looks_like_time
@@ -202,5 +223,5 @@ def validate_time(
         is_consistent=is_consistent,
         avg_similarity=avg_similarity,
         neighbors=[match.id for match in matches],
-        pinecone_id=pinecone_id,
+        pinecone_id=chroma_id,
     )

@@ -4,8 +4,7 @@ import pytest
 
 from receipt_label.utils.noise_detection import (
     NoiseDetectionConfig,
-    is_noise_text,
-)
+    is_noise_text)
 
 
 class TestNoiseDetection:
@@ -303,7 +302,7 @@ class TestNoiseLineDetection:
 
         # These patterns might have meaning (CSV, lists, groupings) so they're not noise
         potentially_meaningful = [
-            ", , , ,",  # Could be CSV format
+            ", ,",  # Could be CSV format
             "/ \\ / \\",  # Could be ASCII art or pattern
             "( ) [ ]",  # Could be grouping symbols
             "{ } < >",  # Could be code or markup

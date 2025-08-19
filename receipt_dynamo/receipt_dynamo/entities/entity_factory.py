@@ -358,11 +358,27 @@ def create_receipt_line_word_sk_parser() -> KeyParser:
     def parser(sk: str) -> Dict[str, Any]:
         parsed = EntityFactory.parse_image_receipt_key("IMAGE#dummy", sk)
         sk_parts = sk.split("#")
-        return {
-            "receipt_id": parsed["receipt_id"],
-            "line_id": int(sk_parts[3]),  # LINE is at position 3
-            "word_id": int(sk_parts[5]),  # WORD is at position 5
-        }
+
+        # Expected format: RECEIPT#123#LINE#456#WORD#789
+        # Should have 6 parts: ['RECEIPT', '123', 'LINE', '456', 'WORD', '789']
+        if len(sk_parts) < 6:
+            raise ValueError(
+                f"Invalid SK format for receipt word: '{sk}'. Expected format: RECEIPT#id#LINE#id#WORD#id"
+            )
+
+        try:
+            line_id = int(sk_parts[3])  # LINE is at position 3
+            word_id = int(sk_parts[5])  # WORD is at position 5
+
+            return {
+                "receipt_id": parsed["receipt_id"],
+                "line_id": line_id,
+                "word_id": word_id,
+            }
+        except (ValueError, IndexError) as e:
+            raise ValueError(
+                f"Invalid SK format for receipt word: '{sk}'. Error: {e}"
+            ) from e
 
     return parser
 
