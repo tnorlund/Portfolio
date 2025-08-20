@@ -918,9 +918,3 @@ def process_delta_messages(
         ),
     )
     return response.to_dict()
-
-
-# Note: S3 utility functions removed - now using chroma_s3_helpers
-# instead
-# Note: Traditional compaction handler removed - this Lambda is
-# SQS-triggered only
