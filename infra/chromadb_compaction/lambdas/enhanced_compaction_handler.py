@@ -7,6 +7,9 @@ This handler extends the existing compaction functionality to handle both:
 Maintains compatibility with existing SQS queue and mutex lock infrastructure.
 """
 
+# pylint: disable=duplicate-code
+# Some duplication with stream_processor is expected for shared data structures
+
 import json
 import os
 import shutil
@@ -53,9 +56,16 @@ class LambdaResponse:
 
         # Add optional fields if they have values
         optional_fields = [
-            "processed_messages", "stream_messages", "delta_messages",
-            "metadata_updates", "label_updates", "metadata_results",
-            "label_results", "processed_deltas", "skipped_deltas", "error"
+            "processed_messages",
+            "stream_messages",
+            "delta_messages",
+            "metadata_updates",
+            "label_updates",
+            "metadata_results",
+            "label_results",
+            "processed_deltas",
+            "skipped_deltas",
+            "error",
         ]
 
         for field in optional_fields:
@@ -215,15 +225,20 @@ def process_sqs_messages(records: List[Dict[str, Any]]) -> Dict[str, Any]:
 
             if source == "dynamodb_stream":
                 # Get collection from message attributes
-                collection_value = attributes.get("collection", {}).get("stringValue")
+                collection_value = attributes.get("collection", {}).get(
+                    "stringValue"
+                )
                 if not collection_value:
-                    logger.warning("Stream message missing collection attribute")
+                    logger.warning(
+                        "Stream message missing collection attribute"
+                    )
                     continue
-                    
                 try:
                     collection = ChromaDBCollection(collection_value)
                 except ValueError:
-                    logger.warning("Invalid collection value: %s", collection_value)
+                    logger.warning(
+                        "Invalid collection value: %s", collection_value
+                    )
                     continue
 
                 # Parse stream message with collection info
@@ -285,8 +300,8 @@ def process_stream_messages(
         messages_by_collection[collection].append(msg)
 
     logger.info(
-        "Messages grouped by collection: %s", 
-        {col.value: len(msgs) for col, msgs in messages_by_collection.items()}
+        "Messages grouped by collection: %s",
+        {col.value: len(msgs) for col, msgs in messages_by_collection.items()},
     )
 
     # Process each collection separately
@@ -294,12 +309,15 @@ def process_stream_messages(
     all_label_results = []
     total_metadata_updates = 0
     total_label_updates = 0
-    
+
     for collection, messages in messages_by_collection.items():
-        logger.info("Processing %d messages for %s collection", len(messages), collection.value)
-        
+        logger.info(
+            "Processing %d messages for %s collection",
+            len(messages),
+            collection.value,
+        )
+
         result = _process_collection_messages(collection, messages)
-        
         # Aggregate results
         all_metadata_results.extend(result.get("metadata_results", []))
         all_label_results.extend(result.get("label_results", []))
@@ -309,7 +327,9 @@ def process_stream_messages(
     # Return aggregated results
     response = LambdaResponse(
         status_code=200,
-        message=f"Successfully processed {len(stream_messages)} stream messages",
+        message=(
+            f"Successfully processed {len(stream_messages)} stream messages"
+        ),
         stream_messages=len(stream_messages),
         metadata_updates=total_metadata_updates,
         label_updates=total_label_updates,
@@ -322,12 +342,12 @@ def process_stream_messages(
 def _process_collection_messages(
     collection: ChromaDBCollection, messages: List[StreamMessage]
 ) -> Dict[str, Any]:
-    """Process messages for a specific collection with collection-specific lock.
-    
+    """Process messages for a specific collection with collection-specific
+    lock.
     Args:
         collection: ChromaDBCollection to process
         messages: List of StreamMessage objects for this collection
-        
+
     Returns:
         Dictionary with processing results
     """
@@ -353,21 +373,26 @@ def _process_collection_messages(
     try:
         # Create collection-specific lock ID
         lock_id = f"chroma-{collection.value}-update-{int(time.time())}"
-        lock_acquired = lock_manager.acquire(lock_id, collection=collection)
+        lock_acquired = lock_manager.acquire(lock_id)
 
         if not lock_acquired:
             logger.warning(
-                "Could not acquire lock for %s collection updates", collection.value
+                "Could not acquire lock for %s collection updates",
+                collection.value,
             )
             return {
-                "error": f"Could not acquire lock for {collection.value} collection",
+                "error": (
+                    f"Could not acquire lock for {collection.value} collection"
+                ),
                 "metadata_updates": 0,
                 "label_updates": 0,
                 "metadata_results": [],
                 "label_results": [],
             }
 
-        logger.info("Acquired lock for %s collection: %s", collection.value, lock_id)
+        logger.info(
+            "Acquired lock for %s collection: %s", collection.value, lock_id
+        )
 
         # Start heartbeat
         lock_manager.start_heartbeat()
@@ -375,7 +400,9 @@ def _process_collection_messages(
         # Process metadata updates
         metadata_results = []
         if metadata_updates:
-            metadata_results = process_metadata_updates(metadata_updates, collection)
+            metadata_results = process_metadata_updates(
+                metadata_updates, collection
+            )
 
         # Process label updates
         label_results = []
@@ -394,21 +421,25 @@ def _process_collection_messages(
         )
 
         logger.info(
-            "Completed processing %s collection: %d metadata updates, %d label updates",
+            "Completed %s collection: %d metadata, %d label updates",
             collection.value,
             total_metadata_updates,
-            total_label_updates
+            total_label_updates,
         )
 
         return {
             "metadata_updates": total_metadata_updates,
             "label_updates": total_label_updates,
-            "metadata_results": [result.to_dict() for result in metadata_results],
+            "metadata_results": [
+                result.to_dict() for result in metadata_results
+            ],
             "label_results": [result.to_dict() for result in label_results],
         }
 
     except Exception as e:  # pylint: disable=broad-exception-caught
-        logger.error("Error processing %s collection messages: %s", collection.value, e)
+        logger.error(
+            "Error processing %s collection messages: %s", collection.value, e
+        )
         return {
             "error": str(e),
             "metadata_updates": 0,
@@ -420,7 +451,9 @@ def _process_collection_messages(
         # Stop heartbeat and release lock
         lock_manager.stop_heartbeat()
         lock_manager.release()
-        logger.info("Released lock for %s collection: %s", collection.value, lock_id)
+        logger.info(
+            "Released lock for %s collection: %s", collection.value, lock_id
+        )
 
 
 def process_metadata_updates(
@@ -447,7 +480,9 @@ def process_metadata_updates(
 
             logger.info(
                 "Processing %s for metadata: image_id=%s, receipt_id=%s",
-                event_name, image_id, receipt_id
+                event_name,
+                image_id,
+                receipt_id,
             )
 
             # Update metadata for the specified collection
@@ -466,8 +501,7 @@ def process_metadata_updates(
 
                 if download_result["status"] != "downloaded":
                     logger.error(
-                        "Failed to download snapshot: %s",
-                        download_result
+                        "Failed to download snapshot: %s", download_result
                     )
                     continue
 
@@ -482,9 +516,7 @@ def process_metadata_updates(
                 try:
                     collection_obj = chroma_client.get_collection(database)
                 except Exception:  # pylint: disable=broad-exception-caught
-                    logger.warning(
-                        "Collection receipt_%s not found", database
-                    )
+                    logger.warning("Collection receipt_%s not found", database)
                     continue
 
                 # Update metadata for this receipt
@@ -514,7 +546,8 @@ def process_metadata_updates(
                         if upload_result["status"] == "uploaded":
                             logger.info(
                                 "Updated %d records in receipt_%s",
-                                updated_count, database
+                                updated_count,
+                                database,
                             )
                         else:
                             logger.error(
@@ -628,7 +661,9 @@ def process_label_updates(
                 )
 
                 if event_name == "REMOVE":
-                    updated_count = remove_word_labels(collection_obj, chromadb_id)
+                    updated_count = remove_word_labels(
+                        collection_obj, chromadb_id
+                    )
                 else:  # MODIFY
                     updated_count = update_word_labels(
                         collection_obj, chromadb_id, changes
@@ -654,7 +689,9 @@ def process_label_updates(
                 results.append(result)
 
         # Upload updated snapshot if any updates occurred
-        total_updates = sum(r.updated_count for r in results if r.error is None)
+        total_updates = sum(
+            r.updated_count for r in results if r.error is None
+        )
         if total_updates > 0:
             upload_result = upload_delta_to_s3(
                 local_delta_path=temp_dir,
@@ -734,9 +771,7 @@ def update_receipt_metadata(
     return len(matching_ids)
 
 
-def remove_receipt_metadata(
-    collection, image_id: str, receipt_id: int
-) -> int:
+def remove_receipt_metadata(collection, image_id: str, receipt_id: int) -> int:
     """Remove merchant metadata fields from all embeddings of
     a specific receipt."""
     id_prefix = f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#"
@@ -869,8 +904,7 @@ def process_delta_messages(
     by a separate compaction system.
     """
     logger.info(
-        "Received %d delta messages (not processed)",
-        len(delta_messages)
+        "Received %d delta messages (not processed)", len(delta_messages)
     )
     logger.warning("Delta message processing not implemented in this handler")
 

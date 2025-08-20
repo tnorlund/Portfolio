@@ -12,6 +12,10 @@ Focuses on:
 - Both MODIFY and REMOVE operations
 """
 
+# pylint: disable=duplicate-code
+# Some duplication with enhanced_compaction_handler is expected for shared
+# structures
+
 import json
 import logging
 import os
@@ -150,7 +154,10 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
                             "image_id": entity.image_id,
                             "receipt_id": entity.receipt_id,
                         }
-                        target_collections = [ChromaDBCollection.LINES, ChromaDBCollection.WORDS]
+                        target_collections = [
+                            ChromaDBCollection.LINES,
+                            ChromaDBCollection.WORDS,
+                        ]
                     elif entity_type == "RECEIPT_WORD_LABEL":
                         # Word label changes only affect words collection
                         entity_data = {
@@ -408,7 +415,10 @@ def send_messages_to_queues(messages: List[StreamMessage]) -> int:
 
 
 def _send_batch_to_queue(
-    sqs, messages: List[tuple], queue_env_var: str, collection: ChromaDBCollection
+    sqs,
+    messages: List[tuple],
+    queue_env_var: str,
+    collection: ChromaDBCollection,
 ) -> int:
     """
     Send a batch of messages to a specific queue.
@@ -461,7 +471,9 @@ def _send_batch_to_queue(
             )
 
         try:
-            response = sqs.send_message_batch(QueueUrl=queue_url, Entries=entries)
+            response = sqs.send_message_batch(
+                QueueUrl=queue_url, Entries=entries
+            )
 
             # Count successful sends
             successful = len(response.get("Successful", []))
@@ -483,6 +495,8 @@ def _send_batch_to_queue(
                     )
 
         except (ValueError, KeyError, TypeError) as e:
-            logger.error("Error sending SQS batch to %s queue: %s", collection.value, e)
+            logger.error(
+                "Error sending SQS batch to %s queue: %s", collection.value, e
+            )
 
     return sent_count
