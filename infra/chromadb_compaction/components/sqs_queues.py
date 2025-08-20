@@ -212,10 +212,6 @@ class ChromaDBQueues(ComponentResource):
         self.lines_dlq_arn = self.lines_dlq.arn
         self.words_dlq_arn = self.words_dlq.arn
 
-        # Backward compatibility: delta_queue_url for embedding_step_functions
-        # Maps to lines_queue_url since line embeddings are primary use case
-        self.delta_queue_url = self.lines_queue_url
-        self.delta_queue_arn = self.lines_queue_arn
 
         # Register outputs
         self.register_outputs(
@@ -226,8 +222,6 @@ class ChromaDBQueues(ComponentResource):
                 "words_queue_arn": self.words_queue_arn,
                 "lines_dlq_arn": self.lines_dlq_arn,
                 "words_dlq_arn": self.words_dlq_arn,
-                "delta_queue_url": self.delta_queue_url,  # Backward compat
-                "delta_queue_arn": self.delta_queue_arn,  # Backward compat
             }
         )
 

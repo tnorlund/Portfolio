@@ -303,7 +303,7 @@ class LambdaFunctionsComponent(ComponentResource):
             "HANDLER_TYPE": config["handler_type"],
             "DYNAMODB_TABLE_NAME": dynamodb_table.name,
             "CHROMADB_BUCKET": self.chromadb_buckets.bucket_name,
-            "COMPACTION_QUEUE_URL": self.chromadb_queues.delta_queue_url,
+            "COMPACTION_QUEUE_URL": self.chromadb_queues.lines_queue_url,
             "OPENAI_API_KEY": openai_api_key,
             "S3_BUCKET": self.batch_bucket.bucket,
             "CHROMA_PERSIST_DIRECTORY": "/tmp/chroma",

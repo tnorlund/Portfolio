@@ -158,7 +158,7 @@ class EmbeddingInfrastructure(ComponentResource):
                     else None
                 ),
                 "chromadb_bucket_name": self.chromadb_buckets.bucket_name,
-                "chromadb_queue_url": self.chromadb_queues.delta_queue_url,
+                "chromadb_queue_url": self.chromadb_queues.lines_queue_url,
                 "batch_bucket_name": self.batch_bucket.bucket,
                 # Line workflows
                 "embedding_line_submit_sf_arn": (
