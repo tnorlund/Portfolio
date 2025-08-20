@@ -24,6 +24,8 @@ from .enhanced_compaction_infra import (
 )
 from .stream_processor_infra import create_stream_processor
 
+# pylint: disable=duplicate-code
+# Export lists are expected to be similar between package __init__ files
 __all__ = [
     "ChromaDBBuckets",
     "create_chromadb_buckets",

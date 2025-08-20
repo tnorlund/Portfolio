@@ -7,8 +7,9 @@ This handler extends the existing compaction functionality to handle both:
 Maintains compatibility with existing SQS queue and mutex lock infrastructure.
 """
 
-# pylint: disable=duplicate-code
+# pylint: disable=duplicate-code,too-many-instance-attributes,too-many-locals,too-many-nested-blocks
 # Some duplication with stream_processor is expected for shared data structures
+# Complex compaction logic requires many variables and nested operations
 
 import json
 import os

@@ -192,6 +192,8 @@ class TestCoreCompactionLogic:
         """Test that only relevant metadata fields are processed."""
 
         # These are the fields that should trigger ChromaDB updates
+        # pylint: disable=duplicate-code
+        # Field lists are naturally duplicated in related test modules
         relevant_fields = [
             "canonical_merchant_name",
             "merchant_name",

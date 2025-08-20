@@ -2,6 +2,8 @@
 
 Coordinates all components including SQS queues, S3 buckets, and hybrid Lambda deployment.
 """
+# pylint: disable=too-many-instance-attributes,too-many-arguments,too-many-positional-arguments
+# Infrastructure components naturally have many attributes and configuration parameters
 
 from typing import Optional
 
@@ -15,7 +17,7 @@ from .components.sqs_queues import create_chromadb_queues
 class ChromaDBCompactionInfrastructure(ComponentResource):
     """
     Main infrastructure component for ChromaDB compaction system.
-    
+
     Creates and coordinates:
     - SQS queues for message processing
     - S3 buckets for ChromaDB snapshots
@@ -40,7 +42,9 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
             base_images: Base images for container builds
             opts: Optional resource options
         """
-        super().__init__("chromadb:compaction:Infrastructure", name, None, opts)
+        super().__init__(
+            "chromadb:compaction:Infrastructure", name, None, opts
+        )
 
         # Create SQS queues for message processing
         self.chromadb_queues = create_chromadb_queues(
@@ -70,7 +74,9 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
         self.words_queue_url = self.chromadb_queues.words_queue_url
         self.bucket_name = self.chromadb_buckets.bucket_name
         self.stream_processor_arn = self.lambda_deployment.stream_processor_arn
-        self.enhanced_compaction_arn = self.lambda_deployment.enhanced_compaction_arn
+        self.enhanced_compaction_arn = (
+            self.lambda_deployment.enhanced_compaction_arn
+        )
 
         # Register outputs
         self.register_outputs(

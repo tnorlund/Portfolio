@@ -4,8 +4,9 @@ Creates both zip-based and container-based Lambda functions following the
 pattern from embedding_step_functions.
 """
 
-# pylint: disable=duplicate-code
+# pylint: disable=duplicate-code,too-many-instance-attributes,too-many-arguments,too-many-locals
 # Some duplication is expected between Lambda infrastructure components
+# Lambda deployment requires many configuration parameters and component attributes
 
 import json
 from pathlib import Path

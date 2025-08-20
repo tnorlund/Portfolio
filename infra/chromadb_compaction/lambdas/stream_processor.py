@@ -12,9 +12,9 @@ Focuses on:
 - Both MODIFY and REMOVE operations
 """
 
-# pylint: disable=duplicate-code
+# pylint: disable=duplicate-code,too-many-locals,too-many-branches
 # Some duplication with enhanced_compaction_handler is expected for shared
-# structures
+# structures. Stream processing requires handling many event types and validation conditions
 
 import json
 import logging
@@ -66,7 +66,7 @@ class ParsedStreamRecord:
 
 
 @dataclass(frozen=True)
-class StreamMessage:
+class StreamMessage:  # pylint: disable=too-many-instance-attributes
     """Enhanced stream message with collection targeting."""
 
     entity_type: str
