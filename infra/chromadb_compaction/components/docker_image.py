@@ -124,7 +124,7 @@ class DockerImageComponent(ComponentResource):
             ),
             build_args={
                 "BASE_IMAGE": (
-                    base_images.receipt_label_image
+                    base_images.label_base_image.tags[0]
                     if base_images
                     else "public.ecr.aws/lambda/python:3.12"
                 )
