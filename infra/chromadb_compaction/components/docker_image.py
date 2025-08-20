@@ -141,7 +141,7 @@ class DockerImageComponent(ComponentResource):
             push=True,
             opts=ResourceOptions(
                 parent=self,
-                depends_on=[self.ecr_repo],
+                depends_on=[self.ecr_repo] + ([base_images] if base_images else []),
                 replace_on_changes=["build_args", "dockerfile"],
             ),
         )
