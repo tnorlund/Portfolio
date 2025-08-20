@@ -124,7 +124,8 @@ class LambdaFunctionsComponent(ComponentResource):
             policy=Output.all(
                 dynamodb_table.name,
                 self.chromadb_buckets.bucket_name,
-                self.chromadb_queues.delta_queue_arn,
+                self.chromadb_queues.lines_queue_arn,
+                self.chromadb_queues.words_queue_arn,
                 self.batch_bucket.bucket,
             ).apply(self._create_lambda_policy),
             opts=ResourceOptions(parent=self),
@@ -164,8 +165,8 @@ class LambdaFunctionsComponent(ComponentResource):
                         "Resource": [
                             f"arn:aws:s3:::{args[1]}",
                             f"arn:aws:s3:::{args[1]}/*",
-                            f"arn:aws:s3:::{args[3]}",
-                            f"arn:aws:s3:::{args[3]}/*",
+                            f"arn:aws:s3:::{args[4]}",
+                            f"arn:aws:s3:::{args[4]}/*",
                         ],
                     },
                     {
@@ -174,7 +175,7 @@ class LambdaFunctionsComponent(ComponentResource):
                             "sqs:SendMessage",
                             "sqs:GetQueueAttributes",
                         ],
-                        "Resource": args[2],
+                        "Resource": [args[2], args[3]],
                     },
                 ],
             }
