@@ -101,6 +101,7 @@ class EnhancedCompactionLambda(ComponentResource):
         aws.iam.RolePolicyAttachment(
             f"{name}-lambda-basic-execution",
             role=self.lambda_role.name,
+            # pylint: disable=line-too-long
             policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
             opts=ResourceOptions(parent=self),
         )
@@ -262,10 +263,10 @@ class EnhancedCompactionLambda(ComponentResource):
             f"{name}-lines-event-source-mapping",
             event_source_arn=chromadb_queues.lines_queue_arn,
             function_name=self.function.arn,
-            batch_size=10,  # Process up to 10 messages at once
-            maximum_batching_window_in_seconds=30,  # Wait max 30 seconds to batch
-            maximum_retry_attempts=3,  # Retry failed batches 3 times
-            maximum_record_age_in_seconds=3600,  # Discard messages older than 1 hour
+            batch_size=10,
+            maximum_batching_window_in_seconds=30,
+            maximum_retry_attempts=3,
+            maximum_record_age_in_seconds=3600,
             opts=ResourceOptions(parent=self),
         )
 
@@ -273,10 +274,10 @@ class EnhancedCompactionLambda(ComponentResource):
             f"{name}-words-event-source-mapping",
             event_source_arn=chromadb_queues.words_queue_arn,
             function_name=self.function.arn,
-            batch_size=10,  # Process up to 10 messages at once
-            maximum_batching_window_in_seconds=30,  # Wait max 30 seconds to batch
-            maximum_retry_attempts=3,  # Retry failed batches 3 times
-            maximum_record_age_in_seconds=3600,  # Discard messages older than 1 hour
+            batch_size=10,
+            maximum_batching_window_in_seconds=30,
+            maximum_retry_attempts=3,
+            maximum_record_age_in_seconds=3600,
             opts=ResourceOptions(parent=self),
         )
 
