@@ -394,8 +394,6 @@ class HybridLambdaDeployment(ComponentResource):
             function_name=self.enhanced_compaction_function.arn,
             batch_size=10,
             maximum_batching_window_in_seconds=30,
-            maximum_retry_attempts=3,
-            maximum_record_age_in_seconds=3600,
             opts=ResourceOptions(parent=self),
         )
 
@@ -405,8 +403,6 @@ class HybridLambdaDeployment(ComponentResource):
             function_name=self.enhanced_compaction_function.arn,
             batch_size=10,
             maximum_batching_window_in_seconds=30,
-            maximum_retry_attempts=3,
-            maximum_record_age_in_seconds=3600,
             opts=ResourceOptions(parent=self),
         )
 
