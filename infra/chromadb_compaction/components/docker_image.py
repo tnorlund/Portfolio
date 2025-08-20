@@ -10,7 +10,6 @@ from pulumi import ComponentResource, ResourceOptions
 from pulumi_aws.ecr import (
     Repository,
     RepositoryImageScanningConfigurationArgs,
-    get_authorization_token_output,
 )
 
 # pylint: disable=import-error
@@ -24,10 +23,10 @@ class DockerImageComponent(ComponentResource):
 
     def get_handler_content_hash(self, handler_dir: Path) -> str:
         """Generate hash for handler code.
-        
+
         Args:
             handler_dir: Path to handler directory
-            
+
         Returns:
             Content-based hash string
         """
@@ -57,7 +56,7 @@ class DockerImageComponent(ComponentResource):
             return f"git-{commit}"
         except (subprocess.CalledProcessError, FileNotFoundError):
             pass
-        
+
         # Fallback to file hashing
         content_hash = hashlib.sha256()
         for file_path in sorted(handler_dir.rglob("*.py")):
@@ -131,8 +130,12 @@ class DockerImageComponent(ComponentResource):
                 )
             },
             tags=[
-                self.ecr_repo.repository_url.apply(lambda url: f"{url}:latest"),
-                self.ecr_repo.repository_url.apply(lambda url: f"{url}:{content_tag}"),
+                self.ecr_repo.repository_url.apply(
+                    lambda url: f"{url}:latest"
+                ),
+                self.ecr_repo.repository_url.apply(
+                    lambda url: f"{url}:{content_tag}"
+                ),
             ],
             platforms=[docker_build.Platform.LINUX_ARM64],
             push=True,
@@ -145,9 +148,11 @@ class DockerImageComponent(ComponentResource):
 
         # Export image URI for Lambda function
         self.image_uri = self.docker_image.ref.apply(
-            lambda ref: f"{self.ecr_repo.repository_url.apply(lambda url: url.split(':')[0])}@{ref.split('@')[1]}"
-            if "@" in ref
-            else f"{self.ecr_repo.repository_url.apply(lambda url: url)}:latest"
+            lambda ref: (
+                f"{self.ecr_repo.repository_url.apply(lambda url: url.split(':')[0])}@{ref.split('@')[1]}"
+                if "@" in ref
+                else f"{self.ecr_repo.repository_url.apply(lambda url: url)}:latest"
+            )
         )
 
         # Register outputs

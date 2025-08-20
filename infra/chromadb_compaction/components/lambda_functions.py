@@ -6,10 +6,10 @@ pattern from embedding_step_functions.
 
 import json
 from pathlib import Path
+from typing import Optional
 import pulumi
 import pulumi_aws as aws
 from pulumi import ComponentResource, Output, ResourceOptions
-from typing import Optional
 
 from .sqs_queues import ChromaDBQueues
 from .s3_buckets import ChromaDBBuckets
@@ -92,12 +92,15 @@ class HybridLambdaDeployment(ComponentResource):
         aws.iam.RolePolicyAttachment(
             f"{name}-lambda-basic-execution",
             role=self.lambda_role.name,
+            # pylint: disable=line-too-long
             policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
             opts=ResourceOptions(parent=self),
         )
 
         # Create shared policies
-        self._create_shared_policies(name, dynamodb_table_arn, chromadb_queues, chromadb_buckets)
+        self._create_shared_policies(
+            name, dynamodb_table_arn, chromadb_queues, chromadb_buckets
+        )
 
         # Create CloudWatch log groups
         self.stream_log_group = aws.cloudwatch.LogGroup(
@@ -180,9 +183,9 @@ class HybridLambdaDeployment(ComponentResource):
             memory_size=1024,  # More memory for ChromaDB operations
             environment={
                 "variables": {
-                    "DYNAMODB_TABLE_NAME": Output.all(dynamodb_table_arn).apply(
-                        lambda args: args[0].split("/")[-1]
-                    ),
+                    "DYNAMODB_TABLE_NAME": Output.all(
+                        dynamodb_table_arn
+                    ).apply(lambda args: args[0].split("/")[-1]),
                     "CHROMADB_BUCKET": chromadb_buckets.bucket_name,
                     "LINES_QUEUE_URL": chromadb_queues.lines_queue_url,
                     "WORDS_QUEUE_URL": chromadb_queues.words_queue_url,
@@ -209,7 +212,9 @@ class HybridLambdaDeployment(ComponentResource):
         )
 
         # Create event source mappings
-        self._create_event_source_mappings(name, dynamodb_stream_arn, chromadb_queues)
+        self._create_event_source_mappings(
+            name, dynamodb_stream_arn, chromadb_queues
+        )
 
         # Export useful properties
         self.stream_processor_arn = self.stream_processor_function.arn
@@ -234,7 +239,7 @@ class HybridLambdaDeployment(ComponentResource):
         chromadb_buckets: ChromaDBBuckets,
     ):
         """Create shared IAM policies for both Lambda functions."""
-        
+
         # DynamoDB access policy (for both stream reading and table operations)
         self.dynamodb_policy = aws.iam.RolePolicy(
             f"{name}-dynamodb-policy",
@@ -254,7 +259,8 @@ class HybridLambdaDeployment(ComponentResource):
                                 ],
                                 "Resource": [
                                     args[0],  # Table ARN
-                                    f"{args[0]}/stream/*",  # Stream ARN pattern
+                                    # Stream ARN pattern
+                                    f"{args[0]}/stream/*",
                                 ],
                             },
                             {
@@ -313,8 +319,10 @@ class HybridLambdaDeployment(ComponentResource):
             f"{name}-sqs-policy",
             role=self.lambda_role.id,
             policy=Output.all(
-                chromadb_queues.lines_queue_arn, chromadb_queues.words_queue_arn,
-                chromadb_queues.lines_dlq_arn, chromadb_queues.words_dlq_arn
+                chromadb_queues.lines_queue_arn,
+                chromadb_queues.words_queue_arn,
+                chromadb_queues.lines_dlq_arn,
+                chromadb_queues.words_dlq_arn,
             ).apply(
                 lambda args: json.dumps(
                     {
@@ -350,19 +358,19 @@ class HybridLambdaDeployment(ComponentResource):
         chromadb_queues: ChromaDBQueues,
     ):
         """Create event source mappings for both Lambda functions."""
-        
+
         # DynamoDB stream to stream processor
         self.stream_event_source_mapping = aws.lambda_.EventSourceMapping(
             f"{name}-stream-event-source-mapping",
             event_source_arn=dynamodb_stream_arn,
             function_name=self.stream_processor_function.arn,
-            starting_position="LATEST",  # Only process new changes
-            batch_size=100,  # Process up to 100 records at once
-            maximum_batching_window_in_seconds=5,  # Wait max 5 seconds to batch
-            parallelization_factor=1,  # Single shard processing for simplicity
-            maximum_retry_attempts=3,  # Retry failed batches 3 times
-            maximum_record_age_in_seconds=3600,  # Discard records older than 1 hour
-            bisect_batch_on_function_error=True,  # Split batch on errors
+            starting_position="LATEST",
+            batch_size=100,
+            maximum_batching_window_in_seconds=5,
+            parallelization_factor=1,
+            maximum_retry_attempts=3,
+            maximum_record_age_in_seconds=3600,
+            bisect_batch_on_function_error=True,
             opts=ResourceOptions(parent=self),
         )
 
@@ -371,10 +379,10 @@ class HybridLambdaDeployment(ComponentResource):
             f"{name}-lines-event-source-mapping",
             event_source_arn=chromadb_queues.lines_queue_arn,
             function_name=self.enhanced_compaction_function.arn,
-            batch_size=10,  # Process up to 10 messages at once
-            maximum_batching_window_in_seconds=30,  # Wait max 30 seconds to batch
-            maximum_retry_attempts=3,  # Retry failed batches 3 times
-            maximum_record_age_in_seconds=3600,  # Discard messages older than 1 hour
+            batch_size=10,
+            maximum_batching_window_in_seconds=30,
+            maximum_retry_attempts=3,
+            maximum_record_age_in_seconds=3600,
             opts=ResourceOptions(parent=self),
         )
 
@@ -382,10 +390,10 @@ class HybridLambdaDeployment(ComponentResource):
             f"{name}-words-event-source-mapping",
             event_source_arn=chromadb_queues.words_queue_arn,
             function_name=self.enhanced_compaction_function.arn,
-            batch_size=10,  # Process up to 10 messages at once
-            maximum_batching_window_in_seconds=30,  # Wait max 30 seconds to batch
-            maximum_retry_attempts=3,  # Retry failed batches 3 times
-            maximum_record_age_in_seconds=3600,  # Discard messages older than 1 hour
+            batch_size=10,
+            maximum_batching_window_in_seconds=30,
+            maximum_retry_attempts=3,
+            maximum_record_age_in_seconds=3600,
             opts=ResourceOptions(parent=self),
         )
 

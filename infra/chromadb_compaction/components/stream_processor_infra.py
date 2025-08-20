@@ -96,6 +96,7 @@ class StreamProcessorLambda(ComponentResource):
         aws.iam.RolePolicyAttachment(
             f"{name}-lambda-basic-execution",
             role=self.lambda_role.name,
+            # pylint: disable=line-too-long
             policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
             opts=ResourceOptions(parent=self),
         )
@@ -118,7 +119,8 @@ class StreamProcessorLambda(ComponentResource):
                                 ],
                                 "Resource": [
                                     args[0],  # Table ARN
-                                    f"{args[0]}/stream/*",  # Stream ARN pattern
+                                    # Stream ARN pattern
+                                    f"{args[0]}/stream/*",
                                 ],
                             },
                             {
@@ -261,13 +263,13 @@ class DynamoDBStreamEventSourceMapping(ComponentResource):
             f"{name}-event-source-mapping",
             event_source_arn=dynamodb_stream_arn,
             function_name=lambda_function.arn,
-            starting_position="LATEST",  # Only process new changes
-            batch_size=100,  # Process up to 100 records at once
-            maximum_batching_window_in_seconds=5,  # Wait max 5 seconds to batch
-            parallelization_factor=1,  # Single shard processing for simplicity
-            maximum_retry_attempts=3,  # Retry failed batches 3 times
-            maximum_record_age_in_seconds=3600,  # Discard records older than 1 hour
-            bisect_batch_on_function_error=True,  # Split batch on errors
+            starting_position="LATEST",
+            batch_size=100,
+            maximum_batching_window_in_seconds=5,
+            parallelization_factor=1,
+            maximum_retry_attempts=3,
+            maximum_record_age_in_seconds=3600,
+            bisect_batch_on_function_error=True,
             opts=ResourceOptions(parent=self),
         )
 
