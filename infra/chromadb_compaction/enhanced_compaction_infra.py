@@ -11,8 +11,8 @@ import pulumi_aws as aws
 from pulumi import ComponentResource, Output, ResourceOptions
 from typing import Optional
 
-from chromadb_compaction.sqs_queues import ChromaDBQueues
-from chromadb_compaction.s3_buckets import ChromaDBBuckets
+from .sqs_queues import ChromaDBQueues
+from .s3_buckets import ChromaDBBuckets
 
 
 class EnhancedCompactionLambda(ComponentResource):

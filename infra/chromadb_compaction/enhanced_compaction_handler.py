@@ -75,8 +75,13 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     if "Records" in event:
         return process_sqs_messages(event["Records"])
 
-    # Direct invocation - traditional compaction operations
-    return traditional_compaction_handler(event, context)
+    # Direct invocation not supported - this Lambda is designed for SQS triggers only
+    logger.warning("Direct invocation not supported. This Lambda processes SQS messages only.")
+    return {
+        "statusCode": 400,
+        "error": "Direct invocation not supported",
+        "message": "This Lambda is designed to process SQS messages from DynamoDB streams",
+    }
 
 
 def process_sqs_messages(records: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -613,30 +618,19 @@ def process_delta_messages(
 ) -> Dict[str, Any]:
     """Process traditional delta file messages.
 
-    Delegates to existing compaction logic for backward compatibility.
+    Currently not implemented - this handler focuses on DynamoDB stream messages.
+    Traditional delta processing would be handled by a separate compaction system.
     """
-    logger.info(f"Processing {len(delta_messages)} delta messages")
+    logger.info(f"Received {len(delta_messages)} delta messages (not processed)")
+    logger.warning("Delta message processing not implemented in this handler")
 
-    # For now, log and return success
-    # In full implementation, this would trigger the existing compaction workflow
     return {
         "statusCode": 200,
-        "processed_deltas": len(delta_messages),
-        "message": "Delta messages logged for processing",
+        "processed_deltas": 0,  # None actually processed
+        "skipped_deltas": len(delta_messages),
+        "message": "Delta messages skipped - not implemented in stream-focused handler",
     }
 
 
-def traditional_compaction_handler(
-    event: Dict[str, Any], context: Any
-) -> Dict[str, Any]:
-    """Handle traditional direct invocation compaction operations.
-
-    Maintains backward compatibility with existing compaction workflows.
-    """
-    # Import and delegate to existing compaction handler
-    from .compaction import compact_handler
-
-    return compact_handler(event, context)
-
-
 # Note: S3 utility functions removed - now using chroma_s3_helpers instead
+# Note: Traditional compaction handler removed - this Lambda is SQS-triggered only
