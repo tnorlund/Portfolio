@@ -15,16 +15,61 @@ Focuses on:
 import json
 import logging
 import os
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import boto3
 
 # Import receipt_dynamo entity parsers
-from receipt_dynamo.entities.receipt_metadata import item_to_receipt_metadata
+from receipt_dynamo.entities.receipt_metadata import (
+    ReceiptMetadata,
+    item_to_receipt_metadata,
+)
 from receipt_dynamo.entities.receipt_word_label import (
+    ReceiptWordLabel,
     item_to_receipt_word_label,
 )
+
+@dataclass(frozen=True)
+class LambdaResponse:
+    """Response from the Lambda handler with processing statistics."""
+
+    status_code: int
+    processed_records: int
+    queued_messages: int
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to AWS Lambda-compatible dictionary."""
+        return {
+            "statusCode": self.status_code,
+            "processed_records": self.processed_records,
+            "queued_messages": self.queued_messages,
+        }
+
+
+@dataclass(frozen=True)
+class ParsedStreamRecord:
+    """Parsed DynamoDB stream record with entity information."""
+
+    entity_type: str  # "RECEIPT_METADATA" or "RECEIPT_WORD_LABEL"
+    old_entity: Optional[
+        Union[ReceiptMetadata, ReceiptWordLabel]
+    ]
+    new_entity: Optional[
+        Union[ReceiptMetadata, ReceiptWordLabel]
+    ]
+    pk: str
+    sk: str
+
+
+@dataclass(frozen=True)
+class FieldChange:
+    """Represents a change in a single field."""
+
+    old: Any
+    new: Any
+
 
 # Configure logging
 logger = logging.getLogger()
@@ -68,9 +113,9 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
 
             # Process MODIFY and REMOVE events
             if record["eventName"] in ["MODIFY", "REMOVE"]:
-                entity_type = parsed_record["entity_type"]
-                old_entity = parsed_record["old_entity"]
-                new_entity = parsed_record["new_entity"]
+                entity_type = parsed_record.entity_type
+                old_entity = parsed_record.old_entity
+                new_entity = parsed_record.new_entity
 
                 # Check if any ChromaDB-relevant fields changed
                 changes = get_chromadb_relevant_changes(
@@ -133,14 +178,19 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
         sent_count = send_messages_to_sqs(messages_to_send)
         logger.info("Sent %s messages to compaction queue", sent_count)
 
-    return {
-        "statusCode": 200,
-        "processed_records": processed_records,
-        "queued_messages": len(messages_to_send),
-    }
+    response = LambdaResponse(
+        status_code=200,
+        processed_records=processed_records,
+        queued_messages=len(messages_to_send),
+    )
+
+    # Convert dataclass to dict for AWS Lambda JSON serialization
+    return response.to_dict()
 
 
-def parse_stream_record(record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def parse_stream_record(
+    record: Dict[str, Any]
+) -> Optional[ParsedStreamRecord]:
     """
     Parse DynamoDB stream record to identify relevant entity changes.
 
@@ -217,13 +267,13 @@ def parse_stream_record(record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                     )
 
         # Return parsed entity information
-        return {
-            "entity_type": entity_type,
-            "old_entity": old_entity,
-            "new_entity": new_entity,
-            "pk": pk,
-            "sk": sk,
-        }
+        return ParsedStreamRecord(
+            entity_type=entity_type,
+            old_entity=old_entity,
+            new_entity=new_entity,
+            pk=pk,
+            sk=sk,
+        )
 
     except (KeyError, ValueError) as e:
         logger.warning("Failed to parse stream record: %s", e)
@@ -232,9 +282,9 @@ def parse_stream_record(record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 def get_chromadb_relevant_changes(
     entity_type: str,
-    old_entity: Optional[object],
-    new_entity: Optional[object],
-) -> Dict[str, Any]:
+    old_entity: Optional[Union[ReceiptMetadata, ReceiptWordLabel]],
+    new_entity: Optional[Union[ReceiptMetadata, ReceiptWordLabel]],
+) -> Dict[str, FieldChange]:
     """
     Identify changes to fields that affect ChromaDB metadata.
 
@@ -246,7 +296,8 @@ def get_chromadb_relevant_changes(
         new_entity: Current entity state (None for REMOVE events)
 
     Returns:
-        Dictionary of changed fields with old/new values
+        Dictionary mapping field names to FieldChange objects with
+        old/new values
     """
     # Define ChromaDB-relevant fields for each entity type
     relevant_fields = {
@@ -276,7 +327,7 @@ def get_chromadb_relevant_changes(
         new_value = getattr(new_entity, field, None) if new_entity else None
 
         if old_value != new_value:
-            changes[field] = {"old": old_value, "new": new_value}
+            changes[field] = FieldChange(old=old_value, new=new_value)
 
     return changes
 
