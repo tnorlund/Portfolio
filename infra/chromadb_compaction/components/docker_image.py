@@ -12,10 +12,7 @@ from pulumi_aws.ecr import (
     RepositoryImageScanningConfigurationArgs,
 )
 
-# pylint: disable=import-error
-import pulumi_docker_build as docker_build  # type: ignore[import-not-found]
-
-# pylint: enable=import-error
+import pulumi_docker_build as docker_build  # pylint: disable=import-error
 
 
 class DockerImageComponent(ComponentResource):
