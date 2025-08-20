@@ -14,7 +14,7 @@ from receipt_dynamo.entities.base import DynamoDBEntity
 from receipt_dynamo.entities.util import _repr_str, assert_valid_uuid
 
 
-@dataclass(eq=True, unsafe_hash=False)
+@dataclass(eq=True, unsafe_hash=True)
 class CompactionLock(DynamoDBEntity):
     """
     Single-row mutex that guards Chroma compaction jobs.
@@ -47,13 +47,38 @@ class CompactionLock(DynamoDBEntity):
     def __post_init__(self) -> None:
         assert_valid_uuid(self.owner)
 
+        # Validate lock_id
+        if not isinstance(self.lock_id, str) or not self.lock_id.strip():
+            raise ValueError("lock_id must be a non-empty string")
+
+        # Validate collection
+        if not isinstance(self.collection, ChromaDBCollection):
+            if isinstance(self.collection, str):
+                # Try to convert string to enum
+                try:
+                    self.collection = ChromaDBCollection(self.collection)
+                except ValueError:
+                    valid_values = [c.value for c in ChromaDBCollection]
+                    raise ValueError(
+                        f"ChromaDBCollection must be one of: {valid_values}, got: {self.collection}"
+                    )
+            else:
+                raise ValueError(
+                    f"collection must be ChromaDBCollection or str, got: {type(self.collection)}"
+                )
+
+        # Validate expires
         if isinstance(self.expires, datetime):
             self.expires = self.expires.isoformat()
         elif not isinstance(self.expires, str):
             raise ValueError("expires must be datetime or ISO-8601 string")
 
-        if self.heartbeat and isinstance(self.heartbeat, datetime):
-            self.heartbeat = self.heartbeat.isoformat()
+        # Validate heartbeat
+        if self.heartbeat:
+            if isinstance(self.heartbeat, datetime):
+                self.heartbeat = self.heartbeat.isoformat()
+            elif not isinstance(self.heartbeat, str):
+                raise ValueError("heartbeat must be datetime, ISO-8601 string, or None")
 
     # ───────────────────────── DynamoDB keys ──────────────────────────
     @property
@@ -121,10 +146,19 @@ def item_to_compaction_lock(item: Dict[str, Any]) -> "CompactionLock":
     collection_value = pk_parts[1]
     lock_id = "#".join(pk_parts[2:])  # Rejoin in case lock_id contains #
 
+    # Validate collection value
+    try:
+        collection = ChromaDBCollection(collection_value)
+    except ValueError:
+        valid_values = [c.value for c in ChromaDBCollection]
+        raise ValueError(
+            f"Invalid collection in item: {collection_value}. Must be one of: {valid_values}"
+        )
+
     return CompactionLock(
         lock_id=lock_id,
         owner=item["owner"]["S"],
         expires=item["expires"]["S"],
-        collection=ChromaDBCollection(collection_value),
+        collection=collection,
         heartbeat=item.get("heartbeat", {}).get("S"),
     )
