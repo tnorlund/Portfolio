@@ -4,9 +4,7 @@ Unit tests for DynamoDB Stream Processor Lambda
 Tests the stream processor functionality for ChromaDB metadata synchronization.
 """
 
-import json
 import os
-import uuid
 from datetime import datetime
 from typing import Any, Dict
 from unittest.mock import MagicMock, patch
@@ -16,12 +14,17 @@ import pytest
 # Import entity classes for test data creation
 from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
-from receipt_dynamo.constants import ValidationStatus, ValidationMethod
+from receipt_dynamo.constants import (
+    ChromaDBCollection,
+    ValidationStatus,
+    ValidationMethod,
+)
 
 from ..lambdas.stream_processor import (
     FieldChange,
     LambdaResponse,
     ParsedStreamRecord,
+    StreamMessage,
     get_chromadb_relevant_changes,
     lambda_handler,
     parse_stream_record,
@@ -33,7 +36,7 @@ from ..lambdas.stream_processor import (
 def create_test_receipt_metadata(
     merchant_name: str = "Test Merchant",
     canonical_merchant_name: str = "",
-    **kwargs
+    **kwargs,
 ) -> ReceiptMetadata:
     """Create a test ReceiptMetadata entity with sensible defaults."""
     defaults = {
@@ -51,8 +54,7 @@ def create_test_receipt_metadata(
 
 
 def create_test_receipt_word_label(
-    label: str = "TEST_LABEL",
-    **kwargs
+    label: str = "TEST_LABEL", **kwargs
 ) -> ReceiptWordLabel:
     """Create a test ReceiptWordLabel entity with sensible defaults."""
     defaults = {
@@ -74,47 +76,43 @@ def create_stream_record_from_entities(
     old_entity=None,
     new_entity=None,
     event_id: str = "test-event-1",
-    aws_region: str = "us-east-1"
+    aws_region: str = "us-east-1",
 ) -> Dict[str, Any]:
     """Create a DynamoDB stream record from entity objects using their key/to_item methods."""
     # Get the key from whichever entity is available
     entity = old_entity or new_entity
     if not entity:
         raise ValueError("At least one entity (old or new) must be provided")
-    
+
     # Use the entity's key method for Keys
     keys = entity.key
-    
+
     record = {
         "eventID": event_id,
         "eventName": event_name,
         "awsRegion": aws_region,
-        "dynamodb": {
-            "Keys": keys
-        }
+        "dynamodb": {"Keys": keys},
     }
-    
+
     # Use entity's to_item method for OldImage/NewImage
     if old_entity:
         record["dynamodb"]["OldImage"] = old_entity.to_item()
     if new_entity:
         record["dynamodb"]["NewImage"] = new_entity.to_item()
-        
+
     return record
 
 
 class TestParseStreamRecord:
     """Test DynamoDB stream record parsing logic."""
-    
+
     def test_parse_receipt_metadata_modify_event(self):
         """Test parsing RECEIPT_METADATA MODIFY event."""
         old_entity = create_test_receipt_metadata(merchant_name="Old Merchant")
         new_entity = create_test_receipt_metadata(merchant_name="New Merchant")
-        
+
         record = create_stream_record_from_entities(
-            event_name="MODIFY",
-            old_entity=old_entity,
-            new_entity=new_entity
+            event_name="MODIFY", old_entity=old_entity, new_entity=new_entity
         )
 
         result = parse_stream_record(record)
@@ -137,11 +135,9 @@ class TestParseStreamRecord:
     def test_parse_receipt_word_label_remove_event(self):
         """Test parsing RECEIPT_WORD_LABEL REMOVE event."""
         old_entity = create_test_receipt_word_label(label="TOTAL")
-        
+
         record = create_stream_record_from_entities(
-            event_name="REMOVE",
-            old_entity=old_entity,
-            new_entity=None
+            event_name="REMOVE", old_entity=old_entity, new_entity=None
         )
 
         result = parse_stream_record(record)
@@ -158,7 +154,9 @@ class TestParseStreamRecord:
         assert isinstance(result.old_entity, ReceiptWordLabel)
         # Use the actual entity attributes
         assert result.old_entity.label == old_entity.label
-        assert result.old_entity.validation_status == old_entity.validation_status
+        assert (
+            result.old_entity.validation_status == old_entity.validation_status
+        )
 
     def test_parse_non_image_pk(self):
         """Test that non-IMAGE PKs are ignored."""
@@ -167,9 +165,9 @@ class TestParseStreamRecord:
             "dynamodb": {
                 "Keys": {
                     "PK": {"S": "BATCH#12345"},
-                    "SK": {"S": "RECEIPT#00001#METADATA"}
+                    "SK": {"S": "RECEIPT#00001#METADATA"},
                 }
-            }
+            },
         }
 
         result = parse_stream_record(record)
@@ -182,9 +180,9 @@ class TestParseStreamRecord:
             "dynamodb": {
                 "Keys": {
                     "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},
-                    "SK": {"S": "RECEIPT#00001#LINE#00002"}
+                    "SK": {"S": "RECEIPT#00001#LINE#00002"},
                 }
-            }
+            },
         }
 
         result = parse_stream_record(record)
@@ -197,9 +195,9 @@ class TestParseStreamRecord:
             "dynamodb": {
                 "Keys": {
                     "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},
-                    "SK": {"S": "RECEIPT#00001#LINE#00002#WORD#00003"}
+                    "SK": {"S": "RECEIPT#00001#LINE#00002#WORD#00003"},
                 }
-            }
+            },
         }
 
         result = parse_stream_record(record)
@@ -211,7 +209,7 @@ class TestParseStreamRecord:
             "eventName": "MODIFY",
             "dynamodb": {
                 # Missing Keys
-            }
+            },
         }
 
         result = parse_stream_record(record)
@@ -220,47 +218,45 @@ class TestParseStreamRecord:
 
 class TestDataclasses:
     """Test dataclass functionality."""
-    
+
     def test_lambda_response_to_dict(self):
         """Test LambdaResponse to_dict conversion."""
         response = LambdaResponse(
-            status_code=200,
-            processed_records=5,
-            queued_messages=3
+            status_code=200, processed_records=5, queued_messages=3
         )
-        
+
         result = response.to_dict()
-        
+
         assert result == {
             "statusCode": 200,
             "processed_records": 5,
-            "queued_messages": 3
+            "queued_messages": 3,
         }
-    
+
     def test_field_change_creation(self):
         """Test FieldChange dataclass creation."""
         change = FieldChange(old="old_value", new="new_value")
-        
+
         assert change.old == "old_value"
         assert change.new == "new_value"
-    
+
     def test_parsed_stream_record_creation(self):
         """Test ParsedStreamRecord dataclass creation."""
         old_entity = create_test_receipt_metadata(merchant_name="Old Merchant")
-        
+
         # Use the entity's key for PK/SK values
         entity_key = old_entity.key
         pk = entity_key["PK"]["S"]
         sk = entity_key["SK"]["S"]
-        
+
         parsed = ParsedStreamRecord(
             entity_type="RECEIPT_METADATA",
             old_entity=old_entity,
             new_entity=None,
             pk=pk,
-            sk=sk
+            sk=sk,
         )
-        
+
         assert parsed.entity_type == "RECEIPT_METADATA"
         assert parsed.old_entity == old_entity
         assert parsed.new_entity is None
@@ -277,14 +273,14 @@ class TestGetChromadbRelevantChanges:
             merchant_name="Old Merchant",
             canonical_merchant_name="Old Merchant",
             place_id="old_place_123",
-            address="Old Address"
+            address="Old Address",
         )
-        
+
         new_entity = create_test_receipt_metadata(
             merchant_name="New Merchant",
             canonical_merchant_name="New Merchant",
             place_id="new_place_123",
-            address="Old Address"  # Same address - no change expected
+            address="Old Address",  # Same address - no change expected
         )
 
         changes = get_chromadb_relevant_changes(
@@ -293,28 +289,36 @@ class TestGetChromadbRelevantChanges:
 
         assert "canonical_merchant_name" in changes
         assert isinstance(changes["canonical_merchant_name"], FieldChange)
-        assert changes["canonical_merchant_name"].old == old_entity.canonical_merchant_name
-        assert changes["canonical_merchant_name"].new == new_entity.canonical_merchant_name
+        assert (
+            changes["canonical_merchant_name"].old
+            == old_entity.canonical_merchant_name
+        )
+        assert (
+            changes["canonical_merchant_name"].new
+            == new_entity.canonical_merchant_name
+        )
         assert "place_id" in changes
         assert changes["place_id"].old == old_entity.place_id
         assert changes["place_id"].new == new_entity.place_id
         assert "merchant_name" in changes
         assert changes["merchant_name"].old == old_entity.merchant_name
         assert changes["merchant_name"].new == new_entity.merchant_name
-        assert "address" not in changes  # No change (both entities have same address)
+        assert (
+            "address" not in changes
+        )  # No change (both entities have same address)
 
     def test_label_changes_detected(self):
         """Test label field changes are detected."""
         old_entity = create_test_receipt_word_label(
             label="OLD_LABEL",
             validation_status=ValidationStatus.PENDING,
-            reasoning="Old reasoning"
+            reasoning="Old reasoning",
         )
-        
+
         new_entity = create_test_receipt_word_label(
             label="NEW_LABEL",
             validation_status=ValidationStatus.VALID,
-            reasoning="Old reasoning"  # Same reasoning - no change expected
+            reasoning="Old reasoning",  # Same reasoning - no change expected
         )
 
         changes = get_chromadb_relevant_changes(
@@ -328,7 +332,9 @@ class TestGetChromadbRelevantChanges:
         assert "validation_status" in changes
         assert changes["validation_status"].old == old_entity.validation_status
         assert changes["validation_status"].new == new_entity.validation_status
-        assert "reasoning" not in changes  # No change (both entities have same reasoning)
+        assert (
+            "reasoning" not in changes
+        )  # No change (both entities have same reasoning)
 
     def test_no_changes_detected(self):
         """Test when no relevant changes are detected."""
@@ -336,22 +342,20 @@ class TestGetChromadbRelevantChanges:
             merchant_name="Same Merchant",
             canonical_merchant_name="Same Merchant",
             place_id="same_place_123",
-            address="Same Address"
+            address="Same Address",
         )
 
         changes = get_chromadb_relevant_changes(
             "RECEIPT_METADATA", entity, entity  # Same entity
         )
-        assert changes == {}
+        assert not changes
 
     def test_unknown_entity_type(self):
         """Test handling of unknown entity types."""
         entity = create_test_receipt_metadata(merchant_name="Test Merchant")
 
-        changes = get_chromadb_relevant_changes(
-            "UNKNOWN_TYPE", entity, entity
-        )
-        assert changes == {}
+        changes = get_chromadb_relevant_changes("UNKNOWN_TYPE", entity, entity)
+        assert not changes
 
 
 class TestSendMessagesToQueues:
@@ -367,9 +371,7 @@ class TestSendMessagesToQueues:
     @patch("infra.chromadb_compaction.lambdas.stream_processor.boto3.client")
     def test_send_single_batch(self, mock_boto3_client):
         """Test sending messages to appropriate queues."""
-        from ..lambdas.stream_processor import StreamMessage
-        from receipt_dynamo.constants import ChromaDBCollection
-        
+
         mock_sqs = MagicMock()
         mock_boto3_client.return_value = mock_sqs
         mock_sqs.send_message_batch.return_value = {
@@ -384,7 +386,10 @@ class TestSendMessagesToQueues:
                 entity_data={"image_id": "test", "receipt_id": 123},
                 changes={"merchant_name": {"old": "A", "new": "B"}},
                 event_name="MODIFY",
-                collections=[ChromaDBCollection.LINES, ChromaDBCollection.WORDS],
+                collections=[
+                    ChromaDBCollection.LINES,
+                    ChromaDBCollection.WORDS,
+                ],
             ),
             StreamMessage(
                 entity_type="RECEIPT_WORD_LABEL",
@@ -397,9 +402,9 @@ class TestSendMessagesToQueues:
 
         sent_count = send_messages_to_queues(messages)
 
-        # Should send 4 messages total: 
+        # Should send 4 messages total:
         # - metadata message goes to lines queue (1) + words queue (1) = 2
-        # - word label message goes to words queue (1) = 1  
+        # - word label message goes to words queue (1) = 1
         # But words queue gets 2 messages (metadata + word label) = 2
         # Total: lines=1, words=2, sent_count = 4 (2 per batch response)
         assert sent_count == 4
@@ -416,13 +421,11 @@ class TestSendMessagesToQueues:
     @patch("infra.chromadb_compaction.lambdas.stream_processor.boto3.client")
     def test_send_multiple_batches(self, mock_boto3_client):
         """Test sending multiple batches (>10 messages)."""
-        from ..lambdas.stream_processor import StreamMessage
-        from receipt_dynamo.constants import ChromaDBCollection
-        
+
         mock_sqs = MagicMock()
         mock_boto3_client.return_value = mock_sqs
 
-        def batch_response_side_effect(*args, **kwargs):
+        def batch_response_side_effect(**kwargs):
             # Return successful response based on actual batch size
             entries = kwargs.get("Entries", [])
             return {
@@ -439,7 +442,10 @@ class TestSendMessagesToQueues:
                 entity_data={"image_id": f"test-{i}", "receipt_id": 1},
                 changes={"merchant_name": {"old": "A", "new": "B"}},
                 event_name="MODIFY",
-                collections=[ChromaDBCollection.LINES, ChromaDBCollection.WORDS],
+                collections=[
+                    ChromaDBCollection.LINES,
+                    ChromaDBCollection.WORDS,
+                ],
             )
             for i in range(25)
         ]
@@ -455,15 +461,13 @@ class TestSendMessagesToQueues:
         os.environ,
         {
             "LINES_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/lines-queue",
-            "WORDS_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/words-queue"
+            "WORDS_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/words-queue",
         },
     )
     @patch("infra.chromadb_compaction.lambdas.stream_processor.boto3.client")
     def test_send_with_failures(self, mock_boto3_client):
         """Test handling SQS send failures."""
-        from ..lambdas.stream_processor import StreamMessage
-        from receipt_dynamo.constants import ChromaDBCollection
-        
+
         mock_sqs = MagicMock()
         mock_boto3_client.return_value = mock_sqs
         mock_sqs.send_message_batch.return_value = {
@@ -477,7 +481,7 @@ class TestSendMessagesToQueues:
             ],
         }
 
-        # Create one word label message (goes to words queue only)  
+        # Create one word label message (goes to words queue only)
         messages = [
             StreamMessage(
                 entity_type="RECEIPT_WORD_LABEL",
@@ -500,10 +504,12 @@ class TestLambdaHandler:
         os.environ,
         {
             "LINES_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/lines-queue",
-            "WORDS_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/words-queue"
+            "WORDS_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/words-queue",
         },
     )
-    @patch("infra.chromadb_compaction.lambdas.stream_processor.send_messages_to_queues")
+    @patch(
+        "infra.chromadb_compaction.lambdas.stream_processor.send_messages_to_queues"
+    )
     def test_handler_processes_modify_event(self, mock_send_messages):
         """Test handler processes MODIFY events correctly."""
         mock_send_messages.return_value = 1
@@ -511,11 +517,11 @@ class TestLambdaHandler:
         # Create test entities using the entity classes
         old_entity = create_test_receipt_metadata(
             merchant_name="Old Merchant",
-            canonical_merchant_name="Old Merchant"
+            canonical_merchant_name="Old Merchant",
         )
         new_entity = create_test_receipt_metadata(
-            merchant_name="New Merchant", 
-            canonical_merchant_name="New Merchant"
+            merchant_name="New Merchant",
+            canonical_merchant_name="New Merchant",
         )
 
         # Create stream record using entity methods
@@ -523,7 +529,7 @@ class TestLambdaHandler:
             event_name="MODIFY",
             old_entity=old_entity,
             new_entity=new_entity,
-            event_id="test-event-1"
+            event_id="test-event-1",
         )
 
         event = {"Records": [stream_record]}
@@ -548,10 +554,12 @@ class TestLambdaHandler:
         os.environ,
         {
             "LINES_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/lines-queue",
-            "WORDS_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/words-queue"
+            "WORDS_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/words-queue",
         },
     )
-    @patch("infra.chromadb_compaction.lambdas.stream_processor.send_messages_to_queues")
+    @patch(
+        "infra.chromadb_compaction.lambdas.stream_processor.send_messages_to_queues"
+    )
     def test_handler_processes_remove_event(self, mock_send_messages):
         """Test handler processes REMOVE events correctly."""
         mock_send_messages.return_value = 1
@@ -564,7 +572,7 @@ class TestLambdaHandler:
             event_name="REMOVE",
             old_entity=old_entity,
             new_entity=None,
-            event_id="test-event-2"
+            event_id="test-event-2",
         )
 
         event = {"Records": [stream_record]}
@@ -581,7 +589,9 @@ class TestLambdaHandler:
         assert message.entity_type == "RECEIPT_WORD_LABEL"
         assert message.event_name == "REMOVE"
 
-    @patch("infra.chromadb_compaction.lambdas.stream_processor.send_messages_to_queues")
+    @patch(
+        "infra.chromadb_compaction.lambdas.stream_processor.send_messages_to_queues"
+    )
     def test_handler_ignores_insert_events(self, mock_send_messages):
         """Test handler ignores INSERT events."""
         event = {
@@ -612,7 +622,9 @@ class TestLambdaHandler:
         assert response["queued_messages"] == 0
         mock_send_messages.assert_not_called()
 
-    @patch("infra.chromadb_compaction.lambdas.stream_processor.send_messages_to_queues")
+    @patch(
+        "infra.chromadb_compaction.lambdas.stream_processor.send_messages_to_queues"
+    )
     def test_handler_ignores_irrelevant_entities(self, mock_send_messages):
         """Test handler ignores irrelevant entity types."""
         event = {
@@ -644,7 +656,9 @@ class TestLambdaHandler:
         assert response["queued_messages"] == 0
         mock_send_messages.assert_not_called()
 
-    @patch("infra.chromadb_compaction.lambdas.stream_processor.send_messages_to_queues")
+    @patch(
+        "infra.chromadb_compaction.lambdas.stream_processor.send_messages_to_queues"
+    )
     def test_handler_handles_errors_gracefully(self, mock_send_messages):
         """Test handler handles processing errors gracefully."""
         # Create an event with malformed data
