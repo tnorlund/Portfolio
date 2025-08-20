@@ -10,6 +10,7 @@ from pulumi import ComponentResource, ResourceOptions
 from pulumi_aws.ecr import (
     Repository,
     RepositoryImageScanningConfigurationArgs,
+    get_authorization_token_output,
 )
 
 import pulumi_docker_build as docker_build  # pylint: disable=import-error
