@@ -12,133 +12,212 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+# Import entity classes for test data creation
+from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
+from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
+from receipt_dynamo.constants import ValidationStatus, ValidationMethod
+
 from stream_processor import (
-    extract_dynamodb_value,
+    FieldChange,
+    LambdaResponse,
+    ParsedStreamRecord,
     get_chromadb_relevant_changes,
     lambda_handler,
-    parse_receipt_entity_key,
+    parse_stream_record,
     send_messages_to_sqs,
 )
 
 
-class TestParseReceiptEntityKey:
-    """Test entity key parsing logic."""
+class TestParseStreamRecord:
+    """Test DynamoDB stream record parsing logic."""
+    
+    def test_parse_receipt_metadata_modify_event(self):
+        """Test parsing RECEIPT_METADATA MODIFY event."""
+        record = {
+            "eventName": "MODIFY",
+            "dynamodb": {
+                "Keys": {
+                    "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},
+                    "SK": {"S": "RECEIPT#00001#METADATA"}
+                },
+                "OldImage": {
+                    "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},
+                    "SK": {"S": "RECEIPT#00001#METADATA"},
+                    "TYPE": {"S": "RECEIPT_METADATA"},
+                    "place_id": {"S": "place123"},
+                    "merchant_name": {"S": "Old Merchant"},
+                    "matched_fields": {"SS": ["name"]},
+                    "validated_by": {"S": "PHONE_LOOKUP"},
+                    "timestamp": {"S": "2024-01-01T00:00:00"}
+                },
+                "NewImage": {
+                    "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},
+                    "SK": {"S": "RECEIPT#00001#METADATA"},
+                    "TYPE": {"S": "RECEIPT_METADATA"},
+                    "place_id": {"S": "place123"},
+                    "merchant_name": {"S": "New Merchant"},
+                    "matched_fields": {"SS": ["name"]},
+                    "validated_by": {"S": "PHONE_LOOKUP"},
+                    "timestamp": {"S": "2024-01-01T00:00:00"}
+                }
+            }
+        }
 
-    def test_parse_receipt_metadata_valid(self):
-        """Test parsing valid RECEIPT_METADATA keys."""
-        pk = "IMAGE#550e8400-e29b-41d4-a716-446655440000"
-        sk = "RECEIPT#00001#METADATA"
-
-        result = parse_receipt_entity_key(pk, sk)
+        result = parse_stream_record(record)
 
         assert result is not None
-        assert result["entity_type"] == "RECEIPT_METADATA"
-        assert result["image_id"] == "550e8400-e29b-41d4-a716-446655440000"
-        assert result["receipt_id"] == 1
+        assert isinstance(result, ParsedStreamRecord)
+        assert result.entity_type == "RECEIPT_METADATA"
+        assert result.pk == "IMAGE#550e8400-e29b-41d4-a716-446655440000"
+        assert result.sk == "RECEIPT#00001#METADATA"
+        assert result.old_entity is not None
+        assert result.new_entity is not None
+        assert isinstance(result.old_entity, ReceiptMetadata)
+        assert isinstance(result.new_entity, ReceiptMetadata)
+        assert result.old_entity.merchant_name == "Old Merchant"
+        assert result.new_entity.merchant_name == "New Merchant"
 
-    def test_parse_receipt_word_label_valid(self):
-        """Test parsing valid RECEIPT_WORD_LABEL keys."""
-        pk = "IMAGE#550e8400-e29b-41d4-a716-446655440000"
-        sk = "RECEIPT#00001#LINE#00002#WORD#00003#LABEL#TOTAL"
+    def test_parse_receipt_word_label_remove_event(self):
+        """Test parsing RECEIPT_WORD_LABEL REMOVE event."""
+        record = {
+            "eventName": "REMOVE",
+            "dynamodb": {
+                "Keys": {
+                    "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},
+                    "SK": {"S": "RECEIPT#00001#LINE#00002#WORD#00003#LABEL#TOTAL"}
+                },
+                "OldImage": {
+                    "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},
+                    "SK": {"S": "RECEIPT#00001#LINE#00002#WORD#00003#LABEL#TOTAL"},
+                    "TYPE": {"S": "RECEIPT_WORD_LABEL"},
+                    "label": {"S": "TOTAL"},
+                    "validation_status": {"S": "VALID"},
+                    "reasoning": {"S": "Test reasoning"},
+                    "timestamp_added": {"S": "2024-01-01T00:00:00"}
+                }
+            }
+        }
 
-        result = parse_receipt_entity_key(pk, sk)
+        result = parse_stream_record(record)
 
         assert result is not None
-        assert result["entity_type"] == "RECEIPT_WORD_LABEL"
-        assert result["image_id"] == "550e8400-e29b-41d4-a716-446655440000"
-        assert result["receipt_id"] == 1
-        assert result["line_id"] == 2
-        assert result["word_id"] == 3
-        assert result["label"] == "TOTAL"
+        assert isinstance(result, ParsedStreamRecord)
+        assert result.entity_type == "RECEIPT_WORD_LABEL"
+        assert result.old_entity is not None
+        assert result.new_entity is None  # REMOVE event
+        assert isinstance(result.old_entity, ReceiptWordLabel)
+        assert result.old_entity.label == "TOTAL"
+        assert result.old_entity.validation_status == ValidationStatus.VALID
 
     def test_parse_non_image_pk(self):
         """Test that non-IMAGE PKs are ignored."""
-        pk = "BATCH#12345"
-        sk = "RECEIPT#00001#METADATA"
+        record = {
+            "eventName": "MODIFY",
+            "dynamodb": {
+                "Keys": {
+                    "PK": {"S": "BATCH#12345"},
+                    "SK": {"S": "RECEIPT#00001#METADATA"}
+                }
+            }
+        }
 
-        result = parse_receipt_entity_key(pk, sk)
+        result = parse_stream_record(record)
         assert result is None
 
     def test_parse_receipt_line_ignored(self):
         """Test that RECEIPT_LINE entities are ignored."""
-        pk = "IMAGE#550e8400-e29b-41d4-a716-446655440000"
-        sk = "RECEIPT#00001#LINE#00002"
+        record = {
+            "eventName": "MODIFY",
+            "dynamodb": {
+                "Keys": {
+                    "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},
+                    "SK": {"S": "RECEIPT#00001#LINE#00002"}
+                }
+            }
+        }
 
-        result = parse_receipt_entity_key(pk, sk)
+        result = parse_stream_record(record)
         assert result is None
 
     def test_parse_receipt_word_ignored(self):
         """Test that RECEIPT_WORD entities are ignored."""
-        pk = "IMAGE#550e8400-e29b-41d4-a716-446655440000"
-        sk = "RECEIPT#00001#LINE#00002#WORD#00003"
-
-        result = parse_receipt_entity_key(pk, sk)
-        assert result is None
-
-    def test_parse_invalid_metadata_format(self):
-        """Test parsing invalid metadata format."""
-        pk = "IMAGE#550e8400-e29b-41d4-a716-446655440000"
-        sk = "RECEIPT#invalid#METADATA"
-
-        result = parse_receipt_entity_key(pk, sk)
-        assert result is None
-
-    def test_parse_invalid_label_format(self):
-        """Test parsing invalid label format."""
-        pk = "IMAGE#550e8400-e29b-41d4-a716-446655440000"
-        sk = "RECEIPT#invalid#LINE#00002#WORD#00003#LABEL#TOTAL"
-
-        result = parse_receipt_entity_key(pk, sk)
-        assert result is None
-
-
-class TestExtractDynamodbValue:
-    """Test DynamoDB value extraction."""
-
-    def test_extract_string_value(self):
-        """Test extracting string value."""
-        dynamo_value = {"S": "test_string"}
-        result = extract_dynamodb_value(dynamo_value)
-        assert result == "test_string"
-
-    def test_extract_number_value(self):
-        """Test extracting number value."""
-        dynamo_value = {"N": "123.45"}
-        result = extract_dynamodb_value(dynamo_value)
-        assert result == 123.45
-
-    def test_extract_boolean_value(self):
-        """Test extracting boolean value."""
-        dynamo_value = {"BOOL": True}
-        result = extract_dynamodb_value(dynamo_value)
-        assert result is True
-
-    def test_extract_null_value(self):
-        """Test extracting null value."""
-        dynamo_value = {"NULL": True}
-        result = extract_dynamodb_value(dynamo_value)
-        assert result is None
-
-    def test_extract_map_value(self):
-        """Test extracting map value."""
-        dynamo_value = {
-            "M": {"x": {"N": "10"}, "y": {"N": "20"}, "name": {"S": "test"}}
+        record = {
+            "eventName": "MODIFY",
+            "dynamodb": {
+                "Keys": {
+                    "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},
+                    "SK": {"S": "RECEIPT#00001#LINE#00002#WORD#00003"}
+                }
+            }
         }
-        result = extract_dynamodb_value(dynamo_value)
-        expected = {"x": 10.0, "y": 20.0, "name": "test"}
-        assert result == expected
 
-    def test_extract_list_value(self):
-        """Test extracting list value."""
-        dynamo_value = {"L": [{"S": "item1"}, {"S": "item2"}, {"N": "123"}]}
-        result = extract_dynamodb_value(dynamo_value)
-        expected = ["item1", "item2", 123.0]
-        assert result == expected
-
-    def test_extract_empty_value(self):
-        """Test extracting empty value."""
-        result = extract_dynamodb_value({})
+        result = parse_stream_record(record)
         assert result is None
+
+    def test_parse_invalid_record_format(self):
+        """Test parsing record with missing required fields."""
+        record = {
+            "eventName": "MODIFY",
+            "dynamodb": {
+                # Missing Keys
+            }
+        }
+
+        result = parse_stream_record(record)
+        assert result is None
+
+
+class TestDataclasses:
+    """Test dataclass functionality."""
+    
+    def test_lambda_response_to_dict(self):
+        """Test LambdaResponse to_dict conversion."""
+        response = LambdaResponse(
+            status_code=200,
+            processed_records=5,
+            queued_messages=3
+        )
+        
+        result = response.to_dict()
+        
+        assert result == {
+            "statusCode": 200,
+            "processed_records": 5,
+            "queued_messages": 3
+        }
+    
+    def test_field_change_creation(self):
+        """Test FieldChange dataclass creation."""
+        change = FieldChange(old="old_value", new="new_value")
+        
+        assert change.old == "old_value"
+        assert change.new == "new_value"
+    
+    def test_parsed_stream_record_creation(self):
+        """Test ParsedStreamRecord dataclass creation."""
+        old_entity = ReceiptMetadata(
+            image_id="550e8400-e29b-41d4-a716-446655440000",
+            receipt_id=1,
+            place_id="place123",
+            merchant_name="Old Merchant",
+            matched_fields=["name"],
+            validated_by=ValidationMethod.PHONE_LOOKUP,
+            timestamp=datetime.fromisoformat("2024-01-01T00:00:00")
+        )
+        
+        parsed = ParsedStreamRecord(
+            entity_type="RECEIPT_METADATA",
+            old_entity=old_entity,
+            new_entity=None,
+            pk="IMAGE#550e8400-e29b-41d4-a716-446655440000",
+            sk="RECEIPT#00001#METADATA"
+        )
+        
+        assert parsed.entity_type == "RECEIPT_METADATA"
+        assert parsed.old_entity == old_entity
+        assert parsed.new_entity is None
+        assert parsed.pk == "IMAGE#550e8400-e29b-41d4-a716-446655440000"
+        assert parsed.sk == "RECEIPT#00001#METADATA"
 
 
 class TestGetChromadbRelevantChanges:
@@ -146,80 +225,116 @@ class TestGetChromadbRelevantChanges:
 
     def test_metadata_changes_detected(self):
         """Test metadata field changes are detected."""
-        entity_data = {"entity_type": "RECEIPT_METADATA"}
-        old_image = {
-            "canonical_merchant_name": {"S": "Old Merchant"},
-            "address": {"S": "Old Address"},
-        }
-        new_image = {
-            "canonical_merchant_name": {"S": "New Merchant"},
-            "address": {"S": "Old Address"},
-            "place_id": {"S": "new_place_123"},
-        }
+        old_entity = ReceiptMetadata(
+            image_id="550e8400-e29b-41d4-a716-446655440000",
+            receipt_id=1,
+            place_id="old_place_123",
+            merchant_name="Old Merchant",
+            canonical_merchant_name="Old Merchant", 
+            address="Old Address",
+            matched_fields=["name"],
+            validated_by=ValidationMethod.PHONE_LOOKUP,
+            timestamp=datetime.fromisoformat("2024-01-01T00:00:00")
+        )
+        
+        new_entity = ReceiptMetadata(
+            image_id="550e8400-e29b-41d4-a716-446655440000",
+            receipt_id=1,
+            place_id="new_place_123",
+            merchant_name="New Merchant",
+            canonical_merchant_name="New Merchant",
+            address="Old Address",  # Same address
+            matched_fields=["name"],
+            validated_by=ValidationMethod.PHONE_LOOKUP,
+            timestamp=datetime.fromisoformat("2024-01-01T00:00:00")
+        )
 
         changes = get_chromadb_relevant_changes(
-            entity_data, old_image, new_image
+            "RECEIPT_METADATA", old_entity, new_entity
         )
 
         assert "canonical_merchant_name" in changes
-        assert changes["canonical_merchant_name"]["old"] == "Old Merchant"
-        assert changes["canonical_merchant_name"]["new"] == "New Merchant"
+        assert isinstance(changes["canonical_merchant_name"], FieldChange)
+        assert changes["canonical_merchant_name"].old == "Old Merchant"
+        assert changes["canonical_merchant_name"].new == "New Merchant"
         assert "place_id" in changes
-        assert changes["place_id"]["old"] is None
-        assert changes["place_id"]["new"] == "new_place_123"
+        assert changes["place_id"].old == "old_place_123"
+        assert changes["place_id"].new == "new_place_123"
+        assert "merchant_name" in changes
+        assert changes["merchant_name"].old == "Old Merchant"
+        assert changes["merchant_name"].new == "New Merchant"
         assert "address" not in changes  # No change
 
     def test_label_changes_detected(self):
         """Test label field changes are detected."""
-        entity_data = {"entity_type": "RECEIPT_WORD_LABEL"}
-        old_image = {
-            "label": {"S": "OLD_LABEL"},
-            "validation_status": {"S": "PENDING"},
-            "reasoning": {"S": "Old reasoning"},
-        }
-        new_image = {
-            "label": {"S": "NEW_LABEL"},
-            "validation_status": {"S": "VALIDATED"},
-            "reasoning": {"S": "Old reasoning"},
-        }
+        old_entity = ReceiptWordLabel(
+            image_id="550e8400-e29b-41d4-a716-446655440000",
+            receipt_id=1,
+            line_id=2,
+            word_id=3,
+            label="OLD_LABEL",
+            validation_status=ValidationStatus.PENDING,
+            reasoning="Old reasoning",
+            timestamp_added=datetime.fromisoformat("2024-01-01T00:00:00")
+        )
+        
+        new_entity = ReceiptWordLabel(
+            image_id="550e8400-e29b-41d4-a716-446655440000",
+            receipt_id=1,
+            line_id=2,
+            word_id=3,
+            label="NEW_LABEL",
+            validation_status=ValidationStatus.VALID,
+            reasoning="Old reasoning",  # Same reasoning
+            timestamp_added=datetime.fromisoformat("2024-01-01T00:00:00")
+        )
 
         changes = get_chromadb_relevant_changes(
-            entity_data, old_image, new_image
+            "RECEIPT_WORD_LABEL", old_entity, new_entity
         )
 
         assert "label" in changes
-        assert changes["label"]["old"] == "OLD_LABEL"
-        assert changes["label"]["new"] == "NEW_LABEL"
+        assert isinstance(changes["label"], FieldChange)
+        assert changes["label"].old == "OLD_LABEL"
+        assert changes["label"].new == "NEW_LABEL"
         assert "validation_status" in changes
-        assert changes["validation_status"]["old"] == "PENDING"
-        assert changes["validation_status"]["new"] == "VALIDATED"
+        assert changes["validation_status"].old == ValidationStatus.PENDING
+        assert changes["validation_status"].new == ValidationStatus.VALID
         assert "reasoning" not in changes  # No change
 
     def test_no_changes_detected(self):
         """Test when no relevant changes are detected."""
-        entity_data = {"entity_type": "RECEIPT_METADATA"}
-        old_image = {
-            "canonical_merchant_name": {"S": "Same Merchant"},
-            "address": {"S": "Same Address"},
-        }
-        new_image = {
-            "canonical_merchant_name": {"S": "Same Merchant"},
-            "address": {"S": "Same Address"},
-        }
+        entity = ReceiptMetadata(
+            image_id="550e8400-e29b-41d4-a716-446655440000",
+            receipt_id=1,
+            place_id="same_place_123",
+            merchant_name="Same Merchant",
+            canonical_merchant_name="Same Merchant",
+            address="Same Address",
+            matched_fields=["name"],
+            validated_by=ValidationMethod.PHONE_LOOKUP,
+            timestamp=datetime.fromisoformat("2024-01-01T00:00:00")
+        )
 
         changes = get_chromadb_relevant_changes(
-            entity_data, old_image, new_image
+            "RECEIPT_METADATA", entity, entity  # Same entity
         )
         assert changes == {}
 
     def test_unknown_entity_type(self):
         """Test handling of unknown entity types."""
-        entity_data = {"entity_type": "UNKNOWN_TYPE"}
-        old_image = {"some_field": {"S": "old_value"}}
-        new_image = {"some_field": {"S": "new_value"}}
+        entity = ReceiptMetadata(
+            image_id="550e8400-e29b-41d4-a716-446655440000",
+            receipt_id=1,
+            place_id="place123",
+            merchant_name="Test Merchant",
+            matched_fields=["name"],
+            validated_by=ValidationMethod.PHONE_LOOKUP,
+            timestamp=datetime.fromisoformat("2024-01-01T00:00:00")
+        )
 
         changes = get_chromadb_relevant_changes(
-            entity_data, old_image, new_image
+            "UNKNOWN_TYPE", entity, entity
         )
         assert changes == {}
 
@@ -361,10 +476,26 @@ class TestLambdaHandler:
                             "SK": {"S": "RECEIPT#00001#METADATA"},
                         },
                         "OldImage": {
-                            "canonical_merchant_name": {"S": "Old Merchant"}
+                            "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},
+                            "SK": {"S": "RECEIPT#00001#METADATA"},
+                            "TYPE": {"S": "RECEIPT_METADATA"},
+                            "place_id": {"S": "place123"},
+                            "merchant_name": {"S": "Old Merchant"},
+                            "canonical_merchant_name": {"S": "Old Merchant"},
+                            "matched_fields": {"SS": ["name"]},
+                            "validated_by": {"S": "PHONE_LOOKUP"},
+                            "timestamp": {"S": "2024-01-01T00:00:00"}
                         },
                         "NewImage": {
-                            "canonical_merchant_name": {"S": "New Merchant"}
+                            "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},
+                            "SK": {"S": "RECEIPT#00001#METADATA"},
+                            "TYPE": {"S": "RECEIPT_METADATA"},
+                            "place_id": {"S": "place123"},
+                            "merchant_name": {"S": "New Merchant"},
+                            "canonical_merchant_name": {"S": "New Merchant"},
+                            "matched_fields": {"SS": ["name"]},
+                            "validated_by": {"S": "PHONE_LOOKUP"},
+                            "timestamp": {"S": "2024-01-01T00:00:00"}
                         },
                     },
                 }
@@ -414,8 +545,13 @@ class TestLambdaHandler:
                             },
                         },
                         "OldImage": {
+                            "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},
+                            "SK": {"S": "RECEIPT#00001#LINE#00002#WORD#00003#LABEL#TOTAL"},
+                            "TYPE": {"S": "RECEIPT_WORD_LABEL"},
                             "label": {"S": "TOTAL"},
-                            "validation_status": {"S": "VALIDATED"},
+                            "validation_status": {"S": "VALID"},
+                            "timestamp_added": {"S": "2024-01-01T00:00:00"},
+                            "reasoning": {"S": "Test reasoning"}
                         },
                     },
                 }
