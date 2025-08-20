@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional
 
 import pulumi
-from pulumi import ComponentResource, ResourceOptions
+from pulumi import ComponentResource, Output, ResourceOptions
 from pulumi_aws.ecr import (
     Repository,
     RepositoryImageScanningConfigurationArgs,
@@ -160,18 +160,14 @@ class DockerImageComponent(ComponentResource):
         )
 
         # Export image URI for Lambda function
-        def _build_image_uri(ref):
-            repo_url = self.ecr_repo.repository_url.apply(
-                lambda url: url.split(":")[0]
-            )
-            if "@" in ref:
-                return f"{repo_url}@{ref.split('@')[1]}"
-            repo_url_latest = self.ecr_repo.repository_url.apply(
-                lambda url: url
-            )
-            return f"{repo_url_latest}:latest"
-
-        self.image_uri = self.docker_image.ref.apply(_build_image_uri)
+        self.image_uri = Output.all(
+            self.docker_image.ref, 
+            self.ecr_repo.repository_url
+        ).apply(
+            lambda args: f"{args[1].split(':')[0]}@{args[0].split('@')[1]}" 
+            if "@" in args[0] 
+            else f"{args[1]}:latest"
+        )
 
         # Register outputs
         self.register_outputs(
