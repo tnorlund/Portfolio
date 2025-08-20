@@ -14,7 +14,7 @@ import tempfile
 import time
 from datetime import datetime, timezone
 from logging import INFO, Formatter, StreamHandler, getLogger
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import boto3
 
@@ -44,15 +44,15 @@ if len(logger.handlers) == 0:
 sqs_client = boto3.client("sqs")
 
 # Initialize DynamoDB client only when needed to avoid import-time errors
-dynamo_client = None
+DYNAMO_CLIENT = None
 
 
 def get_dynamo_client():
     """Get DynamoDB client, initializing if needed."""
-    global dynamo_client
-    if dynamo_client is None:
-        dynamo_client = DynamoClient(os.environ["DYNAMODB_TABLE_NAME"])
-    return dynamo_client
+    global DYNAMO_CLIENT  # pylint: disable=global-statement
+    if DYNAMO_CLIENT is None:
+        DYNAMO_CLIENT = DynamoClient(os.environ["DYNAMODB_TABLE_NAME"])
+    return DYNAMO_CLIENT
 
 
 # Get configuration from environment
@@ -75,14 +75,18 @@ def handle(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     if "Records" in event:
         return process_sqs_messages(event["Records"])
 
-    # Direct invocation not supported - this Lambda is designed for SQS triggers only
+    # Direct invocation not supported - Lambda is for SQS triggers only
     logger.warning(
-        "Direct invocation not supported. This Lambda processes SQS messages only."
+        "Direct invocation not supported. "
+        "This Lambda processes SQS messages only."
     )
     return {
         "statusCode": 400,
         "error": "Direct invocation not supported",
-        "message": "This Lambda is designed to process SQS messages from DynamoDB streams",
+        "message": (
+            "This Lambda is designed to process SQS messages "
+            "from DynamoDB streams"
+        ),
     }
 
 
@@ -93,7 +97,7 @@ def process_sqs_messages(records: List[Dict[str, Any]]) -> Dict[str, Any]:
     1. Stream messages (from DynamoDB stream processor)
     2. Traditional delta notifications (existing functionality)
     """
-    logger.info(f"Processing {len(records)} SQS messages")
+    logger.info("Processing %d SQS messages", len(records))
 
     stream_messages = []
     delta_messages = []
@@ -117,19 +121,19 @@ def process_sqs_messages(records: List[Dict[str, Any]]) -> Dict[str, Any]:
 
             processed_count += 1
 
-        except Exception as e:
-            logger.error(f"Error parsing SQS message: {e}")
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.error("Error parsing SQS message: %s", e)
             continue
 
     # Process stream messages if any
     if stream_messages:
-        stream_result = process_stream_messages(stream_messages)
-        logger.info(f"Processed {len(stream_messages)} stream messages")
+        process_stream_messages(stream_messages)
+        logger.info("Processed %d stream messages", len(stream_messages))
 
     # Process delta messages if any
     if delta_messages:
-        delta_result = process_delta_messages(delta_messages)
-        logger.info(f"Processed {len(delta_messages)} delta messages")
+        process_delta_messages(delta_messages)
+        logger.info("Processed %d delta messages", len(delta_messages))
 
     return {
         "statusCode": 200,
@@ -147,7 +151,7 @@ def process_stream_messages(
 
     Uses the existing mutex lock to ensure thread-safe metadata updates.
     """
-    logger.info(f"Processing {len(stream_messages)} stream messages")
+    logger.info("Processing %d stream messages", len(stream_messages))
 
     # Group messages by entity type for efficient processing
     metadata_updates = []
@@ -160,7 +164,7 @@ def process_stream_messages(
         elif entity_type == "RECEIPT_WORD_LABEL":
             label_updates.append(message)
         else:
-            logger.warning(f"Unknown entity type: {entity_type}")
+            logger.warning("Unknown entity type: %s", entity_type)
 
     # Acquire lock for metadata updates
     lock_manager = LockManager(
@@ -203,8 +207,8 @@ def process_stream_messages(
             "message": "Stream messages processed successfully",
         }
 
-    except Exception as e:
-        logger.error(f"Error processing stream messages: {e}")
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        logger.error("Error processing stream messages: %s", e)
         return {
             "statusCode": 500,
             "error": str(e),
@@ -223,7 +227,7 @@ def process_metadata_updates(
 
     Updates merchant information across ALL embeddings for affected receipts.
     """
-    logger.info(f"Processing {len(metadata_updates)} metadata updates")
+    logger.info("Processing %d metadata updates", len(metadata_updates))
     results = []
 
     bucket = os.environ["CHROMADB_BUCKET"]
@@ -238,8 +242,8 @@ def process_metadata_updates(
             receipt_id = entity_data["receipt_id"]
 
             logger.info(
-                f"Processing {event_name} for metadata: "
-                f"image_id={image_id}, receipt_id={receipt_id}"
+                "Processing %s for metadata: image_id=%s, receipt_id=%s",
+                event_name, image_id, receipt_id
             )
 
             # Update metadata for both lines and words collections
@@ -258,7 +262,8 @@ def process_metadata_updates(
 
                     if download_result["status"] != "downloaded":
                         logger.error(
-                            f"Failed to download snapshot: {download_result}"
+                            "Failed to download snapshot: %s",
+                            download_result
                         )
                         continue
 
@@ -272,9 +277,9 @@ def process_metadata_updates(
                     # Get appropriate collection
                     try:
                         collection = chroma_client.get_collection(database)
-                    except Exception:
+                    except Exception:  # pylint: disable=broad-exception-caught
                         logger.warning(
-                            f"Collection receipt_{database} not found"
+                            "Collection receipt_%s not found", database
                         )
                         continue
 
@@ -304,11 +309,12 @@ def process_metadata_updates(
 
                         if upload_result["status"] == "uploaded":
                             logger.info(
-                                f"Updated {updated_count} records in receipt_{database}"
+                                "Updated %d records in receipt_%s",
+                                updated_count, database
                             )
                         else:
                             logger.error(
-                                f"Failed to upload snapshot: {upload_result}"
+                                "Failed to upload snapshot: %s", upload_result
                             )
 
                     results.append(
@@ -321,8 +327,8 @@ def process_metadata_updates(
                         }
                     )
 
-                except Exception as e:
-                    logger.error(f"Error updating {database} metadata: {e}")
+                except Exception as e:  # pylint: disable=broad-exception-caught
+                    logger.error("Error updating %s metadata: %s", database, e)
                     results.append(
                         {
                             "database": database,
@@ -335,8 +341,8 @@ def process_metadata_updates(
                     if "temp_dir" in locals():
                         shutil.rmtree(temp_dir, ignore_errors=True)
 
-        except Exception as e:
-            logger.error(f"Error processing metadata update: {e}")
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.error("Error processing metadata update: %s", e)
             results.append({"error": str(e), "message": update_msg})
 
     return results
@@ -349,7 +355,7 @@ def process_label_updates(
 
     Updates label metadata for SPECIFIC word embeddings.
     """
-    logger.info(f"Processing {len(label_updates)} label updates")
+    logger.info("Processing %d label updates", len(label_updates))
     results = []
 
     bucket = os.environ["CHROMADB_BUCKET"]
@@ -368,7 +374,7 @@ def process_label_updates(
         )
 
         if download_result["status"] != "downloaded":
-            logger.error(f"Failed to download snapshot: {download_result}")
+            logger.error("Failed to download snapshot: %s", download_result)
             return results
 
         # Load ChromaDB using helper
@@ -381,7 +387,7 @@ def process_label_updates(
         # Get words collection
         try:
             collection = chroma_client.get_collection("words")
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             logger.warning("receipt_words collection not found")
             return results
 
@@ -398,10 +404,13 @@ def process_label_updates(
                 word_id = entity_data["word_id"]
 
                 # Create ChromaDB ID for this specific word
-                chromadb_id = f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}"
+                chromadb_id = (
+                    f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#"
+                    f"LINE#{line_id:05d}#WORD#{word_id:05d}"
+                )
 
                 logger.info(
-                    f"Processing {event_name} for label: {chromadb_id}"
+                    "Processing %s for label: %s", event_name, chromadb_id
                 )
 
                 if event_name == "REMOVE":
@@ -420,8 +429,8 @@ def process_label_updates(
                     }
                 )
 
-            except Exception as e:
-                logger.error(f"Error processing label update: {e}")
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                logger.error("Error processing label update: %s", e)
                 results.append({"error": str(e), "message": update_msg})
 
         # Upload updated snapshot if any updates occurred
@@ -438,12 +447,14 @@ def process_label_updates(
             )
 
             if upload_result["status"] == "uploaded":
-                logger.info(f"Updated {total_updates} word labels in ChromaDB")
+                logger.info(
+                    "Updated %d word labels in ChromaDB", total_updates
+                )
             else:
-                logger.error(f"Failed to upload snapshot: {upload_result}")
+                logger.error("Failed to upload snapshot: %s", upload_result)
 
-    except Exception as e:
-        logger.error(f"Error processing label updates: {e}")
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        logger.error("Error processing label updates: %s", e)
         results.append({"error": str(e)})
     finally:
         if "temp_dir" in locals():
@@ -457,7 +468,8 @@ def update_receipt_metadata(
 ) -> int:
     """Update metadata for all embeddings of a specific receipt."""
     # Build query to find all embeddings for this receipt
-    # ChromaDB IDs follow pattern: IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#...
+    # ChromaDB IDs follow pattern:
+    # IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#..."
     id_prefix = f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#"
 
     # Get all records that match this receipt
@@ -490,13 +502,16 @@ def update_receipt_metadata(
     # Update records if any found
     if matching_ids:
         collection.update(ids=matching_ids, metadatas=matching_metadatas)
-        logger.info(f"Updated metadata for {len(matching_ids)} embeddings")
+        logger.info("Updated metadata for %d embeddings", len(matching_ids))
 
     return len(matching_ids)
 
 
-def remove_receipt_metadata(collection, image_id: str, receipt_id: int) -> int:
-    """Remove merchant metadata fields from all embeddings of a specific receipt."""
+def remove_receipt_metadata(
+    collection, image_id: str, receipt_id: int
+) -> int:
+    """Remove merchant metadata fields from all embeddings of
+    a specific receipt."""
     id_prefix = f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#"
 
     # Fields to remove when metadata is deleted
@@ -534,7 +549,7 @@ def remove_receipt_metadata(collection, image_id: str, receipt_id: int) -> int:
     # Update records if any found
     if matching_ids:
         collection.update(ids=matching_ids, metadatas=matching_metadatas)
-        logger.info(f"Removed metadata from {len(matching_ids)} embeddings")
+        logger.info("Removed metadata from %d embeddings", len(matching_ids))
 
     return len(matching_ids)
 
@@ -548,7 +563,7 @@ def update_word_labels(
         result = collection.get(ids=[chromadb_id], include=["metadatas"])
 
         if not result["ids"]:
-            logger.warning(f"Word embedding not found: {chromadb_id}")
+            logger.warning("Word embedding not found: %s", chromadb_id)
             return 0
 
         # Update metadata with label changes
@@ -572,11 +587,11 @@ def update_word_labels(
         # Update the record
         collection.update(ids=[chromadb_id], metadatas=[updated_metadata])
 
-        logger.info(f"Updated labels for word: {chromadb_id}")
+        logger.info("Updated labels for word: %s", chromadb_id)
         return 1
 
-    except Exception as e:
-        logger.error(f"Error updating word labels for {chromadb_id}: {e}")
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        logger.error("Error updating word labels for %s: %s", chromadb_id, e)
         return 0
 
 
@@ -587,7 +602,7 @@ def remove_word_labels(collection, chromadb_id: str) -> int:
         result = collection.get(ids=[chromadb_id], include=["metadatas"])
 
         if not result["ids"]:
-            logger.warning(f"Word embedding not found: {chromadb_id}")
+            logger.warning("Word embedding not found: %s", chromadb_id)
             return 0
 
         # Remove all label fields from metadata
@@ -609,11 +624,11 @@ def remove_word_labels(collection, chromadb_id: str) -> int:
         # Update the record
         collection.update(ids=[chromadb_id], metadatas=[updated_metadata])
 
-        logger.info(f"Removed labels from word: {chromadb_id}")
+        logger.info("Removed labels from word: %s", chromadb_id)
         return 1
 
-    except Exception as e:
-        logger.error(f"Error removing word labels for {chromadb_id}: {e}")
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        logger.error("Error removing word labels for %s: %s", chromadb_id, e)
         return 0
 
 
@@ -622,11 +637,13 @@ def process_delta_messages(
 ) -> Dict[str, Any]:
     """Process traditional delta file messages.
 
-    Currently not implemented - this handler focuses on DynamoDB stream messages.
-    Traditional delta processing would be handled by a separate compaction system.
+    Currently not implemented - this handler focuses on DynamoDB
+    stream messages. Traditional delta processing would be handled
+    by a separate compaction system.
     """
     logger.info(
-        f"Received {len(delta_messages)} delta messages (not processed)"
+        "Received %d delta messages (not processed)",
+        len(delta_messages)
     )
     logger.warning("Delta message processing not implemented in this handler")
 
@@ -634,9 +651,14 @@ def process_delta_messages(
         "statusCode": 200,
         "processed_deltas": 0,  # None actually processed
         "skipped_deltas": len(delta_messages),
-        "message": "Delta messages skipped - not implemented in stream-focused handler",
+        "message": (
+            "Delta messages skipped - not implemented in "
+            "stream-focused handler"
+        ),
     }
 
 
-# Note: S3 utility functions removed - now using chroma_s3_helpers instead
-# Note: Traditional compaction handler removed - this Lambda is SQS-triggered only
+# Note: S3 utility functions removed - now using chroma_s3_helpers
+# instead
+# Note: Traditional compaction handler removed - this Lambda is
+# SQS-triggered only
