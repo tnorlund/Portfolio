@@ -76,7 +76,9 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         return process_sqs_messages(event["Records"])
 
     # Direct invocation not supported - this Lambda is designed for SQS triggers only
-    logger.warning("Direct invocation not supported. This Lambda processes SQS messages only.")
+    logger.warning(
+        "Direct invocation not supported. This Lambda processes SQS messages only."
+    )
     return {
         "statusCode": 400,
         "error": "Direct invocation not supported",
@@ -251,18 +253,20 @@ def process_metadata_updates(
                         bucket=bucket,
                         snapshot_key=snapshot_key,
                         local_snapshot_path=temp_dir,
-                        verify_integrity=True
+                        verify_integrity=True,
                     )
-                    
+
                     if download_result["status"] != "downloaded":
-                        logger.error(f"Failed to download snapshot: {download_result}")
+                        logger.error(
+                            f"Failed to download snapshot: {download_result}"
+                        )
                         continue
 
                     # Load ChromaDB using helper
                     chroma_client = ChromaDBClient(
                         persist_directory=temp_dir,
                         collection_prefix="receipt",
-                        mode="read"
+                        mode="read",
                     )
 
                     # Get appropriate collection
@@ -294,16 +298,18 @@ def process_metadata_updates(
                                 "update_type": "metadata_update",
                                 "image_id": image_id,
                                 "receipt_id": str(receipt_id),
-                                "updated_count": str(updated_count)
-                            }
+                                "updated_count": str(updated_count),
+                            },
                         )
-                        
+
                         if upload_result["status"] == "uploaded":
                             logger.info(
                                 f"Updated {updated_count} records in receipt_{database}"
                             )
                         else:
-                            logger.error(f"Failed to upload snapshot: {upload_result}")
+                            logger.error(
+                                f"Failed to upload snapshot: {upload_result}"
+                            )
 
                     results.append(
                         {
@@ -358,9 +364,9 @@ def process_label_updates(
             bucket=bucket,
             snapshot_key=snapshot_key,
             local_snapshot_path=temp_dir,
-            verify_integrity=True
+            verify_integrity=True,
         )
-        
+
         if download_result["status"] != "downloaded":
             logger.error(f"Failed to download snapshot: {download_result}")
             return results
@@ -369,7 +375,7 @@ def process_label_updates(
         chroma_client = ChromaDBClient(
             persist_directory=temp_dir,
             collection_prefix="receipt",
-            mode="read"
+            mode="read",
         )
 
         # Get words collection
@@ -427,10 +433,10 @@ def process_label_updates(
                 delta_key=snapshot_key.rstrip("/") + "/",
                 metadata={
                     "update_type": "label_update",
-                    "total_updates": str(total_updates)
-                }
+                    "total_updates": str(total_updates),
+                },
             )
-            
+
             if upload_result["status"] == "uploaded":
                 logger.info(f"Updated {total_updates} word labels in ChromaDB")
             else:
@@ -489,9 +495,7 @@ def update_receipt_metadata(
     return len(matching_ids)
 
 
-def remove_receipt_metadata(
-    collection, image_id: str, receipt_id: int
-) -> int:
+def remove_receipt_metadata(collection, image_id: str, receipt_id: int) -> int:
     """Remove merchant metadata fields from all embeddings of a specific receipt."""
     id_prefix = f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#"
 
@@ -621,7 +625,9 @@ def process_delta_messages(
     Currently not implemented - this handler focuses on DynamoDB stream messages.
     Traditional delta processing would be handled by a separate compaction system.
     """
-    logger.info(f"Received {len(delta_messages)} delta messages (not processed)")
+    logger.info(
+        f"Received {len(delta_messages)} delta messages (not processed)"
+    )
     logger.warning("Delta message processing not implemented in this handler")
 
     return {
