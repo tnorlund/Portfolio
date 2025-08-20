@@ -7,7 +7,7 @@ FROM ${BASE_IMAGE}
 ENV HNSWLIB_NO_NATIVE=1
 
 # Copy only the enhanced compaction handler
-COPY infra/chromadb_compaction/lambdas/enhanced_compaction_handler.py ${LAMBDA_TASK_ROOT}/handler.py
+COPY enhanced_compaction_handler.py ${LAMBDA_TASK_ROOT}/handler.py
 
 # Set the handler
 CMD ["handler.lambda_handler"]

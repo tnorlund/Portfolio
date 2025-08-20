@@ -120,10 +120,10 @@ class DockerImageComponent(ComponentResource):
         self.docker_image = docker_build.Image(
             f"{name}-image",
             context=docker_build.BuildContextArgs(
-                location="../../../",  # Root of repo for COPY context
+                location=str(handler_dir),  # Use lambdas dir as build context
             ),
             dockerfile=docker_build.DockerfileArgs(
-                location="infra/chromadb_compaction/Dockerfile",
+                location=str(handler_dir / "Dockerfile"),
             ),
             build_args={
                 "BASE_IMAGE": (
