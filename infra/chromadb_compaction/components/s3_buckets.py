@@ -29,7 +29,6 @@ class ChromaDBBuckets(ComponentResource):
         self,
         name: str,
         stack: Optional[str] = None,
-        account_id: Optional[str] = None,  # pylint: disable=unused-argument
         opts: Optional[ResourceOptions] = None,
     ):
         """
@@ -38,7 +37,6 @@ class ChromaDBBuckets(ComponentResource):
         Args:
             name: The unique name of the resource
             stack: The Pulumi stack name (defaults to current stack)
-            account_id: AWS account ID (defaults to current account)
             opts: Optional resource options
         """
         super().__init__("chromadb:storage:S3Buckets", name, None, opts)
