@@ -528,7 +528,8 @@ class TestLambdaHandler:
         },
     )
     @patch(
-        "infra.chromadb_compaction.lambdas.stream_processor.send_messages_to_queues"
+        "infra.chromadb_compaction.lambdas.stream_processor."
+        "send_messages_to_queues"
     )
     def test_handler_processes_modify_event(self, mock_send_messages):
         """Test handler processes MODIFY events correctly."""
@@ -582,7 +583,8 @@ class TestLambdaHandler:
         },
     )
     @patch(
-        "infra.chromadb_compaction.lambdas.stream_processor.send_messages_to_queues"
+        "infra.chromadb_compaction.lambdas.stream_processor."
+        "send_messages_to_queues"
     )
     def test_handler_processes_remove_event(self, mock_send_messages):
         """Test handler processes REMOVE events correctly."""
@@ -614,7 +616,8 @@ class TestLambdaHandler:
         assert message.event_name == "REMOVE"
 
     @patch(
-        "infra.chromadb_compaction.lambdas.stream_processor.send_messages_to_queues"
+        "infra.chromadb_compaction.lambdas.stream_processor."
+        "send_messages_to_queues"
     )
     def test_handler_ignores_insert_events(self, mock_send_messages):
         """Test handler ignores INSERT events."""
@@ -650,7 +653,8 @@ class TestLambdaHandler:
         mock_send_messages.assert_not_called()
 
     @patch(
-        "infra.chromadb_compaction.lambdas.stream_processor.send_messages_to_queues"
+        "infra.chromadb_compaction.lambdas.stream_processor."
+        "send_messages_to_queues"
     )
     def test_handler_ignores_irrelevant_entities(self, mock_send_messages):
         """Test handler ignores irrelevant entity types."""
@@ -687,7 +691,8 @@ class TestLambdaHandler:
         mock_send_messages.assert_not_called()
 
     @patch(
-        "infra.chromadb_compaction.lambdas.stream_processor.send_messages_to_queues"
+        "infra.chromadb_compaction.lambdas.stream_processor."
+        "send_messages_to_queues"
     )
     def test_handler_handles_errors_gracefully(self, mock_send_messages):
         """Test handler handles processing errors gracefully."""
