@@ -19,7 +19,10 @@ import pulumi_docker_build as docker_build  # type: ignore[import-not-found]
 
 
 class DockerImageComponent(ComponentResource):
-    """Component for building and managing Docker images for ChromaDB compaction Lambda."""
+    """
+    Component for building and managing Docker images for ChromaDB compaction
+    Lambda.
+    """
 
     def get_handler_content_hash(self, handler_dir: Path) -> str:
         """Generate hash for handler code.
@@ -147,13 +150,18 @@ class DockerImageComponent(ComponentResource):
         )
 
         # Export image URI for Lambda function
-        self.image_uri = self.docker_image.ref.apply(
-            lambda ref: (
-                f"{self.ecr_repo.repository_url.apply(lambda url: url.split(':')[0])}@{ref.split('@')[1]}"
-                if "@" in ref
-                else f"{self.ecr_repo.repository_url.apply(lambda url: url)}:latest"
+        def _build_image_uri(ref):
+            repo_url = self.ecr_repo.repository_url.apply(
+                lambda url: url.split(":")[0]
             )
-        )
+            if "@" in ref:
+                return f"{repo_url}@{ref.split('@')[1]}"
+            repo_url_latest = self.ecr_repo.repository_url.apply(
+                lambda url: url
+            )
+            return f"{repo_url_latest}:latest"
+
+        self.image_uri = self.docker_image.ref.apply(_build_image_uri)
 
         # Register outputs
         self.register_outputs(

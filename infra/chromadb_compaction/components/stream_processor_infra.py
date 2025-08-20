@@ -197,7 +197,10 @@ class StreamProcessorLambda(ComponentResource):
                     "LOG_LEVEL": "INFO",
                 }
             },
-            description="Processes DynamoDB stream events for ChromaDB metadata synchronization",
+            description=(
+                "Processes DynamoDB stream events for ChromaDB metadata "
+                "synchronization"
+            ),
             tags={
                 "Project": "ChromaDB",
                 "Component": "StreamProcessor",

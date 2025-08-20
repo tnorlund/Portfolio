@@ -1,7 +1,8 @@
 """
 ChromaDB Compaction Pulumi Components
 
-This package contains the Pulumi infrastructure components for ChromaDB compaction:
+This package contains the Pulumi infrastructure components for ChromaDB
+compaction:
 - s3_buckets: S3 bucket resources for storing ChromaDB snapshots
 - sqs_queues: SQS queue resources for message passing
 - docker_image: Docker image building for container-based Lambda
@@ -13,7 +14,10 @@ This package contains the Pulumi infrastructure components for ChromaDB compacti
 from .s3_buckets import ChromaDBBuckets, create_chromadb_buckets
 from .sqs_queues import ChromaDBQueues, create_chromadb_queues
 from .docker_image import DockerImageComponent
-from .lambda_functions import HybridLambdaDeployment, create_hybrid_lambda_deployment
+from .lambda_functions import (
+    HybridLambdaDeployment,
+    create_hybrid_lambda_deployment,
+)
 from .enhanced_compaction_infra import (
     EnhancedCompactionLambda,
     create_enhanced_compaction_lambda,

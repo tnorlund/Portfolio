@@ -4,6 +4,9 @@ Creates both zip-based and container-based Lambda functions following the
 pattern from embedding_step_functions.
 """
 
+# pylint: disable=duplicate-code
+# Some duplication is expected between Lambda infrastructure components
+
 import json
 from pathlib import Path
 from typing import Optional
@@ -22,11 +25,14 @@ class HybridLambdaDeployment(ComponentResource):
 
     Creates:
     - Zip-based Lambda for stream processing (lightweight)
-    - Container-based Lambda for enhanced compaction (complex ChromaDB operations)
+    - Container-based Lambda for enhanced compaction (complex ChromaDB
+      operations)
     - Shared IAM roles and policies
     - Event source mappings for both functions
     """
 
+    # pylint: disable=too-many-positional-arguments
+    # This component requires many parameters for proper configuration
     def __init__(
         self,
         name: str,
@@ -156,7 +162,10 @@ class HybridLambdaDeployment(ComponentResource):
                     "LOG_LEVEL": "INFO",
                 }
             },
-            description="Processes DynamoDB stream events for ChromaDB metadata synchronization",
+            description=(
+                "Processes DynamoDB stream events for ChromaDB metadata "
+                "synchronization"
+            ),
             tags={
                 "Project": "ChromaDB",
                 "Component": "StreamProcessor",
@@ -194,7 +203,10 @@ class HybridLambdaDeployment(ComponentResource):
                     "LOG_LEVEL": "INFO",
                 }
             },
-            description="Enhanced ChromaDB compaction handler for stream and delta message processing",
+            description=(
+                "Enhanced ChromaDB compaction handler for stream and "
+                "delta message processing"
+            ),
             tags={
                 "Project": "ChromaDB",
                 "Component": "EnhancedCompaction",
@@ -398,6 +410,8 @@ class HybridLambdaDeployment(ComponentResource):
         )
 
 
+# pylint: disable=too-many-positional-arguments
+# Factory functions often require many parameters
 def create_hybrid_lambda_deployment(
     name: str = "chromadb-hybrid-compaction",
     chromadb_queues: ChromaDBQueues = None,
