@@ -31,6 +31,7 @@ from receipt_dynamo.entities.receipt_word_label import (
     item_to_receipt_word_label,
 )
 
+
 @dataclass(frozen=True)
 class LambdaResponse:
     """Response from the Lambda handler with processing statistics."""
@@ -53,12 +54,8 @@ class ParsedStreamRecord:
     """Parsed DynamoDB stream record with entity information."""
 
     entity_type: str  # "RECEIPT_METADATA" or "RECEIPT_WORD_LABEL"
-    old_entity: Optional[
-        Union[ReceiptMetadata, ReceiptWordLabel]
-    ]
-    new_entity: Optional[
-        Union[ReceiptMetadata, ReceiptWordLabel]
-    ]
+    old_entity: Optional[Union[ReceiptMetadata, ReceiptWordLabel]]
+    new_entity: Optional[Union[ReceiptMetadata, ReceiptWordLabel]]
     pk: str
     sk: str
 
@@ -74,6 +71,8 @@ class FieldChange:
 # Configure logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+
+COMPACTION_QUEUE_URL = os.environ["COMPACTION_QUEUE_URL"]
 
 
 def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
@@ -94,7 +93,7 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     Returns:
         Response with processing statistics
     """
-    logger.info("Processing %s DynamoDB stream records", len(event['Records']))
+    logger.info("Processing %s DynamoDB stream records", len(event["Records"]))
 
     # Avoid logging entire event to prevent PII exposure
     if logger.level <= logging.DEBUG:
@@ -156,11 +155,9 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
                                 timezone.utc
                             ).isoformat(),
                             "stream_record_id": record.get(
-                            "eventID", "unknown"
-                        ),
-                            "aws_region": record.get(
-                            "awsRegion", "unknown"
-                        ),
+                                "eventID", "unknown"
+                            ),
+                            "aws_region": record.get("awsRegion", "unknown"),
                         }
                         messages_to_send.append(message)
                         processed_records += 1
@@ -168,8 +165,8 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
         except (ValueError, KeyError, TypeError) as e:
             logger.error(
                 "Error processing stream record %s: %s",
-                record.get('eventID', 'unknown'),
-                e
+                record.get("eventID", "unknown"),
+                e,
             )
             # Continue processing other records
 
@@ -189,7 +186,7 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
 
 
 def parse_stream_record(
-    record: Dict[str, Any]
+    record: Dict[str, Any],
 ) -> Optional[ParsedStreamRecord]:
     """
     Parse DynamoDB stream record to identify relevant entity changes.
@@ -254,16 +251,14 @@ def parse_stream_record(
                     old_entity = item_to_receipt_word_label(old_image)
                 except ValueError as e:
                     logger.warning(
-                        "Failed to parse old ReceiptWordLabel: %s",
-                        e
+                        "Failed to parse old ReceiptWordLabel: %s", e
                     )
             if new_image:
                 try:
                     new_entity = item_to_receipt_word_label(new_image)
                 except ValueError as e:
                     logger.warning(
-                        "Failed to parse new ReceiptWordLabel: %s",
-                        e
+                        "Failed to parse new ReceiptWordLabel: %s", e
                     )
 
         # Return parsed entity information
@@ -343,7 +338,6 @@ def send_messages_to_sqs(messages: List[Dict[str, Any]]) -> int:
         Number of messages successfully sent
     """
     sqs = boto3.client("sqs")
-    queue_url = os.environ["COMPACTION_QUEUE_URL"]
     sent_count = 0
 
     # Send in batches of 10 (SQS batch limit)
@@ -375,7 +369,7 @@ def send_messages_to_sqs(messages: List[Dict[str, Any]]) -> int:
 
         try:
             response = sqs.send_message_batch(
-                QueueUrl=queue_url, Entries=entries
+                QueueUrl=COMPACTION_QUEUE_URL, Entries=entries
             )
 
             # Count successful sends
@@ -386,9 +380,9 @@ def send_messages_to_sqs(messages: List[Dict[str, Any]]) -> int:
                 for failed in response["Failed"]:
                     logger.error(
                         "Failed to send message %s: %s - %s",
-                        failed['Id'],
-                        failed.get('Code', 'UnknownError'),
-                        failed.get('Message', 'No error details')
+                        failed["Id"],
+                        failed.get("Code", "UnknownError"),
+                        failed.get("Message", "No error details"),
                     )
 
         except (ValueError, KeyError, TypeError) as e:
