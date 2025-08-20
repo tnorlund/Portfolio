@@ -232,6 +232,7 @@ class TestDataclassIntegration:
     def test_stream_message_parsing(self):
         """Test StreamMessage dataclass parsing."""
         from ..lambdas.enhanced_compaction_handler import StreamMessage
+        from receipt_dynamo.constants import ChromaDBCollection
         
         message_dict = {
             "entity_type": "RECEIPT_METADATA",
@@ -245,10 +246,12 @@ class TestDataclassIntegration:
             entity_data=message_dict.get("entity_data", {}),
             changes=message_dict.get("changes", {}),
             event_name=message_dict.get("event_name", ""),
+            collection=ChromaDBCollection.LINES,  # Add required collection parameter
             source=message_dict.get("source", "dynamodb_stream"),
         )
         
         assert stream_msg.entity_type == "RECEIPT_METADATA"
         assert stream_msg.entity_data["image_id"] == "test123"
         assert stream_msg.changes["merchant_name"]["new"] == "New"
+        assert stream_msg.collection == ChromaDBCollection.LINES
         assert stream_msg.source == "dynamodb_stream"  # Default value

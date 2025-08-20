@@ -25,7 +25,7 @@ from ..lambdas.stream_processor import (
     get_chromadb_relevant_changes,
     lambda_handler,
     parse_stream_record,
-    send_messages_to_sqs,
+    send_messages_to_queues,
 )
 
 
@@ -378,7 +378,7 @@ class TestSendMessagesToSqs:
             {"entity_type": "RECEIPT_WORD_LABEL", "event_name": "REMOVE"},
         ]
 
-        sent_count = send_messages_to_sqs(messages)
+        sent_count = send_messages_to_queues(messages)
 
         assert sent_count == 2
         mock_sqs.send_message_batch.assert_called_once()
@@ -421,7 +421,7 @@ class TestSendMessagesToSqs:
             for i in range(25)
         ]
 
-        sent_count = send_messages_to_sqs(messages)
+        sent_count = send_messages_to_queues(messages)
 
         assert sent_count == 25  # All messages sent successfully
         assert mock_sqs.send_message_batch.call_count == 3
@@ -458,7 +458,7 @@ class TestSendMessagesToSqs:
             {"entity_type": "RECEIPT_WORD_LABEL", "event_name": "REMOVE"},
         ]
 
-        sent_count = send_messages_to_sqs(messages)
+        sent_count = send_messages_to_queues(messages)
 
         assert sent_count == 1  # Only one successful
 
@@ -472,7 +472,7 @@ class TestLambdaHandler:
             "COMPACTION_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/test-queue"
         },
     )
-    @patch("stream_processor.send_messages_to_sqs")
+    @patch("infra.chromadb_compaction.lambdas.stream_processor.send_messages_to_queues")
     def test_handler_processes_modify_event(self, mock_send_messages):
         """Test handler processes MODIFY events correctly."""
         mock_send_messages.return_value = 1
@@ -519,7 +519,7 @@ class TestLambdaHandler:
             "COMPACTION_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/test-queue"
         },
     )
-    @patch("stream_processor.send_messages_to_sqs")
+    @patch("infra.chromadb_compaction.lambdas.stream_processor.send_messages_to_queues")
     def test_handler_processes_remove_event(self, mock_send_messages):
         """Test handler processes REMOVE events correctly."""
         mock_send_messages.return_value = 1
@@ -549,7 +549,7 @@ class TestLambdaHandler:
         assert message["entity_type"] == "RECEIPT_WORD_LABEL"
         assert message["event_name"] == "REMOVE"
 
-    @patch("stream_processor.send_messages_to_sqs")
+    @patch("infra.chromadb_compaction.lambdas.stream_processor.send_messages_to_queues")
     def test_handler_ignores_insert_events(self, mock_send_messages):
         """Test handler ignores INSERT events."""
         event = {
@@ -580,7 +580,7 @@ class TestLambdaHandler:
         assert response["queued_messages"] == 0
         mock_send_messages.assert_not_called()
 
-    @patch("stream_processor.send_messages_to_sqs")
+    @patch("infra.chromadb_compaction.lambdas.stream_processor.send_messages_to_queues")
     def test_handler_ignores_irrelevant_entities(self, mock_send_messages):
         """Test handler ignores irrelevant entity types."""
         event = {
@@ -612,7 +612,7 @@ class TestLambdaHandler:
         assert response["queued_messages"] == 0
         mock_send_messages.assert_not_called()
 
-    @patch("stream_processor.send_messages_to_sqs")
+    @patch("infra.chromadb_compaction.lambdas.stream_processor.send_messages_to_queues")
     def test_handler_handles_errors_gracefully(self, mock_send_messages):
         """Test handler handles processing errors gracefully."""
         # Create an event with malformed data

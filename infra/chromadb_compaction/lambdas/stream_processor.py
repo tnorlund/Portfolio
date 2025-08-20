@@ -30,6 +30,7 @@ from receipt_dynamo.entities.receipt_word_label import (
     ReceiptWordLabel,
     item_to_receipt_word_label,
 )
+from receipt_dynamo.constants import ChromaDBCollection
 
 
 @dataclass(frozen=True)
@@ -58,6 +59,21 @@ class ParsedStreamRecord:
     new_entity: Optional[Union[ReceiptMetadata, ReceiptWordLabel]]
     pk: str
     sk: str
+
+
+@dataclass(frozen=True)
+class StreamMessage:
+    """Enhanced stream message with collection targeting."""
+
+    entity_type: str
+    entity_data: Dict[str, Any]
+    changes: Dict[str, Any]
+    event_name: str
+    collections: List[ChromaDBCollection]  # Which collections this affects
+    source: str = "dynamodb_stream"
+    timestamp: Optional[str] = None
+    stream_record_id: Optional[str] = None
+    aws_region: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -125,13 +141,18 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
                     # Extract entity identification data
                     entity = old_entity or new_entity
                     entity_data = None
+                    target_collections = []
+
                     if entity_type == "RECEIPT_METADATA":
+                        # Metadata changes affect both collections
                         entity_data = {
                             "entity_type": entity_type,
                             "image_id": entity.image_id,
                             "receipt_id": entity.receipt_id,
                         }
+                        target_collections = [ChromaDBCollection.LINES, ChromaDBCollection.WORDS]
                     elif entity_type == "RECEIPT_WORD_LABEL":
+                        # Word label changes only affect words collection
                         entity_data = {
                             "entity_type": entity_type,
                             "image_id": entity.image_id,
@@ -140,24 +161,22 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
                             "word_id": entity.word_id,
                             "label": entity.label,
                         }
+                        target_collections = [ChromaDBCollection.WORDS]
 
-                    if entity_data:
-                        # Create SQS message for the compaction Lambda
-                        message = {
-                            "source": "dynamodb_stream",
-                            "entity_type": entity_type,
-                            "entity_data": entity_data,
-                            "changes": changes,
-                            "event_name": record["eventName"],
-                            "timestamp": datetime.now(
-                                timezone.utc
-                            ).isoformat(),
-                            "stream_record_id": record.get(
-                                "eventID", "unknown"
-                            ),
-                            "aws_region": record.get("awsRegion", "unknown"),
-                        }
-                        messages_to_send.append(message)
+                    if entity_data and target_collections:
+                        # Create enhanced stream message
+                        stream_msg = StreamMessage(
+                            entity_type=entity_type,
+                            entity_data=entity_data,
+                            changes=changes,
+                            event_name=record["eventName"],
+                            collections=target_collections,
+                            source="dynamodb_stream",
+                            timestamp=datetime.now(timezone.utc).isoformat(),
+                            stream_record_id=record.get("eventID", "unknown"),
+                            aws_region=record.get("awsRegion", "unknown"),
+                        )
+                        messages_to_send.append(stream_msg)
                         processed_records += 1
 
         except (ValueError, KeyError, TypeError) as e:
@@ -168,10 +187,10 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
             )
             # Continue processing other records
 
-    # Send all messages to existing SQS queue in batches
+    # Send all messages to appropriate SQS queues
     if messages_to_send:
-        sent_count = send_messages_to_sqs(messages_to_send)
-        logger.info("Sent %s messages to compaction queue", sent_count)
+        sent_count = send_messages_to_queues(messages_to_send)
+        logger.info("Sent %s messages to compaction queues", sent_count)
 
     response = LambdaResponse(
         status_code=200,
@@ -334,40 +353,107 @@ def get_chromadb_relevant_changes(
     return changes
 
 
-def send_messages_to_sqs(messages: List[Dict[str, Any]]) -> int:
+def send_messages_to_queues(messages: List[StreamMessage]) -> int:
     """
-    Send messages to the existing compaction SQS queue.
+    Send messages to appropriate collection-specific SQS queues.
+
+    Each message is sent to the queue(s) for the collections it affects:
+    - RECEIPT_METADATA messages go to both lines and words queues
+    - RECEIPT_WORD_LABEL messages go only to words queue
 
     Args:
-        messages: List of message dictionaries to send
+        messages: List of StreamMessage objects to send
+
+    Returns:
+        Total number of messages successfully sent across all queues
+    """
+    sqs = boto3.client("sqs")
+    sent_count = 0
+
+    # Group messages by target collections
+    lines_messages = []
+    words_messages = []
+
+    for msg in messages:
+        # Convert StreamMessage to dictionary for JSON serialization
+        msg_dict = {
+            "source": msg.source,
+            "entity_type": msg.entity_type,
+            "entity_data": msg.entity_data,
+            "changes": msg.changes,
+            "event_name": msg.event_name,
+            "timestamp": msg.timestamp,
+            "stream_record_id": msg.stream_record_id,
+            "aws_region": msg.aws_region,
+        }
+
+        if ChromaDBCollection.LINES in msg.collections:
+            lines_messages.append((msg_dict, ChromaDBCollection.LINES))
+        if ChromaDBCollection.WORDS in msg.collections:
+            words_messages.append((msg_dict, ChromaDBCollection.WORDS))
+
+    # Send to lines queue
+    if lines_messages:
+        sent_count += _send_batch_to_queue(
+            sqs, lines_messages, "LINES_QUEUE_URL", ChromaDBCollection.LINES
+        )
+
+    # Send to words queue
+    if words_messages:
+        sent_count += _send_batch_to_queue(
+            sqs, words_messages, "WORDS_QUEUE_URL", ChromaDBCollection.WORDS
+        )
+
+    return sent_count
+
+
+def _send_batch_to_queue(
+    sqs, messages: List[tuple], queue_env_var: str, collection: ChromaDBCollection
+) -> int:
+    """
+    Send a batch of messages to a specific queue.
+
+    Args:
+        sqs: boto3 SQS client
+        messages: List of (message_dict, collection) tuples
+        queue_env_var: Environment variable containing the queue URL
+        collection: ChromaDBCollection this queue serves
 
     Returns:
         Number of messages successfully sent
     """
-    sqs = boto3.client("sqs")
     sent_count = 0
+    queue_url = os.environ.get(queue_env_var)
+
+    if not queue_url:
+        logger.error("Queue URL not found for %s", queue_env_var)
+        return 0
 
     # Send in batches of 10 (SQS batch limit)
     for i in range(0, len(messages), 10):
         batch = messages[i : i + 10]
 
         entries = []
-        for j, message in enumerate(batch):
+        for j, (message_dict, _) in enumerate(batch):
             entries.append(
                 {
                     "Id": str(i + j),
-                    "MessageBody": json.dumps(message),
+                    "MessageBody": json.dumps(message_dict),
                     "MessageAttributes": {
                         "source": {
                             "StringValue": "dynamodb_stream",
                             "DataType": "String",
                         },
                         "entity_type": {
-                            "StringValue": message["entity_type"],
+                            "StringValue": message_dict["entity_type"],
                             "DataType": "String",
                         },
                         "event_name": {
-                            "StringValue": message["event_name"],
+                            "StringValue": message_dict["event_name"],
+                            "DataType": "String",
+                        },
+                        "collection": {
+                            "StringValue": collection.value,
                             "DataType": "String",
                         },
                     },
@@ -375,24 +461,28 @@ def send_messages_to_sqs(messages: List[Dict[str, Any]]) -> int:
             )
 
         try:
-            response = sqs.send_message_batch(
-                QueueUrl=os.environ["COMPACTION_QUEUE_URL"], Entries=entries
-            )
+            response = sqs.send_message_batch(QueueUrl=queue_url, Entries=entries)
 
             # Count successful sends
-            sent_count += len(response.get("Successful", []))
+            successful = len(response.get("Successful", []))
+            sent_count += successful
+
+            logger.info(
+                "Sent %s messages to %s queue", successful, collection.value
+            )
 
             # Log any failures
             if "Failed" in response and response["Failed"]:
                 for failed in response["Failed"]:
                     logger.error(
-                        "Failed to send message %s: %s - %s",
+                        "Failed to send message %s to %s queue: %s - %s",
                         failed["Id"],
+                        collection.value,
                         failed.get("Code", "UnknownError"),
                         failed.get("Message", "No error details"),
                     )
 
         except (ValueError, KeyError, TypeError) as e:
-            logger.error("Error sending SQS batch: %s", e)
+            logger.error("Error sending SQS batch to %s queue: %s", collection.value, e)
 
     return sent_count

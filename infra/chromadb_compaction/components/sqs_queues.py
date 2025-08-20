@@ -16,9 +16,10 @@ class ChromaDBQueues(ComponentResource):
     """
     ComponentResource that creates SQS queues for ChromaDB delta notifications.
 
-    Creates:
-    - Main queue for delta notifications
-    - Dead letter queue for failed messages
+    Creates separate queues for lines and words collections:
+    - Lines queue for line embedding updates
+    - Words queue for word embedding updates  
+    - Dead letter queues for failed messages
     - Proper visibility timeout for Lambda processing
     """
 
@@ -42,30 +43,45 @@ class ChromaDBQueues(ComponentResource):
         if stack is None:
             stack = pulumi.get_stack()
 
-        # Create dead letter queue first
-        self.dlq = aws.sqs.Queue(
-            f"{name}-delta-dlq",
-            name=Output.concat("chromadb-delta-dlq-", stack),
+        # Create dead letter queues for each collection
+        self.lines_dlq = aws.sqs.Queue(
+            f"{name}-lines-dlq",
+            name=Output.concat("chromadb-lines-dlq-", stack),
             message_retention_seconds=1209600,  # 14 days
             visibility_timeout_seconds=300,  # 5 minutes
             receive_wait_time_seconds=0,  # Short polling
             tags={
                 "Project": "ChromaDB",
-                "Component": "DLQ",
+                "Component": "Lines-DLQ",
                 "Environment": stack,
                 "ManagedBy": "Pulumi",
             },
             opts=ResourceOptions(parent=self),
         )
 
-        # Create main queue with redrive policy
-        self.delta_queue = aws.sqs.Queue(
-            f"{name}-delta-queue",
-            name=Output.concat("chromadb-delta-queue-", stack),
+        self.words_dlq = aws.sqs.Queue(
+            f"{name}-words-dlq",
+            name=Output.concat("chromadb-words-dlq-", stack),
+            message_retention_seconds=1209600,  # 14 days
+            visibility_timeout_seconds=300,  # 5 minutes
+            receive_wait_time_seconds=0,  # Short polling
+            tags={
+                "Project": "ChromaDB",
+                "Component": "Words-DLQ",
+                "Environment": stack,
+                "ManagedBy": "Pulumi",
+            },
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Create lines queue with redrive policy
+        self.lines_queue = aws.sqs.Queue(
+            f"{name}-lines-queue",
+            name=Output.concat("chromadb-lines-queue-", stack),
             message_retention_seconds=345600,  # 4 days
             visibility_timeout_seconds=900,  # 15 minutes (match compaction timeout)
             receive_wait_time_seconds=20,  # Long polling for efficiency
-            redrive_policy=Output.all(self.dlq.arn).apply(
+            redrive_policy=Output.all(self.lines_dlq.arn).apply(
                 lambda args: json.dumps(
                     {
                         "deadLetterTargetArn": args[0],
@@ -75,16 +91,40 @@ class ChromaDBQueues(ComponentResource):
             ),
             tags={
                 "Project": "ChromaDB",
-                "Component": "Queue",
+                "Component": "Lines-Queue",
                 "Environment": stack,
                 "ManagedBy": "Pulumi",
             },
             opts=ResourceOptions(parent=self),
         )
 
-        # Create queue policy for Lambda access
-        self.queue_policy_document = Output.all(
-            self.delta_queue.arn, aws.get_caller_identity().account_id
+        # Create words queue with redrive policy
+        self.words_queue = aws.sqs.Queue(
+            f"{name}-words-queue",
+            name=Output.concat("chromadb-words-queue-", stack),
+            message_retention_seconds=345600,  # 4 days
+            visibility_timeout_seconds=900,  # 15 minutes (match compaction timeout)
+            receive_wait_time_seconds=20,  # Long polling for efficiency
+            redrive_policy=Output.all(self.words_dlq.arn).apply(
+                lambda args: json.dumps(
+                    {
+                        "deadLetterTargetArn": args[0],
+                        "maxReceiveCount": 3,  # Retry 3 times before DLQ
+                    }
+                )
+            ),
+            tags={
+                "Project": "ChromaDB",
+                "Component": "Words-Queue",
+                "Environment": stack,
+                "ManagedBy": "Pulumi",
+            },
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Create queue policies for Lambda access
+        self.lines_queue_policy_document = Output.all(
+            self.lines_queue.arn, aws.get_caller_identity().account_id
         ).apply(
             lambda args: json.dumps(
                 {
@@ -115,26 +155,69 @@ class ChromaDBQueues(ComponentResource):
             )
         )
 
-        self.queue_policy = aws.sqs.QueuePolicy(
-            f"{name}-queue-policy",
-            queue_url=self.delta_queue.url,
-            policy=self.queue_policy_document,
+        self.words_queue_policy_document = Output.all(
+            self.words_queue.arn, aws.get_caller_identity().account_id
+        ).apply(
+            lambda args: json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Sid": "AllowLambdaAccess",
+                            "Effect": "Allow",
+                            "Principal": {"Service": "lambda.amazonaws.com"},
+                            "Action": [
+                                "sqs:ReceiveMessage",
+                                "sqs:DeleteMessage",
+                                "sqs:GetQueueAttributes",
+                            ],
+                            "Resource": args[0],
+                        },
+                        {
+                            "Sid": "AllowAccountAccess",
+                            "Effect": "Allow",
+                            "Principal": {
+                                "AWS": f"arn:aws:iam::{args[1]}:root"
+                            },
+                            "Action": "sqs:*",
+                            "Resource": args[0],
+                        },
+                    ],
+                }
+            )
+        )
+
+        self.lines_queue_policy = aws.sqs.QueuePolicy(
+            f"{name}-lines-queue-policy",
+            queue_url=self.lines_queue.url,
+            policy=self.lines_queue_policy_document,
+            opts=ResourceOptions(parent=self),
+        )
+
+        self.words_queue_policy = aws.sqs.QueuePolicy(
+            f"{name}-words-queue-policy",
+            queue_url=self.words_queue.url,
+            policy=self.words_queue_policy_document,
             opts=ResourceOptions(parent=self),
         )
 
         # Export useful properties
-        self.delta_queue_url = self.delta_queue.url
-        self.delta_queue_arn = self.delta_queue.arn
-        self.dlq_url = self.dlq.url
-        self.dlq_arn = self.dlq.arn
+        self.lines_queue_url = self.lines_queue.url
+        self.lines_queue_arn = self.lines_queue.arn
+        self.words_queue_url = self.words_queue.url
+        self.words_queue_arn = self.words_queue.arn
+        self.lines_dlq_arn = self.lines_dlq.arn
+        self.words_dlq_arn = self.words_dlq.arn
 
         # Register outputs
         self.register_outputs(
             {
-                "delta_queue_url": self.delta_queue_url,
-                "delta_queue_arn": self.delta_queue_arn,
-                "dlq_url": self.dlq_url,
-                "dlq_arn": self.dlq_arn,
+                "lines_queue_url": self.lines_queue_url,
+                "lines_queue_arn": self.lines_queue_arn,
+                "words_queue_url": self.words_queue_url,
+                "words_queue_arn": self.words_queue_arn,
+                "lines_dlq_arn": self.lines_dlq_arn,
+                "words_dlq_arn": self.words_dlq_arn,
             }
         )
 

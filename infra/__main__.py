@@ -709,8 +709,12 @@ enhanced_compaction_lambda = create_enhanced_compaction_lambda(
 # ChromaDB infrastructure exports
 pulumi.export("chromadb_bucket_name", chromadb_storage.bucket_name)
 pulumi.export("chromadb_bucket_arn", chromadb_storage.bucket_arn)
-pulumi.export("chromadb_delta_queue_url", chromadb_queues.delta_queue_url)
-pulumi.export("chromadb_delta_queue_arn", chromadb_queues.delta_queue_arn)
+pulumi.export("chromadb_lines_queue_url", chromadb_queues.lines_queue_url)
+pulumi.export("chromadb_lines_queue_arn", chromadb_queues.lines_queue_arn)
+pulumi.export("chromadb_words_queue_url", chromadb_queues.words_queue_url)
+pulumi.export("chromadb_words_queue_arn", chromadb_queues.words_queue_arn)
+pulumi.export("chromadb_lines_dlq_arn", chromadb_queues.lines_dlq_arn)
+pulumi.export("chromadb_words_dlq_arn", chromadb_queues.words_dlq_arn)
 
 # Stream processor exports
 pulumi.export("stream_processor_function_name", stream_processor.function_name)

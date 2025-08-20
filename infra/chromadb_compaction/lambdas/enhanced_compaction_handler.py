@@ -21,6 +21,7 @@ import boto3
 
 # Import receipt_dynamo for proper DynamoDB operations
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.constants import ChromaDBCollection
 from receipt_label.utils.lock_manager import LockManager
 from receipt_label.utils.chroma_client import ChromaDBClient
 from receipt_label.utils.chroma_s3_helpers import (
@@ -73,6 +74,7 @@ class StreamMessage:
     entity_data: Dict[str, Any]
     changes: Dict[str, Any]
     event_name: str
+    collection: ChromaDBCollection
     source: str = "dynamodb_stream"
 
 
@@ -212,7 +214,28 @@ def process_sqs_messages(records: List[Dict[str, Any]]) -> Dict[str, Any]:
             source = attributes.get("source", {}).get("stringValue", "unknown")
 
             if source == "dynamodb_stream":
-                stream_messages.append(message_body)
+                # Get collection from message attributes
+                collection_value = attributes.get("collection", {}).get("stringValue")
+                if not collection_value:
+                    logger.warning("Stream message missing collection attribute")
+                    continue
+                    
+                try:
+                    collection = ChromaDBCollection(collection_value)
+                except ValueError:
+                    logger.warning("Invalid collection value: %s", collection_value)
+                    continue
+
+                # Parse stream message with collection info
+                stream_msg = StreamMessage(
+                    entity_type=message_body.get("entity_type", ""),
+                    entity_data=message_body.get("entity_data", {}),
+                    changes=message_body.get("changes", {}),
+                    event_name=message_body.get("event_name", ""),
+                    collection=collection,
+                    source=source,
+                )
+                stream_messages.append(stream_msg)
             else:
                 # Traditional delta message or unknown - treat as delta
                 delta_messages.append(message_body)
@@ -244,41 +267,83 @@ def process_sqs_messages(records: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def process_stream_messages(
-    stream_messages: List[Dict[str, Any]],
+    stream_messages: List[StreamMessage],
 ) -> Dict[str, Any]:
     """Process DynamoDB stream messages for metadata updates.
 
-    Uses the existing mutex lock to ensure thread-safe metadata updates.
+    Groups messages by collection and processes each collection separately
+    with collection-specific locks to enable parallel processing.
     """
     logger.info("Processing %d stream messages", len(stream_messages))
 
+    # Group messages by collection
+    messages_by_collection = {}
+    for msg in stream_messages:
+        collection = msg.collection
+        if collection not in messages_by_collection:
+            messages_by_collection[collection] = []
+        messages_by_collection[collection].append(msg)
+
+    logger.info(
+        "Messages grouped by collection: %s", 
+        {col.value: len(msgs) for col, msgs in messages_by_collection.items()}
+    )
+
+    # Process each collection separately
+    all_metadata_results = []
+    all_label_results = []
+    total_metadata_updates = 0
+    total_label_updates = 0
+    
+    for collection, messages in messages_by_collection.items():
+        logger.info("Processing %d messages for %s collection", len(messages), collection.value)
+        
+        result = _process_collection_messages(collection, messages)
+        
+        # Aggregate results
+        all_metadata_results.extend(result.get("metadata_results", []))
+        all_label_results.extend(result.get("label_results", []))
+        total_metadata_updates += result.get("metadata_updates", 0)
+        total_label_updates += result.get("label_updates", 0)
+
+    # Return aggregated results
+    response = LambdaResponse(
+        status_code=200,
+        message=f"Successfully processed {len(stream_messages)} stream messages",
+        stream_messages=len(stream_messages),
+        metadata_updates=total_metadata_updates,
+        label_updates=total_label_updates,
+        metadata_results=all_metadata_results,
+        label_results=all_label_results,
+    )
+    return response.to_dict()
+
+
+def _process_collection_messages(
+    collection: ChromaDBCollection, messages: List[StreamMessage]
+) -> Dict[str, Any]:
+    """Process messages for a specific collection with collection-specific lock.
+    
+    Args:
+        collection: ChromaDBCollection to process
+        messages: List of StreamMessage objects for this collection
+        
+    Returns:
+        Dictionary with processing results
+    """
     # Parse and group messages by entity type for efficient processing
     metadata_updates = []
     label_updates = []
 
-    for message_dict in stream_messages:
-        try:
-            # Parse into StreamMessage dataclass for type safety
-            message = StreamMessage(
-                entity_type=message_dict.get("entity_type", ""),
-                entity_data=message_dict.get("entity_data", {}),
-                changes=message_dict.get("changes", {}),
-                event_name=message_dict.get("event_name", ""),
-                source=message_dict.get("source", "dynamodb_stream"),
-            )
+    for message in messages:
+        if message.entity_type == "RECEIPT_METADATA":
+            metadata_updates.append(message)
+        elif message.entity_type == "RECEIPT_WORD_LABEL":
+            label_updates.append(message)
+        else:
+            logger.warning("Unknown entity type: %s", message.entity_type)
 
-            if message.entity_type == "RECEIPT_METADATA":
-                metadata_updates.append(message)
-            elif message.entity_type == "RECEIPT_WORD_LABEL":
-                label_updates.append(message)
-            else:
-                logger.warning("Unknown entity type: %s", message.entity_type)
-
-        except (KeyError, TypeError) as e:
-            logger.error("Failed to parse stream message: %s", e)
-            continue
-
-    # Acquire lock for metadata updates
+    # Acquire collection-specific lock for metadata updates
     lock_manager = LockManager(
         get_dynamo_client(),
         heartbeat_interval=heartbeat_interval,
@@ -286,17 +351,23 @@ def process_stream_messages(
     )
 
     try:
-        lock_id = f"chroma-metadata-update-{int(time.time())}"
-        lock_acquired = lock_manager.acquire(lock_id)
+        # Create collection-specific lock ID
+        lock_id = f"chroma-{collection.value}-update-{int(time.time())}"
+        lock_acquired = lock_manager.acquire(lock_id, collection=collection)
 
         if not lock_acquired:
-            logger.warning("Could not acquire lock for metadata updates")
-            response = LambdaResponse(
-                status_code=423,
-                error="Could not acquire lock",
-                message="Another process is performing updates",
+            logger.warning(
+                "Could not acquire lock for %s collection updates", collection.value
             )
-            return response.to_dict()
+            return {
+                "error": f"Could not acquire lock for {collection.value} collection",
+                "metadata_updates": 0,
+                "label_updates": 0,
+                "metadata_results": [],
+                "label_results": [],
+            }
+
+        logger.info("Acquired lock for %s collection: %s", collection.value, lock_id)
 
         # Start heartbeat
         lock_manager.start_heartbeat()
@@ -304,43 +375,61 @@ def process_stream_messages(
         # Process metadata updates
         metadata_results = []
         if metadata_updates:
-            metadata_results = process_metadata_updates(metadata_updates)
+            metadata_results = process_metadata_updates(metadata_updates, collection)
 
         # Process label updates
         label_results = []
         if label_updates:
-            label_results = process_label_updates(label_updates)
+            label_results = process_label_updates(label_updates, collection)
 
-        response = LambdaResponse(
-            status_code=200,
-            metadata_updates=len(metadata_updates),
-            label_updates=len(label_updates),
-            metadata_results=metadata_results,
-            label_results=label_results,
-            message="Stream messages processed successfully",
+        total_metadata_updates = sum(
+            result.updated_count
+            for result in metadata_results
+            if result.error is None
         )
-        return response.to_dict()
+        total_label_updates = sum(
+            result.updated_count
+            for result in label_results
+            if result.error is None
+        )
+
+        logger.info(
+            "Completed processing %s collection: %d metadata updates, %d label updates",
+            collection.value,
+            total_metadata_updates,
+            total_label_updates
+        )
+
+        return {
+            "metadata_updates": total_metadata_updates,
+            "label_updates": total_label_updates,
+            "metadata_results": [result.to_dict() for result in metadata_results],
+            "label_results": [result.to_dict() for result in label_results],
+        }
 
     except Exception as e:  # pylint: disable=broad-exception-caught
-        logger.error("Error processing stream messages: %s", e)
-        response = LambdaResponse(
-            status_code=500,
-            error=str(e),
-            message="Stream message processing failed",
-        )
-        return response.to_dict()
+        logger.error("Error processing %s collection messages: %s", collection.value, e)
+        return {
+            "error": str(e),
+            "metadata_updates": 0,
+            "label_updates": 0,
+            "metadata_results": [],
+            "label_results": [],
+        }
     finally:
         # Stop heartbeat and release lock
         lock_manager.stop_heartbeat()
         lock_manager.release()
+        logger.info("Released lock for %s collection: %s", collection.value, lock_id)
 
 
 def process_metadata_updates(
     metadata_updates: List[StreamMessage],
-) -> List[Dict[str, Any]]:
-    """Process RECEIPT_METADATA updates.
+    collection: ChromaDBCollection,
+) -> List[MetadataUpdateResult]:
+    """Process RECEIPT_METADATA updates for a specific collection.
 
-    Updates merchant information across ALL embeddings for affected receipts.
+    Updates merchant information for embeddings in the specified collection.
     """
     logger.info("Processing %d metadata updates", len(metadata_updates))
     results = []
@@ -361,52 +450,52 @@ def process_metadata_updates(
                 event_name, image_id, receipt_id
             )
 
-            # Update metadata for both lines and words collections
-            for database in ["lines", "words"]:
-                snapshot_key = f"{database}/snapshot/latest/"
+            # Update metadata for the specified collection
+            database = collection.value
+            snapshot_key = f"{database}/snapshot/latest/"
 
+            try:
+                # Download current snapshot using helper
+                temp_dir = tempfile.mkdtemp()
+                download_result = download_snapshot_from_s3(
+                    bucket=bucket,
+                    snapshot_key=snapshot_key,
+                    local_snapshot_path=temp_dir,
+                    verify_integrity=True,
+                )
+
+                if download_result["status"] != "downloaded":
+                    logger.error(
+                        "Failed to download snapshot: %s",
+                        download_result
+                    )
+                    continue
+
+                # Load ChromaDB using helper
+                chroma_client = ChromaDBClient(
+                    persist_directory=temp_dir,
+                    collection_prefix="receipt",
+                    mode="read",
+                )
+
+                # Get appropriate collection
                 try:
-                    # Download current snapshot using helper
-                    temp_dir = tempfile.mkdtemp()
-                    download_result = download_snapshot_from_s3(
-                        bucket=bucket,
-                        snapshot_key=snapshot_key,
-                        local_snapshot_path=temp_dir,
-                        verify_integrity=True,
+                    collection_obj = chroma_client.get_collection(database)
+                except Exception:  # pylint: disable=broad-exception-caught
+                    logger.warning(
+                        "Collection receipt_%s not found", database
                     )
+                    continue
 
-                    if download_result["status"] != "downloaded":
-                        logger.error(
-                            "Failed to download snapshot: %s",
-                            download_result
-                        )
-                        continue
-
-                    # Load ChromaDB using helper
-                    chroma_client = ChromaDBClient(
-                        persist_directory=temp_dir,
-                        collection_prefix="receipt",
-                        mode="read",
+                # Update metadata for this receipt
+                if event_name == "REMOVE":
+                    updated_count = remove_receipt_metadata(
+                        collection_obj, image_id, receipt_id
                     )
-
-                    # Get appropriate collection
-                    try:
-                        collection = chroma_client.get_collection(database)
-                    except Exception:  # pylint: disable=broad-exception-caught
-                        logger.warning(
-                            "Collection receipt_%s not found", database
-                        )
-                        continue
-
-                    # Update metadata for this receipt
-                    if event_name == "REMOVE":
-                        updated_count = remove_receipt_metadata(
-                            collection, image_id, receipt_id
-                        )
-                    else:  # MODIFY
-                        updated_count = update_receipt_metadata(
-                            collection, image_id, receipt_id, changes
-                        )
+                else:  # MODIFY
+                    updated_count = update_receipt_metadata(
+                        collection_obj, image_id, receipt_id, changes
+                    )
 
                     if updated_count > 0:
                         # Upload updated snapshot using helper
@@ -432,29 +521,29 @@ def process_metadata_updates(
                                 "Failed to upload snapshot: %s", upload_result
                             )
 
-                    result = MetadataUpdateResult(
-                        database=database,
-                        collection=f"receipt_{database}",
-                        updated_count=updated_count,
-                        image_id=image_id,
-                        receipt_id=receipt_id,
-                    )
-                    results.append(result.to_dict())
+                result = MetadataUpdateResult(
+                    database=database,
+                    collection=f"receipt_{database}",
+                    updated_count=updated_count,
+                    image_id=image_id,
+                    receipt_id=receipt_id,
+                )
+                results.append(result)
 
-                except Exception as e:  # pylint: disable=broad-exception-caught
-                    logger.error("Error updating %s metadata: %s", database, e)
-                    result = MetadataUpdateResult(
-                        database=database,
-                        collection=f"receipt_{database}",
-                        updated_count=0,
-                        image_id=image_id,
-                        receipt_id=receipt_id,
-                        error=str(e),
-                    )
-                    results.append(result.to_dict())
-                finally:
-                    if "temp_dir" in locals():
-                        shutil.rmtree(temp_dir, ignore_errors=True)
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                logger.error("Error updating %s metadata: %s", database, e)
+                result = MetadataUpdateResult(
+                    database=database,
+                    collection=f"receipt_{database}",
+                    updated_count=0,
+                    image_id=image_id,
+                    receipt_id=receipt_id,
+                    error=str(e),
+                )
+                results.append(result)
+            finally:
+                if "temp_dir" in locals():
+                    shutil.rmtree(temp_dir, ignore_errors=True)
 
         except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error("Error processing metadata update: %s", e)
@@ -467,25 +556,26 @@ def process_metadata_updates(
                 receipt_id=0,
                 error=f"{str(e)} - message: {update_msg}",
             )
-            results.append(result.to_dict())
+            results.append(result)
 
     return results
 
 
 def process_label_updates(
     label_updates: List[StreamMessage],
-) -> List[Dict[str, Any]]:
-    """Process RECEIPT_WORD_LABEL updates.
+    collection: ChromaDBCollection,
+) -> List[LabelUpdateResult]:
+    """Process RECEIPT_WORD_LABEL updates for a specific collection.
 
-    Updates label metadata for SPECIFIC word embeddings.
+    Updates label metadata for specific word embeddings in the collection.
     """
     logger.info("Processing %d label updates", len(label_updates))
     results = []
 
     bucket = os.environ["CHROMADB_BUCKET"]
-    snapshot_key = (
-        "words/snapshot/latest/"  # Labels only affect word embeddings
-    )
+    # Use the specific collection instead of hardcoded "words"
+    database = collection.value
+    snapshot_key = f"{database}/snapshot/latest/"
 
     try:
         # Download current snapshot using helper
@@ -510,9 +600,9 @@ def process_label_updates(
 
         # Get words collection
         try:
-            collection = chroma_client.get_collection("words")
+            collection_obj = chroma_client.get_collection(database)
         except Exception:  # pylint: disable=broad-exception-caught
-            logger.warning("receipt_words collection not found")
+            logger.warning("receipt_%s collection not found", database)
             return results
 
         # Process each label update
@@ -538,10 +628,10 @@ def process_label_updates(
                 )
 
                 if event_name == "REMOVE":
-                    updated_count = remove_word_labels(collection, chromadb_id)
+                    updated_count = remove_word_labels(collection_obj, chromadb_id)
                 else:  # MODIFY
                     updated_count = update_word_labels(
-                        collection, chromadb_id, changes
+                        collection_obj, chromadb_id, changes
                     )
 
                 result = LabelUpdateResult(
@@ -550,7 +640,7 @@ def process_label_updates(
                     event_name=event_name,
                     changes=list(changes.keys()) if changes else [],
                 )
-                results.append(result.to_dict())
+                results.append(result)
 
             except Exception as e:  # pylint: disable=broad-exception-caught
                 logger.error("Error processing label update: %s", e)
@@ -561,10 +651,10 @@ def process_label_updates(
                     changes=[],
                     error=f"{str(e)} - message: {update_msg}",
                 )
-                results.append(result.to_dict())
+                results.append(result)
 
         # Upload updated snapshot if any updates occurred
-        total_updates = sum(r.get("updated_count", 0) for r in results)
+        total_updates = sum(r.updated_count for r in results if r.error is None)
         if total_updates > 0:
             upload_result = upload_delta_to_s3(
                 local_delta_path=temp_dir,
@@ -592,7 +682,7 @@ def process_label_updates(
             changes=[],
             error=str(e),
         )
-        results.append(result.to_dict())
+        results.append(result)
     finally:
         if "temp_dir" in locals():
             shutil.rmtree(temp_dir, ignore_errors=True)

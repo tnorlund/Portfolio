@@ -128,12 +128,13 @@ class StreamProcessorLambda(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Create policy for SQS access
+        # Create policy for SQS access (both lines and words queues)
         self.sqs_policy = aws.iam.RolePolicy(
             f"{name}-sqs-policy",
             role=self.lambda_role.id,
             policy=Output.all(
-                chromadb_queues.delta_queue_arn, chromadb_queues.dlq_arn
+                chromadb_queues.lines_queue_arn, chromadb_queues.words_queue_arn,
+                chromadb_queues.lines_dlq_arn, chromadb_queues.words_dlq_arn
             ).apply(
                 lambda args: json.dumps(
                     {
@@ -147,8 +148,10 @@ class StreamProcessorLambda(ComponentResource):
                                     "sqs:GetQueueAttributes",
                                 ],
                                 "Resource": [
-                                    args[0],  # Main queue ARN
-                                    args[1],  # DLQ ARN
+                                    args[0],  # Lines queue ARN
+                                    args[1],  # Words queue ARN
+                                    args[2],  # Lines DLQ ARN
+                                    args[3],  # Words DLQ ARN
                                 ],
                             }
                         ],
@@ -180,7 +183,8 @@ class StreamProcessorLambda(ComponentResource):
             memory_size=256,  # Lightweight processing
             environment={
                 "variables": {
-                    "COMPACTION_QUEUE_URL": chromadb_queues.delta_queue_url,
+                    "LINES_QUEUE_URL": chromadb_queues.lines_queue_url,
+                    "WORDS_QUEUE_URL": chromadb_queues.words_queue_url,
                     "LOG_LEVEL": "INFO",
                 }
             },

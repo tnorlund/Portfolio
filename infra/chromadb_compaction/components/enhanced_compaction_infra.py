@@ -161,12 +161,13 @@ class EnhancedCompactionLambda(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Create policy for SQS access
+        # Create policy for SQS access (both lines and words queues)
         self.sqs_policy = aws.iam.RolePolicy(
             f"{name}-sqs-policy",
             role=self.lambda_role.id,
             policy=Output.all(
-                chromadb_queues.delta_queue_arn, chromadb_queues.dlq_arn
+                chromadb_queues.lines_queue_arn, chromadb_queues.words_queue_arn,
+                chromadb_queues.lines_dlq_arn, chromadb_queues.words_dlq_arn
             ).apply(
                 lambda args: json.dumps(
                     {
@@ -182,8 +183,10 @@ class EnhancedCompactionLambda(ComponentResource):
                                     "sqs:SendMessageBatch",
                                 ],
                                 "Resource": [
-                                    args[0],  # Main queue ARN
-                                    args[1],  # DLQ ARN
+                                    args[0],  # Lines queue ARN
+                                    args[1],  # Words queue ARN
+                                    args[2],  # Lines DLQ ARN
+                                    args[3],  # Words DLQ ARN
                                 ],
                             }
                         ],
@@ -219,7 +222,8 @@ class EnhancedCompactionLambda(ComponentResource):
                         lambda arn: arn.split("/")[-1]
                     ),
                     "CHROMADB_BUCKET": chromadb_buckets.bucket_name,
-                    "COMPACTION_QUEUE_URL": chromadb_queues.delta_queue_url,
+                    "LINES_QUEUE_URL": chromadb_queues.lines_queue_url,
+                    "WORDS_QUEUE_URL": chromadb_queues.words_queue_url,
                     "HEARTBEAT_INTERVAL_SECONDS": "60",
                     "LOCK_DURATION_MINUTES": "15",
                     "LOG_LEVEL": "INFO",
@@ -244,10 +248,21 @@ class EnhancedCompactionLambda(ComponentResource):
             ),
         )
 
-        # Create SQS event source mapping
-        self.event_source_mapping = aws.lambda_.EventSourceMapping(
-            f"{name}-event-source-mapping",
-            event_source_arn=chromadb_queues.delta_queue_arn,
+        # Create SQS event source mappings for both queues
+        self.lines_event_source_mapping = aws.lambda_.EventSourceMapping(
+            f"{name}-lines-event-source-mapping",
+            event_source_arn=chromadb_queues.lines_queue_arn,
+            function_name=self.function.arn,
+            batch_size=10,  # Process up to 10 messages at once
+            maximum_batching_window_in_seconds=30,  # Wait max 30 seconds to batch
+            maximum_retry_attempts=3,  # Retry failed batches 3 times
+            maximum_record_age_in_seconds=3600,  # Discard messages older than 1 hour
+            opts=ResourceOptions(parent=self),
+        )
+
+        self.words_event_source_mapping = aws.lambda_.EventSourceMapping(
+            f"{name}-words-event-source-mapping",
+            event_source_arn=chromadb_queues.words_queue_arn,
             function_name=self.function.arn,
             batch_size=10,  # Process up to 10 messages at once
             maximum_batching_window_in_seconds=30,  # Wait max 30 seconds to batch
