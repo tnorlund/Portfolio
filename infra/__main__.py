@@ -39,7 +39,8 @@ from validate_merchant_step_functions import ValidateMerchantStepFunctions
 from validation_by_merchant import ValidationByMerchantStepFunction
 from validation_pipeline import ValidationPipeline
 
-from chromadb_compaction import ChromaDBBuckets, ChromaDBQueues
+from chromadb_compaction import ChromaDBBuckets, ChromaDBQueues, create_enhanced_compaction_lambda
+from chromadb_compaction.stream_processor_infra import create_stream_processor
 
 # Using the optimized docker-build based base images with scoped contexts
 from base_images.base_images import BaseImages
@@ -164,6 +165,22 @@ chromadb_storage = ChromaDBBuckets(
 # Create ChromaDB SQS queues
 chromadb_queues = ChromaDBQueues(
     "chromadb-test",
+)
+
+# Create DynamoDB stream processor for ChromaDB metadata synchronization
+stream_processor, stream_event_mapping = create_stream_processor(
+    name="chromadb-stream-processor",
+    chromadb_queues=chromadb_queues,
+    dynamodb_table_arn=dynamodb_table.arn,
+    dynamodb_stream_arn=dynamodb_table.stream_arn,
+)
+
+# Create enhanced compaction Lambda for processing stream and delta messages
+enhanced_compaction_lambda = create_enhanced_compaction_lambda(
+    name="chromadb-enhanced-compaction",
+    chromadb_queues=chromadb_queues,
+    chromadb_buckets=chromadb_storage,
+    dynamodb_table_arn=dynamodb_table.arn,
 )
 
 # Create spot interruption handler
@@ -695,3 +712,12 @@ pulumi.export("chromadb_bucket_name", chromadb_storage.bucket_name)
 pulumi.export("chromadb_bucket_arn", chromadb_storage.bucket_arn)
 pulumi.export("chromadb_delta_queue_url", chromadb_queues.delta_queue_url)
 pulumi.export("chromadb_delta_queue_arn", chromadb_queues.delta_queue_arn)
+
+# Stream processor exports
+pulumi.export("stream_processor_function_name", stream_processor.function_name)
+pulumi.export("stream_processor_function_arn", stream_processor.function_arn)
+pulumi.export("stream_event_mapping_uuid", stream_event_mapping.mapping_uuid)
+
+# Enhanced compaction exports
+pulumi.export("enhanced_compaction_function_name", enhanced_compaction_lambda.function_name)
+pulumi.export("enhanced_compaction_function_arn", enhanced_compaction_lambda.function_arn)
