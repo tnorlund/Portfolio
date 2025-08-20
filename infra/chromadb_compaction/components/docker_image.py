@@ -91,6 +91,9 @@ class DockerImageComponent(ComponentResource):
         # Get stack for naming
         stack = pulumi.get_stack()
 
+        # Get ECR auth token for pulling base images
+        ecr_auth_token = get_authorization_token_output()
+
         # Create ECR repository
         self.ecr_repo = Repository(
             f"{name}-repo",
@@ -139,6 +142,15 @@ class DockerImageComponent(ComponentResource):
             ],
             platforms=[docker_build.Platform.LINUX_ARM64],
             push=True,
+            registries=[
+                {
+                    "address": self.ecr_repo.repository_url.apply(
+                        lambda url: url.split("/")[0]
+                    ),
+                    "password": ecr_auth_token.password,
+                    "username": ecr_auth_token.user_name,
+                }
+            ],
             opts=ResourceOptions(
                 parent=self,
                 depends_on=[self.ecr_repo] + ([base_images] if base_images else []),
