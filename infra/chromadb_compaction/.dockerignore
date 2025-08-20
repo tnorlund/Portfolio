@@ -1,0 +1,17 @@
+# Exclude the zip-based Lambda function
+lambdas/stream_processor.py
+
+# Exclude tests and development files
+tests/
+*.pyc
+__pycache__/
+.pytest_cache/
+.coverage
+*.egg-info/
+
+# Exclude other non-runtime files
+*.md
+.git/
+.gitignore
+components/
+__init__.py

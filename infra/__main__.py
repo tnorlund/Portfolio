@@ -39,7 +39,7 @@ from validate_merchant_step_functions import ValidateMerchantStepFunctions
 from validation_by_merchant import ValidationByMerchantStepFunction
 from validation_pipeline import ValidationPipeline
 
-from chromadb_compaction import ChromaDBBuckets, ChromaDBQueues, create_enhanced_compaction_lambda, create_stream_processor
+from chromadb_compaction import create_chromadb_compaction_infrastructure
 
 # Using the optimized docker-build based base images with scoped contexts
 from base_images.base_images import BaseImages
@@ -156,30 +156,12 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
     policy_arn="arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
 )
 
-# Create ChromaDB S3 buckets
-chromadb_storage = ChromaDBBuckets(
-    "chromadb-test",
-)
-
-# Create ChromaDB SQS queues
-chromadb_queues = ChromaDBQueues(
-    "chromadb-test",
-)
-
-# Create DynamoDB stream processor for ChromaDB metadata synchronization
-stream_processor, stream_event_mapping = create_stream_processor(
-    name="chromadb-stream-processor",
-    chromadb_queues=chromadb_queues,
+# Create ChromaDB compaction infrastructure (hybrid deployment)
+chromadb_infrastructure = create_chromadb_compaction_infrastructure(
+    name="chromadb-test",
     dynamodb_table_arn=dynamodb_table.arn,
     dynamodb_stream_arn=dynamodb_table.stream_arn,
-)
-
-# Create enhanced compaction Lambda for processing stream and delta messages
-enhanced_compaction_lambda = create_enhanced_compaction_lambda(
-    name="chromadb-enhanced-compaction",
-    chromadb_queues=chromadb_queues,
-    chromadb_buckets=chromadb_storage,
-    dynamodb_table_arn=dynamodb_table.arn,
+    base_images=base_images,
 )
 
 # Create spot interruption handler
@@ -706,21 +688,9 @@ enhanced_compaction_lambda = create_enhanced_compaction_lambda(
 # pulumi.export("instance_registry_table_name", instance_registry.table_name)
 # pulumi.export("ml_packages_built", ml_package_builder.packages)
 
-# ChromaDB infrastructure exports
-pulumi.export("chromadb_bucket_name", chromadb_storage.bucket_name)
-pulumi.export("chromadb_bucket_arn", chromadb_storage.bucket_arn)
-pulumi.export("chromadb_lines_queue_url", chromadb_queues.lines_queue_url)
-pulumi.export("chromadb_lines_queue_arn", chromadb_queues.lines_queue_arn)
-pulumi.export("chromadb_words_queue_url", chromadb_queues.words_queue_url)
-pulumi.export("chromadb_words_queue_arn", chromadb_queues.words_queue_arn)
-pulumi.export("chromadb_lines_dlq_arn", chromadb_queues.lines_dlq_arn)
-pulumi.export("chromadb_words_dlq_arn", chromadb_queues.words_dlq_arn)
-
-# Stream processor exports
-pulumi.export("stream_processor_function_name", stream_processor.function_name)
-pulumi.export("stream_processor_function_arn", stream_processor.function_arn)
-pulumi.export("stream_event_mapping_uuid", stream_event_mapping.mapping_uuid)
-
-# Enhanced compaction exports
-pulumi.export("enhanced_compaction_function_name", enhanced_compaction_lambda.function_name)
-pulumi.export("enhanced_compaction_function_arn", enhanced_compaction_lambda.function_arn)
+# ChromaDB infrastructure exports (hybrid deployment)
+pulumi.export("chromadb_bucket_name", chromadb_infrastructure.bucket_name)
+pulumi.export("chromadb_lines_queue_url", chromadb_infrastructure.lines_queue_url)
+pulumi.export("chromadb_words_queue_url", chromadb_infrastructure.words_queue_url)
+pulumi.export("stream_processor_function_arn", chromadb_infrastructure.stream_processor_arn)
+pulumi.export("enhanced_compaction_function_arn", chromadb_infrastructure.enhanced_compaction_arn)
