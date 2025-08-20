@@ -72,7 +72,6 @@ class FieldChange:
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-COMPACTION_QUEUE_URL = os.environ["COMPACTION_QUEUE_URL"]
 
 
 def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
@@ -185,6 +184,55 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     return response.to_dict()
 
 
+def _detect_entity_type(sk: str) -> Optional[str]:
+    """
+    Detect entity type from SK pattern.
+    
+    Args:
+        sk: Sort key from DynamoDB item
+        
+    Returns:
+        Entity type string or None if not relevant
+    """
+    if "#METADATA" in sk:
+        return "RECEIPT_METADATA"
+    elif "#LABEL#" in sk:
+        return "RECEIPT_WORD_LABEL"
+    return None
+
+
+def _parse_entity(
+    image: Optional[Dict[str, Any]], 
+    entity_type: str, 
+    image_type: str
+) -> Optional[Union[ReceiptMetadata, ReceiptWordLabel]]:
+    """
+    Parse DynamoDB image into typed entity.
+    
+    Args:
+        image: DynamoDB image (OldImage or NewImage)
+        entity_type: Type of entity to parse
+        image_type: Description for logging (old/new)
+        
+    Returns:
+        Parsed entity or None if parsing fails
+    """
+    if not image:
+        return None
+        
+    try:
+        if entity_type == "RECEIPT_METADATA":
+            return item_to_receipt_metadata(image)
+        elif entity_type == "RECEIPT_WORD_LABEL":
+            return item_to_receipt_word_label(image)
+    except ValueError as e:
+        logger.warning(
+            "Failed to parse %s %s: %s", image_type, entity_type, e
+        )
+    
+    return None
+
+
 def parse_stream_record(
     record: Dict[str, Any],
 ) -> Optional[ParsedStreamRecord]:
@@ -213,53 +261,17 @@ def parse_stream_record(
             return None
 
         # Determine entity type from SK pattern
-        entity_type = None
-        if "#METADATA" in sk:
-            entity_type = "RECEIPT_METADATA"
-        elif "#LABEL#" in sk:
-            entity_type = "RECEIPT_WORD_LABEL"
-        else:
+        entity_type = _detect_entity_type(sk)
+        if not entity_type:
             return None  # Not a relevant entity type
 
         # Get appropriate DynamoDB item for parsing
         old_image = record["dynamodb"].get("OldImage")
         new_image = record["dynamodb"].get("NewImage")
 
-        # Parse entities using receipt_dynamo parsers
-        old_entity = None
-        new_entity = None
-
-        if entity_type == "RECEIPT_METADATA":
-            if old_image:
-                try:
-                    old_entity = item_to_receipt_metadata(old_image)
-                except ValueError as e:
-                    logger.warning(
-                        "Failed to parse old ReceiptMetadata: %s", e
-                    )
-            if new_image:
-                try:
-                    new_entity = item_to_receipt_metadata(new_image)
-                except ValueError as e:
-                    logger.warning(
-                        "Failed to parse new ReceiptMetadata: %s", e
-                    )
-
-        elif entity_type == "RECEIPT_WORD_LABEL":
-            if old_image:
-                try:
-                    old_entity = item_to_receipt_word_label(old_image)
-                except ValueError as e:
-                    logger.warning(
-                        "Failed to parse old ReceiptWordLabel: %s", e
-                    )
-            if new_image:
-                try:
-                    new_entity = item_to_receipt_word_label(new_image)
-                except ValueError as e:
-                    logger.warning(
-                        "Failed to parse new ReceiptWordLabel: %s", e
-                    )
+        # Parse entities using receipt_dynamo parsers via helper function
+        old_entity = _parse_entity(old_image, entity_type, "old")
+        new_entity = _parse_entity(new_image, entity_type, "new")
 
         # Return parsed entity information
         return ParsedStreamRecord(
@@ -369,7 +381,7 @@ def send_messages_to_sqs(messages: List[Dict[str, Any]]) -> int:
 
         try:
             response = sqs.send_message_batch(
-                QueueUrl=COMPACTION_QUEUE_URL, Entries=entries
+                QueueUrl=os.environ["COMPACTION_QUEUE_URL"], Entries=entries
             )
 
             # Count successful sends
