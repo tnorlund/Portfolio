@@ -81,9 +81,9 @@ class ChromaDBQueues(ComponentResource):
         self.lines_queue = aws.sqs.Queue(
             f"{name}-lines-queue",
             name=Output.concat("chromadb-lines-queue-", stack),
-            message_retention_seconds=345600,  # 4 days
-            visibility_timeout_seconds=900,  # 15 minutes (match compaction timeout)
-            receive_wait_time_seconds=20,  # Long polling for efficiency
+            message_retention_seconds=345600,
+            visibility_timeout_seconds=900,
+            receive_wait_time_seconds=20,
             redrive_policy=Output.all(self.lines_dlq.arn).apply(
                 lambda args: json.dumps(
                     {
@@ -105,9 +105,9 @@ class ChromaDBQueues(ComponentResource):
         self.words_queue = aws.sqs.Queue(
             f"{name}-words-queue",
             name=Output.concat("chromadb-words-queue-", stack),
-            message_retention_seconds=345600,  # 4 days
-            visibility_timeout_seconds=900,  # 15 minutes (match compaction timeout)
-            receive_wait_time_seconds=20,  # Long polling for efficiency
+            message_retention_seconds=345600,
+            visibility_timeout_seconds=900,
+            receive_wait_time_seconds=20,
             redrive_policy=Output.all(self.words_dlq.arn).apply(
                 lambda args: json.dumps(
                     {
