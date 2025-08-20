@@ -12,9 +12,10 @@ import os
 import shutil
 import tempfile
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from logging import INFO, Formatter, StreamHandler, getLogger
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import boto3
 
@@ -26,6 +27,102 @@ from receipt_label.utils.chroma_s3_helpers import (
     download_snapshot_from_s3,
     upload_delta_to_s3,
 )
+
+
+@dataclass(frozen=True)
+class LambdaResponse:
+    """Response from the Lambda handler with processing statistics."""
+
+    status_code: int
+    message: str
+    processed_messages: Optional[int] = None
+    stream_messages: Optional[int] = None
+    delta_messages: Optional[int] = None
+    metadata_updates: Optional[int] = None
+    label_updates: Optional[int] = None
+    metadata_results: Optional[List[Dict[str, Any]]] = None
+    label_results: Optional[List[Dict[str, Any]]] = None
+    processed_deltas: Optional[int] = None
+    skipped_deltas: Optional[int] = None
+    error: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to AWS Lambda-compatible dictionary."""
+        result = {"statusCode": self.status_code, "message": self.message}
+
+        # Add optional fields if they have values
+        optional_fields = [
+            "processed_messages", "stream_messages", "delta_messages",
+            "metadata_updates", "label_updates", "metadata_results",
+            "label_results", "processed_deltas", "skipped_deltas", "error"
+        ]
+
+        for field in optional_fields:
+            value = getattr(self, field)
+            if value is not None:
+                result[field] = value
+
+        return result
+
+
+@dataclass(frozen=True)
+class StreamMessage:
+    """Parsed stream message from SQS."""
+
+    entity_type: str
+    entity_data: Dict[str, Any]
+    changes: Dict[str, Any]
+    event_name: str
+    source: str = "dynamodb_stream"
+
+
+@dataclass(frozen=True)
+class MetadataUpdateResult:
+    """Result from processing a metadata update."""
+
+    database: str
+    collection: str
+    updated_count: int
+    image_id: str
+    receipt_id: int
+    error: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary format."""
+        result = {
+            "database": self.database,
+            "collection": self.collection,
+            "updated_count": self.updated_count,
+            "image_id": self.image_id,
+            "receipt_id": self.receipt_id,
+        }
+        if self.error:
+            result["error"] = self.error
+        return result
+
+
+@dataclass(frozen=True)
+class LabelUpdateResult:
+    """Result from processing a label update."""
+
+    chromadb_id: str
+    updated_count: int
+    event_name: str
+    changes: List[str]
+    error: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary format."""
+        result = {
+            "chromadb_id": self.chromadb_id,
+            "updated_count": self.updated_count,
+            "event_name": self.event_name,
+            "changes": self.changes,
+        }
+        if self.error:
+            result["error"] = self.error
+        return result
+
 
 logger = getLogger()
 logger.setLevel(INFO)
@@ -80,14 +177,15 @@ def handle(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
         "Direct invocation not supported. "
         "This Lambda processes SQS messages only."
     )
-    return {
-        "statusCode": 400,
-        "error": "Direct invocation not supported",
-        "message": (
+    response = LambdaResponse(
+        status_code=400,
+        error="Direct invocation not supported",
+        message=(
             "This Lambda is designed to process SQS messages "
             "from DynamoDB streams"
         ),
-    }
+    )
+    return response.to_dict()
 
 
 def process_sqs_messages(records: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -135,13 +233,14 @@ def process_sqs_messages(records: List[Dict[str, Any]]) -> Dict[str, Any]:
         process_delta_messages(delta_messages)
         logger.info("Processed %d delta messages", len(delta_messages))
 
-    return {
-        "statusCode": 200,
-        "processed_messages": processed_count,
-        "stream_messages": len(stream_messages),
-        "delta_messages": len(delta_messages),
-        "message": "SQS messages processed successfully",
-    }
+    response = LambdaResponse(
+        status_code=200,
+        processed_messages=processed_count,
+        stream_messages=len(stream_messages),
+        delta_messages=len(delta_messages),
+        message="SQS messages processed successfully",
+    )
+    return response.to_dict()
 
 
 def process_stream_messages(
@@ -153,18 +252,31 @@ def process_stream_messages(
     """
     logger.info("Processing %d stream messages", len(stream_messages))
 
-    # Group messages by entity type for efficient processing
+    # Parse and group messages by entity type for efficient processing
     metadata_updates = []
     label_updates = []
 
-    for message in stream_messages:
-        entity_type = message.get("entity_type")
-        if entity_type == "RECEIPT_METADATA":
-            metadata_updates.append(message)
-        elif entity_type == "RECEIPT_WORD_LABEL":
-            label_updates.append(message)
-        else:
-            logger.warning("Unknown entity type: %s", entity_type)
+    for message_dict in stream_messages:
+        try:
+            # Parse into StreamMessage dataclass for type safety
+            message = StreamMessage(
+                entity_type=message_dict.get("entity_type", ""),
+                entity_data=message_dict.get("entity_data", {}),
+                changes=message_dict.get("changes", {}),
+                event_name=message_dict.get("event_name", ""),
+                source=message_dict.get("source", "dynamodb_stream"),
+            )
+
+            if message.entity_type == "RECEIPT_METADATA":
+                metadata_updates.append(message)
+            elif message.entity_type == "RECEIPT_WORD_LABEL":
+                label_updates.append(message)
+            else:
+                logger.warning("Unknown entity type: %s", message.entity_type)
+
+        except (KeyError, TypeError) as e:
+            logger.error("Failed to parse stream message: %s", e)
+            continue
 
     # Acquire lock for metadata updates
     lock_manager = LockManager(
@@ -179,11 +291,12 @@ def process_stream_messages(
 
         if not lock_acquired:
             logger.warning("Could not acquire lock for metadata updates")
-            return {
-                "statusCode": 423,
-                "error": "Could not acquire lock",
-                "message": "Another process is performing updates",
-            }
+            response = LambdaResponse(
+                status_code=423,
+                error="Could not acquire lock",
+                message="Another process is performing updates",
+            )
+            return response.to_dict()
 
         # Start heartbeat
         lock_manager.start_heartbeat()
@@ -198,22 +311,24 @@ def process_stream_messages(
         if label_updates:
             label_results = process_label_updates(label_updates)
 
-        return {
-            "statusCode": 200,
-            "metadata_updates": len(metadata_updates),
-            "label_updates": len(label_updates),
-            "metadata_results": metadata_results,
-            "label_results": label_results,
-            "message": "Stream messages processed successfully",
-        }
+        response = LambdaResponse(
+            status_code=200,
+            metadata_updates=len(metadata_updates),
+            label_updates=len(label_updates),
+            metadata_results=metadata_results,
+            label_results=label_results,
+            message="Stream messages processed successfully",
+        )
+        return response.to_dict()
 
     except Exception as e:  # pylint: disable=broad-exception-caught
         logger.error("Error processing stream messages: %s", e)
-        return {
-            "statusCode": 500,
-            "error": str(e),
-            "message": "Stream message processing failed",
-        }
+        response = LambdaResponse(
+            status_code=500,
+            error=str(e),
+            message="Stream message processing failed",
+        )
+        return response.to_dict()
     finally:
         # Stop heartbeat and release lock
         lock_manager.stop_heartbeat()
@@ -221,7 +336,7 @@ def process_stream_messages(
 
 
 def process_metadata_updates(
-    metadata_updates: List[Dict[str, Any]],
+    metadata_updates: List[StreamMessage],
 ) -> List[Dict[str, Any]]:
     """Process RECEIPT_METADATA updates.
 
@@ -234,9 +349,9 @@ def process_metadata_updates(
 
     for update_msg in metadata_updates:
         try:
-            entity_data = update_msg["entity_data"]
-            changes = update_msg["changes"]
-            event_name = update_msg["event_name"]
+            entity_data = update_msg.entity_data
+            changes = update_msg.changes
+            event_name = update_msg.event_name
 
             image_id = entity_data["image_id"]
             receipt_id = entity_data["receipt_id"]
@@ -317,39 +432,48 @@ def process_metadata_updates(
                                 "Failed to upload snapshot: %s", upload_result
                             )
 
-                    results.append(
-                        {
-                            "database": database,
-                            "collection": f"receipt_{database}",
-                            "updated_count": updated_count,
-                            "image_id": image_id,
-                            "receipt_id": receipt_id,
-                        }
+                    result = MetadataUpdateResult(
+                        database=database,
+                        collection=f"receipt_{database}",
+                        updated_count=updated_count,
+                        image_id=image_id,
+                        receipt_id=receipt_id,
                     )
+                    results.append(result.to_dict())
 
                 except Exception as e:  # pylint: disable=broad-exception-caught
                     logger.error("Error updating %s metadata: %s", database, e)
-                    results.append(
-                        {
-                            "database": database,
-                            "error": str(e),
-                            "image_id": image_id,
-                            "receipt_id": receipt_id,
-                        }
+                    result = MetadataUpdateResult(
+                        database=database,
+                        collection=f"receipt_{database}",
+                        updated_count=0,
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                        error=str(e),
                     )
+                    results.append(result.to_dict())
                 finally:
                     if "temp_dir" in locals():
                         shutil.rmtree(temp_dir, ignore_errors=True)
 
         except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error("Error processing metadata update: %s", e)
-            results.append({"error": str(e), "message": update_msg})
+            # Create error result with minimal info available
+            result = MetadataUpdateResult(
+                database="unknown",
+                collection="unknown",
+                updated_count=0,
+                image_id="unknown",
+                receipt_id=0,
+                error=f"{str(e)} - message: {update_msg}",
+            )
+            results.append(result.to_dict())
 
     return results
 
 
 def process_label_updates(
-    label_updates: List[Dict[str, Any]],
+    label_updates: List[StreamMessage],
 ) -> List[Dict[str, Any]]:
     """Process RECEIPT_WORD_LABEL updates.
 
@@ -394,9 +518,9 @@ def process_label_updates(
         # Process each label update
         for update_msg in label_updates:
             try:
-                entity_data = update_msg["entity_data"]
-                changes = update_msg["changes"]
-                event_name = update_msg["event_name"]
+                entity_data = update_msg.entity_data
+                changes = update_msg.changes
+                event_name = update_msg.event_name
 
                 image_id = entity_data["image_id"]
                 receipt_id = entity_data["receipt_id"]
@@ -420,18 +544,24 @@ def process_label_updates(
                         collection, chromadb_id, changes
                     )
 
-                results.append(
-                    {
-                        "chromadb_id": chromadb_id,
-                        "updated_count": updated_count,
-                        "event_name": event_name,
-                        "changes": list(changes.keys()) if changes else [],
-                    }
+                result = LabelUpdateResult(
+                    chromadb_id=chromadb_id,
+                    updated_count=updated_count,
+                    event_name=event_name,
+                    changes=list(changes.keys()) if changes else [],
                 )
+                results.append(result.to_dict())
 
             except Exception as e:  # pylint: disable=broad-exception-caught
                 logger.error("Error processing label update: %s", e)
-                results.append({"error": str(e), "message": update_msg})
+                result = LabelUpdateResult(
+                    chromadb_id="unknown",
+                    updated_count=0,
+                    event_name="unknown",
+                    changes=[],
+                    error=f"{str(e)} - message: {update_msg}",
+                )
+                results.append(result.to_dict())
 
         # Upload updated snapshot if any updates occurred
         total_updates = sum(r.get("updated_count", 0) for r in results)
@@ -455,7 +585,14 @@ def process_label_updates(
 
     except Exception as e:  # pylint: disable=broad-exception-caught
         logger.error("Error processing label updates: %s", e)
-        results.append({"error": str(e)})
+        result = LabelUpdateResult(
+            chromadb_id="unknown",
+            updated_count=0,
+            event_name="unknown",
+            changes=[],
+            error=str(e),
+        )
+        results.append(result.to_dict())
     finally:
         if "temp_dir" in locals():
             shutil.rmtree(temp_dir, ignore_errors=True)
@@ -647,15 +784,16 @@ def process_delta_messages(
     )
     logger.warning("Delta message processing not implemented in this handler")
 
-    return {
-        "statusCode": 200,
-        "processed_deltas": 0,  # None actually processed
-        "skipped_deltas": len(delta_messages),
-        "message": (
+    response = LambdaResponse(
+        status_code=200,
+        processed_deltas=0,  # None actually processed
+        skipped_deltas=len(delta_messages),
+        message=(
             "Delta messages skipped - not implemented in "
             "stream-focused handler"
         ),
-    }
+    )
+    return response.to_dict()
 
 
 # Note: S3 utility functions removed - now using chroma_s3_helpers
