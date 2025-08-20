@@ -57,35 +57,48 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     
     for record in event['Records']:
         try:
-            # Parse entity information from DynamoDB keys
-            entity_data = parse_receipt_entity_key(
-                record['dynamodb']['Keys']['PK']['S'],
-                record['dynamodb']['Keys']['SK']['S']
-            )
+            # Parse stream record using entity parsers
+            parsed_record = parse_stream_record(record)
             
-            if not entity_data:
+            if not parsed_record:
                 continue  # Not a receipt entity we care about
                 
             # Process MODIFY and REMOVE events
             if record['eventName'] in ['MODIFY', 'REMOVE']:
-                old_image = record['dynamodb'].get('OldImage', {})
-                new_image = record['dynamodb'].get('NewImage', {})
-                
-                # For REMOVE events, we only need the old image
-                if record['eventName'] == 'REMOVE':
-                    new_image = {}
+                entity_type = parsed_record['entity_type']
+                old_entity = parsed_record['old_entity']
+                new_entity = parsed_record['new_entity']
                 
                 # Check if any ChromaDB-relevant fields changed
                 changes = get_chromadb_relevant_changes(
-                    entity_data, old_image, new_image
+                    entity_type, old_entity, new_entity
                 )
                 
                 # Always process REMOVE events, even without specific field changes
                 if changes or record['eventName'] == 'REMOVE':
+                    # Extract entity identification data
+                    if entity_type == 'RECEIPT_METADATA':
+                        entity = old_entity or new_entity
+                        entity_data = {
+                            'entity_type': entity_type,
+                            'image_id': entity.image_id,
+                            'receipt_id': entity.receipt_id
+                        }
+                    elif entity_type == 'RECEIPT_WORD_LABEL':
+                        entity = old_entity or new_entity
+                        entity_data = {
+                            'entity_type': entity_type,
+                            'image_id': entity.image_id,
+                            'receipt_id': entity.receipt_id,
+                            'line_id': entity.line_id,
+                            'word_id': entity.word_id,
+                            'label': entity.label
+                        }
+                    
                     # Create SQS message for the compaction Lambda
                     message = {
                         "source": "dynamodb_stream",
-                        "entity_type": entity_data['entity_type'],
+                        "entity_type": entity_type,
                         "entity_data": entity_data,
                         "changes": changes,
                         "event_name": record['eventName'],
@@ -114,80 +127,100 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     }
 
 
-def parse_receipt_entity_key(pk: str, sk: str) -> Optional[Dict[str, Any]]:
+def parse_stream_record(record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
-    Parse DynamoDB keys to identify entity type and extract IDs.
+    Parse DynamoDB stream record to identify relevant entity changes.
     
+    Uses receipt_dynamo entity parsers for proper validation and type safety.
     Only processes entities that affect ChromaDB metadata:
     - RECEIPT_METADATA: merchant info that affects all embeddings
     - RECEIPT_WORD_LABEL: labels that affect specific word embeddings
     
     Args:
-        pk: Primary key (e.g., "IMAGE#uuid")
-        sk: Sort key (e.g., "RECEIPT#00001#METADATA")
+        record: DynamoDB stream record
     
     Returns:
-        Dictionary with entity info or None if not relevant
+        Dictionary with parsed entity info or None if not relevant
     """
-    if not pk.startswith('IMAGE#'):
-        return None
+    try:
+        # Extract keys to determine entity type
+        keys = record['dynamodb']['Keys']
+        pk = keys['PK']['S']
+        sk = keys['SK']['S']
         
-    image_id = pk.split('#')[1] if '#' in pk else None
-    if not image_id:
+        # Only process IMAGE entities
+        if not pk.startswith('IMAGE#'):
+            return None
+            
+        # Determine entity type from SK pattern
+        entity_type = None
+        if '#METADATA' in sk:
+            entity_type = 'RECEIPT_METADATA'
+        elif '#LABEL#' in sk:
+            entity_type = 'RECEIPT_WORD_LABEL'
+        else:
+            return None  # Not a relevant entity type
+            
+        # Get appropriate DynamoDB item for parsing
+        old_image = record['dynamodb'].get('OldImage')
+        new_image = record['dynamodb'].get('NewImage')
+        
+        # Parse entities using receipt_dynamo parsers
+        old_entity = None
+        new_entity = None
+        
+        if entity_type == 'RECEIPT_METADATA':
+            if old_image:
+                try:
+                    old_entity = item_to_receipt_metadata(old_image)
+                except ValueError as e:
+                    logger.warning(f"Failed to parse old ReceiptMetadata: {e}")
+            if new_image:
+                try:
+                    new_entity = item_to_receipt_metadata(new_image)
+                except ValueError as e:
+                    logger.warning(f"Failed to parse new ReceiptMetadata: {e}")
+                    
+        elif entity_type == 'RECEIPT_WORD_LABEL':
+            if old_image:
+                try:
+                    old_entity = item_to_receipt_word_label(old_image)
+                except ValueError as e:
+                    logger.warning(f"Failed to parse old ReceiptWordLabel: {e}")
+            if new_image:
+                try:
+                    new_entity = item_to_receipt_word_label(new_image)
+                except ValueError as e:
+                    logger.warning(f"Failed to parse new ReceiptWordLabel: {e}")
+        
+        # Return parsed entity information
+        return {
+            'entity_type': entity_type,
+            'old_entity': old_entity,
+            'new_entity': new_entity,
+            'pk': pk,
+            'sk': sk
+        }
+        
+    except (KeyError, ValueError) as e:
+        logger.warning(f"Failed to parse stream record: {e}")
         return None
-    
-    # RECEIPT_METADATA: RECEIPT#00001#METADATA
-    if '#METADATA' in sk:
-        parts = sk.split('#')
-        if len(parts) >= 3 and parts[0] == 'RECEIPT' and parts[2] == 'METADATA':
-            try:
-                receipt_id = int(parts[1])
-                return {
-                    'entity_type': 'RECEIPT_METADATA',
-                    'image_id': image_id,
-                    'receipt_id': receipt_id
-                }
-            except ValueError:
-                logger.warning(f"Invalid receipt_id in METADATA SK: {sk}")
-                return None
-    
-    # RECEIPT_WORD_LABEL: RECEIPT#00001#LINE#00001#WORD#00001#LABEL#TOTAL
-    elif '#LABEL#' in sk:
-        parts = sk.split('#')
-        if (len(parts) >= 8 and parts[0] == 'RECEIPT' and 
-            parts[2] == 'LINE' and parts[4] == 'WORD' and parts[6] == 'LABEL'):
-            try:
-                receipt_id = int(parts[1])
-                line_id = int(parts[3])
-                word_id = int(parts[5])
-                label = parts[7]
-                return {
-                    'entity_type': 'RECEIPT_WORD_LABEL',
-                    'image_id': image_id,
-                    'receipt_id': receipt_id,
-                    'line_id': line_id,
-                    'word_id': word_id,
-                    'label': label
-                }
-            except ValueError:
-                logger.warning(f"Invalid IDs in LABEL SK: {sk}")
-                return None
-    
-    return None  # Not a relevant entity type
 
 
 def get_chromadb_relevant_changes(
-    entity_data: Dict[str, Any], 
-    old_image: Dict[str, Any], 
-    new_image: Dict[str, Any]
+    entity_type: str,
+    old_entity: Optional[object], 
+    new_entity: Optional[object]
 ) -> Dict[str, Any]:
     """
     Identify changes to fields that affect ChromaDB metadata.
     
+    Uses typed entity objects for robust field access and comparison.
+    
     Args:
-        entity_data: Parsed entity information
-        old_image: Previous DynamoDB item state
-        new_image: Current DynamoDB item state (empty for REMOVE events)
+        entity_type: Type of entity (RECEIPT_METADATA or RECEIPT_WORD_LABEL)
+        old_entity: Previous entity state (ReceiptMetadata or ReceiptWordLabel)
+        new_entity: Current entity state (None for REMOVE events)
         
     Returns:
         Dictionary of changed fields with old/new values
@@ -204,16 +237,13 @@ def get_chromadb_relevant_changes(
         ]
     }
     
-    fields_to_check = relevant_fields.get(entity_data['entity_type'], [])
+    fields_to_check = relevant_fields.get(entity_type, [])
     changes = {}
     
     for field in fields_to_check:
-        old_val = old_image.get(field, {})
-        new_val = new_image.get(field, {})
-        
-        # Handle different DynamoDB types
-        old_value = extract_dynamodb_value(old_val)
-        new_value = extract_dynamodb_value(new_val)
+        # Use getattr for safe attribute access on typed objects
+        old_value = getattr(old_entity, field, None) if old_entity else None
+        new_value = getattr(new_entity, field, None) if new_entity else None
         
         if old_value != new_value:
             changes[field] = {'old': old_value, 'new': new_value}
