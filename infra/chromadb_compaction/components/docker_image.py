@@ -185,15 +185,11 @@ class DockerImageComponent(ComponentResource):
             ),
         )
 
-        # Export image URI for Lambda function
+        # Export image URI for Lambda function (match embedding infrastructure pattern)
         self.image_uri = Output.all(
-            self.docker_image.ref, 
-            self.ecr_repo.repository_url
-        ).apply(
-            lambda args: f"{args[1].split(':')[0]}@{args[0].split('@')[1]}" 
-            if "@" in args[0] 
-            else f"{args[1]}:latest"
-        )
+            self.ecr_repo.repository_url,
+            self.docker_image.digest,
+        ).apply(lambda args: f"{args[0].split(':')[0]}@{args[1]}")
 
         # Register outputs
         self.register_outputs(
