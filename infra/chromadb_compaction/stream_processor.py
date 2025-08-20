@@ -19,6 +19,10 @@ from typing import Any, Dict, List, Optional
 
 import boto3
 
+# Import receipt_dynamo entity parsers
+from receipt_dynamo.entities.receipt_metadata import item_to_receipt_metadata
+from receipt_dynamo.entities.receipt_word_label import item_to_receipt_word_label
+
 # Configure logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
