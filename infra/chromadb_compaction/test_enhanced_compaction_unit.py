@@ -44,7 +44,7 @@ class TestEnhancedCompactionLogic:
         """Test metadata update logic with all dependencies mocked."""
 
         # Import after patching to avoid initialization errors
-        from enhanced_compaction_handler import update_receipt_metadata
+        from lambdas.enhanced_compaction_handler import update_receipt_metadata
 
         # Setup mock ChromaDB client and collection
         mock_chroma_client = MagicMock()
@@ -118,7 +118,7 @@ class TestEnhancedCompactionLogic:
     ):
         """Test metadata removal logic."""
 
-        from enhanced_compaction_handler import remove_receipt_metadata
+        from lambdas.enhanced_compaction_handler import remove_receipt_metadata
 
         # Setup mock ChromaDB client and collection
         mock_chroma_client = MagicMock()
@@ -195,7 +195,7 @@ class TestEnhancedCompactionLogic:
     ):
         """Test word label update logic."""
 
-        from enhanced_compaction_handler import update_word_labels
+        from lambdas.enhanced_compaction_handler import update_word_labels
 
         chromadb_id = "IMAGE#test-uuid#RECEIPT#00001#LINE#00002#WORD#00003"
 
@@ -265,7 +265,7 @@ class TestEnhancedCompactionLogic:
     ):
         """Test word label removal logic."""
 
-        from enhanced_compaction_handler import remove_word_labels
+        from lambdas.enhanced_compaction_handler import remove_word_labels
 
         chromadb_id = "IMAGE#test-uuid#RECEIPT#00001#LINE#00002#WORD#00003"
 

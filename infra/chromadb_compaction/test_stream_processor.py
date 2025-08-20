@@ -18,7 +18,7 @@ from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 from receipt_dynamo.constants import ValidationStatus, ValidationMethod
 
-from stream_processor import (
+from lambdas.stream_processor import (
     FieldChange,
     LambdaResponse,
     ParsedStreamRecord,

@@ -137,7 +137,7 @@ class TestEnhancedCompactionIntegration:
         """Test complete metadata update flow from SQS message to ChromaDB update."""
         
         # Import after mocking to avoid initialization issues
-        from enhanced_compaction_handler import handle
+        from lambdas.enhanced_compaction_handler import handle
         
         # Setup mocks
         mock_mkdtemp.return_value = "/tmp/test"
@@ -211,7 +211,7 @@ class TestEnhancedCompactionIntegration:
                                     aws_environment, mock_chromadb_data):
         """Test complete label update flow from SQS message to ChromaDB update."""
         
-        from enhanced_compaction_handler import handle
+        from lambdas.enhanced_compaction_handler import handle
         
         # Setup mocks
         mock_mkdtemp.return_value = "/tmp/test"
@@ -291,7 +291,7 @@ class TestEnhancedCompactionIntegration:
                                        aws_environment, mock_chromadb_data):
         """Test complete metadata removal flow."""
         
-        from enhanced_compaction_handler import handle
+        from lambdas.enhanced_compaction_handler import handle
         
         # Setup mocks
         mock_mkdtemp.return_value = "/tmp/test"
@@ -357,7 +357,7 @@ class TestEnhancedCompactionIntegration:
                                      aws_environment, mock_chromadb_data):
         """Test complete label removal flow."""
         
-        from enhanced_compaction_handler import handle
+        from lambdas.enhanced_compaction_handler import handle
         
         # Setup mocks
         mock_mkdtemp.return_value = "/tmp/test"
@@ -427,7 +427,7 @@ class TestEnhancedCompactionIntegration:
         """Test processing mixed stream and delta messages."""
         
         # Import after AWS setup
-        from enhanced_compaction_handler import handle
+        from lambdas.enhanced_compaction_handler import handle
         
         # Create SQS event with mixed messages
         sqs_event = {
@@ -471,7 +471,7 @@ class TestEnhancedCompactionIntegration:
     def test_lock_contention_handling(self, aws_environment):
         """Test behavior when lock cannot be acquired."""
         
-        from enhanced_compaction_handler import handle
+        from lambdas.enhanced_compaction_handler import handle
         
         # Create SQS event
         sqs_event = {
@@ -511,7 +511,7 @@ class TestEnhancedCompactionIntegration:
     def test_s3_operations_integration(self, aws_environment):
         """Test S3 download/upload operations work with mocked S3."""
         
-        from enhanced_compaction_handler import download_from_s3, upload_to_s3
+        from lambdas.enhanced_compaction_handler import download_from_s3, upload_to_s3
         
         s3_client = aws_environment["s3"]
         bucket = "test-chromadb-bucket"
@@ -552,7 +552,7 @@ class TestEnhancedCompactionIntegration:
     def test_error_handling_integration(self, aws_environment):
         """Test error handling with malformed messages."""
         
-        from enhanced_compaction_handler import handle
+        from lambdas.enhanced_compaction_handler import handle
         
         # Create SQS event with malformed message
         sqs_event = {

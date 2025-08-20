@@ -39,8 +39,7 @@ from validate_merchant_step_functions import ValidateMerchantStepFunctions
 from validation_by_merchant import ValidationByMerchantStepFunction
 from validation_pipeline import ValidationPipeline
 
-from chromadb_compaction import ChromaDBBuckets, ChromaDBQueues, create_enhanced_compaction_lambda
-from chromadb_compaction.stream_processor_infra import create_stream_processor
+from chromadb_compaction import ChromaDBBuckets, ChromaDBQueues, create_enhanced_compaction_lambda, create_stream_processor
 
 # Using the optimized docker-build based base images with scoped contexts
 from base_images.base_images import BaseImages

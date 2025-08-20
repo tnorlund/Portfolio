@@ -1,52 +1,49 @@
 """
-Infrastructure for Enhanced ChromaDB Compaction Handler Lambda
+Infrastructure configuration for DynamoDB Stream Processor Lambda
 
-Creates a Lambda function that processes both stream messages from the DynamoDB 
-stream processor and traditional delta messages for ChromaDB metadata updates.
+Creates the Lambda function that processes DynamoDB stream events for ChromaDB
+metadata synchronization. Integrates with existing SQS queue infrastructure.
 """
 
 import json
+from pathlib import Path
 import pulumi
 import pulumi_aws as aws
 from pulumi import ComponentResource, Output, ResourceOptions
 from typing import Optional
 
 from .sqs_queues import ChromaDBQueues
-from .s3_buckets import ChromaDBBuckets
 
 
-class EnhancedCompactionLambda(ComponentResource):
+class StreamProcessorLambda(ComponentResource):
     """
-    ComponentResource for the Enhanced ChromaDB Compaction Lambda.
-    
+    ComponentResource for the DynamoDB Stream Processor Lambda.
+
     Creates:
-    - Lambda function for processing stream and delta messages
-    - IAM role and policies for DynamoDB, S3, and SQS access
+    - Lambda function for processing stream events
+    - IAM role and policies for DynamoDB and SQS access
     - CloudWatch log group for monitoring
-    - SQS event source mapping for queue processing
     """
 
     def __init__(
         self,
         name: str,
         chromadb_queues: ChromaDBQueues,
-        chromadb_buckets: ChromaDBBuckets,
         dynamodb_table_arn: str,
         stack: Optional[str] = None,
         opts: Optional[ResourceOptions] = None,
     ):
         """
-        Initialize the Enhanced Compaction Lambda.
+        Initialize the Stream Processor Lambda.
 
         Args:
             name: The unique name of the resource
-            chromadb_queues: The ChromaDB SQS queues component
-            chromadb_buckets: The ChromaDB S3 buckets component
-            dynamodb_table_arn: ARN of the DynamoDB table
+            chromadb_queues: The existing ChromaDB SQS queues component
+            dynamodb_table_arn: ARN of the DynamoDB table to stream from
             stack: The Pulumi stack name (defaults to current stack)
             opts: Optional resource options
         """
-        super().__init__("chromadb:compaction:EnhancedLambda", name, None, opts)
+        super().__init__("chromadb:stream:ProcessorLambda", name, None, opts)
 
         # Get stack
         if stack is None:
@@ -55,11 +52,11 @@ class EnhancedCompactionLambda(ComponentResource):
         # Create CloudWatch log group
         self.log_group = aws.cloudwatch.LogGroup(
             f"{name}-log-group",
-            name=f"/aws/lambda/chromadb-enhanced-compaction-{stack}",
+            name=f"/aws/lambda/chromadb-stream-processor-{stack}",
             retention_in_days=14,  # Keep logs for 2 weeks
             tags={
                 "Project": "ChromaDB",
-                "Component": "EnhancedCompaction",
+                "Component": "StreamProcessor",
                 "Environment": stack,
                 "ManagedBy": "Pulumi",
             },
@@ -83,7 +80,7 @@ class EnhancedCompactionLambda(ComponentResource):
             ),
             tags={
                 "Project": "ChromaDB",
-                "Component": "EnhancedCompaction",
+                "Component": "StreamProcessor",
                 "Environment": stack,
                 "ManagedBy": "Pulumi",
             },
@@ -98,9 +95,9 @@ class EnhancedCompactionLambda(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Create policy for DynamoDB access (for mutex locks)
-        self.dynamodb_policy = aws.iam.RolePolicy(
-            f"{name}-dynamodb-policy",
+        # Create policy for DynamoDB Streams access
+        self.dynamodb_streams_policy = aws.iam.RolePolicy(
+            f"{name}-dynamodb-streams-policy",
             role=self.lambda_role.id,
             policy=Output.all(dynamodb_table_arn).apply(
                 lambda args: json.dumps(
@@ -110,47 +107,20 @@ class EnhancedCompactionLambda(ComponentResource):
                             {
                                 "Effect": "Allow",
                                 "Action": [
-                                    "dynamodb:GetItem",
-                                    "dynamodb:PutItem",
-                                    "dynamodb:UpdateItem",
-                                    "dynamodb:DeleteItem",
-                                    "dynamodb:Query",
-                                    "dynamodb:Scan",
+                                    "dynamodb:DescribeStream",
+                                    "dynamodb:GetRecords",
+                                    "dynamodb:GetShardIterator",
                                 ],
                                 "Resource": [
                                     args[0],  # Table ARN
-                                    f"{args[0]}/index/*",  # GSI ARNs
+                                    f"{args[0]}/stream/*",  # Stream ARN pattern
                                 ],
-                            }
-                        ],
-                    }
-                )
-            ),
-            opts=ResourceOptions(parent=self),
-        )
-
-        # Create policy for S3 access (for ChromaDB snapshots)
-        self.s3_policy = aws.iam.RolePolicy(
-            f"{name}-s3-policy",
-            role=self.lambda_role.id,
-            policy=Output.all(chromadb_buckets.bucket_arn).apply(
-                lambda args: json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
+                            },
                             {
                                 "Effect": "Allow",
-                                "Action": [
-                                    "s3:GetObject",
-                                    "s3:PutObject",
-                                    "s3:DeleteObject",
-                                    "s3:ListBucket",
-                                ],
-                                "Resource": [
-                                    args[0],  # Bucket ARN
-                                    f"{args[0]}/*",  # Objects in bucket
-                                ],
-                            }
+                                "Action": ["dynamodb:ListStreams"],
+                                "Resource": "*",
+                            },
                         ],
                     }
                 )
@@ -172,11 +142,9 @@ class EnhancedCompactionLambda(ComponentResource):
                             {
                                 "Effect": "Allow",
                                 "Action": [
-                                    "sqs:ReceiveMessage",
-                                    "sqs:DeleteMessage",
-                                    "sqs:GetQueueAttributes",
                                     "sqs:SendMessage",
                                     "sqs:SendMessageBatch",
+                                    "sqs:GetQueueAttributes",
                                 ],
                                 "Resource": [
                                     args[0],  # Main queue ARN
@@ -193,35 +161,29 @@ class EnhancedCompactionLambda(ComponentResource):
         # Create the Lambda function
         self.function = aws.lambda_.Function(
             f"{name}-function",
-            name=f"chromadb-enhanced-compaction-{stack}",
+            name=f"chromadb-stream-processor-{stack}",
             runtime="python3.12",
             code=pulumi.AssetArchive(
                 {
-                    "enhanced_compaction_handler.py": pulumi.FileAsset(
-                        "chromadb_compaction/enhanced_compaction_handler.py"
+                    "stream_processor.py": pulumi.FileAsset(
+                        str(Path(__file__).parent.parent / "lambdas" / "stream_processor.py")
                     ),
                 }
             ),
-            handler="enhanced_compaction_handler.handle",
+            handler="stream_processor.lambda_handler",
             role=self.lambda_role.arn,
-            timeout=900,  # 15 minutes for compaction operations
-            memory_size=512,  # More memory for ChromaDB operations
+            timeout=300,  # 5 minutes timeout
+            memory_size=256,  # Lightweight processing
             environment={
                 "variables": {
-                    "DYNAMODB_TABLE_NAME": dynamodb_table_arn.apply(
-                        lambda arn: arn.split("/")[-1]
-                    ),
-                    "CHROMADB_BUCKET": chromadb_buckets.bucket_name,
                     "COMPACTION_QUEUE_URL": chromadb_queues.delta_queue_url,
-                    "HEARTBEAT_INTERVAL_SECONDS": "60",
-                    "LOCK_DURATION_MINUTES": "15",
                     "LOG_LEVEL": "INFO",
                 }
             },
-            description="Enhanced ChromaDB compaction handler for stream and delta message processing",
+            description="Processes DynamoDB stream events for ChromaDB metadata synchronization",
             tags={
                 "Project": "ChromaDB",
-                "Component": "EnhancedCompaction",
+                "Component": "StreamProcessor",
                 "Environment": stack,
                 "ManagedBy": "Pulumi",
             },
@@ -229,24 +191,11 @@ class EnhancedCompactionLambda(ComponentResource):
                 parent=self,
                 depends_on=[
                     self.lambda_role,
-                    self.dynamodb_policy,
-                    self.s3_policy,
+                    self.dynamodb_streams_policy,
                     self.sqs_policy,
                     self.log_group,
                 ],
             ),
-        )
-
-        # Create SQS event source mapping
-        self.event_source_mapping = aws.lambda_.EventSourceMapping(
-            f"{name}-event-source-mapping",
-            event_source_arn=chromadb_queues.delta_queue_arn,
-            function_name=self.function.arn,
-            batch_size=10,  # Process up to 10 messages at once
-            maximum_batching_window_in_seconds=30,  # Wait max 30 seconds to batch
-            maximum_retry_attempts=3,  # Retry failed batches 3 times
-            maximum_record_age_in_seconds=3600,  # Discard messages older than 1 hour
-            opts=ResourceOptions(parent=self),
         )
 
         # Export useful properties
@@ -264,37 +213,109 @@ class EnhancedCompactionLambda(ComponentResource):
         )
 
 
-def create_enhanced_compaction_lambda(
-    name: str = "chromadb-enhanced-compaction",
-    chromadb_queues: ChromaDBQueues = None,
-    chromadb_buckets: ChromaDBBuckets = None,
-    dynamodb_table_arn: str = None,
-    opts: Optional[ResourceOptions] = None,
-) -> EnhancedCompactionLambda:
+class DynamoDBStreamEventSourceMapping(ComponentResource):
     """
-    Factory function to create the Enhanced ChromaDB Compaction Lambda.
+    ComponentResource for connecting DynamoDB Stream to Lambda.
+
+    Creates the event source mapping that triggers the Lambda function
+    when DynamoDB stream events occur.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        lambda_function: aws.lambda_.Function,
+        dynamodb_stream_arn: str,
+        opts: Optional[ResourceOptions] = None,
+    ):
+        """
+        Initialize the DynamoDB Stream Event Source Mapping.
+
+        Args:
+            name: The unique name of the resource
+            lambda_function: The Lambda function to trigger
+            dynamodb_stream_arn: ARN of the DynamoDB stream
+            opts: Optional resource options
+        """
+        super().__init__(
+            "chromadb:stream:EventSourceMapping", name, None, opts
+        )
+
+        # Create event source mapping
+        self.event_source_mapping = aws.lambda_.EventSourceMapping(
+            f"{name}-event-source-mapping",
+            event_source_arn=dynamodb_stream_arn,
+            function_name=lambda_function.arn,
+            starting_position="LATEST",  # Only process new changes
+            batch_size=100,  # Process up to 100 records at once
+            maximum_batching_window_in_seconds=5,  # Wait max 5 seconds to batch
+            parallelization_factor=1,  # Single shard processing for simplicity
+            maximum_retry_attempts=3,  # Retry failed batches 3 times
+            maximum_record_age_in_seconds=3600,  # Discard records older than 1 hour
+            bisect_batch_on_function_error=True,  # Split batch on errors
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Export useful properties
+        self.mapping_uuid = self.event_source_mapping.uuid
+        self.state = self.event_source_mapping.state
+
+        # Register outputs
+        self.register_outputs(
+            {
+                "mapping_uuid": self.mapping_uuid,
+                "state": self.state,
+            }
+        )
+
+
+def create_stream_processor(
+    name: str = "chromadb-stream-processor",
+    chromadb_queues: ChromaDBQueues = None,
+    dynamodb_table_arn: str = None,
+    dynamodb_stream_arn: str = None,
+    opts: Optional[ResourceOptions] = None,
+) -> tuple[StreamProcessorLambda, DynamoDBStreamEventSourceMapping]:
+    """
+    Factory function to create the complete stream processing setup.
 
     Args:
         name: Base name for the resources
-        chromadb_queues: The ChromaDB SQS queues component
-        chromadb_buckets: The ChromaDB S3 buckets component
+        chromadb_queues: The existing ChromaDB SQS queues component
         dynamodb_table_arn: ARN of the DynamoDB table
+        dynamodb_stream_arn: ARN of the DynamoDB stream
         opts: Optional resource options
 
     Returns:
-        EnhancedCompactionLambda component
+        Tuple of (StreamProcessorLambda, DynamoDBStreamEventSourceMapping)
     """
     if not chromadb_queues:
         raise ValueError("chromadb_queues parameter is required")
-    if not chromadb_buckets:
-        raise ValueError("chromadb_buckets parameter is required")
     if not dynamodb_table_arn:
         raise ValueError("dynamodb_table_arn parameter is required")
+    if not dynamodb_stream_arn:
+        raise ValueError("dynamodb_stream_arn parameter is required")
 
-    return EnhancedCompactionLambda(
-        name=name,
+    # Create the Lambda function
+    lambda_processor = StreamProcessorLambda(
+        name=f"{name}-lambda",
         chromadb_queues=chromadb_queues,
-        chromadb_buckets=chromadb_buckets,
         dynamodb_table_arn=dynamodb_table_arn,
         opts=opts,
     )
+
+    # Create the event source mapping
+    event_mapping = DynamoDBStreamEventSourceMapping(
+        name=f"{name}-mapping",
+        lambda_function=lambda_processor.function,
+        dynamodb_stream_arn=dynamodb_stream_arn,
+        opts=(
+            ResourceOptions.merge(
+                ResourceOptions(parent=lambda_processor), opts
+            )
+            if opts
+            else ResourceOptions(parent=lambda_processor)
+        ),
+    )
+
+    return lambda_processor, event_mapping
