@@ -5,12 +5,17 @@ Creates the Lambda function that processes DynamoDB stream events for ChromaDB
 metadata synchronization. Integrates with existing SQS queue infrastructure.
 """
 
+# pylint: disable=too-many-instance-attributes,too-many-arguments,too-many-positional-arguments,duplicate-code
+# Pulumi components naturally have many attributes and parameters,
+# some duplication with enhanced_compaction_infra is expected
+
 import json
 from pathlib import Path
+from typing import Optional
+
 import pulumi
 import pulumi_aws as aws
 from pulumi import ComponentResource, Output, ResourceOptions
-from typing import Optional
 
 from .sqs_queues import ChromaDBQueues
 
@@ -133,8 +138,10 @@ class StreamProcessorLambda(ComponentResource):
             f"{name}-sqs-policy",
             role=self.lambda_role.id,
             policy=Output.all(
-                chromadb_queues.lines_queue_arn, chromadb_queues.words_queue_arn,
-                chromadb_queues.lines_dlq_arn, chromadb_queues.words_dlq_arn
+                chromadb_queues.lines_queue_arn,
+                chromadb_queues.words_queue_arn,
+                chromadb_queues.lines_dlq_arn,
+                chromadb_queues.words_dlq_arn,
             ).apply(
                 lambda args: json.dumps(
                     {

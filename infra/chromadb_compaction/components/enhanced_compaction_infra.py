@@ -5,12 +5,16 @@ Creates a Lambda function that processes both stream messages from the DynamoDB
 stream processor and traditional delta messages for ChromaDB metadata updates.
 """
 
+# pylint: disable=too-many-instance-attributes,too-many-arguments,too-many-positional-arguments
+# Pulumi components naturally have many attributes and parameters
+
 import json
 from pathlib import Path
+from typing import Optional
+
 import pulumi
 import pulumi_aws as aws
 from pulumi import ComponentResource, Output, ResourceOptions
-from typing import Optional
 
 from .sqs_queues import ChromaDBQueues
 from .s3_buckets import ChromaDBBuckets
@@ -166,8 +170,10 @@ class EnhancedCompactionLambda(ComponentResource):
             f"{name}-sqs-policy",
             role=self.lambda_role.id,
             policy=Output.all(
-                chromadb_queues.lines_queue_arn, chromadb_queues.words_queue_arn,
-                chromadb_queues.lines_dlq_arn, chromadb_queues.words_dlq_arn
+                chromadb_queues.lines_queue_arn,
+                chromadb_queues.words_queue_arn,
+                chromadb_queues.lines_dlq_arn,
+                chromadb_queues.words_dlq_arn,
             ).apply(
                 lambda args: json.dumps(
                     {
@@ -229,7 +235,10 @@ class EnhancedCompactionLambda(ComponentResource):
                     "LOG_LEVEL": "INFO",
                 }
             },
-            description="Enhanced ChromaDB compaction handler for stream and delta message processing",
+            description=(
+                "Enhanced ChromaDB compaction handler for stream and "
+                "delta message processing"
+            ),
             tags={
                 "Project": "ChromaDB",
                 "Component": "EnhancedCompaction",

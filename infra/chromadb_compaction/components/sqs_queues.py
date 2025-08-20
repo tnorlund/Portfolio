@@ -5,11 +5,14 @@ This module defines the SQS queue infrastructure for notifying the compactor
 about new delta files.
 """
 
+# pylint: disable=too-many-instance-attributes  # Pulumi components need many attributes
+
 import json
+from typing import Optional
+
 import pulumi
 import pulumi_aws as aws
 from pulumi import ComponentResource, ResourceOptions, Output
-from typing import Optional
 
 
 class ChromaDBQueues(ComponentResource):
@@ -18,7 +21,7 @@ class ChromaDBQueues(ComponentResource):
 
     Creates separate queues for lines and words collections:
     - Lines queue for line embedding updates
-    - Words queue for word embedding updates  
+    - Words queue for word embedding updates
     - Dead letter queues for failed messages
     - Proper visibility timeout for Lambda processing
     """

@@ -10,13 +10,16 @@ This package contains the Pulumi infrastructure components for ChromaDB compacti
 
 from .s3_buckets import ChromaDBBuckets, create_chromadb_buckets
 from .sqs_queues import ChromaDBQueues, create_chromadb_queues
-from .enhanced_compaction_infra import EnhancedCompactionLambda, create_enhanced_compaction_lambda
+from .enhanced_compaction_infra import (
+    EnhancedCompactionLambda,
+    create_enhanced_compaction_lambda,
+)
 from .stream_processor_infra import create_stream_processor
 
 __all__ = [
     "ChromaDBBuckets",
     "create_chromadb_buckets",
-    "ChromaDBQueues", 
+    "ChromaDBQueues",
     "create_chromadb_queues",
     "EnhancedCompactionLambda",
     "create_enhanced_compaction_lambda",

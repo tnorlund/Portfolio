@@ -5,11 +5,14 @@ This module defines the S3 bucket infrastructure for storing ChromaDB snapshots
 and delta files using Pulumi ComponentResource pattern.
 """
 
+# pylint: disable=too-many-instance-attributes  # Pulumi components need many attributes
+
 import json
+from typing import Optional
+
 import pulumi
 import pulumi_aws as aws
 from pulumi import ComponentResource, ResourceOptions, Output
-from typing import Optional
 
 
 class ChromaDBBuckets(ComponentResource):
@@ -26,7 +29,7 @@ class ChromaDBBuckets(ComponentResource):
         self,
         name: str,
         stack: Optional[str] = None,
-        account_id: Optional[str] = None,
+        account_id: Optional[str] = None,  # pylint: disable=unused-argument
         opts: Optional[ResourceOptions] = None,
     ):
         """
@@ -74,8 +77,10 @@ class ChromaDBBuckets(ComponentResource):
             bucket=self.bucket.id,
             rules=[
                 aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
-                    apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
-                        sse_algorithm="AES256",
+                    apply_server_side_encryption_by_default=(
+                        aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(  # pylint: disable=line-too-long
+                            sse_algorithm="AES256",
+                        )
                     ),
                     bucket_key_enabled=True,
                 ),
