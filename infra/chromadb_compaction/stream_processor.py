@@ -195,7 +195,7 @@ def _detect_entity_type(sk: str) -> Optional[str]:
     """
     if "#METADATA" in sk:
         return "RECEIPT_METADATA"
-    elif "#LABEL#" in sk:
+    if "#LABEL#" in sk:
         return "RECEIPT_WORD_LABEL"
     return None
 
@@ -220,7 +220,7 @@ def _parse_entity(
     try:
         if entity_type == "RECEIPT_METADATA":
             return item_to_receipt_metadata(image)
-        elif entity_type == "RECEIPT_WORD_LABEL":
+        if entity_type == "RECEIPT_WORD_LABEL":
             return item_to_receipt_word_label(image)
     except ValueError as e:
         logger.warning("Failed to parse %s %s: %s", image_type, entity_type, e)
