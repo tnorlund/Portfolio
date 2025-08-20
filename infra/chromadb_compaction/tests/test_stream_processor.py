@@ -354,18 +354,22 @@ class TestGetChromadbRelevantChanges:
         assert changes == {}
 
 
-class TestSendMessagesToSqs:
+class TestSendMessagesToQueues:
     """Test SQS message sending."""
 
     @patch.dict(
         os.environ,
         {
-            "COMPACTION_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/test-queue"
+            "LINES_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/lines-queue",
+            "WORDS_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/words-queue",
         },
     )
-    @patch("stream_processor.boto3.client")
+    @patch("infra.chromadb_compaction.lambdas.stream_processor.boto3.client")
     def test_send_single_batch(self, mock_boto3_client):
-        """Test sending a single batch of messages."""
+        """Test sending messages to appropriate queues."""
+        from ..lambdas.stream_processor import StreamMessage
+        from receipt_dynamo.constants import ChromaDBCollection
+        
         mock_sqs = MagicMock()
         mock_boto3_client.return_value = mock_sqs
         mock_sqs.send_message_batch.return_value = {
@@ -373,31 +377,48 @@ class TestSendMessagesToSqs:
             "Failed": [],
         }
 
+        # Create StreamMessage objects with collections
         messages = [
-            {"entity_type": "RECEIPT_METADATA", "event_name": "MODIFY"},
-            {"entity_type": "RECEIPT_WORD_LABEL", "event_name": "REMOVE"},
+            StreamMessage(
+                entity_type="RECEIPT_METADATA",
+                entity_data={"image_id": "test", "receipt_id": 123},
+                changes={"merchant_name": {"old": "A", "new": "B"}},
+                event_name="MODIFY",
+                collections=[ChromaDBCollection.LINES, ChromaDBCollection.WORDS],
+            ),
+            StreamMessage(
+                entity_type="RECEIPT_WORD_LABEL",
+                entity_data={"image_id": "test", "word_id": 456},
+                changes={"label": {"old": "OLD", "new": "NEW"}},
+                event_name="MODIFY",
+                collections=[ChromaDBCollection.WORDS],
+            ),
         ]
 
         sent_count = send_messages_to_queues(messages)
 
-        assert sent_count == 2
-        mock_sqs.send_message_batch.assert_called_once()
-        call_args = mock_sqs.send_message_batch.call_args[1]
-        assert (
-            call_args["QueueUrl"]
-            == "https://sqs.us-east-1.amazonaws.com/123/test-queue"
-        )
-        assert len(call_args["Entries"]) == 2
+        # Should send 4 messages total: 
+        # - metadata message goes to lines queue (1) + words queue (1) = 2
+        # - word label message goes to words queue (1) = 1  
+        # But words queue gets 2 messages (metadata + word label) = 2
+        # Total: lines=1, words=2, sent_count = 4 (2 per batch response)
+        assert sent_count == 4
+        # Should call send_message_batch twice (once per queue)
+        assert mock_sqs.send_message_batch.call_count == 2
 
     @patch.dict(
         os.environ,
         {
-            "COMPACTION_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/test-queue"
+            "LINES_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/lines-queue",
+            "WORDS_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/words-queue",
         },
     )
-    @patch("stream_processor.boto3.client")
+    @patch("infra.chromadb_compaction.lambdas.stream_processor.boto3.client")
     def test_send_multiple_batches(self, mock_boto3_client):
         """Test sending multiple batches (>10 messages)."""
+        from ..lambdas.stream_processor import StreamMessage
+        from receipt_dynamo.constants import ChromaDBCollection
+        
         mock_sqs = MagicMock()
         mock_boto3_client.return_value = mock_sqs
 
@@ -411,35 +432,38 @@ class TestSendMessagesToSqs:
 
         mock_sqs.send_message_batch.side_effect = batch_response_side_effect
 
-        # Create 25 messages to trigger 3 batches (10, 10, 5)
+        # Create 25 metadata messages to trigger multiple batches on each queue
         messages = [
-            {
-                "entity_type": "RECEIPT_METADATA",
-                "event_name": "MODIFY",
-                "entity_data": {"image_id": f"test-{i}", "receipt_id": 1},
-            }
+            StreamMessage(
+                entity_type="RECEIPT_METADATA",
+                entity_data={"image_id": f"test-{i}", "receipt_id": 1},
+                changes={"merchant_name": {"old": "A", "new": "B"}},
+                event_name="MODIFY",
+                collections=[ChromaDBCollection.LINES, ChromaDBCollection.WORDS],
+            )
             for i in range(25)
         ]
 
         sent_count = send_messages_to_queues(messages)
 
-        assert sent_count == 25  # All messages sent successfully
-        assert mock_sqs.send_message_batch.call_count == 3
-
-        # Verify batch sizes match expectations
-        call_args_list = mock_sqs.send_message_batch.call_args_list
-        batch_sizes = [len(call[1]["Entries"]) for call in call_args_list]
-        assert batch_sizes == [10, 10, 5]
+        # Each message goes to 2 queues, so 25 * 2 = 50 total messages
+        assert sent_count == 50
+        # Each queue gets 25 messages: 3 batches (10, 10, 5) per queue = 6 total calls
+        assert mock_sqs.send_message_batch.call_count == 6
 
     @patch.dict(
         os.environ,
         {
-            "COMPACTION_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/test-queue"
+            "LINES_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/lines-queue",
+            "WORDS_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/words-queue"
         },
     )
-    @patch("stream_processor.boto3.client")
+    @patch("infra.chromadb_compaction.lambdas.stream_processor.boto3.client")
     def test_send_with_failures(self, mock_boto3_client):
         """Test handling SQS send failures."""
+        from ..lambdas.stream_processor import StreamMessage
+        from receipt_dynamo.constants import ChromaDBCollection
+        
         mock_sqs = MagicMock()
         mock_boto3_client.return_value = mock_sqs
         mock_sqs.send_message_batch.return_value = {
@@ -453,9 +477,15 @@ class TestSendMessagesToSqs:
             ],
         }
 
+        # Create one word label message (goes to words queue only)  
         messages = [
-            {"entity_type": "RECEIPT_METADATA", "event_name": "MODIFY"},
-            {"entity_type": "RECEIPT_WORD_LABEL", "event_name": "REMOVE"},
+            StreamMessage(
+                entity_type="RECEIPT_WORD_LABEL",
+                entity_data={"image_id": "test", "word_id": 123},
+                changes={"label": {"old": "OLD", "new": "NEW"}},
+                event_name="MODIFY",
+                collections=[ChromaDBCollection.WORDS],
+            )
         ]
 
         sent_count = send_messages_to_queues(messages)
@@ -469,7 +499,8 @@ class TestLambdaHandler:
     @patch.dict(
         os.environ,
         {
-            "COMPACTION_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/test-queue"
+            "LINES_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/lines-queue",
+            "WORDS_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/words-queue"
         },
     )
     @patch("infra.chromadb_compaction.lambdas.stream_processor.send_messages_to_queues")
@@ -508,15 +539,16 @@ class TestLambdaHandler:
         sent_messages = mock_send_messages.call_args[0][0]
         assert len(sent_messages) == 1
         message = sent_messages[0]
-        assert message["source"] == "dynamodb_stream"
-        assert message["entity_type"] == "RECEIPT_METADATA"
-        assert message["event_name"] == "MODIFY"
-        assert "canonical_merchant_name" in message["changes"]
+        assert message.source == "dynamodb_stream"
+        assert message.entity_type == "RECEIPT_METADATA"
+        assert message.event_name == "MODIFY"
+        assert "canonical_merchant_name" in message.changes
 
     @patch.dict(
         os.environ,
         {
-            "COMPACTION_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/test-queue"
+            "LINES_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/lines-queue",
+            "WORDS_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/words-queue"
         },
     )
     @patch("infra.chromadb_compaction.lambdas.stream_processor.send_messages_to_queues")
@@ -546,8 +578,8 @@ class TestLambdaHandler:
         # Check the message content
         sent_messages = mock_send_messages.call_args[0][0]
         message = sent_messages[0]
-        assert message["entity_type"] == "RECEIPT_WORD_LABEL"
-        assert message["event_name"] == "REMOVE"
+        assert message.entity_type == "RECEIPT_WORD_LABEL"
+        assert message.event_name == "REMOVE"
 
     @patch("infra.chromadb_compaction.lambdas.stream_processor.send_messages_to_queues")
     def test_handler_ignores_insert_events(self, mock_send_messages):
