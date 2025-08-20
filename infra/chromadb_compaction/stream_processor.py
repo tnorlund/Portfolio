@@ -2,7 +2,8 @@
 DynamoDB Stream Processor Lambda for ChromaDB Compaction Integration
 
 This module defines the Lambda function that processes DynamoDB stream events
-for receipt metadata and word label changes, triggering ChromaDB metadata updates
+for receipt metadata and word label changes, triggering ChromaDB
+metadata updates
 through the existing compaction SQS queue.
 
 Focuses on:
@@ -48,7 +49,7 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     Returns:
         Response with processing statistics
     """
-    logger.info(f"Processing {len(event['Records'])} DynamoDB stream records")
+    logger.info("Processing %s DynamoDB stream records", len(event['Records']))
 
     # Avoid logging entire event to prevent PII exposure
     if logger.level <= logging.DEBUG:
@@ -76,18 +77,19 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
                     entity_type, old_entity, new_entity
                 )
 
-                # Always process REMOVE events, even without specific field changes
+                # Always process REMOVE events, even without specific field
+                # changes
                 if changes or record["eventName"] == "REMOVE":
                     # Extract entity identification data
+                    entity = old_entity or new_entity
+                    entity_data = None
                     if entity_type == "RECEIPT_METADATA":
-                        entity = old_entity or new_entity
                         entity_data = {
                             "entity_type": entity_type,
                             "image_id": entity.image_id,
                             "receipt_id": entity.receipt_id,
                         }
                     elif entity_type == "RECEIPT_WORD_LABEL":
-                        entity = old_entity or new_entity
                         entity_data = {
                             "entity_type": entity_type,
                             "image_id": entity.image_id,
@@ -97,30 +99,39 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
                             "label": entity.label,
                         }
 
-                    # Create SQS message for the compaction Lambda
-                    message = {
-                        "source": "dynamodb_stream",
-                        "entity_type": entity_type,
-                        "entity_data": entity_data,
-                        "changes": changes,
-                        "event_name": record["eventName"],
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                        "stream_record_id": record.get("eventID", "unknown"),
-                        "aws_region": record.get("awsRegion", "unknown"),
-                    }
-                    messages_to_send.append(message)
-                    processed_records += 1
+                    if entity_data:
+                        # Create SQS message for the compaction Lambda
+                        message = {
+                            "source": "dynamodb_stream",
+                            "entity_type": entity_type,
+                            "entity_data": entity_data,
+                            "changes": changes,
+                            "event_name": record["eventName"],
+                            "timestamp": datetime.now(
+                                timezone.utc
+                            ).isoformat(),
+                            "stream_record_id": record.get(
+                            "eventID", "unknown"
+                        ),
+                            "aws_region": record.get(
+                            "awsRegion", "unknown"
+                        ),
+                        }
+                        messages_to_send.append(message)
+                        processed_records += 1
 
-        except Exception as e:
+        except (ValueError, KeyError, TypeError) as e:
             logger.error(
-                f"Error processing stream record {record.get('eventID', 'unknown')}: {e}"
+                "Error processing stream record %s: %s",
+                record.get('eventID', 'unknown'),
+                e
             )
             # Continue processing other records
 
     # Send all messages to existing SQS queue in batches
     if messages_to_send:
         sent_count = send_messages_to_sqs(messages_to_send)
-        logger.info(f"Sent {sent_count} messages to compaction queue")
+        logger.info("Sent %s messages to compaction queue", sent_count)
 
     return {
         "statusCode": 200,
@@ -176,12 +187,16 @@ def parse_stream_record(record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                 try:
                     old_entity = item_to_receipt_metadata(old_image)
                 except ValueError as e:
-                    logger.warning(f"Failed to parse old ReceiptMetadata: {e}")
+                    logger.warning(
+                        "Failed to parse old ReceiptMetadata: %s", e
+                    )
             if new_image:
                 try:
                     new_entity = item_to_receipt_metadata(new_image)
                 except ValueError as e:
-                    logger.warning(f"Failed to parse new ReceiptMetadata: {e}")
+                    logger.warning(
+                        "Failed to parse new ReceiptMetadata: %s", e
+                    )
 
         elif entity_type == "RECEIPT_WORD_LABEL":
             if old_image:
@@ -189,14 +204,16 @@ def parse_stream_record(record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                     old_entity = item_to_receipt_word_label(old_image)
                 except ValueError as e:
                     logger.warning(
-                        f"Failed to parse old ReceiptWordLabel: {e}"
+                        "Failed to parse old ReceiptWordLabel: %s",
+                        e
                     )
             if new_image:
                 try:
                     new_entity = item_to_receipt_word_label(new_image)
                 except ValueError as e:
                     logger.warning(
-                        f"Failed to parse new ReceiptWordLabel: {e}"
+                        "Failed to parse new ReceiptWordLabel: %s",
+                        e
                     )
 
         # Return parsed entity information
@@ -209,7 +226,7 @@ def parse_stream_record(record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         }
 
     except (KeyError, ValueError) as e:
-        logger.warning(f"Failed to parse stream record: {e}")
+        logger.warning("Failed to parse stream record: %s", e)
         return None
 
 
@@ -279,43 +296,42 @@ def extract_dynamodb_value(dynamo_value: Dict[str, Any]) -> Any:
 
     # Handle different DynamoDB attribute types
     try:
-        if "S" in dynamo_value:
-            return dynamo_value["S"]
-        elif "N" in dynamo_value:
-            # Try int first, then float
+        # Use a mapping to reduce return statements
+        type_handlers = {
+            'S': lambda v: v['S'],
+            'BOOL': lambda v: v['BOOL'],
+            'NULL': lambda v: None,
+            'SS': lambda v: list(v['SS']),
+            'NS': lambda v: [float(n) for n in v['NS']],
+            'BS': lambda v: v['BS'],
+            'M': lambda v: {
+                k: extract_dynamodb_value(val)
+                for k, val in v['M'].items()
+            },
+            'L': lambda v: [extract_dynamodb_value(item)
+                           for item in v['L']]
+        }
+
+        # Handle numeric type specially
+        if 'N' in dynamo_value:
             try:
-                return int(dynamo_value["N"])
+                return int(dynamo_value['N'])
             except ValueError:
-                return float(dynamo_value["N"])
-        elif "BOOL" in dynamo_value:
-            return dynamo_value["BOOL"]
-        elif "M" in dynamo_value:
-            # Map type - convert to dict
-            return {
-                k: extract_dynamodb_value(v)
-                for k, v in dynamo_value["M"].items()
-            }
-        elif "L" in dynamo_value:
-            # List type - convert to list
-            return [extract_dynamodb_value(item) for item in dynamo_value["L"]]
-        elif "NULL" in dynamo_value:
-            return None
-        elif "SS" in dynamo_value:
-            # String set
-            return list(dynamo_value["SS"])
-        elif "NS" in dynamo_value:
-            # Number set
-            return [float(n) for n in dynamo_value["NS"]]
-        elif "BS" in dynamo_value:
-            # Binary set - return as is
-            return dynamo_value["BS"]
-        else:
-            logger.warning(
-                f"Unknown DynamoDB attribute type in: {list(dynamo_value.keys())}"
-            )
-            return dynamo_value
+                return float(dynamo_value['N'])
+
+        # Handle other types using the mapping
+        for attr_type, handler in type_handlers.items():
+            if attr_type in dynamo_value:
+                return handler(dynamo_value)
+
+        # Unknown attribute type
+        logger.warning(
+            "Unknown DynamoDB attribute type in: %s",
+            list(dynamo_value.keys())
+        )
+        return dynamo_value
     except (ValueError, KeyError, TypeError) as e:
-        logger.error(f"Error extracting DynamoDB value: {e}")
+        logger.error("Error extracting DynamoDB value: %s", e)
         return dynamo_value
 
 
@@ -372,11 +388,13 @@ def send_messages_to_sqs(messages: List[Dict[str, Any]]) -> int:
             if "Failed" in response and response["Failed"]:
                 for failed in response["Failed"]:
                     logger.error(
-                        f"Failed to send message {failed['Id']}: "
-                        f"{failed.get('Code', 'UnknownError')} - {failed.get('Message', 'No error details')}"
+                        "Failed to send message %s: %s - %s",
+                        failed['Id'],
+                        failed.get('Code', 'UnknownError'),
+                        failed.get('Message', 'No error details')
                     )
 
-        except Exception as e:
-            logger.error(f"Error sending SQS batch: {e}")
+        except (ValueError, KeyError, TypeError) as e:
+            logger.error("Error sending SQS batch: %s", e)
 
     return sent_count
