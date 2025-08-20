@@ -29,7 +29,9 @@ class TestCoreCompactionLogic:
         {
             "DYNAMODB_TABLE_NAME": "test-table",
             "CHROMADB_BUCKET": "test-bucket",
-            "COMPACTION_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/test-queue",
+            "COMPACTION_QUEUE_URL": (
+                "https://sqs.us-east-1.amazonaws.com/123/test-queue"
+            ),
             "HEARTBEAT_INTERVAL_SECONDS": "60",
             "LOCK_DURATION_MINUTES": "15",
         },
@@ -122,7 +124,9 @@ class TestCoreCompactionLogic:
         assert "last_label_update" in updated_metadata
 
     def test_chromadb_id_construction(self):
-        """Test ChromaDB ID pattern construction - critical for data integrity."""
+        """
+        Test ChromaDB ID pattern construction - critical for data integrity.
+        """
 
         # Test receipt metadata ID pattern
         image_id = "img_12345"
@@ -212,7 +216,8 @@ class TestCoreCompactionLogic:
             "address": {"old": "123 Main St", "new": "456 Oak St"},
         }
 
-        # Filter to only relevant fields (simulating the actual filtering logic)
+        # Filter to only relevant fields
+        # (simulating the actual filtering logic)
         filtered_changes = {
             field: change
             for field, change in mock_changes.items()
@@ -272,7 +277,7 @@ class TestDataclassIntegration:
             entity_data=message_dict.get("entity_data", {}),
             changes=message_dict.get("changes", {}),
             event_name=message_dict.get("event_name", ""),
-            collection=ChromaDBCollection.LINES,  # Add required collection parameter
+            collection=ChromaDBCollection.LINES,
             source=message_dict.get("source", "dynamodb_stream"),
         )
 

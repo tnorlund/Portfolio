@@ -78,7 +78,10 @@ def create_stream_record_from_entities(
     event_id: str = "test-event-1",
     aws_region: str = "us-east-1",
 ) -> Dict[str, Any]:
-    """Create a DynamoDB stream record from entity objects using their key/to_item methods."""
+    """
+    Create a DynamoDB stream record from entity objects using their
+    key/to_item methods.
+    """
     # Get the key from whichever entity is available
     entity = old_entity or new_entity
     if not entity:
@@ -364,8 +367,12 @@ class TestSendMessagesToQueues:
     @patch.dict(
         os.environ,
         {
-            "LINES_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/lines-queue",
-            "WORDS_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/words-queue",
+            "LINES_QUEUE_URL": (
+                "https://sqs.us-east-1.amazonaws.com/123/lines-queue"
+            ),
+            "WORDS_QUEUE_URL": (
+                "https://sqs.us-east-1.amazonaws.com/123/words-queue"
+            ),
         },
     )
     @patch("infra.chromadb_compaction.lambdas.stream_processor.boto3.client")
@@ -414,8 +421,12 @@ class TestSendMessagesToQueues:
     @patch.dict(
         os.environ,
         {
-            "LINES_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/lines-queue",
-            "WORDS_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/words-queue",
+            "LINES_QUEUE_URL": (
+                "https://sqs.us-east-1.amazonaws.com/123/lines-queue"
+            ),
+            "WORDS_QUEUE_URL": (
+                "https://sqs.us-east-1.amazonaws.com/123/words-queue"
+            ),
         },
     )
     @patch("infra.chromadb_compaction.lambdas.stream_processor.boto3.client")
@@ -454,14 +465,19 @@ class TestSendMessagesToQueues:
 
         # Each message goes to 2 queues, so 25 * 2 = 50 total messages
         assert sent_count == 50
-        # Each queue gets 25 messages: 3 batches (10, 10, 5) per queue = 6 total calls
+        # Each queue gets 25 messages:
+        #   3 batches (10, 10, 5) per queue = 6 total calls
         assert mock_sqs.send_message_batch.call_count == 6
 
     @patch.dict(
         os.environ,
         {
-            "LINES_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/lines-queue",
-            "WORDS_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/words-queue",
+            "LINES_QUEUE_URL": (
+                "https://sqs.us-east-1.amazonaws.com/123/lines-queue"
+            ),
+            "WORDS_QUEUE_URL": (
+                "https://sqs.us-east-1.amazonaws.com/123/words-queue"
+            ),
         },
     )
     @patch("infra.chromadb_compaction.lambdas.stream_processor.boto3.client")
@@ -503,8 +519,12 @@ class TestLambdaHandler:
     @patch.dict(
         os.environ,
         {
-            "LINES_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/lines-queue",
-            "WORDS_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/words-queue",
+            "LINES_QUEUE_URL": (
+                "https://sqs.us-east-1.amazonaws.com/123/lines-queue"
+            ),
+            "WORDS_QUEUE_URL": (
+                "https://sqs.us-east-1.amazonaws.com/123/words-queue"
+            ),
         },
     )
     @patch(
@@ -553,8 +573,12 @@ class TestLambdaHandler:
     @patch.dict(
         os.environ,
         {
-            "LINES_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/lines-queue",
-            "WORDS_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123/words-queue",
+            "LINES_QUEUE_URL": (
+                "https://sqs.us-east-1.amazonaws.com/123/lines-queue"
+            ),
+            "WORDS_QUEUE_URL": (
+                "https://sqs.us-east-1.amazonaws.com/123/words-queue"
+            ),
         },
     )
     @patch(
@@ -603,7 +627,10 @@ class TestLambdaHandler:
                     "dynamodb": {
                         "Keys": {
                             "PK": {
-                                "S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"
+                                "S": (
+                                    "IMAGE#"
+                                    "550e8400-e29b-41d4-a716-446655440000"
+                                )
                             },
                             "SK": {"S": "RECEIPT#00001#METADATA"},
                         },
@@ -636,7 +663,10 @@ class TestLambdaHandler:
                     "dynamodb": {
                         "Keys": {
                             "PK": {
-                                "S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"
+                                "S": (
+                                    "IMAGE#"
+                                    "550e8400-e29b-41d4-a716-446655440000"
+                                )
                             },
                             "SK": {
                                 "S": "RECEIPT#00001#LINE#00002"

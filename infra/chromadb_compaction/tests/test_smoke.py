@@ -4,6 +4,7 @@ Smoke tests for ChromaDB Compaction Infrastructure
 Basic tests to verify imports work and core functionality is accessible.
 These replace the heavy integration tests with lightweight verification.
 """
+
 # pylint: disable=import-outside-toplevel  # Intentional for testing imports
 
 import pytest
@@ -136,7 +137,8 @@ class TestBasicFunctionality:
     def test_relevant_field_constants(self):
         """Test that field filtering constants are correctly defined."""
 
-        # These field lists are critical for determining what triggers ChromaDB updates
+        # These field lists are critical for determining what triggers
+        # ChromaDB updates
         metadata_fields = [
             "canonical_merchant_name",
             "merchant_name",
