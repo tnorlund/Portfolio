@@ -1,7 +1,7 @@
 """
 Infrastructure for Enhanced ChromaDB Compaction Handler Lambda
 
-Creates a Lambda function that processes both stream messages from the DynamoDB 
+Creates a Lambda function that processes both stream messages from the DynamoDB
 stream processor and traditional delta messages for ChromaDB metadata updates.
 """
 
@@ -19,7 +19,7 @@ from .s3_buckets import ChromaDBBuckets
 class EnhancedCompactionLambda(ComponentResource):
     """
     ComponentResource for the Enhanced ChromaDB Compaction Lambda.
-    
+
     Creates:
     - Lambda function for processing stream and delta messages
     - IAM role and policies for DynamoDB, S3, and SQS access
@@ -47,7 +47,9 @@ class EnhancedCompactionLambda(ComponentResource):
             stack: The Pulumi stack name (defaults to current stack)
             opts: Optional resource options
         """
-        super().__init__("chromadb:compaction:EnhancedLambda", name, None, opts)
+        super().__init__(
+            "chromadb:compaction:EnhancedLambda", name, None, opts
+        )
 
         # Get stack
         if stack is None:
@@ -199,7 +201,11 @@ class EnhancedCompactionLambda(ComponentResource):
             code=pulumi.AssetArchive(
                 {
                     "enhanced_compaction_handler.py": pulumi.FileAsset(
-                        str(Path(__file__).parent.parent / "lambdas" / "enhanced_compaction_handler.py")
+                        str(
+                            Path(__file__).parent.parent
+                            / "lambdas"
+                            / "enhanced_compaction_handler.py"
+                        )
                     ),
                 }
             ),

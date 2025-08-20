@@ -166,7 +166,11 @@ class StreamProcessorLambda(ComponentResource):
             code=pulumi.AssetArchive(
                 {
                     "stream_processor.py": pulumi.FileAsset(
-                        str(Path(__file__).parent.parent / "lambdas" / "stream_processor.py")
+                        str(
+                            Path(__file__).parent.parent
+                            / "lambdas"
+                            / "stream_processor.py"
+                        )
                     ),
                 }
             ),
