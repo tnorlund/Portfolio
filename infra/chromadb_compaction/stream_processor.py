@@ -44,6 +44,10 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     logger.info(f"Processing {len(event['Records'])} DynamoDB stream records")
     
+    # Avoid logging entire event to prevent PII exposure
+    if logger.level <= logging.DEBUG:
+        logger.debug("Stream event structure present")
+    
     messages_to_send = []
     processed_records = 0
     
@@ -225,23 +229,41 @@ def extract_dynamodb_value(dynamo_value: Dict[str, Any]) -> Any:
     """
     if not dynamo_value:
         return None
-        
-    if 'S' in dynamo_value:
-        return dynamo_value['S']
-    elif 'N' in dynamo_value:
-        return float(dynamo_value['N'])
-    elif 'BOOL' in dynamo_value:
-        return dynamo_value['BOOL']
-    elif 'M' in dynamo_value:
-        # Map type - convert to dict
-        return {k: extract_dynamodb_value(v) for k, v in dynamo_value['M'].items()}
-    elif 'L' in dynamo_value:
-        # List type - convert to list
-        return [extract_dynamodb_value(item) for item in dynamo_value['L']]
-    elif 'NULL' in dynamo_value:
-        return None
-    else:
-        logger.warning(f"Unknown DynamoDB type: {dynamo_value}")
+    
+    # Handle different DynamoDB attribute types
+    try:
+        if 'S' in dynamo_value:
+            return dynamo_value['S']
+        elif 'N' in dynamo_value:
+            # Try int first, then float
+            try:
+                return int(dynamo_value['N'])
+            except ValueError:
+                return float(dynamo_value['N'])
+        elif 'BOOL' in dynamo_value:
+            return dynamo_value['BOOL']
+        elif 'M' in dynamo_value:
+            # Map type - convert to dict
+            return {k: extract_dynamodb_value(v) for k, v in dynamo_value['M'].items()}
+        elif 'L' in dynamo_value:
+            # List type - convert to list
+            return [extract_dynamodb_value(item) for item in dynamo_value['L']]
+        elif 'NULL' in dynamo_value:
+            return None
+        elif 'SS' in dynamo_value:
+            # String set
+            return list(dynamo_value['SS'])
+        elif 'NS' in dynamo_value:
+            # Number set
+            return [float(n) for n in dynamo_value['NS']]
+        elif 'BS' in dynamo_value:
+            # Binary set - return as is
+            return dynamo_value['BS']
+        else:
+            logger.warning(f"Unknown DynamoDB attribute type in: {list(dynamo_value.keys())}")
+            return dynamo_value
+    except (ValueError, KeyError, TypeError) as e:
+        logger.error(f"Error extracting DynamoDB value: {e}")
         return dynamo_value
 
 
@@ -298,7 +320,7 @@ def send_messages_to_sqs(messages: List[Dict[str, Any]]) -> int:
                 for failed in response['Failed']:
                     logger.error(
                         f"Failed to send message {failed['Id']}: "
-                        f"{failed.get('Message', 'Unknown error')}"
+                        f"{failed.get('Code', 'UnknownError')} - {failed.get('Message', 'No error details')}"
                     )
                     
         except Exception as e:

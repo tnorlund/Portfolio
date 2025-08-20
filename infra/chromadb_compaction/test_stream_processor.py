@@ -259,21 +259,36 @@ class TestSendMessagesToSqs:
         """Test sending multiple batches (>10 messages)."""
         mock_sqs = MagicMock()
         mock_boto3_client.return_value = mock_sqs
-        mock_sqs.send_message_batch.return_value = {
-            'Successful': [{'Id': str(i)} for i in range(10)],
-            'Failed': []
-        }
         
-        # Create 15 messages to trigger 2 batches
+        def batch_response_side_effect(*args, **kwargs):
+            # Return successful response based on actual batch size
+            entries = kwargs.get('Entries', [])
+            return {
+                'Successful': [{'Id': entry['Id']} for entry in entries],
+                'Failed': []
+            }
+        
+        mock_sqs.send_message_batch.side_effect = batch_response_side_effect
+        
+        # Create 25 messages to trigger 3 batches (10, 10, 5)
         messages = [
-            {'entity_type': 'RECEIPT_METADATA', 'event_name': 'MODIFY'}
-            for _ in range(15)
+            {
+                'entity_type': 'RECEIPT_METADATA', 
+                'event_name': 'MODIFY',
+                'entity_data': {'image_id': f'test-{i}', 'receipt_id': 1}
+            }
+            for i in range(25)
         ]
         
         sent_count = send_messages_to_sqs(messages)
         
-        assert sent_count == 20  # 10 + 10 (mock returns 10 successful for each batch)
-        assert mock_sqs.send_message_batch.call_count == 2
+        assert sent_count == 25  # All messages sent successfully
+        assert mock_sqs.send_message_batch.call_count == 3
+        
+        # Verify batch sizes match expectations
+        call_args_list = mock_sqs.send_message_batch.call_args_list
+        batch_sizes = [len(call[1]['Entries']) for call in call_args_list]
+        assert batch_sizes == [10, 10, 5]
     
     @patch.dict(os.environ, {'COMPACTION_QUEUE_URL': 'https://sqs.us-east-1.amazonaws.com/123/test-queue'})
     @patch('stream_processor.boto3.client')
@@ -283,7 +298,7 @@ class TestSendMessagesToSqs:
         mock_boto3_client.return_value = mock_sqs
         mock_sqs.send_message_batch.return_value = {
             'Successful': [{'Id': '0'}],
-            'Failed': [{'Id': '1', 'Message': 'Test failure'}]
+            'Failed': [{'Id': '1', 'Code': 'InvalidMessageContents', 'Message': 'Test failure'}]
         }
         
         messages = [

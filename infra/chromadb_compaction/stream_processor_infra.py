@@ -107,13 +107,19 @@ class StreamProcessorLambda(ComponentResource):
                             "Action": [
                                 "dynamodb:DescribeStream",
                                 "dynamodb:GetRecords",
-                                "dynamodb:GetShardIterator",
-                                "dynamodb:ListStreams"
+                                "dynamodb:GetShardIterator"
                             ],
                             "Resource": [
                                 args[0],  # Table ARN
                                 f"{args[0]}/stream/*"  # Stream ARN pattern
                             ]
+                        },
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "dynamodb:ListStreams"
+                            ],
+                            "Resource": "*"
                         }
                     ]
                 })
@@ -291,7 +297,7 @@ def create_stream_processor(
         name=f"{name}-mapping",
         lambda_function=lambda_processor.function,
         dynamodb_stream_arn=dynamodb_stream_arn,
-        opts=ResourceOptions(parent=lambda_processor, **(opts.__dict__ if opts else {})),
+        opts=ResourceOptions.merge(ResourceOptions(parent=lambda_processor), opts) if opts else ResourceOptions(parent=lambda_processor),
     )
     
     return lambda_processor, event_mapping
