@@ -73,7 +73,6 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 
-
 def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     """
     Process DynamoDB stream events for ChromaDB metadata synchronization.
@@ -187,10 +186,10 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
 def _detect_entity_type(sk: str) -> Optional[str]:
     """
     Detect entity type from SK pattern.
-    
+
     Args:
         sk: Sort key from DynamoDB item
-        
+
     Returns:
         Entity type string or None if not relevant
     """
@@ -202,34 +201,30 @@ def _detect_entity_type(sk: str) -> Optional[str]:
 
 
 def _parse_entity(
-    image: Optional[Dict[str, Any]], 
-    entity_type: str, 
-    image_type: str
+    image: Optional[Dict[str, Any]], entity_type: str, image_type: str
 ) -> Optional[Union[ReceiptMetadata, ReceiptWordLabel]]:
     """
     Parse DynamoDB image into typed entity.
-    
+
     Args:
         image: DynamoDB image (OldImage or NewImage)
         entity_type: Type of entity to parse
         image_type: Description for logging (old/new)
-        
+
     Returns:
         Parsed entity or None if parsing fails
     """
     if not image:
         return None
-        
+
     try:
         if entity_type == "RECEIPT_METADATA":
             return item_to_receipt_metadata(image)
         elif entity_type == "RECEIPT_WORD_LABEL":
             return item_to_receipt_word_label(image)
     except ValueError as e:
-        logger.warning(
-            "Failed to parse %s %s: %s", image_type, entity_type, e
-        )
-    
+        logger.warning("Failed to parse %s %s: %s", image_type, entity_type, e)
+
     return None
 
 
