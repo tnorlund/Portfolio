@@ -281,60 +281,6 @@ def get_chromadb_relevant_changes(
     return changes
 
 
-def extract_dynamodb_value(dynamo_value: Dict[str, Any]) -> Any:
-    """
-    Extract the actual value from DynamoDB attribute format.
-
-    Args:
-        dynamo_value: DynamoDB attribute (e.g., {'S': 'string'}, {'N': '123'})
-
-    Returns:
-        The actual value
-    """
-    if not dynamo_value:
-        return None
-
-    # Handle different DynamoDB attribute types
-    try:
-        # Use a mapping to reduce return statements
-        type_handlers = {
-            'S': lambda v: v['S'],
-            'BOOL': lambda v: v['BOOL'],
-            'NULL': lambda v: None,
-            'SS': lambda v: list(v['SS']),
-            'NS': lambda v: [float(n) for n in v['NS']],
-            'BS': lambda v: v['BS'],
-            'M': lambda v: {
-                k: extract_dynamodb_value(val)
-                for k, val in v['M'].items()
-            },
-            'L': lambda v: [extract_dynamodb_value(item)
-                           for item in v['L']]
-        }
-
-        # Handle numeric type specially
-        if 'N' in dynamo_value:
-            try:
-                return int(dynamo_value['N'])
-            except ValueError:
-                return float(dynamo_value['N'])
-
-        # Handle other types using the mapping
-        for attr_type, handler in type_handlers.items():
-            if attr_type in dynamo_value:
-                return handler(dynamo_value)
-
-        # Unknown attribute type
-        logger.warning(
-            "Unknown DynamoDB attribute type in: %s",
-            list(dynamo_value.keys())
-        )
-        return dynamo_value
-    except (ValueError, KeyError, TypeError) as e:
-        logger.error("Error extracting DynamoDB value: %s", e)
-        return dynamo_value
-
-
 def send_messages_to_sqs(messages: List[Dict[str, Any]]) -> int:
     """
     Send messages to the existing compaction SQS queue.
