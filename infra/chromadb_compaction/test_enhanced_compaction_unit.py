@@ -27,14 +27,18 @@ class TestEnhancedCompactionLogic:
         },
     )
     @patch("enhanced_compaction_handler.boto3")
-    @patch("enhanced_compaction_handler.chromadb")
+    @patch("enhanced_compaction_handler.ChromaDBClient")
+    @patch("enhanced_compaction_handler.download_snapshot_from_s3")
+    @patch("enhanced_compaction_handler.upload_delta_to_s3")
     @patch("enhanced_compaction_handler.DynamoClient")
     @patch("enhanced_compaction_handler.LockManager")
     def test_process_metadata_update_logic(
         self,
         mock_lock_manager_class,
         mock_dynamo_client_class,
-        mock_chromadb,
+        mock_upload_delta,
+        mock_download_snapshot,
+        mock_chromadb_client_class,
         mock_boto3,
     ):
         """Test metadata update logic with all dependencies mocked."""
@@ -42,8 +46,12 @@ class TestEnhancedCompactionLogic:
         # Import after patching to avoid initialization errors
         from enhanced_compaction_handler import update_receipt_metadata
 
-        # Setup mock collection
+        # Setup mock ChromaDB client and collection
+        mock_chroma_client = MagicMock()
+        mock_chromadb_client_class.return_value = mock_chroma_client
+        
         mock_collection = MagicMock()
+        mock_chroma_client.get_collection.return_value = mock_collection
         mock_collection.get.return_value = {
             "ids": [
                 "IMAGE#test-uuid#RECEIPT#00001#LINE#00001",
@@ -56,6 +64,10 @@ class TestEnhancedCompactionLogic:
                 {"existing_field": "value3"},
             ],
         }
+        
+        # Setup S3 helper mocks
+        mock_download_snapshot.return_value = {"status": "downloaded"}
+        mock_upload_delta.return_value = {"status": "uploaded"}
 
         changes = {
             "canonical_merchant_name": {"old": "Old", "new": "New Merchant"}
@@ -90,22 +102,30 @@ class TestEnhancedCompactionLogic:
         },
     )
     @patch("enhanced_compaction_handler.boto3")
-    @patch("enhanced_compaction_handler.chromadb")
+    @patch("enhanced_compaction_handler.ChromaDBClient")
+    @patch("enhanced_compaction_handler.download_snapshot_from_s3")
+    @patch("enhanced_compaction_handler.upload_delta_to_s3")
     @patch("enhanced_compaction_handler.DynamoClient")
     @patch("enhanced_compaction_handler.LockManager")
     def test_remove_metadata_logic(
         self,
         mock_lock_manager_class,
         mock_dynamo_client_class,
-        mock_chromadb,
+        mock_upload_delta,
+        mock_download_snapshot,
+        mock_chromadb_client_class,
         mock_boto3,
     ):
         """Test metadata removal logic."""
 
         from enhanced_compaction_handler import remove_receipt_metadata
 
-        # Setup mock collection
+        # Setup mock ChromaDB client and collection
+        mock_chroma_client = MagicMock()
+        mock_chromadb_client_class.return_value = mock_chroma_client
+        
         mock_collection = MagicMock()
+        mock_chroma_client.get_collection.return_value = mock_collection
         mock_collection.get.return_value = {
             "ids": [
                 "IMAGE#test-uuid#RECEIPT#00001#LINE#00001",
@@ -124,6 +144,10 @@ class TestEnhancedCompactionLogic:
                 },
             ],
         }
+        
+        # Setup S3 helper mocks
+        mock_download_snapshot.return_value = {"status": "downloaded"}
+        mock_upload_delta.return_value = {"status": "uploaded"}
 
         # Test the removal logic
         updated_count = remove_receipt_metadata(
@@ -155,14 +179,18 @@ class TestEnhancedCompactionLogic:
         },
     )
     @patch("enhanced_compaction_handler.boto3")
-    @patch("enhanced_compaction_handler.chromadb")
+    @patch("enhanced_compaction_handler.ChromaDBClient")
+    @patch("enhanced_compaction_handler.download_snapshot_from_s3")
+    @patch("enhanced_compaction_handler.upload_delta_to_s3")
     @patch("enhanced_compaction_handler.DynamoClient")
     @patch("enhanced_compaction_handler.LockManager")
     def test_update_word_labels_logic(
         self,
         mock_lock_manager_class,
         mock_dynamo_client_class,
-        mock_chromadb,
+        mock_upload_delta,
+        mock_download_snapshot,
+        mock_chromadb_client_class,
         mock_boto3,
     ):
         """Test word label update logic."""
@@ -171,12 +199,20 @@ class TestEnhancedCompactionLogic:
 
         chromadb_id = "IMAGE#test-uuid#RECEIPT#00001#LINE#00002#WORD#00003"
 
-        # Setup mock collection
+        # Setup mock ChromaDB client and collection
+        mock_chroma_client = MagicMock()
+        mock_chromadb_client_class.return_value = mock_chroma_client
+        
         mock_collection = MagicMock()
+        mock_chroma_client.get_collection.return_value = mock_collection
         mock_collection.get.return_value = {
             "ids": [chromadb_id],
             "metadatas": [{"existing_field": "value"}],
         }
+        
+        # Setup S3 helper mocks
+        mock_download_snapshot.return_value = {"status": "downloaded"}
+        mock_upload_delta.return_value = {"status": "uploaded"}
 
         changes = {
             "label": {"old": "OLD", "new": "NEW"},
@@ -213,14 +249,18 @@ class TestEnhancedCompactionLogic:
         },
     )
     @patch("enhanced_compaction_handler.boto3")
-    @patch("enhanced_compaction_handler.chromadb")
+    @patch("enhanced_compaction_handler.ChromaDBClient")
+    @patch("enhanced_compaction_handler.download_snapshot_from_s3")
+    @patch("enhanced_compaction_handler.upload_delta_to_s3")
     @patch("enhanced_compaction_handler.DynamoClient")
     @patch("enhanced_compaction_handler.LockManager")
     def test_remove_word_labels_logic(
         self,
         mock_lock_manager_class,
         mock_dynamo_client_class,
-        mock_chromadb,
+        mock_upload_delta,
+        mock_download_snapshot,
+        mock_chromadb_client_class,
         mock_boto3,
     ):
         """Test word label removal logic."""
@@ -229,8 +269,12 @@ class TestEnhancedCompactionLogic:
 
         chromadb_id = "IMAGE#test-uuid#RECEIPT#00001#LINE#00002#WORD#00003"
 
-        # Setup mock collection
+        # Setup mock ChromaDB client and collection
+        mock_chroma_client = MagicMock()
+        mock_chromadb_client_class.return_value = mock_chroma_client
+        
         mock_collection = MagicMock()
+        mock_chroma_client.get_collection.return_value = mock_collection
         mock_collection.get.return_value = {
             "ids": [chromadb_id],
             "metadatas": [
@@ -242,6 +286,10 @@ class TestEnhancedCompactionLogic:
                 }
             ],
         }
+        
+        # Setup S3 helper mocks
+        mock_download_snapshot.return_value = {"status": "downloaded"}
+        mock_upload_delta.return_value = {"status": "uploaded"}
 
         # Test the removal logic
         updated_count = remove_word_labels(mock_collection, chromadb_id)

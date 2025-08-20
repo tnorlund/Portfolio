@@ -17,11 +17,15 @@ from logging import INFO, Formatter, StreamHandler, getLogger
 from typing import Any, Dict, List, Optional
 
 import boto3
-import chromadb
 
 # Import receipt_dynamo for proper DynamoDB operations
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_label.utils.lock_manager import LockManager
+from receipt_label.utils.chroma_client import ChromaDBClient
+from receipt_label.utils.chroma_s3_helpers import (
+    download_snapshot_from_s3,
+    upload_delta_to_s3,
+)
 
 logger = getLogger()
 logger.setLevel(INFO)
@@ -37,7 +41,6 @@ if len(logger.handlers) == 0:
     logger.addHandler(handler)
 
 # Initialize clients
-s3_client = boto3.client("s3")
 sqs_client = boto3.client("sqs")
 
 # Initialize DynamoDB client only when needed to avoid import-time errors
@@ -237,22 +240,32 @@ def process_metadata_updates(
                 snapshot_key = f"{database}/snapshot/latest/"
 
                 try:
-                    # Download current snapshot
+                    # Download current snapshot using helper
                     temp_dir = tempfile.mkdtemp()
-                    download_from_s3(bucket, snapshot_key, temp_dir)
+                    download_result = download_snapshot_from_s3(
+                        bucket=bucket,
+                        snapshot_key=snapshot_key,
+                        local_snapshot_path=temp_dir,
+                        verify_integrity=True
+                    )
+                    
+                    if download_result["status"] != "downloaded":
+                        logger.error(f"Failed to download snapshot: {download_result}")
+                        continue
 
-                    # Load ChromaDB
-                    chroma_client = chromadb.PersistentClient(path=temp_dir)
+                    # Load ChromaDB using helper
+                    chroma_client = ChromaDBClient(
+                        persist_directory=temp_dir,
+                        collection_prefix="receipt",
+                        mode="read"
+                    )
 
                     # Get appropriate collection
-                    collection_name = f"receipt_{database}"
                     try:
-                        collection = chroma_client.get_collection(
-                            collection_name
-                        )
+                        collection = chroma_client.get_collection(database)
                     except Exception:
                         logger.warning(
-                            f"Collection {collection_name} not found"
+                            f"Collection receipt_{database} not found"
                         )
                         continue
 
@@ -267,16 +280,30 @@ def process_metadata_updates(
                         )
 
                     if updated_count > 0:
-                        # Upload updated snapshot
-                        upload_to_s3(temp_dir, bucket, snapshot_key)
-                        logger.info(
-                            f"Updated {updated_count} records in {collection_name}"
+                        # Upload updated snapshot using helper
+                        upload_result = upload_delta_to_s3(
+                            local_delta_path=temp_dir,
+                            bucket=bucket,
+                            delta_key=snapshot_key.rstrip("/") + "/",
+                            metadata={
+                                "update_type": "metadata_update",
+                                "image_id": image_id,
+                                "receipt_id": str(receipt_id),
+                                "updated_count": str(updated_count)
+                            }
                         )
+                        
+                        if upload_result["status"] == "uploaded":
+                            logger.info(
+                                f"Updated {updated_count} records in receipt_{database}"
+                            )
+                        else:
+                            logger.error(f"Failed to upload snapshot: {upload_result}")
 
                     results.append(
                         {
                             "database": database,
-                            "collection": collection_name,
+                            "collection": f"receipt_{database}",
                             "updated_count": updated_count,
                             "image_id": image_id,
                             "receipt_id": receipt_id,
@@ -320,16 +347,29 @@ def process_label_updates(
     )
 
     try:
-        # Download current snapshot
+        # Download current snapshot using helper
         temp_dir = tempfile.mkdtemp()
-        download_from_s3(bucket, snapshot_key, temp_dir)
+        download_result = download_snapshot_from_s3(
+            bucket=bucket,
+            snapshot_key=snapshot_key,
+            local_snapshot_path=temp_dir,
+            verify_integrity=True
+        )
+        
+        if download_result["status"] != "downloaded":
+            logger.error(f"Failed to download snapshot: {download_result}")
+            return results
 
-        # Load ChromaDB
-        chroma_client = chromadb.PersistentClient(path=temp_dir)
+        # Load ChromaDB using helper
+        chroma_client = ChromaDBClient(
+            persist_directory=temp_dir,
+            collection_prefix="receipt",
+            mode="read"
+        )
 
         # Get words collection
         try:
-            collection = chroma_client.get_collection("receipt_words")
+            collection = chroma_client.get_collection("words")
         except Exception:
             logger.warning("receipt_words collection not found")
             return results
@@ -376,8 +416,20 @@ def process_label_updates(
         # Upload updated snapshot if any updates occurred
         total_updates = sum(r.get("updated_count", 0) for r in results)
         if total_updates > 0:
-            upload_to_s3(temp_dir, bucket, snapshot_key)
-            logger.info(f"Updated {total_updates} word labels in ChromaDB")
+            upload_result = upload_delta_to_s3(
+                local_delta_path=temp_dir,
+                bucket=bucket,
+                delta_key=snapshot_key.rstrip("/") + "/",
+                metadata={
+                    "update_type": "label_update",
+                    "total_updates": str(total_updates)
+                }
+            )
+            
+            if upload_result["status"] == "uploaded":
+                logger.info(f"Updated {total_updates} word labels in ChromaDB")
+            else:
+                logger.error(f"Failed to upload snapshot: {upload_result}")
 
     except Exception as e:
         logger.error(f"Error processing label updates: {e}")
@@ -390,7 +442,7 @@ def process_label_updates(
 
 
 def update_receipt_metadata(
-    collection: Any, image_id: str, receipt_id: int, changes: Dict[str, Any]
+    collection, image_id: str, receipt_id: int, changes: Dict[str, Any]
 ) -> int:
     """Update metadata for all embeddings of a specific receipt."""
     # Build query to find all embeddings for this receipt
@@ -433,7 +485,7 @@ def update_receipt_metadata(
 
 
 def remove_receipt_metadata(
-    collection: Any, image_id: str, receipt_id: int
+    collection, image_id: str, receipt_id: int
 ) -> int:
     """Remove merchant metadata fields from all embeddings of a specific receipt."""
     id_prefix = f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#"
@@ -479,7 +531,7 @@ def remove_receipt_metadata(
 
 
 def update_word_labels(
-    collection: Any, chromadb_id: str, changes: Dict[str, Any]
+    collection, chromadb_id: str, changes: Dict[str, Any]
 ) -> int:
     """Update label metadata for a specific word embedding."""
     try:
@@ -519,7 +571,7 @@ def update_word_labels(
         return 0
 
 
-def remove_word_labels(collection: Any, chromadb_id: str) -> int:
+def remove_word_labels(collection, chromadb_id: str) -> int:
     """Remove label metadata from a specific word embedding."""
     try:
         # Get the specific record
@@ -587,34 +639,4 @@ def traditional_compaction_handler(
     return compact_handler(event, context)
 
 
-# Utility functions from existing compaction handler
-def download_from_s3(bucket: str, prefix: str, local_path: str):
-    """Download all objects with a given prefix from S3."""
-    paginator = s3_client.get_paginator("list_objects_v2")
-    pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
-
-    for page in pages:
-        if "Contents" not in page:
-            continue
-
-        for obj in page["Contents"]:
-            key = obj["Key"]
-            relative_path = key[len(prefix) :]
-            if not relative_path:
-                continue
-
-            local_file = os.path.join(local_path, relative_path)
-            os.makedirs(os.path.dirname(local_file), exist_ok=True)
-
-            s3_client.download_file(bucket, key, local_file)
-
-
-def upload_to_s3(local_path: str, bucket: str, prefix: str):
-    """Upload a directory to S3."""
-    for root, _, files in os.walk(local_path):
-        for file in files:
-            local_file = os.path.join(root, file)
-            relative_path = os.path.relpath(local_file, local_path)
-            s3_key = os.path.join(prefix, relative_path)
-
-            s3_client.upload_file(local_file, bucket, s3_key)
+# Note: S3 utility functions removed - now using chroma_s3_helpers instead
