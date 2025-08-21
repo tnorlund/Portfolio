@@ -382,10 +382,9 @@ class WordEmbeddingWorkflow(ComponentResource):
                                     "Resource": arns[2],
                                     "Comment": "Merge a single group of chunks",
                                     "Parameters": {
-                                        "operation": "process_chunk",
-                                        "batch_id.$": "$.batch_id",
-                                        "chunk_index.$": "$.group_index",
-                                        "delta_results.$": "$.chunk_group",
+                                        "operation": "final_merge",
+                                        "batch_id.$": "States.Format('{}-group-{}', $.batch_id, $.group_index)",
+                                        "chunk_results.$": "$.chunk_group", 
                                         "database": "words",
                                     },
                                     "End": True,
