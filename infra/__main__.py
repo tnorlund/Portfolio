@@ -39,7 +39,10 @@ from validate_merchant_step_functions import ValidateMerchantStepFunctions
 from validation_by_merchant import ValidationByMerchantStepFunction
 from validation_pipeline import ValidationPipeline
 
-from chromadb_compaction import create_chromadb_compaction_infrastructure
+from chromadb_compaction import (
+    ChromaDBBuckets,
+    create_chromadb_compaction_infrastructure,
+)
 
 # Using the optimized docker-build based base images with scoped contexts
 from base_images.base_images import BaseImages
@@ -103,18 +106,25 @@ validate_merchant_step_functions = ValidateMerchantStepFunctions(
 )
 validation_pipeline = ValidationPipeline("validation-pipeline")
 
-# Create ChromaDB compaction infrastructure first (it owns the queues)
+# Create shared ChromaDB bucket (used by both compaction and embedding)
+shared_chromadb_buckets = ChromaDBBuckets(
+    f"chromadb-{pulumi.get_stack()}-shared-buckets",
+)
+
+# Create ChromaDB compaction infrastructure using shared bucket
 chromadb_infrastructure = create_chromadb_compaction_infrastructure(
     name=f"chromadb-{pulumi.get_stack()}",
     dynamodb_table_arn=dynamodb_table.arn,
     dynamodb_stream_arn=dynamodb_table.stream_arn,
+    chromadb_buckets=shared_chromadb_buckets,
     base_images=base_images,
 )
 
-# Create embedding infrastructure using ChromaDB's queues
+# Create embedding infrastructure using shared bucket and queues
 embedding_infrastructure = EmbeddingInfrastructure(
     f"embedding-infra-{pulumi.get_stack()}",
     chromadb_queues=chromadb_infrastructure.chromadb_queues,
+    chromadb_buckets=shared_chromadb_buckets,
     base_images=base_images,
 )
 validation_by_merchant_step_functions = ValidationByMerchantStepFunction(
@@ -697,7 +707,7 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 # pulumi.export("ml_packages_built", ml_package_builder.packages)
 
 # ChromaDB infrastructure exports (hybrid deployment)
-pulumi.export("chromadb_bucket_name", chromadb_infrastructure.bucket_name)
+pulumi.export("chromadb_bucket_name", shared_chromadb_buckets.bucket_name)
 pulumi.export(
     "chromadb_lines_queue_url", chromadb_infrastructure.lines_queue_url
 )

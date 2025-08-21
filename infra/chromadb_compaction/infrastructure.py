@@ -2,6 +2,7 @@
 
 Coordinates all components including SQS queues, S3 buckets, and hybrid Lambda deployment.
 """
+
 # pylint: disable=too-many-instance-attributes,too-many-arguments,too-many-positional-arguments
 # Infrastructure components naturally have many attributes and configuration parameters
 
@@ -29,6 +30,7 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
         name: str,
         dynamodb_table_arn: str,
         dynamodb_stream_arn: str,
+        chromadb_buckets=None,
         base_images=None,
         opts: Optional[ResourceOptions] = None,
     ):
@@ -39,6 +41,7 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
             name: The unique name of the resource
             dynamodb_table_arn: ARN of the DynamoDB table
             dynamodb_stream_arn: ARN of the DynamoDB stream
+            chromadb_buckets: Shared ChromaDB S3 buckets component
             base_images: Base images for container builds
             opts: Optional resource options
         """
@@ -52,11 +55,15 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Create S3 buckets for ChromaDB snapshots
-        self.chromadb_buckets = create_chromadb_buckets(
-            name=f"{name}-buckets",
-            opts=ResourceOptions(parent=self),
-        )
+        # Use provided ChromaDB buckets or create new ones
+        if chromadb_buckets is not None:
+            self.chromadb_buckets = chromadb_buckets
+        else:
+            # Fallback: create S3 buckets for ChromaDB snapshots
+            self.chromadb_buckets = create_chromadb_buckets(
+                name=f"{name}-buckets",
+                opts=ResourceOptions(parent=self),
+            )
 
         # Create hybrid Lambda deployment
         self.lambda_deployment = create_hybrid_lambda_deployment(
@@ -95,6 +102,7 @@ def create_chromadb_compaction_infrastructure(
     name: str = "chromadb-compaction",
     dynamodb_table_arn: str = None,
     dynamodb_stream_arn: str = None,
+    chromadb_buckets=None,
     base_images=None,
     opts: Optional[ResourceOptions] = None,
 ) -> ChromaDBCompactionInfrastructure:
@@ -105,6 +113,7 @@ def create_chromadb_compaction_infrastructure(
         name: Base name for the resources
         dynamodb_table_arn: ARN of the DynamoDB table
         dynamodb_stream_arn: ARN of the DynamoDB stream
+        chromadb_buckets: Shared ChromaDB S3 buckets component
         base_images: Base images for container builds
         opts: Optional resource options
 
@@ -120,6 +129,7 @@ def create_chromadb_compaction_infrastructure(
         name=name,
         dynamodb_table_arn=dynamodb_table_arn,
         dynamodb_stream_arn=dynamodb_stream_arn,
+        chromadb_buckets=chromadb_buckets,
         base_images=base_images,
         opts=opts,
     )

@@ -39,6 +39,7 @@ class EmbeddingInfrastructure(ComponentResource):
         self,
         name: str,
         chromadb_queues,
+        chromadb_buckets=None,
         base_images=None,
         opts: Optional[ResourceOptions] = None,
     ):
@@ -47,6 +48,7 @@ class EmbeddingInfrastructure(ComponentResource):
         Args:
             name: Component name
             chromadb_queues: ChromaDB SQS queues component (from chromadb_compaction)
+            chromadb_buckets: Shared ChromaDB S3 buckets component
             base_images: Optional base images for Docker builds
             opts: Pulumi resource options
         """
@@ -61,12 +63,16 @@ class EmbeddingInfrastructure(ComponentResource):
 
         # Use provided ChromaDB queues instead of creating our own
         self.chromadb_queues = chromadb_queues
-        
-        # Create ChromaDB buckets for embedding-specific storage
-        self.chromadb_buckets = ChromaDBBuckets(
-            f"{name}-chromadb-buckets",
-            opts=ResourceOptions(parent=self),
-        )
+
+        # Use provided ChromaDB buckets or create new ones
+        if chromadb_buckets is not None:
+            self.chromadb_buckets = chromadb_buckets
+        else:
+            # Fallback: create ChromaDB buckets for embedding-specific storage
+            self.chromadb_buckets = ChromaDBBuckets(
+                f"{name}-chromadb-buckets",
+                opts=ResourceOptions(parent=self),
+            )
 
         # Create Docker image component
         self.docker = DockerImageComponent(
@@ -151,9 +157,7 @@ class EmbeddingInfrastructure(ComponentResource):
                 self.container_lambda_functions.get("embedding-word-poll")
             )
             self.container_lambda_functions["compaction"] = (
-                self.container_lambda_functions.get(
-                    "embedding-vector-compact"
-                )
+                self.container_lambda_functions.get("embedding-vector-compact")
             )
 
     def _register_outputs(self):
@@ -164,9 +168,7 @@ class EmbeddingInfrastructure(ComponentResource):
                     Output.all(
                         self.ecr_repo.repository_url,
                         self.docker_image.digest,
-                    ).apply(
-                        lambda args: f"{args[0].split(':')[0]}@{args[1]}"
-                    )
+                    ).apply(lambda args: f"{args[0].split(':')[0]}@{args[1]}")
                     if hasattr(self, "docker_image")
                     else None
                 ),
