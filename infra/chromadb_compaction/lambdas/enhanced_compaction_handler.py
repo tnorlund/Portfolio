@@ -31,6 +31,7 @@ from receipt_label.utils.chroma_client import ChromaDBClient
 from receipt_label.utils.chroma_s3_helpers import (
     download_snapshot_from_s3,
     upload_delta_to_s3,
+    upload_snapshot_with_hash,
 )
 
 
@@ -535,11 +536,12 @@ def process_metadata_updates(
                     )
 
                     if updated_count > 0:
-                        # Upload updated snapshot using helper
-                        upload_result = upload_delta_to_s3(
-                            local_delta_path=temp_dir,
+                        # Upload updated snapshot with hash using enhanced helper
+                        upload_result = upload_snapshot_with_hash(
+                            local_snapshot_path=temp_dir,
                             bucket=bucket,
-                            delta_key=snapshot_key.rstrip("/") + "/",
+                            snapshot_key=snapshot_key.rstrip("/") + "/",
+                            calculate_hash=True,  # Enable hash calculation
                             metadata={
                                 "update_type": "metadata_update",
                                 "image_id": image_id,
@@ -550,9 +552,10 @@ def process_metadata_updates(
 
                         if upload_result["status"] == "uploaded":
                             logger.info(
-                                "Updated %d records in receipt_%s",
+                                "Updated %d records in receipt_%s, hash: %s",
                                 updated_count,
                                 database,
+                                upload_result.get("hash", "not_calculated")
                             )
                         else:
                             logger.error(
@@ -695,15 +698,16 @@ def process_label_updates(
                 )
                 results.append(result)
 
-        # Upload updated snapshot if any updates occurred
+        # Upload updated snapshot with hash if any updates occurred
         total_updates = sum(
             r.updated_count for r in results if r.error is None
         )
         if total_updates > 0:
-            upload_result = upload_delta_to_s3(
-                local_delta_path=temp_dir,
+            upload_result = upload_snapshot_with_hash(
+                local_snapshot_path=temp_dir,
                 bucket=bucket,
-                delta_key=snapshot_key.rstrip("/") + "/",
+                snapshot_key=snapshot_key.rstrip("/") + "/",
+                calculate_hash=True,  # Enable hash calculation
                 metadata={
                     "update_type": "label_update",
                     "total_updates": str(total_updates),
@@ -712,7 +716,9 @@ def process_label_updates(
 
             if upload_result["status"] == "uploaded":
                 logger.info(
-                    "Updated %d word labels in ChromaDB", total_updates
+                    "Updated %d word labels in ChromaDB, hash: %s",
+                    total_updates,
+                    upload_result.get("hash", "not_calculated")
                 )
             else:
                 logger.error("Failed to upload snapshot: %s", upload_result)

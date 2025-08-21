@@ -24,6 +24,13 @@ from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.constants import ChromaDBCollection
 from receipt_label.utils.lock_manager import LockManager
 
+try:
+    from receipt_label.utils.chroma_s3_helpers import upload_snapshot_with_hash
+    HASH_UPLOAD_AVAILABLE = True
+except ImportError:
+    HASH_UPLOAD_AVAILABLE = False
+    logger.warning("Hash-enabled upload not available, using legacy upload")
+
 logger = getLogger()
 logger.setLevel(INFO)
 
@@ -338,7 +345,7 @@ def process_chunk_deltas(
 
         # Upload intermediate chunk to S3
         intermediate_key = f"intermediate/{batch_id}/chunk-{chunk_index}/"
-        upload_to_s3(temp_dir, bucket, intermediate_key)
+        upload_to_s3(temp_dir, bucket, intermediate_key, calculate_hash=False)  # No hash for intermediate chunks
 
         processing_time = time.time() - start_time
         logger.info(
@@ -541,13 +548,36 @@ def perform_final_merge(batch_id: str, total_chunks: int, database_name: Optiona
             # Backward compatibility
             timestamped_key = f"snapshot/timestamped/{timestamp}/"
 
-        # Upload to S3
-        upload_to_s3(temp_dir, bucket, timestamped_key)
-        logger.info(f"Uploaded timestamped snapshot to: {timestamped_key}")
+        # Upload timestamped snapshot with hash
+        timestamped_result = upload_to_s3(
+            temp_dir, 
+            bucket, 
+            timestamped_key, 
+            calculate_hash=True,
+            metadata={
+                "batch_id": batch_id,
+                "total_embeddings": str(total_embeddings),
+                "merge_operation": "final_merge",
+                "database": database_name or "unknown"
+            }
+        )
+        logger.info(f"Uploaded timestamped snapshot to: {timestamped_key}, hash: {timestamped_result.get('hash', 'not_calculated')}")
 
-        # Update latest pointer
-        upload_to_s3(temp_dir, bucket, snapshot_key)
-        logger.info(f"Updated latest snapshot pointer at: {snapshot_key}")
+        # Update latest pointer with hash
+        latest_result = upload_to_s3(
+            temp_dir, 
+            bucket, 
+            snapshot_key, 
+            calculate_hash=True,
+            metadata={
+                "batch_id": batch_id,
+                "total_embeddings": str(total_embeddings),
+                "merge_operation": "final_merge",
+                "database": database_name or "unknown",
+                "pointer_to": timestamped_key
+            }
+        )
+        logger.info(f"Updated latest snapshot pointer at: {snapshot_key}, hash: {latest_result.get('hash', 'not_calculated')}")
 
         processing_time = time.time() - start_time
         logger.info(
@@ -612,12 +642,70 @@ def download_from_s3(bucket: str, prefix: str, local_path: str):
             s3_client.download_file(bucket, key, local_file)
 
 
-def upload_to_s3(local_path: str, bucket: str, prefix: str):
-    """Upload a directory to S3."""
-    for root, _, files in os.walk(local_path):
-        for file in files:
-            local_file = os.path.join(root, file)
-            relative_path = os.path.relpath(local_file, local_path)
-            s3_key = os.path.join(prefix, relative_path)
+def upload_to_s3(
+    local_path: str, 
+    bucket: str, 
+    prefix: str, 
+    calculate_hash: bool = False,
+    metadata: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    Upload a directory to S3 with optional hash calculation.
+    
+    Uses enhanced upload_snapshot_with_hash when available, falls back to legacy upload.
+    """
+    # Use hash-enabled upload for snapshot directories (latest/, timestamped/)
+    use_hash_upload = (
+        HASH_UPLOAD_AVAILABLE and 
+        calculate_hash and 
+        ("snapshot/" in prefix or "latest/" in prefix)
+    )
+    
+    if use_hash_upload:
+        logger.info("Using hash-enabled upload for: %s", prefix)
+        
+        # Ensure prefix ends with / for snapshot key format
+        snapshot_key = prefix.rstrip('/') + '/'
+        
+        result = upload_snapshot_with_hash(
+            local_snapshot_path=local_path,
+            bucket=bucket,
+            snapshot_key=snapshot_key,
+            calculate_hash=True,
+            metadata=metadata or {}
+        )
+        
+        if result["status"] == "uploaded":
+            logger.info(
+                "Uploaded snapshot with hash: %s (files: %d, hash: %s)",
+                prefix,
+                result.get("file_count", 0),
+                result.get("hash", "not_calculated")
+            )
+        
+        return result
+    else:
+        # Legacy upload (for intermediate chunks and when hash utils not available)
+        logger.info("Using legacy upload for: %s", prefix)
+        
+        file_count = 0
+        total_size = 0
+        
+        for root, _, files in os.walk(local_path):
+            for file in files:
+                local_file = os.path.join(root, file)
+                relative_path = os.path.relpath(local_file, local_path)
+                s3_key = os.path.join(prefix, relative_path)
 
-            s3_client.upload_file(local_file, bucket, s3_key)
+                s3_client.upload_file(local_file, bucket, s3_key)
+                
+                file_count += 1
+                total_size += os.path.getsize(local_file)
+        
+        return {
+            "status": "uploaded",
+            "file_count": file_count,
+            "total_size_bytes": total_size,
+            "snapshot_key": prefix,
+            "hash": None  # No hash calculated for legacy uploads
+        }

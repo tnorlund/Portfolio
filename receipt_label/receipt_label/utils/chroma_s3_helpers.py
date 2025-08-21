@@ -9,6 +9,7 @@ import os
 import json
 import logging
 import tempfile
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -23,6 +24,19 @@ try:
 except ImportError:
     CHROMADB_AVAILABLE = False
     ChromaDBClient = None
+
+try:
+    from .chroma_hash import (
+        calculate_chromadb_hash,
+        create_hash_file_content,
+        parse_hash_file_content,
+        compare_hash_results,
+        ChromaDBHashResult
+    )
+    HASH_UTILS_AVAILABLE = True
+except ImportError:
+    HASH_UTILS_AVAILABLE = False
+    logger.warning("ChromaDB hash utilities not available")
 
 logger = logging.getLogger(__name__)
 
@@ -716,4 +730,496 @@ def download_snapshot_from_s3(
         return {
             "status": "failed",
             "error": str(e)
+        }
+
+
+def upload_snapshot_with_hash(
+    local_snapshot_path: str,
+    bucket: str,
+    snapshot_key: str,
+    calculate_hash: bool = True,
+    hash_algorithm: str = "md5",
+    metadata: Optional[Dict[str, Any]] = None,
+    region: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Upload ChromaDB snapshot to S3 with optional hash calculation and storage.
+    
+    This function uploads a complete ChromaDB snapshot directory and optionally
+    calculates and stores a hash file alongside the snapshot for verification.
+    
+    Args:
+        local_snapshot_path: Path to the local snapshot directory
+        bucket: S3 bucket name
+        snapshot_key: S3 key prefix for the snapshot (e.g., "words/snapshot/latest/")
+        calculate_hash: Whether to calculate and store hash (default: True)
+        hash_algorithm: Hash algorithm to use ("md5", "sha256", etc.)
+        metadata: Optional metadata to include in S3 objects
+        region: Optional AWS region
+        
+    Returns:
+        Dict with upload status, hash info, and statistics
+        
+    Example:
+        >>> result = upload_snapshot_with_hash(
+        ...     "/tmp/chroma_snapshot",
+        ...     "chromadb-vectors-dev",
+        ...     "words/snapshot/latest/",
+        ...     calculate_hash=True
+        ... )
+        >>> print(result["hash"])  # Hash of the entire directory
+    """
+    logger.info("Starting snapshot upload with hash: local_path=%s, bucket=%s, key=%s", 
+                local_snapshot_path, bucket, snapshot_key)
+    
+    if not HASH_UTILS_AVAILABLE and calculate_hash:
+        logger.warning("Hash calculation requested but hash utilities not available")
+        calculate_hash = False
+    
+    try:
+        import boto3
+        from pathlib import Path
+        
+        # Create S3 client
+        client_kwargs = {"service_name": "s3"}
+        if region:
+            client_kwargs["region_name"] = region
+        s3 = boto3.client(**client_kwargs)
+        logger.info("Created S3 client for upload, region: %s", region or "default")
+        
+        snapshot_path = Path(local_snapshot_path)
+        if not snapshot_path.exists():
+            logger.error("Local snapshot path does not exist: %s", local_snapshot_path)
+            return {
+                "status": "failed",
+                "error": f"Snapshot path does not exist: {local_snapshot_path}"
+            }
+        
+        # Calculate hash before upload if requested
+        hash_result = None
+        if calculate_hash:
+            try:
+                logger.info("Calculating %s hash for snapshot...", hash_algorithm.upper())
+                hash_result = calculate_chromadb_hash(
+                    local_snapshot_path,
+                    algorithm=hash_algorithm,
+                    exclude_patterns=["*.tmp", "*.log", ".snapshot_hash"]  # Exclude temp files and existing hash
+                )
+                logger.info("Calculated hash: %s (processed %d files)", 
+                           hash_result.directory_hash, hash_result.file_count)
+            except Exception as e:
+                logger.error("Hash calculation failed: %s", e)
+                calculate_hash = False
+        
+        file_count = 0
+        total_size = 0
+        
+        # Upload all files in the snapshot directory
+        for file_path in snapshot_path.rglob("*"):
+            if file_path.is_file():
+                # Skip temporary and existing hash files
+                if file_path.name in [".snapshot_hash", ".snapshot_hash.tmp"]:
+                    continue
+                
+                # Calculate relative path from snapshot directory
+                relative_path = file_path.relative_to(snapshot_path)
+                s3_key = f"{snapshot_key.rstrip('/')}/{relative_path}"
+                
+                # Prepare S3 metadata
+                s3_metadata = {"snapshot_key": snapshot_key}
+                if metadata:
+                    s3_metadata.update({k: str(v) for k, v in metadata.items()})
+                if hash_result:
+                    s3_metadata["snapshot_hash"] = hash_result.directory_hash
+                    s3_metadata["hash_algorithm"] = hash_result.hash_algorithm
+                
+                # Upload file
+                s3.upload_file(
+                    str(file_path), 
+                    bucket, 
+                    s3_key,
+                    ExtraArgs={"Metadata": s3_metadata}
+                )
+                
+                file_count += 1
+                total_size += file_path.stat().st_size
+                logger.debug("Uploaded file: %s", s3_key)
+        
+        # Upload hash file if hash was calculated
+        hash_file_key = None
+        if hash_result:
+            try:
+                hash_content = create_hash_file_content(hash_result)
+                hash_file_key = f"{snapshot_key.rstrip('/')}/.snapshot_hash"
+                
+                s3.put_object(
+                    Bucket=bucket,
+                    Key=hash_file_key,
+                    Body=hash_content.encode('utf-8'),
+                    ContentType='application/json',
+                    Metadata={
+                        "hash_version": "1.0",
+                        "snapshot_hash": hash_result.directory_hash,
+                        "algorithm": hash_result.hash_algorithm
+                    }
+                )
+                logger.info("Uploaded hash file: %s", hash_file_key)
+            except Exception as e:
+                logger.error("Failed to upload hash file: %s", e)
+                # Continue - snapshot upload was successful even if hash file failed
+        
+        result = {
+            "status": "uploaded",
+            "snapshot_key": snapshot_key,
+            "file_count": file_count,
+            "total_size_bytes": total_size
+        }
+        
+        # Add hash information if available
+        if hash_result:
+            result.update({
+                "hash": hash_result.directory_hash,
+                "hash_algorithm": hash_result.hash_algorithm,
+                "hash_file_key": hash_file_key,
+                "hash_calculation_time": hash_result.calculation_time_seconds
+            })
+        
+        logger.info("Successfully uploaded snapshot: %d files, %d bytes, hash: %s", 
+                   file_count, total_size, result.get("hash", "not_calculated"))
+        
+        return result
+        
+    except Exception as e:
+        logger.error("Error uploading snapshot to S3: %s", e)
+        return {
+            "status": "failed",
+            "error": str(e)
+        }
+
+
+def download_snapshot_with_verification(
+    bucket: str,
+    snapshot_key: str,
+    local_snapshot_path: str,
+    verify_hash: bool = True,
+    expected_hash: Optional[str] = None,
+    hash_algorithm: str = "md5",
+    region: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Download ChromaDB snapshot from S3 with optional hash verification.
+    
+    This function downloads a complete ChromaDB snapshot and optionally verifies
+    its integrity by comparing hashes with the stored .snapshot_hash file.
+    
+    Args:
+        bucket: S3 bucket name
+        snapshot_key: S3 key prefix for the snapshot (e.g., "words/snapshot/latest/")
+        local_snapshot_path: Local directory to download to
+        verify_hash: Whether to verify hash after download (default: True)
+        expected_hash: Expected hash value (if None, reads from .snapshot_hash file)
+        hash_algorithm: Hash algorithm to use for verification
+        region: Optional AWS region
+        
+    Returns:
+        Dict with download status, hash verification results, and statistics
+    """
+    logger.info("Starting snapshot download with verification: bucket=%s, key=%s, local_path=%s", 
+                bucket, snapshot_key, local_snapshot_path)
+    
+    # First download the snapshot using existing function
+    download_result = download_snapshot_from_s3(
+        bucket=bucket,
+        snapshot_key=snapshot_key,
+        local_snapshot_path=local_snapshot_path,
+        verify_integrity=True,  # Basic size verification
+        region=region
+    )
+    
+    if download_result["status"] != "downloaded":
+        return download_result
+    
+    result = download_result.copy()
+    
+    # Skip hash verification if not requested or hash utils not available
+    if not verify_hash or not HASH_UTILS_AVAILABLE:
+        if not verify_hash:
+            logger.info("Hash verification skipped (verify_hash=False)")
+        else:
+            logger.warning("Hash verification skipped (hash utilities not available)")
+        return result
+    
+    try:
+        import boto3
+        
+        # Create S3 client
+        client_kwargs = {"service_name": "s3"}
+        if region:
+            client_kwargs["region_name"] = region
+        s3 = boto3.client(**client_kwargs)
+        
+        # Get expected hash from S3 hash file if not provided
+        s3_hash_result = None
+        if expected_hash is None:
+            try:
+                hash_file_key = f"{snapshot_key.rstrip('/')}/.snapshot_hash"
+                logger.info("Downloading hash file: %s", hash_file_key)
+                
+                response = s3.get_object(Bucket=bucket, Key=hash_file_key)
+                hash_content = response['Body'].read().decode('utf-8')
+                s3_hash_result = parse_hash_file_content(hash_content)
+                expected_hash = s3_hash_result.directory_hash
+                hash_algorithm = s3_hash_result.hash_algorithm
+                
+                logger.info("Retrieved expected hash from S3: %s (%s)", 
+                           expected_hash, hash_algorithm.upper())
+                
+            except Exception as e:
+                logger.warning("Could not retrieve hash file from S3: %s", e)
+                result["hash_verification"] = {
+                    "verified": False,
+                    "error": f"Hash file not found or invalid: {e}",
+                    "recommendation": "cannot_verify"
+                }
+                return result
+        
+        # Calculate hash of downloaded directory
+        logger.info("Calculating local hash for verification...")
+        local_hash_result = calculate_chromadb_hash(
+            local_snapshot_path,
+            algorithm=hash_algorithm,
+            exclude_patterns=["*.tmp", "*.log", ".snapshot_hash"]
+        )
+        
+        logger.info("Local hash calculated: %s", local_hash_result.directory_hash)
+        
+        # Compare hashes
+        if s3_hash_result:
+            comparison = compare_hash_results(local_hash_result, s3_hash_result)
+        else:
+            # Create a minimal S3 hash result for comparison
+            s3_hash_result = ChromaDBHashResult(
+                directory_hash=expected_hash,
+                file_count=result["file_count"],
+                total_size_bytes=result["total_size_bytes"],
+                hash_algorithm=hash_algorithm
+            )
+            comparison = compare_hash_results(local_hash_result, s3_hash_result)
+        
+        # Add verification results
+        result["hash_verification"] = {
+            "verified": comparison["is_identical"],
+            "local_hash": local_hash_result.directory_hash,
+            "expected_hash": expected_hash,
+            "hashes_match": comparison["hashes_match"],
+            "file_counts_match": comparison["file_counts_match"],
+            "sizes_match": comparison["sizes_match"],
+            "recommendation": comparison["recommendation"],
+            "message": comparison["message"],
+            "algorithm": hash_algorithm
+        }
+        
+        if comparison["is_identical"]:
+            logger.info("✅ Hash verification successful - downloaded snapshot is identical to S3")
+        else:
+            logger.warning("❌ Hash verification failed - %s", comparison["message"])
+        
+        return result
+        
+    except Exception as e:
+        logger.error("Error during hash verification: %s", e)
+        result["hash_verification"] = {
+            "verified": False,
+            "error": str(e),
+            "recommendation": "verification_failed"
+        }
+        return result
+
+
+def verify_chromadb_sync(
+    database: str,
+    bucket: str,
+    local_path: Optional[str] = None,
+    download_for_comparison: bool = False,
+    hash_algorithm: str = "md5",
+    region: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Verify if local ChromaDB directory is in sync with S3 snapshot.
+    
+    This implements the core functionality from GitHub issue #334:
+    fast comparison of local vs S3 ChromaDB snapshots using hash comparison.
+    
+    Args:
+        database: Database name (e.g., "words", "lines")
+        bucket: S3 bucket name
+        local_path: Path to local ChromaDB directory (if None, only checks S3 hash)
+        download_for_comparison: If True, downloads S3 snapshot for comparison
+        hash_algorithm: Hash algorithm to use for comparison
+        region: Optional AWS region
+        
+    Returns:
+        Dict with comparison results and recommendations
+        
+    Example:
+        >>> result = verify_chromadb_sync(
+        ...     database="words",
+        ...     bucket="chromadb-vectors-dev",
+        ...     local_path="/tmp/chroma_local"
+        ... )
+        >>> print(result["status"])  # "identical" | "different" | "error"
+        >>> print(result["recommendation"])  # "sync_needed" | "up_to_date"
+    """
+    start_time = time.time()
+    logger.info("Starting ChromaDB sync verification: database=%s, bucket=%s, local_path=%s", 
+                database, bucket, local_path)
+    
+    if not HASH_UTILS_AVAILABLE:
+        return {
+            "status": "error",
+            "error": "Hash utilities not available",
+            "recommendation": "install_dependencies"
+        }
+    
+    try:
+        import boto3
+        
+        # Create S3 client
+        client_kwargs = {"service_name": "s3"}
+        if region:
+            client_kwargs["region_name"] = region
+        s3 = boto3.client(**client_kwargs)
+        
+        snapshot_key = f"{database}/snapshot/latest/"
+        
+        # Get S3 hash
+        s3_hash_result = None
+        try:
+            hash_file_key = f"{snapshot_key}.snapshot_hash"
+            logger.info("Retrieving S3 hash from: %s", hash_file_key)
+            
+            response = s3.get_object(Bucket=bucket, Key=hash_file_key)
+            hash_content = response['Body'].read().decode('utf-8')
+            s3_hash_result = parse_hash_file_content(hash_content)
+            
+            logger.info("S3 hash retrieved: %s (%s)", 
+                       s3_hash_result.directory_hash, s3_hash_result.hash_algorithm)
+            
+        except Exception as e:
+            logger.error("Could not retrieve S3 hash: %s", e)
+            return {
+                "status": "error",
+                "error": f"Could not retrieve S3 hash: {e}",
+                "recommendation": "check_s3_snapshot"
+            }
+        
+        # If no local path provided, just return S3 hash info
+        if local_path is None:
+            return {
+                "status": "s3_only",
+                "s3_hash": s3_hash_result.directory_hash,
+                "s3_file_count": s3_hash_result.file_count,
+                "s3_size_bytes": s3_hash_result.total_size_bytes,
+                "algorithm": s3_hash_result.hash_algorithm,
+                "message": "S3 hash retrieved successfully",
+                "recommendation": "provide_local_path_for_comparison"
+            }
+        
+        # Calculate local hash
+        local_hash_result = None
+        if os.path.exists(local_path):
+            try:
+                logger.info("Calculating local hash...")
+                local_hash_result = calculate_chromadb_hash(
+                    local_path,
+                    algorithm=s3_hash_result.hash_algorithm,  # Use same algorithm as S3
+                    exclude_patterns=["*.tmp", "*.log", ".snapshot_hash"]
+                )
+                logger.info("Local hash calculated: %s", local_hash_result.directory_hash)
+                
+            except Exception as e:
+                logger.error("Could not calculate local hash: %s", e)
+                return {
+                    "status": "error",
+                    "error": f"Could not calculate local hash: {e}",
+                    "recommendation": "check_local_directory"
+                }
+        else:
+            logger.warning("Local path does not exist: %s", local_path)
+            
+            if download_for_comparison:
+                logger.info("Downloading S3 snapshot for comparison...")
+                # Download snapshot to temporary directory
+                import tempfile
+                temp_dir = tempfile.mkdtemp()
+                
+                try:
+                    download_result = download_snapshot_from_s3(
+                        bucket=bucket,
+                        snapshot_key=snapshot_key,
+                        local_snapshot_path=temp_dir,
+                        region=region
+                    )
+                    
+                    if download_result["status"] == "downloaded":
+                        local_hash_result = calculate_chromadb_hash(
+                            temp_dir,
+                            algorithm=s3_hash_result.hash_algorithm
+                        )
+                        logger.info("Downloaded and calculated hash: %s", local_hash_result.directory_hash)
+                    else:
+                        return {
+                            "status": "error",
+                            "error": f"Could not download S3 snapshot: {download_result.get('error')}",
+                            "recommendation": "check_s3_access"
+                        }
+                finally:
+                    # Clean up temp directory
+                    import shutil
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+            else:
+                return {
+                    "status": "error",
+                    "error": f"Local path does not exist: {local_path}",
+                    "recommendation": "create_local_directory_or_enable_download"
+                }
+        
+        # Compare hashes
+        comparison = compare_hash_results(local_hash_result, s3_hash_result)
+        comparison_time = time.time() - start_time
+        
+        # Determine status based on comparison
+        if comparison["is_identical"]:
+            status = "identical"
+        else:
+            status = "different"
+        
+        result = {
+            "status": status,
+            "local_hash": local_hash_result.directory_hash,
+            "s3_hash": s3_hash_result.directory_hash,
+            "local_file_count": local_hash_result.file_count,
+            "s3_file_count": s3_hash_result.file_count,
+            "local_size_bytes": local_hash_result.total_size_bytes,
+            "s3_size_bytes": s3_hash_result.total_size_bytes,
+            "algorithm": s3_hash_result.hash_algorithm,
+            "comparison_time_seconds": comparison_time,
+            "recommendation": comparison["recommendation"],
+            "message": comparison["message"],
+            "detailed_comparison": comparison
+        }
+        
+        if status == "identical":
+            logger.info("✅ ChromaDB sync verification: IDENTICAL")
+        else:
+            logger.info("❌ ChromaDB sync verification: DIFFERENT - %s", comparison["message"])
+        
+        return result
+        
+    except Exception as e:
+        logger.error("Error during sync verification: %s", e)
+        return {
+            "status": "error",
+            "error": str(e),
+            "recommendation": "check_configuration"
         }
