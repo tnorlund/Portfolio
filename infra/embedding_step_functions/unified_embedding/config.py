@@ -6,13 +6,23 @@ All Lambda configurations, environment variables, and settings in one place.
 import os
 from typing import Dict, Any, List, cast
 
+# Constants
+GIGABYTE = 1024
+MINUTE = 60
+
+
+# Helper to express memory/ephemeral storage in MiB (AWS expects MiB integers).
+# Example: GiB(0.5) == 512
+def GiB(n: float | int) -> int:
+    return int(n * 1024)
+
 # Lambda function configurations
 LAMBDA_CONFIGS = {
     "word_polling": {
         "name": "word-poll",
-        "memory": 3008,
-        "timeout": 900,
-        "ephemeral_storage": 3072,
+        "memory": GiB(2),
+        "timeout": MINUTE * 15,
+        "ephemeral_storage": GiB(2),
         "description": "Poll OpenAI for word embedding batch results",
         "env_vars": {
             "HANDLER_TYPE": "word_polling",
@@ -21,9 +31,9 @@ LAMBDA_CONFIGS = {
     },
     "line_polling": {
         "name": "line-poll",
-        "memory": 3008,
-        "timeout": 900,
-        "ephemeral_storage": 3072,
+        "memory": GiB(2),
+        "timeout": MINUTE * 15,
+        "ephemeral_storage": GiB(2),
         "description": "Poll OpenAI for line embedding batch results",
         "env_vars": {
             "HANDLER_TYPE": "line_polling",
@@ -33,9 +43,9 @@ LAMBDA_CONFIGS = {
     },
     "compaction": {
         "name": "compact",
-        "memory": 4096,
-        "timeout": 900,
-        "ephemeral_storage": 5120,
+        "memory": GiB(3),
+        "timeout": MINUTE * 15,
+        "ephemeral_storage": GiB(3),
         "description": "Compact ChromaDB deltas into snapshots",
         "env_vars": {
             "HANDLER_TYPE": "compaction",
@@ -49,9 +59,9 @@ LAMBDA_CONFIGS = {
     },
     "find_unembedded": {
         "name": "find-unembedded",
-        "memory": 1024,
-        "timeout": 900,
-        "ephemeral_storage": 512,
+        "memory": GiB(1),
+        "timeout": MINUTE * 15,
+        "ephemeral_storage": GiB(0.5),
         "description": "Find items without embeddings",
         "env_vars": {
             "HANDLER_TYPE": "find_unembedded",
@@ -59,9 +69,9 @@ LAMBDA_CONFIGS = {
     },
     "submit_openai": {
         "name": "submit-openai",
-        "memory": 1024,
-        "timeout": 900,
-        "ephemeral_storage": 512,
+        "memory": GiB(1),
+        "timeout": MINUTE * 15,
+        "ephemeral_storage": GiB(0.5),
         "description": "Submit embedding batches to OpenAI",
         "env_vars": {
             "HANDLER_TYPE": "submit_openai",
@@ -69,9 +79,9 @@ LAMBDA_CONFIGS = {
     },
     "list_pending": {
         "name": "list-pending",
-        "memory": 512,
-        "timeout": 900,
-        "ephemeral_storage": 512,
+        "memory": GiB(0.5),
+        "timeout": MINUTE * 15,
+        "ephemeral_storage": GiB(0.5),
         "description": "List pending embedding batches",
         "env_vars": {
             "HANDLER_TYPE": "list_pending",
@@ -79,9 +89,9 @@ LAMBDA_CONFIGS = {
     },
     "split_into_chunks": {
         "name": "split-into-chunks",
-        "memory": 512,
-        "timeout": 60,
-        "ephemeral_storage": 512,
+        "memory": GiB(0.5),
+        "timeout": MINUTE,
+        "ephemeral_storage": GiB(0.5),
         "description": "Split delta results into chunks for parallel proc",
         "env_vars": {
             "HANDLER_TYPE": "split_into_chunks",
@@ -89,9 +99,9 @@ LAMBDA_CONFIGS = {
     },
     "find_unembedded_words": {
         "name": "find-unembedded-words",
-        "memory": 1024,
-        "timeout": 900,
-        "ephemeral_storage": 512,
+        "memory": GiB(1),
+        "timeout": MINUTE * 15,
+        "ephemeral_storage": GiB(0.5),
         "description": "Find words without embeddings",
         "env_vars": {
             "HANDLER_TYPE": "find_unembedded_words",
@@ -99,9 +109,9 @@ LAMBDA_CONFIGS = {
     },
     "submit_words_openai": {
         "name": "submit-words-openai",
-        "memory": 1024,
-        "timeout": 900,
-        "ephemeral_storage": 512,
+        "memory": GiB(1),
+        "timeout": MINUTE * 15,
+        "ephemeral_storage": GiB(0.5),
         "description": "Submit word embedding batches to OpenAI",
         "env_vars": {
             "HANDLER_TYPE": "submit_words_openai",
