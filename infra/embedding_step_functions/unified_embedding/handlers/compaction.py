@@ -21,6 +21,7 @@ import chromadb
 
 # Import receipt_dynamo for proper DynamoDB operations
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.constants import ChromaDBCollection
 from receipt_label.utils.lock_manager import LockManager
 
 logger = getLogger()
@@ -223,9 +224,16 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             "error": "batch_id is required for final merge",
         }
 
+    # Determine collection from database name
+    collection = (
+        ChromaDBCollection.LINES if database_name == "lines" 
+        else ChromaDBCollection.WORDS
+    )
+    
     # Acquire lock for final merge
     lock_manager = LockManager(
         dynamo_client,
+        collection=collection,
         heartbeat_interval=heartbeat_interval,
         lock_duration_minutes=lock_duration_minutes,
     )
