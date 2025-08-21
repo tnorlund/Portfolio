@@ -15,6 +15,7 @@ from pulumi_aws.lambda_ import (
     Function,
     FunctionEnvironmentArgs,
     FunctionEphemeralStorageArgs,
+    FunctionTracingConfigArgs,
 )
 from pulumi_aws.s3 import Bucket
 
@@ -181,6 +182,26 @@ class LambdaFunctionsComponent(ComponentResource):
                         ],
                         "Resource": [args[2], args[3]],
                     },
+                    {
+                        "Effect": "Allow",
+                        "Action": [
+                            "xray:PutTraceSegments",
+                            "xray:PutTelemetryRecords",
+                            "xray:GetSamplingRules",
+                            "xray:GetSamplingTargets",
+                        ],
+                        "Resource": "*",
+                    },
+                    {
+                        "Effect": "Allow",
+                        "Action": [
+                            "cloudwatch:PutMetricData",
+                            "logs:CreateLogGroup",
+                            "logs:CreateLogStream",
+                            "logs:PutLogEvents",
+                        ],
+                        "Resource": "*",
+                    },
                 ],
             }
         )
@@ -278,13 +299,13 @@ class LambdaFunctionsComponent(ComponentResource):
         container_configs = {
             "embedding-line-poll": {
                 "memory": GIGABYTE * 3,
-                "timeout": MINUTE * 5,
+                "timeout": MINUTE * 15,  # Fix: Use 15 minutes to match config.py
                 "ephemeral_storage": GIGABYTE * 5,
                 "handler_type": "line_polling",
             },
             "embedding-word-poll": {
                 "memory": GIGABYTE * 3,
-                "timeout": MINUTE * 5,
+                "timeout": MINUTE * 15,  # Fix: Use 15 minutes to match config.py
                 "ephemeral_storage": GIGABYTE * 5,
                 "handler_type": "word_polling",
             },
@@ -312,6 +333,11 @@ class LambdaFunctionsComponent(ComponentResource):
             "OPENAI_API_KEY": openai_api_key,
             "S3_BUCKET": self.batch_bucket.bucket,
             "CHROMA_PERSIST_DIRECTORY": "/tmp/chroma",
+            # Observability configuration
+            "ENABLE_XRAY": "true",
+            "ENABLE_METRICS": "true",
+            "LOG_LEVEL": "INFO",
+            "_X_AMZN_TRACE_ID": "",  # X-Ray trace ID placeholder
         }
 
         # Add handler-specific environment variables
@@ -345,6 +371,8 @@ class LambdaFunctionsComponent(ComponentResource):
                 if config.get("ephemeral_storage", 512) > 512
                 else None
             ),
+            # Enable X-Ray tracing for observability
+            tracing_config=FunctionTracingConfigArgs(mode="Active"),
             tags={"environment": stack},
             opts=ResourceOptions(
                 parent=self,

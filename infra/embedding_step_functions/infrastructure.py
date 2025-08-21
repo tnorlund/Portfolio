@@ -23,6 +23,7 @@ from .components import (
     LambdaFunctionsComponent,
     LineEmbeddingWorkflow,
     WordEmbeddingWorkflow,
+    MonitoringComponent,
 )
 
 
@@ -93,6 +94,19 @@ class EmbeddingInfrastructure(ComponentResource):
         self.word_workflow = WordEmbeddingWorkflow(
             f"{name}-word",
             lambda_functions=self.lambdas.all_functions,
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Create monitoring component
+        self.monitoring = MonitoringComponent(
+            f"{name}-monitoring",
+            lambda_functions=self.lambdas.all_functions,
+            step_functions={
+                "line_submit": self.line_workflow.submit_sf,
+                "line_ingest": self.line_workflow.ingest_sf,
+                "word_submit": self.word_workflow.submit_sf,
+                "word_ingest": self.word_workflow.ingest_sf,
+            },
             opts=ResourceOptions(parent=self),
         )
 
@@ -181,6 +195,12 @@ class EmbeddingInfrastructure(ComponentResource):
                 ),
                 "poll_word_embeddings_sf_arn": (
                     self.poll_word_embeddings_sf.arn
+                ),
+                # Monitoring outputs
+                "alert_topic_arn": self.monitoring.alert_topic.arn,
+                "dashboard_url": Output.concat(
+                    "https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#dashboards:name=",
+                    self.monitoring.dashboard.dashboard_name,
                 ),
             }
         )
