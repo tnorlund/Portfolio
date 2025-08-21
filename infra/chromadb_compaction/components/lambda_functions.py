@@ -111,10 +111,9 @@ class HybridLambdaDeployment(ComponentResource):
             name, dynamodb_table_arn, chromadb_queues, chromadb_buckets
         )
 
-        # Create CloudWatch log groups
+        # Create CloudWatch log groups (auto-generated names)
         self.stream_log_group = aws.cloudwatch.LogGroup(
             f"{name}-stream-log-group",
-            name=f"/aws/lambda/chromadb-stream-processor-{stack}",
             retention_in_days=14,
             tags={
                 "Project": "ChromaDB",
@@ -127,7 +126,6 @@ class HybridLambdaDeployment(ComponentResource):
 
         self.compaction_log_group = aws.cloudwatch.LogGroup(
             f"{name}-compaction-log-group",
-            name=f"/aws/lambda/chromadb-enhanced-compaction-{stack}",
             retention_in_days=14,
             tags={
                 "Project": "ChromaDB",
