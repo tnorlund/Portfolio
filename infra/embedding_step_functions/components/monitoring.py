@@ -57,17 +57,13 @@ class MonitoringComponent(ComponentResource):
         # Create Step Function monitoring alarms
         self._create_step_function_alarms()
 
-        # Create CloudWatch dashboard
+        # Create CloudWatch dashboard (dashboard URL will be registered after creation)
         self._create_dashboard()
 
-        # Register outputs
+        # Register outputs (dashboard URL will be added after dashboard creation)
         self.register_outputs(
             {
                 "alert_topic_arn": self.alert_topic.arn,
-                "dashboard_url": Output.concat(
-                    "https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#dashboards:name=",
-                    self.dashboard.dashboard_name,
-                ),
             }
         )
 
@@ -259,6 +255,17 @@ class MonitoringComponent(ComponentResource):
             dashboard_name=f"EmbeddingWorkflows-{stack}",
             dashboard_body=json.dumps(dashboard_body),
             opts=ResourceOptions(parent=self),
+        )
+        
+        # Register dashboard URL output now that dashboard is created
+        self.register_outputs(
+            {
+                "alert_topic_arn": self.alert_topic.arn,
+                "dashboard_url": Output.concat(
+                    "https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#dashboards:name=",
+                    self.dashboard.dashboard_name,
+                ),
+            }
         )
         
         return dashboard_body
