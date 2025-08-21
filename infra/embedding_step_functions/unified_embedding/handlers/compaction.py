@@ -185,16 +185,9 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             batch_id, chunk_index, chunk_deltas, deltas_by_collection
         )
 
-        # Prepare response for Map state
-        # No need for continuation logic since all chunks process in parallel
+        # Prepare minimal response for Map state
         response = {
-            "statusCode": 200,
-            "batch_id": batch_id,
-            "chunk_index": chunk_index,
             "intermediate_key": chunk_result["intermediate_key"],
-            "embeddings_processed": chunk_result["embeddings_processed"],
-            "processing_time_seconds": chunk_result["processing_time"],
-            "message": "Chunk processed successfully",
         }
 
         logger.info(
@@ -234,7 +227,7 @@ def process_chunk_hierarchical_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     result = process_chunk_handler(event)
     
     # If processing succeeded, add only delta references (not full data) to the response
-    if result.get("statusCode") == 200:
+    if result.get("intermediate_key"):  # Success indicated by presence of intermediate_key
         delta_references = []
         for delta in event.get("delta_results", []):
             # Only keep the metadata, not the embedding data
@@ -249,7 +242,6 @@ def process_chunk_hierarchical_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         result["delta_references"] = delta_references
         logger.info(
             "Added delta references for hierarchical processing",
-            chunk_index=result.get("chunk_index"),
             delta_count=len(delta_references)
         )
     
