@@ -198,9 +198,5 @@ class EmbeddingInfrastructure(ComponentResource):
                 ),
                 # Monitoring outputs
                 "alert_topic_arn": self.monitoring.alert_topic.arn,
-                "dashboard_url": Output.concat(
-                    "https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#dashboards:name=",
-                    self.monitoring.dashboard.dashboard_name,
-                ),
             }
         )
