@@ -5,14 +5,15 @@ for efficient parallel processing by the compaction Lambda.
 """
 
 import logging
+import os
 from typing import Any, Dict, List
 
 # Set up logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# Configuration
-CHUNK_SIZE = 10  # Max deltas per chunk as per compaction requirements
+# Configuration - get chunk size from environment
+CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", "10"))  # Default 10 if not set
 
 
 def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -30,7 +31,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             - chunks: Array of chunk objects for Map state processing
             - total_chunks: Total number of chunks created
     """
-    logger.info("Starting split_into_chunks handler")
+    logger.info("Starting split_into_chunks handler with chunk size %d", CHUNK_SIZE)
 
     try:
         # Extract parameters

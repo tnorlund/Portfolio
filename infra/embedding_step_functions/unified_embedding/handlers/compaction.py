@@ -328,7 +328,7 @@ def process_chunk_deltas(
                 )
 
             # Process deltas for this collection
-            for delta in collection_deltas:
+            for i, delta in enumerate(collection_deltas):
                 delta_key = delta["delta_key"]
 
                 # Download and merge delta
@@ -337,11 +337,23 @@ def process_chunk_deltas(
                 )
                 total_embeddings += embeddings_added
                 logger.info(
-                    "Merged %d embeddings from delta %s into collection %s",
+                    "Merged %d embeddings from delta %s into collection %s (%d/%d)",
                     embeddings_added,
                     delta_key,
                     collection_name,
+                    i + 1,
+                    len(collection_deltas)
                 )
+                
+                # Log memory usage periodically
+                if (i + 1) % 3 == 0:  # Every 3 deltas
+                    import psutil
+                    process = psutil.Process()
+                    memory_mb = process.memory_info().rss / 1024 / 1024
+                    logger.info(
+                        "Memory usage after %d/%d deltas: %.1f MB", 
+                        i + 1, len(collection_deltas), memory_mb
+                    )
 
         # Upload intermediate chunk to S3
         intermediate_key = f"intermediate/{batch_id}/chunk-{chunk_index}/"
@@ -398,23 +410,39 @@ def download_and_merge_delta(
             delta_key,
         )
 
-        # Get all embeddings from delta
-        results = delta_collection.get(
-            include=["embeddings", "documents", "metadatas"]
-        )
-
-        if not results["ids"]:
+        # Get total count first to process in batches
+        total_count = delta_collection.count()
+        if total_count == 0:
             return 0
-
-        # Upsert into main collection
-        collection.upsert(
-            ids=results["ids"],
-            embeddings=results["embeddings"],
-            documents=results["documents"],
-            metadatas=results["metadatas"],
-        )
-
-        return len(results["ids"])
+            
+        logger.info("Processing %d embeddings from delta in batches", total_count)
+        
+        # Process embeddings in batches to reduce memory usage
+        batch_size = 1000  # Process 1000 embeddings at a time
+        total_processed = 0
+        
+        for offset in range(0, total_count, batch_size):
+            # Get batch of embeddings
+            batch_results = delta_collection.get(
+                include=["embeddings", "documents", "metadatas"],
+                limit=batch_size,
+                offset=offset
+            )
+            
+            if batch_results["ids"]:
+                # Upsert batch into main collection
+                collection.upsert(
+                    ids=batch_results["ids"],
+                    embeddings=batch_results["embeddings"],
+                    documents=batch_results["documents"],
+                    metadatas=batch_results["metadatas"],
+                )
+                total_processed += len(batch_results["ids"])
+                logger.debug("Processed batch %d-%d (%d embeddings)", 
+                           offset, offset + len(batch_results["ids"]), len(batch_results["ids"]))
+        
+        logger.info("Successfully processed %d embeddings from delta", total_processed)
+        return total_processed
 
     finally:
         # Clean up delta temp directory

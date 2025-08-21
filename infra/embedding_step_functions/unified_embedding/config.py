@@ -40,7 +40,7 @@ LAMBDA_CONFIGS = {
         "env_vars": {
             "HANDLER_TYPE": "compaction",
             "CHROMA_PERSIST_DIRECTORY": "/tmp/chroma",
-            "CHUNK_SIZE": "10",
+            "CHUNK_SIZE": "10",  # Tunable: Controls deltas per Lambda (balance memory vs parallelism)
             "HEARTBEAT_INTERVAL_SECONDS": "60",
             "LOCK_DURATION_MINUTES": "5",
             "DELETE_PROCESSED_DELTAS": "false",

@@ -127,7 +127,7 @@ class LineEmbeddingWorkflow(ComponentResource):
                     "SubmitBatches": {
                         "Type": "Map",
                         "ItemsPath": "$.batches",
-                        "MaxConcurrency": 10,
+                        "MaxConcurrency": 25,
                         "Iterator": {
                             "StartAt": "SubmitToOpenAI",
                             "States": {
@@ -187,7 +187,7 @@ class LineEmbeddingWorkflow(ComponentResource):
                     "PollBatches": {
                         "Type": "Map",
                         "ItemsPath": "$.pending_batches",
-                        "MaxConcurrency": 25,
+                        "MaxConcurrency": 50,
                         "Parameters": {
                             "batch_id.$": "$$.Map.Item.Value.batch_id",
                             "openai_batch_id.$": (
@@ -253,7 +253,7 @@ class LineEmbeddingWorkflow(ComponentResource):
                         "Type": "Map",
                         "Comment": "Process chunks in parallel",
                         "ItemsPath": "$.chunked_data.chunks",
-                        "MaxConcurrency": 10,
+                        "MaxConcurrency": 50,
                         "Parameters": {"chunk.$": "$$.Map.Item.Value"},
                         "Iterator": {
                             "StartAt": "ProcessSingleChunk",
