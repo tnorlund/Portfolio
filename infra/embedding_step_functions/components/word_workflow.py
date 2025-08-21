@@ -279,9 +279,10 @@ class WordEmbeddingWorkflow(ComponentResource):
                                             "ErrorEquals": [
                                                 "Lambda.ServiceException",
                                                 "Lambda.AWSLambdaException",
+                                                "Runtime.ExitError",
                                             ],
                                             "IntervalSeconds": 2,
-                                            "MaxAttempts": 2,
+                                            "MaxAttempts": 3,
                                             "BackoffRate": 2.0,
                                             "JitterStrategy": "FULL",
                                         },
@@ -338,9 +339,10 @@ class WordEmbeddingWorkflow(ComponentResource):
                                 "ErrorEquals": [
                                     "Lambda.ServiceException",
                                     "Lambda.AWSLambdaException",
+                                    "Runtime.ExitError",
                                 ],
                                 "IntervalSeconds": 1,
-                                "MaxAttempts": 2,
+                                "MaxAttempts": 3,
                                 "BackoffRate": 1.5,
                                 "JitterStrategy": "FULL",
                             },
