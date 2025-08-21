@@ -1066,3 +1066,7 @@ def process_delta_messages(
         ),
     )
     return response.to_dict()
+
+
+# Alias for consistent naming with other handlers
+handle = lambda_handler

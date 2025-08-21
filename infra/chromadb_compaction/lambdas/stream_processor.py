@@ -252,7 +252,7 @@ def _detect_entity_type(sk: str) -> Optional[str]:
 
 
 def _parse_entity(
-    image: Optional[Dict[str, Any]], entity_type: str, image_type: str
+    image: Optional[Dict[str, Any]], entity_type: str, image_type: str, pk: str, sk: str
 ) -> Optional[Union[ReceiptMetadata, ReceiptWordLabel]]:
     """
     Parse DynamoDB image into typed entity.
@@ -261,6 +261,8 @@ def _parse_entity(
         image: DynamoDB image (OldImage or NewImage)
         entity_type: Type of entity to parse
         image_type: Description for logging (old/new)
+        pk: Primary key for the item
+        sk: Sort key for the item
 
     Returns:
         Parsed entity or None if parsing fails
@@ -269,10 +271,22 @@ def _parse_entity(
         return None
 
     try:
+        # The entity parsers expect a complete DynamoDB item with PK, SK, and other required fields
+        # The stream image only contains the item attributes, so we need to add the missing keys
+        complete_item = dict(image)  # Copy the image
+        complete_item["PK"] = {"S": pk}
+        complete_item["SK"] = {"S": sk}
+        
+        # Add timestamp_added if missing (required for parsing)
+        if "timestamp_added" not in complete_item and entity_type == "RECEIPT_WORD_LABEL":
+            # Use a default timestamp for stream processing - the actual timestamp isn't critical
+            # for change detection in this use case
+            complete_item["timestamp_added"] = {"S": "2024-01-01T00:00:00.000Z"}
+
         if entity_type == "RECEIPT_METADATA":
-            return item_to_receipt_metadata(image)
+            return item_to_receipt_metadata(complete_item)
         if entity_type == "RECEIPT_WORD_LABEL":
-            return item_to_receipt_word_label(image)
+            return item_to_receipt_word_label(complete_item)
     except ValueError as e:
         logger.warning("Failed to parse %s %s: %s", image_type, entity_type, e)
 
@@ -316,8 +330,8 @@ def parse_stream_record(
         new_image = record["dynamodb"].get("NewImage")
 
         # Parse entities using receipt_dynamo parsers via helper function
-        old_entity = _parse_entity(old_image, entity_type, "old")
-        new_entity = _parse_entity(new_image, entity_type, "new")
+        old_entity = _parse_entity(old_image, entity_type, "old", pk, sk)
+        new_entity = _parse_entity(new_image, entity_type, "new", pk, sk)
 
         # Log parsing results for debugging
         if old_image and not old_entity:

@@ -11,8 +11,18 @@ from .test_data import (
     get_target_event_variation,
 )
 
-# Set environment variable to indicate we're in test mode
+# Set environment variables to indicate we're in test mode
 os.environ["PYTEST_RUNNING"] = "1"
+
+# Set required environment variables for Lambda handlers
+os.environ["DYNAMODB_TABLE_NAME"] = "test-table"
+os.environ["CHROMADB_BUCKET"] = "test-bucket"
+os.environ["COMPACTION_QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123456789012/test-queue"
+
+# Prevent lambda layer building during tests
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+import lambda_layer
+lambda_layer.SKIP_LAYER_BUILDING = True
 
 # Mock the lambda_layer and pulumi modules to avoid import errors during testing
 sys.modules["lambda_layer"] = MagicMock()
@@ -21,6 +31,12 @@ sys.modules["pulumi_docker_build"] = MagicMock()
 sys.modules["pulumi"] = MagicMock()
 sys.modules["pulumi_aws"] = MagicMock()
 sys.modules["pulumi_aws.ecr"] = MagicMock()
+
+# Mock DynamoClient globally for all tests
+from unittest.mock import patch
+dynamo_client_patcher = patch('receipt_dynamo.data.dynamo_client.DynamoClient')
+mock_dynamo_client = dynamo_client_patcher.start()
+mock_dynamo_client.return_value = MagicMock()
 
 
 @pytest.fixture

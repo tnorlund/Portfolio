@@ -659,11 +659,11 @@ echo "🎉 Parallel function updates completed!"'''
         )
 
         # Configure versioning as a separate resource
-        aws.s3.BucketVersioning(
+        aws.s3.BucketVersioningV2(
             f"{self.name}-artifacts-versioning",
             bucket=build_bucket.id,
             versioning_configuration=(
-                aws.s3.BucketVersioningVersioningConfigurationArgs(
+                aws.s3.BucketVersioningV2VersioningConfigurationArgs(
                     status="Enabled"
                 )
             ),
@@ -1565,7 +1565,7 @@ layers_to_build = [
 
 # Create Lambda layers using the fast approach
 # TEMPORARILY SKIP LAYER BUILDING
-SKIP_LAYER_BUILDING = False  # Set to False to enable layer building
+SKIP_LAYER_BUILDING = os.environ.get("PYTEST_RUNNING") == "1" or False  # Skip building during tests
 
 # SYNC MODE: Set to True when ARNs are needed immediately (e.g., after major changes)
 # Set to False for faster pulumi up once layers are stable
