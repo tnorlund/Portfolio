@@ -24,6 +24,40 @@ from typing import Any, Dict, List, Optional, Union
 
 import boto3
 
+# Enhanced observability imports (with fallback)
+try:
+    from ..utils import (
+        get_operation_logger,
+        metrics,
+        trace_lambda_handler,
+        start_compaction_lambda_monitoring,
+        stop_compaction_lambda_monitoring,
+        with_compaction_timeout_protection,
+        format_response,
+    )
+    OBSERVABILITY_AVAILABLE = True
+except ImportError:
+    # Fallback for development/testing - provide no-op decorators
+    OBSERVABILITY_AVAILABLE = False
+    
+    # No-op decorator functions for fallback
+    def trace_lambda_handler(operation_name=None):
+        def decorator(func):
+            return func
+        return decorator
+    
+    def with_compaction_timeout_protection(max_duration=None):
+        def decorator(func):
+            return func
+        return decorator
+    
+    # Placeholder functions
+    get_operation_logger = None
+    metrics = None
+    start_compaction_lambda_monitoring = None
+    stop_compaction_lambda_monitoring = None
+    format_response = None
+
 # Import receipt_dynamo entity parsers
 from receipt_dynamo.entities.receipt_metadata import (
     ReceiptMetadata,
@@ -96,12 +130,17 @@ class FieldChange:
     new: Any
 
 
-# Configure logging
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+# Configure logging with observability
+if OBSERVABILITY_AVAILABLE:
+    logger = get_operation_logger(__name__)
+else:
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
 
 
-def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
+@trace_lambda_handler(operation_name="stream_processor")
+@with_compaction_timeout_protection(max_duration=60)  # Stream processing should be fast
+def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     Process DynamoDB stream events for ChromaDB metadata synchronization.
 
@@ -119,119 +158,211 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     Returns:
         Response with processing statistics
     """
-    # Handle different event types (test events vs real stream events)
-    if "Records" not in event:
-        logger.info(
-            "Received non-stream event (likely test): %s", list(event.keys())
+    correlation_id = None
+    
+    # Start monitoring if available
+    if OBSERVABILITY_AVAILABLE:
+        start_compaction_lambda_monitoring(context)
+        correlation_id = getattr(logger, 'correlation_id', None)
+        logger.info("Starting stream processing", 
+                   event_records=len(event.get("Records", [])),
+                   correlation_id=correlation_id)
+    
+    try:
+        # Handle different event types (test events vs real stream events)
+        if "Records" not in event:
+            logger.info(
+                "Received non-stream event (likely test)", event_keys=list(event.keys())
+            )
+            response = {
+                "statusCode": 200,
+                "processed_records": 0,
+                "queued_messages": 0,
+            }
+            
+            if OBSERVABILITY_AVAILABLE:
+                metrics.count("StreamProcessorTestEvents", 1)
+                return format_response(response, event, correlation_id=correlation_id)
+            return response
+
+        if OBSERVABILITY_AVAILABLE:
+            metrics.gauge("StreamRecordsReceived", len(event["Records"]))
+            
+        logger.info("Processing DynamoDB stream records", 
+                   record_count=len(event["Records"]))
+
+        # Avoid logging entire event to prevent PII exposure
+        if logger.level <= logging.DEBUG:
+            logger.debug("Stream event structure present")
+
+        messages_to_send = []
+        processed_records = 0
+
+        for record in event["Records"]:
+            try:
+                event_id = record.get("eventID", "unknown")
+                event_name = record.get("eventName", "unknown")
+                
+                logger.info(
+                    "Processing stream record", 
+                    record_id=event_id,
+                    event_name=event_name
+                )
+                
+                if OBSERVABILITY_AVAILABLE:
+                    metrics.count("StreamRecordProcessed", 1, 
+                                {"event_name": event_name})
+                # Parse stream record using entity parsers
+                parsed_record = parse_stream_record(record)
+
+                if not parsed_record:
+                    if OBSERVABILITY_AVAILABLE:
+                        metrics.count("StreamRecordSkipped", 1, 
+                                    {"reason": "not_relevant_entity"})
+                    continue  # Not a receipt entity we care about
+
+                # Process MODIFY and REMOVE events
+                if record["eventName"] in ["MODIFY", "REMOVE"]:
+                    entity_type = parsed_record.entity_type
+                    old_entity = parsed_record.old_entity
+                    new_entity = parsed_record.new_entity
+
+                    # Check if any ChromaDB-relevant fields changed
+                    changes = get_chromadb_relevant_changes(
+                        entity_type, old_entity, new_entity
+                    )
+                    logger.info("Found relevant changes", 
+                               change_count=len(changes),
+                               changed_fields=list(changes.keys()),
+                               entity_type=entity_type)
+                    
+                    if OBSERVABILITY_AVAILABLE:
+                        metrics.count("ChromaDBRelevantChanges", len(changes),
+                                    {"entity_type": entity_type})
+
+                    # Always process REMOVE events, even without specific field
+                    # changes
+                    if changes or record["eventName"] == "REMOVE":
+                        # Extract entity identification data
+                        entity = old_entity or new_entity
+                        entity_data = None
+                        target_collections = []
+
+                        if entity_type == "RECEIPT_METADATA":
+                            # Metadata changes affect both collections
+                            entity_data = {
+                                "entity_type": entity_type,
+                                "image_id": entity.image_id,
+                                "receipt_id": entity.receipt_id,
+                            }
+                            target_collections = [
+                                ChromaDBCollection.LINES,
+                                ChromaDBCollection.WORDS,
+                            ]
+                        elif entity_type == "RECEIPT_WORD_LABEL":
+                            # Word label changes only affect words collection
+                            entity_data = {
+                                "entity_type": entity_type,
+                                "image_id": entity.image_id,
+                                "receipt_id": entity.receipt_id,
+                                "line_id": entity.line_id,
+                                "word_id": entity.word_id,
+                                "label": entity.label,
+                            }
+                            target_collections = [ChromaDBCollection.WORDS]
+
+                        if entity_data and target_collections:
+                            # Create enhanced stream message
+                            stream_msg = StreamMessage(
+                                entity_type=entity_type,
+                                entity_data=entity_data,
+                                changes=changes,
+                                event_name=record["eventName"],
+                                collections=target_collections,
+                                source="dynamodb_stream",
+                                timestamp=datetime.now(timezone.utc).isoformat(),
+                                stream_record_id=record.get("eventID", "unknown"),
+                                aws_region=record.get("awsRegion", "unknown"),
+                            )
+                            messages_to_send.append(stream_msg)
+                            processed_records += 1
+                            
+                            logger.info("Created stream message",
+                                       entity_type=entity_type,
+                                       target_collections=[c.value for c in target_collections])
+                            
+                            if OBSERVABILITY_AVAILABLE:
+                                for collection in target_collections:
+                                    metrics.count("StreamMessageCreated", 1,
+                                                 {"entity_type": entity_type,
+                                                  "collection": collection.value})
+
+            except (ValueError, KeyError, TypeError) as e:
+                event_id = record.get("eventID", "unknown")
+                logger.error(
+                    "Error processing stream record",
+                    record_id=event_id,
+                    error=str(e)
+                )
+                
+                if OBSERVABILITY_AVAILABLE:
+                    metrics.count("StreamRecordProcessingError", 1,
+                                {"error_type": type(e).__name__})
+                # Continue processing other records
+
+        # Send all messages to appropriate SQS queues
+        if messages_to_send:
+            sent_count = send_messages_to_queues(messages_to_send)
+            logger.info("Sent messages to compaction queues", 
+                       message_count=sent_count)
+            
+            if OBSERVABILITY_AVAILABLE:
+                metrics.count("MessagesQueuedForCompaction", sent_count)
+        else:
+            sent_count = 0
+
+        response = LambdaResponse(
+            status_code=200,
+            processed_records=processed_records,
+            queued_messages=len(messages_to_send),
         )
-        return {
-            "statusCode": 200,
+        
+        logger.info("Stream processing completed",
+                   processed_records=processed_records,
+                   queued_messages=len(messages_to_send))
+        
+        if OBSERVABILITY_AVAILABLE:
+            metrics.gauge("StreamProcessorProcessedRecords", processed_records)
+            metrics.gauge("StreamProcessorQueuedMessages", len(messages_to_send))
+            
+        # Convert dataclass to dict for AWS Lambda JSON serialization
+        result = response.to_dict()
+        
+        if OBSERVABILITY_AVAILABLE:
+            return format_response(result, event, correlation_id=correlation_id)
+        return result
+        
+    except Exception as e:
+        logger.error("Stream processor failed", error=str(e), error_type=type(e).__name__)
+        
+        if OBSERVABILITY_AVAILABLE:
+            metrics.count("StreamProcessorError", 1, {"error_type": type(e).__name__})
+            
+        error_response = {
+            "statusCode": 500,
             "processed_records": 0,
             "queued_messages": 0,
+            "error": str(e)
         }
-
-    logger.info("event: %s", event)
-    logger.info("Processing %s DynamoDB stream records", len(event["Records"]))
-
-    # Avoid logging entire event to prevent PII exposure
-    if logger.level <= logging.DEBUG:
-        logger.debug("Stream event structure present")
-
-    messages_to_send = []
-    processed_records = 0
-
-    for record in event["Records"]:
-        try:
-            logger.info(
-                "Processing record: %s", record.get("eventID", "unknown")
-            )
-            logger.info("Event Name: %s", record.get("eventName", "unknown"))
-            # Parse stream record using entity parsers
-            parsed_record = parse_stream_record(record)
-
-            if not parsed_record:
-                continue  # Not a receipt entity we care about
-
-            # Process MODIFY and REMOVE events
-            if record["eventName"] in ["MODIFY", "REMOVE"]:
-                entity_type = parsed_record.entity_type
-                old_entity = parsed_record.old_entity
-                new_entity = parsed_record.new_entity
-
-                # Check if any ChromaDB-relevant fields changed
-                changes = get_chromadb_relevant_changes(
-                    entity_type, old_entity, new_entity
-                )
-                logger.info("Found %d relevant changes: %s", len(changes), list(changes.keys()))
-
-                # Always process REMOVE events, even without specific field
-                # changes
-                if changes or record["eventName"] == "REMOVE":
-                    # Extract entity identification data
-                    entity = old_entity or new_entity
-                    entity_data = None
-                    target_collections = []
-
-                    if entity_type == "RECEIPT_METADATA":
-                        # Metadata changes affect both collections
-                        entity_data = {
-                            "entity_type": entity_type,
-                            "image_id": entity.image_id,
-                            "receipt_id": entity.receipt_id,
-                        }
-                        target_collections = [
-                            ChromaDBCollection.LINES,
-                            ChromaDBCollection.WORDS,
-                        ]
-                    elif entity_type == "RECEIPT_WORD_LABEL":
-                        # Word label changes only affect words collection
-                        entity_data = {
-                            "entity_type": entity_type,
-                            "image_id": entity.image_id,
-                            "receipt_id": entity.receipt_id,
-                            "line_id": entity.line_id,
-                            "word_id": entity.word_id,
-                            "label": entity.label,
-                        }
-                        target_collections = [ChromaDBCollection.WORDS]
-
-                    if entity_data and target_collections:
-                        # Create enhanced stream message
-                        stream_msg = StreamMessage(
-                            entity_type=entity_type,
-                            entity_data=entity_data,
-                            changes=changes,
-                            event_name=record["eventName"],
-                            collections=target_collections,
-                            source="dynamodb_stream",
-                            timestamp=datetime.now(timezone.utc).isoformat(),
-                            stream_record_id=record.get("eventID", "unknown"),
-                            aws_region=record.get("awsRegion", "unknown"),
-                        )
-                        messages_to_send.append(stream_msg)
-                        processed_records += 1
-
-        except (ValueError, KeyError, TypeError) as e:
-            logger.error(
-                "Error processing stream record %s: %s",
-                record.get("eventID", "unknown"),
-                e,
-            )
-            # Continue processing other records
-
-    # Send all messages to appropriate SQS queues
-    if messages_to_send:
-        sent_count = send_messages_to_queues(messages_to_send)
-        logger.info("Sent %s messages to compaction queues", sent_count)
-
-    response = LambdaResponse(
-        status_code=200,
-        processed_records=processed_records,
-        queued_messages=len(messages_to_send),
-    )
-
-    # Convert dataclass to dict for AWS Lambda JSON serialization
-    return response.to_dict()
+        
+        if OBSERVABILITY_AVAILABLE:
+            return format_response(error_response, event, is_error=True, correlation_id=correlation_id)
+        return error_response
+        
+    finally:
+        # Stop monitoring if available
+        if OBSERVABILITY_AVAILABLE:
+            stop_compaction_lambda_monitoring()
 
 
 def _detect_entity_type(sk: str) -> Optional[str]:
@@ -288,7 +419,14 @@ def _parse_entity(
         if entity_type == "RECEIPT_WORD_LABEL":
             return item_to_receipt_word_label(complete_item)
     except ValueError as e:
-        logger.warning("Failed to parse %s %s: %s", image_type, entity_type, e)
+        logger.warning("Failed to parse entity",
+                      image_type=image_type,
+                      entity_type=entity_type, 
+                      error=str(e))
+        
+        if OBSERVABILITY_AVAILABLE:
+            metrics.count("EntityParsingError", 1,
+                        {"entity_type": entity_type, "image_type": image_type})
 
     return None
 
@@ -336,15 +474,15 @@ def parse_stream_record(
         # Log parsing results for debugging
         if old_image and not old_entity:
             logger.warning(
-                "Failed to parse old %s, available keys: %s",
-                entity_type,
-                list(old_image.keys()) if old_image else "None",
+                "Failed to parse old entity",
+                entity_type=entity_type,
+                available_keys=list(old_image.keys()) if old_image else "None"
             )
         if new_image and not new_entity:
             logger.warning(
-                "Failed to parse new %s, available keys: %s",
-                entity_type,
-                list(new_image.keys()) if new_image else "None",
+                "Failed to parse new entity",
+                entity_type=entity_type,
+                available_keys=list(new_image.keys()) if new_image else "None"
             )
 
         # Return parsed entity information
@@ -357,7 +495,10 @@ def parse_stream_record(
         )
 
     except (KeyError, ValueError) as e:
-        logger.warning("Failed to parse stream record: %s", e)
+        logger.warning("Failed to parse stream record", error=str(e))
+        
+        if OBSERVABILITY_AVAILABLE:
+            metrics.count("StreamRecordParsingError", 1)
         return None
 
 
@@ -532,7 +673,11 @@ def _send_batch_to_queue(
             )
 
         try:
-            logger.info("Sending message to %s", queue_url)
+            logger.info("Sending message batch to queue", 
+                       queue_url=queue_url,
+                       collection=collection.value,
+                       batch_size=len(entries))
+            
             response = sqs.send_message_batch(
                 QueueUrl=queue_url, Entries=entries
             )
@@ -542,23 +687,42 @@ def _send_batch_to_queue(
             sent_count += successful
 
             logger.info(
-                "Sent %s messages to %s queue", successful, collection.value
+                "Sent messages to queue", 
+                successful_count=successful,
+                collection=collection.value
             )
+            
+            if OBSERVABILITY_AVAILABLE:
+                metrics.count("SQSMessagesSuccessful", successful,
+                            {"collection": collection.value})
 
             # Log any failures
             if "Failed" in response and response["Failed"]:
+                failed_count = len(response["Failed"])
+                
+                if OBSERVABILITY_AVAILABLE:
+                    metrics.count("SQSMessagesFailed", failed_count,
+                                {"collection": collection.value})
+                
                 for failed in response["Failed"]:
                     logger.error(
-                        "Failed to send message %s to %s queue: %s - %s",
-                        failed["Id"],
-                        collection.value,
-                        failed.get("Code", "UnknownError"),
-                        failed.get("Message", "No error details"),
+                        "Failed to send message to queue",
+                        message_id=failed["Id"],
+                        collection=collection.value,
+                        error_code=failed.get("Code", "UnknownError"),
+                        error_message=failed.get("Message", "No error details")
                     )
 
         except (ValueError, KeyError, TypeError) as e:
             logger.error(
-                "Error sending SQS batch to %s queue: %s", collection.value, e
+                "Error sending SQS batch to queue",
+                collection=collection.value,
+                error=str(e)
             )
+            
+            if OBSERVABILITY_AVAILABLE:
+                metrics.count("SQSBatchError", 1,
+                            {"collection": collection.value,
+                             "error_type": type(e).__name__})
 
     return sent_count
