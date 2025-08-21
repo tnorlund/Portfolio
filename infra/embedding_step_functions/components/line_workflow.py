@@ -381,10 +381,10 @@ class LineEmbeddingWorkflow(ComponentResource):
                                     "Type": "Pass",
                                     "Comment": "Extract and combine original delta_results from chunk group",
                                     "Parameters": {
-                                        "operation": "process_chunk",
+                                        "operation": "process_chunk_combined",
                                         "batch_id.$": "States.Format('{}-group-{}', $.batch_id, $.group_index)",
                                         "chunk_index.$": "$.group_index",
-                                        "delta_results.$": "States.ArrayFlatten($.chunk_group[*].original_delta_results)",
+                                        "delta_results.$": "$.chunk_group",
                                         "database": "lines",
                                     },
                                     "Next": "ProcessCombinedDeltas",

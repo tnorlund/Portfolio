@@ -98,17 +98,19 @@ def compact_handler(
         return process_chunk_handler(event)
     if operation == "process_chunk_hierarchical":
         return process_chunk_hierarchical_handler(event)
+    if operation == "process_chunk_combined":
+        return process_chunk_combined_handler(event)
     if operation == "final_merge":
         return final_merge_handler(event)
 
     logger.error(
-        "Invalid operation. Expected 'process_chunk', 'process_chunk_hierarchical', or 'final_merge'",
+        "Invalid operation. Expected 'process_chunk', 'process_chunk_hierarchical', 'process_chunk_combined', or 'final_merge'",
         operation=operation,
     )
     return {
         "statusCode": 400,
         "error": f"Invalid operation: {operation}",
-        "message": "Operation must be 'process_chunk', 'process_chunk_hierarchical', or 'final_merge'",
+        "message": "Operation must be 'process_chunk', 'process_chunk_hierarchical', 'process_chunk_combined', or 'final_merge'",
     }
 
 
@@ -241,6 +243,84 @@ def process_chunk_hierarchical_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         )
     
     return result
+
+
+def process_chunk_combined_handler(event: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Process combined delta results from multiple chunk groups.
+    
+    Input format:
+    {
+        "operation": "process_chunk_combined",
+        "batch_id": "batch-group-0",
+        "chunk_index": 0,
+        "delta_results": [
+            {
+                "intermediate_key": "s3://bucket/path",
+                "original_delta_results": [...],
+                "metadata": {...}
+            },
+            ...
+        ]
+    }
+    """
+    logger.info("Processing combined chunk results")
+    
+    batch_id = event.get("batch_id")
+    chunk_index = event.get("chunk_index")
+    chunk_objects = event.get("delta_results", [])
+    database_name = event.get("database")
+    
+    if not batch_id:
+        return {
+            "statusCode": 400,
+            "error": "batch_id is required for combined chunk processing",
+        }
+
+    if chunk_index is None:
+        return {
+            "statusCode": 400,
+            "error": "chunk_index is required for combined chunk processing",
+        }
+
+    # Extract and flatten all original_delta_results
+    combined_deltas = []
+    for chunk_obj in chunk_objects:
+        original_deltas = chunk_obj.get("original_delta_results", [])
+        combined_deltas.extend(original_deltas)
+    
+    if not combined_deltas:
+        logger.info(
+            "No delta results in combined chunks, skipping", 
+            chunk_index=chunk_index,
+            chunk_count=len(chunk_objects)
+        )
+        return {
+            "statusCode": 200,
+            "batch_id": batch_id,
+            "chunk_index": chunk_index,
+            "embeddings_processed": 0,
+            "message": "Empty combined chunk processed",
+        }
+    
+    logger.info(
+        "Processing combined delta results",
+        chunk_index=chunk_index,
+        original_chunk_count=len(chunk_objects),
+        combined_delta_count=len(combined_deltas),
+        batch_id=batch_id,
+    )
+    
+    # Create a new event with the combined deltas and process normally
+    combined_event = {
+        "operation": "process_chunk",
+        "batch_id": batch_id,
+        "chunk_index": chunk_index,
+        "delta_results": combined_deltas,
+        "database": database_name,
+    }
+    
+    return process_chunk_handler(combined_event)
 
 
 def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
