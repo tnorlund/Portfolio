@@ -673,7 +673,7 @@ def perform_final_merge(
             try:
                 # Download intermediate chunk
                 download_from_s3(bucket, intermediate_key, chunk_temp)
-                logger.info("Downloaded chunk", chunk_index=chunk_index)
+                logger.info("Downloaded chunk", chunk_index=i, intermediate_key=intermediate_key)
 
                 # Load chunk
                 chunk_client = chromadb.PersistentClient(path=chunk_temp)
