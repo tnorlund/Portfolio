@@ -171,7 +171,7 @@ lock_duration_minutes = int(os.environ.get("LOCK_DURATION_MINUTES", "15"))
 compaction_queue_url = os.environ.get("COMPACTION_QUEUE_URL", "")
 
 
-def handle(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
+def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     """Enhanced entry point for Lambda handler.
 
     Routes to appropriate handler based on trigger type:

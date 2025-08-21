@@ -10,4 +10,4 @@ ENV HNSWLIB_NO_NATIVE=1
 COPY enhanced_compaction_handler.py ${LAMBDA_TASK_ROOT}/handler.py
 
 # Set the handler
-CMD ["handler.handle"]
+CMD ["handler.lambda_handler"]
