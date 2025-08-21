@@ -14,7 +14,6 @@ from pulumi import ComponentResource, Output, ResourceOptions
 # pylint: disable=import-error
 from chromadb_compaction import (  # type: ignore[import-not-found]
     ChromaDBBuckets,
-    ChromaDBQueues,
 )
 
 # pylint: enable=import-error
@@ -38,6 +37,7 @@ class EmbeddingInfrastructure(ComponentResource):
     def __init__(
         self,
         name: str,
+        chromadb_queues,
         base_images=None,
         opts: Optional[ResourceOptions] = None,
     ):
@@ -45,6 +45,7 @@ class EmbeddingInfrastructure(ComponentResource):
 
         Args:
             name: Component name
+            chromadb_queues: ChromaDB SQS queues component (from chromadb_compaction)
             base_images: Optional base images for Docker builds
             opts: Pulumi resource options
         """
@@ -57,14 +58,12 @@ class EmbeddingInfrastructure(ComponentResource):
 
         self.base_images = base_images
 
-        # Create ChromaDB infrastructure
+        # Use provided ChromaDB queues instead of creating our own
+        self.chromadb_queues = chromadb_queues
+        
+        # Create ChromaDB buckets for embedding-specific storage
         self.chromadb_buckets = ChromaDBBuckets(
             f"{name}-chromadb-buckets",
-            opts=ResourceOptions(parent=self),
-        )
-
-        self.chromadb_queues = ChromaDBQueues(
-            f"{name}-chromadb-queues",
             opts=ResourceOptions(parent=self),
         )
 

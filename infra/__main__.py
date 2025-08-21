@@ -102,8 +102,20 @@ validate_merchant_step_functions = ValidateMerchantStepFunctions(
     "validate-merchant"
 )
 validation_pipeline = ValidationPipeline("validation-pipeline")
+
+# Create ChromaDB compaction infrastructure first (it owns the queues)
+chromadb_infrastructure = create_chromadb_compaction_infrastructure(
+    name=f"chromadb-{pulumi.get_stack()}",
+    dynamodb_table_arn=dynamodb_table.arn,
+    dynamodb_stream_arn=dynamodb_table.stream_arn,
+    base_images=base_images,
+)
+
+# Create embedding infrastructure using ChromaDB's queues
 embedding_infrastructure = EmbeddingInfrastructure(
-    "embedding-infra", base_images=base_images
+    "embedding-infra", 
+    chromadb_queues=chromadb_infrastructure.chromadb_queues,
+    base_images=base_images
 )
 validation_by_merchant_step_functions = ValidationByMerchantStepFunction(
     "validation-by-merchant"
@@ -158,13 +170,7 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
     policy_arn="arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
 )
 
-# Create ChromaDB compaction infrastructure (hybrid deployment)
-chromadb_infrastructure = create_chromadb_compaction_infrastructure(
-    name=f"chromadb-{pulumi.get_stack()}",
-    dynamodb_table_arn=dynamodb_table.arn,
-    dynamodb_stream_arn=dynamodb_table.stream_arn,
-    base_images=base_images,
-)
+# ChromaDB compaction infrastructure already created above
 
 # Create spot interruption handler
 # spot_handler = SpotInterruptionHandler(
