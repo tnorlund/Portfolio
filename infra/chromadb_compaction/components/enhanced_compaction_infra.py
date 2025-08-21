@@ -62,7 +62,6 @@ class EnhancedCompactionLambda(ComponentResource):
         # Create CloudWatch log group
         self.log_group = aws.cloudwatch.LogGroup(
             f"{name}-log-group",
-            name=f"/aws/lambda/chromadb-enhanced-compaction-{stack}",
             retention_in_days=14,  # Keep logs for 2 weeks
             tags={
                 "Project": "ChromaDB",
@@ -206,7 +205,6 @@ class EnhancedCompactionLambda(ComponentResource):
         # Create the Lambda function
         self.function = aws.lambda_.Function(
             f"{name}-function",
-            name=f"chromadb-enhanced-compaction-{stack}",
             runtime="python3.12",
             code=pulumi.AssetArchive(
                 {

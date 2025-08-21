@@ -49,7 +49,6 @@ class ChromaDBQueues(ComponentResource):
         # Create dead letter queues for each collection
         self.lines_dlq = aws.sqs.Queue(
             f"{name}-lines-dlq",
-            name=Output.concat("chromadb-lines-dlq-", stack),
             message_retention_seconds=1209600,  # 14 days
             visibility_timeout_seconds=300,  # 5 minutes
             receive_wait_time_seconds=0,  # Short polling
@@ -64,7 +63,6 @@ class ChromaDBQueues(ComponentResource):
 
         self.words_dlq = aws.sqs.Queue(
             f"{name}-words-dlq",
-            name=Output.concat("chromadb-words-dlq-", stack),
             message_retention_seconds=1209600,  # 14 days
             visibility_timeout_seconds=300,  # 5 minutes
             receive_wait_time_seconds=0,  # Short polling
@@ -80,7 +78,6 @@ class ChromaDBQueues(ComponentResource):
         # Create lines queue with redrive policy
         self.lines_queue = aws.sqs.Queue(
             f"{name}-lines-queue",
-            name=Output.concat("chromadb-lines-queue-", stack),
             message_retention_seconds=345600,
             visibility_timeout_seconds=900,
             receive_wait_time_seconds=20,
@@ -104,7 +101,6 @@ class ChromaDBQueues(ComponentResource):
         # Create words queue with redrive policy
         self.words_queue = aws.sqs.Queue(
             f"{name}-words-queue",
-            name=Output.concat("chromadb-words-queue-", stack),
             message_retention_seconds=345600,
             visibility_timeout_seconds=900,
             receive_wait_time_seconds=20,

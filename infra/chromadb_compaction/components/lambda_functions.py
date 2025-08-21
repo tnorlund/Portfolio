@@ -139,7 +139,6 @@ class HybridLambdaDeployment(ComponentResource):
         # Create zip-based Lambda for stream processing
         self.stream_processor_function = aws.lambda_.Function(
             f"{name}-stream-processor",
-            name=f"chromadb-stream-processor-{stack}",
             runtime="python3.12",
             code=pulumi.AssetArchive(
                 {
@@ -186,7 +185,6 @@ class HybridLambdaDeployment(ComponentResource):
         # Create container-based Lambda for enhanced compaction
         self.enhanced_compaction_function = aws.lambda_.Function(
             f"{name}-enhanced-compaction",
-            name=f"chromadb-enhanced-compaction-{stack}",
             package_type="Image",
             image_uri=self.docker_image.image_uri,
             role=self.lambda_role.arn,
