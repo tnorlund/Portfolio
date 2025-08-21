@@ -55,9 +55,9 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             # Each result should have delta_key and collection info
             if isinstance(result, dict) and "delta_key" in result:
 
-                # Ensure collection is set (default to receipt_words for backward compat)
+                # Ensure collection is set (default to words for backward compat)
                 if "collection" not in result:
-                    result["collection"] = "receipt_words"
+                    result["collection"] = "words"
                 valid_deltas.append(result)
             else:
                 logger.warning("Skipping invalid delta result", result=result)

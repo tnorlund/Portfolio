@@ -250,7 +250,7 @@ def _handle_internal_core(
             raise TimeoutError("Lambda timeout detected before delta save")
 
         # Save embeddings as delta with comprehensive monitoring and circuit breaker protection
-        with trace_chromadb_delta_save("receipt_lines", result_count):
+        with trace_chromadb_delta_save("lines", result_count):
             with operation_with_timeout(
                 "save_line_embeddings_as_delta", max_duration=300
             ):
@@ -311,10 +311,10 @@ def _handle_internal_core(
         metrics.gauge(
             "SavedEmbeddings",
             embedding_count,
-            dimensions={"collection": "receipt_lines"},
+            dimensions={"collection": "lines"},
         )
         metrics.count(
-            "DeltasSaved", dimensions={"collection": "receipt_lines"}
+            "DeltasSaved", dimensions={"collection": "lines"}
         )
 
         # Add to trace
@@ -344,7 +344,7 @@ def _handle_internal_core(
             "delta_key": delta_result["delta_key"],
             "embedding_count": delta_result["embedding_count"],
             "storage": "s3_delta",
-            "collection": "receipt_lines",
+            "collection": "lines",
             "database": "lines",  # Database for line embeddings
         }
 
