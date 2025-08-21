@@ -655,7 +655,21 @@ def perform_final_merge(
         if chunk_results:
             # New format: we have specific intermediate_key objects
             logger.info("Merging using chunk_results format", chunk_count=len(chunk_results))
-            chunk_keys = [chunk["intermediate_key"] for chunk in chunk_results]
+            logger.info("Chunk results format", chunk_results=chunk_results)
+            
+            # Handle different possible formats
+            chunk_keys = []
+            for chunk in chunk_results:
+                if isinstance(chunk, dict) and "intermediate_key" in chunk:
+                    chunk_keys.append(chunk["intermediate_key"])
+                elif isinstance(chunk, str):
+                    # Direct string key
+                    chunk_keys.append(chunk)
+                else:
+                    logger.error("Unexpected chunk format", chunk=chunk, chunk_type=type(chunk))
+                    raise ValueError(f"Unexpected chunk format: {chunk}")
+            
+            logger.info("Extracted chunk keys", chunk_keys=chunk_keys)
         else:
             # Legacy format: generate keys from batch_id and chunk indices
             logger.info("Merging using legacy total_chunks format", total_chunks=total_chunks)
