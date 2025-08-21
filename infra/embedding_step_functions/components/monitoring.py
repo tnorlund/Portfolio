@@ -57,15 +57,8 @@ class MonitoringComponent(ComponentResource):
         # Create Step Function monitoring alarms
         self._create_step_function_alarms()
 
-        # Create CloudWatch dashboard (dashboard URL will be registered after creation)
+        # Create CloudWatch dashboard (outputs will be registered after dashboard creation)
         self._create_dashboard()
-
-        # Register outputs (dashboard URL will be added after dashboard creation)
-        self.register_outputs(
-            {
-                "alert_topic_arn": self.alert_topic.arn,
-            }
-        )
 
     def _create_sns_topic(self):
         """Create SNS topic for alert notifications."""
