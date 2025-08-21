@@ -776,7 +776,7 @@ def update_receipt_metadata(
         # Get all lines for this receipt from DynamoDB
         logger.info("Querying DynamoDB for lines: image_id=%s, receipt_id=%s", image_id, receipt_id)
         try:
-            lines = dynamo_client.list_receipt_lines_from_receipt(receipt_id, image_id)
+            lines = dynamo_client.list_receipt_lines_from_receipt(image_id, receipt_id)
             logger.info("Found %d lines in DynamoDB for receipt", len(lines))
             
             # Construct exact ChromaDB IDs for lines
@@ -894,7 +894,7 @@ def remove_receipt_metadata(collection, image_id: str, receipt_id: int) -> int:
     elif "lines" in collection_name:
         # Get all lines for this receipt from DynamoDB
         try:
-            lines = dynamo_client.list_receipt_lines_from_receipt(receipt_id, image_id)
+            lines = dynamo_client.list_receipt_lines_from_receipt(image_id, receipt_id)
             chromadb_ids = [
                 f"IMAGE#{line.image_id}#RECEIPT#{line.receipt_id:05d}#LINE#{line.line_id:05d}"
                 for line in lines
