@@ -20,6 +20,7 @@ import boto3
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.entities.compaction_lock import CompactionLock
 from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
+from receipt_dynamo.constants import ChromaDBCollection
 
 from .chroma_client import ChromaDBClient
 
@@ -53,6 +54,7 @@ class ChromaCompactor:
         self,
         dynamo_client: DynamoClient,
         bucket_name: str,
+        collection: ChromaDBCollection = ChromaDBCollection.LINES,
         lock_timeout_minutes: int = 15,
         s3_client: Optional[Any] = None,
     ):
@@ -62,11 +64,13 @@ class ChromaCompactor:
         Args:
             dynamo_client: DynamoDB client for lock management
             bucket_name: S3 bucket containing snapshots and deltas
+            collection: ChromaDB collection this compactor manages
             lock_timeout_minutes: Lock timeout in minutes (default: 15)
             s3_client: Optional boto3 S3 client
         """
         self.dynamo_client = dynamo_client
         self.bucket_name = bucket_name
+        self.collection = collection
         self.lock_timeout_minutes = lock_timeout_minutes
         self._s3_client = s3_client
         self.lock_id = "chroma-main-snapshot"
@@ -183,6 +187,7 @@ class ChromaCompactor:
             owner=str(uuid.uuid4()),
             expires=datetime.now(timezone.utc)
             + timedelta(minutes=self.lock_timeout_minutes),
+            collection=self.collection,
         )
 
         try:

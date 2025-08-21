@@ -367,6 +367,7 @@ def _process_collection_messages(
     # Acquire collection-specific lock for metadata updates
     lock_manager = LockManager(
         get_dynamo_client(),
+        collection=collection,
         heartbeat_interval=heartbeat_interval,
         lock_duration_minutes=lock_duration_minutes,
     )
