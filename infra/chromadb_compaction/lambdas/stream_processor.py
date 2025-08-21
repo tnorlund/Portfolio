@@ -33,7 +33,14 @@ from receipt_dynamo.entities.receipt_word_label import (
     ReceiptWordLabel,
     item_to_receipt_word_label,
 )
-from receipt_dynamo.constants import ChromaDBCollection
+
+# Define ChromaDBCollection enum locally since it might not be in the layer
+from enum import Enum
+
+class ChromaDBCollection(str, Enum):
+    """ChromaDB collection types for receipt embeddings."""
+    LINES = "lines"
+    WORDS = "words"
 
 
 @dataclass(frozen=True)
@@ -110,6 +117,11 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     Returns:
         Response with processing statistics
     """
+    # Handle different event types (test events vs real stream events)
+    if "Records" not in event:
+        logger.info("Received non-stream event (likely test): %s", list(event.keys()))
+        return {"statusCode": 200, "processed_records": 0, "queued_messages": 0}
+    
     logger.info("Processing %s DynamoDB stream records", len(event["Records"]))
 
     # Avoid logging entire event to prevent PII exposure
@@ -292,6 +304,12 @@ def parse_stream_record(
         # Parse entities using receipt_dynamo parsers via helper function
         old_entity = _parse_entity(old_image, entity_type, "old")
         new_entity = _parse_entity(new_image, entity_type, "new")
+        
+        # Log parsing results for debugging
+        if old_image and not old_entity:
+            logger.warning("Failed to parse old %s, available keys: %s", entity_type, list(old_image.keys()) if old_image else "None")
+        if new_image and not new_entity:
+            logger.warning("Failed to parse new %s, available keys: %s", entity_type, list(new_image.keys()) if new_image else "None")
 
         # Return parsed entity information
         return ParsedStreamRecord(
