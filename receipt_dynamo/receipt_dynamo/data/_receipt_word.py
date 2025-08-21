@@ -419,26 +419,52 @@ class _ReceiptWord(
             raise EntityValidationError(
                 "receipt_id must be a positive integer"
             )
-        # Use _query_entities with server-side filter for efficient ReceiptWord retrieval
-        # Without proper filtering, begins_with would return ALL entities under RECEIPT#<id>#LINE# including:
+        # Use direct query to fetch only ReceiptWord entities efficiently
+        # SK Pattern analysis for RECEIPT#{receipt_id:05d}#LINE# prefix:
         # - ReceiptWord: RECEIPT#00001#LINE#00001#WORD#00001 (what we want)
-        # - ReceiptWordLabel: RECEIPT#00001#LINE#00001#WORD#00001#LABEL#tax (would be over-fetched)
-        # - ReceiptLetter: RECEIPT#00001#LINE#00001#WORD#00001#LETTER#00001 (would be over-fetched)
-        # Filter: contains(#WORD#) AND NOT contains(#LABEL#) AND NOT contains(#LETTER#)
-        results, _ = self._query_entities(
-            index_name=None,
-            key_condition_expression="PK = :pk AND begins_with(SK, :sk_prefix)",
-            expression_attribute_names={"#sk": "SK"},
-            expression_attribute_values={
+        # - ReceiptWordLabel: RECEIPT#00001#LINE#00001#WORD#00001#LABEL#tax (has extra #LABEL# segment)
+        # - ReceiptLetter: RECEIPT#00001#LINE#00001#WORD#00001#LETTER#00001 (has extra #LETTER# segment)
+        
+        # Collect all results manually to avoid filter expression on primary key
+        all_items = []
+        
+        response = self._client.query(
+            TableName=self.table_name,
+            KeyConditionExpression="PK = :pk AND begins_with(SK, :sk_prefix)",
+            ExpressionAttributeValues={
                 ":pk": {"S": f"IMAGE#{image_id}"},
                 ":sk_prefix": {"S": f"RECEIPT#{receipt_id:05d}#LINE#"},
-                ":word_marker": {"S": "#WORD#"},
-                ":label_marker": {"S": "#LABEL#"},
-                ":letter_marker": {"S": "#LETTER#"},
             },
-            converter_func=item_to_receipt_word,
-            filter_expression="contains(#sk, :word_marker) AND NOT contains(#sk, :label_marker) AND NOT contains(#sk, :letter_marker)",
         )
+        
+        # Process initial results
+        for item in response.get("Items", []):
+            sk = item.get("SK", {}).get("S", "")
+            # Only include items that match exactly RECEIPT#XXXXX#LINE#XXXXX#WORD#XXXXX pattern (no additional segments)
+            if sk.count("#") == 5 and "#WORD#" in sk and "#LABEL#" not in sk and "#LETTER#" not in sk:
+                all_items.append(item)
+        
+        # Handle pagination
+        while "LastEvaluatedKey" in response:
+            response = self._client.query(
+                TableName=self.table_name,
+                KeyConditionExpression="PK = :pk AND begins_with(SK, :sk_prefix)",
+                ExpressionAttributeValues={
+                    ":pk": {"S": f"IMAGE#{image_id}"},
+                    ":sk_prefix": {"S": f"RECEIPT#{receipt_id:05d}#LINE#"},
+                },
+                ExclusiveStartKey=response["LastEvaluatedKey"],
+            )
+            
+            # Process paginated results
+            for item in response.get("Items", []):
+                sk = item.get("SK", {}).get("S", "")
+                # Only include items that match exactly RECEIPT#XXXXX#LINE#XXXXX#WORD#XXXXX pattern
+                if sk.count("#") == 5 and "#WORD#" in sk and "#LABEL#" not in sk and "#LETTER#" not in sk:
+                    all_items.append(item)
+        
+        # Convert to ReceiptWord objects
+        results = [item_to_receipt_word(item) for item in all_items]
         return results
 
     @handle_dynamodb_errors("list_receipt_words_by_embedding_status")

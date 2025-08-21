@@ -364,23 +364,51 @@ class _ReceiptLine(FlattenedStandardMixin):
                 "receipt_id must be a positive integer"
             )
         
-        # Use _query_entities directly with server-side filter for efficient ReceiptLine retrieval
-        # Without filter, begins_with would return ALL entities under RECEIPT#<id>#LINE# including:
+        # Use _query_entities to fetch only ReceiptLine entities efficiently
+        # SK Pattern analysis for RECEIPT#{receipt_id:05d}#LINE# prefix:
         # - ReceiptLine: RECEIPT#00001#LINE#00001 (what we want)  
-        # - ReceiptWord: RECEIPT#00001#LINE#00001#WORD#00001 (would be over-fetched)
-        # - ReceiptWordLabel: RECEIPT#00001#LINE#00001#WORD#00001#LABEL#<label> (would be over-fetched)
-        # - ReceiptLetter: RECEIPT#00001#LINE#00001#WORD#00001#LETTER#00001 (would be over-fetched)
-        # Filter expression prevents network transfer of unwanted entities
-        results, _ = self._query_entities(
-            index_name=None,
-            key_condition_expression="PK = :pk AND begins_with(SK, :sk_prefix)",
-            expression_attribute_names={"#sk": "SK"},
-            expression_attribute_values={
+        # - ReceiptWord: RECEIPT#00001#LINE#00001#WORD#00001 (has extra #WORD# segment)
+        # - ReceiptWordLabel: RECEIPT#00001#LINE#00001#WORD#00001#LABEL#<label> (has extra #WORD#LABEL# segments)
+        # - ReceiptLetter: RECEIPT#00001#LINE#00001#WORD#00001#LETTER#00001 (has extra #WORD#LETTER# segments)
+        
+        # Collect all results manually to avoid filter expression on primary key
+        all_items = []
+        
+        response = self._client.query(
+            TableName=self.table_name,
+            KeyConditionExpression="PK = :pk AND begins_with(SK, :sk_prefix)",
+            ExpressionAttributeValues={
                 ":pk": {"S": f"IMAGE#{image_id}"},
                 ":sk_prefix": {"S": f"RECEIPT#{receipt_id:05d}#LINE#"},
-                ":word_marker": {"S": "#WORD#"},
             },
-            converter_func=item_to_receipt_line,
-            filter_expression="NOT contains(#sk, :word_marker)",
         )
+        
+        # Process initial results
+        for item in response.get("Items", []):
+            sk = item.get("SK", {}).get("S", "")
+            # Only include items that match exactly RECEIPT#XXXXX#LINE#XXXXX pattern (no additional segments)
+            if sk.count("#") == 3 and sk.endswith(f"#LINE#{sk.split('#')[3]}"):
+                all_items.append(item)
+        
+        # Handle pagination
+        while "LastEvaluatedKey" in response:
+            response = self._client.query(
+                TableName=self.table_name,
+                KeyConditionExpression="PK = :pk AND begins_with(SK, :sk_prefix)",
+                ExpressionAttributeValues={
+                    ":pk": {"S": f"IMAGE#{image_id}"},
+                    ":sk_prefix": {"S": f"RECEIPT#{receipt_id:05d}#LINE#"},
+                },
+                ExclusiveStartKey=response["LastEvaluatedKey"],
+            )
+            
+            # Process paginated results
+            for item in response.get("Items", []):
+                sk = item.get("SK", {}).get("S", "")
+                # Only include items that match exactly RECEIPT#XXXXX#LINE#XXXXX pattern
+                if sk.count("#") == 3 and sk.endswith(f"#LINE#{sk.split('#')[3]}"):
+                    all_items.append(item)
+        
+        # Convert to ReceiptLine objects
+        results = [item_to_receipt_line(item) for item in all_items]
         return results

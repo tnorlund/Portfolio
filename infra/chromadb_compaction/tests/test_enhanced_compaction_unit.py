@@ -36,18 +36,76 @@ class TestCoreCompactionLogic:
             "LOCK_DURATION_MINUTES": "15",
         },
     )
-    def test_update_receipt_metadata_logic(self):
+    @patch('infra.chromadb_compaction.lambdas.enhanced_compaction_handler.get_dynamo_client')
+    def test_update_receipt_metadata_logic(self, mock_get_dynamo_client):
         """Test the core metadata update logic."""
+
+        # Setup mock DynamoDB client
+        mock_dynamo_client = MagicMock()
+        mock_get_dynamo_client.return_value = mock_dynamo_client
+        
+        # Create mock receipt lines 
+        from receipt_dynamo.entities.receipt_line import ReceiptLine
+        test_image_id = "550e8400-e29b-41d4-a716-446655440000"
+        mock_lines = [
+            ReceiptLine(
+                image_id=test_image_id,
+                receipt_id=456,
+                line_id=1,
+                text="Line 1",
+                bounding_box={"x": 0, "y": 0, "width": 100, "height": 20},
+                top_left={"x": 0, "y": 0},
+                top_right={"x": 100, "y": 0},
+                bottom_left={"x": 0, "y": 20},
+                bottom_right={"x": 100, "y": 20},
+                angle_degrees=0.0,
+                angle_radians=0.0,
+                confidence=0.95,
+                embedding_status="PENDING"
+            ),
+            ReceiptLine(
+                image_id=test_image_id,
+                receipt_id=456,
+                line_id=2,
+                text="Line 2",
+                bounding_box={"x": 0, "y": 25, "width": 100, "height": 20},
+                top_left={"x": 0, "y": 25},
+                top_right={"x": 100, "y": 25},
+                bottom_left={"x": 0, "y": 45},
+                bottom_right={"x": 100, "y": 45},
+                angle_degrees=0.0,
+                angle_radians=0.0,
+                confidence=0.95,
+                embedding_status="PENDING"
+            ),
+            ReceiptLine(
+                image_id=test_image_id,
+                receipt_id=456,
+                line_id=3,
+                text="Line 3",
+                bounding_box={"x": 0, "y": 50, "width": 100, "height": 20},
+                top_left={"x": 0, "y": 50},
+                top_right={"x": 100, "y": 50},
+                bottom_left={"x": 0, "y": 70},
+                bottom_right={"x": 100, "y": 70},
+                angle_degrees=0.0,
+                angle_radians=0.0,
+                confidence=0.95,
+                embedding_status="PENDING"
+            ),
+        ]
+        mock_dynamo_client.list_receipt_lines_from_receipt.return_value = mock_lines
 
         # Setup mock collection
         mock_collection = MagicMock()
+        mock_collection.name = "lines_collection"  # Set proper collection name
 
         # Mock the collection.get() call to return existing records
         mock_collection.get.return_value = {
             "ids": [
-                "IMAGE#test123#RECEIPT#00456#LINE#00001#WORD#00001",
-                "IMAGE#test123#RECEIPT#00456#LINE#00001#WORD#00002",
-                "IMAGE#test123#RECEIPT#00456#LINE#00002#WORD#00001",
+                f"IMAGE#{test_image_id}#RECEIPT#00456#LINE#00001",
+                f"IMAGE#{test_image_id}#RECEIPT#00456#LINE#00002", 
+                f"IMAGE#{test_image_id}#RECEIPT#00456#LINE#00003",
             ],
             "metadatas": [
                 {"existing_field": "value1", "old_merchant": "Old Store"},
@@ -66,7 +124,7 @@ class TestCoreCompactionLogic:
         }
 
         updated_count = update_receipt_metadata(
-            mock_collection, "test123", 456, changes
+            mock_collection, test_image_id, 456, changes
         )
 
         # Verify update was called correctly
