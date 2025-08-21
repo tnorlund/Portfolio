@@ -27,6 +27,7 @@ class TimeoutProtection:
         )
         self._heartbeat_thread = None
         self._should_stop_heartbeat = threading.Event()
+        self.shutdown_callbacks = []
 
     def _get_lambda_timeout(self) -> int:
         """Get Lambda timeout from context or environment."""
@@ -91,6 +92,26 @@ class TimeoutProtection:
             self._heartbeat_thread.join(timeout=1)
             self.logger.info("Stopped heartbeat monitoring")
 
+    def register_shutdown_callback(self, callback: Callable[[], Any]):
+        """Register a callback to run during graceful shutdown.
+
+        Args:
+            callback: Function to call during shutdown
+        """
+        self.shutdown_callbacks.append(callback)
+
+    def _run_shutdown_callbacks(self):
+        """Run all registered shutdown callbacks."""
+        for callback in self.shutdown_callbacks:
+            try:
+                callback()
+            except Exception as e:
+                self.logger.error(
+                    "Error in shutdown callback",
+                    callback=callback.__name__,
+                    error=str(e),
+                )
+
     def _heartbeat_loop(self):
         """Heartbeat loop that logs progress and checks timeout."""
         while not self._should_stop_heartbeat.wait(self.heartbeat_interval):
@@ -127,6 +148,8 @@ class TimeoutProtection:
                     elapsed_seconds=elapsed,
                     remaining_seconds=remaining,
                 )
+                # Run shutdown callbacks before breaking
+                self._run_shutdown_callbacks()
                 break
 
     @contextmanager
