@@ -19,6 +19,8 @@ from .sqs_queues import ChromaDBQueues
 from .s3_buckets import ChromaDBBuckets
 from .docker_image import DockerImageComponent
 
+from lambda_layer import dynamo_layer  # type: ignore[import-not-found]
+
 
 class HybridLambdaDeployment(ComponentResource):
     """
@@ -173,6 +175,7 @@ class HybridLambdaDeployment(ComponentResource):
                 "Environment": stack,
                 "ManagedBy": "Pulumi",
             },
+            layers=[dynamo_layer.arn],
             opts=ResourceOptions(
                 parent=self,
                 depends_on=[
