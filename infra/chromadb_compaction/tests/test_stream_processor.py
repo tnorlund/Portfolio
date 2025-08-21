@@ -391,7 +391,7 @@ class TestSendMessagesToQueues:
             StreamMessage(
                 entity_type="RECEIPT_METADATA",
                 entity_data={"image_id": "test", "receipt_id": 123},
-                changes={"merchant_name": {"old": "A", "new": "B"}},
+                changes={"merchant_name": FieldChange(old="A", new="B")},
                 event_name="MODIFY",
                 collections=[
                     ChromaDBCollection.LINES,
@@ -401,7 +401,7 @@ class TestSendMessagesToQueues:
             StreamMessage(
                 entity_type="RECEIPT_WORD_LABEL",
                 entity_data={"image_id": "test", "word_id": 456},
-                changes={"label": {"old": "OLD", "new": "NEW"}},
+                changes={"label": FieldChange(old="OLD", new="NEW")},
                 event_name="MODIFY",
                 collections=[ChromaDBCollection.WORDS],
             ),
@@ -451,7 +451,7 @@ class TestSendMessagesToQueues:
             StreamMessage(
                 entity_type="RECEIPT_METADATA",
                 entity_data={"image_id": f"test-{i}", "receipt_id": 1},
-                changes={"merchant_name": {"old": "A", "new": "B"}},
+                changes={"merchant_name": FieldChange(old="A", new="B")},
                 event_name="MODIFY",
                 collections=[
                     ChromaDBCollection.LINES,
@@ -502,7 +502,7 @@ class TestSendMessagesToQueues:
             StreamMessage(
                 entity_type="RECEIPT_WORD_LABEL",
                 entity_data={"image_id": "test", "word_id": 123},
-                changes={"label": {"old": "OLD", "new": "NEW"}},
+                changes={"label": FieldChange(old="OLD", new="NEW")},
                 event_name="MODIFY",
                 collections=[ChromaDBCollection.WORDS],
             )

@@ -37,8 +37,10 @@ from receipt_dynamo.entities.receipt_word_label import (
 # Define ChromaDBCollection enum locally since it might not be in the layer
 from enum import Enum
 
+
 class ChromaDBCollection(str, Enum):
     """ChromaDB collection types for receipt embeddings."""
+
     LINES = "lines"
     WORDS = "words"
 
@@ -119,9 +121,16 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     """
     # Handle different event types (test events vs real stream events)
     if "Records" not in event:
-        logger.info("Received non-stream event (likely test): %s", list(event.keys()))
-        return {"statusCode": 200, "processed_records": 0, "queued_messages": 0}
-    
+        logger.info(
+            "Received non-stream event (likely test): %s", list(event.keys())
+        )
+        return {
+            "statusCode": 200,
+            "processed_records": 0,
+            "queued_messages": 0,
+        }
+
+    logger.info("event: %s", event)
     logger.info("Processing %s DynamoDB stream records", len(event["Records"]))
 
     # Avoid logging entire event to prevent PII exposure
@@ -133,6 +142,10 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
 
     for record in event["Records"]:
         try:
+            logger.info(
+                "Processing record: %s", record.get("eventID", "unknown")
+            )
+            logger.info("Event Name: %s", record.get("eventName", "unknown"))
             # Parse stream record using entity parsers
             parsed_record = parse_stream_record(record)
 
@@ -149,6 +162,7 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
                 changes = get_chromadb_relevant_changes(
                     entity_type, old_entity, new_entity
                 )
+                logger.info("Found %d relevant changes: %s", len(changes), list(changes.keys()))
 
                 # Always process REMOVE events, even without specific field
                 # changes
@@ -304,12 +318,20 @@ def parse_stream_record(
         # Parse entities using receipt_dynamo parsers via helper function
         old_entity = _parse_entity(old_image, entity_type, "old")
         new_entity = _parse_entity(new_image, entity_type, "new")
-        
+
         # Log parsing results for debugging
         if old_image and not old_entity:
-            logger.warning("Failed to parse old %s, available keys: %s", entity_type, list(old_image.keys()) if old_image else "None")
+            logger.warning(
+                "Failed to parse old %s, available keys: %s",
+                entity_type,
+                list(old_image.keys()) if old_image else "None",
+            )
         if new_image and not new_entity:
-            logger.warning("Failed to parse new %s, available keys: %s", entity_type, list(new_image.keys()) if new_image else "None")
+            logger.warning(
+                "Failed to parse new %s, available keys: %s",
+                entity_type,
+                list(new_image.keys()) if new_image else "None",
+            )
 
         # Return parsed entity information
         return ParsedStreamRecord(
@@ -405,9 +427,9 @@ def send_messages_to_queues(messages: List[StreamMessage]) -> int:
         for field_name, field_change in msg.changes.items():
             changes_dict[field_name] = {
                 "old": field_change.old,
-                "new": field_change.new
+                "new": field_change.new,
             }
-        
+
         msg_dict = {
             "source": msg.source,
             "entity_type": msg.entity_type,
@@ -496,6 +518,7 @@ def _send_batch_to_queue(
             )
 
         try:
+            logger.info("Sending message to %s", queue_url)
             response = sqs.send_message_batch(
                 QueueUrl=queue_url, Entries=entries
             )

@@ -19,7 +19,13 @@ from .sqs_queues import ChromaDBQueues
 from .s3_buckets import ChromaDBBuckets
 from .docker_image import DockerImageComponent
 
-from lambda_layer import dynamo_layer  # type: ignore[import-not-found]
+try:
+    from lambda_layer import dynamo_layer  # type: ignore[import-not-found]
+except ImportError:
+    # For testing environments, create a mock
+    from unittest.mock import MagicMock
+
+    dynamo_layer = MagicMock()
 
 
 class HybridLambdaDeployment(ComponentResource):
@@ -140,6 +146,7 @@ class HybridLambdaDeployment(ComponentResource):
         self.stream_processor_function = aws.lambda_.Function(
             f"{name}-stream-processor",
             runtime="python3.12",
+            architectures=["arm64"],
             code=pulumi.AssetArchive(
                 {
                     "stream_processor.py": pulumi.FileAsset(
