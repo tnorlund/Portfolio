@@ -517,10 +517,9 @@ def process_metadata_updates(
 
                 # Get appropriate collection
                 try:
-                    collection_name = f"receipt_{database}"
-                    logger.info("Attempting to get collection: %s", collection_name)
-                    collection_obj = chroma_client.get_collection(collection_name)
-                    logger.info("Successfully got collection: %s", collection_name)
+                    logger.info("Attempting to get collection: %s", f"receipt_{database}")
+                    collection_obj = chroma_client.get_collection(database)
+                    logger.info("Successfully got collection: %s", f"receipt_{database}")
                 except Exception as e:  # pylint: disable=broad-exception-caught
                     logger.warning("Collection receipt_%s not found: %s", database, e)
                     continue
@@ -640,8 +639,8 @@ def process_label_updates(
 
         # Get words collection
         try:
-            collection_name = f"receipt_{database}"
-            collection_obj = chroma_client.get_collection(collection_name)
+            logger.info("Attempting to get collection: %s", f"receipt_{database}")
+            collection_obj = chroma_client.get_collection(database)
         except Exception:  # pylint: disable=broad-exception-caught
             logger.warning("Collection %s not found", f"receipt_{database}")
             return results
@@ -757,7 +756,7 @@ def update_receipt_metadata(
     # Construct ChromaDB IDs by querying DynamoDB for exact entities
     chromadb_ids = []
     
-    if collection_name == "receipt_words":
+    if "words" in collection_name:
         # Get all words for this receipt from DynamoDB
         logger.info("Querying DynamoDB for words: image_id=%s, receipt_id=%s", image_id, receipt_id)
         try:
@@ -773,7 +772,7 @@ def update_receipt_metadata(
             logger.error("Failed to query words from DynamoDB: %s", e)
             return 0
             
-    elif collection_name == "receipt_lines":
+    elif "lines" in collection_name:
         # Get all lines for this receipt from DynamoDB
         logger.info("Querying DynamoDB for lines: image_id=%s, receipt_id=%s", image_id, receipt_id)
         try:
@@ -880,7 +879,7 @@ def remove_receipt_metadata(collection, image_id: str, receipt_id: int) -> int:
     # Construct ChromaDB IDs by querying DynamoDB for exact entities
     chromadb_ids = []
     
-    if collection_name == "receipt_words":
+    if "words" in collection_name:
         # Get all words for this receipt from DynamoDB
         try:
             words = dynamo_client.list_receipt_words_from_receipt(image_id, receipt_id)
@@ -892,7 +891,7 @@ def remove_receipt_metadata(collection, image_id: str, receipt_id: int) -> int:
             logger.error("Failed to query words from DynamoDB: %s", e)
             return 0
             
-    elif collection_name == "receipt_lines":
+    elif "lines" in collection_name:
         # Get all lines for this receipt from DynamoDB
         try:
             lines = dynamo_client.list_receipt_lines_from_receipt(receipt_id, image_id)
