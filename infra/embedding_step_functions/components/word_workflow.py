@@ -187,7 +187,7 @@ class WordEmbeddingWorkflow(ComponentResource):
                     "PollWordBatches": {
                         "Type": "Map",
                         "ItemsPath": "$.pending_batches",
-                        "MaxConcurrency": 10,
+                        "MaxConcurrency": 25,
                         "Parameters": {
                             "batch_id.$": "$$.Map.Item.Value.batch_id",
                             "openai_batch_id.$": (
@@ -253,7 +253,7 @@ class WordEmbeddingWorkflow(ComponentResource):
                         "Type": "Map",
                         "Comment": "Process word chunks in parallel",
                         "ItemsPath": "$.chunked_data.chunks",
-                        "MaxConcurrency": 5,
+                        "MaxConcurrency": 10,
                         "Parameters": {"chunk.$": "$$.Map.Item.Value"},
                         "Iterator": {
                             "StartAt": "ProcessSingleWordChunk",
