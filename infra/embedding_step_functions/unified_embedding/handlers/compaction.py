@@ -233,13 +233,24 @@ def process_chunk_hierarchical_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     # Reuse the same processing logic as process_chunk
     result = process_chunk_handler(event)
     
-    # If processing succeeded, add the original delta_results to the response
+    # If processing succeeded, add only delta references (not full data) to the response
     if result.get("statusCode") == 200:
-        result["original_delta_results"] = event.get("delta_results", [])
+        delta_references = []
+        for delta in event.get("delta_results", []):
+            # Only keep the metadata, not the embedding data
+            delta_ref = {
+                "delta_key": delta.get("delta_key"),
+                "delta_id": delta.get("delta_id"), 
+                "embedding_count": delta.get("embedding_count"),
+                "collection": delta.get("collection")
+            }
+            delta_references.append(delta_ref)
+        
+        result["delta_references"] = delta_references
         logger.info(
-            "Added original delta_results for hierarchical processing",
+            "Added delta references for hierarchical processing",
             chunk_index=result.get("chunk_index"),
-            delta_count=len(result["original_delta_results"])
+            delta_count=len(delta_references)
         )
     
     return result
@@ -247,28 +258,28 @@ def process_chunk_hierarchical_handler(event: Dict[str, Any]) -> Dict[str, Any]:
 
 def process_chunk_combined_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Process combined delta results from multiple chunk groups.
+    Process combined delta references from multiple chunk groups.
     
     Input format:
     {
         "operation": "process_chunk_combined",
-        "batch_id": "batch-group-0",
+        "batch_id": "batch-group-0", 
         "chunk_index": 0,
-        "delta_results": [
+        "chunk_group": [
             {
                 "intermediate_key": "s3://bucket/path",
-                "original_delta_results": [...],
+                "delta_references": [...],
                 "metadata": {...}
             },
             ...
         ]
     }
     """
-    logger.info("Processing combined chunk results")
+    logger.info("Processing combined chunk group")
     
     batch_id = event.get("batch_id")
     chunk_index = event.get("chunk_index")
-    chunk_objects = event.get("delta_results", [])
+    chunk_objects = event.get("chunk_group", [])
     database_name = event.get("database")
     
     if not batch_id:
@@ -283,15 +294,15 @@ def process_chunk_combined_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             "error": "chunk_index is required for combined chunk processing",
         }
 
-    # Extract and flatten all original_delta_results
-    combined_deltas = []
+    # Extract and flatten all delta_references
+    combined_delta_refs = []
     for chunk_obj in chunk_objects:
-        original_deltas = chunk_obj.get("original_delta_results", [])
-        combined_deltas.extend(original_deltas)
+        delta_refs = chunk_obj.get("delta_references", [])
+        combined_delta_refs.extend(delta_refs)
     
-    if not combined_deltas:
+    if not combined_delta_refs:
         logger.info(
-            "No delta results in combined chunks, skipping", 
+            "No delta references in combined chunks, skipping",
             chunk_index=chunk_index,
             chunk_count=len(chunk_objects)
         )
@@ -304,19 +315,19 @@ def process_chunk_combined_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         }
     
     logger.info(
-        "Processing combined delta results",
+        "Processing combined delta references",
         chunk_index=chunk_index,
         original_chunk_count=len(chunk_objects),
-        combined_delta_count=len(combined_deltas),
+        combined_delta_count=len(combined_delta_refs),
         batch_id=batch_id,
     )
     
-    # Create a new event with the combined deltas and process normally
+    # Create a new event with the combined delta references and process normally
     combined_event = {
         "operation": "process_chunk",
         "batch_id": batch_id,
         "chunk_index": chunk_index,
-        "delta_results": combined_deltas,
+        "delta_results": combined_delta_refs,  # These are just references now, not full data
         "database": database_name,
     }
     

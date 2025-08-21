@@ -384,7 +384,7 @@ class LineEmbeddingWorkflow(ComponentResource):
                                         "operation": "process_chunk_combined",
                                         "batch_id.$": "States.Format('{}-group-{}', $.batch_id, $.group_index)",
                                         "chunk_index.$": "$.group_index",
-                                        "delta_results.$": "$.chunk_group",
+                                        "chunk_group.$": "$.chunk_group",
                                         "database": "lines",
                                     },
                                     "Next": "ProcessCombinedDeltas",
