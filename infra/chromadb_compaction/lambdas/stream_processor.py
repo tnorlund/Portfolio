@@ -400,11 +400,19 @@ def send_messages_to_queues(messages: List[StreamMessage]) -> int:
 
     for msg in messages:
         # Convert StreamMessage to dictionary for JSON serialization
+        # Convert FieldChange objects to dictionaries for JSON serialization
+        changes_dict = {}
+        for field_name, field_change in msg.changes.items():
+            changes_dict[field_name] = {
+                "old": field_change.old,
+                "new": field_change.new
+            }
+        
         msg_dict = {
             "source": msg.source,
             "entity_type": msg.entity_type,
             "entity_data": msg.entity_data,
-            "changes": msg.changes,
+            "changes": changes_dict,
             "event_name": msg.event_name,
             "timestamp": msg.timestamp,
             "stream_record_id": msg.stream_record_id,
