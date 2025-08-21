@@ -226,24 +226,9 @@ def process_chunk_hierarchical_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     # Reuse the same processing logic as process_chunk
     result = process_chunk_handler(event)
     
-    # If processing succeeded, add only delta references (not full data) to the response
-    if result.get("intermediate_key"):  # Success indicated by presence of intermediate_key
-        delta_references = []
-        for delta in event.get("delta_results", []):
-            # Only keep the metadata, not the embedding data
-            delta_ref = {
-                "delta_key": delta.get("delta_key"),
-                "delta_id": delta.get("delta_id"), 
-                "embedding_count": delta.get("embedding_count"),
-                "collection": delta.get("collection")
-            }
-            delta_references.append(delta_ref)
-        
-        result["delta_references"] = delta_references
-        logger.info(
-            "Added delta references for hierarchical processing",
-            delta_count=len(delta_references)
-        )
+    # For hierarchical processing, we just return the same minimal response as process_chunk
+    # Stage 2 will use final_merge on the intermediate snapshots directly
+    logger.info("Hierarchical processing - returning minimal response for stage 2 merging")
     
     return result
 
@@ -330,20 +315,43 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     """
     Final merge step that acquires lock and combines intermediate chunks.
 
-    Preserves existing heartbeat support for the final merge operation.
+    Can handle two input formats:
+    1. Legacy: {"batch_id": "...", "total_chunks": 5, "database": "..."}
+    2. New: {"batch_id": "...", "chunk_results": [...], "database": "..."}
     """
     logger.info("Starting final merge compaction")
 
     batch_id = event.get("batch_id")
-    total_chunks = event.get("total_chunks", 1)
-    database_name = event.get(
-        "database", "lines"
-    )  # Get database from event with default
+    total_chunks = event.get("total_chunks")
+    chunk_results = event.get("chunk_results", [])
+    database_name = event.get("database", "lines")
 
     if not batch_id:
         return {
             "statusCode": 400,
             "error": "batch_id is required for final merge",
+        }
+
+    # Handle both legacy (total_chunks) and new (chunk_results) formats
+    if chunk_results:
+        # New format: we have chunk_results with intermediate_key objects
+        total_chunks = len(chunk_results)
+        logger.info(
+            "Using new chunk_results format",
+            chunk_count=total_chunks,
+            batch_id=batch_id
+        )
+    elif total_chunks is not None:
+        # Legacy format: we have total_chunks number
+        logger.info(
+            "Using legacy total_chunks format", 
+            total_chunks=total_chunks,
+            batch_id=batch_id
+        )
+    else:
+        return {
+            "statusCode": 400,
+            "error": "Either total_chunks or chunk_results is required for final merge",
         }
 
     # Determine collection from database name
@@ -375,7 +383,7 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
 
         # Perform final merge with database awareness
         merge_result = perform_final_merge(
-            batch_id, total_chunks, database_name
+            batch_id, total_chunks, database_name, chunk_results
         )
 
         # Clean up intermediate chunks
@@ -604,7 +612,7 @@ def download_and_merge_delta(
 
 
 def perform_final_merge(
-    batch_id: str, total_chunks: int, database_name: Optional[str] = None
+    batch_id: str, total_chunks: int, database_name: Optional[str] = None, chunk_results: Optional[List[Dict[str, Any]]] = None
 ) -> Dict[str, Any]:
     """
     Perform the final merge of all intermediate chunks into a snapshot.
@@ -643,14 +651,23 @@ def perform_final_merge(
             chroma_client = chromadb.PersistentClient(path=temp_dir)
             logger.info("Creating new snapshot at", snapshot_key=snapshot_key)
 
-        # Merge all intermediate chunks
-        for chunk_index in range(total_chunks):
+        # Merge intermediate chunks - handle both legacy and new formats
+        if chunk_results:
+            # New format: we have specific intermediate_key objects
+            logger.info("Merging using chunk_results format", chunk_count=len(chunk_results))
+            chunk_keys = [chunk["intermediate_key"] for chunk in chunk_results]
+        else:
+            # Legacy format: generate keys from batch_id and chunk indices
+            logger.info("Merging using legacy total_chunks format", total_chunks=total_chunks)
+            chunk_keys = [f"intermediate/{batch_id}/chunk-{i}/" for i in range(total_chunks)]
+
+        for i, intermediate_key in enumerate(chunk_keys):
             logger.info(
                 "Processing chunk",
-                current_chunk=chunk_index + 1,
-                total_chunks=total_chunks,
+                current_chunk=i + 1,
+                total_chunks=len(chunk_keys),
+                intermediate_key=intermediate_key,
             )
-            intermediate_key = f"intermediate/{batch_id}/chunk-{chunk_index}/"
             chunk_temp = tempfile.mkdtemp()
 
             try:

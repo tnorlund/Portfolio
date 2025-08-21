@@ -375,30 +375,17 @@ class LineEmbeddingWorkflow(ComponentResource):
                             "group_index.$": "$$.Map.Item.Index",
                         },
                         "Iterator": {
-                            "StartAt": "ExtractDeltaResults",
+                            "StartAt": "MergeSingleChunkGroup",
                             "States": {
-                                "ExtractDeltaResults": {
-                                    "Type": "Pass",
-                                    "Comment": "Extract and combine original delta_results from chunk group",
-                                    "Parameters": {
-                                        "operation": "process_chunk_combined",
-                                        "batch_id.$": "States.Format('{}-group-{}', $.batch_id, $.group_index)",
-                                        "chunk_index.$": "$.group_index",
-                                        "chunk_group.$": "$.chunk_group",
-                                        "database": "lines",
-                                    },
-                                    "Next": "ProcessCombinedDeltas",
-                                },
-                                "ProcessCombinedDeltas": {
+                                "MergeSingleChunkGroup": {
                                     "Type": "Task",
                                     "Resource": arns[2],
-                                    "Comment": "Process combined delta results from chunk group",
+                                    "Comment": "Merge intermediate snapshots from chunk group",
                                     "Parameters": {
-                                        "operation.$": "$.operation",
-                                        "batch_id.$": "$.batch_id",
-                                        "chunk_index.$": "$.chunk_index",
-                                        "delta_results.$": "$.delta_results",
-                                        "database.$": "$.database",
+                                        "operation": "final_merge",
+                                        "batch_id.$": "States.Format('{}-group-{}', $.batch_id, $.group_index)",
+                                        "chunk_results.$": "$.chunk_group",
+                                        "database": "lines",
                                     },
                                     "End": True,
                                     "Retry": [
