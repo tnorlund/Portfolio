@@ -350,24 +350,43 @@ def process_chunk_deltas(
                     total=len(collection_deltas),
                 )
 
-                # Log memory usage periodically
-                if (i + 1) % 3 == 0:  # Every 3 deltas
-                    import psutil
+                # Memory usage available in CloudWatch metrics
 
-                    process = psutil.Process()
-                    memory_mb = process.memory_info().rss / 1024 / 1024
-                    logger.info(
-                        "Memory usage after processing deltas",
-                        current=i + 1,
-                        total=len(collection_deltas),
-                        memory_mb=memory_mb,
-                    )
+        # Check what files are in temp directory before upload
+        temp_files = []
+        for root, dirs, files in os.walk(temp_dir):
+            for file in files:
+                file_path = os.path.join(root, file)
+                file_size = os.path.getsize(file_path)
+                temp_files.append(f"{file} ({file_size} bytes)")
+        
+        logger.info(
+            "Temp directory contents before upload",
+            temp_dir=temp_dir,
+            files=temp_files,
+            total_embeddings=total_embeddings,
+        )
 
         # Upload intermediate chunk to S3
         intermediate_key = f"intermediate/{batch_id}/chunk-{chunk_index}/"
-        upload_to_s3(
+        logger.info(
+            "Starting intermediate chunk upload to S3",
+            intermediate_key=intermediate_key,
+            bucket=bucket,
+            temp_dir=temp_dir,
+            total_embeddings=total_embeddings,
+        )
+        
+        upload_result = upload_to_s3(
             temp_dir, bucket, intermediate_key, calculate_hash=False
         )  # No hash for intermediate chunks
+        
+        logger.info(
+            "Completed intermediate chunk upload to S3",
+            intermediate_key=intermediate_key,
+            upload_result=upload_result,
+            total_embeddings=total_embeddings,
+        )
 
         processing_time = time.time() - start_time
         logger.info(
