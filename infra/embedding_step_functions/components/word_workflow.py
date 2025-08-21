@@ -354,28 +354,15 @@ class WordEmbeddingWorkflow(ComponentResource):
                         "Default": "PrepareWordFinalMerge",
                     },
                     "CreateChunkGroups": {
-                        "Type": "Task",
-                        "Resource": arns[3],
-                        "Comment": "Create chunk groups for parallel merging",
+                        "Type": "Pass",
+                        "Comment": "Create chunk groups for parallel merging (simple grouping for now)",
                         "Parameters": {
-                            "operation": "create_merge_groups",
                             "batch_id.$": "$.batch_id",
-                            "chunk_results.$": "$.chunk_results",
-                            "group_size.$": "$.group_size",
+                            "groups.$": "States.ArrayPartition($.chunk_results, 3)",
+                            "total_groups.$": "States.ArrayLength(States.ArrayPartition($.chunk_results, 3))",
                         },
                         "ResultPath": "$.chunk_groups",
                         "Next": "MergeChunkGroupsInParallel",
-                        "Retry": [
-                            {
-                                "ErrorEquals": [
-                                    "Lambda.ServiceException",
-                                    "Lambda.AWSLambdaException",
-                                ],
-                                "IntervalSeconds": 1,
-                                "MaxAttempts": 2,
-                                "BackoffRate": 1.5,
-                            }
-                        ],
                     },
                     "MergeChunkGroupsInParallel": {
                         "Type": "Map",
@@ -395,10 +382,10 @@ class WordEmbeddingWorkflow(ComponentResource):
                                     "Resource": arns[2],
                                     "Comment": "Merge a single group of chunks",
                                     "Parameters": {
-                                        "operation": "group_merge",
+                                        "operation": "intermediate_merge",
                                         "batch_id.$": "$.batch_id",
                                         "group_index.$": "$.group_index",
-                                        "chunk_group.$": "$.chunk_group",
+                                        "chunk_results.$": "$.chunk_group",
                                         "database": "words",
                                     },
                                     "End": True,
@@ -433,9 +420,8 @@ class WordEmbeddingWorkflow(ComponentResource):
                         "Comment": "Prepare data for final merge of pre-merged groups",
                         "Parameters": {
                             "batch_id.$": "$.batch_id",
-                            "total_groups.$": "$.chunk_groups.total_groups",
-                            "operation": "final_merge_groups",
-                            "merged_groups.$": "$.merged_groups",
+                            "operation": "final_merge",
+                            "chunk_results.$": "$.merged_groups",
                         },
                         "Next": "WordFinalMerge",
                     },
@@ -465,7 +451,7 @@ class WordEmbeddingWorkflow(ComponentResource):
                         "Parameters": {
                             "operation.$": "$.operation",
                             "batch_id.$": "$.batch_id",
-                            "total_chunks.$": "$.total_chunks",
+                            "chunk_results.$": "$.chunk_results",
                             "database": "words",
                         },
                         "End": True,
