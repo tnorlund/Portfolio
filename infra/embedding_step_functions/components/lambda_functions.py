@@ -336,8 +336,7 @@ class LambdaFunctionsComponent(ComponentResource):
             # Observability configuration
             "ENABLE_XRAY": "true",
             "ENABLE_METRICS": "true",
-            "LOG_LEVEL": "INFO",
-            "_X_AMZN_TRACE_ID": "",  # X-Ray trace ID placeholder
+            "LOG_LEVEL": "INFO"
         }
 
         # Add handler-specific environment variables
