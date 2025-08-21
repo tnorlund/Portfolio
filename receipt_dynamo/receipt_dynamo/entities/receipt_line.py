@@ -146,6 +146,18 @@ class ReceiptLine(
             },
         }
 
+    def gsi3_key(self) -> Dict[str, Any]:
+        """
+        Generates the GSI3 secondary index key for the receipt line.
+        Enables efficient querying by image_id + receipt_id.
+        """
+        return {
+            "GSI3PK": {
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
+            },
+            "GSI3SK": {"S": f"LINE#{self.line_id:05d}"},
+        }
+
     def to_item(self) -> Dict[str, Any]:
         """
         Converts the ReceiptLine object to a DynamoDB item.
@@ -163,7 +175,7 @@ class ReceiptLine(
 
         return self.build_dynamodb_item(
             entity_type="RECEIPT_LINE",
-            gsi_methods=["gsi1_key"],
+            gsi_methods=["gsi1_key", "gsi3_key"],
             custom_fields=custom_fields,
             exclude_fields={
                 "text",

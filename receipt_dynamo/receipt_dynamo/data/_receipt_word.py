@@ -369,8 +369,9 @@ class _ReceiptWord(
                 )
             if limit <= 0:
                 raise EntityValidationError("limit must be greater than 0.")
-        if (last_evaluated_key is not None
-            and not isinstance(last_evaluated_key, dict)):
+        if last_evaluated_key is not None and not isinstance(
+            last_evaluated_key, dict
+        ):
             raise EntityValidationError(
                 "last_evaluated_key must be a dictionary or None."
             )
@@ -419,52 +420,18 @@ class _ReceiptWord(
             raise EntityValidationError(
                 "receipt_id must be a positive integer"
             )
-        # Use direct query to fetch only ReceiptWord entities efficiently
-        # SK Pattern analysis for RECEIPT#{receipt_id:05d}#LINE# prefix:
-        # - ReceiptWord: RECEIPT#00001#LINE#00001#WORD#00001 (what we want)
-        # - ReceiptWordLabel: RECEIPT#00001#LINE#00001#WORD#00001#LABEL#tax (has extra #LABEL# segment)
-        # - ReceiptLetter: RECEIPT#00001#LINE#00001#WORD#00001#LETTER#00001 (has extra #LETTER# segment)
-        
-        # Collect all results manually to avoid filter expression on primary key
-        all_items = []
-        
-        response = self._client.query(
-            TableName=self.table_name,
-            KeyConditionExpression="PK = :pk AND begins_with(SK, :sk_prefix)",
-            ExpressionAttributeValues={
-                ":pk": {"S": f"IMAGE#{image_id}"},
-                ":sk_prefix": {"S": f"RECEIPT#{receipt_id:05d}#LINE#"},
+        # Use GSI3 for efficient querying by image_id + receipt_id
+        # This eliminates the need for client-side filtering
+        results, _ = self._query_entities(
+            index_name="GSI3",
+            key_condition_expression="GSI3PK = :pk",
+            expression_attribute_names=None,
+            expression_attribute_values={
+                ":pk": {"S": f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"}
             },
+            converter_func=item_to_receipt_word,
         )
-        
-        # Process initial results
-        for item in response.get("Items", []):
-            sk = item.get("SK", {}).get("S", "")
-            # Only include items that match exactly RECEIPT#XXXXX#LINE#XXXXX#WORD#XXXXX pattern (no additional segments)
-            if sk.count("#") == 5 and "#WORD#" in sk and "#LABEL#" not in sk and "#LETTER#" not in sk:
-                all_items.append(item)
-        
-        # Handle pagination
-        while "LastEvaluatedKey" in response:
-            response = self._client.query(
-                TableName=self.table_name,
-                KeyConditionExpression="PK = :pk AND begins_with(SK, :sk_prefix)",
-                ExpressionAttributeValues={
-                    ":pk": {"S": f"IMAGE#{image_id}"},
-                    ":sk_prefix": {"S": f"RECEIPT#{receipt_id:05d}#LINE#"},
-                },
-                ExclusiveStartKey=response["LastEvaluatedKey"],
-            )
-            
-            # Process paginated results
-            for item in response.get("Items", []):
-                sk = item.get("SK", {}).get("S", "")
-                # Only include items that match exactly RECEIPT#XXXXX#LINE#XXXXX#WORD#XXXXX pattern
-                if sk.count("#") == 5 and "#WORD#" in sk and "#LABEL#" not in sk and "#LETTER#" not in sk:
-                    all_items.append(item)
-        
-        # Convert to ReceiptWord objects
-        results = [item_to_receipt_word(item) for item in all_items]
+
         return results
 
     @handle_dynamodb_errors("list_receipt_words_by_embedding_status")

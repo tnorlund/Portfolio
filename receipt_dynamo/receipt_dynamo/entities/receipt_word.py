@@ -208,13 +208,11 @@ class ReceiptWord(
             dict: The secondary index key for the receipt word.
         """
         return {
-            "GSI3PK": {"S": f"IMAGE#{self.image_id}"},
+            "GSI3PK": {
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
+            },
             "GSI3SK": {
-                "S": (
-                    f"RECEIPT#{self.receipt_id:05d}#"
-                    f"LINE#{self.line_id:05d}#"
-                    f"WORD#{self.word_id:05d}"
-                )
+                "S": (f"LINE#{self.line_id:05d}#" f"WORD#{self.word_id:05d}")
             },
         }
 

@@ -1378,13 +1378,15 @@ def test_get_receipts_from_image_empty_result(
 # -------------------------------------------------------------------
 
 
-@pytest.mark.integration
+@pytest.mark.integration 
 def test_list_receipt_and_words_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt: Receipt,
     sample_receipt_words: list[ReceiptWord],
 ) -> None:
-    """Tests retrieving a receipt and its words together."""
+    """Tests retrieving a receipt and its words together.
+    
+    NOTE: This method is deprecated. This test will emit a deprecation warning."""
     client = DynamoClient(dynamodb_table)
 
     # Add receipt and words
