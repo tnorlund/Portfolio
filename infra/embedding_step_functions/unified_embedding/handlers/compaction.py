@@ -389,14 +389,23 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         # Clean up intermediate chunks
         cleanup_intermediate_chunks(batch_id, total_chunks)
 
-        return {
-            "statusCode": 200,
-            "batch_id": batch_id,
-            "snapshot_key": merge_result["snapshot_key"],
-            "total_embeddings": merge_result["total_embeddings"],
-            "processing_time_seconds": merge_result["processing_time"],
-            "message": "Final merge completed successfully",
-        }
+        # Return minimal format for hierarchical processing (Stage 2) 
+        # or full format for final merge (Stage 3)
+        if chunk_results:
+            # Stage 2: return minimal format for next stage
+            return {
+                "intermediate_key": merge_result["snapshot_key"],
+            }
+        else:
+            # Stage 3: return full format (legacy final merge)
+            return {
+                "statusCode": 200,
+                "batch_id": batch_id,
+                "snapshot_key": merge_result["snapshot_key"],
+                "total_embeddings": merge_result["total_embeddings"],
+                "processing_time_seconds": merge_result["processing_time"],
+                "message": "Final merge completed successfully",
+            }
 
     except Exception as e:  # pylint: disable=broad-exception-caught
         logger.error("Final merge failed", error=str(e))
