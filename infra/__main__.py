@@ -102,7 +102,9 @@ validate_merchant_step_functions = ValidateMerchantStepFunctions(
     "validate-merchant"
 )
 validation_pipeline = ValidationPipeline("validation-pipeline")
-embedding_infrastructure = EmbeddingInfrastructure("embedding-infra", base_images=base_images)
+embedding_infrastructure = EmbeddingInfrastructure(
+    "embedding-infra", base_images=base_images
+)
 validation_by_merchant_step_functions = ValidationByMerchantStepFunction(
     "validation-by-merchant"
 )
@@ -158,7 +160,7 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 
 # Create ChromaDB compaction infrastructure (hybrid deployment)
 chromadb_infrastructure = create_chromadb_compaction_infrastructure(
-    name="chromadb-test",
+    name=f"chromadb-{pulumi.get_stack()}",
     dynamodb_table_arn=dynamodb_table.arn,
     dynamodb_stream_arn=dynamodb_table.stream_arn,
     base_images=base_images,
@@ -690,7 +692,17 @@ chromadb_infrastructure = create_chromadb_compaction_infrastructure(
 
 # ChromaDB infrastructure exports (hybrid deployment)
 pulumi.export("chromadb_bucket_name", chromadb_infrastructure.bucket_name)
-pulumi.export("chromadb_lines_queue_url", chromadb_infrastructure.lines_queue_url)
-pulumi.export("chromadb_words_queue_url", chromadb_infrastructure.words_queue_url)
-pulumi.export("stream_processor_function_arn", chromadb_infrastructure.stream_processor_arn)
-pulumi.export("enhanced_compaction_function_arn", chromadb_infrastructure.enhanced_compaction_arn)
+pulumi.export(
+    "chromadb_lines_queue_url", chromadb_infrastructure.lines_queue_url
+)
+pulumi.export(
+    "chromadb_words_queue_url", chromadb_infrastructure.words_queue_url
+)
+pulumi.export(
+    "stream_processor_function_arn",
+    chromadb_infrastructure.stream_processor_arn,
+)
+pulumi.export(
+    "enhanced_compaction_function_arn",
+    chromadb_infrastructure.enhanced_compaction_arn,
+)
