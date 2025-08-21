@@ -96,17 +96,19 @@ def compact_handler(
 
     if operation == "process_chunk":
         return process_chunk_handler(event)
+    if operation == "process_chunk_hierarchical":
+        return process_chunk_hierarchical_handler(event)
     if operation == "final_merge":
         return final_merge_handler(event)
 
     logger.error(
-        "Invalid operation. Expected 'process_chunk' or 'final_merge'",
+        "Invalid operation. Expected 'process_chunk', 'process_chunk_hierarchical', or 'final_merge'",
         operation=operation,
     )
     return {
         "statusCode": 400,
         "error": f"Invalid operation: {operation}",
-        "message": "Operation must be 'process_chunk' or 'final_merge'",
+        "message": "Operation must be 'process_chunk', 'process_chunk_hierarchical', or 'final_merge'",
     }
 
 
@@ -211,6 +213,34 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             "chunk_index": chunk_index,
             "message": "Chunk processing failed",
         }
+
+
+def process_chunk_hierarchical_handler(event: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Process a chunk of deltas and return both intermediate result and original delta_results.
+    
+    This operation is designed for hierarchical processing where the output needs to 
+    be passed to another parallel processing stage.
+    
+    Returns both:
+    1. The intermediate snapshot reference (like process_chunk)
+    2. The original delta_results for further hierarchical processing
+    """
+    logger.info("Processing chunk with hierarchical output")
+    
+    # Reuse the same processing logic as process_chunk
+    result = process_chunk_handler(event)
+    
+    # If processing succeeded, add the original delta_results to the response
+    if result.get("statusCode") == 200:
+        result["original_delta_results"] = event.get("delta_results", [])
+        logger.info(
+            "Added original delta_results for hierarchical processing",
+            chunk_index=result.get("chunk_index"),
+            delta_count=len(result["original_delta_results"])
+        )
+    
+    return result
 
 
 def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:

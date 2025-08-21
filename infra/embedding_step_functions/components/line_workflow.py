@@ -284,7 +284,7 @@ class LineEmbeddingWorkflow(ComponentResource):
                                     "Resource": arns[2],
                                     "Comment": "Process a single chunk",
                                     "Parameters": {
-                                        "operation.$": "$.chunk.operation",
+                                        "operation": "process_chunk_hierarchical",
                                         "batch_id.$": "$.chunk.batch_id",
                                         "chunk_index.$": (
                                             "$.chunk.chunk_index"
@@ -347,7 +347,7 @@ class LineEmbeddingWorkflow(ComponentResource):
                         "Choices": [
                             {
                                 "Variable": "$.total_chunks",
-                                "NumericGreaterThan": 999,
+                                "NumericGreaterThan": 4,
                                 "Next": "CreateChunkGroups",
                             }
                         ],
@@ -375,17 +375,30 @@ class LineEmbeddingWorkflow(ComponentResource):
                             "group_index.$": "$$.Map.Item.Index",
                         },
                         "Iterator": {
-                            "StartAt": "MergeSingleChunkGroup",
+                            "StartAt": "ExtractDeltaResults",
                             "States": {
-                                "MergeSingleChunkGroup": {
+                                "ExtractDeltaResults": {
+                                    "Type": "Pass",
+                                    "Comment": "Extract and combine original delta_results from chunk group",
+                                    "Parameters": {
+                                        "operation": "process_chunk",
+                                        "batch_id.$": "States.Format('{}-group-{}', $.batch_id, $.group_index)",
+                                        "chunk_index.$": "$.group_index",
+                                        "delta_results.$": "States.ArrayFlatten($.chunk_group[*].original_delta_results)",
+                                        "database": "lines",
+                                    },
+                                    "Next": "ProcessCombinedDeltas",
+                                },
+                                "ProcessCombinedDeltas": {
                                     "Type": "Task",
                                     "Resource": arns[2],
-                                    "Comment": "Merge a single group of chunks",
+                                    "Comment": "Process combined delta results from chunk group",
                                     "Parameters": {
-                                        "operation": "final_merge",
-                                        "batch_id.$": "States.Format('{}-group-{}', $.batch_id, $.group_index)",
-                                        "chunk_results.$": "$.chunk_group",
-                                        "database": "lines", 
+                                        "operation.$": "$.operation",
+                                        "batch_id.$": "$.batch_id",
+                                        "chunk_index.$": "$.chunk_index",
+                                        "delta_results.$": "$.delta_results",
+                                        "database.$": "$.database",
                                     },
                                     "End": True,
                                     "Retry": [
