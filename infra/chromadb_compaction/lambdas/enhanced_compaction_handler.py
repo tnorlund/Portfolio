@@ -736,72 +736,178 @@ def process_label_updates(
 def update_receipt_metadata(
     collection, image_id: str, receipt_id: int, changes: Dict[str, Any]
 ) -> int:
-    """Update metadata for all embeddings of a specific receipt."""
+    """Update metadata for all embeddings of a specific receipt.
+    
+    Uses DynamoDB to construct exact ChromaDB IDs instead of scanning entire collection.
+    This is much more efficient for large collections.
+    """
+    start_time = time.time()
     logger.info("Starting metadata update for image_id=%s, receipt_id=%s", image_id, receipt_id)
     logger.info("Changes to apply: %s", changes)
     
-    # Build query to find all embeddings for this receipt
-    # ChromaDB IDs follow pattern:
-    # IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#..."
-    id_prefix = f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#"
-    logger.info("Looking for ChromaDB records with prefix: %s", id_prefix)
-
-    # Get all records that match this receipt
-    logger.info("Calling collection.get() to retrieve all records...")
-    all_results = collection.get(include=["metadatas"])
-    logger.info("Retrieved %d total records from collection", len(all_results.get("ids", [])))
+    # Get DynamoDB client to query for words/lines
+    dynamo_client = get_dynamo_client()
     
-    matching_ids = []
+    # Determine collection type from collection name
+    collection_name = collection.name
+    logger.info("Processing collection: %s", collection_name)
+    
+    # Construct ChromaDB IDs by querying DynamoDB for exact entities
+    chromadb_ids = []
+    
+    if "words" in collection_name.lower():
+        # Get all words for this receipt from DynamoDB
+        logger.info("Querying DynamoDB for words: image_id=%s, receipt_id=%s", image_id, receipt_id)
+        try:
+            words = dynamo_client.list_receipt_words_by_receipt(f"{image_id}#{receipt_id:05d}")
+            logger.info("Found %d words in DynamoDB for receipt", len(words))
+            
+            # Construct exact ChromaDB IDs for words
+            chromadb_ids = [
+                f"IMAGE#{word.image_id}#RECEIPT#{word.receipt_id:05d}#LINE#{word.line_id:05d}#WORD#{word.word_id:05d}"
+                for word in words
+            ]
+        except Exception as e:
+            logger.error("Failed to query words from DynamoDB: %s", e)
+            return 0
+            
+    elif "lines" in collection_name.lower():
+        # Get all lines for this receipt from DynamoDB
+        logger.info("Querying DynamoDB for lines: image_id=%s, receipt_id=%s", image_id, receipt_id)
+        try:
+            lines = dynamo_client.list_receipt_lines_by_receipt(f"{image_id}#{receipt_id:05d}")
+            logger.info("Found %d lines in DynamoDB for receipt", len(lines))
+            
+            # Construct exact ChromaDB IDs for lines
+            chromadb_ids = [
+                f"IMAGE#{line.image_id}#RECEIPT#{line.receipt_id:05d}#LINE#{line.line_id:05d}"
+                for line in lines
+            ]
+        except Exception as e:
+            logger.error("Failed to query lines from DynamoDB: %s", e)
+            return 0
+    else:
+        logger.warning("Unknown collection type: %s", collection_name)
+        return 0
+    
+    logger.info("Constructed %d ChromaDB IDs to update", len(chromadb_ids))
+    
+    if not chromadb_ids:
+        logger.warning("No entities found in DynamoDB for image_id=%s, receipt_id=%s", image_id, receipt_id)
+        return 0
+    
+    # Use direct ID lookup - much faster than scanning entire collection
+    logger.info("Querying ChromaDB with exact IDs...")
+    try:
+        results = collection.get(ids=chromadb_ids, include=["metadatas"])
+        logger.info("Retrieved %d records from ChromaDB (expected %d)", len(results.get("ids", [])), len(chromadb_ids))
+    except Exception as e:
+        logger.error("Failed to query ChromaDB with exact IDs: %s", e)
+        return 0
+        
+    # Prepare updated metadata for found records
+    matching_ids = results.get("ids", [])
     matching_metadatas = []
+    
+    for i, record_id in enumerate(matching_ids):
+        logger.info("Processing record: %s", record_id)
+        
+        # Get existing metadata and apply changes
+        existing_metadata = results["metadatas"][i] or {}
+        logger.info("Existing metadata for %s: %s", record_id, existing_metadata)
+        updated_metadata = existing_metadata.copy()
 
-    for i, record_id in enumerate(all_results["ids"]):
-        if record_id.startswith(id_prefix):
-            logger.info("Found matching record: %s", record_id)
-            matching_ids.append(record_id)
-            # Get existing metadata and apply changes
-            existing_metadata = all_results["metadatas"][i] or {}
-            logger.info("Existing metadata for %s: %s", record_id, existing_metadata)
-            updated_metadata = existing_metadata.copy()
+        # Apply field changes
+        for field, change in changes.items():
+            old_value = change.get("old")
+            new_value = change["new"]
+            logger.info("Applying change: %s: %s -> %s", field, old_value, new_value)
+            if new_value is not None:
+                updated_metadata[field] = new_value
+            elif field in updated_metadata:
+                # Remove field if new value is None
+                del updated_metadata[field]
 
-            # Apply field changes
-            for field, change in changes.items():
-                old_value = change.get("old")
-                new_value = change["new"]
-                logger.info("Applying change: %s: %s -> %s", field, old_value, new_value)
-                if new_value is not None:
-                    updated_metadata[field] = new_value
-                elif field in updated_metadata:
-                    # Remove field if new value is None
-                    del updated_metadata[field]
+        # Add update timestamp
+        updated_metadata["last_metadata_update"] = datetime.now(
+            timezone.utc
+        ).isoformat()
+        logger.info("Updated metadata for %s: %s", record_id, updated_metadata)
+        matching_metadatas.append(updated_metadata)
 
-            # Add update timestamp
-            updated_metadata["last_metadata_update"] = datetime.now(
-                timezone.utc
-            ).isoformat()
-            logger.info("Updated metadata for %s: %s", record_id, updated_metadata)
-            matching_metadatas.append(updated_metadata)
-        else:
-            # Log first few non-matching records to understand the pattern
-            if i < 5:
-                logger.info("Non-matching record %d: %s", i, record_id)
-
-    logger.info("Found %d matching records out of %d total", len(matching_ids), len(all_results.get("ids", [])))
+    logger.info("Found %d matching records in ChromaDB out of %d expected", len(matching_ids), len(chromadb_ids))
     
     # Update records if any found
     if matching_ids:
         logger.info("Updating %d ChromaDB records...", len(matching_ids))
-        collection.update(ids=matching_ids, metadatas=matching_metadatas)
-        logger.info("Successfully updated metadata for %d embeddings", len(matching_ids))
+        try:
+            collection.update(ids=matching_ids, metadatas=matching_metadatas)
+            elapsed_time = time.time() - start_time
+            logger.info("Successfully updated metadata for %d embeddings in %.2f seconds", len(matching_ids), elapsed_time)
+        except Exception as e:
+            logger.error("Failed to update ChromaDB metadata: %s", e)
+            return 0
     else:
-        logger.warning("No matching ChromaDB records found for prefix: %s", id_prefix)
+        logger.warning("No matching ChromaDB records found (DynamoDB had %d IDs)", len(chromadb_ids))
+        
+        # If no records found in ChromaDB but DynamoDB has entities, this might indicate
+        # that embeddings haven't been created yet
+        if chromadb_ids:
+            logger.info("DynamoDB entities exist but no ChromaDB embeddings found - embeddings may not be created yet")
 
+    elapsed_time = time.time() - start_time
+    logger.info("Metadata update completed in %.2f seconds (DynamoDB-driven approach)", elapsed_time)
     return len(matching_ids)
 
 
 def remove_receipt_metadata(collection, image_id: str, receipt_id: int) -> int:
-    """Remove merchant metadata fields from all embeddings of
-    a specific receipt."""
-    id_prefix = f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#"
+    """Remove merchant metadata fields from all embeddings of a specific receipt.
+    
+    Uses DynamoDB to construct exact ChromaDB IDs instead of scanning entire collection.
+    """
+    start_time = time.time()
+    logger.info("Starting metadata removal for image_id=%s, receipt_id=%s", image_id, receipt_id)
+    
+    # Get DynamoDB client to query for words/lines
+    dynamo_client = get_dynamo_client()
+    
+    # Determine collection type from collection name
+    collection_name = collection.name
+    logger.info("Processing collection: %s", collection_name)
+    
+    # Construct ChromaDB IDs by querying DynamoDB for exact entities
+    chromadb_ids = []
+    
+    if "words" in collection_name.lower():
+        # Get all words for this receipt from DynamoDB
+        try:
+            words = dynamo_client.list_receipt_words_by_receipt(f"{image_id}#{receipt_id:05d}")
+            chromadb_ids = [
+                f"IMAGE#{word.image_id}#RECEIPT#{word.receipt_id:05d}#LINE#{word.line_id:05d}#WORD#{word.word_id:05d}"
+                for word in words
+            ]
+        except Exception as e:
+            logger.error("Failed to query words from DynamoDB: %s", e)
+            return 0
+            
+    elif "lines" in collection_name.lower():
+        # Get all lines for this receipt from DynamoDB
+        try:
+            lines = dynamo_client.list_receipt_lines_by_receipt(f"{image_id}#{receipt_id:05d}")
+            chromadb_ids = [
+                f"IMAGE#{line.image_id}#RECEIPT#{line.receipt_id:05d}#LINE#{line.line_id:05d}"
+                for line in lines
+            ]
+        except Exception as e:
+            logger.error("Failed to query lines from DynamoDB: %s", e)
+            return 0
+    else:
+        logger.warning("Unknown collection type: %s", collection_name)
+        return 0
+    
+    if not chromadb_ids:
+        logger.warning("No entities found in DynamoDB for image_id=%s, receipt_id=%s", image_id, receipt_id)
+        return 0
 
     # Fields to remove when metadata is deleted
     fields_to_remove = [
@@ -813,33 +919,46 @@ def remove_receipt_metadata(collection, image_id: str, receipt_id: int) -> int:
         "place_id",
     ]
 
-    # Get all records that match this receipt
-    all_results = collection.get(include=["metadatas"])
-    matching_ids = []
+    # Use direct ID lookup instead of scanning entire collection
+    try:
+        results = collection.get(ids=chromadb_ids, include=["metadatas"])
+        logger.info("Retrieved %d records from ChromaDB for removal", len(results.get("ids", [])))
+    except Exception as e:
+        logger.error("Failed to query ChromaDB for metadata removal: %s", e)
+        return 0
+
+    matching_ids = results.get("ids", [])
     matching_metadatas = []
 
-    for i, record_id in enumerate(all_results["ids"]):
-        if record_id.startswith(id_prefix):
-            matching_ids.append(record_id)
-            # Remove merchant fields from metadata
-            existing_metadata = all_results["metadatas"][i] or {}
-            updated_metadata = existing_metadata.copy()
+    for i, record_id in enumerate(matching_ids):
+        # Remove merchant fields from metadata
+        existing_metadata = results["metadatas"][i] or {}
+        updated_metadata = existing_metadata.copy()
 
-            for field in fields_to_remove:
-                if field in updated_metadata:
-                    del updated_metadata[field]
+        for field in fields_to_remove:
+            if field in updated_metadata:
+                del updated_metadata[field]
 
-            # Add removal timestamp
-            updated_metadata["metadata_removed_at"] = datetime.now(
-                timezone.utc
-            ).isoformat()
-            matching_metadatas.append(updated_metadata)
+        # Add removal timestamp
+        updated_metadata["metadata_removed_at"] = datetime.now(
+            timezone.utc
+        ).isoformat()
+        matching_metadatas.append(updated_metadata)
 
     # Update records if any found
     if matching_ids:
-        collection.update(ids=matching_ids, metadatas=matching_metadatas)
-        logger.info("Removed metadata from %d embeddings", len(matching_ids))
+        try:
+            collection.update(ids=matching_ids, metadatas=matching_metadatas)
+            elapsed_time = time.time() - start_time
+            logger.info("Removed metadata from %d embeddings in %.2f seconds", len(matching_ids), elapsed_time)
+        except Exception as e:
+            logger.error("Failed to remove ChromaDB metadata: %s", e)
+            return 0
+    else:
+        logger.warning("No matching ChromaDB records found for removal (DynamoDB had %d IDs)", len(chromadb_ids))
 
+    elapsed_time = time.time() - start_time
+    logger.info("Metadata removal completed in %.2f seconds (DynamoDB-driven approach)", elapsed_time)
     return len(matching_ids)
 
 
