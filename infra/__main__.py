@@ -113,9 +113,9 @@ chromadb_infrastructure = create_chromadb_compaction_infrastructure(
 
 # Create embedding infrastructure using ChromaDB's queues
 embedding_infrastructure = EmbeddingInfrastructure(
-    "embedding-infra", 
+    f"embedding-infra-{pulumi.get_stack()}",
     chromadb_queues=chromadb_infrastructure.chromadb_queues,
-    base_images=base_images
+    base_images=base_images,
 )
 validation_by_merchant_step_functions = ValidationByMerchantStepFunction(
     "validation-by-merchant"
