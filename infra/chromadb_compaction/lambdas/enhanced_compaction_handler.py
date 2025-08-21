@@ -517,9 +517,10 @@ def process_metadata_updates(
 
                 # Get appropriate collection
                 try:
-                    logger.info("Attempting to get collection: receipt_%s", database)
-                    collection_obj = chroma_client.get_collection(database)
-                    logger.info("Successfully got collection: receipt_%s", database)
+                    collection_name = f"receipt_{database}"
+                    logger.info("Attempting to get collection: %s", collection_name)
+                    collection_obj = chroma_client.get_collection(collection_name)
+                    logger.info("Successfully got collection: %s", collection_name)
                 except Exception as e:  # pylint: disable=broad-exception-caught
                     logger.warning("Collection receipt_%s not found: %s", database, e)
                     continue
@@ -639,9 +640,10 @@ def process_label_updates(
 
         # Get words collection
         try:
-            collection_obj = chroma_client.get_collection(database)
+            collection_name = f"receipt_{database}"
+            collection_obj = chroma_client.get_collection(collection_name)
         except Exception:  # pylint: disable=broad-exception-caught
-            logger.warning("receipt_%s collection not found", database)
+            logger.warning("Collection %s not found", f"receipt_{database}")
             return results
 
         # Process each label update
@@ -755,11 +757,11 @@ def update_receipt_metadata(
     # Construct ChromaDB IDs by querying DynamoDB for exact entities
     chromadb_ids = []
     
-    if "words" in collection_name.lower():
+    if collection_name == "receipt_words":
         # Get all words for this receipt from DynamoDB
         logger.info("Querying DynamoDB for words: image_id=%s, receipt_id=%s", image_id, receipt_id)
         try:
-            words = dynamo_client.list_receipt_words_by_receipt(f"{image_id}#{receipt_id:05d}")
+            words = dynamo_client.list_receipt_words_from_receipt(image_id, receipt_id)
             logger.info("Found %d words in DynamoDB for receipt", len(words))
             
             # Construct exact ChromaDB IDs for words
@@ -771,11 +773,11 @@ def update_receipt_metadata(
             logger.error("Failed to query words from DynamoDB: %s", e)
             return 0
             
-    elif "lines" in collection_name.lower():
+    elif collection_name == "receipt_lines":
         # Get all lines for this receipt from DynamoDB
         logger.info("Querying DynamoDB for lines: image_id=%s, receipt_id=%s", image_id, receipt_id)
         try:
-            lines = dynamo_client.list_receipt_lines_by_receipt(f"{image_id}#{receipt_id:05d}")
+            lines = dynamo_client.list_receipt_lines_from_receipt(receipt_id, image_id)
             logger.info("Found %d lines in DynamoDB for receipt", len(lines))
             
             # Construct exact ChromaDB IDs for lines
@@ -878,10 +880,10 @@ def remove_receipt_metadata(collection, image_id: str, receipt_id: int) -> int:
     # Construct ChromaDB IDs by querying DynamoDB for exact entities
     chromadb_ids = []
     
-    if "words" in collection_name.lower():
+    if collection_name == "receipt_words":
         # Get all words for this receipt from DynamoDB
         try:
-            words = dynamo_client.list_receipt_words_by_receipt(f"{image_id}#{receipt_id:05d}")
+            words = dynamo_client.list_receipt_words_from_receipt(image_id, receipt_id)
             chromadb_ids = [
                 f"IMAGE#{word.image_id}#RECEIPT#{word.receipt_id:05d}#LINE#{word.line_id:05d}#WORD#{word.word_id:05d}"
                 for word in words
@@ -890,10 +892,10 @@ def remove_receipt_metadata(collection, image_id: str, receipt_id: int) -> int:
             logger.error("Failed to query words from DynamoDB: %s", e)
             return 0
             
-    elif "lines" in collection_name.lower():
+    elif collection_name == "receipt_lines":
         # Get all lines for this receipt from DynamoDB
         try:
-            lines = dynamo_client.list_receipt_lines_by_receipt(f"{image_id}#{receipt_id:05d}")
+            lines = dynamo_client.list_receipt_lines_from_receipt(receipt_id, image_id)
             chromadb_ids = [
                 f"IMAGE#{line.image_id}#RECEIPT#{line.receipt_id:05d}#LINE#{line.line_id:05d}"
                 for line in lines
