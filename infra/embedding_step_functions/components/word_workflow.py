@@ -187,7 +187,7 @@ class WordEmbeddingWorkflow(ComponentResource):
                     "PollWordBatches": {
                         "Type": "Map",
                         "ItemsPath": "$.pending_batches",
-                        "MaxConcurrency": 25,
+                        "MaxConcurrency": 40,
                         "Parameters": {
                             "batch_id.$": "$$.Map.Item.Value.batch_id",
                             "openai_batch_id.$": (
@@ -274,7 +274,7 @@ class WordEmbeddingWorkflow(ComponentResource):
                         "Type": "Map",
                         "Comment": "Process word chunks in parallel",
                         "ItemsPath": "$.chunked_data.chunks",
-                        "MaxConcurrency": 10,
+                        "MaxConcurrency": 15,
                         "Parameters": {"chunk.$": "$$.Map.Item.Value"},
                         "Iterator": {
                             "StartAt": "ProcessSingleWordChunk",
@@ -321,7 +321,7 @@ class WordEmbeddingWorkflow(ComponentResource):
                             },
                         },
                         "ResultPath": "$.chunk_results",
-                        "Next": "PrepareWordFinalMerge",
+                        "Next": "GroupChunksForMerge",
                         "Catch": [
                             {
                                 "ErrorEquals": ["States.ALL"],
@@ -329,6 +329,120 @@ class WordEmbeddingWorkflow(ComponentResource):
                                 "ResultPath": "$.error",
                             }
                         ],
+                    },
+                    "GroupChunksForMerge": {
+                        "Type": "Pass",
+                        "Comment": "Group processed chunks for hierarchical merging",
+                        "Parameters": {
+                            "batch_id.$": "$.chunked_data.batch_id",
+                            "total_chunks.$": "$.chunked_data.total_chunks",
+                            "chunk_results.$": "$.chunk_results",
+                            "group_size": 3,
+                        },
+                        "Next": "CheckChunkGroupCount",
+                    },
+                    "CheckChunkGroupCount": {
+                        "Type": "Choice",
+                        "Comment": "Determine if hierarchical merge is beneficial",
+                        "Choices": [
+                            {
+                                "Variable": "$.total_chunks",
+                                "NumericGreaterThan": 4,
+                                "Next": "CreateChunkGroups",
+                            }
+                        ],
+                        "Default": "PrepareWordFinalMerge",
+                    },
+                    "CreateChunkGroups": {
+                        "Type": "Task",
+                        "Resource": arns[3],
+                        "Comment": "Create chunk groups for parallel merging",
+                        "Parameters": {
+                            "operation": "create_merge_groups",
+                            "batch_id.$": "$.batch_id",
+                            "chunk_results.$": "$.chunk_results",
+                            "group_size.$": "$.group_size",
+                        },
+                        "ResultPath": "$.chunk_groups",
+                        "Next": "MergeChunkGroupsInParallel",
+                        "Retry": [
+                            {
+                                "ErrorEquals": [
+                                    "Lambda.ServiceException",
+                                    "Lambda.AWSLambdaException",
+                                ],
+                                "IntervalSeconds": 1,
+                                "MaxAttempts": 2,
+                                "BackoffRate": 1.5,
+                            }
+                        ],
+                    },
+                    "MergeChunkGroupsInParallel": {
+                        "Type": "Map",
+                        "Comment": "Merge chunk groups in parallel for faster processing",
+                        "ItemsPath": "$.chunk_groups.groups",
+                        "MaxConcurrency": 6,
+                        "Parameters": {
+                            "chunk_group.$": "$$.Map.Item.Value",
+                            "batch_id.$": "$.batch_id",
+                            "group_index.$": "$$.Map.Item.Index",
+                        },
+                        "Iterator": {
+                            "StartAt": "MergeSingleChunkGroup",
+                            "States": {
+                                "MergeSingleChunkGroup": {
+                                    "Type": "Task",
+                                    "Resource": arns[2],
+                                    "Comment": "Merge a single group of chunks",
+                                    "Parameters": {
+                                        "operation": "group_merge",
+                                        "batch_id.$": "$.batch_id",
+                                        "group_index.$": "$.group_index",
+                                        "chunk_group.$": "$.chunk_group",
+                                        "database": "words",
+                                    },
+                                    "End": True,
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": [
+                                                "Lambda.ServiceException",
+                                                "Lambda.AWSLambdaException",
+                                                "Runtime.ExitError",
+                                            ],
+                                            "IntervalSeconds": 2,
+                                            "MaxAttempts": 3,
+                                            "BackoffRate": 2.0,
+                                            "JitterStrategy": "FULL",
+                                        },
+                                    ],
+                                },
+                            },
+                        },
+                        "ResultPath": "$.merged_groups",
+                        "Next": "PrepareWordHierarchicalFinalMerge",
+                        "Catch": [
+                            {
+                                "ErrorEquals": ["States.ALL"],
+                                "Next": "WordGroupMergeFailed",
+                                "ResultPath": "$.error",
+                            }
+                        ],
+                    },
+                    "PrepareWordHierarchicalFinalMerge": {
+                        "Type": "Pass",
+                        "Comment": "Prepare data for final merge of pre-merged groups",
+                        "Parameters": {
+                            "batch_id.$": "$.batch_id",
+                            "total_groups.$": "$.chunk_groups.total_groups",
+                            "operation": "final_merge_groups",
+                            "merged_groups.$": "$.merged_groups",
+                        },
+                        "Next": "WordFinalMerge",
+                    },
+                    "WordGroupMergeFailed": {
+                        "Type": "Fail",
+                        "Error": "WordGroupMergeFailed",
+                        "Cause": "Failed to merge word chunk groups in parallel",
                     },
                     "PrepareWordFinalMerge": {
                         "Type": "Pass",
