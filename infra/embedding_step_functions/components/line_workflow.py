@@ -127,7 +127,7 @@ class LineEmbeddingWorkflow(ComponentResource):
                     "SubmitBatches": {
                         "Type": "Map",
                         "ItemsPath": "$.batches",
-                        "MaxConcurrency": 25,
+                        "MaxConcurrency": 10,
                         "Iterator": {
                             "StartAt": "SubmitToOpenAI",
                             "States": {
@@ -187,7 +187,7 @@ class LineEmbeddingWorkflow(ComponentResource):
                     "PollBatches": {
                         "Type": "Map",
                         "ItemsPath": "$.pending_batches",
-                        "MaxConcurrency": 50,
+                        "MaxConcurrency": 25,
                         "Parameters": {
                             "batch_id.$": "$$.Map.Item.Value.batch_id",
                             "openai_batch_id.$": (
@@ -202,6 +202,27 @@ class LineEmbeddingWorkflow(ComponentResource):
                                     "Type": "Task",
                                     "Resource": arns[1],
                                     "End": True,
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": [
+                                                "Lambda.ServiceException",
+                                                "Lambda.AWSLambdaException",
+                                                "Runtime.ExitError",
+                                            ],
+                                            "IntervalSeconds": 2,
+                                            "MaxAttempts": 3,
+                                            "BackoffRate": 2.0,
+                                            "JitterStrategy": "FULL",
+                                        },
+                                        {
+                                            "ErrorEquals": [
+                                                "Lambda.TooManyRequestsException"
+                                            ],
+                                            "IntervalSeconds": 5,
+                                            "MaxAttempts": 3,
+                                            "BackoffRate": 2.0,
+                                        },
+                                    ],
                                 },
                             },
                         },
@@ -253,7 +274,7 @@ class LineEmbeddingWorkflow(ComponentResource):
                         "Type": "Map",
                         "Comment": "Process chunks in parallel",
                         "ItemsPath": "$.chunked_data.chunks",
-                        "MaxConcurrency": 50,
+                        "MaxConcurrency": 10,
                         "Parameters": {"chunk.$": "$$.Map.Item.Value"},
                         "Iterator": {
                             "StartAt": "ProcessSingleChunk",
