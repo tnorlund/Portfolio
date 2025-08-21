@@ -811,3 +811,87 @@ def test_list_receipt_words_from_receipt(client: DynamoClient):
     assert "Receipt word 1" in word_texts
     assert "Receipt word 2" in word_texts
     assert "Different receipt" not in word_texts
+
+
+@pytest.mark.integration
+def test_list_receipt_words_from_receipt_excludes_labels_and_letters(client: DynamoClient):
+    """Test that list_receipt_words_from_receipt excludes ReceiptWordLabel and ReceiptLetter entities."""
+    # Add a receipt word
+    word = ReceiptWord(
+        receipt_id=1, image_id=FIXED_IMAGE_ID, line_id=1, word_id=1, text="Test word",
+        bounding_box={"x": 0.1, "y": 0.1, "width": 0.1, "height": 0.02},
+        top_left={"x": 0.1, "y": 0.1}, top_right={"x": 0.2, "y": 0.1},
+        bottom_left={"x": 0.1, "y": 0.12}, bottom_right={"x": 0.2, "y": 0.12},
+        angle_degrees=0.0, angle_radians=0.0, confidence=0.95,
+    )
+    client.add_receipt_word(word)
+    
+    # Add a receipt word label that should NOT be returned
+    # (This simulates what would happen in a real scenario with mixed entity types)
+    from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
+    label = ReceiptWordLabel(
+        receipt_id=1, image_id=FIXED_IMAGE_ID, line_id=1, word_id=1, label="tax",
+        reasoning="Test label", timestamp_added="2023-01-01T00:00:00Z",
+        validation_status="PENDING", label_consolidated_from="test", label_proposed_by="test"
+    )
+    client.add_receipt_word_label(label)
+    
+    # Add a receipt letter that should NOT be returned  
+    # (This simulates what would happen in a real scenario with mixed entity types)
+    from receipt_dynamo.entities.receipt_letter import ReceiptLetter
+    letter = ReceiptLetter(
+        receipt_id=1, image_id=FIXED_IMAGE_ID, line_id=1, word_id=1, letter_id=1, text="T",
+        bounding_box={"x": 0.1, "y": 0.1, "width": 0.01, "height": 0.02},
+        top_left={"x": 0.1, "y": 0.1}, top_right={"x": 0.11, "y": 0.1},
+        bottom_left={"x": 0.1, "y": 0.12}, bottom_right={"x": 0.11, "y": 0.12},
+        angle_degrees=0.0, angle_radians=0.0, confidence=0.95,
+    )
+    client.add_receipt_letter(letter)
+
+    # Query for receipt words only
+    result = client.list_receipt_words_from_receipt(FIXED_IMAGE_ID, 1)
+
+    # Should only return the ReceiptWord, not the ReceiptWordLabel or ReceiptLetter
+    assert len(result) == 1
+    assert result[0] == word
+    assert all(isinstance(item, ReceiptWord) for item in result)
+
+
+@pytest.mark.integration
+def test_list_receipt_words_from_receipt_handles_pagination(client: DynamoClient):
+    """Test that method handles DynamoDB pagination correctly."""
+    # Add 200 receipt words to ensure we exceed typical DynamoDB page size
+    words = []
+    for line_id in range(1, 21):  # 20 lines
+        for word_id in range(1, 11):  # 10 words per line = 200 total words
+            word = ReceiptWord(
+                receipt_id=1, image_id=FIXED_IMAGE_ID, line_id=line_id, word_id=word_id, 
+                text=f"Word{line_id:02d}{word_id:02d}",
+                bounding_box={"x": 0.1 * word_id, "y": 0.05 * line_id, "width": 0.08, "height": 0.02},
+                top_left={"x": 0.1 * word_id, "y": 0.05 * line_id}, 
+                top_right={"x": 0.1 * word_id + 0.08, "y": 0.05 * line_id},
+                bottom_left={"x": 0.1 * word_id, "y": 0.05 * line_id + 0.02}, 
+                bottom_right={"x": 0.1 * word_id + 0.08, "y": 0.05 * line_id + 0.02},
+                angle_degrees=0.0, angle_radians=0.0, confidence=0.95,
+            )
+            words.append(word)
+    
+    # Add in smaller batches to avoid DynamoDB batch limits
+    batch_size = 25
+    for i in range(0, len(words), batch_size):
+        batch = words[i:i + batch_size]
+        client.add_receipt_words(batch)
+
+    # Query all words - this should handle pagination automatically
+    retrieved_words = client.list_receipt_words_from_receipt(FIXED_IMAGE_ID, 1)
+
+    # Verify ALL 200 words were retrieved despite pagination
+    assert len(retrieved_words) == 200
+    assert all(w.receipt_id == 1 for w in retrieved_words)
+    assert all(w.image_id == FIXED_IMAGE_ID for w in retrieved_words)
+    
+    # Verify completeness - check for specific words across the range
+    word_texts = {w.text for w in retrieved_words}
+    assert "Word0101" in word_texts  # First word (line 1, word 1)
+    assert "Word2010" in word_texts  # Last word (line 20, word 10)
+    assert len(word_texts) == 200  # All unique

@@ -408,85 +408,38 @@ class _ReceiptWord(
     def list_receipt_words_from_receipt(
         self, image_id: str, receipt_id: int
     ) -> list[ReceiptWord]:
-        """Returns all ReceiptWords that match the given receipt/image IDs.
-
-        Args:
-            image_id (str): The ID of the image
-            receipt_id (int): The ID of the receipt
-
-        Returns:
-            list[ReceiptWord]:
-                List of ReceiptWord entities for the given receipt
-
-        Raises:
-            ValueError:
-                If the parameters are invalid or if there's an error
-                querying DynamoDB
-        """
+        """Returns all ReceiptWords under a specific receipt/image."""
+        # Validate parameters
         if image_id is None:
             raise EntityValidationError("image_id cannot be None")
-        if receipt_id is None:
-            raise EntityValidationError("receipt_id cannot be None")
-        if not isinstance(image_id, str):
-            raise EntityValidationError("image_id must be a string.")
-        if not isinstance(receipt_id, int):
-            raise EntityValidationError("receipt_id must be an integer.")
-
-        receipt_words = []
-        try:
-            # Use the mixin method for query
-
-            # Use the mixin method for query
-            results, _ = self._query_entities(
-                index_name=None,
-                key_condition_expression=(
-                    "#pk = :pk_val AND #sk BETWEEN :sk_start AND :sk_end"
-                ),
-                expression_attribute_names={"#pk": "PK", "#sk": "SK"},
-                expression_attribute_values={
-                    ":pk_val": {"S": f"IMAGE#{image_id}"},
-                    ":sk_start": {"S": f"RECEIPT#{receipt_id:05d}#LINE#"},
-                    ":sk_end": {
-                        "S": (
-                            f"RECEIPT#{receipt_id:05d}#LINE#\uffff#WORD#"
-                            "\uffff"
-                        )
-                    },
-                },
-                converter_func=item_to_receipt_word,
-                filter_expression=None,
+        assert_valid_uuid(image_id)
+        if receipt_id is None or not isinstance(receipt_id, int):
+            raise EntityValidationError("receipt_id must be an integer")
+        if receipt_id <= 0:
+            raise EntityValidationError(
+                "receipt_id must be a positive integer"
             )
-
-            # Filter results to only include WORD items (not TAG or LETTER)
-            receipt_words = [
-                word
-                for word in results
-                if "#WORD#" in word.to_item()["SK"]["S"]
-                and not word.to_item()["SK"]["S"].endswith("#TAG#")
-                and not word.to_item()["SK"]["S"].endswith("#LETTER#")
-            ]
-
-            return receipt_words
-
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    f"Could not list receipt words from DynamoDB: {e}"
-                ) from e
-            if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            if error_code == "ValidationException":
-                raise EntityValidationError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            if error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            raise OperationError(
-                f"Error listing receipt words: {e}"
-            ) from e
+        # Use _query_entities with server-side filter for efficient ReceiptWord retrieval
+        # Without proper filtering, begins_with would return ALL entities under RECEIPT#<id>#LINE# including:
+        # - ReceiptWord: RECEIPT#00001#LINE#00001#WORD#00001 (what we want)
+        # - ReceiptWordLabel: RECEIPT#00001#LINE#00001#WORD#00001#LABEL#tax (would be over-fetched)
+        # - ReceiptLetter: RECEIPT#00001#LINE#00001#WORD#00001#LETTER#00001 (would be over-fetched)
+        # Filter: contains(#WORD#) AND NOT contains(#LABEL#) AND NOT contains(#LETTER#)
+        results, _ = self._query_entities(
+            index_name=None,
+            key_condition_expression="PK = :pk AND begins_with(SK, :sk_prefix)",
+            expression_attribute_names={"#sk": "SK"},
+            expression_attribute_values={
+                ":pk": {"S": f"IMAGE#{image_id}"},
+                ":sk_prefix": {"S": f"RECEIPT#{receipt_id:05d}#LINE#"},
+                ":word_marker": {"S": "#WORD#"},
+                ":label_marker": {"S": "#LABEL#"},
+                ":letter_marker": {"S": "#LETTER#"},
+            },
+            converter_func=item_to_receipt_word,
+            filter_expression="contains(#sk, :word_marker) AND NOT contains(#sk, :label_marker) AND NOT contains(#sk, :letter_marker)",
+        )
+        return results
 
     @handle_dynamodb_errors("list_receipt_words_by_embedding_status")
     def list_receipt_words_by_embedding_status(

@@ -348,13 +348,39 @@ class _ReceiptLine(FlattenedStandardMixin):
 
         return results
 
+    @handle_dynamodb_errors("list_receipt_lines_from_receipt")
     def list_receipt_lines_from_receipt(
-        self, receipt_id: int, image_id: str
+        self, image_id: str, receipt_id: int
     ) -> list[ReceiptLine]:
         """Returns all lines under a specific receipt/image."""
-        results, _ = self._query_by_parent(
-            parent_key_prefix=f"IMAGE#{image_id}",
-            child_key_prefix=f"RECEIPT#{receipt_id:05d}#LINE#",
+        # Validate parameters
+        if image_id is None:
+            raise EntityValidationError("image_id cannot be None")
+        assert_valid_uuid(image_id)
+        if receipt_id is None or not isinstance(receipt_id, int):
+            raise EntityValidationError("receipt_id must be an integer")
+        if receipt_id <= 0:
+            raise EntityValidationError(
+                "receipt_id must be a positive integer"
+            )
+        
+        # Use _query_entities directly with server-side filter for efficient ReceiptLine retrieval
+        # Without filter, begins_with would return ALL entities under RECEIPT#<id>#LINE# including:
+        # - ReceiptLine: RECEIPT#00001#LINE#00001 (what we want)  
+        # - ReceiptWord: RECEIPT#00001#LINE#00001#WORD#00001 (would be over-fetched)
+        # - ReceiptWordLabel: RECEIPT#00001#LINE#00001#WORD#00001#LABEL#<label> (would be over-fetched)
+        # - ReceiptLetter: RECEIPT#00001#LINE#00001#WORD#00001#LETTER#00001 (would be over-fetched)
+        # Filter expression prevents network transfer of unwanted entities
+        results, _ = self._query_entities(
+            index_name=None,
+            key_condition_expression="PK = :pk AND begins_with(SK, :sk_prefix)",
+            expression_attribute_names={"#sk": "SK"},
+            expression_attribute_values={
+                ":pk": {"S": f"IMAGE#{image_id}"},
+                ":sk_prefix": {"S": f"RECEIPT#{receipt_id:05d}#LINE#"},
+                ":word_marker": {"S": "#WORD#"},
+            },
             converter_func=item_to_receipt_line,
+            filter_expression="NOT contains(#sk, :word_marker)",
         )
         return results

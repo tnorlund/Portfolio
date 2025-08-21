@@ -1320,10 +1320,279 @@ def test_list_receipt_lines_from_receipt(
 
     # Query for receipt 1 only
     receipt1_lines = client.list_receipt_lines_from_receipt(
-        receipt_id=1, image_id=unique_image_id
+        image_id=unique_image_id, receipt_id=1
     )
 
     # Verify filtering
     assert len(receipt1_lines) == 2
     assert all(l.receipt_id == 1 for l in receipt1_lines)
     assert other_line not in receipt1_lines
+
+
+@pytest.mark.integration
+# pylint: disable=redefined-outer-name
+def test_list_receipt_lines_from_receipt_empty_result(
+    dynamodb_table: Literal["MyMockedTable"],
+    unique_image_id: str,
+) -> None:
+    """Tests list_receipt_lines_from_receipt when no lines exist."""
+    client = DynamoClient(dynamodb_table)
+    
+    # Query for non-existent receipt
+    result = client.list_receipt_lines_from_receipt(
+        image_id=unique_image_id, receipt_id=999
+    )
+    
+    # Should return empty list
+    assert result == []
+    assert isinstance(result, list)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "image_id,receipt_id,expected_error,error_match",
+    [
+        (None, 1, EntityValidationError, "image_id cannot be None"),
+        ("not-a-uuid", 1, OperationError, "uuid must be a valid UUIDv4"),
+        (
+            FIXED_UUIDS[0],
+            None,
+            EntityValidationError,
+            "receipt_id must be an integer",
+        ),
+        (
+            FIXED_UUIDS[0],
+            "not-an-int",
+            EntityValidationError,
+            "receipt_id must be an integer",
+        ),
+        (
+            FIXED_UUIDS[0],
+            -1,
+            EntityValidationError,
+            "receipt_id must be a positive integer",
+        ),
+    ],
+)
+# pylint: disable=too-many-arguments
+def test_list_receipt_lines_from_receipt_parameter_validation(
+    dynamodb_table: Literal["MyMockedTable"],
+    image_id: Any,
+    receipt_id: Any,
+    expected_error: Type[Exception],
+    error_match: str,
+) -> None:
+    """Tests parameter validation for list_receipt_lines_from_receipt."""
+    client = DynamoClient(dynamodb_table)
+
+    with pytest.raises(expected_error, match=error_match):
+        client.list_receipt_lines_from_receipt(image_id, receipt_id)
+
+
+@pytest.mark.integration
+# pylint: disable=redefined-outer-name
+def test_list_receipt_lines_from_receipt_large_dataset(
+    dynamodb_table: Literal["MyMockedTable"],
+    unique_image_id: str,
+) -> None:
+    """Tests list_receipt_lines_from_receipt performance with many lines."""
+    client = DynamoClient(dynamodb_table)
+
+    # Add 50 lines to receipt 1
+    lines = []
+    for i in range(1, 51):
+        line = ReceiptLine(
+            receipt_id=1,
+            image_id=unique_image_id,
+            line_id=i,
+            text=f"Line {i}",
+            bounding_box={"x": 0, "y": i * 0.01, "width": 1, "height": 0.01},
+            top_left={"x": 0, "y": i * 0.01},
+            top_right={"x": 1, "y": i * 0.01},
+            bottom_left={"x": 0, "y": (i + 1) * 0.01},
+            bottom_right={"x": 1, "y": (i + 1) * 0.01},
+            angle_degrees=0,
+            angle_radians=0,
+            confidence=0.95,
+        )
+        lines.append(line)
+        
+    client.add_receipt_lines(lines)
+
+    # Query for receipt 1
+    retrieved_lines = client.list_receipt_lines_from_receipt(
+        image_id=unique_image_id, receipt_id=1
+    )
+
+    # Verify all lines were retrieved
+    assert len(retrieved_lines) == 50
+    assert all(l.receipt_id == 1 for l in retrieved_lines)
+    
+    # Verify order and completeness
+    line_ids = {l.line_id for l in retrieved_lines}
+    expected_ids = set(range(1, 51))
+    assert line_ids == expected_ids
+
+
+@pytest.mark.integration
+# pylint: disable=redefined-outer-name
+def test_list_receipt_lines_from_receipt_multiple_images(
+    dynamodb_table: Literal["MyMockedTable"],
+    unique_image_id: str,
+) -> None:
+    """Tests that method filters by image_id correctly."""
+    client = DynamoClient(dynamodb_table)
+    
+    # Create another unique image ID
+    other_image_id = str(uuid4())
+
+    # Add lines to same receipt in two different images
+    line1 = ReceiptLine(
+        receipt_id=1,
+        image_id=unique_image_id,
+        line_id=1,
+        text="Image 1 Line",
+        bounding_box={"x": 0, "y": 0, "width": 1, "height": 0.1},
+        top_left={"x": 0, "y": 0},
+        top_right={"x": 1, "y": 0},
+        bottom_left={"x": 0, "y": 0.1},
+        bottom_right={"x": 1, "y": 0.1},
+        angle_degrees=0,
+        angle_radians=0,
+        confidence=0.95,
+    )
+    
+    line2 = ReceiptLine(
+        receipt_id=1,
+        image_id=other_image_id,
+        line_id=1,
+        text="Image 2 Line",
+        bounding_box={"x": 0, "y": 0, "width": 1, "height": 0.1},
+        top_left={"x": 0, "y": 0},
+        top_right={"x": 1, "y": 0},
+        bottom_left={"x": 0, "y": 0.1},
+        bottom_right={"x": 1, "y": 0.1},
+        angle_degrees=0,
+        angle_radians=0,
+        confidence=0.95,
+    )
+    
+    client.add_receipt_line(line1)
+    client.add_receipt_line(line2)
+
+    # Query for receipt 1 in first image only
+    result = client.list_receipt_lines_from_receipt(
+        image_id=unique_image_id, receipt_id=1
+    )
+
+    # Should only get line from the specified image
+    assert len(result) == 1
+    assert result[0].image_id == unique_image_id
+    assert result[0].text == "Image 1 Line"
+
+
+@pytest.mark.integration
+# pylint: disable=redefined-outer-name
+def test_list_receipt_lines_from_receipt_excludes_words_and_letters(
+    dynamodb_table: Literal["MyMockedTable"],
+    unique_image_id: str,
+) -> None:
+    """Tests that method only returns ReceiptLine entities, not Words or Letters."""
+    client = DynamoClient(dynamodb_table)
+    
+    # Add a receipt line
+    line = ReceiptLine(
+        receipt_id=1,
+        image_id=unique_image_id,
+        line_id=1,
+        text="Test Line",
+        bounding_box={"x": 0, "y": 0, "width": 1, "height": 0.1},
+        top_left={"x": 0, "y": 0},
+        top_right={"x": 1, "y": 0},
+        bottom_left={"x": 0, "y": 0.1},
+        bottom_right={"x": 1, "y": 0.1},
+        angle_degrees=0,
+        angle_radians=0,
+        confidence=0.95,
+    )
+    client.add_receipt_line(line)
+    
+    # Also add some receipt words that should NOT be returned
+    # (This simulates what would happen in a real scenario with mixed entity types)
+    from receipt_dynamo.entities.receipt_word import ReceiptWord
+    word = ReceiptWord(
+        receipt_id=1,
+        image_id=unique_image_id,
+        line_id=1,
+        word_id=1,
+        text="Test",
+        bounding_box={"x": 0, "y": 0, "width": 0.2, "height": 0.1},
+        top_left={"x": 0, "y": 0},
+        top_right={"x": 0.2, "y": 0},
+        bottom_left={"x": 0, "y": 0.1},
+        bottom_right={"x": 0.2, "y": 0.1},
+        angle_degrees=0,
+        angle_radians=0,
+        confidence=0.95,
+    )
+    client.add_receipt_word(word)
+
+    # Query for receipt lines only
+    result = client.list_receipt_lines_from_receipt(
+        image_id=unique_image_id, receipt_id=1
+    )
+
+    # Should only return the ReceiptLine, not the ReceiptWord
+    assert len(result) == 1
+    assert result[0] == line
+    assert all(isinstance(item, ReceiptLine) for item in result)
+
+
+@pytest.mark.integration
+# pylint: disable=redefined-outer-name
+def test_list_receipt_lines_from_receipt_handles_pagination(
+    dynamodb_table: Literal["MyMockedTable"],
+    unique_image_id: str,
+) -> None:
+    """Tests that method handles DynamoDB pagination correctly."""
+    client = DynamoClient(dynamodb_table)
+
+    # Add 150 receipt lines to ensure we exceed typical DynamoDB page size
+    lines = []
+    for i in range(1, 151):
+        line = ReceiptLine(
+            receipt_id=1,
+            image_id=unique_image_id,
+            line_id=i,
+            text=f"Line {i:03d}",
+            bounding_box={"x": 0, "y": i * 0.001, "width": 1, "height": 0.001},
+            top_left={"x": 0, "y": i * 0.001},
+            top_right={"x": 1, "y": i * 0.001},
+            bottom_left={"x": 0, "y": (i + 1) * 0.001},
+            bottom_right={"x": 1, "y": (i + 1) * 0.001},
+            angle_degrees=0,
+            angle_radians=0,
+            confidence=0.95,
+        )
+        lines.append(line)
+        
+    # Add in smaller batches to avoid DynamoDB batch limits
+    batch_size = 25
+    for i in range(0, len(lines), batch_size):
+        batch = lines[i:i + batch_size]
+        client.add_receipt_lines(batch)
+
+    # Query all lines - this should handle pagination automatically
+    retrieved_lines = client.list_receipt_lines_from_receipt(
+        image_id=unique_image_id, receipt_id=1
+    )
+
+    # Verify ALL 150 lines were retrieved despite pagination
+    assert len(retrieved_lines) == 150
+    assert all(l.receipt_id == 1 for l in retrieved_lines)
+    assert all(l.image_id == unique_image_id for l in retrieved_lines)
+    
+    # Verify completeness - all line_ids from 1 to 150
+    line_ids = sorted([l.line_id for l in retrieved_lines])
+    expected_ids = list(range(1, 151))
+    assert line_ids == expected_ids
