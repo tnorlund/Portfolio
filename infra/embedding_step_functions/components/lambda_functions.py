@@ -275,7 +275,7 @@ class LambdaFunctionsComponent(ComponentResource):
             "embedding-line-poll": {
                 "memory": 3008,
                 "timeout": 900,
-                "ephemeral_storage": 3072,
+                "ephemeral_storage": 5120,
                 "handler_type": "line_polling",
             },
             "embedding-word-poll": {
