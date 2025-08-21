@@ -43,18 +43,18 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Find lines without embeddings
         lines_without_embeddings = list_receipt_lines_with_no_embeddings()
         logger.info(
-            "Found %d lines without embeddings", len(lines_without_embeddings)
+            "Found lines without embeddings", count=len(lines_without_embeddings)
         )
 
         # Chunk into batches
         batches = chunk_into_line_embedding_batches(lines_without_embeddings)
-        logger.info("Chunked into %d batches", len(batches))
+        logger.info("Chunked into batches", count=len(batches))
 
         # Serialize and upload to S3
         uploaded = upload_serialized_lines(
             serialize_receipt_lines(batches), bucket
         )
-        logger.info("Uploaded %d files", len(uploaded))
+        logger.info("Uploaded files", count=len(uploaded))
 
         # Format response
         cleaned = [
@@ -70,5 +70,5 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         return {"batches": cleaned}
 
     except Exception as e:
-        logger.error("Error finding unembedded lines: %s", str(e))
+        logger.error("Error finding unembedded lines", error=str(e))
         raise RuntimeError(f"Error finding unembedded lines: {str(e)}") from e

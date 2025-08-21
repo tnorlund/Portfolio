@@ -254,7 +254,7 @@ def _handle_internal_core(event: Dict[str, Any], context: Any) -> Dict[str, Any]
         # Mark batch complete with timeout protection
         with operation_with_timeout("mark_batch_complete", max_duration=30):
             mark_batch_complete(batch_id)
-        logger.info("Marked batch %s as complete", batch_id)
+        logger.info("Marked batch as complete", batch_id=batch_id)
 
         # Successful completion
         result = {
@@ -284,7 +284,7 @@ def _handle_internal_core(event: Dict[str, Any], context: Any) -> Dict[str, Any]
         failed_ids = status_result.get("failed_ids", [])
 
         if partial_results:
-            logger.info("Processing %s partial results", len(partial_results))
+            logger.info("Processing partial results", count=len(partial_results))
 
             # Get receipt details for successful results
             descriptions = get_receipt_descriptions(partial_results)
@@ -296,13 +296,14 @@ def _handle_internal_core(event: Dict[str, Any], context: Any) -> Dict[str, Any]
 
             # Skip writing to DynamoDB - we only store in ChromaDB now
             logger.info(
-                f"Processed {len(partial_results)} partial embedding results"
+                "Processed partial embedding results",
+                count=len(partial_results)
             )
 
         # Mark failed items for retry
         if failed_ids:
             marked = mark_items_for_retry(failed_ids, "word", client_manager)
-            logger.info("Marked %s words for retry", marked)
+            logger.info("Marked words for retry", count=marked)
 
         return {
             "batch_id": batch_id,
@@ -318,7 +319,9 @@ def _handle_internal_core(event: Dict[str, Any], context: Any) -> Dict[str, Any]
         # Handle completely failed batch
         error_info = status_result
         logger.error(
-            f"Batch {openai_batch_id} failed with {error_info.get('error_count', 0)} errors"
+            "Batch failed with errors",
+            openai_batch_id=openai_batch_id,
+            error_count=error_info.get('error_count', 0)
         )
 
         # Could mark all items for retry here if needed

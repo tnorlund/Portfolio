@@ -275,7 +275,7 @@ def _handle_internal_core(event: Dict[str, Any], context: Any) -> Dict[str, Any]
         # Mark batch complete with timeout protection
         with operation_with_timeout("mark_batch_complete", max_duration=30):
             mark_batch_complete(batch_id)
-        logger.info("Marked batch %s as complete", batch_id)
+        logger.info("Marked batch as complete", batch_id=batch_id)
 
         # Successful completion
         result = {
@@ -307,7 +307,7 @@ def _handle_internal_core(event: Dict[str, Any], context: Any) -> Dict[str, Any]
         failed_ids = status_result.get("failed_ids", [])
 
         if partial_results:
-            logger.info("Processing %s partial results", len(partial_results))
+            logger.info("Processing partial results", count=len(partial_results))
 
             # Get receipt details for successful results
             descriptions = get_receipt_descriptions(partial_results)
@@ -338,9 +338,9 @@ def _handle_internal_core(event: Dict[str, Any], context: Any) -> Dict[str, Any]
             # Check if delta creation failed
             if delta_result.get("status") == "failed":
                 logger.error(
-                    "Failed to save partial delta for batch %s: %s",
-                    batch_id,
-                    delta_result.get('error', 'Unknown error')
+                    "Failed to save partial delta for batch",
+                    batch_id=batch_id,
+                    error=delta_result.get('error', 'Unknown error')
                 )
                 # Don't return early - still need to mark failed items for retry
             else:
@@ -348,12 +348,12 @@ def _handle_internal_core(event: Dict[str, Any], context: Any) -> Dict[str, Any]
                 update_line_embedding_status_to_success(
                     partial_results, descriptions
                 )
-                logger.info("Processed %s partial line embedding results", len(partial_results))
+                logger.info("Processed partial line embedding results", count=len(partial_results))
         
         # Mark failed items for retry
         if failed_ids:
             marked = mark_items_for_retry(failed_ids, "line", client_manager)
-            logger.info("Marked %s lines for retry", marked)
+            logger.info("Marked lines for retry", count=marked)
 
         return {
             "batch_id": batch_id,
@@ -369,9 +369,9 @@ def _handle_internal_core(event: Dict[str, Any], context: Any) -> Dict[str, Any]
         # Handle completely failed batch
         error_info = status_result
         logger.error(
-            "Batch %s failed with %s errors",
-            openai_batch_id,
-            error_info.get('error_count', 0)
+            "Batch failed with errors",
+            openai_batch_id=openai_batch_id,
+            error_count=error_info.get('error_count', 0)
         )
 
         # Could mark all items for retry here if needed

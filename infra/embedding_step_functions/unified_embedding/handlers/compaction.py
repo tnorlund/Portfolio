@@ -13,8 +13,8 @@ import tempfile
 import time
 import uuid
 from datetime import datetime
-from logging import INFO, Formatter, StreamHandler, getLogger
 from typing import Any, Dict, List
+import utils.logging
 
 import boto3
 import chromadb
@@ -24,25 +24,17 @@ from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.constants import ChromaDBCollection
 from receipt_label.utils.lock_manager import LockManager
 
+get_logger = utils.logging.get_logger
+get_operation_logger = utils.logging.get_operation_logger
+
+logger = get_operation_logger(__name__)
+
 try:
     from receipt_label.utils.chroma_s3_helpers import upload_snapshot_with_hash
     HASH_UPLOAD_AVAILABLE = True
 except ImportError:
     HASH_UPLOAD_AVAILABLE = False
     logger.warning("Hash-enabled upload not available, using legacy upload")
-
-logger = getLogger()
-logger.setLevel(INFO)
-
-if len(logger.handlers) == 0:
-    handler = StreamHandler()
-    handler.setFormatter(
-        Formatter(
-            "[%(levelname)s] %(asctime)s.%(msecs)dZ %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
-    )
-    logger.addHandler(handler)
 
 # Initialize clients
 s3_client = boto3.client("s3")
@@ -96,7 +88,7 @@ def compact_handler(
     }
     """
     logger.info("Starting ChromaDB compaction handler")
-    logger.info("Event: %s", json.dumps(event))
+    logger.info("Event", event=json.dumps(event))
 
     # Determine operation mode
     operation = event.get("operation")
@@ -107,8 +99,8 @@ def compact_handler(
         return final_merge_handler(event)
 
     logger.error(
-        "Invalid operation: %s. Expected 'process_chunk' or 'final_merge'",
-        operation,
+        "Invalid operation. Expected 'process_chunk' or 'final_merge'",
+        operation=operation
     )
     return {
         "statusCode": 400,
@@ -143,7 +135,7 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         }
 
     if not delta_results:
-        logger.info("No delta results in chunk %d, skipping", chunk_index)
+        logger.info("No delta results in chunk, skipping", chunk_index=chunk_index)
         return {
             "statusCode": 200,
             "batch_id": batch_id,
@@ -157,9 +149,9 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     chunk_deltas = delta_results[:10]
     if len(delta_results) > 10:
         logger.warning(
-            "Chunk %d has %d deltas, expected max 10. Processing first 10.",
-            chunk_index,
-            len(delta_results),
+            "Chunk has more deltas than expected max 10. Processing first 10.",
+            chunk_index=chunk_index,
+            delta_count=len(delta_results)
         )
 
     # Group chunk deltas by collection name for collection-aware processing
@@ -173,12 +165,11 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         deltas_by_collection[collection].append(result)
 
     logger.info(
-        "Processing chunk %d with %d deltas across %d collections "
-        "(batch_id: %s)",
-        chunk_index,
-        len(chunk_deltas),
-        len(deltas_by_collection),
-        batch_id,
+        "Processing chunk with deltas across collections",
+        chunk_index=chunk_index,
+        delta_count=len(chunk_deltas),
+        collection_count=len(deltas_by_collection),
+        batch_id=batch_id
     )
 
     try:
@@ -199,11 +190,11 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             "message": "Chunk processed successfully",
         }
 
-        logger.info("Chunk %d processing completed: %s", chunk_index, response)
+        logger.info("Chunk processing completed", chunk_index=chunk_index, response=response)
         return response
 
     except Exception as e:  # pylint: disable=broad-exception-caught
-        logger.error("Chunk %d processing failed: %s", chunk_index, str(e))
+        logger.error("Chunk processing failed", chunk_index=chunk_index, error=str(e))
         return {
             "statusCode": 500,
             "error": str(e),
@@ -273,7 +264,7 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         }
 
     except Exception as e:  # pylint: disable=broad-exception-caught
-        logger.error("Final merge failed: %s", str(e))
+        logger.error("Final merge failed", error=str(e))
         return {
             "statusCode": 500,
             "error": str(e),
@@ -309,9 +300,9 @@ def process_chunk_deltas(
         # Process each collection separately
         for collection_name, collection_deltas in deltas_by_collection.items():
             logger.info(
-                "Processing %d deltas for collection '%s'",
-                len(collection_deltas),
-                collection_name,
+                "Processing deltas for collection",
+                delta_count=len(collection_deltas),
+                collection_name=collection_name
             )
 
             # Get or create collection
@@ -337,12 +328,12 @@ def process_chunk_deltas(
                 )
                 total_embeddings += embeddings_added
                 logger.info(
-                    "Merged %d embeddings from delta %s into collection %s (%d/%d)",
-                    embeddings_added,
-                    delta_key,
-                    collection_name,
-                    i + 1,
-                    len(collection_deltas)
+                    "Merged embeddings from delta into collection",
+                    embeddings_added=embeddings_added,
+                    delta_key=delta_key,
+                    collection_name=collection_name,
+                    current=i + 1,
+                    total=len(collection_deltas)
                 )
                 
                 # Log memory usage periodically
@@ -351,8 +342,10 @@ def process_chunk_deltas(
                     process = psutil.Process()
                     memory_mb = process.memory_info().rss / 1024 / 1024
                     logger.info(
-                        "Memory usage after %d/%d deltas: %.1f MB", 
-                        i + 1, len(collection_deltas), memory_mb
+                        "Memory usage after processing deltas", 
+                        current=i + 1,
+                        total=len(collection_deltas),
+                        memory_mb=memory_mb
                     )
 
         # Upload intermediate chunk to S3
@@ -361,10 +354,10 @@ def process_chunk_deltas(
 
         processing_time = time.time() - start_time
         logger.info(
-            "Chunk %d processed: %d embeddings in %.2f seconds",
-            chunk_index,
-            total_embeddings,
-            processing_time,
+            "Chunk processed",
+            chunk_index=chunk_index,
+            embeddings_processed=total_embeddings,
+            processing_time_seconds=processing_time
         )
 
         return {
@@ -399,15 +392,15 @@ def download_and_merge_delta(
         # The delta should contain exactly one collection with all embeddings
         delta_collections = delta_client.list_collections()
         if not delta_collections:
-            logger.warning("No collections found in delta %s", delta_key)
+            logger.warning("No collections found in delta", delta_key=delta_key)
             return 0
 
         # Use the first collection from the delta (there should only be one)
         delta_collection = delta_collections[0]
         logger.info(
-            "Found collection '%s' in delta %s",
-            delta_collection.name,
-            delta_key,
+            "Found collection in delta",
+            collection_name=delta_collection.name,
+            delta_key=delta_key
         )
 
         # Get total count first to process in batches
@@ -415,7 +408,7 @@ def download_and_merge_delta(
         if total_count == 0:
             return 0
             
-        logger.info("Processing %d embeddings from delta in batches", total_count)
+        logger.info("Processing embeddings from delta in batches", total_count=total_count)
         
         # Process embeddings in batches to reduce memory usage
         batch_size = 1000  # Process 1000 embeddings at a time
@@ -438,10 +431,12 @@ def download_and_merge_delta(
                     metadatas=batch_results["metadatas"],
                 )
                 total_processed += len(batch_results["ids"])
-                logger.debug("Processed batch %d-%d (%d embeddings)", 
-                           offset, offset + len(batch_results["ids"]), len(batch_results["ids"]))
+                logger.debug("Processed batch",
+                           offset_start=offset,
+                           offset_end=offset + len(batch_results["ids"]),
+                           embedding_count=len(batch_results["ids"]))
         
-        logger.info("Successfully processed %d embeddings from delta", total_processed)
+        logger.info("Successfully processed embeddings from delta", count=total_processed)
         return total_processed
 
     finally:
@@ -466,7 +461,7 @@ def perform_final_merge(batch_id: str, total_chunks: int, database_name: Optiona
     # Determine snapshot paths based on database
     if database_name:
         snapshot_key = f"{database_name}/snapshot/latest/"
-        logger.info(f"Using database-specific snapshot path: {snapshot_key}")
+        logger.info("Using database-specific snapshot path", snapshot_key=snapshot_key)
     else:
         # Backward compatibility - unified snapshot
         snapshot_key = "snapshot/latest/"
@@ -477,16 +472,18 @@ def perform_final_merge(batch_id: str, total_chunks: int, database_name: Optiona
         try:
             download_from_s3(bucket, snapshot_key, temp_dir)
             chroma_client = chromadb.PersistentClient(path=temp_dir)
-            logger.info(f"Loaded existing snapshot from S3: {snapshot_key}")
+            logger.info("Loaded existing snapshot from S3", snapshot_key=snapshot_key)
         except Exception:
             # No existing snapshot, create new
             chroma_client = chromadb.PersistentClient(path=temp_dir)
-            logger.info(f"Creating new snapshot at: {snapshot_key}")
+            logger.info("Creating new snapshot at", snapshot_key=snapshot_key)
 
         # Merge all intermediate chunks
         for chunk_index in range(total_chunks):
             logger.info(
-                "Processing chunk %d of %d", chunk_index + 1, total_chunks
+                "Processing chunk",
+                current_chunk=chunk_index + 1,
+                total_chunks=total_chunks
             )
             intermediate_key = f"intermediate/{batch_id}/chunk-{chunk_index}/"
             chunk_temp = tempfile.mkdtemp()
@@ -494,7 +491,7 @@ def perform_final_merge(batch_id: str, total_chunks: int, database_name: Optiona
             try:
                 # Download intermediate chunk
                 download_from_s3(bucket, intermediate_key, chunk_temp)
-                logger.info("Downloaded chunk %d", chunk_index)
+                logger.info("Downloaded chunk", chunk_index=chunk_index)
 
                 # Load chunk
                 chunk_client = chromadb.PersistentClient(path=chunk_temp)
@@ -589,7 +586,9 @@ def perform_final_merge(batch_id: str, total_chunks: int, database_name: Optiona
                 "database": database_name or "unknown"
             }
         )
-        logger.info(f"Uploaded timestamped snapshot to: {timestamped_key}, hash: {timestamped_result.get('hash', 'not_calculated')}")
+        logger.info("Uploaded timestamped snapshot",
+                   snapshot_key=timestamped_key,
+                   hash=timestamped_result.get('hash', 'not_calculated'))
 
         # Update latest pointer with hash
         latest_result = upload_to_s3(
@@ -605,13 +604,15 @@ def perform_final_merge(batch_id: str, total_chunks: int, database_name: Optiona
                 "pointer_to": timestamped_key
             }
         )
-        logger.info(f"Updated latest snapshot pointer at: {snapshot_key}, hash: {latest_result.get('hash', 'not_calculated')}")
+        logger.info("Updated latest snapshot pointer",
+                   snapshot_key=snapshot_key,
+                   hash=latest_result.get('hash', 'not_calculated'))
 
         processing_time = time.time() - start_time
         logger.info(
-            "Final merge completed: %d total embeddings in %.2f seconds",
-            total_embeddings,
-            processing_time,
+            "Final merge completed",
+            total_embeddings=total_embeddings,
+            processing_time_seconds=processing_time
         )
 
         return {
@@ -642,10 +643,12 @@ def cleanup_intermediate_chunks(batch_id: str, total_chunks: int):
                 s3_client.delete_objects(
                     Bucket=bucket, Delete={"Objects": objects}  # type: ignore
                 )
-                logger.info("Deleted intermediate chunk %d", chunk_index)
+                logger.info("Deleted intermediate chunk", chunk_index=chunk_index)
         except Exception as e:
             logger.warning(
-                "Failed to delete chunk %d: %s", chunk_index, str(e)
+                "Failed to delete chunk",
+                chunk_index=chunk_index,
+                error=str(e)
             )
 
 
@@ -690,7 +693,7 @@ def upload_to_s3(
     )
     
     if use_hash_upload:
-        logger.info("Using hash-enabled upload for: %s", prefix)
+        logger.info("Using hash-enabled upload for", prefix=prefix)
         
         # Ensure prefix ends with / for snapshot key format
         snapshot_key = prefix.rstrip('/') + '/'
@@ -705,16 +708,16 @@ def upload_to_s3(
         
         if result["status"] == "uploaded":
             logger.info(
-                "Uploaded snapshot with hash: %s (files: %d, hash: %s)",
-                prefix,
-                result.get("file_count", 0),
-                result.get("hash", "not_calculated")
+                "Uploaded snapshot with hash",
+                prefix=prefix,
+                file_count=result.get("file_count", 0),
+                hash=result.get("hash", "not_calculated")
             )
         
         return result
     else:
         # Legacy upload (for intermediate chunks and when hash utils not available)
-        logger.info("Using legacy upload for: %s", prefix)
+        logger.info("Using legacy upload for", prefix=prefix)
         
         file_count = 0
         total_size = 0
