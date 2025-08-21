@@ -347,7 +347,7 @@ class LineEmbeddingWorkflow(ComponentResource):
                         "Choices": [
                             {
                                 "Variable": "$.total_chunks",
-                                "NumericGreaterThan": 4,
+                                "NumericGreaterThan": 999,
                                 "Next": "CreateChunkGroups",
                             }
                         ],
