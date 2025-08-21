@@ -29,7 +29,7 @@ logger = get_operation_logger(__name__)
 
 
 def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-# pylint: disable=unused-argument
+    # pylint: disable=unused-argument
     """Submit a word embedding batch to OpenAI.
 
     This function downloads word data from S3, formats it for OpenAI's
@@ -68,7 +68,6 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             {
                 "s3_bucket": s3_bucket,
                 "s3_key": s3_key,
-
                 # Include the original ndjson path so the helper can write to it
                 "ndjson_path": f"/tmp/{Path(s3_key).name}",
             }
@@ -85,7 +84,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "Found words in receipt",
             count=len(all_words_in_receipt),
             receipt_id=receipt_id,
-            image_id=image_id
+            image_id=image_id,
         )
 
         # Format words with context for embedding
@@ -115,8 +114,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Update word embedding status in DynamoDB
         update_word_embedding_status(deserialized_words)
         logger.info(
-            "Updated embedding status for words",
-            count=len(deserialized_words)
+            "Updated embedding status for words", count=len(deserialized_words)
         )
 
         # Store batch summary in DynamoDB

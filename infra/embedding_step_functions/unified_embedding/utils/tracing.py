@@ -10,6 +10,7 @@ try:
     from aws_xray_sdk.core.context import Context
     from aws_xray_sdk.core.models.segment import Segment
     from aws_xray_sdk.core.models.subsegment import Subsegment
+
     XRAY_AVAILABLE = True
 except ImportError:
     XRAY_AVAILABLE = False
@@ -23,18 +24,20 @@ class XRayTracer:
     def __init__(self):
         """Initialize X-Ray tracer."""
         self.enabled = (
-            XRAY_AVAILABLE 
+            XRAY_AVAILABLE
             and os.environ.get("ENABLE_XRAY", "false").lower() == "true"
         )
         self.logger = get_operation_logger(__name__)
-        
+
         if self.enabled:
             try:
                 # Patch common AWS SDK calls
                 patch_all()
                 self.logger.info("X-Ray tracing enabled and AWS SDKs patched")
             except Exception as e:
-                self.logger.error("Failed to initialize X-Ray tracing", error=str(e))
+                self.logger.error(
+                    "Failed to initialize X-Ray tracing", error=str(e)
+                )
                 self.enabled = False
 
     @contextmanager
@@ -59,29 +62,29 @@ class XRayTracer:
 
         try:
             subsegment = xray_recorder.begin_subsegment(name)
-            
+
             # Add namespace
             if namespace:
                 subsegment.namespace = namespace
-            
+
             # Add metadata
             if metadata:
                 for key, value in metadata.items():
                     subsegment.put_metadata(key, value, namespace)
-            
+
             # Add annotations
             if annotations:
                 for key, value in annotations.items():
                     subsegment.put_annotation(key, str(value))
-            
+
             self.logger.debug(
                 "Started X-Ray subsegment",
                 subsegment_name=name,
                 subsegment_id=subsegment.id,
             )
-            
+
             yield subsegment
-            
+
         except Exception as e:
             if self.enabled:
                 xray_recorder.current_subsegment().add_exception(e)
@@ -124,31 +127,36 @@ class XRayTracer:
         Returns:
             Decorated function
         """
+
         def decorator(func):
             @wraps(func)
             def wrapper(*args, **kwargs):
                 subsegment_name = name or f"{func.__module__}.{func.__name__}"
-                
+
                 with self.subsegment(
                     subsegment_name,
                     namespace,
-                    annotations={"function": func.__name__, "module": func.__module__}
+                    annotations={
+                        "function": func.__name__,
+                        "module": func.__module__,
+                    },
                 ) as subseg:
                     try:
                         result = func(*args, **kwargs)
-                        
+
                         if capture_response and subseg and self.enabled:
                             subseg.put_metadata("response", result, namespace)
-                        
+
                         return result
-                        
+
                     except Exception as e:
                         if capture_error and subseg and self.enabled:
                             subseg.add_exception(e)
                             subseg.put_metadata("error", str(e), namespace)
                         raise
-                        
+
             return wrapper
+
         return decorator
 
     def add_annotation(self, key: str, value: str):
@@ -162,12 +170,19 @@ class XRayTracer:
             return
 
         try:
-            current = xray_recorder.current_subsegment() or xray_recorder.current_segment()
+            current = (
+                xray_recorder.current_subsegment()
+                or xray_recorder.current_segment()
+            )
             if current:
                 current.put_annotation(key, str(value))
-                self.logger.debug("Added X-Ray annotation", key=key, value=value)
+                self.logger.debug(
+                    "Added X-Ray annotation", key=key, value=value
+                )
         except Exception as e:
-            self.logger.error("Failed to add X-Ray annotation", key=key, error=str(e))
+            self.logger.error(
+                "Failed to add X-Ray annotation", key=key, error=str(e)
+            )
 
     def add_metadata(self, key: str, value: Any, namespace: str = "local"):
         """Add metadata to current segment/subsegment.
@@ -181,7 +196,10 @@ class XRayTracer:
             return
 
         try:
-            current = xray_recorder.current_subsegment() or xray_recorder.current_segment()
+            current = (
+                xray_recorder.current_subsegment()
+                or xray_recorder.current_segment()
+            )
             if current:
                 current.put_metadata(key, value, namespace)
                 self.logger.debug(
@@ -191,7 +209,9 @@ class XRayTracer:
                     value_type=type(value).__name__,
                 )
         except Exception as e:
-            self.logger.error("Failed to add X-Ray metadata", key=key, error=str(e))
+            self.logger.error(
+                "Failed to add X-Ray metadata", key=key, error=str(e)
+            )
 
     def set_user(self, user_id: str):
         """Set user ID for current segment.
@@ -208,7 +228,9 @@ class XRayTracer:
                 current.set_user(user_id)
                 self.logger.debug("Set X-Ray user", user_id=user_id)
         except Exception as e:
-            self.logger.error("Failed to set X-Ray user", user_id=user_id, error=str(e))
+            self.logger.error(
+                "Failed to set X-Ray user", user_id=user_id, error=str(e)
+            )
 
     def capture_aws_operation(self, service: str, operation: str):
         """Create subsegment for AWS service operations.
@@ -226,7 +248,7 @@ class XRayTracer:
             annotations={
                 "aws.service": service,
                 "aws.operation": operation,
-            }
+            },
         )
 
 
@@ -288,7 +310,7 @@ def trace_openai_batch_poll(batch_id: str, openai_batch_id: str):
                 "batch_id": batch_id,
                 "openai_batch_id": openai_batch_id,
             }
-        }
+        },
     ) as subseg:
         yield subseg
 
@@ -310,7 +332,7 @@ def trace_s3_snapshot_operation(operation: str, bucket: str, key: str):
                 "key": key,
                 "operation": operation,
             }
-        }
+        },
     ) as subseg:
         yield subseg
 
@@ -330,6 +352,6 @@ def trace_chromadb_delta_save(collection: str, delta_count: int):
                 "collection": collection,
                 "delta_count": delta_count,
             }
-        }
+        },
     ) as subseg:
         yield subseg

@@ -20,7 +20,7 @@ class TimeoutProtection:
         self.logger = get_operation_logger(__name__)
         self.lambda_timeout = self._get_lambda_timeout()
         self.warning_threshold = 0.9  # Warn at 90% of timeout
-        self.abort_threshold = 0.95   # Abort at 95% of timeout
+        self.abort_threshold = 0.95  # Abort at 95% of timeout
         self.start_time = time.time()
         self.heartbeat_interval = int(
             os.environ.get("HEARTBEAT_INTERVAL_SECONDS", "30")
@@ -33,11 +33,11 @@ class TimeoutProtection:
         """Get Lambda timeout from context or environment."""
         # Try to get from Lambda context first
         context_remaining = getattr(
-            self, '_lambda_context_remaining_time_ms', None
+            self, "_lambda_context_remaining_time_ms", None
         )
         if context_remaining:
             return int(context_remaining() / 1000)
-        
+
         # Fallback to environment or default
         return int(os.environ.get("AWS_LAMBDA_FUNCTION_TIMEOUT", "900"))
 
@@ -47,9 +47,13 @@ class TimeoutProtection:
         Args:
             context: AWS Lambda context object
         """
-        if hasattr(context, 'get_remaining_time_in_millis'):
-            self._lambda_context_remaining_time_ms = context.get_remaining_time_in_millis
-            self.lambda_timeout = int(context.get_remaining_time_in_millis() / 1000)
+        if hasattr(context, "get_remaining_time_in_millis"):
+            self._lambda_context_remaining_time_ms = (
+                context.get_remaining_time_in_millis
+            )
+            self.lambda_timeout = int(
+                context.get_remaining_time_in_millis() / 1000
+            )
 
     def get_remaining_time(self) -> float:
         """Get remaining execution time in seconds."""
@@ -79,8 +83,7 @@ class TimeoutProtection:
 
         self._should_stop_heartbeat.clear()
         self._heartbeat_thread = threading.Thread(
-            target=self._heartbeat_loop,
-            daemon=True
+            target=self._heartbeat_loop, daemon=True
         )
         self._heartbeat_thread.start()
         self.logger.info("Started heartbeat monitoring")
@@ -117,7 +120,7 @@ class TimeoutProtection:
         while not self._should_stop_heartbeat.wait(self.heartbeat_interval):
             elapsed = self.get_elapsed_time()
             remaining = self.get_remaining_time()
-            
+
             self.logger.info(
                 "Lambda heartbeat",
                 elapsed_seconds=elapsed,
@@ -130,7 +133,11 @@ class TimeoutProtection:
                 "LambdaRemainingTime",
                 remaining,
                 "Seconds",
-                {"function": os.environ.get("AWS_LAMBDA_FUNCTION_NAME", "unknown")}
+                {
+                    "function": os.environ.get(
+                        "AWS_LAMBDA_FUNCTION_NAME", "unknown"
+                    )
+                },
             )
 
             # Warn if approaching timeout
@@ -170,7 +177,7 @@ class TimeoutProtection:
             TimeoutError: If operation exceeds timeout
         """
         start_time = time.time()
-        
+
         self.logger.info(
             f"Starting operation with timeout protection: {operation_name}",
             max_duration=max_duration,
@@ -181,7 +188,7 @@ class TimeoutProtection:
             yield start_time
         finally:
             duration = time.time() - start_time
-            
+
             # Check if operation exceeded limits
             timeout_exceeded = False
             if max_duration and duration > max_duration:
@@ -227,15 +234,19 @@ class TimeoutProtection:
         Returns:
             Decorated function
         """
+
         def decorator(func):
             @wraps(func)
             def wrapper(*args, **kwargs):
-                op_name = operation_name or f"{func.__module__}.{func.__name__}"
-                
+                op_name = (
+                    operation_name or f"{func.__module__}.{func.__name__}"
+                )
+
                 with self.operation_timeout(op_name, max_duration):
                     return func(*args, **kwargs)
-                    
+
             return wrapper
+
         return decorator
 
 
@@ -288,7 +299,11 @@ class GracefulTimeoutHandler:
             metrics.count(
                 "LambdaTimeoutHandled",
                 1,
-                {"function": os.environ.get("AWS_LAMBDA_FUNCTION_NAME", "unknown")}
+                {
+                    "function": os.environ.get(
+                        "AWS_LAMBDA_FUNCTION_NAME", "unknown"
+                    )
+                },
             )
 
             return True
@@ -323,7 +338,9 @@ def check_timeout():
 
 
 @contextmanager
-def operation_with_timeout(operation_name: str, max_duration: Optional[float] = None):
+def operation_with_timeout(
+    operation_name: str, max_duration: Optional[float] = None
+):
     """Context manager for operations with timeout protection.
 
     Args:
@@ -342,7 +359,7 @@ def start_lambda_monitoring(context=None):
     """
     if context:
         timeout_protection.set_lambda_context(context)
-    
+
     timeout_protection.start_heartbeat()
 
 

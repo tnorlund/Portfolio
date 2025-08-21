@@ -19,7 +19,7 @@ CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", "10"))  # Default 10 if not set
 
 
 def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-# pylint: disable=unused-argument
+    # pylint: disable=unused-argument
     """Split delta results into chunks for parallel processing.
 
     Args:
@@ -46,7 +46,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         logger.info(
             "Processing delta results for batch",
             delta_count=len(poll_results),
-            batch_id=batch_id
+            batch_id=batch_id,
         )
 
         # Filter out any invalid results
@@ -85,15 +85,17 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             # Log chunk details for debugging
             logger.info(
                 "Chunk details",
-                chunk_index=chunk['chunk_index'],
+                chunk_index=chunk["chunk_index"],
                 delta_count=len(chunk_deltas),
-                collections=list(set(d.get('collection', 'unknown') for d in chunk_deltas))
+                collections=list(
+                    set(d.get("collection", "unknown") for d in chunk_deltas)
+                ),
             )
 
         logger.info(
             "Created chunks from deltas",
             chunk_count=len(chunks),
-            delta_count=len(valid_deltas)
+            delta_count=len(valid_deltas),
         )
 
         return {

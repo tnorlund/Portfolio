@@ -1,6 +1,6 @@
 """Graceful shutdown utilities for Lambda functions."""
 
-import signal
+# import signal  # Not currently used
 import threading
 import time
 from typing import List, Callable, Optional, Any, Dict
@@ -63,13 +63,13 @@ class GracefulShutdownManager:
         with self.operation_lock:
             stop_event = threading.Event()
             self.active_operations[operation_id] = stop_event
-            
+
             self.logger.debug(
                 "Registered active operation",
                 operation_id=operation_id,
                 total_operations=len(self.active_operations),
             )
-            
+
             return stop_event
 
     def unregister_active_operation(self, operation_id: str):
@@ -113,7 +113,7 @@ class GracefulShutdownManager:
                 dimensions={
                     "reason": reason,
                     "active_operations": str(len(self.active_operations)),
-                }
+                },
             )
 
         # Signal all active operations to stop
@@ -150,7 +150,7 @@ class GracefulShutdownManager:
             True if all operations completed, False if timeout
         """
         start_time = time.time()
-        
+
         while time.time() - start_time < max_wait_time:
             with self.operation_lock:
                 if not self.active_operations:
@@ -162,31 +162,31 @@ class GracefulShutdownManager:
                 remaining_operations=len(self.active_operations),
                 elapsed_time=time.time() - start_time,
             )
-            
+
             time.sleep(0.5)
 
         # Timeout reached
         with self.operation_lock:
             remaining = list(self.active_operations.keys())
-            
+
         self.logger.warning(
             "Timeout waiting for operations to complete",
             remaining_operations=remaining,
             wait_time=max_wait_time,
         )
-        
+
         metrics.count(
             "GracefulShutdownTimeout",
             1,
-            dimensions={"remaining_operations": str(len(remaining))}
+            dimensions={"remaining_operations": str(len(remaining))},
         )
-        
+
         return False
 
     def cleanup(self):
         """Run final cleanup callbacks."""
         self.logger.info("Running final cleanup")
-        
+
         for callback in self.cleanup_callbacks:
             try:
                 self.logger.debug(
@@ -203,7 +203,7 @@ class GracefulShutdownManager:
 
     @contextmanager
     def managed_operation(self, operation_id: str):
-        """Context manager for operations that should be managed during shutdown.
+        """Context manager for managed operations during shutdown.
 
         Args:
             operation_id: Unique identifier for the operation
@@ -219,18 +219,16 @@ class GracefulShutdownManager:
             raise RuntimeError("Cannot start operation during shutdown")
 
         stop_event = self.register_active_operation(operation_id)
-        
+
         try:
             yield stop_event
         finally:
             self.unregister_active_operation(operation_id)
 
     def shutdown_protected(
-        self,
-        operation_name: Optional[str] = None,
-        max_wait_time: float = 10.0,
+        self, operation_name: Optional[str] = None, max_wait_time: float = 10.0
     ):
-        """Decorator for operations that need graceful shutdown protection.
+        """Decorator for operations needing shutdown protection.
 
         Args:
             operation_name: Custom operation name
@@ -239,11 +237,14 @@ class GracefulShutdownManager:
         Returns:
             Decorated function
         """
+
         def decorator(func):
             @wraps(func)
             def wrapper(*args, **kwargs):
-                op_name = operation_name or f"{func.__module__}.{func.__name__}"
-                
+                op_name = (
+                    operation_name or f"{func.__module__}.{func.__name__}"
+                )
+
                 with self.managed_operation(op_name) as stop_event:
                     # Check if shutdown was initiated before we started
                     if stop_event.is_set():
@@ -252,10 +253,11 @@ class GracefulShutdownManager:
                             operation_name=op_name,
                         )
                         raise RuntimeError("Operation aborted due to shutdown")
-                    
+
                     return func(*args, **kwargs)
-                    
+
             return wrapper
+
         return decorator
 
 
@@ -265,13 +267,17 @@ class TimeoutAwareShutdownManager(GracefulShutdownManager):
     def __init__(self):
         """Initialize timeout-aware shutdown manager."""
         super().__init__()
-        
+
         # Register with timeout protection
-        timeout_protection.register_shutdown_callback(self._on_timeout_approaching)
+        timeout_protection.register_shutdown_callback(
+            self._on_timeout_approaching
+        )
 
     def _on_timeout_approaching(self):
         """Called when Lambda timeout is approaching."""
-        self.logger.warning("Lambda timeout approaching - initiating graceful shutdown")
+        self.logger.warning(
+            "Lambda timeout approaching - initiating graceful shutdown"
+        )
         self.initiate_shutdown("timeout_approaching")
 
     def check_and_handle_shutdown(self) -> bool:
@@ -302,22 +308,22 @@ class TimeoutAwareShutdownManager(GracefulShutdownManager):
         """
         with self.managed_operation(operation_id) as stop_event:
             last_check = time.time()
-            
+
             def should_stop() -> bool:
                 nonlocal last_check
-                
+
                 # Check stop event
                 if stop_event.is_set():
                     return True
-                
+
                 # Periodic timeout check
                 current_time = time.time()
                 if current_time - last_check >= check_interval:
                     last_check = current_time
                     return self.check_and_handle_shutdown()
-                
+
                 return False
-            
+
             yield stop_event, should_stop
 
 
@@ -346,7 +352,9 @@ def managed_operation(operation_id: str):
 @contextmanager
 def timeout_aware_operation(operation_id: str, check_interval: float = 1.0):
     """Context manager for operations that should check timeout periodically."""
-    with shutdown_manager.timeout_aware_operation(operation_id, check_interval) as (stop_event, should_stop):
+    with shutdown_manager.timeout_aware_operation(
+        operation_id, check_interval
+    ) as (stop_event, should_stop):
         yield stop_event, should_stop
 
 

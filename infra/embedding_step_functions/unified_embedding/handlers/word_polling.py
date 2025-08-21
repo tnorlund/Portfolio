@@ -57,9 +57,11 @@ get_operation_logger = utils.logging.get_operation_logger
 logger = get_operation_logger(__name__)
 
 
-@with_timeout_protection(max_duration=840, operation_name="word_polling_handler")  # 14 minutes max
+@with_timeout_protection(
+    max_duration=840, operation_name="word_polling_handler"
+)  # 14 minutes max
 def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-# pylint: disable=unused-argument
+    # pylint: disable=unused-argument
     """Poll a word embedding batch and save results as deltas to S3.
 
     This enhanced handler processes all OpenAI batch statuses including
@@ -77,10 +79,12 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     # Start monitoring and timeout protection
     start_lambda_monitoring(context)
-    
+
     # Register cleanup callback
-    register_shutdown_callback(lambda: logger.info("Graceful shutdown initiated for word polling"))
-    
+    register_shutdown_callback(
+        lambda: logger.info("Graceful shutdown initiated for word polling")
+    )
+
     try:
         return _handle_internal(event, context)
     except CircuitBreakerOpenError as e:
@@ -90,8 +94,6 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     finally:
         stop_lambda_monitoring()
         final_cleanup()
-
-
 
 
 def _handle_internal(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -104,14 +106,24 @@ def _handle_internal(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         tracer.add_annotation("timeout", "true")
         raise
     except Exception as e:
-        logger.error("Unexpected error in word polling", error=str(e), error_type=type(e).__name__)
-        metrics.count("WordPollingErrors", dimensions={"error_type": type(e).__name__})
+        logger.error(
+            "Unexpected error in word polling",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        metrics.count(
+            "WordPollingErrors", dimensions={"error_type": type(e).__name__}
+        )
         tracer.add_annotation("error", type(e).__name__)
-        tracer.add_metadata("error_details", {"message": str(e), "type": type(e).__name__})
+        tracer.add_metadata(
+            "error_details", {"message": str(e), "type": type(e).__name__}
+        )
         raise
 
 
-def _handle_internal_core(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def _handle_internal_core(
+    event: Dict[str, Any], context: Any
+) -> Dict[str, Any]:
     """Core handler logic with comprehensive instrumentation."""
     logger.info(
         "Starting word embedding batch polling",
@@ -136,7 +148,9 @@ def _handle_internal_core(event: Dict[str, Any], context: Any) -> Dict[str, Any]
     # Check timeout before starting
     if check_timeout():
         logger.error("Lambda timeout detected before processing")
-        metrics.count("WordPollingTimeouts", dimensions={"stage": "pre_processing"})
+        metrics.count(
+            "WordPollingTimeouts", dimensions={"stage": "pre_processing"}
+        )
         raise TimeoutError("Lambda timeout detected before processing")
 
     with operation_with_timeout("get_client_manager", max_duration=30):
@@ -144,10 +158,12 @@ def _handle_internal_core(event: Dict[str, Any], context: Any) -> Dict[str, Any]
 
     # Check the batch status with monitoring and circuit breaker protection
     with trace_openai_batch_poll(batch_id, openai_batch_id):
-        with operation_with_timeout("get_openai_batch_status", max_duration=60):
+        with operation_with_timeout(
+            "get_openai_batch_status", max_duration=60
+        ):
             with openai_circuit_breaker().call():
                 batch_status = get_openai_batch_status(openai_batch_id)
-    
+
     logger.info(
         "Retrieved batch status from OpenAI",
         batch_id=batch_id,
@@ -174,30 +190,41 @@ def _handle_internal_core(event: Dict[str, Any], context: Any) -> Dict[str, Any]
         and batch_status == "completed"
     ):
         logger.info("Processing completed batch results")
-        
+
         # Check timeout before processing
         if check_timeout():
             logger.error("Lambda timeout detected before result processing")
-            metrics.count("WordPollingTimeouts", dimensions={"stage": "pre_results"})
-            raise TimeoutError("Lambda timeout detected before result processing")
+            metrics.count(
+                "WordPollingTimeouts", dimensions={"stage": "pre_results"}
+            )
+            raise TimeoutError(
+                "Lambda timeout detected before result processing"
+            )
 
         # Download the batch results with monitoring and circuit breaker protection
         with tracer.subsegment("OpenAI.DownloadResults", namespace="remote"):
-            with operation_with_timeout("download_openai_batch_result", max_duration=180):
+            with operation_with_timeout(
+                "download_openai_batch_result", max_duration=180
+            ):
                 with openai_circuit_breaker().call():
                     results = download_openai_batch_result(openai_batch_id)
-        
+
         result_count = len(results)
         logger.info("Downloaded embedding results", result_count=result_count)
         metrics.gauge("DownloadedResults", result_count)
         tracer.add_metadata("result_count", result_count)
 
         # Get receipt details with timeout protection
-        with operation_with_timeout("get_receipt_descriptions", max_duration=60):
+        with operation_with_timeout(
+            "get_receipt_descriptions", max_duration=60
+        ):
             descriptions = get_receipt_descriptions(results)
-        
+
         description_count = len(descriptions)
-        logger.info("Retrieved receipt descriptions", description_count=description_count)
+        logger.info(
+            "Retrieved receipt descriptions",
+            description_count=description_count,
+        )
         metrics.gauge("ProcessedDescriptions", description_count)
 
         # Get configuration from environment
@@ -216,37 +243,55 @@ def _handle_internal_core(event: Dict[str, Any], context: Any) -> Dict[str, Any]
         # Check timeout before saving delta
         if check_timeout():
             logger.error("Lambda timeout detected before delta save")
-            metrics.count("WordPollingTimeouts", dimensions={"stage": "pre_save"})
+            metrics.count(
+                "WordPollingTimeouts", dimensions={"stage": "pre_save"}
+            )
             raise TimeoutError("Lambda timeout detected before delta save")
 
         # Save embeddings as delta with comprehensive monitoring and circuit breaker protection
         with trace_chromadb_delta_save("words", result_count):
-            with operation_with_timeout("save_word_embeddings_as_delta", max_duration=300):
-                with timeout_aware_operation("save_word_embeddings_delta", check_interval=30) as (stop_event, should_stop):
+            with operation_with_timeout(
+                "save_word_embeddings_as_delta", max_duration=300
+            ):
+                with timeout_aware_operation(
+                    "save_word_embeddings_delta", check_interval=30
+                ) as (stop_event, should_stop):
                     with chromadb_circuit_breaker().call():
                         # Check for graceful shutdown during long operation
                         if should_stop():
-                            logger.warning("Save operation cancelled due to shutdown")
-                            raise RuntimeError("Operation cancelled during graceful shutdown")
-                        
+                            logger.warning(
+                                "Save operation cancelled due to shutdown"
+                            )
+                            raise RuntimeError(
+                                "Operation cancelled during graceful shutdown"
+                            )
+
                         delta_result = save_word_embeddings_as_delta(
-                            results, descriptions, batch_id, bucket_name, sqs_queue_url
+                            results,
+                            descriptions,
+                            batch_id,
+                            bucket_name,
+                            sqs_queue_url,
                         )
-        
-        delta_id = delta_result['delta_id']
-        embedding_count = delta_result['embedding_count']
-        
+
+        delta_id = delta_result["delta_id"]
+        embedding_count = delta_result["embedding_count"]
+
         logger.info(
             "Saved word embeddings delta",
             delta_id=delta_id,
             embedding_count=embedding_count,
             batch_id=batch_id,
         )
-        
+
         # Publish metrics
-        metrics.gauge("SavedEmbeddings", embedding_count, dimensions={"collection": "words"})
+        metrics.gauge(
+            "SavedEmbeddings",
+            embedding_count,
+            dimensions={"collection": "words"},
+        )
         metrics.count("DeltasSaved", dimensions={"collection": "words"})
-        
+
         # Add to trace
         tracer.add_metadata("delta_result", delta_result)
         tracer.add_annotation("delta_id", delta_id)
@@ -268,11 +313,11 @@ def _handle_internal_core(event: Dict[str, Any], context: Any) -> Dict[str, Any]
             "embedding_count": delta_result["embedding_count"],
             "storage": "s3_delta",
         }
-        
+
         logger.info("Successfully completed word polling", **result)
         metrics.count("WordPollingSuccess")
         tracer.add_annotation("success", "true")
-        
+
         return result
 
     elif (
@@ -284,7 +329,9 @@ def _handle_internal_core(event: Dict[str, Any], context: Any) -> Dict[str, Any]
         failed_ids = status_result.get("failed_ids", [])
 
         if partial_results:
-            logger.info("Processing partial results", count=len(partial_results))
+            logger.info(
+                "Processing partial results", count=len(partial_results)
+            )
 
             # Get receipt details for successful results
             descriptions = get_receipt_descriptions(partial_results)
@@ -297,7 +344,7 @@ def _handle_internal_core(event: Dict[str, Any], context: Any) -> Dict[str, Any]
             # Skip writing to DynamoDB - we only store in ChromaDB now
             logger.info(
                 "Processed partial embedding results",
-                count=len(partial_results)
+                count=len(partial_results),
             )
 
         # Mark failed items for retry
@@ -321,7 +368,7 @@ def _handle_internal_core(event: Dict[str, Any], context: Any) -> Dict[str, Any]
         logger.error(
             "Batch failed with errors",
             openai_batch_id=openai_batch_id,
-            error_count=error_info.get('error_count', 0)
+            error_count=error_info.get("error_count", 0),
         )
 
         # Could mark all items for retry here if needed
@@ -353,12 +400,14 @@ def _handle_internal_core(event: Dict[str, Any], context: Any) -> Dict[str, Any]
         # Unknown action
         logger.error(
             "Unknown action from status handler",
-            action=status_result.get('action'),
+            action=status_result.get("action"),
             status_result=status_result,
         )
-        metrics.count("WordPollingErrors", dimensions={"error_type": "unknown_action"})
+        metrics.count(
+            "WordPollingErrors", dimensions={"error_type": "unknown_action"}
+        )
         tracer.add_annotation("error", "unknown_action")
-        
+
         return {
             "batch_id": batch_id,
             "openai_batch_id": openai_batch_id,

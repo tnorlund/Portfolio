@@ -13,7 +13,7 @@ logger = get_logger(__name__)
 
 
 def handle(event: Dict[str, Any], context: Any) -> List[Dict[str, str]]:
-# pylint: disable=unused-argument
+    # pylint: disable=unused-argument
     """List pending line embedding batches from DynamoDB.
 
     Args:
@@ -52,7 +52,9 @@ def handle(event: Dict[str, Any], context: Any) -> List[Dict[str, str]]:
         raise RuntimeError(f"Configuration error: {str(e)}") from e
 
     except KeyError as e:
-        logger.error("Missing expected field in DynamoDB response", error=str(e))
+        logger.error(
+            "Missing expected field in DynamoDB response", error=str(e)
+        )
         raise RuntimeError(f"Data format error: {str(e)}") from e
 
     except Exception as e:

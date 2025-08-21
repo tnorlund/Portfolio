@@ -22,7 +22,7 @@ logger = get_operation_logger(__name__)
 
 
 def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-# pylint: disable=unused-argument
+    # pylint: disable=unused-argument
     """Find receipt words without embeddings and prepare batches.
 
     Args:
@@ -49,7 +49,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         words = list_receipt_words_with_no_embeddings()
         logger.info(
             "Found words without embeddings (noise words filtered)",
-            count=len(words)
+            count=len(words),
         )
 
         if not words:
@@ -71,14 +71,14 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         image_id=image_id,
                         receipt_id=receipt_id,
                         total=total,
-                        unique=unique
+                        unique=unique,
                     )
                 else:
                     logger.info(
                         "Words count OK for image receipt",
                         image_id=image_id,
                         receipt_id=receipt_id,
-                        word_count=total
+                        word_count=total,
                     )
 
         # Serialize and upload in one step

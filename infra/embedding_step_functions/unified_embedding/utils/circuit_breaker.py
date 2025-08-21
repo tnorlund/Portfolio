@@ -13,8 +13,9 @@ from .metrics import metrics
 
 class CircuitState(Enum):
     """Circuit breaker states."""
-    CLOSED = "closed"      # Normal operation
-    OPEN = "open"          # Circuit is open, requests are blocked
+
+    CLOSED = "closed"  # Normal operation
+    OPEN = "open"  # Circuit is open, requests are blocked
     HALF_OPEN = "half_open"  # Testing if service has recovered
 
 
@@ -43,13 +44,13 @@ class CircuitBreaker:
         self.recovery_timeout = recovery_timeout
         self.expected_exception = expected_exception
         self.success_threshold = success_threshold
-        
+
         self.failure_count = 0
         self.success_count = 0
         self.last_failure_time = 0
         self.state = CircuitState.CLOSED
         self._lock = threading.Lock()
-        
+
         self.logger = get_operation_logger(__name__)
 
     def _should_attempt_reset(self) -> bool:
@@ -63,7 +64,7 @@ class CircuitBreaker:
         """Record a successful operation."""
         with self._lock:
             self.failure_count = 0
-            
+
             if self.state == CircuitState.HALF_OPEN:
                 self.success_count += 1
                 self.logger.info(
@@ -72,7 +73,7 @@ class CircuitBreaker:
                     success_count=self.success_count,
                     success_threshold=self.success_threshold,
                 )
-                
+
                 if self.success_count >= self.success_threshold:
                     self._transition_to_closed()
             elif self.state == CircuitState.CLOSED:
@@ -84,7 +85,7 @@ class CircuitBreaker:
             self.failure_count += 1
             self.last_failure_time = time.time()
             self.success_count = 0  # Reset success count on failure
-            
+
             self.logger.warning(
                 "Circuit breaker recorded failure",
                 circuit_name=self.name,
@@ -92,7 +93,7 @@ class CircuitBreaker:
                 failure_threshold=self.failure_threshold,
                 exception=str(exception),
             )
-            
+
             if (
                 self.state == CircuitState.CLOSED
                 and self.failure_count >= self.failure_threshold
@@ -109,7 +110,7 @@ class CircuitBreaker:
             circuit_name=self.name,
             failure_count=self.failure_count,
         )
-        
+
         # Publish metrics
         metrics.count(
             "CircuitBreakerStateChange",
@@ -118,7 +119,7 @@ class CircuitBreaker:
                 "circuit_name": self.name,
                 "new_state": "open",
                 "failure_count": str(self.failure_count),
-            }
+            },
         )
 
     def _transition_to_half_open(self):
@@ -129,7 +130,7 @@ class CircuitBreaker:
             "Circuit breaker transitioning to half-open",
             circuit_name=self.name,
         )
-        
+
         # Publish metrics
         metrics.count(
             "CircuitBreakerStateChange",
@@ -137,7 +138,7 @@ class CircuitBreaker:
             dimensions={
                 "circuit_name": self.name,
                 "new_state": "half_open",
-            }
+            },
         )
 
     def _transition_to_closed(self):
@@ -149,7 +150,7 @@ class CircuitBreaker:
             "Circuit breaker closed - service recovered",
             circuit_name=self.name,
         )
-        
+
         # Publish metrics
         metrics.count(
             "CircuitBreakerStateChange",
@@ -157,7 +158,7 @@ class CircuitBreaker:
             dimensions={
                 "circuit_name": self.name,
                 "new_state": "closed",
-            }
+            },
         )
 
     @contextmanager
@@ -172,15 +173,16 @@ class CircuitBreaker:
             self.logger.warning(
                 "Circuit breaker is open - blocking call",
                 circuit_name=self.name,
-                time_until_retry=self.recovery_timeout - (time.time() - self.last_failure_time),
+                time_until_retry=self.recovery_timeout
+                - (time.time() - self.last_failure_time),
             )
-            
+
             metrics.count(
                 "CircuitBreakerBlocked",
                 1,
-                dimensions={"circuit_name": self.name}
+                dimensions={"circuit_name": self.name},
             )
-            
+
             raise CircuitBreakerOpenError(
                 f"Circuit breaker {self.name} is open. "
                 f"Service will be retried in {self.recovery_timeout - (time.time() - self.last_failure_time):.1f}s"
@@ -191,10 +193,10 @@ class CircuitBreaker:
             start_time = time.time()
             yield
             duration = time.time() - start_time
-            
+
             # Record success
             self._record_success()
-            
+
             # Publish success metrics
             metrics.gauge(
                 "CircuitBreakerCallDuration",
@@ -204,15 +206,15 @@ class CircuitBreaker:
                     "circuit_name": self.name,
                     "result": "success",
                     "state": self.state.value,
-                }
+                },
             )
-            
+
         except self.expected_exception as e:
             duration = time.time() - start_time
-            
+
             # Record failure
             self._record_failure(e)
-            
+
             # Publish failure metrics
             metrics.gauge(
                 "CircuitBreakerCallDuration",
@@ -222,27 +224,29 @@ class CircuitBreaker:
                     "circuit_name": self.name,
                     "result": "failure",
                     "state": self.state.value,
-                }
+                },
             )
-            
+
             metrics.count(
                 "CircuitBreakerFailure",
                 1,
                 dimensions={
                     "circuit_name": self.name,
                     "exception_type": type(e).__name__,
-                }
+                },
             )
-            
+
             # Re-raise the exception
             raise
 
     def protect(self, func: Callable):
         """Decorator for protecting function calls."""
+
         @wraps(func)
         def wrapper(*args, **kwargs):
             with self.call():
                 return func(*args, **kwargs)
+
         return wrapper
 
     def get_state(self) -> Dict[str, Any]:
@@ -255,13 +259,21 @@ class CircuitBreaker:
             "failure_threshold": self.failure_threshold,
             "success_threshold": self.success_threshold,
             "last_failure_time": self.last_failure_time,
-            "time_until_retry": max(0, self.recovery_timeout - (time.time() - self.last_failure_time))
-            if self.state == CircuitState.OPEN else None,
+            "time_until_retry": (
+                max(
+                    0,
+                    self.recovery_timeout
+                    - (time.time() - self.last_failure_time),
+                )
+                if self.state == CircuitState.OPEN
+                else None
+            ),
         }
 
 
 class CircuitBreakerOpenError(Exception):
     """Raised when circuit breaker is open and blocking calls."""
+
     pass
 
 
@@ -315,7 +327,10 @@ class CircuitBreakerManager:
 
     def get_all_states(self) -> Dict[str, Dict[str, Any]]:
         """Get states of all circuit breakers."""
-        return {name: breaker.get_state() for name, breaker in self._breakers.items()}
+        return {
+            name: breaker.get_state()
+            for name, breaker in self._breakers.items()
+        }
 
     def reset_breaker(self, name: str) -> bool:
         """Manually reset a circuit breaker to closed state.
@@ -329,7 +344,9 @@ class CircuitBreakerManager:
         if name in self._breakers:
             with self._breakers[name]._lock:
                 self._breakers[name]._transition_to_closed()
-                self.logger.info("Manually reset circuit breaker", circuit_name=name)
+                self.logger.info(
+                    "Manually reset circuit breaker", circuit_name=name
+                )
                 return True
         return False
 

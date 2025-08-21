@@ -19,7 +19,7 @@ logger = get_logger(__name__)
 
 
 def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-# pylint: disable=unused-argument
+    # pylint: disable=unused-argument
     """Find receipt lines without embeddings and prepare batches.
 
     Args:
@@ -43,7 +43,8 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Find lines without embeddings
         lines_without_embeddings = list_receipt_lines_with_no_embeddings()
         logger.info(
-            "Found lines without embeddings", count=len(lines_without_embeddings)
+            "Found lines without embeddings",
+            count=len(lines_without_embeddings),
         )
 
         # Chunk into batches

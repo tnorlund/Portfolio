@@ -6,18 +6,18 @@ No module-level state for better testability and clarity.
 
 import os
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 # Import handlers when needed, not at module level
-import handlers.word_polling as word_polling
-import handlers.line_polling as line_polling
-import handlers.compaction as compaction
-import handlers.find_unembedded as find_unembedded
-import handlers.submit_openai as submit_openai
-import handlers.list_pending as list_pending
-import handlers.split_into_chunks as split_into_chunks
-import handlers.find_unembedded_words as find_unembedded_words
-import handlers.submit_words_openai as submit_words_openai
+from handlers import word_polling
+from handlers import line_polling
+from handlers import compaction
+from handlers import find_unembedded
+from handlers import submit_openai
+from handlers import list_pending
+from handlers import split_into_chunks
+from handlers import find_unembedded_words
+from handlers import submit_words_openai
 import utils.response as response_utils
 
 # Set up logging
@@ -69,7 +69,7 @@ def route_request(event: Dict[str, Any], context: Any) -> Any:
             f"Valid values: {', '.join(HANDLER_MAP.keys())}"
         )
 
-    logger.info(f"Routing to {handler_type} handler")
+    logger.info("Routing to %s handler", handler_type)
 
     try:
         # Execute the handler
@@ -78,9 +78,9 @@ def route_request(event: Dict[str, Any], context: Any) -> Any:
         # Format response based on invocation source
         return response_utils.format_response(result, event)
 
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         logger.error(
-            f"Error in {handler_type} handler: {str(e)}", exc_info=True
+            "Error in %s handler: %s", handler_type, str(e), exc_info=True
         )
 
         # Let format_response handle error formatting

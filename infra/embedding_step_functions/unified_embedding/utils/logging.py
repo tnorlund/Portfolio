@@ -6,7 +6,7 @@ import os
 import time
 import uuid
 from contextlib import contextmanager
-from typing import Optional, Dict, Any, Union
+from typing import Optional
 from functools import wraps
 
 
@@ -66,11 +66,8 @@ class OperationLogger:
 
     def _log_with_context(self, level: int, message: str, **kwargs):
         """Log message with correlation ID and extra context."""
-        extra_fields = {
-            "correlation_id": self.correlation_id,
-            **kwargs
-        }
-        
+        extra_fields = {"correlation_id": self.correlation_id, **kwargs}
+
         # Create a new LogRecord with extra fields
         record = self.logger.makeRecord(
             self.logger.name, level, "", 0, message, (), None
@@ -83,14 +80,14 @@ class OperationLogger:
         """Context manager for timing operations."""
         start_time = time.time()
         operation_id = str(uuid.uuid4())
-        
+
         self.info(
             f"Starting operation: {operation_name}",
             operation_id=operation_id,
             operation_name=operation_name,
-            **context
+            **context,
         )
-        
+
         try:
             yield operation_id
         except Exception as e:
@@ -101,28 +98,34 @@ class OperationLogger:
                 operation_name=operation_name,
                 duration_seconds=duration,
                 error=str(e),
-                **context
+                **context,
             )
             raise
-        else:
-            duration = time.time() - start_time
-            self.info(
-                f"Operation completed: {operation_name}",
-                operation_id=operation_id,
-                operation_name=operation_name,
-                duration_seconds=duration,
-                **context
-            )
+
+        # Operation completed successfully
+        duration = time.time() - start_time
+        self.info(
+            f"Operation completed: {operation_name}",
+            operation_id=operation_id,
+            operation_name=operation_name,
+            duration_seconds=duration,
+            **context,
+        )
 
     def time_function(self, operation_name: Optional[str] = None):
         """Decorator for timing function execution."""
+
         def decorator(func):
             @wraps(func)
             def wrapper(*args, **kwargs):
-                op_name = operation_name or f"{func.__module__}.{func.__name__}"
+                op_name = (
+                    operation_name or f"{func.__module__}.{func.__name__}"
+                )
                 with self.operation_timer(op_name):
                     return func(*args, **kwargs)
+
             return wrapper
+
         return decorator
 
 
@@ -142,15 +145,19 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
         handler = logging.StreamHandler()
 
         # Use structured JSON logging if enabled
-        if os.environ.get("ENABLE_STRUCTURED_LOGGING", "true").lower() == "true":
+        if (
+            os.environ.get("ENABLE_STRUCTURED_LOGGING", "true").lower()
+            == "true"
+        ):
             formatter = StructuredFormatter()
         else:
             # Fallback to simple format
             formatter = logging.Formatter(
-                "[%(levelname)s] %(asctime)s.%(msecs)03dZ %(name)s - %(message)s",
+                "[%(levelname)s] %(asctime)s.%(msecs)03dZ %(name)s - "
+                "%(message)s",
                 datefmt="%Y-%m-%d %H:%M:%S",
             )
-        
+
         handler.setFormatter(formatter)
         logger.addHandler(handler)
 

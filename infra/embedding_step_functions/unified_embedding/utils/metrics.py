@@ -23,14 +23,18 @@ class MetricsCollector:
             namespace: CloudWatch namespace for metrics
         """
         self.namespace = namespace
-        self.enabled = os.environ.get("ENABLE_METRICS", "true").lower() == "true"
+        self.enabled = (
+            os.environ.get("ENABLE_METRICS", "true").lower() == "true"
+        )
         self.logger = get_operation_logger(__name__)
-        
+
         if self.enabled:
             try:
                 self.cloudwatch = boto3.client("cloudwatch")
             except Exception as e:
-                self.logger.error("Failed to initialize CloudWatch client", error=str(e))
+                self.logger.error(
+                    "Failed to initialize CloudWatch client", error=str(e)
+                )
                 self.enabled = False
 
     def put_metric(
@@ -103,7 +107,8 @@ class MetricsCollector:
                 )
 
             self.logger.debug(
-                "Published metric batch to CloudWatch", metric_count=len(metrics)
+                "Published metric batch to CloudWatch",
+                metric_count=len(metrics),
             )
 
         except ClientError as e:
@@ -135,7 +140,7 @@ class MetricsCollector:
             duration = time.time() - start_time
             if unit == "Milliseconds":
                 duration *= 1000
-            
+
             self.put_metric(metric_name, duration, unit, dimensions)
 
     def count(
@@ -184,13 +189,16 @@ class MetricsCollector:
         Returns:
             Decorated function
         """
+
         def decorator(func):
             @wraps(func)
             def wrapper(*args, **kwargs):
                 name = metric_name or f"{func.__name__}Duration"
                 with self.timer(name, dimensions):
                     return func(*args, **kwargs)
+
             return wrapper
+
         return decorator
 
 
@@ -204,7 +212,9 @@ class EmbeddedMetricsFormatter:
             namespace: CloudWatch namespace for metrics
         """
         self.namespace = namespace
-        self.enabled = os.environ.get("ENABLE_METRICS", "true").lower() == "true"
+        self.enabled = (
+            os.environ.get("ENABLE_METRICS", "true").lower() == "true"
+        )
 
     def create_metric_log(
         self,
@@ -227,13 +237,18 @@ class EmbeddedMetricsFormatter:
 
         emf_log = {
             "_aws": {
-                "Timestamp": int(time.time() * 1000),  # EMF expects milliseconds
+                "Timestamp": int(
+                    time.time() * 1000
+                ),  # EMF expects milliseconds
                 "CloudWatchMetrics": [
                     {
                         "Namespace": self.namespace,
-                        "Dimensions": [list(dimensions.keys())] if dimensions else [[]],
+                        "Dimensions": (
+                            [list(dimensions.keys())] if dimensions else [[]]
+                        ),
                         "Metrics": [
-                            {"Name": name, "Unit": "Count"} for name in metrics.keys()
+                            {"Name": name, "Unit": "Count"}
+                            for name in metrics.keys()
                         ],
                     }
                 ],
@@ -278,7 +293,9 @@ metrics = MetricsCollector()
 emf_metrics = EmbeddedMetricsFormatter()
 
 
-def timed_operation(metric_name: str, dimensions: Optional[Dict[str, str]] = None):
+def timed_operation(
+    metric_name: str, dimensions: Optional[Dict[str, str]] = None
+):
     """Decorator for timing operations with both CloudWatch and EMF metrics.
 
     Args:
@@ -288,40 +305,46 @@ def timed_operation(metric_name: str, dimensions: Optional[Dict[str, str]] = Non
     Returns:
         Decorated function
     """
+
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
             start_time = time.time()
-            
+
             try:
                 result = func(*args, **kwargs)
                 duration = time.time() - start_time
-                
+
                 # Publish to both CloudWatch and EMF
-                metrics.put_metric(metric_name, duration, "Seconds", dimensions)
+                metrics.put_metric(
+                    metric_name, duration, "Seconds", dimensions
+                )
                 emf_metrics.log_metrics(
                     {metric_name: duration},
                     dimensions,
-                    {"operation": "success"}
+                    {"operation": "success"},
                 )
-                
+
                 return result
-                
+
             except Exception as e:
                 duration = time.time() - start_time
-                
+
                 # Publish error metrics
                 error_dimensions = {**(dimensions or {}), "status": "error"}
-                metrics.put_metric(metric_name, duration, "Seconds", error_dimensions)
+                metrics.put_metric(
+                    metric_name, duration, "Seconds", error_dimensions
+                )
                 emf_metrics.log_metrics(
                     {metric_name: duration},
                     error_dimensions,
-                    {"operation": "error", "error": str(e)}
+                    {"operation": "error", "error": str(e)},
                 )
-                
+
                 raise
-                
+
         return wrapper
+
     return decorator
 
 
@@ -338,9 +361,13 @@ def track_s3_operation(operation: str):
 
 def track_chromadb_operation(operation: str):
     """Track ChromaDB operation duration."""
-    return timed_operation("ChromaDBOperationDuration", {"operation": operation})
+    return timed_operation(
+        "ChromaDBOperationDuration", {"operation": operation}
+    )
 
 
 def track_dynamodb_operation(operation: str):
     """Track DynamoDB operation duration."""
-    return timed_operation("DynamoDBOperationDuration", {"operation": operation})
+    return timed_operation(
+        "DynamoDBOperationDuration", {"operation": operation}
+    )
