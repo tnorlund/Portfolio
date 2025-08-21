@@ -211,9 +211,7 @@ class ReceiptWord(
             "GSI3PK": {
                 "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
             },
-            "GSI3SK": {
-                "S": (f"LINE#{self.line_id:05d}#" f"WORD#{self.word_id:05d}")
-            },
+            "GSI3SK": {"S": "WORD"},
         }
 
     def to_item(self) -> Dict[str, Any]:

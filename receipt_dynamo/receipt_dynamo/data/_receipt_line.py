@@ -366,10 +366,11 @@ class _ReceiptLine(FlattenedStandardMixin):
         # This eliminates the need for client-side filtering
         results, _ = self._query_entities(
             index_name="GSI3",
-            key_condition_expression="GSI3PK = :pk",
+            key_condition_expression="GSI3PK = :pk AND GSI3SK = :sk",
             expression_attribute_names=None,
             expression_attribute_values={
-                ":pk": {"S": f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"}
+                ":pk": {"S": f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"},
+                ":sk": {"S": "LINE"},
             },
             converter_func=item_to_receipt_line,
         )

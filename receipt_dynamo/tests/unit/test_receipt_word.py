@@ -585,7 +585,7 @@ def test_receipt_word_gsi3_key():
     )
     assert word.gsi3_key() == {
         "GSI3PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"},
-        "GSI3SK": {"S": "LINE#00003#WORD#00004"},
+        "GSI3SK": {"S": "WORD"},
     }
 
 
