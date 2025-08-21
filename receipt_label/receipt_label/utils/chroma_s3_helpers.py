@@ -110,21 +110,18 @@ def produce_embedding_delta(
         logger.info(f"Delta directory created at: {delta_dir}")
         
         # Create ChromaDB client in delta mode
-        # If database_name is provided, use no prefix (database is already specific)
-        # Otherwise, use default "receipts" prefix for backward compatibility
         if database_name:
-            logger.info(f"Creating ChromaDB client for database '{database_name}' with no prefix")
+            logger.info(f"Creating ChromaDB client for database '{database_name}'")
             logger.info(f"Persist directory: {delta_dir}")
             chroma = ChromaDBClient(
                 persist_directory=delta_dir, 
-                collection_prefix="",  # No prefix for database-specific storage
                 mode="delta"
             )
             # Adjust delta prefix to include database name
             delta_prefix = f"{database_name}/{delta_prefix}"
             logger.info(f"S3 delta prefix will be: {delta_prefix}")
         else:
-            logger.info("Creating ChromaDB client with default 'receipts' prefix")
+            logger.info("Creating ChromaDB client")
             logger.info(f"Persist directory: {delta_dir}")
             chroma = ChromaDBClient(persist_directory=delta_dir, mode="delta")
 

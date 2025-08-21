@@ -511,18 +511,17 @@ def process_metadata_updates(
                 # Load ChromaDB using helper in metadata-only mode
                 chroma_client = ChromaDBClient(
                     persist_directory=temp_dir,
-                    collection_prefix="receipt",
                     mode="read",
                     metadata_only=True,  # No embeddings needed for metadata updates
                 )
 
                 # Get appropriate collection
                 try:
-                    logger.info("Attempting to get collection: %s", f"receipt_{database}")
+                    logger.info("Attempting to get collection: %s", database)
                     collection_obj = chroma_client.get_collection(database)
-                    logger.info("Successfully got collection: %s", f"receipt_{database}")
+                    logger.info("Successfully got collection: %s", database)
                 except Exception as e:  # pylint: disable=broad-exception-caught
-                    logger.warning("Collection receipt_%s not found: %s", database, e)
+                    logger.warning("Collection %s not found: %s", database, e)
                     continue
 
                 # Update metadata for this receipt
@@ -635,17 +634,16 @@ def process_label_updates(
         # Load ChromaDB using helper in metadata-only mode
         chroma_client = ChromaDBClient(
             persist_directory=temp_dir,
-            collection_prefix="receipt",
             mode="read",
             metadata_only=True,  # No embeddings needed for metadata updates
         )
 
         # Get words collection
         try:
-            logger.info("Attempting to get collection: %s", f"receipt_{database}")
+            logger.info("Attempting to get collection: %s", database)
             collection_obj = chroma_client.get_collection(database)
         except Exception:  # pylint: disable=broad-exception-caught
-            logger.warning("Collection %s not found", f"receipt_{database}")
+            logger.warning("Collection %s not found", database)
             return results
 
         # Process each label update

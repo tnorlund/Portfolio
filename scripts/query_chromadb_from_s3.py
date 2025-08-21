@@ -91,7 +91,7 @@ class ChromaDBQuerier:
         
         print(f"✅ Downloaded {file_count} files ({total_size:,} bytes)")
         
-    def load_chromadb(self, local_dir: str, collection_name: str = "receipt_lines") -> ChromaDBClient:
+    def load_chromadb(self, local_dir: str, collection_name: str = "lines") -> ChromaDBClient:
         """Load ChromaDB from local directory."""
         print(f"\n🔄 Loading ChromaDB from: {local_dir}")
         
@@ -102,7 +102,6 @@ class ChromaDBQuerier:
         # Create ChromaDB client in read mode
         client = ChromaDBClient(
             persist_directory=local_dir,
-            collection_prefix="",  # No prefix for database-specific storage
             mode="read"
         )
         
@@ -249,8 +248,8 @@ def main():
     )
     parser.add_argument(
         '--collection',
-        default='receipt_lines',
-        help='Collection name to query (default: receipt_lines)'
+        default='lines',
+        help='Collection name to query (default: lines)'
     )
     parser.add_argument(
         '--n-results',

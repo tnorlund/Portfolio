@@ -126,11 +126,11 @@ class VectorSimilarityFinder:
         settings = chromadb.config.Settings(anonymized_telemetry=False)
         self.client = chromadb.PersistentClient(path=local_dir, settings=settings)
         
-        # Get the receipt_lines collection
-        self.collection = self.client.get_collection('receipt_lines')
+        # Get the lines collection
+        self.collection = self.client.get_collection('lines')
         count = self.collection.count()
         
-        print(f"✅ Loaded collection 'receipt_lines' with {count:,} vectors")
+        print(f"✅ Loaded collection 'lines' with {count:,} vectors")
         return self.collection
         
     def find_similar_vectors(

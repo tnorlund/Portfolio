@@ -55,7 +55,6 @@ class ChromaDBClient:
     def __init__(
         self,
         persist_directory: Optional[str] = None,
-        collection_prefix: str = "receipts",
         mode: str = "read",  # "read" | "delta" | "snapshot"
         metadata_only: bool = False,
     ):
@@ -65,7 +64,6 @@ class ChromaDBClient:
         Args:
             persist_directory: Directory for local ChromaDB persistence.
                              If None, uses in-memory storage.
-            collection_prefix: Prefix for collection names (e.g., "receipts_words")
             mode: Operation mode - "read" (read-only), "delta" (write deltas),
                   or "snapshot" (read-write snapshots)
         """
@@ -77,7 +75,6 @@ class ChromaDBClient:
             )
         
         self.persist_directory = persist_directory
-        self.collection_prefix = collection_prefix
         self.mode = mode.lower()
         self.use_persistent_client = persist_directory is not None
         self._client: Optional[chromadb.Client] = None
@@ -126,42 +123,36 @@ class ChromaDBClient:
         Get or create a ChromaDB collection.
 
         Args:
-            name: Collection name (will be prefixed)
+            name: Collection name
             metadata: Optional metadata for the collection
 
         Returns:
             ChromaDB Collection instance
         """
-        # Only add underscore separator if prefix is not empty
-        if self.collection_prefix:
-            full_name = f"{self.collection_prefix}_{name}"
-        else:
-            full_name = name
-        
-        logger.info("Getting/creating collection: '%s' (prefix='%s', name='%s')", full_name, self.collection_prefix, name)
+        logger.info("Getting/creating collection: '%s'", name)
 
-        if full_name not in self._collections:
+        if name not in self._collections:
             try:
                 # Try to get existing collection
-                logger.info("Attempting to get existing collection: %s", full_name)
-                self._collections[full_name] = self.client.get_collection(
-                    name=full_name, embedding_function=self._embedding_function
+                logger.info("Attempting to get existing collection: %s", name)
+                self._collections[name] = self.client.get_collection(
+                    name=name, embedding_function=self._embedding_function
                 )
-                logger.info("Successfully retrieved existing collection: %s", full_name)
+                logger.info("Successfully retrieved existing collection: %s", name)
             except (NotFoundError, ValueError) as e:
                 # Collection doesn't exist, create it
-                logger.info("Collection %s not found, creating new collection: %s", full_name, e)
-                self._collections[full_name] = self.client.create_collection(
-                    name=full_name,
+                logger.info("Collection %s not found, creating new collection: %s", name, e)
+                self._collections[name] = self.client.create_collection(
+                    name=name,
                     embedding_function=self._embedding_function,
                     metadata=metadata
                     or {"description": f"Collection for {name}"},
                 )
-                logger.info("Successfully created new collection: %s", full_name)
+                logger.info("Successfully created new collection: %s", name)
         else:
-            logger.info("Using cached collection: %s", full_name)
+            logger.info("Using cached collection: %s", name)
 
-        return self._collections[full_name]
+        return self._collections[name]
 
     def _assert_writeable(self) -> None:
         """Ensure the client is in a writeable mode."""
