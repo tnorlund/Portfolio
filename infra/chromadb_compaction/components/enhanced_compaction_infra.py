@@ -122,7 +122,7 @@ class EnhancedCompactionLambda(ComponentResource):
                                     "dynamodb:UpdateItem",
                                     "dynamodb:DeleteItem",
                                     "dynamodb:Query",
-                                    "dynamodb:Scan",
+                                    "dynamodb:DescribeTable",
                                 ],
                                 "Resource": [
                                     args[0],  # Table ARN

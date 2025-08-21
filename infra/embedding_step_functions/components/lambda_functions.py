@@ -21,6 +21,10 @@ from pulumi_aws.s3 import Bucket
 from .base import stack, openai_api_key, label_layer, dynamodb_table
 
 
+GIGABYTE = 1024
+MINUTE = 60
+
+
 class LambdaFunctionsComponent(ComponentResource):
     """Component for creating Lambda functions and related resources."""
 
@@ -189,38 +193,38 @@ class LambdaFunctionsComponent(ComponentResource):
         zip_configs = {
             "embedding-list-pending": {
                 "handler": "handler.lambda_handler",
-                "memory": 512,
-                "timeout": 900,
+                "memory": GIGABYTE * 0.5,
+                "timeout": MINUTE * 15,
                 "source_dir": "list_pending",
             },
             "embedding-line-find": {
                 "handler": "handler.lambda_handler",
-                "memory": 1024,
-                "timeout": 900,
+                "memory": GIGABYTE * 1,
+                "timeout": MINUTE * 15,
                 "source_dir": "find_unembedded",
             },
             "embedding-word-find": {
                 "handler": "handler.lambda_handler",
-                "memory": 1024,
-                "timeout": 900,
+                "memory": GIGABYTE * 1,
+                "timeout": MINUTE * 15,
                 "source_dir": "find_unembedded_words",
             },
             "embedding-line-submit": {
                 "handler": "handler.lambda_handler",
-                "memory": 1024,
-                "timeout": 900,
+                "memory": GIGABYTE * 1,
+                "timeout": MINUTE * 15,
                 "source_dir": "submit_openai",
             },
             "embedding-word-submit": {
                 "handler": "handler.lambda_handler",
-                "memory": 1024,
-                "timeout": 900,
+                "memory": GIGABYTE * 1,
+                "timeout": MINUTE * 15,
                 "source_dir": "submit_words_openai",
             },
             "embedding-split-chunks": {
                 "handler": "handler.lambda_handler",
-                "memory": 512,
-                "timeout": 60,
+                "memory": GIGABYTE * 0.5,
+                "timeout": MINUTE * 15,
                 "source_dir": "split_into_chunks",
             },
         }
@@ -273,21 +277,21 @@ class LambdaFunctionsComponent(ComponentResource):
         # Define container-based Lambda configurations
         container_configs = {
             "embedding-line-poll": {
-                "memory": 3008,
-                "timeout": 900,
-                "ephemeral_storage": 5120,
+                "memory": GIGABYTE * 3,
+                "timeout": MINUTE * 5,
+                "ephemeral_storage": GIGABYTE * 5,
                 "handler_type": "line_polling",
             },
             "embedding-word-poll": {
-                "memory": 3008,
-                "timeout": 900,
-                "ephemeral_storage": 3072,
+                "memory": GIGABYTE * 3,
+                "timeout": MINUTE * 5,
+                "ephemeral_storage": GIGABYTE * 5,
                 "handler_type": "word_polling",
             },
             "embedding-vector-compact": {
-                "memory": 8192,
-                "timeout": 900,
-                "ephemeral_storage": 10240,
+                "memory": GIGABYTE * 8,
+                "timeout": MINUTE * 15,
+                "ephemeral_storage": GIGABYTE * 10,
                 "handler_type": "compaction",
             },
         }
