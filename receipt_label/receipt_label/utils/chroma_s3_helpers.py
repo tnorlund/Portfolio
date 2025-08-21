@@ -559,6 +559,8 @@ def upload_delta_to_s3(
     Returns:
         Dict with upload status and statistics
     """
+    logger.info("Starting S3 delta upload: local_path=%s, bucket=%s, key=%s", 
+                local_delta_path, bucket, delta_key)
     try:
         import boto3
         from pathlib import Path
@@ -568,9 +570,11 @@ def upload_delta_to_s3(
         if region:
             client_kwargs["region_name"] = region
         s3 = boto3.client(**client_kwargs)
+        logger.info("Created S3 client for upload, region: %s", region or "default")
         
         delta_path = Path(local_delta_path)
         if not delta_path.exists():
+            logger.error("Local delta path does not exist: %s", local_delta_path)
             return {
                 "status": "failed",
                 "error": f"Delta path does not exist: {local_delta_path}"
@@ -637,6 +641,8 @@ def download_snapshot_from_s3(
     Returns:
         Dict with download status and statistics
     """
+    logger.info("Starting S3 snapshot download: bucket=%s, key=%s, local_path=%s", 
+                bucket, snapshot_key, local_snapshot_path)
     try:
         import boto3
         from pathlib import Path
@@ -646,16 +652,20 @@ def download_snapshot_from_s3(
         if region:
             client_kwargs["region_name"] = region
         s3 = boto3.client(**client_kwargs)
+        logger.info("Created S3 client for region: %s", region or "default")
         
         # Create local directory
         local_path = Path(local_snapshot_path)
         local_path.mkdir(parents=True, exist_ok=True)
+        logger.info("Created local directory: %s", local_path)
         
         # List all objects in the snapshot
+        full_prefix = snapshot_key.rstrip('/') + '/'
+        logger.info("Listing S3 objects with prefix: %s", full_prefix)
         paginator = s3.get_paginator("list_objects_v2")
         pages = paginator.paginate(
             Bucket=bucket, 
-            Prefix=snapshot_key.rstrip('/') + '/'
+            Prefix=full_prefix
         )
         
         file_count = 0

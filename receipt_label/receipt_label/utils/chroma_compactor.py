@@ -93,11 +93,14 @@ class ChromaCompactor:
         Returns:
             CompactionResult with status and details
         """
+        logger.info("Starting compaction for %d deltas: %s", len(delta_keys), delta_keys)
         start_time = datetime.now(timezone.utc)
 
         # Try to acquire lock
+        logger.info("Attempting to acquire compaction lock for collection: %s", self.collection)
         lock = self._acquire_lock()
         if not lock:
+            logger.warning("Failed to acquire compaction lock - another process is compacting")
             return CompactionResult(status="busy")
 
         try:

@@ -507,18 +507,21 @@ def process_metadata_updates(
                     )
                     continue
 
-                # Load ChromaDB using helper
+                # Load ChromaDB using helper in metadata-only mode
                 chroma_client = ChromaDBClient(
                     persist_directory=temp_dir,
                     collection_prefix="receipt",
                     mode="read",
+                    metadata_only=True,  # No embeddings needed for metadata updates
                 )
 
                 # Get appropriate collection
                 try:
+                    logger.info("Attempting to get collection: receipt_%s", database)
                     collection_obj = chroma_client.get_collection(database)
-                except Exception:  # pylint: disable=broad-exception-caught
-                    logger.warning("Collection receipt_%s not found", database)
+                    logger.info("Successfully got collection: receipt_%s", database)
+                except Exception as e:  # pylint: disable=broad-exception-caught
+                    logger.warning("Collection receipt_%s not found: %s", database, e)
                     continue
 
                 # Update metadata for this receipt
@@ -626,11 +629,12 @@ def process_label_updates(
             logger.error("Failed to download snapshot: %s", download_result)
             return results
 
-        # Load ChromaDB using helper
+        # Load ChromaDB using helper in metadata-only mode
         chroma_client = ChromaDBClient(
             persist_directory=temp_dir,
             collection_prefix="receipt",
             mode="read",
+            metadata_only=True,  # No embeddings needed for metadata updates
         )
 
         # Get words collection
@@ -733,26 +737,37 @@ def update_receipt_metadata(
     collection, image_id: str, receipt_id: int, changes: Dict[str, Any]
 ) -> int:
     """Update metadata for all embeddings of a specific receipt."""
+    logger.info("Starting metadata update for image_id=%s, receipt_id=%s", image_id, receipt_id)
+    logger.info("Changes to apply: %s", changes)
+    
     # Build query to find all embeddings for this receipt
     # ChromaDB IDs follow pattern:
     # IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#..."
     id_prefix = f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#"
+    logger.info("Looking for ChromaDB records with prefix: %s", id_prefix)
 
     # Get all records that match this receipt
+    logger.info("Calling collection.get() to retrieve all records...")
     all_results = collection.get(include=["metadatas"])
+    logger.info("Retrieved %d total records from collection", len(all_results.get("ids", [])))
+    
     matching_ids = []
     matching_metadatas = []
 
     for i, record_id in enumerate(all_results["ids"]):
         if record_id.startswith(id_prefix):
+            logger.info("Found matching record: %s", record_id)
             matching_ids.append(record_id)
             # Get existing metadata and apply changes
             existing_metadata = all_results["metadatas"][i] or {}
+            logger.info("Existing metadata for %s: %s", record_id, existing_metadata)
             updated_metadata = existing_metadata.copy()
 
             # Apply field changes
             for field, change in changes.items():
+                old_value = change.get("old")
                 new_value = change["new"]
+                logger.info("Applying change: %s: %s -> %s", field, old_value, new_value)
                 if new_value is not None:
                     updated_metadata[field] = new_value
                 elif field in updated_metadata:
@@ -763,12 +778,22 @@ def update_receipt_metadata(
             updated_metadata["last_metadata_update"] = datetime.now(
                 timezone.utc
             ).isoformat()
+            logger.info("Updated metadata for %s: %s", record_id, updated_metadata)
             matching_metadatas.append(updated_metadata)
+        else:
+            # Log first few non-matching records to understand the pattern
+            if i < 5:
+                logger.info("Non-matching record %d: %s", i, record_id)
 
+    logger.info("Found %d matching records out of %d total", len(matching_ids), len(all_results.get("ids", [])))
+    
     # Update records if any found
     if matching_ids:
+        logger.info("Updating %d ChromaDB records...", len(matching_ids))
         collection.update(ids=matching_ids, metadatas=matching_metadatas)
-        logger.info("Updated metadata for %d embeddings", len(matching_ids))
+        logger.info("Successfully updated metadata for %d embeddings", len(matching_ids))
+    else:
+        logger.warning("No matching ChromaDB records found for prefix: %s", id_prefix)
 
     return len(matching_ids)
 
