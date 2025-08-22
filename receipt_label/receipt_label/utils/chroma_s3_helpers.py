@@ -730,6 +730,72 @@ def download_snapshot_from_s3(
         }
 
 
+def clear_s3_directory(
+    bucket: str,
+    key_prefix: str,
+    region: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Clear all objects in an S3 directory.
+    
+    Args:
+        bucket: S3 bucket name
+        key_prefix: S3 key prefix to clear (e.g., "words/snapshot/latest/")
+        region: Optional AWS region
+        
+    Returns:
+        Dict with deletion status and statistics
+    """
+    logger.info("Clearing S3 directory: bucket=%s, prefix=%s", bucket, key_prefix)
+    
+    try:
+        import boto3
+        
+        # Create S3 client
+        client_kwargs = {"service_name": "s3"}
+        if region:
+            client_kwargs["region_name"] = region
+        s3 = boto3.client(**client_kwargs)
+        
+        # List all objects in the prefix
+        paginator = s3.get_paginator('list_objects_v2')
+        pages = paginator.paginate(Bucket=bucket, Prefix=key_prefix)
+        
+        deleted_count = 0
+        for page in pages:
+            if 'Contents' in page:
+                # Prepare objects for deletion
+                objects = [{'Key': obj['Key']} for obj in page['Contents']]
+                
+                if objects:
+                    # Delete objects in batch
+                    delete_response = s3.delete_objects(
+                        Bucket=bucket,
+                        Delete={'Objects': objects}
+                    )
+                    
+                    deleted_count += len(delete_response.get('Deleted', []))
+                    
+                    # Log any errors
+                    if 'Errors' in delete_response:
+                        for error in delete_response['Errors']:
+                            logger.error("Failed to delete %s: %s", error['Key'], error['Message'])
+        
+        logger.info("Cleared S3 directory: deleted %d objects", deleted_count)
+        return {
+            "status": "cleared",
+            "deleted_count": deleted_count
+        }
+        
+    except Exception as e:
+        logger.error("Failed to clear S3 directory: %s", str(e))
+        return {
+            "status": "failed",
+            "error": str(e),
+            "deleted_count": 0
+        }
+
+
 def upload_snapshot_with_hash(
     local_snapshot_path: str,
     bucket: str,
@@ -737,7 +803,8 @@ def upload_snapshot_with_hash(
     calculate_hash: bool = True,
     hash_algorithm: str = "md5",
     metadata: Optional[Dict[str, Any]] = None,
-    region: Optional[str] = None
+    region: Optional[str] = None,
+    clear_destination: bool = True
 ) -> Dict[str, Any]:
     """
     Upload ChromaDB snapshot to S3 with optional hash calculation and storage.
@@ -753,6 +820,7 @@ def upload_snapshot_with_hash(
         hash_algorithm: Hash algorithm to use ("md5", "sha256", etc.)
         metadata: Optional metadata to include in S3 objects
         region: Optional AWS region
+        clear_destination: Whether to clear S3 destination before upload (default: True)
         
     Returns:
         Dict with upload status, hash info, and statistics
@@ -766,8 +834,8 @@ def upload_snapshot_with_hash(
         ... )
         >>> print(result["hash"])  # Hash of the entire directory
     """
-    logger.info("Starting snapshot upload with hash: local_path=%s, bucket=%s, key=%s", 
-                local_snapshot_path, bucket, snapshot_key)
+    logger.info("Starting snapshot upload with hash: local_path=%s, bucket=%s, key=%s, clear=%s", 
+                local_snapshot_path, bucket, snapshot_key, clear_destination)
     
     if not HASH_UTILS_AVAILABLE and calculate_hash:
         logger.warning("Hash calculation requested but hash utilities not available")
@@ -783,6 +851,18 @@ def upload_snapshot_with_hash(
             client_kwargs["region_name"] = region
         s3 = boto3.client(**client_kwargs)
         logger.info("Created S3 client for upload, region: %s", region or "default")
+        
+        # Clear destination directory if requested
+        clear_result = None
+        if clear_destination:
+            logger.info("Clearing S3 destination before upload...")
+            clear_result = clear_s3_directory(bucket, snapshot_key, region)
+            if clear_result["status"] == "cleared":
+                logger.info("Cleared %d existing objects from %s", 
+                           clear_result["deleted_count"], snapshot_key)
+            else:
+                logger.warning("Failed to clear S3 destination: %s", 
+                              clear_result.get("error", "unknown error"))
         
         snapshot_path = Path(local_snapshot_path)
         if not snapshot_path.exists():
@@ -871,6 +951,13 @@ def upload_snapshot_with_hash(
             "file_count": file_count,
             "total_size_bytes": total_size
         }
+        
+        # Add clearing information if available
+        if clear_result:
+            result.update({
+                "cleared_objects": clear_result["deleted_count"],
+                "clear_status": clear_result["status"]
+            })
         
         # Add hash information if available
         if hash_result:
