@@ -104,8 +104,8 @@ class _ReceiptLetter(
         for i, receipt_letter in enumerate(receipt_letters):
             if not isinstance(receipt_letter, ReceiptLetter):
                 raise EntityValidationError(
-                    f"receipt_letters[{i}] must be an instance of ReceiptLetter, "
-                    f"got {type(receipt_letter).__name__}"
+                    f"receipt_letters[{i}] must be an instance of "
+                    f"ReceiptLetter, got {type(receipt_letter).__name__}"
                 )
         if not receipt_letters:  # Empty list check
             raise OperationError("Parameter validation failed")
@@ -158,8 +158,8 @@ class _ReceiptLetter(
         for i, receipt_letter in enumerate(receipt_letters):
             if not isinstance(receipt_letter, ReceiptLetter):
                 raise EntityValidationError(
-                    f"receipt_letters[{i}] must be an instance of ReceiptLetter, "
-                    f"got {type(receipt_letter).__name__}"
+                    f"receipt_letters[{i}] must be an instance of "
+                    f"ReceiptLetter, got {type(receipt_letter).__name__}"
                 )
         self._update_entities(
             receipt_letters, ReceiptLetter, "receipt_letters"
@@ -214,7 +214,10 @@ class _ReceiptLetter(
         key = {
             "PK": {"S": f"IMAGE#{image_id}"},
             "SK": {
-                "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"
+                "S": (
+                    f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
+                    f"#WORD#{word_id:05d}#LETTER#{letter_id:05d}"
+                )
             },
         }
         self._client.delete_item(
@@ -247,8 +250,8 @@ class _ReceiptLetter(
         for i, receipt_letter in enumerate(receipt_letters):
             if not isinstance(receipt_letter, ReceiptLetter):
                 raise EntityValidationError(
-                    f"receipt_letters[{i}] must be an instance of ReceiptLetter, "
-                    f"got {type(receipt_letter).__name__}"
+                    f"receipt_letters[{i}] must be an instance of "
+                    f"ReceiptLetter, got {type(receipt_letter).__name__}"
                 )
         self._delete_entities(receipt_letters)
 
