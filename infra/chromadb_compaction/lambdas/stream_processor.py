@@ -223,7 +223,20 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     if OBSERVABILITY_AVAILABLE:
                         metrics.count("StreamRecordSkipped", 1, 
                                     {"reason": "not_relevant_entity"})
+                    logger.debug("Skipped record - not relevant entity", 
+                               record_id=event_id,
+                               pk=record.get("dynamodb", {}).get("Keys", {}).get("PK", {}).get("S", "unknown"),
+                               sk=record.get("dynamodb", {}).get("Keys", {}).get("SK", {}).get("S", "unknown"))
                     continue  # Not a receipt entity we care about
+                
+                # Log successful entity detection
+                logger.info("Successfully parsed stream record",
+                           record_id=event_id,
+                           entity_type=parsed_record.entity_type,
+                           has_old_entity=parsed_record.old_entity is not None,
+                           has_new_entity=parsed_record.new_entity is not None,
+                           pk=parsed_record.pk,
+                           sk=parsed_record.sk)
 
                 # Process MODIFY and REMOVE events
                 if record["eventName"] in ["MODIFY", "REMOVE"]:
@@ -412,25 +425,49 @@ def _parse_entity(
         complete_item["PK"] = {"S": pk}
         complete_item["SK"] = {"S": sk}
         
-        # Add timestamp_added if missing (required for parsing)
-        if "timestamp_added" not in complete_item and entity_type == "RECEIPT_WORD_LABEL":
-            # Use a default timestamp for stream processing - the actual timestamp isn't critical
-            # for change detection in this use case
-            complete_item["timestamp_added"] = {"S": "2024-01-01T00:00:00.000Z"}
+        # Log detailed field information for RECEIPT_WORD_LABEL parsing diagnostics
+        if entity_type == "RECEIPT_WORD_LABEL":
+            logger.info("Attempting to parse RECEIPT_WORD_LABEL",
+                       image_type=image_type,
+                       available_fields=list(complete_item.keys()),
+                       pk=pk,
+                       sk=sk,
+                       has_timestamp_added="timestamp_added" in complete_item,
+                       has_reasoning="reasoning" in complete_item,
+                       has_validation_status="validation_status" in complete_item,
+                       raw_image_fields=list(image.keys()) if image else "None")
 
         if entity_type == "RECEIPT_METADATA":
             return item_to_receipt_metadata(complete_item)
         if entity_type == "RECEIPT_WORD_LABEL":
             return item_to_receipt_word_label(complete_item)
     except ValueError as e:
-        logger.warning("Failed to parse entity",
-                      image_type=image_type,
-                      entity_type=entity_type, 
-                      error=str(e))
+        logger.error("Failed to parse entity - DIAGNOSTIC DETAILS",
+                    image_type=image_type,
+                    entity_type=entity_type, 
+                    error=str(e),
+                    available_fields=list(image.keys()) if image else "None",
+                    complete_item_fields=list(complete_item.keys()) if 'complete_item' in locals() else "Not created",
+                    pk=pk,
+                    sk=sk,
+                    raw_complete_item=complete_item if 'complete_item' in locals() else "Not created")
         
         if OBSERVABILITY_AVAILABLE:
             metrics.count("EntityParsingError", 1,
                         {"entity_type": entity_type, "image_type": image_type})
+                        
+    except Exception as e:
+        logger.error("Unexpected error parsing entity",
+                    image_type=image_type,
+                    entity_type=entity_type,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    pk=pk,
+                    sk=sk)
+        
+        if OBSERVABILITY_AVAILABLE:
+            metrics.count("EntityParsingUnexpectedError", 1,
+                        {"entity_type": entity_type, "error_type": type(e).__name__})
 
     return None
 
@@ -475,18 +512,24 @@ def parse_stream_record(
         old_entity = _parse_entity(old_image, entity_type, "old", pk, sk)
         new_entity = _parse_entity(new_image, entity_type, "new", pk, sk)
 
-        # Log parsing results for debugging
+        # Enhanced diagnostic logging for parsing failures
         if old_image and not old_entity:
-            logger.warning(
-                "Failed to parse old entity",
+            logger.error(
+                "CRITICAL: Failed to parse old entity - FULL DIAGNOSTIC",
                 entity_type=entity_type,
-                available_keys=list(old_image.keys()) if old_image else "None"
+                available_keys=list(old_image.keys()) if old_image else "None",
+                pk=pk,
+                sk=sk,
+                full_old_image=old_image if entity_type == "RECEIPT_WORD_LABEL" else "Not a label entity"
             )
         if new_image and not new_entity:
-            logger.warning(
-                "Failed to parse new entity",
+            logger.error(
+                "CRITICAL: Failed to parse new entity - FULL DIAGNOSTIC",
                 entity_type=entity_type,
-                available_keys=list(new_image.keys()) if new_image else "None"
+                available_keys=list(new_image.keys()) if new_image else "None", 
+                pk=pk,
+                sk=sk,
+                full_new_image=new_image if entity_type == "RECEIPT_WORD_LABEL" else "Not a label entity"
             )
 
         # Return parsed entity information
