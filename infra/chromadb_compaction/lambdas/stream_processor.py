@@ -26,7 +26,7 @@ import boto3
 
 # Enhanced observability imports (with fallback)
 try:
-    from ..utils import (
+    from utils import (
         get_operation_logger,
         metrics,
         trace_lambda_handler,
@@ -135,7 +135,7 @@ if OBSERVABILITY_AVAILABLE:
     logger = get_operation_logger(__name__)
 else:
     # Import logging utilities directly for fallback
-    from ..utils.logging import get_operation_logger as fallback_get_operation_logger
+    from utils.logging import get_operation_logger as fallback_get_operation_logger
     logger = fallback_get_operation_logger(__name__)
 
 

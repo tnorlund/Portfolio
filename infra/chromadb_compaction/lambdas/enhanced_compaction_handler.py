@@ -25,7 +25,7 @@ import boto3
 
 # Enhanced observability imports (with fallback)
 try:
-    from ..utils import (
+    from utils import (
         get_operation_logger,
         metrics,
         trace_lambda_handler,
