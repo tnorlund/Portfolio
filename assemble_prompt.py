@@ -125,10 +125,14 @@ for chroma_path in [LOCAL_CHROMA_WORD_PATH, LOCAL_CHROMA_LINE_PATH]:
 # Use the refactored client without collection_prefix
 # metadata_only=True uses default embedding function (no OpenAI API calls)
 chroma_line_client = ChromaDBClient(
-    persist_directory=str(LOCAL_CHROMA_LINE_PATH), mode="read", metadata_only=True
+    persist_directory=str(LOCAL_CHROMA_LINE_PATH),
+    mode="read",
+    metadata_only=True,
 )
 chroma_word_client = ChromaDBClient(
-    persist_directory=str(LOCAL_CHROMA_WORD_PATH), mode="read", metadata_only=True
+    persist_directory=str(LOCAL_CHROMA_WORD_PATH),
+    mode="read",
+    metadata_only=True,
 )
 dynamo_client = DynamoClient(load_env().get("dynamodb_table_name"))
 
