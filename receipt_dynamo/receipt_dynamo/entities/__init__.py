@@ -10,6 +10,10 @@ from receipt_dynamo.entities.ai_usage_metric import (  # noqa: F401
 )
 from receipt_dynamo.entities.batch_summary import BatchSummary  # noqa: F401
 from receipt_dynamo.entities.batch_summary import item_to_batch_summary
+from receipt_dynamo.entities.compaction_lock import (  # noqa: F401
+    CompactionLock,
+    item_to_compaction_lock,
+)
 from receipt_dynamo.entities.completion_batch_result import (  # noqa: F401
     CompletionBatchResult,
     item_to_completion_batch_result,
@@ -134,6 +138,7 @@ __all__ = [
     # Core entities
     "AIUsageMetric",
     "BatchSummary",
+    "CompactionLock",
     "CompletionBatchResult",
     "EmbeddingBatchResult",
     "Image",
@@ -178,6 +183,7 @@ __all__ = [
     # Item conversion functions
     "item_to_ai_usage_metric",
     "item_to_batch_summary",
+    "item_to_compaction_lock",
     "item_to_completion_batch_result",
     "item_to_embedding_batch_result",
     "item_to_image",
