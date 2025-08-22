@@ -52,7 +52,10 @@ class JobStatus:
             "cancelled",
             "interrupted",
         ]
-        if not isinstance(self.status, str) or self.status.lower() not in valid_statuses:
+        if (
+            not isinstance(self.status, str)
+            or self.status.lower() not in valid_statuses
+        ):
             raise ValueError(f"status must be one of {valid_statuses}")
         self.status = self.status.lower()
 
@@ -76,10 +79,14 @@ class JobStatus:
         if self.message is not None and not isinstance(self.message, str):
             raise ValueError("message must be a string")
 
-        if self.updated_by is not None and not isinstance(self.updated_by, str):
+        if self.updated_by is not None and not isinstance(
+            self.updated_by, str
+        ):
             raise ValueError("updated_by must be a string")
 
-        if self.instance_id is not None and not isinstance(self.instance_id, str):
+        if self.instance_id is not None and not isinstance(
+            self.instance_id, str
+        ):
             raise ValueError("instance_id must be a string")
 
     @property
@@ -166,7 +173,6 @@ class JobStatus:
         yield "message", self.message
         yield "updated_by", self.updated_by
         yield "instance_id", self.instance_id
-
 
     def __hash__(self) -> int:
         """Returns the hash value of the JobStatus object.
