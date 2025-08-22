@@ -804,6 +804,7 @@ def process_metadata_updates(
                         bucket=bucket,
                         snapshot_key=snapshot_key.rstrip("/") + "/",
                         calculate_hash=True,  # Enable hash calculation
+                        clear_destination=True,  # Explicitly clear S3 destination before upload
                         metadata={
                             "update_type": "metadata_update",
                             "image_id": image_id,
@@ -1020,6 +1021,7 @@ def process_label_updates(
                 bucket=bucket,
                 snapshot_key=snapshot_key.rstrip("/") + "/",
                 calculate_hash=True,  # Enable hash calculation
+                clear_destination=True,  # Explicitly clear S3 destination before upload
                 metadata={
                     "update_type": "label_update",
                     "total_updates": str(total_updates),
