@@ -131,76 +131,6 @@ class _ReceiptWord(
                 )
         self._update_entities(receipt_words, ReceiptWord, "receipt_words")
 
-    @handle_dynamodb_errors("increment_receipt_word_valid_label_count")
-    def increment_receipt_word_valid_label_count(
-        self, receipt_word: ReceiptWord
-    ) -> ReceiptWord:
-        """Increments the valid_label_count for a ReceiptWord and returns
-        the updated ReceiptWord."""
-        self._validate_entity(receipt_word, ReceiptWord, "receipt_word")
-        response = self._client.update_item(
-            TableName=self.table_name,
-            Key=receipt_word.key,
-            UpdateExpression=(
-                "SET valid_label_count = if_not_exists("
-                "valid_label_count, :zero"
-                ") + :inc"
-            ),
-            ExpressionAttributeValues={
-                ":inc": {"N": "1"},
-                ":zero": {"N": "0"},
-            },
-            ConditionExpression=(
-                "attribute_exists(#pk) AND attribute_exists(#sk) "
-                "AND (attribute_not_exists(#valid_label_count) "
-                "OR #valid_label_count >= :zero)"
-            ),
-            ExpressionAttributeNames={
-                "#pk": "PK",
-                "#sk": "SK",
-                "#valid_label_count": "valid_label_count",
-            },
-            ReturnValues="ALL_NEW",
-        )
-        if "Attributes" in response:
-            return item_to_receipt_word(response["Attributes"])
-        return receipt_word
-
-    @handle_dynamodb_errors("increment_receipt_word_invalid_label_count")
-    def increment_receipt_word_invalid_label_count(
-        self, receipt_word: ReceiptWord
-    ) -> ReceiptWord:
-        """Increments the invalid_label_count for a ReceiptWord and returns
-        the updated ReceiptWord."""
-        self._validate_entity(receipt_word, ReceiptWord, "receipt_word")
-        response = self._client.update_item(
-            TableName=self.table_name,
-            Key=receipt_word.key,
-            UpdateExpression=(
-                "SET invalid_label_count = if_not_exists("
-                "invalid_label_count, :zero"
-                ") + :inc"
-            ),
-            ExpressionAttributeValues={
-                ":inc": {"N": "1"},
-                ":zero": {"N": "0"},
-            },
-            ConditionExpression=(
-                "attribute_exists(#pk) AND attribute_exists(#sk) "
-                "AND (attribute_not_exists(#invalid_label_count) "
-                "OR #invalid_label_count >= :zero)"
-            ),
-            ExpressionAttributeNames={
-                "#pk": "PK",
-                "#sk": "SK",
-                "#invalid_label_count": "invalid_label_count",
-            },
-            ReturnValues="ALL_NEW",
-        )
-        if "Attributes" in response:
-            return item_to_receipt_word(response["Attributes"])
-        return receipt_word
-
     @handle_dynamodb_errors("delete_receipt_word")
     def delete_receipt_word(self, receipt_word: ReceiptWord) -> None:
         """Deletes a single ReceiptWord by IDs."""
@@ -479,83 +409,31 @@ class _ReceiptWord(
     def list_receipt_words_from_receipt(
         self, image_id: str, receipt_id: int
     ) -> list[ReceiptWord]:
-        """Returns all ReceiptWords that match the given receipt/image IDs.
-
-        Args:
-            image_id (str): The ID of the image
-            receipt_id (int): The ID of the receipt
-
-        Returns:
-            list[ReceiptWord]:
-                List of ReceiptWord entities for the given receipt
-
-        Raises:
-            ValueError:
-                If the parameters are invalid or if there's an error
-                querying DynamoDB
-        """
+        """Returns all ReceiptWords under a specific receipt/image."""
+        # Validate parameters
         if image_id is None:
             raise EntityValidationError("image_id cannot be None")
-        if receipt_id is None:
-            raise EntityValidationError("receipt_id cannot be None")
-        if not isinstance(image_id, str):
-            raise EntityValidationError("image_id must be a string.")
-        if not isinstance(receipt_id, int):
-            raise EntityValidationError("receipt_id must be an integer.")
-
-        receipt_words = []
-        try:
-            # Use the mixin method for query
-
-            # Use the mixin method for query
-            results, _ = self._query_entities(
-                index_name=None,
-                key_condition_expression=(
-                    "#pk = :pk_val AND #sk BETWEEN :sk_start AND :sk_end"
-                ),
-                expression_attribute_names={"#pk": "PK", "#sk": "SK"},
-                expression_attribute_values={
-                    ":pk_val": {"S": f"IMAGE#{image_id}"},
-                    ":sk_start": {"S": f"RECEIPT#{receipt_id:05d}#LINE#"},
-                    ":sk_end": {
-                        "S": (
-                            f"RECEIPT#{receipt_id:05d}#LINE#\uffff#WORD#"
-                            "\uffff"
-                        )
-                    },
-                },
-                converter_func=item_to_receipt_word,
-                filter_expression=None,
+        assert_valid_uuid(image_id)
+        if receipt_id is None or not isinstance(receipt_id, int):
+            raise EntityValidationError("receipt_id must be an integer")
+        if receipt_id <= 0:
+            raise EntityValidationError(
+                "receipt_id must be a positive integer"
             )
+        # Use GSI3 for efficient querying by image_id + receipt_id
+        # This eliminates the need for client-side filtering
+        results, _ = self._query_entities(
+            index_name="GSI3",
+            key_condition_expression="GSI3PK = :pk AND GSI3SK = :sk",
+            expression_attribute_names=None,
+            expression_attribute_values={
+                ":pk": {"S": f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"},
+                ":sk": {"S": "WORD"},
+            },
+            converter_func=item_to_receipt_word,
+        )
 
-            # Filter results to only include WORD items (not TAG or LETTER)
-            receipt_words = [
-                word
-                for word in results
-                if "#WORD#" in word.to_item()["SK"]["S"]
-                and not word.to_item()["SK"]["S"].endswith("#TAG#")
-                and not word.to_item()["SK"]["S"].endswith("#LETTER#")
-            ]
-
-            return receipt_words
-
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "ResourceNotFoundException":
-                raise DynamoDBError(
-                    f"Could not list receipt words from DynamoDB: {e}"
-                ) from e
-            if error_code == "ProvisionedThroughputExceededException":
-                raise DynamoDBThroughputError(
-                    f"Provisioned throughput exceeded: {e}"
-                ) from e
-            if error_code == "ValidationException":
-                raise EntityValidationError(
-                    f"One or more parameters given were invalid: {e}"
-                ) from e
-            if error_code == "InternalServerError":
-                raise DynamoDBServerError(f"Internal server error: {e}") from e
-            raise OperationError(f"Error listing receipt words: {e}") from e
+        return results
 
     @handle_dynamodb_errors("list_receipt_words_by_embedding_status")
     def list_receipt_words_by_embedding_status(

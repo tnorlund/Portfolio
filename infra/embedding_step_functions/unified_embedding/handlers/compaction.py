@@ -2,14 +2,10 @@
 
 This handler efficiently compacts multiple ChromaDB deltas created during
 parallel embedding processing, with support for collection-aware processing.
-
-Memory optimization: Supports both parallel and sequential processing modes
-to handle memory-constrained environments.
 """
 
 from typing import Optional
 
-import gc
 import json
 import os
 import shutil
@@ -17,28 +13,30 @@ import tempfile
 import time
 import uuid
 from datetime import datetime
-from logging import INFO, Formatter, StreamHandler, getLogger
 from typing import Any, Dict, List
+import utils.logging
 
 import boto3
 import chromadb
 
 # Import receipt_dynamo for proper DynamoDB operations
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.constants import ChromaDBCollection
 from receipt_label.utils.lock_manager import LockManager
+from receipt_label.vector_store import VectorClient
 
-logger = getLogger()
-logger.setLevel(INFO)
+get_logger = utils.logging.get_logger
+get_operation_logger = utils.logging.get_operation_logger
 
-if len(logger.handlers) == 0:
-    handler = StreamHandler()
-    handler.setFormatter(
-        Formatter(
-            "[%(levelname)s] %(asctime)s.%(msecs)dZ %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
-    )
-    logger.addHandler(handler)
+logger = get_operation_logger(__name__)
+
+try:
+    from receipt_label.vector_store import upload_snapshot_with_hash
+
+    HASH_UPLOAD_AVAILABLE = True
+except ImportError:
+    HASH_UPLOAD_AVAILABLE = False
+    logger.warning("Hash-enabled upload not available, using legacy upload")
 
 # Initialize clients
 s3_client = boto3.client("s3")
@@ -47,64 +45,6 @@ dynamo_client = DynamoClient(os.environ["DYNAMODB_TABLE_NAME"])
 # Get configuration from environment
 heartbeat_interval = int(os.environ.get("HEARTBEAT_INTERVAL_SECONDS", "60"))
 lock_duration_minutes = int(os.environ.get("LOCK_DURATION_MINUTES", "5"))
-
-# Memory optimization configuration
-USE_SEQUENTIAL = (
-    os.environ.get("USE_SEQUENTIAL_PROCESSING", "false").lower() == "true"
-)
-EMBEDDING_BATCH_SIZE = int(os.environ.get("EMBEDDING_BATCH_SIZE", "100"))
-GC_INTERVAL = int(os.environ.get("GC_INTERVAL", "3"))
-
-
-def should_use_sequential_processing(
-    delta_results: List[Dict[str, Any]],
-) -> bool:
-    """Determine whether to use sequential processing based on workload characteristics.
-
-    Decision is based on:
-    - Environment configuration (USE_SEQUENTIAL flag)
-    - Total number of embeddings to process
-    - Collection type (word embeddings use more memory than lines)
-
-    Args:
-        delta_results: List of delta results to process
-
-    Returns:
-        True if sequential processing should be used
-    """
-    # Always use sequential if explicitly configured
-    if USE_SEQUENTIAL:
-        logger.info("Using sequential processing (configured via environment)")
-        return True
-
-    # Estimate total embeddings
-    total_embeddings = sum(d.get("embedding_count", 0) for d in delta_results)
-
-    # Check if we're processing word embeddings (typically larger)
-    has_words = any(
-        d.get("collection") == "receipt_words" for d in delta_results
-    )
-
-    # Use sequential for large batches
-    if total_embeddings > 1500:
-        logger.info(
-            "Using sequential processing for %d embeddings (threshold: 1500)",
-            total_embeddings,
-        )
-        return True
-
-    # Lower threshold for word embeddings due to higher memory usage
-    if has_words and total_embeddings > 1000:
-        logger.info(
-            "Using sequential processing for %d word embeddings (threshold: 1000)",
-            total_embeddings,
-        )
-        return True
-
-    logger.info(
-        "Using parallel processing for %d embeddings", total_embeddings
-    )
-    return False
 
 
 def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -150,24 +90,26 @@ def compact_handler(
     }
     """
     logger.info("Starting ChromaDB compaction handler")
-    logger.info("Event: %s", json.dumps(event))
+    logger.info("Event", event=json.dumps(event))
 
     # Determine operation mode
     operation = event.get("operation")
 
     if operation == "process_chunk":
         return process_chunk_handler(event)
+    if operation == "merge_chunk_group":
+        return merge_chunk_group_handler(event)
     if operation == "final_merge":
         return final_merge_handler(event)
 
     logger.error(
-        "Invalid operation: %s. Expected 'process_chunk' or 'final_merge'",
-        operation,
+        "Invalid operation. Expected 'process_chunk', 'merge_chunk_group', or 'final_merge'",
+        operation=operation,
     )
     return {
         "statusCode": 400,
         "error": f"Invalid operation: {operation}",
-        "message": "Operation must be 'process_chunk' or 'final_merge'",
+        "message": "Operation must be 'process_chunk', 'merge_chunk_group', or 'final_merge'",
     }
 
 
@@ -197,7 +139,9 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         }
 
     if not delta_results:
-        logger.info("No delta results in chunk %d, skipping", chunk_index)
+        logger.info(
+            "No delta results in chunk, skipping", chunk_index=chunk_index
+        )
         return {
             "statusCode": 200,
             "batch_id": batch_id,
@@ -206,15 +150,15 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             "message": "Empty chunk processed",
         }
 
-    # Process all deltas provided in this chunk
-    # The split_into_chunks handler already applies appropriate limits
-    chunk_deltas = delta_results
-
-    logger.info(
-        "Chunk %d contains %d deltas to process",
-        chunk_index,
-        len(delta_results),
-    )
+    # With Map state, each chunk should already be limited to 10 deltas
+    # But we'll enforce the limit here as a safety measure
+    chunk_deltas = delta_results[:10]
+    if len(delta_results) > 10:
+        logger.warning(
+            "Chunk has more deltas than expected max 10. Processing first 10.",
+            chunk_index=chunk_index,
+            delta_count=len(delta_results),
+        )
 
     # Group chunk deltas by collection name for collection-aware processing
     deltas_by_collection: dict[str, list] = {}
@@ -227,45 +171,35 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         deltas_by_collection[collection].append(result)
 
     logger.info(
-        "Processing chunk %d with %d deltas across %d collections "
-        "(batch_id: %s)",
-        chunk_index,
-        len(chunk_deltas),
-        len(deltas_by_collection),
-        batch_id,
+        "Processing chunk with deltas across collections",
+        chunk_index=chunk_index,
+        delta_count=len(chunk_deltas),
+        collection_count=len(deltas_by_collection),
+        batch_id=batch_id,
     )
 
     try:
-        # Decide processing strategy based on data characteristics
-        use_sequential = should_use_sequential_processing(chunk_deltas)
+        # Process chunk deltas with collection awareness
+        chunk_result = process_chunk_deltas(
+            batch_id, chunk_index, chunk_deltas, deltas_by_collection
+        )
 
-        # Process chunk deltas with appropriate strategy
-        if use_sequential:
-            chunk_result = process_chunk_deltas_sequential(
-                batch_id, chunk_index, chunk_deltas, deltas_by_collection
-            )
-        else:
-            chunk_result = process_chunk_deltas(
-                batch_id, chunk_index, chunk_deltas, deltas_by_collection
-            )
-
-        # Prepare response for Map state
-        # No need for continuation logic since all chunks process in parallel
+        # Prepare minimal response for Map state
         response = {
-            "statusCode": 200,
-            "batch_id": batch_id,
-            "chunk_index": chunk_index,
             "intermediate_key": chunk_result["intermediate_key"],
-            "embeddings_processed": chunk_result["embeddings_processed"],
-            "processing_time_seconds": chunk_result["processing_time"],
-            "message": "Chunk processed successfully",
         }
 
-        logger.info("Chunk %d processing completed: %s", chunk_index, response)
+        logger.info(
+            "Chunk processing completed",
+            chunk_index=chunk_index,
+            response=response,
+        )
         return response
 
     except Exception as e:  # pylint: disable=broad-exception-caught
-        logger.error("Chunk %d processing failed: %s", chunk_index, str(e))
+        logger.error(
+            "Chunk processing failed", chunk_index=chunk_index, error=str(e)
+        )
         return {
             "statusCode": 500,
             "error": str(e),
@@ -275,19 +209,131 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         }
 
 
+def merge_chunk_group_handler(event: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Merge a group of intermediate chunks WITHOUT acquiring a lock.
+    
+    This operation merges up to 10 intermediate chunk snapshots into a single
+    intermediate snapshot for hierarchical processing. No mutex lock is required
+    as this operates on intermediate data, not the final snapshot.
+    
+    Input format:
+    {
+        "operation": "merge_chunk_group",
+        "batch_id": "batch-group-0", 
+        "group_index": 0,
+        "chunk_group": [
+            {"intermediate_key": "intermediate/batch-id/chunk-0/"},
+            {"intermediate_key": "intermediate/batch-id/chunk-1/"},
+            ...
+        ],
+        "database": "lines" or "words"
+    }
+    
+    Returns:
+    {
+        "intermediate_key": "intermediate/batch-group-0/merged/"
+    }
+    """
+    logger.info("Starting chunk group merge (no lock)")
+    
+    batch_id = event.get("batch_id")
+    group_index = event.get("group_index", 0)
+    chunk_group = event.get("chunk_group", [])
+    database_name = event.get("database", "lines")
+    
+    if not batch_id:
+        return {
+            "statusCode": 400,
+            "error": "batch_id is required for chunk group merging",
+        }
+
+    if not chunk_group:
+        logger.info("Empty chunk group, skipping merge", batch_id=batch_id, group_index=group_index)
+        return {
+            "statusCode": 200,
+            "batch_id": batch_id,
+            "group_index": group_index,
+            "message": "Empty chunk group processed",
+        }
+
+    # Limit to 10 chunks per group for consistent processing
+    chunk_group = chunk_group[:10]
+    if len(event.get("chunk_group", [])) > 10:
+        logger.warning(
+            "Chunk group has more than 10 chunks, processing first 10",
+            group_index=group_index,
+            chunk_count=len(event.get("chunk_group", [])),
+        )
+
+    # Extract intermediate keys
+    intermediate_keys = []
+    for chunk in chunk_group:
+        if isinstance(chunk, dict) and "intermediate_key" in chunk:
+            intermediate_keys.append(chunk["intermediate_key"])
+        elif isinstance(chunk, str):
+            intermediate_keys.append(chunk)
+        else:
+            logger.error("Invalid chunk format in group", chunk=chunk, chunk_type=type(chunk))
+            return {
+                "statusCode": 400,
+                "error": f"Invalid chunk format: {chunk}",
+            }
+
+    logger.info(
+        "Merging chunk group",
+        batch_id=batch_id,
+        group_index=group_index,
+        chunk_count=len(intermediate_keys),
+        database=database_name,
+    )
+
+    try:
+        # Perform the merge without locks
+        merge_result = perform_intermediate_merge(
+            batch_id, group_index, intermediate_keys, database_name
+        )
+
+        # Return intermediate key for further processing
+        return {
+            "intermediate_key": merge_result["intermediate_key"],
+        }
+
+    except Exception as e:
+        logger.error("Chunk group merge failed", batch_id=batch_id, group_index=group_index, error=str(e))
+        return {
+            "statusCode": 500,
+            "error": str(e),
+            "batch_id": batch_id,
+            "group_index": group_index,
+            "message": "Chunk group merge failed",
+        }
+
+
 def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Final merge step that acquires lock and combines intermediate chunks.
+    Final merge step that ALWAYS acquires mutex lock and merges to final snapshot.
 
-    Preserves existing heartbeat support for the final merge operation.
+    This is the ONLY operation that should modify the final snapshot and
+    must always acquire a mutex lock to prevent conflicts.
+
+    Input format:
+    {
+        "operation": "final_merge",
+        "batch_id": "batch-uuid",
+        "chunk_results": [
+            {"intermediate_key": "intermediate/batch-id/chunk-0/"},
+            {"intermediate_key": "intermediate/batch-group-0/merged/"},
+            ...
+        ],
+        "database": "lines" or "words"
+    }
     """
-    logger.info("Starting final merge compaction")
+    logger.info("Starting FINAL merge with mutex lock")
 
     batch_id = event.get("batch_id")
-    total_chunks = event.get("total_chunks", 1)
-    database_name = event.get(
-        "database", "lines"
-    )  # Get database from event with default
+    chunk_results = event.get("chunk_results", [])
+    database_name = event.get("database", "lines")
 
     if not batch_id:
         return {
@@ -295,9 +341,30 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             "error": "batch_id is required for final merge",
         }
 
+    if not chunk_results:
+        return {
+            "statusCode": 400,
+            "error": "chunk_results is required for final merge",
+        }
+
+    logger.info(
+        "Final merge with lock - processing intermediate snapshots",
+        chunk_count=len(chunk_results),
+        batch_id=batch_id,
+        database=database_name,
+    )
+
+    # Determine collection from database name
+    collection = (
+        ChromaDBCollection.LINES
+        if database_name == "lines"
+        else ChromaDBCollection.WORDS
+    )
+
     # Acquire lock for final merge
     lock_manager = LockManager(
         dynamo_client,
+        collection=collection,
         heartbeat_interval=heartbeat_interval,
         lock_duration_minutes=lock_duration_minutes,
     )
@@ -316,12 +383,18 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
 
         # Perform final merge with database awareness
         merge_result = perform_final_merge(
-            batch_id, total_chunks, database_name
+            batch_id, len(chunk_results), database_name, chunk_results
         )
 
-        # Clean up intermediate chunks
-        cleanup_intermediate_chunks(batch_id, total_chunks)
+        # Clean up intermediate chunks - extract intermediate keys for cleanup
+        intermediate_keys = []
+        for chunk in chunk_results:
+            if isinstance(chunk, dict) and "intermediate_key" in chunk:
+                intermediate_keys.append(chunk["intermediate_key"])
+        
+        cleanup_intermediate_chunks_by_keys(intermediate_keys)
 
+        # Always return full format for final merge
         return {
             "statusCode": 200,
             "batch_id": batch_id,
@@ -332,7 +405,7 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         }
 
     except Exception as e:  # pylint: disable=broad-exception-caught
-        logger.error("Final merge failed: %s", str(e))
+        logger.error("Final merge failed", error=str(e))
         return {
             "statusCode": 500,
             "error": str(e),
@@ -368,9 +441,9 @@ def process_chunk_deltas(
         # Process each collection separately
         for collection_name, collection_deltas in deltas_by_collection.items():
             logger.info(
-                "Processing %d deltas for collection '%s'",
-                len(collection_deltas),
-                collection_name,
+                "Processing deltas for collection",
+                delta_count=len(collection_deltas),
+                collection_name=collection_name,
             )
 
             # Get or create collection
@@ -387,7 +460,7 @@ def process_chunk_deltas(
                 )
 
             # Process deltas for this collection
-            for delta in collection_deltas:
+            for i, delta in enumerate(collection_deltas):
                 delta_key = delta["delta_key"]
 
                 # Download and merge delta
@@ -396,22 +469,58 @@ def process_chunk_deltas(
                 )
                 total_embeddings += embeddings_added
                 logger.info(
-                    "Merged %d embeddings from delta %s into collection %s",
-                    embeddings_added,
-                    delta_key,
-                    collection_name,
+                    "Merged embeddings from delta into collection",
+                    embeddings_added=embeddings_added,
+                    delta_key=delta_key,
+                    collection_name=collection_name,
+                    current=i + 1,
+                    total=len(collection_deltas),
                 )
+
+                # Memory usage available in CloudWatch metrics
+
+        # Check what files are in temp directory before upload
+        temp_files = []
+        for root, dirs, files in os.walk(temp_dir):
+            for file in files:
+                file_path = os.path.join(root, file)
+                file_size = os.path.getsize(file_path)
+                temp_files.append(f"{file} ({file_size} bytes)")
+        
+        logger.info(
+            "Temp directory contents before upload",
+            temp_dir=temp_dir,
+            files=temp_files,
+            total_embeddings=total_embeddings,
+        )
 
         # Upload intermediate chunk to S3
         intermediate_key = f"intermediate/{batch_id}/chunk-{chunk_index}/"
-        upload_to_s3(temp_dir, bucket, intermediate_key)
+        logger.info(
+            "Starting intermediate chunk upload to S3",
+            intermediate_key=intermediate_key,
+            bucket=bucket,
+            temp_dir=temp_dir,
+            total_embeddings=total_embeddings,
+        )
+        
+        upload_result = upload_to_s3(
+            temp_dir, bucket, intermediate_key, calculate_hash=False
+        )  # No hash for intermediate chunks
+        
+        logger.info(
+            "Completed intermediate chunk upload to S3",
+            intermediate_key=intermediate_key,
+            upload_result=upload_result,
+            total_embeddings=total_embeddings,
+        )
 
         processing_time = time.time() - start_time
         logger.info(
-            "Chunk %d processed: %d embeddings in %.2f seconds",
-            chunk_index,
-            total_embeddings,
-            processing_time,
+            "Chunk processed",
+            chunk_index=chunk_index,
+            embeddings_processed=total_embeddings,
+            processing_time_seconds=processing_time,
         )
 
         return {
@@ -423,203 +532,6 @@ def process_chunk_deltas(
     finally:
         # Clean up temp directory
         shutil.rmtree(temp_dir, ignore_errors=True)
-
-
-def process_chunk_deltas_sequential(
-    batch_id: str,
-    chunk_index: int,
-    chunk_deltas: List[Dict[str, Any]],
-    deltas_by_collection: Dict[str, List[Dict[str, Any]]],
-) -> Dict[str, Any]:
-    """
-    Process a chunk of deltas sequentially to minimize memory usage.
-
-    This function processes one delta at a time and explicitly manages memory
-    through garbage collection and cleanup.
-
-    Args:
-        batch_id: Unique batch identifier
-        chunk_index: Index of this chunk
-        chunk_deltas: List of delta results
-        deltas_by_collection: Deltas grouped by collection name
-
-    Returns:
-        Dictionary with processing results
-    """
-    start_time = time.time()
-    bucket = os.environ["CHROMADB_BUCKET"]
-    temp_dir = tempfile.mkdtemp()
-    total_embeddings = 0
-    deltas_processed = 0
-
-    try:
-        # Initialize ChromaDB once for all deltas
-        chroma_client = chromadb.PersistentClient(path=temp_dir)
-
-        # Process each collection sequentially
-        for collection_name, collection_deltas in deltas_by_collection.items():
-            logger.info(
-                "Sequential processing %d deltas for collection '%s'",
-                len(collection_deltas),
-                collection_name,
-            )
-
-            # Get or create collection once
-            try:
-                collection = chroma_client.get_collection(collection_name)
-            except Exception:
-                collection = chroma_client.create_collection(
-                    collection_name,
-                    metadata={
-                        "chunk_index": chunk_index,
-                        "batch_id": batch_id,
-                    },
-                )
-
-            # Process deltas one at a time
-            for i, delta in enumerate(collection_deltas):
-                delta_key = delta["delta_key"]
-                logger.info(
-                    "Processing delta %d/%d: %s",
-                    i + 1,
-                    len(collection_deltas),
-                    delta_key,
-                )
-
-                # Process single delta with streaming
-                embeddings_added = download_and_merge_delta_sequential(
-                    bucket, delta_key, collection, temp_dir
-                )
-                total_embeddings += embeddings_added
-                deltas_processed += 1
-
-                logger.info(
-                    "Merged %d embeddings from delta %s (total: %d)",
-                    embeddings_added,
-                    delta_key,
-                    total_embeddings,
-                )
-
-                # Periodic garbage collection to free memory
-                if deltas_processed % GC_INTERVAL == 0:
-                    gc.collect()
-                    logger.info(
-                        "Garbage collection performed after %d deltas",
-                        deltas_processed,
-                    )
-
-        # Upload intermediate chunk to S3
-        intermediate_key = f"intermediate/{batch_id}/chunk-{chunk_index}/"
-        upload_to_s3(temp_dir, bucket, intermediate_key)
-
-        processing_time = time.time() - start_time
-        logger.info(
-            "Sequential chunk %d processed: %d embeddings in %.2f seconds",
-            chunk_index,
-            total_embeddings,
-            processing_time,
-        )
-
-        return {
-            "intermediate_key": intermediate_key,
-            "embeddings_processed": total_embeddings,
-            "processing_time": processing_time,
-            "processing_mode": "sequential",
-        }
-
-    finally:
-        # Explicit cleanup
-        if "chroma_client" in locals():
-            del chroma_client
-        shutil.rmtree(temp_dir, ignore_errors=True)
-        gc.collect()
-
-
-def download_and_merge_delta_sequential(
-    bucket: str, delta_key: str, collection: Any, temp_dir: str
-) -> int:
-    """
-    Download and merge a delta using sequential/streaming approach.
-
-    Processes embeddings in batches to minimize memory footprint.
-
-    Args:
-        bucket: S3 bucket name
-        delta_key: S3 key for delta
-        collection: Target ChromaDB collection
-        temp_dir: Temporary directory for delta
-
-    Returns:
-        Number of embeddings processed
-    """
-    delta_temp = tempfile.mkdtemp(dir=temp_dir)
-
-    try:
-        # Download delta from S3
-        download_from_s3(bucket, delta_key, delta_temp)
-
-        # Load delta ChromaDB
-        delta_client = chromadb.PersistentClient(path=delta_temp)
-        delta_collections = delta_client.list_collections()
-
-        if not delta_collections:
-            logger.warning("No collections found in delta %s", delta_key)
-            return 0
-
-        delta_collection = delta_collections[0]
-        total_count = delta_collection.count()
-
-        if total_count == 0:
-            return 0
-
-        logger.info(
-            "Streaming %d embeddings from delta %s in batches of %d",
-            total_count,
-            delta_key,
-            EMBEDDING_BATCH_SIZE,
-        )
-
-        # First get all IDs (lightweight operation)
-        all_ids = delta_collection.get(include=[])["ids"]
-        processed = 0
-
-        # Process in batches to minimize memory usage
-        for i in range(0, len(all_ids), EMBEDDING_BATCH_SIZE):
-            batch_ids = all_ids[i : i + EMBEDDING_BATCH_SIZE]
-
-            # Get batch of embeddings
-            batch_results = delta_collection.get(
-                ids=batch_ids, include=["embeddings", "documents", "metadatas"]
-            )
-
-            # Upsert batch to main collection
-            collection.upsert(
-                ids=batch_results["ids"],
-                embeddings=batch_results["embeddings"],
-                documents=batch_results["documents"],
-                metadatas=batch_results["metadatas"],
-            )
-
-            processed += len(batch_results["ids"])
-
-            # Clear batch from memory immediately
-            del batch_results
-
-            # Log progress for large deltas
-            if total_count > 500 and processed % 500 == 0:
-                logger.info(
-                    "Progress: %d/%d embeddings processed",
-                    processed,
-                    total_count,
-                )
-
-        return processed
-
-    finally:
-        # Explicit cleanup
-        if "delta_client" in locals():
-            del delta_client
-        shutil.rmtree(delta_temp, ignore_errors=True)
 
 
 def download_and_merge_delta(
@@ -643,42 +555,202 @@ def download_and_merge_delta(
         # The delta should contain exactly one collection with all embeddings
         delta_collections = delta_client.list_collections()
         if not delta_collections:
-            logger.warning("No collections found in delta %s", delta_key)
+            logger.warning(
+                "No collections found in delta", delta_key=delta_key
+            )
             return 0
 
         # Use the first collection from the delta (there should only be one)
         delta_collection = delta_collections[0]
         logger.info(
-            "Found collection '%s' in delta %s",
-            delta_collection.name,
-            delta_key,
+            "Found collection in delta",
+            collection_name=delta_collection.name,
+            delta_key=delta_key,
         )
 
-        # Get all embeddings from delta
-        results = delta_collection.get(
-            include=["embeddings", "documents", "metadatas"]
-        )
-
-        if not results["ids"]:
+        # Get total count first to process in batches
+        total_count = delta_collection.count()
+        if total_count == 0:
             return 0
 
-        # Upsert into main collection
-        collection.upsert(
-            ids=results["ids"],
-            embeddings=results["embeddings"],
-            documents=results["documents"],
-            metadatas=results["metadatas"],
+        logger.info(
+            "Processing embeddings from delta in batches",
+            total_count=total_count,
         )
 
-        return len(results["ids"])
+        # Process embeddings in batches to reduce memory usage
+        batch_size = 1000  # Process 1000 embeddings at a time
+        total_processed = 0
+
+        for offset in range(0, total_count, batch_size):
+            # Get batch of embeddings
+            batch_results = delta_collection.get(
+                include=["embeddings", "documents", "metadatas"],
+                limit=batch_size,
+                offset=offset,
+            )
+
+            if batch_results["ids"]:
+                # Upsert batch into main collection
+                collection.upsert(
+                    ids=batch_results["ids"],
+                    embeddings=batch_results["embeddings"],
+                    documents=batch_results["documents"],
+                    metadatas=batch_results["metadatas"],
+                )
+                total_processed += len(batch_results["ids"])
+                logger.debug(
+                    "Processed batch",
+                    offset_start=offset,
+                    offset_end=offset + len(batch_results["ids"]),
+                    embedding_count=len(batch_results["ids"]),
+                )
+
+        logger.info(
+            "Successfully processed embeddings from delta",
+            count=total_processed,
+        )
+        return total_processed
 
     finally:
         # Clean up delta temp directory
         shutil.rmtree(delta_temp, ignore_errors=True)
 
 
+def perform_intermediate_merge(
+    batch_id: str, group_index: int, intermediate_keys: List[str], database_name: str
+) -> Dict[str, Any]:
+    """
+    Merge intermediate chunks into a single intermediate snapshot WITHOUT locks.
+    
+    This function is used by merge_chunk_group to merge multiple intermediate
+    snapshots into a single intermediate snapshot for hierarchical processing.
+    
+    Args:
+        batch_id: Unique identifier for this batch group
+        group_index: Index of the group being merged
+        intermediate_keys: List of S3 keys to intermediate snapshots
+        database_name: Database name ('lines' or 'words')
+        
+    Returns:
+        Dictionary with intermediate_key for the merged snapshot
+    """
+    start_time = time.time()
+    bucket = os.environ["CHROMADB_BUCKET"]
+    temp_dir = tempfile.mkdtemp()
+    total_embeddings = 0
+    
+    # Create intermediate output key
+    intermediate_key = f"intermediate/{batch_id}-group-{group_index}/merged/"
+    
+    try:
+        # Initialize ChromaDB in memory for merging
+        chroma_client = chromadb.PersistentClient(path=temp_dir)
+        
+        logger.info(
+            "Starting intermediate merge",
+            batch_id=batch_id,
+            group_index=group_index,
+            chunk_count=len(intermediate_keys),
+            intermediate_key=intermediate_key,
+        )
+        
+        # Process each intermediate chunk
+        for i, chunk_key in enumerate(intermediate_keys):
+            logger.info(
+                "Processing intermediate chunk",
+                current_chunk=i + 1,
+                total_chunks=len(intermediate_keys),
+                chunk_key=chunk_key,
+            )
+            chunk_temp = tempfile.mkdtemp()
+            
+            try:
+                # Download intermediate chunk
+                download_from_s3(bucket, chunk_key, chunk_temp)
+                logger.info("Downloaded intermediate chunk", chunk_index=i, chunk_key=chunk_key)
+                
+                # Load chunk ChromaDB
+                chunk_client = chromadb.PersistentClient(path=chunk_temp)
+                
+                # Merge all collections from this chunk
+                for collection_meta in chunk_client.list_collections():
+                    collection_name = collection_meta.name
+                    chunk_collection = chunk_client.get_collection(collection_name)
+                    chunk_count = chunk_collection.count()
+                    
+                    if chunk_count == 0:
+                        logger.info("Skipping empty collection", collection_name=collection_name)
+                        continue
+                    
+                    logger.info(
+                        "Merging collection from chunk",
+                        collection_name=collection_name,
+                        embedding_count=chunk_count,
+                    )
+                    
+                    # Get or create collection in main client
+                    try:
+                        main_collection = chroma_client.get_collection(collection_name)
+                    except Exception:
+                        main_collection = chroma_client.create_collection(collection_name)
+                    
+                    # Get all data from chunk collection
+                    chunk_data = chunk_collection.get(include=['embeddings', 'documents', 'metadatas'])
+                    
+                    if chunk_data['ids']:
+                        # Add to main collection
+                        main_collection.add(
+                            ids=chunk_data['ids'],
+                            embeddings=chunk_data['embeddings'],
+                            documents=chunk_data['documents'],
+                            metadatas=chunk_data['metadatas'],
+                        )
+                        total_embeddings += len(chunk_data['ids'])
+                        
+                        logger.info(
+                            "Merged chunk collection data",
+                            collection_name=collection_name,
+                            embeddings_added=len(chunk_data['ids']),
+                            total_embeddings=total_embeddings,
+                        )
+                
+            except Exception as e:
+                logger.error("Failed to process intermediate chunk", chunk_key=chunk_key, error=str(e))
+                raise
+            finally:
+                shutil.rmtree(chunk_temp, ignore_errors=True)
+        
+        logger.info(
+            "Intermediate merge completed",
+            total_embeddings=total_embeddings,
+            processing_time=time.time() - start_time,
+        )
+        
+        # Upload merged intermediate snapshot
+        upload_result = upload_to_s3(temp_dir, bucket, intermediate_key, calculate_hash=False)
+        
+        logger.info(
+            "Uploaded merged intermediate snapshot",
+            intermediate_key=intermediate_key,
+            upload_result=upload_result,
+        )
+        
+        return {
+            "intermediate_key": intermediate_key,
+            "total_embeddings": total_embeddings,
+            "processing_time": time.time() - start_time,
+        }
+        
+    except Exception as e:
+        logger.error("Intermediate merge failed", error=str(e))
+        raise
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
 def perform_final_merge(
-    batch_id: str, total_chunks: int, database_name: Optional[str] = None
+    batch_id: str, total_chunks: int, database_name: Optional[str] = None, chunk_results: Optional[List[Dict[str, Any]]] = None
 ) -> Dict[str, Any]:
     """
     Perform the final merge of all intermediate chunks into a snapshot.
@@ -696,7 +768,9 @@ def perform_final_merge(
     # Determine snapshot paths based on database
     if database_name:
         snapshot_key = f"{database_name}/snapshot/latest/"
-        logger.info(f"Using database-specific snapshot path: {snapshot_key}")
+        logger.info(
+            "Using database-specific snapshot path", snapshot_key=snapshot_key
+        )
     else:
         # Backward compatibility - unified snapshot
         snapshot_key = "snapshot/latest/"
@@ -707,24 +781,51 @@ def perform_final_merge(
         try:
             download_from_s3(bucket, snapshot_key, temp_dir)
             chroma_client = chromadb.PersistentClient(path=temp_dir)
-            logger.info(f"Loaded existing snapshot from S3: {snapshot_key}")
+            logger.info(
+                "Loaded existing snapshot from S3", snapshot_key=snapshot_key
+            )
         except Exception:
             # No existing snapshot, create new
             chroma_client = chromadb.PersistentClient(path=temp_dir)
-            logger.info(f"Creating new snapshot at: {snapshot_key}")
+            logger.info("Creating new snapshot at", snapshot_key=snapshot_key)
 
-        # Merge all intermediate chunks
-        for chunk_index in range(total_chunks):
+        # Merge intermediate chunks - handle both legacy and new formats
+        if chunk_results:
+            # New format: we have specific intermediate_key objects
+            logger.info("Merging using chunk_results format", chunk_count=len(chunk_results))
+            logger.info("Chunk results format", chunk_results=chunk_results)
+            
+            # Handle different possible formats
+            chunk_keys = []
+            for chunk in chunk_results:
+                if isinstance(chunk, dict) and "intermediate_key" in chunk:
+                    chunk_keys.append(chunk["intermediate_key"])
+                elif isinstance(chunk, str):
+                    # Direct string key
+                    chunk_keys.append(chunk)
+                else:
+                    logger.error("Unexpected chunk format", chunk=chunk, chunk_type=type(chunk))
+                    raise ValueError(f"Unexpected chunk format: {chunk}")
+            
+            logger.info("Extracted chunk keys", chunk_keys=chunk_keys)
+        else:
+            # Legacy format: generate keys from batch_id and chunk indices
+            logger.info("Merging using legacy total_chunks format", total_chunks=total_chunks)
+            chunk_keys = [f"intermediate/{batch_id}/chunk-{i}/" for i in range(total_chunks)]
+
+        for i, intermediate_key in enumerate(chunk_keys):
             logger.info(
-                "Processing chunk %d of %d", chunk_index + 1, total_chunks
+                "Processing chunk",
+                current_chunk=i + 1,
+                total_chunks=len(chunk_keys),
+                intermediate_key=intermediate_key,
             )
-            intermediate_key = f"intermediate/{batch_id}/chunk-{chunk_index}/"
             chunk_temp = tempfile.mkdtemp()
 
             try:
                 # Download intermediate chunk
                 download_from_s3(bucket, intermediate_key, chunk_temp)
-                logger.info("Downloaded chunk %d", chunk_index)
+                logger.info("Downloaded chunk", chunk_index=i, intermediate_key=intermediate_key)
 
                 # Load chunk
                 chunk_client = chromadb.PersistentClient(path=chunk_temp)
@@ -746,7 +847,7 @@ def perform_final_merge(
                         )
 
                     # Process embeddings in batches to reduce memory usage
-                    batch_size = 500  # Reduced batch size to save memory
+                    batch_size = 1000  # Process 1000 embeddings at a time
                     chunk_count = chunk_collection.count()
 
                     if chunk_count > 0:
@@ -802,16 +903,6 @@ def perform_final_merge(
                 import gc
                 gc.collect()
 
-            # Periodically persist to disk to free memory (every 5 chunks)
-            if chunk_index > 0 and chunk_index % 5 == 0:
-                logger.info(
-                    f"Persisting after chunk {chunk_index} to free memory"
-                )
-                # ChromaDB PersistentClient auto-persists, but we can force cleanup
-                import gc
-
-                gc.collect()
-
         # Create timestamped snapshot with dedicated prefix for
         # lifecycle management
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
@@ -825,19 +916,50 @@ def perform_final_merge(
             # Backward compatibility
             timestamped_key = f"snapshot/timestamped/{timestamp}/"
 
-        # Upload to S3
-        upload_to_s3(temp_dir, bucket, timestamped_key)
-        logger.info(f"Uploaded timestamped snapshot to: {timestamped_key}")
+        # Upload timestamped snapshot with hash
+        timestamped_result = upload_to_s3(
+            temp_dir,
+            bucket,
+            timestamped_key,
+            calculate_hash=True,
+            metadata={
+                "batch_id": batch_id,
+                "total_embeddings": str(total_embeddings),
+                "merge_operation": "final_merge",
+                "database": database_name or "unknown",
+            },
+        )
+        logger.info(
+            "Uploaded timestamped snapshot",
+            snapshot_key=timestamped_key,
+            hash=timestamped_result.get("hash", "not_calculated"),
+        )
 
-        # Update latest pointer
-        upload_to_s3(temp_dir, bucket, snapshot_key)
-        logger.info(f"Updated latest snapshot pointer at: {snapshot_key}")
+        # Update latest pointer with hash
+        latest_result = upload_to_s3(
+            temp_dir,
+            bucket,
+            snapshot_key,
+            calculate_hash=True,
+            metadata={
+                "batch_id": batch_id,
+                "total_embeddings": str(total_embeddings),
+                "merge_operation": "final_merge",
+                "database": database_name or "unknown",
+                "pointer_to": timestamped_key,
+            },
+        )
+        logger.info(
+            "Updated latest snapshot pointer",
+            snapshot_key=snapshot_key,
+            hash=latest_result.get("hash", "not_calculated"),
+        )
 
         processing_time = time.time() - start_time
         logger.info(
-            "Final merge completed: %d total embeddings in %.2f seconds",
-            total_embeddings,
-            processing_time,
+            "Final merge completed",
+            total_embeddings=total_embeddings,
+            processing_time_seconds=processing_time,
         )
 
         return {
@@ -868,10 +990,37 @@ def cleanup_intermediate_chunks(batch_id: str, total_chunks: int):
                 s3_client.delete_objects(
                     Bucket=bucket, Delete={"Objects": objects}  # type: ignore
                 )
-                logger.info("Deleted intermediate chunk %d", chunk_index)
+                logger.info(
+                    "Deleted intermediate chunk", chunk_index=chunk_index
+                )
         except Exception as e:
             logger.warning(
-                "Failed to delete chunk %d: %s", chunk_index, str(e)
+                "Failed to delete chunk", chunk_index=chunk_index, error=str(e)
+            )
+
+
+def cleanup_intermediate_chunks_by_keys(intermediate_keys: List[str]):
+    """Clean up specific intermediate chunk files from S3 by their keys."""
+    bucket = os.environ["CHROMADB_BUCKET"]
+
+    for intermediate_key in intermediate_keys:
+        try:
+            # List and delete all objects with this prefix
+            response = s3_client.list_objects_v2(
+                Bucket=bucket, Prefix=intermediate_key
+            )
+
+            if "Contents" in response:
+                objects = [{"Key": obj["Key"]} for obj in response["Contents"]]
+                s3_client.delete_objects(
+                    Bucket=bucket, Delete={"Objects": objects}  # type: ignore
+                )
+                logger.info(
+                    "Deleted intermediate chunk by key", intermediate_key=intermediate_key
+                )
+        except Exception as e:
+            logger.warning(
+                "Failed to delete intermediate chunk", intermediate_key=intermediate_key, error=str(e)
             )
 
 
@@ -896,12 +1045,70 @@ def download_from_s3(bucket: str, prefix: str, local_path: str):
             s3_client.download_file(bucket, key, local_file)
 
 
-def upload_to_s3(local_path: str, bucket: str, prefix: str):
-    """Upload a directory to S3."""
-    for root, _, files in os.walk(local_path):
-        for file in files:
-            local_file = os.path.join(root, file)
-            relative_path = os.path.relpath(local_file, local_path)
-            s3_key = os.path.join(prefix, relative_path)
+def upload_to_s3(
+    local_path: str,
+    bucket: str,
+    prefix: str,
+    calculate_hash: bool = False,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """
+    Upload a directory to S3 with optional hash calculation.
 
-            s3_client.upload_file(local_file, bucket, s3_key)
+    Uses enhanced upload_snapshot_with_hash when available, falls back to legacy upload.
+    """
+    # Use hash-enabled upload for snapshot directories (latest/, timestamped/)
+    use_hash_upload = (
+        HASH_UPLOAD_AVAILABLE
+        and calculate_hash
+        and ("snapshot/" in prefix or "latest/" in prefix)
+    )
+
+    if use_hash_upload:
+        logger.info("Using hash-enabled upload for", prefix=prefix)
+
+        # Ensure prefix ends with / for snapshot key format
+        snapshot_key = prefix.rstrip("/") + "/"
+
+        result = upload_snapshot_with_hash(
+            local_snapshot_path=local_path,
+            bucket=bucket,
+            snapshot_key=snapshot_key,
+            calculate_hash=True,
+            metadata=metadata or {},
+        )
+
+        if result["status"] == "uploaded":
+            logger.info(
+                "Uploaded snapshot with hash",
+                prefix=prefix,
+                file_count=result.get("file_count", 0),
+                hash=result.get("hash", "not_calculated"),
+            )
+
+        return result
+    else:
+        # Legacy upload (for intermediate chunks and when hash utils not available)
+        logger.info("Using legacy upload for", prefix=prefix)
+
+        file_count = 0
+        total_size = 0
+
+        for root, _, files in os.walk(local_path):
+            for file in files:
+                local_file = os.path.join(root, file)
+                relative_path = os.path.relpath(local_file, local_path)
+                s3_key = os.path.join(prefix, relative_path)
+
+                s3_client.upload_file(local_file, bucket, s3_key)
+
+                file_count += 1
+                total_size += os.path.getsize(local_file)
+
+        return {
+            "status": "uploaded",
+            "file_count": file_count,
+            "total_size_bytes": total_size,
+            "snapshot_key": prefix,
+            "hash": None,  # No hash calculated for legacy uploads
+        }

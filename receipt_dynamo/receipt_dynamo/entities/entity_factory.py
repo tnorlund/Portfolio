@@ -1,7 +1,8 @@
 """
 Type-safe Entity Factory for DynamoDB item_to_* converter functions.
 
-This version maintains full MyPy compatibility while eliminating code duplication.
+This version maintains full MyPy compatibility while eliminating code 
+duplication.
 """
 
 from datetime import datetime
@@ -60,7 +61,8 @@ class EntityFactory(SerializationMixin):
             item: DynamoDB item dictionary
             required_keys: Set of required field names
             field_mappings: Map DynamoDB field names to entity field names
-            custom_extractors: Type-safe extraction functions for complex fields
+            custom_extractors: Type-safe extraction functions for 
+                complex fields
             key_parsers: Type-safe functions to parse PK/SK components
 
         Returns:
@@ -95,7 +97,8 @@ class EntityFactory(SerializationMixin):
         # Extract remaining required fields
         for field_name in required_keys:
             if field_name in {"PK", "SK", "TYPE"}:
-                continue  # Already handled by key parsers or not a constructor param
+                continue  # Already handled by key parsers or not a 
+                # constructor param
 
             if field_name in custom_extractors:
                 continue  # Already handled above
@@ -152,7 +155,8 @@ class EntityFactory(SerializationMixin):
 
         Args:
             pk: Primary key like "IMAGE#{uuid}"
-            sk: Sort key like "RECEIPT#{receipt:05d}#LINE#{line:05d}#WORD#{word:05d}"
+            sk: Sort key like 
+                "RECEIPT#{receipt:05d}#LINE#{line:05d}#WORD#{word:05d}"
 
         Returns:
             Dictionary with image_id, receipt_id, line_id, word_id
@@ -358,27 +362,11 @@ def create_receipt_line_word_sk_parser() -> KeyParser:
     def parser(sk: str) -> Dict[str, Any]:
         parsed = EntityFactory.parse_image_receipt_key("IMAGE#dummy", sk)
         sk_parts = sk.split("#")
-
-        # Expected format: RECEIPT#123#LINE#456#WORD#789
-        # Should have 6 parts: ['RECEIPT', '123', 'LINE', '456', 'WORD', '789']
-        if len(sk_parts) < 6:
-            raise ValueError(
-                f"Invalid SK format for receipt word: '{sk}'. Expected format: RECEIPT#id#LINE#id#WORD#id"
-            )
-
-        try:
-            line_id = int(sk_parts[3])  # LINE is at position 3
-            word_id = int(sk_parts[5])  # WORD is at position 5
-
-            return {
-                "receipt_id": parsed["receipt_id"],
-                "line_id": line_id,
-                "word_id": word_id,
-            }
-        except (ValueError, IndexError) as e:
-            raise ValueError(
-                f"Invalid SK format for receipt word: '{sk}'. Error: {e}"
-            ) from e
+        return {
+            "receipt_id": parsed["receipt_id"],
+            "line_id": int(sk_parts[3]),  # LINE is at position 3
+            "word_id": int(sk_parts[5]),  # WORD is at position 5
+        }
 
     return parser
 

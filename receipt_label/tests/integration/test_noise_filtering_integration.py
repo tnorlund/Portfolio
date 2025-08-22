@@ -8,7 +8,8 @@ from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities import ReceiptWord
 
 from receipt_label.embedding.word.submit import (
-    list_receipt_words_with_no_embeddings)
+    list_receipt_words_with_no_embeddings,
+)
 
 
 class TestNoiseFilteringIntegration:
@@ -34,7 +35,8 @@ class TestNoiseFilteringIntegration:
                 angle_radians=0.0,
                 confidence=0.95,
                 embedding_status=EmbeddingStatus.NONE,
-                is_noise=False),
+                is_noise=False,
+            ),
             ReceiptWord(
                 receipt_id=1,
                 image_id="550e8400-e29b-41d4-a716-446655440001",
@@ -50,7 +52,8 @@ class TestNoiseFilteringIntegration:
                 angle_radians=0.0,
                 confidence=0.98,
                 embedding_status=EmbeddingStatus.NONE,
-                is_noise=False),
+                is_noise=False,
+            ),
             # Noise words
             ReceiptWord(
                 receipt_id=1,
@@ -67,7 +70,8 @@ class TestNoiseFilteringIntegration:
                 angle_radians=0.0,
                 confidence=0.85,
                 embedding_status=EmbeddingStatus.NONE,
-                is_noise=True),
+                is_noise=True,
+            ),
             ReceiptWord(
                 receipt_id=1,
                 image_id="550e8400-e29b-41d4-a716-446655440001",
@@ -83,7 +87,8 @@ class TestNoiseFilteringIntegration:
                 angle_radians=0.0,
                 confidence=0.65,
                 embedding_status=EmbeddingStatus.NONE,
-                is_noise=True),
+                is_noise=True,
+            ),
         ]
 
     @pytest.mark.integration

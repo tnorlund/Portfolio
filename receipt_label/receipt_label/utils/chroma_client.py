@@ -1,43 +1,62 @@
 """
-Refactored ChromaDB client utilities for receipt label system.
+ChromaDB client management module.
 
-This module provides a simplified interface to ChromaDB with support for:
-- Separate databases for different collection types (words, lines, etc.)
-- Read-only and read-write modes
-- Direct collection access without prefix management
+This module provides ChromaDB integration for vector storage,
+replacing the previous Pinecone implementation.
 """
+from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict, List, Optional
+import uuid
+from pathlib import Path
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
+import boto3
+
+logger = logging.getLogger(__name__)
+
+# Type checking imports (these don't run at runtime)
+if TYPE_CHECKING:
+    import chromadb
+    from chromadb import Collection
+    from chromadb.config import Settings
+    from chromadb.utils import embedding_functions
+    from chromadb.errors import NotFoundError
+
+# Runtime imports - try to import ChromaDB, but don't fail if unavailable
 try:
     import chromadb
     from chromadb import Collection
     from chromadb.config import Settings
     from chromadb.utils import embedding_functions
-
+    from chromadb.errors import NotFoundError
     CHROMADB_AVAILABLE = True
-except ImportError:
+except (ImportError, StopIteration) as e:
+    # ChromaDB not available or telemetry initialization failed (common in Lambda)
+    print(f"Warning: ChromaDB import failed: {e}. ChromaDB features will be disabled.")
+    if not TYPE_CHECKING:
+        chromadb = None
+        Collection = None
+        Settings = None
+        embedding_functions = None
+        NotFoundError = Exception  # Fallback to base Exception
     CHROMADB_AVAILABLE = False
-    Collection = Any
-
-logger = logging.getLogger(__name__)
 
 
 class ChromaDBClient:
     """
-    Manages ChromaDB client instances for separate collection databases.
+    Manages ChromaDB client instances with lazy initialization.
 
-    Since each collection type (words, lines, etc.) is stored as a separate
-    database in S3, this client provides direct access without prefix management.
+    This class provides centralized access to ChromaDB collections
+    while supporting both local persistence and S3 sync capabilities.
     """
 
     def __init__(
         self,
         persist_directory: Optional[str] = None,
-        mode: str = "read",  # "read" | "write"
-        embedding_function: Optional[Any] = None,
+        mode: str = "read",  # "read" | "delta" | "snapshot"
+        metadata_only: bool = False,
     ):
         """
         Initialize the ChromaDB client manager.
@@ -45,182 +64,178 @@ class ChromaDBClient:
         Args:
             persist_directory: Directory for local ChromaDB persistence.
                              If None, uses in-memory storage.
-            mode: Operation mode - "read" (read-only) or "write" (read-write)
-            embedding_function: Optional custom embedding function.
-                               If None and mode="write", uses OpenAI by default.
+            mode: Operation mode - "read" (read-only), "delta" (write deltas),
+                  or "snapshot" (read-write snapshots)
         """
         if not CHROMADB_AVAILABLE:
             raise RuntimeError(
-                "ChromaDB is not available. Install chromadb with: pip install chromadb"
+                "ChromaDB is not available. This is expected in Lambda environments "
+                "that don't use ChromaDB features. Install chromadb-client with "
+                "proper dependencies if ChromaDB is needed."
             )
-
+        
         self.persist_directory = persist_directory
         self.mode = mode.lower()
-        if self.mode not in {"read", "write"}:
-            raise ValueError(
-                f"Invalid mode '{mode}'. Expected 'read' or 'write'."
-            )
         self.use_persistent_client = persist_directory is not None
         self._client: Optional[chromadb.Client] = None
         self._collections: Dict[str, Collection] = {}
 
-        # Only set embedding function if in write mode
-        if self.mode == "write" and embedding_function is None:
-            # Default to OpenAI for backward compatibility
-            api_key = os.environ.get("OPENAI_API_KEY")
-            if not api_key:
-                raise RuntimeError(
-                    "OPENAI_API_KEY must be set when using default OpenAI embeddings in write mode"
-                )
-            self._embedding_function = (
-                embedding_functions.OpenAIEmbeddingFunction(
-                    api_key=api_key,
-                    model_name="text-embedding-3-small",
-                )
-            )
+        # Configure embedding function based on usage mode
+        if metadata_only:
+            # For metadata-only operations, use default embedding function
+            # This avoids OpenAI API key requirements
+            self._embedding_function = embedding_functions.DefaultEmbeddingFunction()
         else:
-            self._embedding_function = embedding_function
+            # OpenAI embedding function for consistency with current implementation
+            # Use placeholder API key for metadata-only operations
+            api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("CHROMA_OPENAI_API_KEY") or "placeholder"
+            self._embedding_function = embedding_functions.OpenAIEmbeddingFunction(
+                api_key=api_key,
+                model_name="text-embedding-3-small",
+            )
 
     @property
-    def client(self) -> chromadb.Client:
+    def client(self) -> Optional[chromadb.Client]:
         """Get or create ChromaDB client."""
         if self._client is None:
             if self.use_persistent_client and self.persist_directory:
-                logger.debug(
-                    f"Creating persistent client at: {self.persist_directory}"
+                # Ensure directory exists
+                Path(self.persist_directory).mkdir(parents=True, exist_ok=True)
+
+                settings = Settings(
+                    persist_directory=self.persist_directory,
+                    anonymized_telemetry=False,
                 )
                 self._client = chromadb.PersistentClient(
-                    path=self.persist_directory,
-                    settings=Settings(
-                        anonymized_telemetry=False,
-                        allow_reset=self.mode == "write",
-                    ),
+                    path=self.persist_directory, settings=settings
                 )
             else:
-                logger.debug("Creating in-memory client")
+                # In-memory client for testing
                 self._client = chromadb.Client(
                     Settings(anonymized_telemetry=False)
                 )
         return self._client
 
     def get_collection(
-        self,
-        name: str,
-        create_if_missing: bool = False,
-        metadata: Optional[Dict] = None,
+        self, name: str, metadata: Optional[Dict[str, Any]] = None
     ) -> Collection:
         """
-        Get a collection by name.
+        Get or create a ChromaDB collection.
 
         Args:
-            name: The collection name (e.g., "receipt_words", "receipt_lines")
-            create_if_missing: Whether to create the collection if it doesn't exist
-            metadata: Optional metadata for new collections
+            name: Collection name
+            metadata: Optional metadata for the collection
 
         Returns:
             ChromaDB Collection instance
         """
+        logger.info("Getting/creating collection: '%s'", name)
+
         if name not in self._collections:
             try:
-                # For read mode, don't specify embedding function
-                if self.mode == "read":
-                    self._collections[name] = self.client.get_collection(
-                        name=name
-                    )
-                else:
-                    # For write mode, include embedding function
-                    self._collections[name] = self.client.get_collection(
-                        name=name, embedding_function=self._embedding_function
-                    )
-                logger.debug(f"Retrieved existing collection: {name}")
-
-            except Exception as e:
-                if create_if_missing and self.mode == "write":
-                    # Create new collection
-                    self._collections[name] = self.client.create_collection(
-                        name=name,
-                        embedding_function=self._embedding_function,
-                        metadata=metadata
-                        or {"description": f"Collection: {name}"},
-                    )
-                    logger.info(f"Created new collection: {name}")
-                else:
-                    raise ValueError(
-                        f"Collection '{name}' not found. Error: {e}"
-                    ) from e
+                # Try to get existing collection
+                logger.info("Attempting to get existing collection: %s", name)
+                self._collections[name] = self.client.get_collection(
+                    name=name, embedding_function=self._embedding_function
+                )
+                logger.info("Successfully retrieved existing collection: %s", name)
+            except (NotFoundError, ValueError) as e:
+                # Collection doesn't exist, create it
+                logger.info("Collection %s not found, creating new collection: %s", name, e)
+                self._collections[name] = self.client.create_collection(
+                    name=name,
+                    embedding_function=self._embedding_function,
+                    metadata=metadata
+                    or {"description": f"Collection for {name}"},
+                )
+                logger.info("Successfully created new collection: %s", name)
+        else:
+            logger.info("Using cached collection: %s", name)
 
         return self._collections[name]
 
-    def list_collections(self) -> List[str]:
-        """List all available collection names."""
-        collections = self.client.list_collections()
-        return [c.name for c in collections]
-
-    def collection_exists(self, name: str) -> bool:
-        """Check if a collection exists."""
-        return name in self.list_collections()
-
     def _assert_writeable(self) -> None:
-        """Ensure the client is in write mode."""
-        if self.mode != "write":
-            raise RuntimeError(
-                f"This client is in {self.mode} mode, not write mode"
-            )
+        """Ensure the client is in a writeable mode."""
+        if self.mode == "read":
+            raise RuntimeError("This client is read-only (mode='read')")
 
     def upsert_vectors(
         self,
         collection_name: str,
         ids: List[str],
-        embeddings: List[List[float]],
+        embeddings: Optional[List[List[float]]] = None,
         documents: Optional[List[str]] = None,
-        metadatas: Optional[List[Dict]] = None,
+        metadatas: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
         """
         Upsert vectors into a collection.
 
+        This method matches the Pinecone upsert interface for easier migration.
+
         Args:
             collection_name: Name of the collection
             ids: List of unique IDs
-            embeddings: List of embedding vectors
-            documents: Optional list of document strings
-            metadatas: Optional list of metadata dicts
+            embeddings: Optional list of embedding vectors
+            documents: Optional list of documents (for auto-embedding)
+            metadatas: Optional list of metadata dictionaries
         """
         self._assert_writeable()
+        collection = self.get_collection(collection_name)
 
-        collection = self.get_collection(
-            collection_name, create_if_missing=True
-        )
+        # ChromaDB upsert with duplicate-safe handling
+        try:
+            if embeddings is not None:
+                collection.upsert(
+                    ids=ids,
+                    embeddings=embeddings,
+                    metadatas=metadatas,
+                    documents=documents,
+                )
+            elif documents is not None:
+                # Let ChromaDB handle embedding
+                collection.upsert(
+                    ids=ids, documents=documents, metadatas=metadatas
+                )
+            else:
+                raise ValueError(
+                    "Either embeddings or documents must be provided"
+                )
+        except ValueError as e:
+            if "ids already exist" in str(e):
+                # For compactor: delete and retry (overwrite behavior)
+                collection.delete(ids=ids)
+                if embeddings is not None:
+                    collection.upsert(
+                        ids=ids,
+                        embeddings=embeddings,
+                        metadatas=metadatas,
+                        documents=documents,
+                    )
+                else:
+                    collection.upsert(
+                        ids=ids, documents=documents, metadatas=metadatas
+                    )
+            else:
+                raise
 
-        # Prepare upsert arguments
-        upsert_args = {
-            "ids": ids,
-            "embeddings": embeddings,
-        }
+        # ChromaDB PersistentClient auto-persists, no manual persist needed
 
-        if documents:
-            upsert_args["documents"] = documents
-        if metadatas:
-            upsert_args["metadatas"] = metadatas
-
-        collection.upsert(**upsert_args)
-        logger.debug(f"Upserted {len(ids)} vectors to {collection_name}")
-
-    def query(
+    def query_collection(
         self,
         collection_name: str,
         query_embeddings: Optional[List[List[float]]] = None,
         query_texts: Optional[List[str]] = None,
         n_results: int = 10,
-        where: Optional[Dict] = None,
+        where: Optional[Dict[str, Any]] = None,
         include: Optional[List[str]] = None,
-    ) -> Dict:
+    ) -> Dict[str, Any]:
         """
-        Query a collection for similar vectors.
+        Query vectors from a collection.
 
         Args:
-            collection_name: Name of the collection to query
-            query_embeddings: Optional embedding vectors to search for
-            query_texts: Optional text queries (requires embedding function)
+            collection_name: Name of the collection
+            query_embeddings: Optional query embedding vectors
+            query_texts: Optional query texts (for auto-embedding)
             n_results: Number of results to return
             where: Optional filter conditions
             include: Fields to include in results
@@ -230,36 +245,63 @@ class ChromaDBClient:
         """
         collection = self.get_collection(collection_name)
 
-        query_args = {"n_results": n_results}
+        if include is None:
+            include = ["metadatas", "documents", "distances"]
 
-        if query_embeddings:
-            query_args["query_embeddings"] = query_embeddings
-        elif query_texts:
-            if self.mode == "read":
-                raise ValueError(
-                    "Text queries require write mode with embedding function"
-                )
-            query_args["query_texts"] = query_texts
+        if query_embeddings is not None:
+            return collection.query(
+                query_embeddings=query_embeddings,
+                n_results=n_results,
+                where=where,
+                include=include,
+            )
+        elif query_texts is not None:
+            return collection.query(
+                query_texts=query_texts,
+                n_results=n_results,
+                where=where,
+                include=include,
+            )
         else:
             raise ValueError(
                 "Either query_embeddings or query_texts must be provided"
             )
 
-        if where:
-            query_args["where"] = where
-        if include:
-            query_args["include"] = include
+    def delete(
+        self,
+        collection_name: str,
+        ids: Optional[List[str]] = None,
+        where: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """
+        Delete vectors from a collection.
 
-        return collection.query(**query_args)
+        Args:
+            collection_name: Name of the collection
+            ids: Optional list of IDs to delete
+            where: Optional filter for deletion
+        """
+        self._assert_writeable()
+        collection = self.get_collection(collection_name)
 
+        if ids is not None:
+            collection.delete(ids=ids)
+        elif where is not None:
+            collection.delete(where=where)
+        else:
+            raise ValueError("Either ids or where must be provided")
+
+        # ChromaDB PersistentClient auto-persists, no manual persist needed
+
+    # pylint: disable=too-many-arguments
     def get_by_ids(
         self,
         collection_name: str,
         ids: List[str],
         include: Optional[List[str]] = None,
-    ) -> Dict:
+    ) -> Dict[str, Any]:
         """
-        Get specific items by their IDs.
+        Get vectors by their IDs.
 
         Args:
             collection_name: Name of the collection
@@ -267,101 +309,142 @@ class ChromaDBClient:
             include: Fields to include in results
 
         Returns:
-            Dictionary with retrieved items
+            Results dictionary
         """
         collection = self.get_collection(collection_name)
 
-        include = include or ["metadatas", "documents", "embeddings"]
+        if include is None:
+            include = ["metadatas", "documents", "embeddings"]
 
         return collection.get(ids=ids, include=include)
 
-    def delete(
-        self,
-        collection_name: str,
-        ids: Optional[List[str]] = None,
-        where: Optional[Dict] = None,
-    ) -> None:
-        """
-        Delete items from a collection.
-
-        Args:
-            collection_name: Name of the collection
-            ids: Optional list of IDs to delete
-            where: Optional filter for items to delete
-        """
-        self._assert_writeable()
-
-        collection = self.get_collection(collection_name)
-
-        if ids:
-            collection.delete(ids=ids)
-            logger.debug(f"Deleted {len(ids)} items from {collection_name}")
-        elif where:
-            collection.delete(where=where)
-            logger.debug(
-                f"Deleted items matching filter from {collection_name}"
-            )
-        else:
-            raise ValueError("Either ids or where must be provided")
-
     def count(self, collection_name: str) -> int:
-        """Get the count of items in a collection."""
+        """Get the number of items in a collection."""
         collection = self.get_collection(collection_name)
         return collection.count()
 
+    def persist_and_upload_delta(
+        self,
+        bucket: str,
+        s3_prefix: str,
+        s3_client: Optional[Any] = None,
+    ) -> str:
+        """
+        Flush the local DB to disk, upload to S3, and return the key prefix.
 
-def get_word_client(
-    persist_directory: str, mode: str = "read"
-) -> ChromaDBClient:
-    """
-    Get a ChromaDB client for word embeddings.
+        This method is used by producer lambdas to create delta files that
+        will be processed by the compactor.
 
-    Args:
-        persist_directory: Path to the word embeddings database
-        mode: "read" or "write"
+        Args:
+            bucket: S3 bucket name
+            s3_prefix: S3 prefix for delta files
+            s3_client: Optional boto3 S3 client (creates one if not provided)
 
-    Returns:
-        ChromaDBClient instance configured for word embeddings
-    """
-    return ChromaDBClient(persist_directory=persist_directory, mode=mode)
+        Returns:
+            S3 prefix where the delta was uploaded
+
+        Raises:
+            RuntimeError: If not in delta mode or no files to upload
+        """
+        if self.mode != "delta":
+            raise RuntimeError(
+                "persist_and_upload_delta requires mode='delta'"
+            )
+
+        if not self.persist_directory:
+            raise RuntimeError("persist_directory required for delta uploads")
+
+        if s3_client is None:
+            s3_client = boto3.client("s3")
+
+        # Force ChromaDB to persist data to disk
+        # ChromaDB's PersistentClient should auto-persist, but we need to ensure
+        # the data is written before we try to upload
+        logger.info(f"Persisting ChromaDB data to {self.persist_directory}")
+        
+        # Try to explicitly persist if the method exists
+        if hasattr(self._client, 'persist'):
+            try:
+                self._client.persist()
+                logger.info("Explicitly called client.persist()")
+            except Exception as e:
+                logger.warning(f"Could not call persist(): {e}")
+        
+        # Check if any files exist in the persist directory
+        persist_path = Path(self.persist_directory)
+        files_to_upload = list(persist_path.rglob("*"))
+        files_to_upload = [f for f in files_to_upload if f.is_file()]
+        
+        if not files_to_upload:
+            logger.error(f"No files found in persist directory: {self.persist_directory}")
+            # List directory contents for debugging
+            try:
+                all_items = list(persist_path.rglob("*"))
+                logger.error(f"Directory contents: {all_items}")
+            except Exception as e:
+                logger.error(f"Could not list directory: {e}")
+            raise RuntimeError(f"No ChromaDB files found to upload in {self.persist_directory}")
+        
+        logger.info(f"Found {len(files_to_upload)} files to upload to S3")
+
+        # Create unique prefix for this delta
+        prefix = f"{s3_prefix.rstrip('/')}/{uuid.uuid4().hex}/"
+        logger.info(f"Uploading delta to S3 with prefix: {prefix}")
+
+        # Upload all files in the persist directory
+        uploaded_count = 0
+        for file_path in files_to_upload:
+            try:
+                relative_path = file_path.relative_to(persist_path)
+                s3_key = f"{prefix}{relative_path}"
+                logger.debug(f"Uploading {file_path} to s3://{bucket}/{s3_key}")
+                s3_client.upload_file(str(file_path), bucket, s3_key)
+                uploaded_count += 1
+            except Exception as e:
+                logger.error(f"Failed to upload {file_path} to S3: {e}")
+                raise RuntimeError(f"S3 upload failed for {file_path}: {e}")
+        
+        logger.info(f"Successfully uploaded {uploaded_count} files to S3 at {prefix}")
+        return prefix
+
+    def reset(self) -> None:
+        """Reset the client and clear all collections (useful for testing)."""
+        if self._client is not None:
+            self._client.reset()
+            self._collections.clear()
+            self._client = None
 
 
-def get_line_client(
-    persist_directory: str, mode: str = "read"
-) -> ChromaDBClient:
-    """
-    Get a ChromaDB client for line embeddings.
-
-    Args:
-        persist_directory: Path to the line embeddings database
-        mode: "read" or "write"
-
-    Returns:
-        ChromaDBClient instance configured for line embeddings
-    """
-    return ChromaDBClient(persist_directory=persist_directory, mode=mode)
+# Singleton instance for backward compatibility
+_chroma_client_instance: Optional[ChromaDBClient] = None
 
 
-# Backward compatibility
 def get_chroma_client(
-    persist_directory: Optional[str] = None,
-    collection_prefix: str = "",  # Ignored for backward compatibility
-    mode: str = "read",
-) -> ChromaDBClient:
+    persist_directory: Optional[str] = None, reset: bool = False
+) -> Optional[ChromaDBClient]:
     """
-    Get a ChromaDB client (backward compatibility function).
+    Get or create a singleton ChromaDB client instance.
 
     Args:
-        persist_directory: Directory for ChromaDB persistence
-        collection_prefix: DEPRECATED - no longer used
-        mode: "read" or "write"
+        persist_directory: Directory for persistence (uses env var if not
+            provided)
+        reset: Whether to reset the existing client
 
     Returns:
-        ChromaDBClient instance
+        ChromaDBClient instance or None if ChromaDB is not available
     """
-    if collection_prefix:
-        logger.warning(
-            "collection_prefix parameter is deprecated and will be ignored. "
-            "Collections are now accessed directly by name."
+    if not CHROMADB_AVAILABLE:
+        return None
+        
+    global _chroma_client_instance
+
+    if reset or _chroma_client_instance is None:
+        if persist_directory is None:
+            persist_directory = os.environ.get("CHROMA_PERSIST_PATH")
+
+        _chroma_client_instance = ChromaDBClient(
+            persist_directory=persist_directory,
+            mode="read",  # Default to read-only for backward compatibility
         )
-    return ChromaDBClient(persist_directory=persist_directory, mode=mode)
+
+    return _chroma_client_instance

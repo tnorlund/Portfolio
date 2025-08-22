@@ -27,8 +27,8 @@ class TestCostMonitor:
     def cost_monitor(self, mock_dynamo_client):
         """Create a CostMonitor instance."""
         return CostMonitor(
-            dynamo_client=mock_dynamo_client,
-            alert_cooldown_minutes=60)
+            dynamo_client=mock_dynamo_client, alert_cooldown_minutes=60
+        )
 
     @pytest.fixture
     def sample_usage_metric(self):
@@ -42,7 +42,8 @@ class TestCostMonitor:
             output_tokens=50,
             total_tokens=150,
             cost_usd=Decimal("0.50"),
-            user_id="test-user")
+            user_id="test-user",
+        )
 
     def test_check_budget_threshold_no_alert(
         self, cost_monitor, sample_usage_metric
@@ -56,7 +57,8 @@ class TestCostMonitor:
                 current_usage=sample_usage_metric,
                 budget_limit=Decimal("100.00"),
                 scope="user:test-user",
-                period="daily")
+                period="daily",
+            )
 
             assert alert is None
 
@@ -72,7 +74,8 @@ class TestCostMonitor:
                 current_usage=sample_usage_metric,
                 budget_limit=Decimal("100.00"),
                 scope="user:test-user",
-                period="daily")
+                period="daily",
+            )
 
             assert alert is not None
             assert alert.level == ThresholdLevel.WARNING
@@ -93,7 +96,8 @@ class TestCostMonitor:
                 current_usage=sample_usage_metric,
                 budget_limit=Decimal("100.00"),
                 scope="service:openai",
-                period="monthly")
+                period="monthly",
+            )
 
             assert alert is not None
             assert alert.level == ThresholdLevel.EXCEEDED
@@ -111,7 +115,8 @@ class TestCostMonitor:
                 current_usage=sample_usage_metric,
                 budget_limit=Decimal("100.00"),
                 scope="user:test-user",
-                period="daily")
+                period="daily",
+            )
             assert alert1 is not None
 
             # Second alert within cooldown should be suppressed
@@ -119,7 +124,8 @@ class TestCostMonitor:
                 current_usage=sample_usage_metric,
                 budget_limit=Decimal("100.00"),
                 scope="user:test-user",
-                period="daily")
+                period="daily",
+            )
             assert alert2 is None
 
     def test_get_cost_breakdown(self, cost_monitor, mock_dynamo_client):
@@ -136,8 +142,8 @@ class TestCostMonitor:
             cost_monitor, "_query_metrics", return_value=mock_metrics
         ):
             breakdown = cost_monitor.get_cost_breakdown(
-                scope="global:all",
-                period="daily")
+                scope="global:all", period="daily"
+            )
 
             assert breakdown["openai"] == Decimal("25.00")
             assert breakdown["anthropic"] == Decimal("20.00")
@@ -148,7 +154,8 @@ class TestCostMonitor:
         assert cost_monitor._parse_scope("user:123") == ("user", "123")
         assert cost_monitor._parse_scope("service:openai") == (
             "service",
-            "openai")
+            "openai",
+        )
         assert cost_monitor._parse_scope("global:all") == ("global", "all")
 
     def test_parse_scope_invalid(self, cost_monitor):
@@ -211,17 +218,16 @@ class TestCostMonitor:
         )
 
         metrics = cost_monitor._query_metrics(
-            "service",
-            "openai",
-            "2024-01-01",
-            "2024-01-31")
+            "service", "openai", "2024-01-01", "2024-01-31"
+        )
 
         assert metrics == expected_metrics
         AIUsageMetric.query_by_service_date.assert_called_once_with(
             mock_dynamo_client,
             service="openai",
             start_date="2024-01-01",
-            end_date="2024-01-31")
+            end_date="2024-01-31",
+        )
 
     def test_custom_thresholds(self, mock_dynamo_client):
         """Test custom alert thresholds."""
@@ -234,7 +240,8 @@ class TestCostMonitor:
 
         monitor = CostMonitor(
             dynamo_client=mock_dynamo_client,
-            alert_thresholds=custom_thresholds)
+            alert_thresholds=custom_thresholds,
+        )
 
         assert monitor.alert_thresholds == custom_thresholds
 
@@ -249,7 +256,8 @@ class TestCostMonitor:
             period="daily",
             timestamp=datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
             message="Test alert",
-            metadata={"test": "data"})
+            metadata={"test": "data"},
+        )
 
         alert_dict = alert.to_dict()
 
@@ -280,14 +288,16 @@ class TestCostMonitor:
                 input_tokens=100,
                 output_tokens=50,
                 total_tokens=150,
-                cost_usd=Decimal("0.50"))
+                cost_usd=Decimal("0.50"),
+            )
 
             # Test with zero budget - any spend should trigger exceeded
             alert = monitor.check_budget_threshold(
                 current_usage=usage,
                 budget_limit=Decimal("0"),
                 scope="user:test",
-                period="daily")
+                period="daily",
+            )
 
             assert alert is not None
             assert alert.level == ThresholdLevel.EXCEEDED
@@ -313,14 +323,16 @@ class TestCostMonitor:
                 input_tokens=0,
                 output_tokens=0,
                 total_tokens=0,
-                cost_usd=Decimal("0"))
+                cost_usd=Decimal("0"),
+            )
 
             # Test with zero budget and zero spend - should not trigger alert
             alert = monitor.check_budget_threshold(
                 current_usage=usage,
                 budget_limit=Decimal("0"),
                 scope="user:test",
-                period="daily")
+                period="daily",
+            )
 
             assert alert is None
 
@@ -336,7 +348,8 @@ class TestCostMonitor:
             timestamp=datetime.fromisoformat("2024-01-01T12:00:00+00:00"),
             job_id="test-job-123",
             cost_usd=1.50,
-            api_calls=1)
+            api_calls=1,
+        )
 
         # Insert the metric into the mocked DynamoDB
         mock_dynamo_client.put_ai_usage_metric(test_metric)
@@ -349,7 +362,8 @@ class TestCostMonitor:
             scope_type="job",
             scope_value="test-job-123",
             start_date="2024-01-01",
-            end_date="2024-01-01")
+            end_date="2024-01-01",
+        )
 
         assert len(metrics) == 1
         assert metrics[0].job_id == "test-job-123"
@@ -368,7 +382,8 @@ class TestCostMonitor:
             timestamp=datetime.fromisoformat("2024-01-01T12:00:00+00:00"),
             environment="production",
             cost_usd=2.25,
-            api_calls=1)
+            api_calls=1,
+        )
 
         # Insert the metric into the mocked DynamoDB
         mock_dynamo_client.put_ai_usage_metric(test_metric)
@@ -381,7 +396,8 @@ class TestCostMonitor:
             scope_type="environment",
             scope_value="production",
             start_date="2024-01-01",
-            end_date="2024-01-01")
+            end_date="2024-01-01",
+        )
 
         assert len(metrics) == 1
         assert metrics[0].environment == "production"
@@ -452,7 +468,8 @@ class TestCostMonitor:
                 model="test",
                 operation="test",
                 timestamp=datetime.now(timezone.utc),
-                cost_usd=None)
+                cost_usd=None,
+            )
             for _ in range(3)
         ]
 

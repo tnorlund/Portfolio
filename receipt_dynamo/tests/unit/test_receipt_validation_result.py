@@ -463,7 +463,10 @@ def test_to_item(example_validation_result):
     }
     assert item["GSI1PK"] == {"S": "ANALYSIS_TYPE"}
     assert item["GSI1SK"] == {
-        "S": ("VALIDATION#2023-05-15T10:30:00#CATEGORY#" "total_amount#RESULT")
+        "S": (
+            "VALIDATION#2023-05-15T10:30:00#CATEGORY#"
+            "total_amount#RESULT"
+        )
     }
     assert item["GSI3PK"] == {"S": "RESULT_TYPE#error"}
     assert item["GSI3SK"] == {

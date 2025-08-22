@@ -9,7 +9,8 @@ from receipt_dynamo.entities import ReceiptWord
 
 from receipt_label.pattern_detection import (
     ParallelPatternOrchestrator,
-    PatternType)
+    PatternType,
+)
 
 
 class TestParallelPatternOrchestrator:
@@ -75,7 +76,8 @@ class TestParallelPatternOrchestrator:
                 bottom_right={"x": i * 60 + 50, "y": data["y"] + 20},
                 angle_degrees=0.0,
                 angle_radians=0.0,
-                confidence=0.95)
+                confidence=0.95,
+            )
             words.append(word)
 
         return words
@@ -240,7 +242,8 @@ class TestParallelPatternOrchestrator:
                 bottom_right={"x": 50, "y": 20},
                 angle_degrees=0.0,
                 angle_radians=0.0,
-                confidence=0.95)
+                confidence=0.95,
+            )
         ]
 
         start_time = time.time()
@@ -285,7 +288,8 @@ class TestParallelPatternOrchestrator:
                 bottom_right={"x": 50, "y": 20},
                 angle_degrees=0.0,
                 angle_radians=0.0,
-                confidence=0.95)
+                confidence=0.95,
+            )
         ]
 
         results = await orchestrator.detect_all_patterns(words)

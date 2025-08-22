@@ -146,8 +146,9 @@ def item_to_label_metadata(item: Dict[str, Any]) -> LabelMetadata:
         description = item["description"]["S"]
         schema_version = int(item["schema_version"]["N"])
         last_updated = datetime.fromisoformat(item["last_updated"]["S"])
+        lt = item.get("label_target")
         label_target = (
-            item["label_target"]["S"] if item["label_target"]["S"] else None
+            lt.get("S") if isinstance(lt, dict) and "S" in lt else None
         )
         receipt_refs = (
             [

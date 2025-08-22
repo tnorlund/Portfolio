@@ -1623,7 +1623,7 @@ layers_to_build = [
 
 # Create Lambda layers using the fast approach
 # TEMPORARILY SKIP LAYER BUILDING
-SKIP_LAYER_BUILDING = False  # Set to False to enable layer building
+SKIP_LAYER_BUILDING = os.environ.get("PYTEST_RUNNING") == "1" or False  # Skip building during tests
 
 # SYNC MODE: Set to True when ARNs are needed immediately (e.g., after major changes)
 # Set to False for faster pulumi up once layers are stable

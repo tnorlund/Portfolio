@@ -160,7 +160,9 @@ class TestWordBasicOperations:
         # Assert
         assert retrieved == example_word
 
-    def test_get_word_not_found(self, dynamodb_client: DynamoClient) -> None:
+    def test_get_word_not_found(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
         """Test get word raises EntityNotFoundError when not found."""
         with pytest.raises(EntityNotFoundError, match="not found"):
             dynamodb_client.get_word(
@@ -236,7 +238,9 @@ class TestWordBasicOperations:
 class TestWordBatchOperations:
     """Test batch operations for words."""
 
-    def test_add_words_success(self, dynamodb_client: DynamoClient) -> None:
+    def test_add_words_success(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
         """Test successful batch addition of words."""
         # Arrange
         words = [
@@ -270,7 +274,9 @@ class TestWordBatchOperations:
             )
             assert retrieved == word
 
-    def test_update_words_success(self, dynamodb_client: DynamoClient) -> None:
+    def test_update_words_success(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
         """Test successful batch update of words."""
         # Arrange
         words = [
@@ -359,32 +365,26 @@ class TestWordAdvancedOperations:
     ) -> None:
         """Test that get_words validates key structure."""
         # Test missing PK
-        with pytest.raises(
-            ValueError, match="Keys must contain 'PK' and 'SK'"
-        ):
+        with pytest.raises(ValueError, match="Keys must contain 'PK' and 'SK'"):
             dynamodb_client.get_words([{"SK": {"S": "LINE#00002#WORD#00003"}}])
 
         # Test wrong PK prefix
         with pytest.raises(ValueError, match="PK must start with 'IMAGE#'"):
-            dynamodb_client.get_words(
-                [
-                    {
-                        "PK": {"S": "FOO#00001"},
-                        "SK": {"S": "LINE#00002#WORD#00003"},
-                    }
-                ]
-            )
+            dynamodb_client.get_words([
+                {
+                    "PK": {"S": "FOO#00001"},
+                    "SK": {"S": "LINE#00002#WORD#00003"},
+                }
+            ])
 
         # Test SK missing WORD
         with pytest.raises(ValueError, match="SK must contain 'WORD'"):
-            dynamodb_client.get_words(
-                [
-                    {
-                        "PK": {"S": "IMAGE#00001"},
-                        "SK": {"S": "LINE#00002#FOO#00003"},
-                    }
-                ]
-            )
+            dynamodb_client.get_words([
+                {
+                    "PK": {"S": "IMAGE#00001"},
+                    "SK": {"S": "LINE#00002#FOO#00003"},
+                }
+            ])
 
 
 # =============================================================================
@@ -396,13 +396,17 @@ class TestWordAdvancedOperations:
 class TestWordListOperations:
     """Test list and query operations for words."""
 
-    def test_list_words_empty(self, dynamodb_client: DynamoClient) -> None:
+    def test_list_words_empty(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
         """Test listing words when table is empty."""
         words, last_key = dynamodb_client.list_words()
         assert words == []
         assert last_key is None
 
-    def test_list_words_success(self, dynamodb_client: DynamoClient) -> None:
+    def test_list_words_success(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
         """Test listing all words."""
         # Arrange
         words = [
@@ -458,12 +462,7 @@ class TestWordListOperations:
             Word(**{**CORRECT_WORD_PARAMS, "word_id": 4, "text": "word2"}),
         ]
         line3_word = Word(
-            **{
-                **CORRECT_WORD_PARAMS,
-                "line_id": 3,
-                "word_id": 1,
-                "text": "word3",
-            }
+            **{**CORRECT_WORD_PARAMS, "line_id": 3, "word_id": 1, "text": "word3"}
         )
 
         dynamodb_client.add_words(line2_words + [line3_word])
@@ -703,9 +702,7 @@ class TestWordErrorHandling:
             ),
         )
 
-        with pytest.raises(
-            EntityNotFoundError, match="one or more words not found"
-        ):
+        with pytest.raises(EntityNotFoundError, match="one or more words not found"):
             dynamodb_client.update_words([example_word])
 
 
@@ -723,14 +720,7 @@ class TestWordSpecialCases:
     ) -> None:
         """Test handling words with special characters."""
         # Arrange
-        special_texts = [
-            "@word",
-            "#hashtag",
-            "$money",
-            "word!",
-            "word?",
-            "word&more",
-        ]
+        special_texts = ["@word", "#hashtag", "$money", "word!", "word?", "word&more"]
         words = []
 
         for i, text in enumerate(special_texts):
@@ -770,7 +760,9 @@ class TestWordSpecialCases:
             )
             assert retrieved.text == word.text
 
-    def test_word_boundary_values(self, dynamodb_client: DynamoClient) -> None:
+    def test_word_boundary_values(
+        self, dynamodb_client: DynamoClient
+    ) -> None:
         """Test words with boundary values for numeric fields."""
         # Test with very small confidence
         word_params = CORRECT_WORD_PARAMS.copy()
