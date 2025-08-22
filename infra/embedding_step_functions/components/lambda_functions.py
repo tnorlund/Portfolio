@@ -15,10 +15,21 @@ from pulumi_aws.lambda_ import (
     Function,
     FunctionEnvironmentArgs,
     FunctionEphemeralStorageArgs,
+    FunctionTracingConfigArgs,
 )
 from pulumi_aws.s3 import Bucket
 
 from .base import stack, openai_api_key, label_layer, dynamodb_table
+
+
+GIGABYTE = 1024
+MINUTE = 60
+
+
+# Helper to express memory/ephemeral storage in MiB (AWS expects MiB integers).
+# Example: GiB(0.5) == 512, GiB(2) == 2048
+def GiB(n: float | int) -> int:
+    return int(n * 1024)
 
 
 class LambdaFunctionsComponent(ComponentResource):
@@ -124,7 +135,8 @@ class LambdaFunctionsComponent(ComponentResource):
             policy=Output.all(
                 dynamodb_table.name,
                 self.chromadb_buckets.bucket_name,
-                self.chromadb_queues.delta_queue_arn,
+                self.chromadb_queues.lines_queue_arn,
+                self.chromadb_queues.words_queue_arn,
                 self.batch_bucket.bucket,
             ).apply(self._create_lambda_policy),
             opts=ResourceOptions(parent=self),
@@ -164,8 +176,8 @@ class LambdaFunctionsComponent(ComponentResource):
                         "Resource": [
                             f"arn:aws:s3:::{args[1]}",
                             f"arn:aws:s3:::{args[1]}/*",
-                            f"arn:aws:s3:::{args[3]}",
-                            f"arn:aws:s3:::{args[3]}/*",
+                            f"arn:aws:s3:::{args[4]}",
+                            f"arn:aws:s3:::{args[4]}/*",
                         ],
                     },
                     {
@@ -174,7 +186,27 @@ class LambdaFunctionsComponent(ComponentResource):
                             "sqs:SendMessage",
                             "sqs:GetQueueAttributes",
                         ],
-                        "Resource": args[2],
+                        "Resource": [args[2], args[3]],
+                    },
+                    {
+                        "Effect": "Allow",
+                        "Action": [
+                            "xray:PutTraceSegments",
+                            "xray:PutTelemetryRecords",
+                            "xray:GetSamplingRules",
+                            "xray:GetSamplingTargets",
+                        ],
+                        "Resource": "*",
+                    },
+                    {
+                        "Effect": "Allow",
+                        "Action": [
+                            "cloudwatch:PutMetricData",
+                            "logs:CreateLogGroup",
+                            "logs:CreateLogStream",
+                            "logs:PutLogEvents",
+                        ],
+                        "Resource": "*",
                     },
                 ],
             }
@@ -188,43 +220,39 @@ class LambdaFunctionsComponent(ComponentResource):
         zip_configs = {
             "embedding-list-pending": {
                 "handler": "handler.lambda_handler",
-                "memory": 512,
-                "timeout": 900,
+                "memory": GIGABYTE * 0.5,
+                "timeout": MINUTE * 15,
                 "source_dir": "list_pending",
             },
             "embedding-line-find": {
                 "handler": "handler.lambda_handler",
-                "memory": 1024,
-                "timeout": 900,
+                "memory": GIGABYTE * 1,
+                "timeout": MINUTE * 15,
                 "source_dir": "find_unembedded",
             },
             "embedding-word-find": {
                 "handler": "handler.lambda_handler",
-                "memory": 1024,
-                "timeout": 900,
+                "memory": GIGABYTE * 1,
+                "timeout": MINUTE * 15,
                 "source_dir": "find_unembedded_words",
             },
             "embedding-line-submit": {
                 "handler": "handler.lambda_handler",
-                "memory": 1024,
-                "timeout": 900,
+                "memory": GIGABYTE * 1,
+                "timeout": MINUTE * 15,
                 "source_dir": "submit_openai",
             },
             "embedding-word-submit": {
                 "handler": "handler.lambda_handler",
-                "memory": 1024,
-                "timeout": 900,
+                "memory": GIGABYTE * 1,
+                "timeout": MINUTE * 15,
                 "source_dir": "submit_words_openai",
             },
             "embedding-split-chunks": {
                 "handler": "handler.lambda_handler",
-                "memory": 512,
-                "timeout": 60,
+                "memory": GIGABYTE * 0.5,
+                "timeout": MINUTE * 15,
                 "source_dir": "split_into_chunks",
-                "env_vars": {
-                    "CHUNK_SIZE_WORDS": "5",  # Smaller chunks for word embeddings
-                    "CHUNK_SIZE_LINES": "10",  # Standard chunks for line embeddings
-                },
             },
         }
 
@@ -248,10 +276,6 @@ class LambdaFunctionsComponent(ComponentResource):
             "OPENAI_API_KEY": openai_api_key,
             "S3_BUCKET": self.batch_bucket.bucket,
         }
-
-        # Add any custom environment variables from config
-        if "env_vars" in config:
-            env_vars.update(config["env_vars"])
 
         # Create the Lambda function
         layers = []
@@ -278,23 +302,24 @@ class LambdaFunctionsComponent(ComponentResource):
         self.container_lambda_functions = {}
 
         # Define container-based Lambda configurations
+        # Optimized based on actual usage patterns from observability data
         container_configs = {
             "embedding-line-poll": {
-                "memory": 3008,
-                "timeout": 900,
-                "ephemeral_storage": 10240,  # Increased to max for large batches
+                "memory": GiB(1.5),  # Reduced from 3GB, usage was 668-818MB (22-27%)
+                "timeout": MINUTE * 15,
+                "ephemeral_storage": GiB(4),  # Increased back - ChromaDB needs disk space for snapshots/SQLite
                 "handler_type": "line_polling",
             },
             "embedding-word-poll": {
-                "memory": 3008,
-                "timeout": 900,
-                "ephemeral_storage": 10240,  # Increased to max for large batches
+                "memory": GiB(1),  # Reduced from 3GB, usage was 322-360MB (11-12%)
+                "timeout": MINUTE * 15,
+                "ephemeral_storage": GiB(4),  # Increased back - ChromaDB operations require disk space
                 "handler_type": "word_polling",
             },
             "embedding-vector-compact": {
-                "memory": 10240,  # Increased to maximum for large word batches
-                "timeout": 900,
-                "ephemeral_storage": 10240,
+                "memory": GiB(2),  # Reduced from 8GB, peak usage was 1402MB (17%)
+                "timeout": MINUTE * 15,
+                "ephemeral_storage": GiB(6),  # Increased - compaction downloads/uploads large snapshots
                 "handler_type": "compaction",
             },
         }
@@ -311,24 +336,25 @@ class LambdaFunctionsComponent(ComponentResource):
             "HANDLER_TYPE": config["handler_type"],
             "DYNAMODB_TABLE_NAME": dynamodb_table.name,
             "CHROMADB_BUCKET": self.chromadb_buckets.bucket_name,
-            "COMPACTION_QUEUE_URL": self.chromadb_queues.delta_queue_url,
+            "COMPACTION_QUEUE_URL": self.chromadb_queues.lines_queue_url,
             "OPENAI_API_KEY": openai_api_key,
             "S3_BUCKET": self.batch_bucket.bucket,
             "CHROMA_PERSIST_DIRECTORY": "/tmp/chroma",
+            # Observability configuration
+            "ENABLE_XRAY": "true",
+            "ENABLE_METRICS": "true",
+            "LOG_LEVEL": "INFO"
         }
 
         # Add handler-specific environment variables
         if config["handler_type"] == "compaction":
             env_vars.update(
                 {
+                    "CHUNK_SIZE": "10",
                     "HEARTBEAT_INTERVAL_SECONDS": "60",
                     "LOCK_DURATION_MINUTES": "5",
                     "DELETE_PROCESSED_DELTAS": "false",
                     "DELETE_INTERMEDIATE_CHUNKS": "true",
-                    # Memory optimization settings
-                    "USE_SEQUENTIAL_PROCESSING": "true",  # Enable sequential by default
-                    "EMBEDDING_BATCH_SIZE": "100",
-                    "GC_INTERVAL": "3",
                 }
             )
 
@@ -351,6 +377,8 @@ class LambdaFunctionsComponent(ComponentResource):
                 if config.get("ephemeral_storage", 512) > 512
                 else None
             ),
+            # Enable X-Ray tracing for observability
+            tracing_config=FunctionTracingConfigArgs(mode="Active"),
             tags={"environment": stack},
             opts=ResourceOptions(
                 parent=self,
