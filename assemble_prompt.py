@@ -11,8 +11,6 @@ from receipt_dynamo.constants import ValidationStatus
 
 from receipt_label.utils.chroma_client import (
     ChromaDBClient,
-    get_word_client,
-    get_line_client,
 )
 
 LOCAL_CHROMA_WORD_PATH = Path(__file__).parent / "dev.word_chroma"
@@ -125,11 +123,12 @@ for chroma_path in [LOCAL_CHROMA_WORD_PATH, LOCAL_CHROMA_LINE_PATH]:
             s3_client.download_file(chroma_s3_bucket, key, str(local_path))
 
 # Use the refactored client without collection_prefix
+# metadata_only=True uses default embedding function (no OpenAI API calls)
 chroma_line_client = ChromaDBClient(
-    persist_directory=str(LOCAL_CHROMA_LINE_PATH), mode="read"
+    persist_directory=str(LOCAL_CHROMA_LINE_PATH), mode="read", metadata_only=True
 )
 chroma_word_client = ChromaDBClient(
-    persist_directory=str(LOCAL_CHROMA_WORD_PATH), mode="read"
+    persist_directory=str(LOCAL_CHROMA_WORD_PATH), mode="read", metadata_only=True
 )
 dynamo_client = DynamoClient(load_env().get("dynamodb_table_name"))
 
@@ -163,7 +162,7 @@ for i, label_that_needs_validation in enumerate(
 
     # Get the word's embedding from ChromaDB
     response = chroma_word_client.get_by_ids(
-        collection_name="receipt_words",
+        collection_name="words",
         ids=[_word_to_chroma_id(word_that_needs_validation)],
         include=["embeddings", "documents", "metadatas"],
     )
@@ -184,8 +183,8 @@ for i, label_that_needs_validation in enumerate(
     current_word_id = _word_to_chroma_id(word_that_needs_validation)
 
     # Query for similar words
-    similar_results = chroma_word_client.query(
-        collection_name="receipt_words",
+    similar_results = chroma_word_client.query_collection(
+        collection_name="words",
         query_embeddings=[word_embedding],
         n_results=20,  # Get more results to find examples with our label
         include=["documents", "metadatas", "distances"],
