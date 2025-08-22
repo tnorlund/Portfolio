@@ -55,7 +55,9 @@ class ReceiptValidationCategory(SerializationMixin):
         if not isinstance(self.result_summary, dict):
             raise ValueError("result_summary must be a dictionary")
 
-        if self.validation_timestamp is not None and not isinstance(self.validation_timestamp, str):
+        if self.validation_timestamp is not None and not isinstance(
+            self.validation_timestamp, str
+        ):
             raise ValueError("validation_timestamp must be a string")
         if self.validation_timestamp is None:
             self.validation_timestamp = datetime.now().isoformat()
@@ -157,7 +159,6 @@ class ReceiptValidationCategory(SerializationMixin):
             validation_timestamp=validation_timestamp,
             metadata=metadata,
         )
-
 
     def __repr__(self) -> str:
         return (

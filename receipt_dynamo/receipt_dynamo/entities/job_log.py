@@ -140,7 +140,6 @@ class JobLog:
         yield "source", self.source
         yield "exception", self.exception
 
-
     def __hash__(self) -> int:
         """Returns the hash value of the JobLog object.
 

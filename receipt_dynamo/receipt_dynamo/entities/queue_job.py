@@ -135,7 +135,6 @@ class QueueJob:
         yield "priority", self.priority
         yield "position", self.position
 
-
     def __hash__(self) -> int:
         """Returns the hash value of the QueueJob object.
 
