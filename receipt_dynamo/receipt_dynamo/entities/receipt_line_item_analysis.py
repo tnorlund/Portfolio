@@ -544,7 +544,6 @@ class ReceiptLineItemAnalysis:
         yield "metadata", self.metadata
         yield "word_labels", self.word_labels
 
-
     def __hash__(self) -> int:
         """Returns the hash value of the ReceiptLineItemAnalysis object.
 

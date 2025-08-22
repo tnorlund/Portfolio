@@ -26,7 +26,7 @@ class LabelMetadata:
         if isinstance(self.last_updated, datetime):
             # Keep as datetime - no conversion needed for this field
             pass
-        
+
         assert_type("label", self.label, str, ValueError)
 
         self.status = normalize_enum(self.status, LabelStatus)
@@ -147,7 +147,9 @@ def item_to_label_metadata(item: Dict[str, Any]) -> LabelMetadata:
         schema_version = int(item["schema_version"]["N"])
         last_updated = datetime.fromisoformat(item["last_updated"]["S"])
         lt = item.get("label_target")
-        label_target = lt.get("S") if isinstance(lt, dict) and "S" in lt else None
+        label_target = (
+            lt.get("S") if isinstance(lt, dict) and "S" in lt else None
+        )
         receipt_refs = (
             [
                 (r["M"]["image_id"]["S"], int(r["M"]["receipt_id"]["N"]))
