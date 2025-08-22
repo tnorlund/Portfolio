@@ -18,7 +18,7 @@ from .handlers import list_pending
 from .handlers import split_into_chunks
 from .handlers import find_unembedded_words
 from .handlers import submit_words_openai
-from . import utils.response as response_utils
+from .utils import response as response_utils
 
 # Set up logging
 logger = logging.getLogger(__name__)
