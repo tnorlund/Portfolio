@@ -47,7 +47,10 @@ class JobDependency:
             raise ValueError("A job cannot depend on itself")
 
         valid_types = ["COMPLETION", "SUCCESS", "FAILURE", "ARTIFACT"]
-        if not isinstance(self.type, str) or self.type.upper() not in valid_types:
+        if (
+            not isinstance(self.type, str)
+            or self.type.upper() not in valid_types
+        ):
             raise ValueError(f"type must be one of {valid_types}")
         self.type = self.type.upper()
 
@@ -157,7 +160,6 @@ class JobDependency:
         yield "type", self.type
         yield "created_at", self.created_at
         yield "condition", self.condition
-
 
     def __hash__(self) -> int:
         """Returns the hash value of the JobDependency object.
