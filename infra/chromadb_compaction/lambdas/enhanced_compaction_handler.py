@@ -237,7 +237,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                    correlation_id=correlation_id)
     else:
         logger.info("Enhanced compaction handler started")
-        logger.info("Event structure present", event_size=len(json.dumps(event, default=str)))
+        logger.info("Event structure present with size: %s", len(json.dumps(event, default=str)))
         
     start_time = time.time()
     function_name = context.function_name if context and hasattr(context, 'function_name') else "enhanced_compaction_handler"
