@@ -56,9 +56,7 @@ class TestCostMonitoringIntegration:
         )
 
     async def test_cost_aware_tracker_integration(
-        self,
-        mock_dynamo_client,
-        sample_metric,
+        self, mock_dynamo_client, sample_metric
     ):
         """Test CostAwareAIUsageTracker with all components."""
         # Create components
@@ -135,7 +133,6 @@ class TestCostMonitoringIntegration:
             slack_webhook_url="https://hooks.slack.com/test",
             table_name="test-table",
             user_id="test-user",
-            validate_table_environment=False,  # Disable validation for test table
         )
 
         assert isinstance(tracker, CostAwareAIUsageTracker)
@@ -279,9 +276,7 @@ class TestCostMonitoringIntegration:
 
             # Detect anomalies
             anomalies = analytics.detect_anomalies(
-                scope="global:all",
-                sensitivity=2.0,
-                lookback_days=30,
+                scope="global:all", sensitivity=2.0, lookback_days=30
             )
 
             assert len(anomalies) >= 2  # Should detect at least 2 anomalies
@@ -322,8 +317,7 @@ class TestCostMonitoringIntegration:
             analytics, "_get_detailed_metrics", return_value=mock_metrics
         ):
             recommendations = analytics.generate_optimization_recommendations(
-                scope="global:all",
-                lookback_days=30,
+                scope="global:all", lookback_days=30
             )
 
             assert len(recommendations) > 0

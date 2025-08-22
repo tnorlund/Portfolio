@@ -251,7 +251,7 @@ class TestPlacesWrapper:
         # Run in threads
         threads = []
         for i in range(3):
-            t = threading.Thread(target=thread_func, args=(f"job-{i}",))
+            t = threading.Thread(target=thread_func, args=(f"job-{i}"))
             threads.append(t)
             t.start()
 

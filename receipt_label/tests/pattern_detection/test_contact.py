@@ -3,10 +3,7 @@
 import pytest
 from receipt_dynamo.entities import ReceiptWord
 
-from receipt_label.pattern_detection import (
-    ContactPatternDetector,
-    PatternType,
-)
+from receipt_label.pattern_detection import ContactPatternDetector, PatternType
 
 
 class TestContactPatternDetector:

@@ -107,7 +107,6 @@ class TestWrappedChatCompletions:
             table_name="test-table",
             track_to_dynamo=True,
             user_id="test-user",
-            validate_table_environment=False,  # Disable validation for test table
         )
 
         # Create wrapped client
@@ -176,7 +175,6 @@ class TestWrappedChatCompletions:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
-            validate_table_environment=False,  # Disable validation for test table
         )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
@@ -231,7 +229,6 @@ class TestWrappedChatCompletions:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
-            validate_table_environment=False,  # Disable validation for test table
         )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
@@ -290,7 +287,6 @@ class TestWrappedChatCompletions:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
-            validate_table_environment=False,  # Disable validation for test table
         )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
@@ -300,8 +296,7 @@ class TestWrappedChatCompletions:
         # Call should raise exception
         with pytest.raises(Exception, match="API rate limit exceeded"):
             wrapped_client.chat.completions.create(
-                model="gpt-4",
-                messages=[{"role": "user", "content": "Hello"}],
+                model="gpt-4", messages=[{"role": "user", "content": "Hello"}]
             )
 
         # Error should be tracked
@@ -339,7 +334,6 @@ class TestWrappedEmbeddings:
             table_name="test-table",
             track_to_dynamo=True,
             user_id="embed-user",
-            validate_table_environment=False,  # Disable validation for test table
         )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
@@ -394,7 +388,6 @@ class TestWrappedEmbeddings:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
-            validate_table_environment=False,  # Disable validation for test table
         )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
@@ -438,7 +431,6 @@ class TestWrappedEmbeddings:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
-            validate_table_environment=False,  # Disable validation for test table
         )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
@@ -447,8 +439,7 @@ class TestWrappedEmbeddings:
 
         # Single string input (not a list)
         response = wrapped_client.embeddings.create(
-            model="text-embedding-ada-002",
-            input="Single text input",
+            model="text-embedding-ada-002", input="Single text input"
         )
 
         # Verify metadata handles single input
@@ -472,7 +463,6 @@ class TestWrappedEmbeddings:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
-            validate_table_environment=False,  # Disable validation for test table
         )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
@@ -481,8 +471,7 @@ class TestWrappedEmbeddings:
 
         with pytest.raises(ValueError, match="Invalid model"):
             wrapped_client.embeddings.create(
-                model="invalid-model",
-                input=["test"],
+                model="invalid-model", input=["test"]
             )
 
         # Error should be tracked
@@ -512,7 +501,6 @@ class TestWrapperWithContext:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
-            validate_table_environment=False,  # Disable validation for test table
         )
 
         # Set context before wrapping
@@ -552,7 +540,6 @@ class TestWrapperWithContext:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
-            validate_table_environment=False,  # Disable validation for test table
         )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
@@ -668,10 +655,7 @@ class TestWrapperEdgeCases:
     def test_multiple_wrapped_clients(self):
         """Test multiple wrapped clients with same tracker."""
         tracker = AIUsageTracker(
-            dynamo_client=Mock(),
-            table_name="test-table",
-            track_to_dynamo=True,
-            validate_table_environment=False,  # Disable validation for test table
+            dynamo_client=Mock(), table_name="test-table", track_to_dynamo=True
         )
 
         # Create multiple clients
@@ -726,10 +710,7 @@ class TestWrapperPerformance:
         mock_completions.create = fast_create
 
         # Tracker without any backends (minimal overhead)
-        tracker = AIUsageTracker(
-            track_to_dynamo=False,
-            track_to_file=False,
-        )
+        tracker = AIUsageTracker(track_to_dynamo=False, track_to_file=False)
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
             mock_client, tracker
@@ -764,9 +745,7 @@ class TestWrapperPerformance:
         # Large response
         large_content = "x" * 10000
         mock_response = create_mock_openai_response(
-            prompt_tokens=5000,
-            completion_tokens=5000,
-            content=large_content,
+            prompt_tokens=5000, completion_tokens=5000, content=large_content
         )
         mock_completions.create.return_value = mock_response
 
@@ -775,7 +754,6 @@ class TestWrapperPerformance:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
-            validate_table_environment=False,  # Disable validation for test table
         )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(

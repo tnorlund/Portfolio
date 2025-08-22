@@ -62,16 +62,28 @@ def validate_currency(
 
     chroma_id = chroma_id_from_label(label)
     # Get vector from ChromaDB
-    results = chroma_client.get_by_ids("words", [chroma_id], include=["embeddings", "metadatas"])
-    
+    results = chroma_client.get_by_ids(
+        "words", [chroma_id], include=["embeddings", "metadatas"]
+    )
+
     # Extract vector data
     vector_data = None
-    if results and 'ids' in results and len(results['ids']) > 0:
-        idx = results['ids'].index(chroma_id) if chroma_id in results['ids'] else -1
+    if results and "ids" in results and len(results["ids"]) > 0:
+        idx = (
+            results["ids"].index(chroma_id)
+            if chroma_id in results["ids"]
+            else -1
+        )
         if idx >= 0:
             vector_data = {
-                'values': results['embeddings'][idx] if 'embeddings' in results else None,
-                'metadata': results['metadatas'][idx] if 'metadatas' in results else {}
+                "values": (
+                    results["embeddings"][idx]
+                    if "embeddings" in results
+                    else None
+                ),
+                "metadata": (
+                    results["metadatas"][idx] if "metadatas" in results else {}
+                ),
             }
 
     if vector_data is None:
@@ -88,26 +100,38 @@ def validate_currency(
             pinecone_id=chroma_id,
         )
 
-    vector = vector_data['values']
-    
+    vector = vector_data["values"]
+
     # Query ChromaDB for similar vectors
     query_results = chroma_client.query_collection(
         collection_name="words",
         query_embeddings=[vector],
         n_results=10,
         where={"valid_labels": {"$in": [label.label]}},
-        include=["metadatas", "distances"]
+        include=["metadatas", "distances"],
     )
 
     # Convert results to match objects
     matches = []
-    if query_results and 'ids' in query_results and len(query_results['ids']) > 0:
-        for i, id_ in enumerate(query_results['ids'][0]):
-            match = type('Match', (), {
-                'id': id_,
-                'score': 1.0 - query_results['distances'][0][i],
-                'metadata': query_results['metadatas'][0][i] if 'metadatas' in query_results else {}
-            })
+    if (
+        query_results
+        and "ids" in query_results
+        and len(query_results["ids"]) > 0
+    ):
+        for i, id_ in enumerate(query_results["ids"][0]):
+            match = type(
+                "Match",
+                (),
+                {
+                    "id": id_,
+                    "score": 1.0 - query_results["distances"][0][i],
+                    "metadata": (
+                        query_results["metadatas"][0][i]
+                        if "metadatas" in query_results
+                        else {}
+                    ),
+                },
+            )
             matches.append(match)
     avg_similarity = (
         sum(match.score for match in matches) / len(matches)
@@ -115,7 +139,7 @@ def validate_currency(
         else 0.0
     )
     variants = _merged_currency_candidates_from_text(
-        word, vector_data.metadata
+        word, vector_data.get("metadata", {})
     )
     looks_like_currency = any(_is_currency(v) for v in variants)
 
@@ -131,5 +155,5 @@ def validate_currency(
         is_consistent=is_consistent,
         avg_similarity=avg_similarity,
         neighbors=[match.id for match in matches],
-        pinecone_id=pinecone_id,
+        pinecone_id=chroma_id,
     )

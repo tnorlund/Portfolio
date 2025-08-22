@@ -32,8 +32,7 @@ class TestContextIntegration:
                     finish_reason="stop",
                     index=0,
                     message=ChatCompletionMessage(
-                        content="Test response",
-                        role="assistant",
+                        content="Test response", role="assistant"
                     ),
                 )
             ],
@@ -41,9 +40,7 @@ class TestContextIntegration:
             model="gpt-3.5-turbo",
             object="chat.completion",
             usage=CompletionUsage(
-                prompt_tokens=50,
-                completion_tokens=25,
-                total_tokens=75,
+                prompt_tokens=50, completion_tokens=25, total_tokens=75
             ),
         )
 

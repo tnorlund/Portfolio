@@ -17,28 +17,23 @@ def create_test_receipt_word(
     y2: float = 120,
     confidence: float = 0.95,
     is_noise: bool = False,
-    embedding_status: str = "NONE"
+    embedding_status: str = "NONE",
 ) -> ReceiptWord:
     """Create a ReceiptWord with simplified parameters for testing.
-    
+
     This helper abstracts away the complex bounding box structure required
     by the actual ReceiptWord entity.
     """
     if image_id is None:
         image_id = str(uuid.uuid4())
-    
-    bounding_box = {
-        "x": x1,
-        "y": y1,
-        "width": x2 - x1,
-        "height": y2 - y1
-    }
-    
+
+    bounding_box = {"x": x1, "y": y1, "width": x2 - x1, "height": y2 - y1}
+
     top_left = {"x": x1, "y": y1}
     top_right = {"x": x2, "y": y1}
     bottom_left = {"x": x1, "y": y2}
     bottom_right = {"x": x2, "y": y2}
-    
+
     return ReceiptWord(
         receipt_id=receipt_id,
         image_id=image_id,
@@ -54,5 +49,5 @@ def create_test_receipt_word(
         angle_radians=0.0,
         confidence=confidence,
         embedding_status=embedding_status,
-        is_noise=is_noise
+        is_noise=is_noise,
     )

@@ -119,8 +119,7 @@ class TestAIUsagePerformanceIntegration:
                         finish_reason="stop",
                         index=0,
                         message=ChatCompletionMessage(
-                            content=f"Response {i}",
-                            role="assistant",
+                            content=f"Response {i}", role="assistant"
                         ),
                     )
                 ],
@@ -128,9 +127,7 @@ class TestAIUsagePerformanceIntegration:
                 model="gpt-3.5-turbo",
                 object="chat.completion",
                 usage=CompletionUsage(
-                    prompt_tokens=10,
-                    completion_tokens=5,
-                    total_tokens=15,
+                    prompt_tokens=10, completion_tokens=5, total_tokens=15
                 ),
             )
 
@@ -230,8 +227,7 @@ class TestAIUsagePerformanceIntegration:
                         finish_reason="stop",
                         index=0,
                         message=ChatCompletionMessage(
-                            content=f"Response {count}",
-                            role="assistant",
+                            content=f"Response {count}", role="assistant"
                         ),
                     )
                 ],
@@ -239,9 +235,7 @@ class TestAIUsagePerformanceIntegration:
                 model="gpt-3.5-turbo",
                 object="chat.completion",
                 usage=CompletionUsage(
-                    prompt_tokens=50,
-                    completion_tokens=25,
-                    total_tokens=75,
+                    prompt_tokens=50, completion_tokens=25, total_tokens=75
                 ),
             )
 
@@ -378,8 +372,7 @@ class TestAIUsagePerformanceIntegration:
                     finish_reason="stop",
                     index=0,
                     message=ChatCompletionMessage(
-                        content="Response",
-                        role="assistant",
+                        content="Response", role="assistant"
                     ),
                 )
             ],
@@ -387,9 +380,7 @@ class TestAIUsagePerformanceIntegration:
             model="gpt-3.5-turbo",
             object="chat.completion",
             usage=CompletionUsage(
-                prompt_tokens=100,
-                completion_tokens=50,
-                total_tokens=150,
+                prompt_tokens=100, completion_tokens=50, total_tokens=150
             ),
         )
 
@@ -497,8 +488,7 @@ class TestAIUsagePerformanceIntegration:
                         finish_reason="stop",
                         index=0,
                         message=ChatCompletionMessage(
-                            content="Burst response",
-                            role="assistant",
+                            content="Burst response", role="assistant"
                         ),
                     )
                 ],
@@ -506,9 +496,7 @@ class TestAIUsagePerformanceIntegration:
                 model="gpt-3.5-turbo",
                 object="chat.completion",
                 usage=CompletionUsage(
-                    prompt_tokens=100,
-                    completion_tokens=50,
-                    total_tokens=150,
+                    prompt_tokens=100, completion_tokens=50, total_tokens=150
                 ),
             )
 

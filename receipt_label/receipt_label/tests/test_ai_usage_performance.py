@@ -56,10 +56,7 @@ class TestPerformanceBaseline:
 
     def test_decorator_overhead_minimal(self):
         """Test that decorator overhead is minimal for successful calls."""
-        tracker = AIUsageTracker(
-            track_to_dynamo=False,
-            track_to_file=False,
-        )
+        tracker = AIUsageTracker(track_to_dynamo=False, track_to_file=False)
 
         # Undecorated function
         def baseline_function():
@@ -100,14 +97,12 @@ class TestPerformanceBaseline:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
-            validate_table_environment=False,  # Disable validation for test table
         )
 
         @tracker.track_openai_completion
         def fast_call():
             return create_mock_openai_response(
-                prompt_tokens=100,
-                completion_tokens=50,
+                prompt_tokens=100, completion_tokens=50
             )
 
         # Time multiple metric creations
@@ -129,10 +124,7 @@ class TestPerformanceBaseline:
             temp_file = f.name
 
         try:
-            tracker = AIUsageTracker(
-                track_to_file=True,
-                log_file=temp_file,
-            )
+            tracker = AIUsageTracker(track_to_file=True, log_file=temp_file)
 
             @tracker.track_openai_completion
             def logged_call():
@@ -163,7 +155,6 @@ class TestPerformanceBaseline:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
-            validate_table_environment=False,  # Disable validation for test table
         )
 
         # Complex metadata
@@ -198,7 +189,6 @@ class TestHighVolumeTracking:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
-            validate_table_environment=False,  # Disable validation for test table
         )
 
         @tracker.track_openai_completion
@@ -227,7 +217,6 @@ class TestHighVolumeTracking:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
-            validate_table_environment=False,  # Disable validation for test table
         )
 
         @tracker.track_openai_completion
@@ -255,7 +244,6 @@ class TestHighVolumeTracking:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
-            validate_table_environment=False,  # Disable validation for test table
         )
 
         tracker.set_tracking_context(batch_id="large-batch-001")
@@ -266,8 +254,7 @@ class TestHighVolumeTracking:
         @tracker.track_openai_completion
         def batch_item(tokens):
             return create_mock_openai_response(
-                prompt_tokens=tokens,
-                completion_tokens=tokens // 2,
+                prompt_tokens=tokens, completion_tokens=tokens // 2
             )
 
         start = time.time()
@@ -294,14 +281,12 @@ class TestConcurrentPerformance:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
-            validate_table_environment=False,  # Disable validation for test table
         )
 
         @tracker.track_openai_completion
         def concurrent_call(thread_id, call_id):
             return create_mock_openai_response(
-                prompt_tokens=100 + call_id,
-                completion_tokens=50 + call_id,
+                prompt_tokens=100 + call_id, completion_tokens=50 + call_id
             )
 
         # Use thread pool for concurrent execution
@@ -345,8 +330,7 @@ class TestConcurrentPerformance:
             nonlocal call_counter
             call_counter += 1
             return create_mock_openai_response(
-                prompt_tokens=100,
-                completion_tokens=50,
+                prompt_tokens=100, completion_tokens=50
             )
 
         mock_completions.create = thread_safe_create
@@ -356,7 +340,6 @@ class TestConcurrentPerformance:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
-            validate_table_environment=False,  # Disable validation for test table
         )
 
         wrapped_client = AIUsageTracker.create_wrapped_openai_client(
@@ -396,7 +379,6 @@ class TestConcurrentPerformance:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
-            validate_table_environment=False,  # Disable validation for test table
         )
 
         @tracker.track_openai_completion
@@ -459,14 +441,12 @@ class TestMemoryEfficiency:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
-            validate_table_environment=False,  # Disable validation for test table
         )
 
         @tracker.track_openai_completion
         def memory_test_call():
             return create_mock_openai_response(
-                prompt_tokens=1000,
-                completion_tokens=500,
+                prompt_tokens=1000, completion_tokens=500
             )
 
         # Run many operations
@@ -493,7 +473,6 @@ class TestMemoryEfficiency:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
-            validate_table_environment=False,  # Disable validation for test table
         )
 
         @tracker.track_openai_completion
@@ -525,10 +504,7 @@ class TestMemoryEfficiency:
             temp_file = f.name
 
         try:
-            tracker = AIUsageTracker(
-                track_to_file=True,
-                log_file=temp_file,
-            )
+            tracker = AIUsageTracker(track_to_file=True, log_file=temp_file)
 
             @tracker.track_openai_completion
             def logged_call():
@@ -571,7 +547,6 @@ class TestScalabilityLimits:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
-            validate_table_environment=False,  # Disable validation for test table
         )
 
         @tracker.track_openai_completion
@@ -597,7 +572,6 @@ class TestScalabilityLimits:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
-            validate_table_environment=False,  # Disable validation for test table
         )
 
         @tracker.track_openai_completion
@@ -641,7 +615,6 @@ class TestScalabilityLimits:
             dynamo_client=mock_dynamo,
             table_name="test-table",
             track_to_dynamo=True,
-            validate_table_environment=False,  # Disable validation for test table
         )
 
         @tracker.track_openai_completion

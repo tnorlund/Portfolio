@@ -337,29 +337,33 @@ class SimpleLambdaLayer(ComponentResource):
         """Create a script file and return just the execution command."""
         import tempfile
         import os
-        
+
         try:
             # Generate the script content with embedded variables to avoid argument issues
             script_content = self._generate_orchestration_script(
                 bucket, project_name, layer_name, package_path, package_hash
             )
-            
+
             # Create a persistent script file in /tmp with a unique name
-            script_name = f"pulumi-orchestrate-{self.name}-{package_hash[:8]}.sh"
+            script_name = (
+                f"pulumi-orchestrate-{self.name}-{package_hash[:8]}.sh"
+            )
             script_path = os.path.join("/tmp", script_name)
-            
+
             # Write the script file
-            with open(script_path, 'w') as f:
+            with open(script_path, "w") as f:
                 f.write(script_content)
-            
+
             # Make it executable
             os.chmod(script_path, 0o755)
-            
+
             # Return just the simple command to execute the script
             # No arguments or environment variables in the command line
             return f"/bin/bash {script_path}"
         except (OSError, IOError) as e:
-            raise RuntimeError(f"Failed to create orchestration script: {e}") from e
+            raise RuntimeError(
+                f"Failed to create orchestration script: {e}"
+            ) from e
 
     def _generate_orchestration_script(
         self, bucket, project_name, layer_name, package_path, package_hash
@@ -367,11 +371,12 @@ class SimpleLambdaLayer(ComponentResource):
         """Generate a single script that safely embeds all paths."""
         # Escape the paths to handle special characters
         import shlex
+
         safe_bucket = shlex.quote(bucket)
         safe_project = shlex.quote(project_name)
         safe_layer = shlex.quote(layer_name)
         safe_package_path = shlex.quote(package_path)
-        
+
         return f"""#!/bin/bash
 set -e
 

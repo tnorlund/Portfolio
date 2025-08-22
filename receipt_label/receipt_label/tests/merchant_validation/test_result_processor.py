@@ -262,10 +262,7 @@ def test_build_receipt_metadata_from_partial_result():
         return_value=mock_metadata,
     ) as meta:
         result = build_receipt_metadata_from_partial_result(
-            "img",
-            1,
-            partial,
-            ["raw"],
+            "img", 1, partial, ["raw"]
         )
         meta.assert_called_once()
         kwargs = meta.call_args.kwargs

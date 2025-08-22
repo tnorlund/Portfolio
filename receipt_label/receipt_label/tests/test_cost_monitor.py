@@ -27,8 +27,7 @@ class TestCostMonitor:
     def cost_monitor(self, mock_dynamo_client):
         """Create a CostMonitor instance."""
         return CostMonitor(
-            dynamo_client=mock_dynamo_client,
-            alert_cooldown_minutes=60,
+            dynamo_client=mock_dynamo_client, alert_cooldown_minutes=60
         )
 
     @pytest.fixture
@@ -143,8 +142,7 @@ class TestCostMonitor:
             cost_monitor, "_query_metrics", return_value=mock_metrics
         ):
             breakdown = cost_monitor.get_cost_breakdown(
-                scope="global:all",
-                period="daily",
+                scope="global:all", period="daily"
             )
 
             assert breakdown["openai"] == Decimal("25.00")
@@ -220,10 +218,7 @@ class TestCostMonitor:
         )
 
         metrics = cost_monitor._query_metrics(
-            "service",
-            "openai",
-            "2024-01-01",
-            "2024-01-31",
+            "service", "openai", "2024-01-01", "2024-01-31"
         )
 
         assert metrics == expected_metrics

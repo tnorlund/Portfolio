@@ -76,10 +76,7 @@ def test_cluster_by_metadata_groups_similar_records() -> None:
             phone="111 222 3333",
         ),
         _build_metadata(
-            4,
-            name="Dunkin",
-            address="456 Elm St",
-            phone="444-555-6666",
+            4, name="Dunkin", address="456 Elm St", phone="444-555-6666"
         ),
         _build_metadata(
             5,

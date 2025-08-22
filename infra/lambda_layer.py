@@ -4,7 +4,7 @@ lambda_layer.py
 
 A hybrid Lambda Layer component that gives you the best of both worlds:
 - Fast `pulumi up` for development (async builds with real ARNs)
-- Simple architecture (no Step Functions/SQS complexity) 
+- Simple architecture (no Step Functions/SQS complexity)
 - Easy debugging and monitoring
 
 Modes:
@@ -50,7 +50,9 @@ class LambdaLayer(ComponentResource):
         description: Optional[str] = None,
         needs_pillow: bool = False,
         sync_mode: Optional[bool] = None,
-        package_extras: Optional[str] = None,  # e.g., "lambda" for receipt_label[lambda]
+        package_extras: Optional[
+            str
+        ] = None,  # e.g., "lambda" for receipt_label[lambda]
         opts: Optional[pulumi.ResourceOptions] = None,
     ):
         super().__init__(f"lambda-layer:{name}", name, {}, opts)
@@ -91,7 +93,7 @@ class LambdaLayer(ComponentResource):
         # Get the force-rebuild config
         config = pulumi.Config("lambda-layer")
         self.force_rebuild = config.get_bool("force-rebuild") or False
-        
+
         # Get debug mode config
         self.debug_mode = config.get_bool("debug-mode") or False
 
@@ -166,138 +168,161 @@ class LambdaLayer(ComponentResource):
             hash_obj.update(rel_path.encode())
 
         return hash_obj.hexdigest()
-    
+
     def _get_local_dependencies(self) -> List[str]:
         """Get list of local package dependencies from pyproject.toml."""
         package_path = os.path.join(PROJECT_DIR, self.package_dir)
         pyproject_path = os.path.join(package_path, "pyproject.toml")
-        
+
         local_deps = []
         if os.path.exists(pyproject_path):
             try:
                 # Try Python 3.11+ built-in tomllib first
                 try:
                     import tomllib
-                    with open(pyproject_path, 'rb') as f:
+
+                    with open(pyproject_path, "rb") as f:
                         data = tomllib.load(f)
                 except ImportError:
                     # Fall back to toml package if available
                     try:
                         import toml
-                        with open(pyproject_path, 'r') as f:
+
+                        with open(pyproject_path, "r") as f:
                             data = toml.load(f)
                     except ImportError:
                         # If neither is available, parse manually for basic dependencies
-                        pulumi.log.warn(f"TOML parser not available, using basic parsing for {self.name}")
+                        pulumi.log.warn(
+                            f"TOML parser not available, using basic parsing for {self.name}"
+                        )
                         data = self._parse_pyproject_basic(pyproject_path)
-                    
+
                 # Check main dependencies
-                deps = data.get('project', {}).get('dependencies', [])
-                
+                deps = data.get("project", {}).get("dependencies", [])
+
                 # Also check optional dependencies if using extras
                 if self.package_extras:
-                    optional_deps = data.get('project', {}).get('optional-dependencies', {})
+                    optional_deps = data.get("project", {}).get(
+                        "optional-dependencies", {}
+                    )
                     if self.package_extras in optional_deps:
                         deps.extend(optional_deps[self.package_extras])
-                
+
                 # Filter for local packages (receipt-*)
                 for dep in deps:
                     # Extract package name from version spec
-                    dep_name = dep.split('[')[0].split('>')[0].split('<')[0].split('=')[0].strip()
-                    if dep_name.startswith('receipt-'):
+                    dep_name = (
+                        dep.split("[")[0]
+                        .split(">")[0]
+                        .split("<")[0]
+                        .split("=")[0]
+                        .strip()
+                    )
+                    if dep_name.startswith("receipt-"):
                         # Convert package name to directory name (receipt-dynamo -> receipt_dynamo)
-                        dir_name = dep_name.replace('-', '_')
+                        dir_name = dep_name.replace("-", "_")
                         local_path = os.path.join(PROJECT_DIR, dir_name)
                         if os.path.exists(local_path):
                             local_deps.append(dir_name)
-                            pulumi.log.info(f"📦 Found local dependency: {dir_name} for {self.name}")
+                            pulumi.log.info(
+                                f"📦 Found local dependency: {dir_name} for {self.name}"
+                            )
             except Exception as e:
                 pulumi.log.warn(f"Could not parse pyproject.toml: {e}")
-                
+
         return local_deps
-    
+
     def _parse_pyproject_basic(self, pyproject_path: str) -> Dict[str, Any]:
         """Basic parser for pyproject.toml to extract dependencies when toml module is not available."""
         result = {"project": {"dependencies": [], "optional-dependencies": {}}}
-        
+
         try:
-            with open(pyproject_path, 'r') as f:
+            with open(pyproject_path, "r") as f:
                 lines = f.readlines()
-                
+
             in_dependencies = False
             in_optional = False
             current_extra = None
-            
+
             for line in lines:
                 line = line.strip()
-                
+
                 # Start of dependencies section
                 if line == "dependencies = [":
                     in_dependencies = True
                     continue
-                    
+
                 # End of dependencies section
                 if in_dependencies and line == "]":
                     in_dependencies = False
                     continue
-                    
+
                 # Check for optional dependencies
                 if "[project.optional-dependencies]" in line:
                     in_optional = True
                     continue
-                    
+
                 # Parse optional dependency sections
                 if in_optional and "= [" in line:
                     current_extra = line.split("=")[0].strip()
-                    result["project"]["optional-dependencies"][current_extra] = []
+                    result["project"]["optional-dependencies"][
+                        current_extra
+                    ] = []
                     continue
-                    
+
                 # End of optional section
                 if in_optional and line == "]":
                     current_extra = None
                     continue
-                    
+
                 # Parse dependency lines
                 if in_dependencies and line and line != "]":
                     # Remove quotes and commas
-                    dep = line.strip(' ",\'')
+                    dep = line.strip(" \",'")
                     if dep and not dep.startswith("#"):
                         result["project"]["dependencies"].append(dep)
-                        
+
                 # Parse optional dependency lines
                 if current_extra and line and line != "]":
-                    dep = line.strip(' ",\'')
+                    dep = line.strip(" \",'")
                     if dep and not dep.startswith("#"):
-                        result["project"]["optional-dependencies"][current_extra].append(dep)
-                        
+                        result["project"]["optional-dependencies"][
+                            current_extra
+                        ].append(dep)
+
         except Exception as e:
             pulumi.log.warn(f"Basic parsing failed: {e}")
-            
+
         return result
 
     def _encode_shell_script(self, script_content: str) -> str:
         """Encode a shell script to base64 for use in buildspec to avoid parsing issues."""
         return base64.b64encode(script_content.encode("utf-8")).decode("utf-8")
-    
-    def _generate_batched_pip_install(self, packages: List[str], target_dir: str, 
-                                     python_version: str, batch_size: int = 10) -> List[str]:
+
+    def _generate_batched_pip_install(
+        self,
+        packages: List[str],
+        target_dir: str,
+        python_version: str,
+        batch_size: int = 10,
+    ) -> List[str]:
         """Generate batched pip install commands to avoid ARG_MAX errors.
-        
+
         Args:
             packages: List of package names to install
-            target_dir: Target directory for installation  
+            target_dir: Target directory for installation
             python_version: Python version to use
             batch_size: Number of packages per batch
-            
+
         Returns:
             List of pip install commands
         """
         if not packages:
             return []
-            
+
         commands = []
         for i in range(0, len(packages), batch_size):
-            batch = packages[i:i + batch_size]
+            batch = packages[i : i + batch_size]
             pkg_str = " ".join(batch)
             commands.append(
                 f"python{python_version} -m pip install --no-cache-dir --no-compile "
@@ -402,7 +427,7 @@ echo "🎉 Parallel function updates completed!"'''
         If ``version`` is provided, the buildspec targets a single Python
         version. Otherwise, it handles all versions listed in
         ``self.python_versions``.
-        
+
         Includes ARG_MAX protection for long command lines.
         """
 
@@ -429,21 +454,23 @@ echo "🎉 Parallel function updates completed!"'''
                 "ls -la source/ || echo 'source directory not found'",
                 "ls -la source/pyproject.toml || echo 'pyproject.toml not found in source'",
                 # Check for and build local dependencies first
-                ('if [ -d "dependencies" ]; then '
-                 'echo "Found local dependencies, building them first..."; '
-                 'mkdir -p dep_wheels; '
-                 'for dep_dir in dependencies/*; do '
-                 'if [ -d "$dep_dir" ]; then '
-                 'dep_name=$(basename "$dep_dir"); '
-                 'echo "  - Building $dep_name"; '
-                 'cd "$dep_dir"; '
-                 'python3 -m build --wheel --outdir ../../dep_wheels/; '
-                 'cd ../../; '
-                 'fi; '
-                 'done; '
-                 'echo "Installing local dependency wheels..."; '
-                 f'python{version} -m pip install --no-cache-dir dep_wheels/*.whl -t build/python/lib/python{version}/site-packages || true; '
-                 'fi'),
+                (
+                    'if [ -d "dependencies" ]; then '
+                    'echo "Found local dependencies, building them first..."; '
+                    "mkdir -p dep_wheels; "
+                    "for dep_dir in dependencies/*; do "
+                    'if [ -d "$dep_dir" ]; then '
+                    'dep_name=$(basename "$dep_dir"); '
+                    'echo "  - Building $dep_name"; '
+                    'cd "$dep_dir"; '
+                    "python3 -m build --wheel --outdir ../../dep_wheels/; "
+                    "cd ../../; "
+                    "fi; "
+                    "done; "
+                    'echo "Installing local dependency wheels..."; '
+                    f"python{version} -m pip install --no-cache-dir dep_wheels/*.whl -t build/python/lib/python{version}/site-packages || true; "
+                    "fi"
+                ),
                 "rm -rf build && mkdir -p build",
                 f"mkdir -p build/python/lib/python{version}/site-packages",
                 'echo "Building main package wheel"',
@@ -451,7 +478,7 @@ echo "🎉 Parallel function updates completed!"'''
                 'echo "Installing wheel with optimization exclusions for Lambda layer"',
                 # Find the wheel file and install with extras if specified
                 'echo "Finding wheel file..."',
-                'WHEEL_FILE=$(ls dist/*.whl | head -1)',
+                "WHEEL_FILE=$(ls dist/*.whl | head -1)",
                 'echo "Found wheel: $WHEEL_FILE"',
                 # Install with extras if specified (e.g., [lambda] for lightweight chromadb-client)
                 # Note: Removed --no-compile to allow pydantic-core and other compiled extensions
@@ -517,7 +544,7 @@ echo "🎉 Parallel function updates completed!"'''
                 'echo "Pydantic found, checking for pydantic_core..."; '
                 'if ! find build/python -name "*pydantic_core*" | head -1 | grep -q .; then '
                 'echo "WARNING: Pydantic found but pydantic_core missing - this may cause import errors"; '
-                'fi; fi',
+                "fi; fi",
                 "chmod -R 755 build",
                 # Validate layer output
                 'echo "Validating build output..."',
@@ -528,7 +555,7 @@ echo "🎉 Parallel function updates completed!"'''
                 'echo "Pydantic found, checking for pydantic_core..."; '
                 'if ! find build/python -name "*pydantic_core*" | head -1 | grep -q .; then '
                 'echo "WARNING: Pydantic found but pydantic_core missing - this may cause import errors"; '
-                'fi; fi',
+                "fi; fi",
                 # Validate Pillow import if needed
                 'if [ "$NEEDS_PILLOW" = "True" ]; then '
                 'echo "Validating Pillow installation..."; '
@@ -559,23 +586,25 @@ echo "🎉 Parallel function updates completed!"'''
                 "ls -la source/ || echo 'source directory not found'",
                 "ls -la source/pyproject.toml || echo 'pyproject.toml not found in source'",
                 # Check for and build local dependencies first
-                ('if [ -d "dependencies" ]; then '
-                 'echo "Found local dependencies, building them first..."; '
-                 'mkdir -p dep_wheels; '
-                 'for dep_dir in dependencies/*; do '
-                 'if [ -d "$dep_dir" ]; then '
-                 'dep_name=$(basename "$dep_dir"); '
-                 'echo "  - Building $dep_name"; '
-                 'cd "$dep_dir"; '
-                 'python3 -m build --wheel --outdir ../../dep_wheels/; '
-                 'cd ../../; '
-                 'fi; '
-                 'done; '
-                 'echo "Installing local dependency wheels for all Python versions..."; '
-                 'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do '
-                 'python${v} -m pip install --no-cache-dir dep_wheels/*.whl -t build/python/lib/python${v}/site-packages || true; '
-                 'done; '
-                 'fi'),
+                (
+                    'if [ -d "dependencies" ]; then '
+                    'echo "Found local dependencies, building them first..."; '
+                    "mkdir -p dep_wheels; "
+                    "for dep_dir in dependencies/*; do "
+                    'if [ -d "$dep_dir" ]; then '
+                    'dep_name=$(basename "$dep_dir"); '
+                    'echo "  - Building $dep_name"; '
+                    'cd "$dep_dir"; '
+                    "python3 -m build --wheel --outdir ../../dep_wheels/; "
+                    "cd ../../; "
+                    "fi; "
+                    "done; "
+                    'echo "Installing local dependency wheels for all Python versions..."; '
+                    'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do '
+                    "python${v} -m pip install --no-cache-dir dep_wheels/*.whl -t build/python/lib/python${v}/site-packages || true; "
+                    "done; "
+                    "fi"
+                ),
                 "rm -rf build && mkdir -p build",
                 'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do mkdir -p build/python/lib/python${v}/site-packages; done',
                 'echo "Building main package wheel"',
@@ -588,8 +617,8 @@ echo "🎉 Parallel function updates completed!"'''
                 'if [ "$NEEDS_PILLOW" = "True" ]; then '
                 'echo "Installing Pillow for each runtime before flattening"; '
                 'for v in $(echo "$PYTHON_VERSIONS" | tr "," " "); do '
-                'python${v} -m pip install --no-cache-dir Pillow -t build/python/lib/python${v}/site-packages; '
-                'done; fi',
+                "python${v} -m pip install --no-cache-dir Pillow -t build/python/lib/python${v}/site-packages; "
+                "done; fi",
                 'echo "Removing boto3/botocore (provided by AWS Lambda runtime)"',
                 "find build -type d -name 'boto*' -exec rm -rf {} + 2>/dev/null || true",
                 'echo "Cleaning up unnecessary files from all packages"',
@@ -620,7 +649,7 @@ echo "🎉 Parallel function updates completed!"'''
                 'echo "Pydantic found, checking for pydantic_core..."; '
                 'if ! find build/python -name "*pydantic_core*" | head -1 | grep -q .; then '
                 'echo "WARNING: Pydantic found but pydantic_core missing - this may cause import errors"; '
-                'fi; fi',
+                "fi; fi",
                 "chmod -R 755 build",
             ]
             pre_build_phase = {
@@ -967,17 +996,17 @@ echo "🎉 Parallel function updates completed!"'''
             commands.append('echo "Preparing merged layer directory..."')
             commands.append("rm -rf merged && mkdir -p merged")
             # Step 2: Merge already-flattened artifacts (build stage already flattened to python/*)
-            commands.append('echo "Setting up merged python directory (already flattened)..."')
             commands.append(
-                "rm -rf merged/python && mkdir -p merged/python"
+                'echo "Setting up merged python directory (already flattened)..."'
             )
+            commands.append("rm -rf merged/python && mkdir -p merged/python")
             for idx, v in enumerate(self.python_versions):
-                commands.append(f'echo "Merging flattened artifacts for Python {v}..."')
+                commands.append(
+                    f'echo "Merging flattened artifacts for Python {v}..."'
+                )
                 if idx == 0:
                     # Primary artifact in root workspace - already flattened to python/*
-                    commands.append(
-                        "cp -r python/* merged/python/"
-                    )
+                    commands.append("cp -r python/* merged/python/")
                 else:
                     # Secondary artifacts under CODEBUILD_SRC_DIR_py<ver> (ver without dots)
                     # These are also already flattened to python/*
@@ -987,20 +1016,34 @@ echo "🎉 Parallel function updates completed!"'''
                     )
             # Validate the flattened structure before zipping
             commands.append('echo "Validating flattened structure..."')
-            commands.append('if [ -d "merged/python/lib" ]; then echo "ERROR: Nested lib directory found! Layer should be flattened."; exit 1; fi')
-            commands.append('echo "Structure is correctly flattened (no nested lib directory)"')
+            commands.append(
+                'if [ -d "merged/python/lib" ]; then echo "ERROR: Nested lib directory found! Layer should be flattened."; exit 1; fi'
+            )
+            commands.append(
+                'echo "Structure is correctly flattened (no nested lib directory)"'
+            )
             # Step 3: Zip the merged python directory
             commands.append('echo "Zipping merged layer..."')
             commands.append("cd merged && zip -r ../layer.zip python && cd ..")
             # Validate the zip file
             commands.append('echo "Validating layer.zip..."')
-            commands.append("[ -f layer.zip ] || { echo 'ERROR: layer.zip not created'; exit 1; }")
-            commands.append("ZIP_SIZE=$(stat -c%s layer.zip 2>/dev/null || stat -f%z layer.zip 2>/dev/null || echo 0)")
+            commands.append(
+                "[ -f layer.zip ] || { echo 'ERROR: layer.zip not created'; exit 1; }"
+            )
+            commands.append(
+                "ZIP_SIZE=$(stat -c%s layer.zip 2>/dev/null || stat -f%z layer.zip 2>/dev/null || echo 0)"
+            )
             commands.append('echo "Layer zip size: $ZIP_SIZE bytes"')
-            commands.append("[ \"$ZIP_SIZE\" -gt 0 ] || { echo 'ERROR: layer.zip is empty'; exit 1; }")
+            commands.append(
+                "[ \"$ZIP_SIZE\" -gt 0 ] || { echo 'ERROR: layer.zip is empty'; exit 1; }"
+            )
             # Check if zip size exceeds Lambda limits
-            commands.append("MAX_SIZE=$((250 * 1024 * 1024))  # 250MB in bytes")
-            commands.append("if [ \"$ZIP_SIZE\" -gt \"$MAX_SIZE\" ]; then echo \"WARNING: Layer size exceeds Lambda limit (250MB)\"; echo \"Size: $(($ZIP_SIZE / 1024 / 1024))MB\"; fi")
+            commands.append(
+                "MAX_SIZE=$((250 * 1024 * 1024))  # 250MB in bytes"
+            )
+            commands.append(
+                'if [ "$ZIP_SIZE" -gt "$MAX_SIZE" ]; then echo "WARNING: Layer size exceeds Lambda limit (250MB)"; echo "Size: $(($ZIP_SIZE / 1024 / 1024))MB"; fi'
+            )
             # Step 3.1: Upload combined zip to artifact bucket
             commands.append('echo "Uploading merged layer.zip to S3..."')
             commands.append(
@@ -1022,7 +1065,9 @@ echo "🎉 Parallel function updates completed!"'''
                 '{ echo "ERROR: Failed to publish layer version"; echo "Output: $NEW_LAYER_ARN"; exit 1; }'
             )
             commands.append('echo "New layer ARN: $NEW_LAYER_ARN"')
-            commands.append("[ -n \"$NEW_LAYER_ARN\" ] || { echo 'ERROR: No layer ARN returned'; exit 1; }")
+            commands.append(
+                "[ -n \"$NEW_LAYER_ARN\" ] || { echo 'ERROR: No layer ARN returned'; exit 1; }"
+            )
             commands.append("export NEW_LAYER_ARN")
             commands.append(
                 f'echo "{self._encode_shell_script(self._get_update_functions_script())}" | base64 -d > update_layers.sh'
@@ -1231,9 +1276,11 @@ done
             s3_bucket=build_bucket.bucket,
             s3_key=f"{self.name}/combined/layer.zip",
             opts=pulumi.ResourceOptions(
-                depends_on=[sync_cmd] if (self.sync_mode and sync_cmd) else [pipeline],
+                depends_on=(
+                    [sync_cmd] if (self.sync_mode and sync_cmd) else [pipeline]
+                ),
                 parent=self,
-                # Let pipeline manage the actual layer content via aws lambda publish-layer-version  
+                # Let pipeline manage the actual layer content via aws lambda publish-layer-version
                 ignore_changes=["s3_key"] if not self.sync_mode else None,
             ),
         )
@@ -1266,15 +1313,17 @@ done
         except (OSError, IOError) as e:
             raise RuntimeError(f"Failed to create upload script: {e}") from e
 
-    def _generate_upload_script(self, bucket: str, package_path: str, package_hash: str) -> str:
+    def _generate_upload_script(
+        self, bucket: str, package_path: str, package_hash: str
+    ) -> str:
         """Generate script to upload source package with safely embedded paths.
-        
+
         Includes improved error handling and validation.
         """
         # Escape the paths to handle special characters
         safe_package_path = shlex.quote(package_path)
         safe_bucket = shlex.quote(bucket)
-        
+
         # Get local dependencies that need to be included
         local_deps = self._get_local_dependencies()
 
@@ -1381,7 +1430,9 @@ echo -n "$HASH" | aws s3 cp - "s3://$BUCKET/$LAYER_NAME/hash.txt"
 echo "✅ Source uploaded successfully"
 """
 
-    def _generate_trigger_script(self, bucket: str, project_name: str, package_hash: str) -> str:
+    def _generate_trigger_script(
+        self, bucket: str, project_name: str, package_hash: str
+    ) -> str:
         """Generate script to trigger build without waiting."""
         return f"""#!/bin/bash
 set -e
@@ -1431,7 +1482,9 @@ echo "📊 Monitor at: https://console.aws.amazon.com/codesuite/codebuild/projec
 echo "⚡ Continuing with fast pulumi up (not waiting for completion)"
 """
 
-    def _generate_initial_build_script(self, bucket: str, project_name: str) -> str:
+    def _generate_initial_build_script(
+        self, bucket: str, project_name: str
+    ) -> str:
         """Generate script to ensure initial layer exists."""
         return f"""#!/bin/bash
 set -e
@@ -1470,7 +1523,12 @@ done
 """
 
     def _generate_sync_script(
-        self, bucket: str, project_name: str, layer_name: str, package_path: str, package_hash: str
+        self,
+        bucket: str,
+        project_name: str,
+        layer_name: str,
+        package_path: str,
+        package_hash: str,
     ) -> str:
         """Generate script for sync mode (waits for completion)."""
         return f"""#!/bin/bash
@@ -1551,7 +1609,7 @@ layers_to_build = [
         "name": "receipt-label",
         "description": "Label layer for receipt-label",
         "python_versions": ["3.12"],
-        "needs_pillow": True,   # Needed - transitive dependency via openai or other packages
+        "needs_pillow": True,  # Needed - transitive dependency via openai or other packages
         "package_extras": "lambda",  # Minimal dependencies for Lambda
     },
     {
@@ -1569,7 +1627,9 @@ SKIP_LAYER_BUILDING = os.environ.get("PYTEST_RUNNING") == "1" or False  # Skip b
 
 # SYNC MODE: Set to True when ARNs are needed immediately (e.g., after major changes)
 # Set to False for faster pulumi up once layers are stable
-USE_SYNC_MODE = False  # Temporarily disabled for faster pulumi up while testing
+USE_SYNC_MODE = (
+    False  # Temporarily disabled for faster pulumi up while testing
+)
 
 # Create Lambda layers using the hybrid approach
 lambda_layers = {}
@@ -1594,11 +1654,11 @@ if _in_pulumi_context:
         )
         lambda_layers[layer_config["name"]] = lambda_layer
 
-    # Access the built layers by name  
+    # Access the built layers by name
     dynamo_layer = lambda_layers["receipt-dynamo"]
     label_layer = lambda_layers["receipt-label"]
     upload_layer = lambda_layers["receipt-upload"]
-    
+
     # Export the layer ARNs for reference
     pulumi.export("dynamo_layer_arn", dynamo_layer.arn)
     pulumi.export("label_layer_arn", label_layer.arn)
@@ -1609,7 +1669,7 @@ else:
         def __init__(self, name: str) -> None:
             self.name = name
             self.arn = None
-    
+
     dynamo_layer = DummyLayer("receipt-dynamo")  # type: ignore
     label_layer = DummyLayer("receipt-label")  # type: ignore
     upload_layer = DummyLayer("receipt-upload")  # type: ignore

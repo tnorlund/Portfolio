@@ -24,9 +24,9 @@ class TestAIUsageTrackerEnvironmentIntegration:
     def test_tracker_creation_with_environment_detection(self):
         """Test tracker creation with automatic environment detection."""
         with patch.dict(os.environ, {"ENVIRONMENT": "staging"}, clear=False):
-            # When table_name is provided, it's used as-is but validation should be disabled
+            # When table_name is provided, it's used as-is
             tracker = AIUsageTracker.create_for_environment(
-                table_name="AIUsageMetrics", validate_table_environment=False
+                table_name="AIUsageMetrics"
             )
 
             assert (
@@ -60,7 +60,7 @@ class TestAIUsageTrackerEnvironmentIntegration:
         assert tracker.environment_config.require_context
 
     def test_tracker_environment_isolation_validation(self):
-        """Test that tracker validates environment isolation on creation."""
+        """Test that tracker accepts any table name (validation removed - Pulumi handles isolation)."""
         # This should work - staging environment with staging table
         tracker = AIUsageTracker(
             table_name="AIUsageMetrics-staging",
@@ -68,12 +68,13 @@ class TestAIUsageTrackerEnvironmentIntegration:
         )
         assert tracker.table_name == "AIUsageMetrics-staging"
 
-        # This should fail - production environment with staging table
-        with pytest.raises(ValueError, match="does not match environment"):
-            AIUsageTracker(
-                table_name="AIUsageMetrics-staging",
-                environment=Environment.PRODUCTION,
-            )
+        # This now also works - validation removed, Pulumi handles table isolation
+        # Previously would raise ValueError, but validation was removed
+        tracker = AIUsageTracker(
+            table_name="AIUsageMetrics-staging",
+            environment=Environment.PRODUCTION,
+        )
+        assert tracker.table_name == "AIUsageMetrics-staging"
 
     def test_production_table_name_no_suffix(self):
         """Test that production environment doesn't add table suffix."""
@@ -105,7 +106,6 @@ class TestAIUsageTrackerEnvironmentIntegration:
                 environment=Environment.CICD,
                 table_name="AIUsageMetrics",
                 track_to_dynamo=False,
-                validate_table_environment=False,  # Disable validation for test
             )
 
             # Mock OpenAI response
@@ -139,7 +139,6 @@ class TestAIUsageTrackerEnvironmentIntegration:
             dynamo_client=mock_dynamo_client,
             environment=Environment.STAGING,
             table_name="AIUsageMetrics",
-            validate_table_environment=False,  # Disable validation for test
         )
 
         # Mock OpenAI response
@@ -216,7 +215,6 @@ class TestAIUsageTrackerEnvironmentIntegration:
                 track_to_dynamo=False,
                 track_to_file=True,
                 log_file=log_file,
-                validate_table_environment=False,  # Disable validation for test
             )
 
             # Mock OpenAI response
@@ -252,20 +250,21 @@ class TestAIUsageTrackerEnvironmentErrorHandling:
     """Test error handling in environment-based tracking."""
 
     def test_invalid_table_environment_combination_raises_error(self):
-        """Test that invalid table/environment combinations raise errors."""
-        # Production environment should not accept staging table
-        with pytest.raises(ValueError, match="does not match environment"):
-            AIUsageTracker(
-                table_name="AIUsageMetrics-staging",
-                environment=Environment.PRODUCTION,
-            )
+        """Test that invalid table/environment combinations no longer raise errors (validation removed)."""
+        # Validation removed - Pulumi handles table isolation via stack naming
+        # Production environment now accepts staging table (no validation)
+        tracker = AIUsageTracker(
+            table_name="AIUsageMetrics-staging",
+            environment=Environment.PRODUCTION,
+        )
+        assert tracker.table_name == "AIUsageMetrics-staging"
 
-        # Staging environment should not accept development table
-        with pytest.raises(ValueError, match="does not match environment"):
-            AIUsageTracker(
-                table_name="AIUsageMetrics-development",
-                environment=Environment.STAGING,
-            )
+        # Staging environment now accepts development table (no validation)
+        tracker = AIUsageTracker(
+            table_name="AIUsageMetrics-development",
+            environment=Environment.STAGING,
+        )
+        assert tracker.table_name == "AIUsageMetrics-development"
 
     def test_production_require_context_behavior(self):
         """Test that production environment has stricter context requirements."""
@@ -423,7 +422,6 @@ class TestTrackerFactoryMethods:
             track_to_dynamo=True,
             track_to_file=True,
             environment=Environment.STAGING,
-            validate_table_environment=False,  # Custom table names require validation to be disabled
         )
 
         assert tracker.dynamo_client == mock_client

@@ -111,7 +111,7 @@ class TestAIUsageContext:
         threads = []
         for i in range(5):
             thread = threading.Thread(
-                target=capture_context, args=(f"thread_{i}",)
+                target=capture_context, args=(f"thread_{i}")
             )
             threads.append(thread)
             thread.start()
@@ -240,7 +240,7 @@ class TestThreadLocalContext:
         # Create multiple threads
         threads = []
         for i in range(3):
-            thread = threading.Thread(target=thread_function, args=(i,))
+            thread = threading.Thread(target=thread_function, args=(i))
             threads.append(thread)
             thread.start()
 

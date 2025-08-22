@@ -235,8 +235,7 @@ class TestClientManagerIntegration:
 
                 # Set tracking context
                 manager.set_tracking_context(
-                    job_id="test-job-123",
-                    batch_id="test-batch-456",
+                    job_id="test-job-123", batch_id="test-batch-456"
                 )
 
                 # Make API call
@@ -323,8 +322,7 @@ class TestClientManagerIntegration:
                 # Make embedding call
                 openai = manager.openai
                 response = openai.embeddings.create(
-                    model="text-embedding-ada-002",
-                    input="Test text",
+                    model="text-embedding-ada-002", input="Test text"
                 )
 
                 # Verify response
@@ -613,8 +611,7 @@ class TestClientManagerIntegration:
 
                 # Set context once
                 manager.set_tracking_context(
-                    job_id="persistent-job",
-                    batch_id="persistent-batch",
+                    job_id="persistent-job", batch_id="persistent-batch"
                 )
 
                 # Make multiple calls

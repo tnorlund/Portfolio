@@ -256,8 +256,7 @@ class TestAIUsageSystemIntegration:
                         finish_reason="stop",
                         index=0,
                         message=ChatCompletionMessage(
-                            content=f"Batch response {i}",
-                            role="assistant",
+                            content=f"Batch response {i}", role="assistant"
                         ),
                     )
                 ],
@@ -366,8 +365,7 @@ class TestAIUsageSystemIntegration:
                         finish_reason="stop",
                         index=0,
                         message=ChatCompletionMessage(
-                            content="Success",
-                            role="assistant",
+                            content="Success", role="assistant"
                         ),
                     )
                 ],
@@ -375,9 +373,7 @@ class TestAIUsageSystemIntegration:
                 model="gpt-3.5-turbo",
                 object="chat.completion",
                 usage=CompletionUsage(
-                    prompt_tokens=100,
-                    completion_tokens=50,
-                    total_tokens=150,
+                    prompt_tokens=100, completion_tokens=50, total_tokens=150
                 ),
             )
 
@@ -593,8 +589,7 @@ class TestAIUsageSystemIntegration:
                         finish_reason="stop",
                         index=0,
                         message=ChatCompletionMessage(
-                            content="Expensive response",
-                            role="assistant",
+                            content="Expensive response", role="assistant"
                         ),
                     )
                 ],
@@ -695,8 +690,7 @@ class TestAIUsageSystemIntegration:
         for i in range(20):
             responses.append(
                 create_mock_openai_response(
-                    prompt_tokens=100 + i,
-                    completion_tokens=50 + i,
+                    prompt_tokens=100 + i, completion_tokens=50 + i
                 )
             )
 
@@ -760,8 +754,7 @@ class TestAIUsageSystemIntegration:
                         finish_reason="stop",
                         index=0,
                         message=ChatCompletionMessage(
-                            content=f"Async response {i}",
-                            role="assistant",
+                            content=f"Async response {i}", role="assistant"
                         ),
                     )
                 ],
@@ -769,9 +762,7 @@ class TestAIUsageSystemIntegration:
                 model="gpt-3.5-turbo",
                 object="chat.completion",
                 usage=CompletionUsage(
-                    prompt_tokens=100,
-                    completion_tokens=50,
-                    total_tokens=150,
+                    prompt_tokens=100, completion_tokens=50, total_tokens=150
                 ),
             )
 
