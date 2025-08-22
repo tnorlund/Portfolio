@@ -40,8 +40,12 @@ def minimal_compaction_lock():
 def test_compaction_lock_init_valid_datetime(example_compaction_lock):
     assert example_compaction_lock.lock_id == "chroma-main-snapshot"
     assert example_compaction_lock.collection == ChromaDBCollection.LINES
-    assert isinstance(example_compaction_lock.expires, str)  # Should be converted to ISO string
-    assert isinstance(example_compaction_lock.heartbeat, str)  # Should be converted to ISO string
+    assert isinstance(
+        example_compaction_lock.expires, str
+    )  # Should be converted to ISO string
+    assert isinstance(
+        example_compaction_lock.heartbeat, str
+    )  # Should be converted to ISO string
 
 
 @pytest.mark.unit
@@ -67,7 +71,7 @@ def test_compaction_lock_init_both_collections():
         expires="2024-01-01T12:00:00",
         collection=ChromaDBCollection.WORDS,
     )
-    
+
     assert lines_lock.collection == ChromaDBCollection.LINES
     assert words_lock.collection == ChromaDBCollection.WORDS
 
@@ -103,7 +107,7 @@ def test_compaction_lock_gsi1_key_format(example_compaction_lock):
 @pytest.mark.unit
 def test_compaction_lock_to_item_structure(example_compaction_lock):
     item = example_compaction_lock.to_item()
-    
+
     # Check all required fields are present
     assert "PK" in item
     assert "SK" in item
@@ -114,7 +118,7 @@ def test_compaction_lock_to_item_structure(example_compaction_lock):
     assert "expires" in item
     assert "collection" in item
     assert "heartbeat" in item
-    
+
     # Check field values
     assert item["TYPE"]["S"] == "COMPACTION_LOCK"
     assert item["collection"]["S"] == "lines"
@@ -168,7 +172,9 @@ def test_compaction_lock_invalid_owner_type(bad_value):
 @pytest.mark.unit
 @pytest.mark.parametrize("bad_value", [123, None])
 def test_compaction_lock_invalid_expires_type(bad_value):
-    with pytest.raises(ValueError, match="expires must be datetime or ISO-8601 string"):
+    with pytest.raises(
+        ValueError, match="expires must be datetime or ISO-8601 string"
+    ):
         CompactionLock(
             lock_id="test-lock",
             owner=str(uuid4()),
@@ -202,7 +208,10 @@ def test_compaction_lock_invalid_collection_type(bad_value):
 
 @pytest.mark.unit
 def test_compaction_lock_invalid_heartbeat_type_int():
-    with pytest.raises(ValueError, match="heartbeat must be datetime, ISO-8601 string, or None"):
+    with pytest.raises(
+        ValueError,
+        match="heartbeat must be datetime, ISO-8601 string, or None",
+    ):
         CompactionLock(
             lock_id="test-lock",
             owner=str(uuid4()),
@@ -212,7 +221,7 @@ def test_compaction_lock_invalid_heartbeat_type_int():
         )
 
 
-@pytest.mark.unit  
+@pytest.mark.unit
 def test_compaction_lock_invalid_heartbeat_type_invalid_string():
     # String heartbeat is allowed (could be validated at usage time)
     lock = CompactionLock(
@@ -238,7 +247,7 @@ def test_compaction_lock_datetime_to_iso_conversion():
         collection=ChromaDBCollection.LINES,
         heartbeat=dt,
     )
-    
+
     assert lock.expires == "2024-01-01T12:00:00"
     assert lock.heartbeat == "2024-01-01T12:00:00"
 
@@ -253,7 +262,7 @@ def test_compaction_lock_iso_string_preserved():
         collection=ChromaDBCollection.LINES,
         heartbeat=iso_string,
     )
-    
+
     assert lock.expires == iso_string
     assert lock.heartbeat == iso_string
 
@@ -271,7 +280,7 @@ def test_compaction_lock_lock_id_with_hash():
         expires="2024-01-01T12:00:00",
         collection=ChromaDBCollection.LINES,
     )
-    
+
     item = lock.to_item()
     reconstructed = item_to_compaction_lock(item)
     assert reconstructed.lock_id == lock_id_with_hash
@@ -367,7 +376,7 @@ def test_compaction_lock_very_long_lock_id():
         expires="2024-01-01T12:00:00",
         collection=ChromaDBCollection.LINES,
     )
-    
+
     item = lock.to_item()
     reconstructed = item_to_compaction_lock(item)
     assert reconstructed.lock_id == long_lock_id
@@ -396,7 +405,7 @@ def test_compaction_lock_future_expiry():
         expires=future_time,
         collection=ChromaDBCollection.WORDS,
     )
-    
+
     item = lock.to_item()
     reconstructed = item_to_compaction_lock(item)
     assert reconstructed.expires == future_time.isoformat()
@@ -414,10 +423,10 @@ def test_compaction_lock_lines_collection_key():
         expires="2024-01-01T12:00:00",
         collection=ChromaDBCollection.LINES,
     )
-    
+
     key = lock.key
     gsi1_key = lock.gsi1_key
-    
+
     assert key["PK"]["S"] == "LOCK#lines#lines-test"
     assert gsi1_key["GSI1PK"]["S"] == "LOCK#lines"
 
@@ -431,10 +440,10 @@ def test_compaction_lock_words_collection_key():
         expires="2024-01-01T12:00:00",
         collection=ChromaDBCollection.WORDS,
     )
-    
+
     key = lock.key
     gsi1_key = lock.gsi1_key
-    
+
     assert key["PK"]["S"] == "LOCK#words#words-test"
     assert gsi1_key["GSI1PK"]["S"] == "LOCK#words"
 
@@ -453,7 +462,7 @@ def test_item_to_compaction_lock_minimal_valid():
         "collection": {"S": "lines"},
         # No heartbeat field
     }
-    
+
     lock = item_to_compaction_lock(item)
     assert lock.lock_id == "minimal-lock"
     assert lock.collection == ChromaDBCollection.LINES
@@ -471,7 +480,7 @@ def test_item_to_compaction_lock_with_heartbeat():
         "collection": {"S": "words"},
         "heartbeat": {"S": "2024-01-01T11:30:00"},
     }
-    
+
     lock = item_to_compaction_lock(item)
     assert lock.lock_id == "heartbeat-lock"
     assert lock.collection == ChromaDBCollection.WORDS
