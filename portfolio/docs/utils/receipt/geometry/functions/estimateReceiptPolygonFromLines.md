@@ -8,7 +8,7 @@
 
 > **estimateReceiptPolygonFromLines**(`lines`): `null` \| \{ `bottom_left`: [`Point`](../../../geometry/basic/interfaces/Point.md); `bottom_right`: [`Point`](../../../geometry/basic/interfaces/Point.md); `receipt_id`: `string`; `top_left`: [`Point`](../../../geometry/basic/interfaces/Point.md); `top_right`: [`Point`](../../../geometry/basic/interfaces/Point.md); \}
 
-Defined in: [utils/receipt/geometry.ts:120](https://github.com/tnorlund/Portfolio/blob/6c13aedd61ae014cebdd0e7a21ad3d67481c3dd8/portfolio/utils/receipt/geometry.ts#L120)
+Defined in: [utils/receipt/geometry.ts:120](https://github.com/tnorlund/Portfolio/blob/b847632d92efa274e72f76c6e0fa37f00258c9dc/portfolio/utils/receipt/geometry.ts#L120)
 
 Estimate a receipt polygon when only OCR line data is available.
 
