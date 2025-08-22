@@ -471,8 +471,8 @@ class _ReceiptWordLabel(
             last_evaluated_key (Optional[Dict[str, Any]]): Key to start from
 
         Returns:
-            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: The receipt
-                word labels for the image and last evaluated key
+            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: 
+                The receipt word labels for the image and last evaluated key
         """
         if not isinstance(image_id, str):
             raise EntityValidationError(
@@ -491,7 +491,9 @@ class _ReceiptWordLabel(
 
         results, last_key = self._query_entities(
             index_name=None,
-            key_condition_expression="#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            key_condition_expression=(
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+            ),
             expression_attribute_names={
                 "#pk": "PK",
                 "#sk": "SK",
@@ -526,8 +528,8 @@ class _ReceiptWordLabel(
             last_evaluated_key (Optional[Dict[str, Any]]): Key to start from
 
         Returns:
-            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: The receipt
-                word labels for the receipt and last evaluated key
+            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: 
+                The receipt word labels for the receipt and last evaluated key
         """
         if not isinstance(image_id, str):
             raise EntityValidationError(
@@ -537,7 +539,8 @@ class _ReceiptWordLabel(
 
         if not isinstance(receipt_id, int):
             raise EntityValidationError(
-                f"receipt_id must be an integer, got {type(receipt_id).__name__}"
+                f"receipt_id must be an integer, "
+                f"got {type(receipt_id).__name__}"
             )
         if receipt_id <= 0:
             raise EntityValidationError(
@@ -555,7 +558,9 @@ class _ReceiptWordLabel(
 
         results, last_key = self._query_entities(
             index_name=None,
-            key_condition_expression="#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            key_condition_expression=(
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+            ),
             expression_attribute_names={
                 "#pk": "PK",
                 "#sk": "SK",
@@ -594,8 +599,9 @@ class _ReceiptWordLabel(
             last_evaluated_key (Optional[Dict[str, Any]]): Key to start from
 
         Returns:
-            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: The receipt
-                word labels for the specific word and last evaluated key
+            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: 
+                The receipt word labels for the specific word and last 
+                evaluated key
         """
         if not isinstance(image_id, str):
             raise EntityValidationError(
@@ -610,7 +616,8 @@ class _ReceiptWordLabel(
         ]:
             if not isinstance(param_value, int):
                 raise EntityValidationError(
-                    f"{param_name} must be an integer, got {type(param_value).__name__}"
+                    f"{param_name} must be an integer, "
+                    f"got {type(param_value).__name__}"
                 )
             if param_value <= 0:
                 raise EntityValidationError(
@@ -629,7 +636,9 @@ class _ReceiptWordLabel(
         # Query for labels of the specific word using precise key condition
         results, last_key = self._query_entities(
             index_name=None,
-            key_condition_expression="#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            key_condition_expression=(
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+            ),
             expression_attribute_names={
                 "#pk": "PK",
                 "#sk": "SK",
@@ -637,7 +646,10 @@ class _ReceiptWordLabel(
             expression_attribute_values={
                 ":pk": {"S": f"IMAGE#{image_id}"},
                 ":sk_prefix": {
-                    "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LABEL#"
+                    "S": (
+                        f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
+                        f"#WORD#{word_id:05d}#LABEL#"
+                    )
                 },
             },
             converter_func=item_to_receipt_word_label,

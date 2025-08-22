@@ -219,7 +219,8 @@ class Letter(
 
 
 def item_to_letter(item: Dict[str, Any]) -> Letter:
-    """Convert a DynamoDB item to a Letter object using type-safe EntityFactory.
+    """Convert a DynamoDB item to a Letter object using type-safe 
+    EntityFactory.
 
     Args:
         item: The DynamoDB item dictionary to convert.
