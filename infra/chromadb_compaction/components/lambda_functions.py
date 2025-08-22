@@ -420,6 +420,30 @@ class HybridLambdaDeployment(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
+        # CloudWatch metrics policy for observability
+        self.cloudwatch_policy = aws.iam.RolePolicy(
+            f"{name}-cloudwatch-policy",
+            role=self.lambda_role.id,
+            policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "cloudwatch:PutMetricData",
+                                "logs:CreateLogGroup",
+                                "logs:CreateLogStream", 
+                                "logs:PutLogEvents",
+                            ],
+                            "Resource": "*",
+                        }
+                    ],
+                }
+            ),
+            opts=ResourceOptions(parent=self),
+        )
+
     def _create_event_source_mappings(
         self,
         name: str,
