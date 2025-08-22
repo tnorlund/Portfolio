@@ -57,10 +57,7 @@ class Instance:
             raise ValueError("gpu_count must be a non-negative integer")
 
         valid_statuses = ["pending", "running", "stopped", "terminated"]
-        if (
-            not isinstance(self.status, str)
-            or self.status.lower() not in valid_statuses
-        ):
+        if not isinstance(self.status, str) or self.status.lower() not in valid_statuses:
             raise ValueError(f"status must be one of {valid_statuses}")
         self.status = self.status.lower()
 
@@ -75,10 +72,7 @@ class Instance:
         if not isinstance(self.ip_address, str):
             raise ValueError("ip_address must be a string")
 
-        if (
-            not isinstance(self.availability_zone, str)
-            or not self.availability_zone
-        ):
+        if not isinstance(self.availability_zone, str) or not self.availability_zone:
             raise ValueError("availability_zone must be a non-empty string")
 
         if not isinstance(self.is_spot, bool):
@@ -175,6 +169,7 @@ class Instance:
         yield "availability_zone", self.availability_zone
         yield "is_spot", self.is_spot
         yield "health_status", self.health_status
+
 
     def __hash__(self) -> int:
         """Returns the hash value of the Instance object.

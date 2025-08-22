@@ -279,9 +279,7 @@ def test_updateQueue_raises_queue_not_found(queue_dynamo, sample_queue):
     """Test that trying to update a non-existent queue raises a ValueError."""
     # Don't add the queue first
 
-    with pytest.raises(
-        EntityNotFoundError, match="queue not found during update_queue"
-    ):
+    with pytest.raises(EntityNotFoundError, match="queue not found during update_queue"):
         queue_dynamo.update_queue(sample_queue)
 
 
@@ -320,9 +318,7 @@ def test_deleteQueue_raises_queue_not_found(queue_dynamo, sample_queue):
     """Test that trying to delete a non-existent queue raises a ValueError."""
     # Don't add the queue first
 
-    with pytest.raises(
-        EntityNotFoundError, match="queue not found during delete_queue"
-    ):
+    with pytest.raises(EntityNotFoundError, match="queue not found during delete_queue"):
         queue_dynamo.delete_queue(sample_queue)
 
 

@@ -18,12 +18,14 @@ from receipt_dynamo.data.shared_exceptions import (
 )
 
 # This entity is not used in production infrastructure
-pytestmark = [pytest.mark.integration, pytest.mark.unused_in_production]
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.unused_in_production
+]
 
 # =============================================================================
 # TEST DATA AND FIXTURES
 # =============================================================================
-
 
 @pytest.fixture
 def sample_receipt_validation_category() -> ReceiptValidationCategory:
@@ -214,9 +216,7 @@ def test_addReceiptValidationCategory_client_errors(
         ),
     )
     with pytest.raises(expected_exception, match=error_match):
-        client.add_receipt_validation_category(
-            sample_receipt_validation_category
-        )
+        client.add_receipt_validation_category(sample_receipt_validation_category)
     mock_put.assert_called_once()
 
 
@@ -1494,16 +1494,13 @@ def test_listReceiptValidationCategoriesForReceipt_with_invalid_limit(
     image_id = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
 
     # Execute and Assert
-    with pytest.raises(
-        EntityValidationError, match="limit must be an integer or None"
-    ):
+    with pytest.raises(EntityValidationError, match="limit must be an integer or None"):
         client.list_receipt_validation_categories_for_receipt(
             receipt_id=receipt_id, image_id=image_id, limit="not-an-integer"  # type: ignore[arg-type]
         )
 
     with pytest.raises(
-        EntityValidationError,
-        match="last_evaluated_key must be a dictionary or None",
+        EntityValidationError, match="last_evaluated_key must be a dictionary or None"
     ):
         client.list_receipt_validation_categories_for_receipt(
             receipt_id=receipt_id,

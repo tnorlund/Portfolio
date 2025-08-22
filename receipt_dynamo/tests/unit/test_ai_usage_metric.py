@@ -1,5 +1,4 @@
 """Unit tests for the AIUsageMetric entity."""
-
 # pylint: disable=redefined-outer-name,too-many-statements,too-many-arguments
 # pylint: disable=too-many-locals,unused-argument,line-too-long,too-many-lines
 # pylint: disable=too-many-public-methods,import-outside-toplevel,trailing-whitespace
@@ -858,7 +857,7 @@ class TestAIUsageMetric:
     def test_dynamodb_value_conversion_edge_cases(self):
         """Test DynamoDB value conversion edge cases through metadata serialization."""
         timestamp = datetime.now(timezone.utc)
-
+        
         # Test various data types in metadata
         test_values = {
             "string": "test_string",
@@ -885,13 +884,13 @@ class TestAIUsageMetric:
             model="test-model",
             operation="test",
             timestamp=timestamp,
-            metadata=test_values,
+            metadata=test_values
         )
-
+        
         # Serialize and deserialize
         item = metric.to_dynamodb_item()
         restored = AIUsageMetric.from_dynamodb_item(item)
-
+        
         # Verify all values are preserved (with DynamoDB limitations)
         # Note: DynamoDB doesn't support empty strings, they become None
         expected_values = test_values.copy()
@@ -908,19 +907,19 @@ class TestAIUsageMetric:
                 return "custom_representation"
 
         custom_obj = CustomType()
-
+        
         metric = AIUsageMetric(
             service="test",
             model="test-model",
             operation="test",
             timestamp=timestamp,
-            metadata={"custom": custom_obj},
+            metadata={"custom": custom_obj}
         )
-
+        
         # Serialize and deserialize
         item = metric.to_dynamodb_item()
         restored = AIUsageMetric.from_dynamodb_item(item)
-
+        
         # Custom object should be converted to string
         assert restored.metadata["custom"] == "custom_representation"
 
@@ -937,7 +936,7 @@ class TestAIUsageMetric:
             "timestamp": {"S": "2024-01-15T10:30:00+00:00"},
             "request_id": {"S": "test-123"},
             "api_calls": {"N": "1"},
-            "metadata": {"UNKNOWN_TYPE": "value"},  # Invalid DynamoDB type
+            "metadata": {"UNKNOWN_TYPE": "value"}  # Invalid DynamoDB type
         }
 
         # The SerializationMixin's safe_deserialize_field should handle unknown types

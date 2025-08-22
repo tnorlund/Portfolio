@@ -21,7 +21,6 @@ def pytest_sessionstart(session):
     # Ensure coverage is configured for parallel execution
     try:
         import coverage
-
         # This helps coverage work with xdist
         coverage.process_startup()
     except ImportError:

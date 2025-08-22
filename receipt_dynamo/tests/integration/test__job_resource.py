@@ -182,8 +182,7 @@ def test_addJobResource_raises_resource_not_found(
     )
 
     with pytest.raises(
-        OperationError,
-        match="DynamoDB resource not found during add_job_resource",
+        OperationError, match="DynamoDB resource not found during add_job_resource"
     ):
         job_resource_dynamo.add_job_resource(sample_job_resource)
     mock_put.assert_called_once()
@@ -328,8 +327,7 @@ def test_updateJobResourceStatus_raises_value_error_status_none(
     Test that updateJobResourceStatus raises ValueError when status is None
     """
     with pytest.raises(
-        EntityValidationError,
-        match="Status is required and must be a non-empty string",
+        EntityValidationError, match="Status is required and must be a non-empty string"
     ):
         job_resource_dynamo.update_job_resource_status(
             sample_job.job_id, sample_job_resource.resource_id, None
@@ -652,9 +650,7 @@ def test_validate_last_evaluated_key_raises_value_error_missing_keys():
     Test that validate_last_evaluated_key raises ValueError when keys are
     missing
     """
-    with pytest.raises(
-        EntityValidationError, match="LastEvaluatedKey must contain keys"
-    ):
+    with pytest.raises(EntityValidationError, match="LastEvaluatedKey must contain keys"):
         validate_last_evaluated_key({"PK": {"S": "value"}})  # Missing SK
 
 
@@ -695,8 +691,7 @@ def test_listJobResources_raises_client_error(
 
     # Call the method and verify it raises the expected exception
     with pytest.raises(
-        OperationError,
-        match="DynamoDB resource not found during list_job_resources",
+        OperationError, match="DynamoDB resource not found during list_job_resources"
     ):
         job_resource_dynamo.list_job_resources(sample_job.job_id)
     mock_query.assert_called_once()
@@ -724,8 +719,7 @@ def test_listResourcesByType_raises_client_error(job_resource_dynamo, mocker):
 
     # Call the method and verify it raises the expected exception
     with pytest.raises(
-        OperationError,
-        match="DynamoDB resource not found during list_resources_by_type",
+        OperationError, match="DynamoDB resource not found during list_resources_by_type"
     ):
         job_resource_dynamo.list_resources_by_type("gpu")
     mock_query.assert_called_once()
@@ -754,9 +748,6 @@ def test_getResourceById_raises_client_error(job_resource_dynamo, mocker):
     # Call the method and verify it raises the expected exception
     from receipt_dynamo.data.shared_exceptions import DynamoDBError
 
-    with pytest.raises(
-        OperationError,
-        match="DynamoDB resource not found during get_resource_by_id",
-    ):
+    with pytest.raises(OperationError, match="DynamoDB resource not found during get_resource_by_id"):
         job_resource_dynamo.get_resource_by_id("resource-123")
     mock_query.assert_called_once()
