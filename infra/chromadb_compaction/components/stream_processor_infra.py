@@ -185,13 +185,23 @@ class StreamProcessorLambda(ComponentResource):
                     "utils/__init__.py": pulumi.FileAsset(
                         str(
                             Path(__file__).parent.parent
+                            / "lambdas"
                             / "utils"
                             / "__init__.py"
+                        )
+                    ),
+                    "utils/aws_clients.py": pulumi.FileAsset(
+                        str(
+                            Path(__file__).parent.parent
+                            / "lambdas"
+                            / "utils"
+                            / "aws_clients.py"
                         )
                     ),
                     "utils/logging.py": pulumi.FileAsset(
                         str(
                             Path(__file__).parent.parent
+                            / "lambdas"
                             / "utils"
                             / "logging.py"
                         )
@@ -199,6 +209,7 @@ class StreamProcessorLambda(ComponentResource):
                     "utils/metrics.py": pulumi.FileAsset(
                         str(
                             Path(__file__).parent.parent
+                            / "lambdas"
                             / "utils"
                             / "metrics.py"
                         )
@@ -206,6 +217,7 @@ class StreamProcessorLambda(ComponentResource):
                     "utils/response.py": pulumi.FileAsset(
                         str(
                             Path(__file__).parent.parent
+                            / "lambdas"
                             / "utils"
                             / "response.py"
                         )
@@ -213,6 +225,7 @@ class StreamProcessorLambda(ComponentResource):
                     "utils/timeout_handler.py": pulumi.FileAsset(
                         str(
                             Path(__file__).parent.parent
+                            / "lambdas"
                             / "utils"
                             / "timeout_handler.py"
                         )
@@ -220,6 +233,7 @@ class StreamProcessorLambda(ComponentResource):
                     "utils/tracing.py": pulumi.FileAsset(
                         str(
                             Path(__file__).parent.parent
+                            / "lambdas"
                             / "utils"
                             / "tracing.py"
                         )
