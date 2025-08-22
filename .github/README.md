@@ -8,13 +8,6 @@ Simple CI/CD setup running on laptop (self-hosted macOS ARM64 runner).
 - **`pr-checks.yml`** - Quick PR validation with auto-formatting  
 - **`deploy-on-main.yml`** - Standalone deployment workflow
 - **`claude.yml`** - Basic Claude AI integration for PR comments
-- **`auto-format.yml`** - Code auto-formatting
-- **`ci-monitoring-basic.yml`** - CI health monitoring
-- **`track-ai-usage.yml`** - Claude API usage tracking
-
-## Disabled (Not Used)
-- `ci-improved.yml.disabled` - Alternative CI pipeline  
-- `deploy.yml.disabled` - Alternative deployment
 
 ## Manual Triggers
 - Push/merge to main → full CI + deploy
