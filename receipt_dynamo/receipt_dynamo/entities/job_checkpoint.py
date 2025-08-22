@@ -182,6 +182,7 @@ class JobCheckpoint:
         yield "metrics", self.metrics
         yield "is_best", self.is_best
 
+
     def __hash__(self) -> int:
         """Returns the hash value of the JobCheckpoint object.
 
@@ -206,13 +207,13 @@ class JobCheckpoint:
 
     def _dict_to_dynamodb_map(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Converts a Python dictionary to a DynamoDB map format.
-
+        
         This is a wrapper around the imported dict_to_dynamodb_map function
         to maintain backward compatibility with tests.
-
+        
         Args:
             data: The Python dictionary to convert
-
+            
         Returns:
             The dictionary in DynamoDB map format
         """

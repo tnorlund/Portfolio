@@ -100,10 +100,7 @@ class JobResource:
                 )
 
         valid_statuses = ["allocated", "released", "failed", "pending"]
-        if (
-            not isinstance(self.status, str)
-            or self.status.lower() not in valid_statuses
-        ):
+        if not isinstance(self.status, str) or self.status.lower() not in valid_statuses:
             raise ValueError(f"status must be one of {valid_statuses}")
         self.status = self.status.lower()
 
@@ -212,6 +209,7 @@ class JobResource:
         yield "status", self.status
         yield "gpu_count", self.gpu_count
         yield "resource_config", self.resource_config
+
 
     def __hash__(self) -> int:
         """Returns the hash value of the JobResource object.
