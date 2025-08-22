@@ -245,7 +245,7 @@ class HybridLambdaDeployment(ComponentResource):
             image_uri=self.docker_image.image_uri,
             role=self.lambda_role.arn,
             timeout=900,  # 15 minutes for compaction operations
-            memory_size=1024,  # More memory for ChromaDB operations
+            memory_size=2048,  # Increased memory for ChromaDB label operations (was failing with 1024MB)
             ephemeral_storage={"size": 5120},  # 5GB for ChromaDB snapshots and temp files
             architectures=["arm64"],
             environment={
