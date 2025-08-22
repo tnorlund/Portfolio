@@ -246,6 +246,7 @@ class HybridLambdaDeployment(ComponentResource):
             role=self.lambda_role.arn,
             timeout=900,  # 15 minutes for compaction operations
             memory_size=1024,  # More memory for ChromaDB operations
+            ephemeral_storage={"size": 5120},  # 5GB for ChromaDB snapshots and temp files
             architectures=["arm64"],
             environment={
                 "variables": {

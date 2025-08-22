@@ -262,7 +262,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 
             # Format response with observability
             if OBSERVABILITY_AVAILABLE:
-                return format_response(result, event, correlation_id=correlation_id)
+                return format_response(result, event)
             return result
 
         # Direct invocation not supported - Lambda is for SQS triggers only
@@ -286,7 +286,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         )
         
         if OBSERVABILITY_AVAILABLE:
-            return format_response(response.to_dict(), event, is_error=True, correlation_id=correlation_id)
+            return format_response(response.to_dict(), event, is_error=True)
         return response.to_dict()
         
     except Exception as e:
@@ -311,7 +311,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         )
         
         if OBSERVABILITY_AVAILABLE:
-            return format_response(error_response.to_dict(), event, is_error=True, correlation_id=correlation_id)
+            return format_response(error_response.to_dict(), event, is_error=True)
         return error_response.to_dict()
         
     finally:
