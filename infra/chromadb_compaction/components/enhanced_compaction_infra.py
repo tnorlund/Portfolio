@@ -215,6 +215,48 @@ class EnhancedCompactionLambda(ComponentResource):
                             / "enhanced_compaction_handler.py"
                         )
                     ),
+                    "utils/__init__.py": pulumi.FileAsset(
+                        str(
+                            Path(__file__).parent.parent
+                            / "utils"
+                            / "__init__.py"
+                        )
+                    ),
+                    "utils/logging.py": pulumi.FileAsset(
+                        str(
+                            Path(__file__).parent.parent
+                            / "utils"
+                            / "logging.py"
+                        )
+                    ),
+                    "utils/metrics.py": pulumi.FileAsset(
+                        str(
+                            Path(__file__).parent.parent
+                            / "utils"
+                            / "metrics.py"
+                        )
+                    ),
+                    "utils/response.py": pulumi.FileAsset(
+                        str(
+                            Path(__file__).parent.parent
+                            / "utils"
+                            / "response.py"
+                        )
+                    ),
+                    "utils/timeout_handler.py": pulumi.FileAsset(
+                        str(
+                            Path(__file__).parent.parent
+                            / "utils"
+                            / "timeout_handler.py"
+                        )
+                    ),
+                    "utils/tracing.py": pulumi.FileAsset(
+                        str(
+                            Path(__file__).parent.parent
+                            / "utils"
+                            / "tracing.py"
+                        )
+                    ),
                 }
             ),
             handler="enhanced_compaction_handler.handle",
