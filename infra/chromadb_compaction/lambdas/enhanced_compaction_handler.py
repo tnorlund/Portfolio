@@ -1409,18 +1409,14 @@ def reconstruct_label_metadata(
     """
     from receipt_dynamo.constants import ValidationStatus
     
-    # Get all labels for this specific word
-    labels, _ = dynamo_client.list_receipt_word_labels_for_receipt(
+    # Get all labels for this specific word directly
+    word_labels, _ = dynamo_client.list_receipt_word_labels_for_word(
         image_id=image_id,
         receipt_id=receipt_id,
-        limit=None  # Get all labels for this receipt
+        line_id=line_id,
+        word_id=word_id,
+        limit=None  # Get all labels for this word
     )
-    
-    # Filter labels to only those for our specific word
-    word_labels = [
-        lbl for lbl in labels 
-        if lbl.line_id == line_id and lbl.word_id == word_id
-    ]
     
     # Calculate label_status - overall state for this word
     if any(
