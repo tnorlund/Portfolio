@@ -381,11 +381,13 @@ class MonitoringComponent(ComponentResource):
         widgets.append(error_widget)
 
         # Lambda memory utilization widget using CloudWatch Logs Insights
+        # Generate log group sources from lambda function names
+        log_sources = " | ".join([f"SOURCE '/aws/lambda/{name}'" for name in lambda_names])
         memory_widget = {
             "type": "log",
             "x": 0, "y": 12, "width": 12, "height": 6,
             "properties": {
-                "query": f"SOURCE '/aws/lambda/embedding-vector-compact-lambda-dev-377c856' | SOURCE '/aws/lambda/embedding-word-poll-lambda-dev-a18caf9' | SOURCE '/aws/lambda/embedding-line-poll-lambda-dev-ce2c574'\n| filter @type = \"REPORT\"\n| fields @timestamp, @requestId, @memorySize / 1000000 as AllocatedMemoryMB, @maxMemoryUsed / 1000000 as UsedMemoryMB, @maxMemoryUsed / @memorySize * 100 as MemoryUtilizationPercent\n| sort @timestamp desc\n| limit 100",
+                "query": f"{log_sources}\n| filter @type = \"REPORT\"\n| fields @timestamp, @requestId, @memorySize / 1000000 as AllocatedMemoryMB, @maxMemoryUsed / 1000000 as UsedMemoryMB, @maxMemoryUsed / @memorySize * 100 as MemoryUtilizationPercent\n| sort @timestamp desc\n| limit 100",
                 "region": "us-east-1",
                 "title": "Lambda Memory Utilization",
                 "view": "table",
@@ -399,7 +401,7 @@ class MonitoringComponent(ComponentResource):
             "type": "log", 
             "x": 12, "y": 12, "width": 12, "height": 6,
             "properties": {
-                "query": f"SOURCE '/aws/lambda/embedding-vector-compact-lambda-dev-377c856' | SOURCE '/aws/lambda/embedding-word-poll-lambda-dev-a18caf9' | SOURCE '/aws/lambda/embedding-line-poll-lambda-dev-ce2c574'\n| filter @type = \"REPORT\"\n| fields @timestamp, @maxMemoryUsed / 1000000 as UsedMemoryMB, @memorySize / 1000000 as AllocatedMemoryMB\n| sort @timestamp asc",
+                "query": f"{log_sources}\n| filter @type = \"REPORT\"\n| fields @timestamp, @maxMemoryUsed / 1000000 as UsedMemoryMB, @memorySize / 1000000 as AllocatedMemoryMB\n| sort @timestamp asc",
                 "region": "us-east-1", 
                 "title": "Memory Usage Over Time",
                 "view": "table",

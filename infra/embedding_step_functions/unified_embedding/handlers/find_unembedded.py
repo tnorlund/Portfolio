@@ -13,9 +13,9 @@ from receipt_label.embedding.line import (
 )
 import utils.logging
 
-get_logger = utils.logging.get_logger
+get_operation_logger = utils.logging.get_operation_logger
 
-logger = get_logger(__name__)
+logger = get_operation_logger(__name__)
 
 
 def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:

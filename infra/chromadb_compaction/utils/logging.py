@@ -69,12 +69,8 @@ class CompactionOperationLogger:
         """Log message with correlation ID and extra context."""
         extra_fields = {"correlation_id": self.correlation_id, **kwargs}
 
-        # Create a new LogRecord with extra fields
-        record = self.logger.makeRecord(
-            self.logger.name, level, "", 0, message, (), None
-        )
-        record.extra_fields = extra_fields
-        self.logger.handle(record)
+        # Use standard logging API with extra parameter
+        self.logger.log(level, message, extra={"extra_fields": extra_fields})
 
     @contextmanager
     def operation_timer(

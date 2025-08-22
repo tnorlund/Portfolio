@@ -1,8 +1,7 @@
 """CloudWatch custom metrics for ChromaDB compaction operations."""
 
-import os
-from typing import Dict, Any, Optional, List
-from datetime import datetime
+from typing import Dict, Any, Optional
+from datetime import datetime, timezone
 
 try:
     import boto3
@@ -52,7 +51,7 @@ class CompactionMetrics:
                 'MetricName': metric_name,
                 'Value': value,
                 'Unit': unit,
-                'Timestamp': datetime.utcnow()
+                'Timestamp': datetime.now(timezone.utc)
             }
             
             if dimensions:

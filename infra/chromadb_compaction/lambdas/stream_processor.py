@@ -324,16 +324,16 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         response = LambdaResponse(
             status_code=200,
             processed_records=processed_records,
-            queued_messages=len(messages_to_send),
+            queued_messages=sent_count,
         )
         
         logger.info("Stream processing completed",
                    processed_records=processed_records,
-                   queued_messages=len(messages_to_send))
+                   queued_messages=sent_count)
         
         if OBSERVABILITY_AVAILABLE:
             metrics.gauge("StreamProcessorProcessedRecords", processed_records)
-            metrics.gauge("StreamProcessorQueuedMessages", len(messages_to_send))
+            metrics.gauge("StreamProcessorQueuedMessages", sent_count)
             
         # Convert dataclass to dict for AWS Lambda JSON serialization
         result = response.to_dict()
@@ -644,7 +644,7 @@ def _send_batch_to_queue(
     queue_url = os.environ.get(queue_env_var)
 
     if not queue_url:
-        logger.error("Queue URL not found for %s", queue_env_var)
+        logger.error("Queue URL not found", queue_env_var=queue_env_var)
         return 0
 
     # Send in batches of 10 (SQS batch limit)

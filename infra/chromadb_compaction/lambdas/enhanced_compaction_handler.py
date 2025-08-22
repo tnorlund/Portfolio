@@ -327,6 +327,8 @@ def process_sqs_messages(records: List[Dict[str, Any]]) -> Dict[str, Any]:
     Handles both:
     1. Stream messages (from DynamoDB stream processor)
     2. Traditional delta notifications (existing functionality)
+    
+    Returns partial batch failure response for unprocessed delta messages.
     """
     if OBSERVABILITY_AVAILABLE:
         logger.info("Processing SQS messages", message_count=len(records))
@@ -334,8 +336,9 @@ def process_sqs_messages(records: List[Dict[str, Any]]) -> Dict[str, Any]:
         logger.info("Processing %d SQS messages", len(records))
 
     stream_messages = []
-    delta_messages = []
+    delta_message_records = []  # Store full records for delta messages
     processed_count = 0
+    failed_message_ids = []  # Track failed message IDs for partial batch failure
 
     # Categorize messages by type
     for record in records:
@@ -388,7 +391,11 @@ def process_sqs_messages(records: List[Dict[str, Any]]) -> Dict[str, Any]:
                     })
             else:
                 # Traditional delta message or unknown - treat as delta
-                delta_messages.append(message_body)
+                # Store the full record to get messageId for partial batch failure
+                delta_message_records.append({
+                    "record": record,
+                    "body": message_body
+                })
                 
                 if OBSERVABILITY_AVAILABLE:
                     metrics.count("CompactionDeltaMessage", 1)
@@ -412,26 +419,58 @@ def process_sqs_messages(records: List[Dict[str, Any]]) -> Dict[str, Any]:
         else:
             logger.info("Processed %d stream messages", len(stream_messages))
 
-    # Process delta messages if any
-    if delta_messages:
-        delta_result = process_delta_messages(delta_messages)
+    # Process delta messages if any - collect failed message IDs
+    if delta_message_records:
+        delta_bodies = [msg["body"] for msg in delta_message_records]
+        delta_result = process_delta_messages(delta_bodies)
+        
+        # Since delta processing is not implemented, mark all delta messages as failed
+        # to prevent data loss by forcing SQS to retry them
+        for msg_record in delta_message_records:
+            message_id = msg_record["record"].get("receiptHandle")
+            if message_id:
+                failed_message_ids.append(message_id)
+        
         if OBSERVABILITY_AVAILABLE:
-            logger.info("Processed delta messages", count=len(delta_messages))
+            logger.warning("Delta messages not processed - added to failed list for retry", 
+                          count=len(delta_message_records))
+            metrics.count("CompactionDeltaMessagesFailedForRetry", len(delta_message_records))
         else:
-            logger.info("Processed %d delta messages", len(delta_messages))
+            logger.warning("Processed %d delta messages (marked as failed for retry)", len(delta_message_records))
 
+    # Return partial batch failure response if there are failed messages
+    if failed_message_ids:
+        response = {
+            "batchItemFailures": [
+                {"itemIdentifier": msg_id} for msg_id in failed_message_ids
+            ]
+        }
+        
+        if OBSERVABILITY_AVAILABLE:
+            logger.info("Returning partial batch failure response", 
+                       failed_count=len(failed_message_ids),
+                       stream_processed=len(stream_messages))
+            metrics.count("CompactionPartialBatchFailure", 1)
+            metrics.gauge("CompactionFailedMessages", len(failed_message_ids))
+        else:
+            logger.info(f"Partial batch failure: {len(failed_message_ids)} failed, "
+                       f"{len(stream_messages)} stream messages processed")
+        
+        return response
+
+    # All messages processed successfully
     response = LambdaResponse(
         status_code=200,
         processed_messages=processed_count,
         stream_messages=len(stream_messages),
-        delta_messages=len(delta_messages),
+        delta_messages=len(delta_message_records),
         message="SQS messages processed successfully",
     )
     
     if OBSERVABILITY_AVAILABLE:
         metrics.gauge("CompactionProcessedMessages", processed_count)
         metrics.gauge("CompactionStreamMessages", len(stream_messages))
-        metrics.gauge("CompactionDeltaMessages", len(delta_messages))
+        metrics.gauge("CompactionDeltaMessages", len(delta_message_records))
         
     return response.to_dict()
 

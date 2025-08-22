@@ -60,7 +60,18 @@ class XRayTracer:
             yield None
             return
 
+        subsegment = None
         try:
+            # Check if there's an active segment before creating subsegment
+            current_segment = xray_recorder.current_segment()
+            if not current_segment:
+                self.logger.warning(
+                    "No active X-Ray segment found for subsegment",
+                    subsegment_name=name,
+                )
+                yield None
+                return
+
             subsegment = xray_recorder.begin_subsegment(name)
 
             # Add namespace
@@ -86,8 +97,12 @@ class XRayTracer:
             yield subsegment
 
         except Exception as e:
-            if self.enabled:
-                xray_recorder.current_subsegment().add_exception(e)
+            if self.enabled and subsegment:
+                try:
+                    subsegment.add_exception(e)
+                except Exception:
+                    # Ignore errors when adding exceptions to avoid cascading failures
+                    pass
                 self.logger.error(
                     "X-Ray subsegment failed",
                     subsegment_name=name,
@@ -95,7 +110,7 @@ class XRayTracer:
                 )
             raise
         finally:
-            if self.enabled:
+            if self.enabled and subsegment:
                 try:
                     xray_recorder.end_subsegment()
                     self.logger.debug(
@@ -170,10 +185,18 @@ class XRayTracer:
             return
 
         try:
-            current = (
-                xray_recorder.current_subsegment()
-                or xray_recorder.current_segment()
-            )
+            current = None
+            try:
+                current = xray_recorder.current_subsegment()
+            except Exception:
+                pass
+            
+            if not current:
+                try:
+                    current = xray_recorder.current_segment()
+                except Exception:
+                    pass
+            
             if current:
                 current.put_annotation(key, str(value))
                 self.logger.debug(
@@ -196,10 +219,18 @@ class XRayTracer:
             return
 
         try:
-            current = (
-                xray_recorder.current_subsegment()
-                or xray_recorder.current_segment()
-            )
+            current = None
+            try:
+                current = xray_recorder.current_subsegment()
+            except Exception:
+                pass
+            
+            if not current:
+                try:
+                    current = xray_recorder.current_segment()
+                except Exception:
+                    pass
+            
             if current:
                 current.put_metadata(key, value, namespace)
                 self.logger.debug(
