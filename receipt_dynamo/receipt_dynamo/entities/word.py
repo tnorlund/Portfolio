@@ -309,7 +309,8 @@ class Word(
         )
 
     def _get_geometry_hash_fields(self) -> tuple:
-        """Override to include entity-specific ID fields in hash computation."""
+        """Override to include entity-specific ID fields in hash 
+        computation."""
         geometry_fields = (
             self.text,
             tuple(self.bounding_box.items()),
@@ -339,14 +340,7 @@ class Word(
     def __repr__(self) -> str:
         """Returns a string representation of the Word object."""
         geometry_fields = self._get_geometry_repr_fields()
-        return (
-            f"Word("
-            f"word_id={self.word_id}, "
-            f"{geometry_fields}"
-            f")"
-        )
-
-
+        return f"Word(" f"word_id={self.word_id}, " f"{geometry_fields}" f")"
 
 
 def item_to_word(item: Dict[str, Any]) -> Word:

@@ -206,7 +206,8 @@ class ReceiptLine(
         )
 
     def _get_geometry_hash_fields(self) -> tuple:
-        """Override to include entity-specific ID fields in hash computation."""
+        """Override to include entity-specific ID fields in hash 
+        computation."""
         return self._get_base_geometry_hash_fields() + (
             self.receipt_id,
             self.image_id,

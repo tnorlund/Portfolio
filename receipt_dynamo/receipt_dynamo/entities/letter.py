@@ -219,7 +219,8 @@ class Letter(
 
 
 def item_to_letter(item: Dict[str, Any]) -> Letter:
-    """Convert a DynamoDB item to a Letter object using type-safe EntityFactory.
+    """Convert a DynamoDB item to a Letter object using type-safe 
+    EntityFactory.
 
     Args:
         item: The DynamoDB item dictionary to convert.
@@ -254,15 +255,20 @@ def item_to_letter(item: Dict[str, Any]) -> Letter:
     def parse_letter_sk(sk: str) -> Dict[str, Any]:
         """Parse the SK to extract line_id, word_id, and letter_id."""
         parts = sk.split("#")
-        
+
         # Expected format: LINE#{line_id}#WORD#{word_id}#LETTER#{letter_id}
-        if len(parts) < 6 or parts[0] != "LINE" or parts[2] != "WORD" or parts[4] != "LETTER":
+        if (
+            len(parts) < 6
+            or parts[0] != "LINE"
+            or parts[2] != "WORD"
+            or parts[4] != "LETTER"
+        ):
             raise ValueError(f"Invalid SK format for Letter: {sk}")
 
         return {
             "line_id": int(parts[1]),
             "word_id": int(parts[3]),
-            "letter_id": int(parts[5])
+            "letter_id": int(parts[5]),
         }
 
     # Type-safe extractors for all fields

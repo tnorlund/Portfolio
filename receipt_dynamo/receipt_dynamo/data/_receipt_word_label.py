@@ -458,7 +458,7 @@ class _ReceiptWordLabel(
 
     @handle_dynamodb_errors("list_receipt_word_labels_for_image")
     def list_receipt_word_labels_for_image(
-        self, 
+        self,
         image_id: str,
         limit: Optional[int] = None,
         last_evaluated_key: Optional[Dict[str, Any]] = None,
@@ -471,8 +471,8 @@ class _ReceiptWordLabel(
             last_evaluated_key (Optional[Dict[str, Any]]): Key to start from
 
         Returns:
-            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: The receipt 
-                word labels for the image and last evaluated key
+            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: 
+                The receipt word labels for the image and last evaluated key
         """
         if not isinstance(image_id, str):
             raise EntityValidationError(
@@ -485,13 +485,15 @@ class _ReceiptWordLabel(
                 raise EntityValidationError("limit must be an integer")
             if limit <= 0:
                 raise EntityValidationError("limit must be greater than 0")
-                
+
         if last_evaluated_key is not None:
             validate_last_evaluated_key(last_evaluated_key)
 
         results, last_key = self._query_entities(
             index_name=None,
-            key_condition_expression="#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            key_condition_expression=(
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+            ),
             expression_attribute_names={
                 "#pk": "PK",
                 "#sk": "SK",
@@ -511,7 +513,7 @@ class _ReceiptWordLabel(
 
     @handle_dynamodb_errors("list_receipt_word_labels_for_receipt")
     def list_receipt_word_labels_for_receipt(
-        self, 
+        self,
         image_id: str,
         receipt_id: int,
         limit: Optional[int] = None,
@@ -526,34 +528,39 @@ class _ReceiptWordLabel(
             last_evaluated_key (Optional[Dict[str, Any]]): Key to start from
 
         Returns:
-            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: The receipt 
-                word labels for the receipt and last evaluated key
+            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: 
+                The receipt word labels for the receipt and last evaluated key
         """
         if not isinstance(image_id, str):
             raise EntityValidationError(
                 f"image_id must be a string, got {type(image_id).__name__}"
             )
         assert_valid_uuid(image_id)
-        
+
         if not isinstance(receipt_id, int):
             raise EntityValidationError(
-                f"receipt_id must be an integer, got {type(receipt_id).__name__}"
+                f"receipt_id must be an integer, "
+                f"got {type(receipt_id).__name__}"
             )
         if receipt_id <= 0:
-            raise EntityValidationError("receipt_id must be a positive integer")
+            raise EntityValidationError(
+                "receipt_id must be a positive integer"
+            )
 
         if limit is not None:
             if not isinstance(limit, int):
                 raise EntityValidationError("limit must be an integer")
             if limit <= 0:
                 raise EntityValidationError("limit must be greater than 0")
-                
+
         if last_evaluated_key is not None:
             validate_last_evaluated_key(last_evaluated_key)
 
         results, last_key = self._query_entities(
             index_name=None,
-            key_condition_expression="#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            key_condition_expression=(
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+            ),
             expression_attribute_names={
                 "#pk": "PK",
                 "#sk": "SK",
@@ -582,57 +589,68 @@ class _ReceiptWordLabel(
         last_evaluated_key: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:
         """Lists all receipt word labels for a specific word
-        
+
         Args:
             image_id (str): The image ID
-            receipt_id (int): The receipt ID  
+            receipt_id (int): The receipt ID
             line_id (int): The line ID
             word_id (int): The word ID
             limit (Optional[int]): Maximum number of items to return
             last_evaluated_key (Optional[Dict[str, Any]]): Key to start from
-            
+
         Returns:
-            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: The receipt 
-                word labels for the specific word and last evaluated key
+            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: 
+                The receipt word labels for the specific word and last 
+                evaluated key
         """
         if not isinstance(image_id, str):
             raise EntityValidationError(
                 f"image_id must be a string, got {type(image_id).__name__}"
             )
         assert_valid_uuid(image_id)
-        
+
         for param_name, param_value in [
             ("receipt_id", receipt_id),
-            ("line_id", line_id), 
-            ("word_id", word_id)
+            ("line_id", line_id),
+            ("word_id", word_id),
         ]:
             if not isinstance(param_value, int):
                 raise EntityValidationError(
-                    f"{param_name} must be an integer, got {type(param_value).__name__}"
+                    f"{param_name} must be an integer, "
+                    f"got {type(param_value).__name__}"
                 )
             if param_value <= 0:
-                raise EntityValidationError(f"{param_name} must be a positive integer")
+                raise EntityValidationError(
+                    f"{param_name} must be a positive integer"
+                )
 
         if limit is not None:
             if not isinstance(limit, int):
                 raise EntityValidationError("limit must be an integer")
             if limit <= 0:
                 raise EntityValidationError("limit must be greater than 0")
-                
+
         if last_evaluated_key is not None:
             validate_last_evaluated_key(last_evaluated_key)
 
         # Query for labels of the specific word using precise key condition
         results, last_key = self._query_entities(
             index_name=None,
-            key_condition_expression="#pk = :pk AND begins_with(#sk, :sk_prefix)",
+            key_condition_expression=(
+                "#pk = :pk AND begins_with(#sk, :sk_prefix)"
+            ),
             expression_attribute_names={
                 "#pk": "PK",
                 "#sk": "SK",
             },
             expression_attribute_values={
                 ":pk": {"S": f"IMAGE#{image_id}"},
-                ":sk_prefix": {"S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LABEL#"},
+                ":sk_prefix": {
+                    "S": (
+                        f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
+                        f"#WORD#{word_id:05d}#LABEL#"
+                    )
+                },
             },
             converter_func=item_to_receipt_word_label,
             limit=limit,
@@ -675,7 +693,7 @@ class _ReceiptWordLabel(
 
         # Format label for GSI1PK - uppercase and pad to 40 chars
         label_upper = label.upper()
-        padding = '_' * (40 - len('LABEL#') - len(label_upper))
+        padding = "_" * (40 - len("LABEL#") - len(label_upper))
         gsi1_pk = f"LABEL#{label_upper}{padding}"
 
         return self._query_entities(

@@ -1,7 +1,8 @@
 """
 Type-safe Entity Factory for DynamoDB item_to_* converter functions.
 
-This version maintains full MyPy compatibility while eliminating code duplication.
+This version maintains full MyPy compatibility while eliminating code 
+duplication.
 """
 
 from datetime import datetime
@@ -60,7 +61,8 @@ class EntityFactory(SerializationMixin):
             item: DynamoDB item dictionary
             required_keys: Set of required field names
             field_mappings: Map DynamoDB field names to entity field names
-            custom_extractors: Type-safe extraction functions for complex fields
+            custom_extractors: Type-safe extraction functions for 
+                complex fields
             key_parsers: Type-safe functions to parse PK/SK components
 
         Returns:
@@ -91,12 +93,13 @@ class EntityFactory(SerializationMixin):
         # Extract fields using custom extractors first
         for field_name, extractor in custom_extractors.items():
             kwargs[field_name] = extractor(item)
-        
+
         # Extract remaining required fields
         for field_name in required_keys:
             if field_name in {"PK", "SK", "TYPE"}:
-                continue  # Already handled by key parsers or not a constructor param
-            
+                continue  # Already handled by key parsers or not a 
+                # constructor param
+
             if field_name in custom_extractors:
                 continue  # Already handled above
 
@@ -152,7 +155,8 @@ class EntityFactory(SerializationMixin):
 
         Args:
             pk: Primary key like "IMAGE#{uuid}"
-            sk: Sort key like "RECEIPT#{receipt:05d}#LINE#{line:05d}#WORD#{word:05d}"
+            sk: Sort key like 
+                "RECEIPT#{receipt:05d}#LINE#{line:05d}#WORD#{word:05d}"
 
         Returns:
             Dictionary with image_id, receipt_id, line_id, word_id
@@ -243,15 +247,15 @@ class EntityFactory(SerializationMixin):
 
         extracted_data = item["extracted_data"]["M"]
         result: Dict[str, Any] = {}
-        
+
         # Extract type if present
         if "type" in extracted_data and "S" in extracted_data["type"]:
             result["type"] = cast(str, extracted_data["type"]["S"])
-        
+
         # Extract value if present
         if "value" in extracted_data and "S" in extracted_data["value"]:
             result["value"] = cast(str, extracted_data["value"]["S"])
-        
+
         return result if result else None
 
     @staticmethod

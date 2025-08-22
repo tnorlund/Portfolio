@@ -81,7 +81,9 @@ class _ReceiptLetter(
         self._add_entity(receipt_letter)
 
     @handle_dynamodb_errors("add_receipt_letters")
-    def add_receipt_letters(self, receipt_letters: list[ReceiptLetter]) -> None:
+    def add_receipt_letters(
+        self, receipt_letters: list[ReceiptLetter]
+    ) -> None:
         """
         Adds multiple ReceiptLetters to DynamoDB in batches.
 
@@ -102,8 +104,8 @@ class _ReceiptLetter(
         for i, receipt_letter in enumerate(receipt_letters):
             if not isinstance(receipt_letter, ReceiptLetter):
                 raise EntityValidationError(
-                    f"receipt_letters[{i}] must be an instance of ReceiptLetter, "
-                    f"got {type(receipt_letter).__name__}"
+                    f"receipt_letters[{i}] must be an instance of "
+                    f"ReceiptLetter, got {type(receipt_letter).__name__}"
                 )
         if not receipt_letters:  # Empty list check
             raise OperationError("Parameter validation failed")
@@ -133,7 +135,9 @@ class _ReceiptLetter(
         self._update_entity(receipt_letter)
 
     @handle_dynamodb_errors("update_receipt_letters")
-    def update_receipt_letters(self, receipt_letters: list[ReceiptLetter]) -> None:
+    def update_receipt_letters(
+        self, receipt_letters: list[ReceiptLetter]
+    ) -> None:
         """
         Updates multiple ReceiptLetters in the database.
 
@@ -154,10 +158,12 @@ class _ReceiptLetter(
         for i, receipt_letter in enumerate(receipt_letters):
             if not isinstance(receipt_letter, ReceiptLetter):
                 raise EntityValidationError(
-                    f"receipt_letters[{i}] must be an instance of ReceiptLetter, "
-                    f"got {type(receipt_letter).__name__}"
+                    f"receipt_letters[{i}] must be an instance of "
+                    f"ReceiptLetter, got {type(receipt_letter).__name__}"
                 )
-        self._update_entities(receipt_letters, ReceiptLetter, "receipt_letters")
+        self._update_entities(
+            receipt_letters, ReceiptLetter, "receipt_letters"
+        )
 
     @handle_dynamodb_errors("delete_receipt_letter")
     def delete_receipt_letter(
@@ -208,7 +214,10 @@ class _ReceiptLetter(
         key = {
             "PK": {"S": f"IMAGE#{image_id}"},
             "SK": {
-                "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LETTER#{letter_id:05d}"
+                "S": (
+                    f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
+                    f"#WORD#{word_id:05d}#LETTER#{letter_id:05d}"
+                )
             },
         }
         self._client.delete_item(
@@ -218,7 +227,9 @@ class _ReceiptLetter(
         )
 
     @handle_dynamodb_errors("delete_receipt_letters")
-    def delete_receipt_letters(self, receipt_letters: list[ReceiptLetter]) -> None:
+    def delete_receipt_letters(
+        self, receipt_letters: list[ReceiptLetter]
+    ) -> None:
         """
         Deletes multiple ReceiptLetters in batch.
 
@@ -239,8 +250,8 @@ class _ReceiptLetter(
         for i, receipt_letter in enumerate(receipt_letters):
             if not isinstance(receipt_letter, ReceiptLetter):
                 raise EntityValidationError(
-                    f"receipt_letters[{i}] must be an instance of ReceiptLetter, "
-                    f"got {type(receipt_letter).__name__}"
+                    f"receipt_letters[{i}] must be an instance of "
+                    f"ReceiptLetter, got {type(receipt_letter).__name__}"
                 )
         self._delete_entities(receipt_letters)
 
@@ -285,7 +296,9 @@ class _ReceiptLetter(
         if not isinstance(receipt_id, int):
             raise EntityValidationError("receipt_id must be an integer")
         if receipt_id <= 0:
-            raise EntityValidationError("receipt_id must be a positive integer")
+            raise EntityValidationError(
+                "receipt_id must be a positive integer"
+            )
         if image_id is None:
             raise EntityValidationError("image_id cannot be None")
         self._validate_image_id(image_id)
