@@ -1,16 +1,48 @@
-name: Claude Assistant
+name: Claude AI Integration
 
 on:
   issue_comment:
     types: [created]
-  pull_request:
-    types: [opened, synchronize]
+  pull_request_review_comment:
+    types: [created]
 
 jobs:
   claude-response:
-    runs-on: ubuntu-latest
+    if: contains(github.event.comment.body, '@claude')
+    runs-on: self-hosted
+    
     steps:
-    - uses: anthropics/claude-code-action@beta
-      with:
-        anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-        github_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          
+      - name: Install Claude Code CLI
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          
+      - name: Handle Claude Request
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Extract the comment text after @claude
+          COMMENT_BODY="${{ github.event.comment.body }}"
+          CLAUDE_REQUEST=$(echo "$COMMENT_BODY" | sed 's/.*@claude[[:space:]]*//')
+          
+          # Get PR context if this is a PR comment
+          if [ "${{ github.event.issue.pull_request }}" != "null" ]; then
+            PR_NUMBER="${{ github.event.issue.number }}"
+            echo "Processing Claude request for PR #$PR_NUMBER: $CLAUDE_REQUEST"
+            
+            # Use Claude Code CLI to process the request
+            claude-code --pr $PR_NUMBER --comment "$CLAUDE_REQUEST"
+          else
+            echo "Processing Claude request for issue: $CLAUDE_REQUEST"
+            claude-code --comment "$CLAUDE_REQUEST"
+          fi
