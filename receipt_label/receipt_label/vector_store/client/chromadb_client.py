@@ -89,8 +89,8 @@ class ChromaDBClient(VectorStoreInterface):
         self.persist_directory = persist_directory
         self.mode = mode.lower()
         self.use_persistent_client = persist_directory is not None
-        self._client: Optional[chromadb.Client] = None
-        self._collections: Dict[str, Collection] = {}
+        self._client: Optional[Any] = None
+        self._collections: Dict[str, Any] = {}
 
         # Configure embedding function based on mode and settings
         if embedding_function:
@@ -100,21 +100,27 @@ class ChromaDBClient(VectorStoreInterface):
             self._embedding_function = None
         elif metadata_only:
             # For metadata-only operations, use default embedding function
-            self._embedding_function = embedding_functions.DefaultEmbeddingFunction()
+            if embedding_functions:
+                self._embedding_function = embedding_functions.DefaultEmbeddingFunction()
+            else:
+                self._embedding_function = None
         else:
             # Use OpenAI for write operations by default
-            api_key = (
-                os.environ.get("OPENAI_API_KEY") 
-                or os.environ.get("CHROMA_OPENAI_API_KEY") 
-                or "placeholder"
-            )
-            self._embedding_function = embedding_functions.OpenAIEmbeddingFunction(
-                api_key=api_key,
-                model_name="text-embedding-3-small",
-            )
+            if embedding_functions:
+                api_key = (
+                    os.environ.get("OPENAI_API_KEY") 
+                    or os.environ.get("CHROMA_OPENAI_API_KEY") 
+                    or "placeholder"
+                )
+                self._embedding_function = embedding_functions.OpenAIEmbeddingFunction(
+                    api_key=api_key,
+                    model_name="text-embedding-3-small",
+                )
+            else:
+                self._embedding_function = None
 
     @property
-    def client(self) -> chromadb.Client:
+    def client(self) -> Any:
         """Get or create ChromaDB client."""
         if self._client is None:
             if self.use_persistent_client and self.persist_directory:
@@ -143,7 +149,7 @@ class ChromaDBClient(VectorStoreInterface):
         name: str, 
         create_if_missing: bool = False,
         metadata: Optional[Dict[str, Any]] = None
-    ) -> Collection:
+    ) -> Any:
         """Get or create a ChromaDB collection."""
         logger.debug("Getting/creating collection: '%s'", name)
 
