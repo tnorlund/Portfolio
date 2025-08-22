@@ -237,7 +237,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                    correlation_id=correlation_id)
     else:
         logger.info("Enhanced compaction handler started")
-        logger.info("Event: %s", json.dumps(event, default=str))
+        logger.info("Event structure present", event_size=len(json.dumps(event, default=str)))
         
     start_time = time.time()
     function_name = context.function_name if context and hasattr(context, 'function_name') else "enhanced_compaction_handler"
@@ -330,10 +330,7 @@ def process_sqs_messages(records: List[Dict[str, Any]]) -> Dict[str, Any]:
     
     Returns partial batch failure response for unprocessed delta messages.
     """
-    if OBSERVABILITY_AVAILABLE:
-        logger.info("Processing SQS messages", message_count=len(records))
-    else:
-        logger.info("Processing %d SQS messages", len(records))
+    logger.info("Processing SQS messages", message_count=len(records))
 
     stream_messages = []
     delta_message_records = []  # Store full records for delta messages
@@ -414,10 +411,7 @@ def process_sqs_messages(records: List[Dict[str, Any]]) -> Dict[str, Any]:
     # Process stream messages if any
     if stream_messages:
         result = process_stream_messages(stream_messages)
-        if OBSERVABILITY_AVAILABLE:
-            logger.info("Processed stream messages", count=len(stream_messages))
-        else:
-            logger.info("Processed %d stream messages", len(stream_messages))
+        logger.info("Processed stream messages", count=len(stream_messages))
 
     # Process delta messages if any - collect failed message IDs
     if delta_message_records:
@@ -436,7 +430,7 @@ def process_sqs_messages(records: List[Dict[str, Any]]) -> Dict[str, Any]:
                           count=len(delta_message_records))
             metrics.count("CompactionDeltaMessagesFailedForRetry", len(delta_message_records))
         else:
-            logger.warning("Processed %d delta messages (marked as failed for retry)", len(delta_message_records))
+            logger.warning("Processed delta messages (marked as failed for retry)", count=len(delta_message_records))
 
     # Return partial batch failure response if there are failed messages
     if failed_message_ids:
@@ -484,10 +478,7 @@ def process_stream_messages(
     Groups messages by collection and processes each collection separately
     with collection-specific locks to enable parallel processing.
     """
-    if OBSERVABILITY_AVAILABLE:
-        logger.info("Processing stream messages", message_count=len(stream_messages))
-    else:
-        logger.info("Processing %d stream messages", len(stream_messages))
+    logger.info("Processing stream messages", message_count=len(stream_messages))
 
     # Group messages by collection
     messages_by_collection = {}
@@ -718,10 +709,7 @@ def process_metadata_updates(
 
     Updates merchant information for embeddings in the specified collection.
     """
-    if OBSERVABILITY_AVAILABLE:
-        logger.info("Processing metadata updates", update_count=len(metadata_updates))
-    else:
-        logger.info("Processing %d metadata updates", len(metadata_updates))
+    logger.info("Processing metadata updates", count=len(metadata_updates))
     results = []
 
     bucket = os.environ["CHROMADB_BUCKET"]
@@ -783,16 +771,10 @@ def process_metadata_updates(
 
                 # Get appropriate collection
                 try:
-                    if OBSERVABILITY_AVAILABLE:
-                        logger.info("Getting ChromaDB collection", collection=database)
-                    else:
-                        logger.info("Attempting to get collection: %s", database)
+                    logger.info("Getting ChromaDB collection", collection=database)
                     collection_obj = chroma_client.get_collection(database)
                     
-                    if OBSERVABILITY_AVAILABLE:
-                        logger.info("Successfully got ChromaDB collection", collection=database)
-                    else:
-                        logger.info("Successfully got collection: %s", database)
+                    logger.info("Successfully got ChromaDB collection", collection=database)
                 except Exception as e:  # pylint: disable=broad-exception-caught
                     if OBSERVABILITY_AVAILABLE:
                         logger.warning("ChromaDB collection not found",
@@ -802,7 +784,7 @@ def process_metadata_updates(
                             "collection": database
                         })
                     else:
-                        logger.warning("Collection %s not found: %s", database, e)
+                        logger.warning("Collection not found", database=database, error=str(e))
                     continue
 
                 # Update metadata for this receipt
@@ -920,10 +902,7 @@ def process_label_updates(
 
     Updates label metadata for specific word embeddings in the collection.
     """
-    if OBSERVABILITY_AVAILABLE:
-        logger.info("Processing label updates", update_count=len(label_updates))
-    else:
-        logger.info("Processing %d label updates", len(label_updates))
+    logger.info("Processing label updates", count=len(label_updates))
     results = []
 
     bucket = os.environ["CHROMADB_BUCKET"]
@@ -959,10 +938,7 @@ def process_label_updates(
 
         # Get words collection
         try:
-            if OBSERVABILITY_AVAILABLE:
-                logger.info("Getting ChromaDB collection for labels", collection=database)
-            else:
-                logger.info("Attempting to get collection: %s", database)
+            logger.info("Getting ChromaDB collection for labels", collection=database)
             collection_obj = chroma_client.get_collection(database)
         except Exception:  # pylint: disable=broad-exception-caught
             logger.warning("Collection not found for labels", collection=database)
@@ -1111,8 +1087,8 @@ def update_receipt_metadata(
                    receipt_id=receipt_id,
                    changes=changes)
     else:
-        logger.info("Starting metadata update for image_id=%s, receipt_id=%s", image_id, receipt_id)
-        logger.info("Changes to apply: %s", changes)
+        logger.info("Starting metadata update", image_id=image_id, receipt_id=receipt_id)
+        logger.info("Changes to apply", changes=changes)
     
     # Get DynamoDB client to query for words/lines
     dynamo_client = get_dynamo_client()
@@ -1120,10 +1096,7 @@ def update_receipt_metadata(
     # Determine collection type from collection name
     collection_name = collection.name
     
-    if OBSERVABILITY_AVAILABLE:
-        logger.info("Processing collection", collection_name=collection_name)
-    else:
-        logger.info("Processing collection: %s", collection_name)
+    logger.info("Processing collection", collection_name=collection_name)
     
     # Construct ChromaDB IDs by querying DynamoDB for exact entities
     chromadb_ids = []
@@ -1133,11 +1106,9 @@ def update_receipt_metadata(
         try:
             words = dynamo_client.list_receipt_words_from_receipt(image_id, receipt_id)
             
+            logger.info("Found words in DynamoDB", count=len(words))
             if OBSERVABILITY_AVAILABLE:
-                logger.info("Found words in DynamoDB", count=len(words))
                 metrics.gauge("CompactionDynamoDBWords", len(words))
-            else:
-                logger.info("Found %d words in DynamoDB for receipt", len(words))
             
             # Construct exact ChromaDB IDs for words
             chromadb_ids = [
@@ -1159,11 +1130,9 @@ def update_receipt_metadata(
         try:
             lines = dynamo_client.list_receipt_lines_from_receipt(image_id, receipt_id)
             
+            logger.info("Found lines in DynamoDB", count=len(lines))
             if OBSERVABILITY_AVAILABLE:
-                logger.info("Found lines in DynamoDB", count=len(lines))
                 metrics.gauge("CompactionDynamoDBLines", len(lines))
-            else:
-                logger.info("Found %d lines in DynamoDB for receipt", len(lines))
             
             # Construct exact ChromaDB IDs for lines
             chromadb_ids = [
@@ -1188,10 +1157,7 @@ def update_receipt_metadata(
             })
         return 0
     
-    if OBSERVABILITY_AVAILABLE:
-        logger.info("Constructed ChromaDB IDs", count=len(chromadb_ids))
-    else:
-        logger.info("Constructed %d ChromaDB IDs to update", len(chromadb_ids))
+    logger.info("Constructed ChromaDB IDs", count=len(chromadb_ids))
     
     if not chromadb_ids:
         logger.warning("No entities found in DynamoDB",
@@ -1210,7 +1176,7 @@ def update_receipt_metadata(
                        expected_count=len(chromadb_ids))
             metrics.gauge("CompactionChromaDBRecordsFound", found_count)
         else:
-            logger.info("Retrieved %d records from ChromaDB (expected %d)", found_count, len(chromadb_ids))
+            logger.info("Retrieved records from ChromaDB", found_count=found_count, expected_count=len(chromadb_ids))
     except Exception as e:
         logger.error("Failed to query ChromaDB with exact IDs", error=str(e))
         
@@ -1258,7 +1224,7 @@ def update_receipt_metadata(
                 metrics.timer("CompactionMetadataUpdateTime", elapsed_time)
                 metrics.count("CompactionMetadataUpdatedRecords", len(matching_ids))
             else:
-                logger.info("Successfully updated metadata for %d embeddings in %.2f seconds", len(matching_ids), elapsed_time)
+                logger.info("Successfully updated metadata for embeddings", embedding_count=len(matching_ids), elapsed_seconds=elapsed_time)
         except Exception as e:
             logger.error("Failed to update ChromaDB metadata", error=str(e))
             
@@ -1283,7 +1249,7 @@ def update_receipt_metadata(
                    elapsed_seconds=elapsed_time,
                    approach="DynamoDB-driven")
     else:
-        logger.info("Metadata update completed in %.2f seconds (DynamoDB-driven approach)", elapsed_time)
+        logger.info("Metadata update completed (DynamoDB-driven approach)", elapsed_seconds=elapsed_time)
     return len(matching_ids)
 
 
@@ -1299,7 +1265,7 @@ def remove_receipt_metadata(collection, image_id: str, receipt_id: int) -> int:
                    image_id=image_id,
                    receipt_id=receipt_id)
     else:
-        logger.info("Starting metadata removal for image_id=%s, receipt_id=%s", image_id, receipt_id)
+        logger.info("Starting metadata removal", image_id=image_id, receipt_id=receipt_id)
     
     # Get DynamoDB client to query for words/lines
     dynamo_client = get_dynamo_client()
@@ -1358,10 +1324,7 @@ def remove_receipt_metadata(collection, image_id: str, receipt_id: int) -> int:
         results = collection.get(ids=chromadb_ids, include=["metadatas"])
         found_count = len(results.get("ids", []))
         
-        if OBSERVABILITY_AVAILABLE:
-            logger.info("Retrieved records from ChromaDB for removal", count=found_count)
-        else:
-            logger.info("Retrieved %d records from ChromaDB for removal", found_count)
+        logger.info("Retrieved records from ChromaDB for removal", count=found_count)
     except Exception as e:
         logger.error("Failed to query ChromaDB for metadata removal", error=str(e))
         return 0
@@ -1397,7 +1360,7 @@ def remove_receipt_metadata(collection, image_id: str, receipt_id: int) -> int:
                 metrics.timer("CompactionMetadataRemovalTime", elapsed_time)
                 metrics.count("CompactionMetadataRemovedRecords", len(matching_ids))
             else:
-                logger.info("Removed metadata from %d embeddings in %.2f seconds", len(matching_ids), elapsed_time)
+                logger.info("Removed metadata from embeddings", embedding_count=len(matching_ids), elapsed_seconds=elapsed_time)
         except Exception as e:
             logger.error("Failed to remove ChromaDB metadata", error=str(e))
             return 0
@@ -1412,7 +1375,7 @@ def remove_receipt_metadata(collection, image_id: str, receipt_id: int) -> int:
                    elapsed_seconds=elapsed_time,
                    approach="DynamoDB-driven")
     else:
-        logger.info("Metadata removal completed in %.2f seconds (DynamoDB-driven approach)", elapsed_time)
+        logger.info("Metadata removal completed (DynamoDB-driven approach)", elapsed_seconds=elapsed_time)
     return len(matching_ids)
 
 
@@ -1452,11 +1415,9 @@ def update_word_labels(
         # Update the record
         collection.update(ids=[chromadb_id], metadatas=[updated_metadata])
 
+        logger.info("Updated labels for word", chromadb_id=chromadb_id)
         if OBSERVABILITY_AVAILABLE:
-            logger.info("Updated labels for word", chromadb_id=chromadb_id)
             metrics.count("CompactionWordLabelUpdated", 1)
-        else:
-            logger.info("Updated labels for word: %s", chromadb_id)
         return 1
 
     except Exception as e:  # pylint: disable=broad-exception-caught
@@ -1503,11 +1464,9 @@ def remove_word_labels(collection, chromadb_id: str) -> int:
         # Update the record
         collection.update(ids=[chromadb_id], metadatas=[updated_metadata])
 
+        logger.info("Removed labels from word", chromadb_id=chromadb_id)
         if OBSERVABILITY_AVAILABLE:
-            logger.info("Removed labels from word", chromadb_id=chromadb_id)
             metrics.count("CompactionWordLabelRemoved", 1)
-        else:
-            logger.info("Removed labels from word: %s", chromadb_id)
         return 1
 
     except Exception as e:  # pylint: disable=broad-exception-caught
