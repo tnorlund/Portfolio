@@ -68,10 +68,10 @@ from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.constants import ChromaDBCollection
 from receipt_label.utils.lock_manager import LockManager
 from receipt_label.utils.chroma_client import ChromaDBClient
+from receipt_label.vector_store import upload_snapshot_with_hash
 from receipt_label.utils.chroma_s3_helpers import (
     download_snapshot_from_s3,
     upload_delta_to_s3,
-    upload_snapshot_with_hash,
 )
 
 

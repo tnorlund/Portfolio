@@ -49,6 +49,9 @@ from .client.factory import (
     get_line_client
 )
 
+# Legacy helper functions for backward compatibility
+from .legacy_helpers import produce_embedding_delta, upload_snapshot_with_hash
+
 __all__ = [
     # Core interfaces
     "VectorClient", 
@@ -74,6 +77,8 @@ __all__ = [
     "get_chroma_client",
     "get_word_client",
     "get_line_client",
+    "produce_embedding_delta",
+    "upload_snapshot_with_hash",
 ]
 
 # Version info

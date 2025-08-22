@@ -23,6 +23,7 @@ import chromadb
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.constants import ChromaDBCollection
 from receipt_label.utils.lock_manager import LockManager
+from receipt_label.vector_store import VectorClient
 
 get_logger = utils.logging.get_logger
 get_operation_logger = utils.logging.get_operation_logger
@@ -30,7 +31,7 @@ get_operation_logger = utils.logging.get_operation_logger
 logger = get_operation_logger(__name__)
 
 try:
-    from receipt_label.utils.chroma_s3_helpers import upload_snapshot_with_hash
+    from receipt_label.vector_store import upload_snapshot_with_hash
 
     HASH_UPLOAD_AVAILABLE = True
 except ImportError:
