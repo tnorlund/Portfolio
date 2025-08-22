@@ -159,6 +159,7 @@ class HybridLambdaDeployment(ComponentResource):
                     "utils/__init__.py": pulumi.FileAsset(
                         str(
                             Path(__file__).parent.parent
+                            / "lambdas"
                             / "utils"
                             / "__init__.py"
                         )
@@ -166,6 +167,7 @@ class HybridLambdaDeployment(ComponentResource):
                     "utils/logging.py": pulumi.FileAsset(
                         str(
                             Path(__file__).parent.parent
+                            / "lambdas"
                             / "utils"
                             / "logging.py"
                         )
@@ -173,6 +175,7 @@ class HybridLambdaDeployment(ComponentResource):
                     "utils/metrics.py": pulumi.FileAsset(
                         str(
                             Path(__file__).parent.parent
+                            / "lambdas"
                             / "utils"
                             / "metrics.py"
                         )
@@ -180,6 +183,7 @@ class HybridLambdaDeployment(ComponentResource):
                     "utils/response.py": pulumi.FileAsset(
                         str(
                             Path(__file__).parent.parent
+                            / "lambdas"
                             / "utils"
                             / "response.py"
                         )
@@ -187,6 +191,7 @@ class HybridLambdaDeployment(ComponentResource):
                     "utils/timeout_handler.py": pulumi.FileAsset(
                         str(
                             Path(__file__).parent.parent
+                            / "lambdas"
                             / "utils"
                             / "timeout_handler.py"
                         )
@@ -194,6 +199,7 @@ class HybridLambdaDeployment(ComponentResource):
                     "utils/tracing.py": pulumi.FileAsset(
                         str(
                             Path(__file__).parent.parent
+                            / "lambdas"
                             / "utils"
                             / "tracing.py"
                         )
