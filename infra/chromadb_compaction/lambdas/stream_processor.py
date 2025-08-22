@@ -134,8 +134,9 @@ class FieldChange:
 if OBSERVABILITY_AVAILABLE:
     logger = get_operation_logger(__name__)
 else:
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
+    # Import logging utilities directly for fallback
+    from ..utils.logging import get_operation_logger as fallback_get_operation_logger
+    logger = fallback_get_operation_logger(__name__)
 
 
 @trace_lambda_handler(operation_name="stream_processor")
