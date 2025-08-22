@@ -87,7 +87,8 @@ class _CompactionLock(FlattenedStandardMixin):
             raise EntityValidationError("owner cannot be empty")
 
         # Use low-level client for conditional delete
-        # Note: 'owner' is a reserved keyword in DynamoDB, so we use ExpressionAttributeNames
+        # Note: 'owner' is a reserved keyword in DynamoDB, 
+        # so we use ExpressionAttributeNames
         delete_params = {
             "TableName": self.table_name,
             "Key": {"PK": {"S": f"LOCK#{lock_id}"}, "SK": {"S": "LOCK"}},
@@ -110,7 +111,8 @@ class _CompactionLock(FlattenedStandardMixin):
                         f"Lock '{lock_id}' not found"
                     ) from e
                 raise EntityValidationError(
-                    f"Cannot delete lock '{lock_id}' - owned by {existing_lock.owner}"
+                    f"Cannot delete lock '{lock_id}' - "
+                    f"owned by {existing_lock.owner}"
                 ) from e
             raise
 
@@ -201,7 +203,7 @@ class _CompactionLock(FlattenedStandardMixin):
         return self._query_entities(
             index_name="GSI1",
             key_condition_expression="GSI1PK = :pk AND GSI1SK > :sk",
-            expression_attribute_names=None,  # No reserved keywords in this query
+            expression_attribute_names=None,  # No reserved keywords
             expression_attribute_values={
                 ":pk": {"S": "LOCK"},
                 ":sk": {"S": f"EXPIRES#{now}"},
@@ -228,7 +230,7 @@ class _CompactionLock(FlattenedStandardMixin):
         expired_locks, _ = self._query_entities(
             index_name="GSI1",
             key_condition_expression="GSI1PK = :pk AND GSI1SK < :sk",
-            expression_attribute_names=None,  # No reserved keywords in this query
+            expression_attribute_names=None,  # No reserved keywords
             expression_attribute_values={
                 ":pk": {"S": "LOCK"},
                 ":sk": {"S": f"EXPIRES#{now}"},

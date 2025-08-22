@@ -60,11 +60,13 @@ class CompactionLock(DynamoDBEntity):
                 except ValueError:
                     valid_values = [c.value for c in ChromaDBCollection]
                     raise ValueError(
-                        f"ChromaDBCollection must be one of: {valid_values}, got: {self.collection}"
+                        f"ChromaDBCollection must be one of: "
+                        f"{valid_values}, got: {self.collection}"
                     )
             else:
                 raise ValueError(
-                    f"collection must be ChromaDBCollection or str, got: {type(self.collection)}"
+                    f"collection must be ChromaDBCollection or str, "
+                    f"got: {type(self.collection)}"
                 )
 
         # Validate expires
@@ -93,7 +95,8 @@ class CompactionLock(DynamoDBEntity):
 
     @property
     def gsi1_key(self) -> Dict[str, Any]:
-        # Enables "list all active locks by collection and expiry" admin queries
+        # Enables "list all active locks by collection and expiry" 
+        # admin queries
         expires_str = (
             self.expires
             if isinstance(self.expires, str)
@@ -166,7 +169,8 @@ def item_to_compaction_lock(item: Dict[str, Any]) -> "CompactionLock":
     except ValueError:
         valid_values = [c.value for c in ChromaDBCollection]
         raise ValueError(
-            f"Invalid collection in item: {collection_value}. Must be one of: {valid_values}"
+            f"Invalid collection in item: {collection_value}. "
+            f"Must be one of: {valid_values}"
         )
 
     return CompactionLock(
