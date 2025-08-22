@@ -48,7 +48,9 @@ class _JobStatus(
             job_status,
             JobStatus,
             "job_status",
-            condition_expression="attribute_not_exists(PK) OR attribute_not_exists(SK)",
+            condition_expression=(
+                "attribute_not_exists(PK) OR attribute_not_exists(SK)"
+            ),
         )
 
     def get_latest_job_status(self, job_id: str) -> JobStatus:

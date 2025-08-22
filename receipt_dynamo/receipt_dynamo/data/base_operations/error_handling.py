@@ -102,7 +102,9 @@ class ErrorMessageConfig:
         "required": "{param} cannot be None",
         "type_mismatch": "{param} must be an instance of {class_name}",
         "list_required": "{param} must be a list",
-        "list_type_mismatch": "All items in {param} must be instances of {class_name}",
+        "list_type_mismatch": (
+            "All items in {param} must be instances of {class_name}"
+        ),
     }
 
     # Type mismatch messages for specific entities
@@ -116,7 +118,9 @@ class ErrorMessageConfig:
         "line": "line must be an instance of Line",
         "lines": "lines must be a list of Line instances",
         "receipt_line": "receipt_line must be an instance of ReceiptLine",
-        "receipt_lines": "receipt_lines must be a list of ReceiptLine instances",
+        "receipt_lines": (
+            "receipt_lines must be a list of ReceiptLine instances"
+        ),
         "letter": "letter must be an instance of Letter",
         "letters": "letters must be a list of Letter instances",
     }
@@ -250,7 +254,8 @@ class ErrorHandler:
                 **context
             )
         else:
-            # Try to extract entity type from context for more descriptive message
+            # Try to extract entity type from context for more 
+            # descriptive message
             entity_type = context.get("entity_type", "")
             entity_name = context.get("entity_name", "")
 

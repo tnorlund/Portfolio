@@ -152,7 +152,8 @@ class FlattenedStandardMixin:
     def _add_entities(
         self, entities: List[T], entity_type: Type[T], param_name: str
     ) -> None:
-        """Add multiple entities using transactional writes with existence check."""
+        """Add multiple entities using transactional writes with existence 
+        check."""
         self._validate_entity_list(entities, entity_type, param_name)
 
         # Use transactional writes to ensure entities don't already exist
