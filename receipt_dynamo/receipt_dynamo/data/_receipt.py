@@ -424,7 +424,10 @@ class _Receipt(
     def list_receipt_and_words(
         self, image_id: str, receipt_id: int
     ) -> tuple[Receipt, list[ReceiptWord]]:
-        """List a receipt and its words using GSI3
+        """DEPRECATED: List a receipt and its words using GSI3
+
+        This method is deprecated due to GSI3 optimization changes.
+        Use get_receipt() and list_receipt_words_from_receipt() instead.
 
         Args:
             image_id (str): The ID of the image to list receipts from
@@ -440,59 +443,30 @@ class _Receipt(
                 does not exist.
             Exception: For underlying DynamoDB errors
         """
+        import warnings
+
+        warnings.warn(
+            "list_receipt_and_words is deprecated. Use get_receipt() and "
+            "list_receipt_words_from_receipt() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self._validate_image_id(image_id)
         if not isinstance(receipt_id, int):
             raise EntityValidationError("receipt_id must be an integer")
         if receipt_id < 0:
             raise EntityValidationError("receipt_id must be positive")
 
-        # Custom converter function that handles both receipts and words
-        def convert_item(item):
-            item_type = item.get("TYPE", {}).get("S")
-            if item_type == "RECEIPT":
-                return ("receipt", item_to_receipt(item))
-            if item_type == "RECEIPT_WORD":
-                try:
-                    return ("word", item_to_receipt_word(item))
-                except ValueError:
-                    # Skip invalid receipt words
-                    return None
-            return None
-
-        # Use GSI3 to get both receipt and words in a single query
-        items, _ = self._query_entities(
-            index_name="GSI3",
-            key_condition_expression=(
-                "GSI3PK = :pk AND begins_with(GSI3SK, :sk)"
-            ),
-            expression_attribute_names=None,
-            expression_attribute_values={
-                ":pk": {"S": f"IMAGE#{image_id}"},
-                ":sk": {"S": f"RECEIPT#{receipt_id:05d}"},
-            },
-            converter_func=convert_item,
-            limit=None,  # Get all items
-            last_evaluated_key=None,
-        )
-
-        receipt = None
-        words = []
-
-        # Process converted items
-        for item in items:
-            if item is None:
-                continue
-            item_type, entity = item
-            if item_type == "receipt":
-                receipt = entity
-            elif item_type == "word":
-                words.append(entity)
-
-        if not receipt:
+        # Use the recommended alternative methods
+        try:
+            receipt = self.get_receipt(image_id, receipt_id)
+        except EntityNotFoundError:
             raise EntityNotFoundError(
                 f"receipt with receipt_id={receipt_id} and "
                 f"image_id={image_id} does not exist"
             )
+
+        words = self.list_receipt_words_from_receipt(image_id, receipt_id)
 
         # Sort words by line_id and word_id
         words.sort(key=lambda w: (w.line_id, w.word_id))

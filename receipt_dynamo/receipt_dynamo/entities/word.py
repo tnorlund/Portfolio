@@ -339,7 +339,14 @@ class Word(
     def __repr__(self) -> str:
         """Returns a string representation of the Word object."""
         geometry_fields = self._get_geometry_repr_fields()
-        return f"Word(" f"word_id={self.word_id}, " f"{geometry_fields}" f")"
+        return (
+            f"Word("
+            f"word_id={self.word_id}, "
+            f"{geometry_fields}"
+            f")"
+        )
+
+
 
 
 def item_to_word(item: Dict[str, Any]) -> Word:

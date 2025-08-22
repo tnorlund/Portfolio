@@ -23,12 +23,14 @@ from receipt_dynamo.data.shared_exceptions import (
 )
 
 # This entity is not used in production infrastructure
-pytestmark = [pytest.mark.integration, pytest.mark.unused_in_production]
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.unused_in_production
+]
 
 # =============================================================================
 # TEST DATA AND FIXTURES
 # =============================================================================
-
 
 @pytest.fixture
 def sample_receipt_validation_result() -> ReceiptValidationResult:
@@ -121,7 +123,6 @@ UPDATE_VALIDATION_SCENARIOS = [
         "result must be an instance of ReceiptValidationResult",
     ),
 ]
-
 
 # Now let's implement test for addReceiptValidationResult
 @pytest.mark.integration
@@ -364,11 +365,8 @@ ADD_RESULTS_VALIDATION_SCENARIOS = [
     ),
 ]
 
-
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "invalid_input,error_match", ADD_RESULTS_VALIDATION_SCENARIOS
-)
+@pytest.mark.parametrize("invalid_input,error_match", ADD_RESULTS_VALIDATION_SCENARIOS)
 def test_addReceiptValidationResults_invalid_parameters(
     dynamodb_table: Literal["MyMockedTable"],
     invalid_input: Any,
@@ -464,9 +462,7 @@ def test_updateReceiptValidationResult_success(
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "invalid_input,error_match", UPDATE_VALIDATION_SCENARIOS
-)
+@pytest.mark.parametrize("invalid_input,error_match", UPDATE_VALIDATION_SCENARIOS)
 def test_updateReceiptValidationResult_invalid_parameters(
     dynamodb_table: Literal["MyMockedTable"],
     invalid_input: Any,
@@ -509,9 +505,7 @@ def test_updateReceiptValidationResult_client_errors(
         ),
     )
     with pytest.raises(expected_exception, match=error_match):
-        client.update_receipt_validation_result(
-            sample_receipt_validation_result
-        )
+        client.update_receipt_validation_result(sample_receipt_validation_result)
     mock_put.assert_called_once()
 
 
@@ -628,11 +622,8 @@ UPDATE_RESULTS_VALIDATION_SCENARIOS = [
     ),
 ]
 
-
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "invalid_input,error_match", UPDATE_RESULTS_VALIDATION_SCENARIOS
-)
+@pytest.mark.parametrize("invalid_input,error_match", UPDATE_RESULTS_VALIDATION_SCENARIOS)
 def test_updateReceiptValidationResults_invalid_inputs(
     dynamodb_table: Literal["MyMockedTable"],
     invalid_input: Any,
@@ -737,11 +728,8 @@ DELETE_VALIDATION_SCENARIOS = [
     ),
 ]
 
-
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "invalid_input,error_match", DELETE_VALIDATION_SCENARIOS
-)
+@pytest.mark.parametrize("invalid_input,error_match", DELETE_VALIDATION_SCENARIOS)
 def test_deleteReceiptValidationResult_invalid_parameters(
     dynamodb_table: Literal["MyMockedTable"],
     invalid_input: Any,
@@ -784,9 +772,7 @@ def test_deleteReceiptValidationResult_client_errors(
         ),
     )
     with pytest.raises(expected_exception, match=error_match):
-        client.delete_receipt_validation_result(
-            sample_receipt_validation_result
-        )
+        client.delete_receipt_validation_result(sample_receipt_validation_result)
     mock_delete.assert_called_once()
 
 
@@ -858,11 +844,8 @@ DELETE_RESULTS_VALIDATION_SCENARIOS = [
     ),
 ]
 
-
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "invalid_input,error_match", DELETE_RESULTS_VALIDATION_SCENARIOS
-)
+@pytest.mark.parametrize("invalid_input,error_match", DELETE_RESULTS_VALIDATION_SCENARIOS)
 def test_deleteReceiptValidationResults_invalid_parameters(
     dynamodb_table: Literal["MyMockedTable"],
     invalid_input: Any,
@@ -1967,16 +1950,12 @@ def test_listReceiptValidationResultsForField_with_pagination(
     # First call
     first_call_args = mock_query.call_args_list[0][1]
     assert first_call_args["TableName"] == dynamodb_table
-    assert "#pk = :pk AND begins_with(#sk, :sk_prefix)" in str(
-        mock_query.call_args_list[0]
-    )
+    assert "#pk = :pk AND begins_with(#sk, :sk_prefix)" in str(mock_query.call_args_list[0])
 
     # Second call with ExclusiveStartKey
     second_call_args = mock_query.call_args_list[1][1]
     assert second_call_args["TableName"] == dynamodb_table
-    assert "#pk = :pk AND begins_with(#sk, :sk_prefix)" in str(
-        mock_query.call_args_list[1]
-    )
+    assert "#pk = :pk AND begins_with(#sk, :sk_prefix)" in str(mock_query.call_args_list[1])
     assert (
         second_call_args["ExclusiveStartKey"]
         == first_response["LastEvaluatedKey"]

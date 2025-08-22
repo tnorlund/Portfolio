@@ -55,10 +55,7 @@ class Queue:
                 "created_at must be a datetime object or a string"
             )
 
-        if (
-            not isinstance(self.max_concurrent_jobs, int)
-            or self.max_concurrent_jobs < 1
-        ):
+        if not isinstance(self.max_concurrent_jobs, int) or self.max_concurrent_jobs < 1:
             raise ValueError("max_concurrent_jobs must be a positive integer")
 
         valid_priorities = ["low", "medium", "high", "critical"]
@@ -141,6 +138,7 @@ class Queue:
         yield "max_concurrent_jobs", self.max_concurrent_jobs
         yield "priority", self.priority
         yield "job_count", self.job_count
+
 
     def __hash__(self) -> int:
         """Returns the hash value of the Queue object.

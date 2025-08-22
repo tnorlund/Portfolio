@@ -141,6 +141,7 @@ class ReceiptChatGPTValidation(SerializationMixin):
             ),
         )
 
+
     def __repr__(self) -> str:
         return (
             f"ReceiptChatGPTValidation(receipt_id={self.receipt_id}, "

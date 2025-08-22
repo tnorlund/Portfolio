@@ -178,6 +178,7 @@ class ReceiptField:
         yield "reasoning", self.reasoning
         yield "timestamp_added", self.timestamp_added
 
+
     def __hash__(self) -> int:
         """Returns the hash value of the ReceiptField object.
 

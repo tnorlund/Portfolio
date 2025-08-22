@@ -104,6 +104,7 @@ class ReceiptSection:
             "created_at": {"S": self.created_at.isoformat()},
         }
 
+
     def __repr__(self) -> str:
         """Returns a string representation of the ReceiptSection object."""
         return (

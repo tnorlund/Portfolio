@@ -26,7 +26,7 @@ class LabelMetadata:
         if isinstance(self.last_updated, datetime):
             # Keep as datetime - no conversion needed for this field
             pass
-
+        
         assert_type("label", self.label, str, ValueError)
 
         self.status = normalize_enum(self.status, LabelStatus)
