@@ -133,7 +133,7 @@ class ReceiptSection:
                 self.receipt_id,
                 self.image_id,
                 self.section_type,
-                self.line_ids,
+                tuple(self.line_ids),
                 self.created_at.isoformat(),
             )
         )
