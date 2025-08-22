@@ -5,11 +5,14 @@ This module defines the S3 bucket infrastructure for storing ChromaDB snapshots
 and delta files using Pulumi ComponentResource pattern.
 """
 
+# pylint: disable=too-many-instance-attributes  # Pulumi components need many attributes
+
 import json
+from typing import Optional
+
 import pulumi
 import pulumi_aws as aws
 from pulumi import ComponentResource, ResourceOptions, Output
-from typing import Optional
 
 
 class ChromaDBBuckets(ComponentResource):
@@ -26,7 +29,6 @@ class ChromaDBBuckets(ComponentResource):
         self,
         name: str,
         stack: Optional[str] = None,
-        account_id: Optional[str] = None,
         opts: Optional[ResourceOptions] = None,
     ):
         """
@@ -35,7 +37,6 @@ class ChromaDBBuckets(ComponentResource):
         Args:
             name: The unique name of the resource
             stack: The Pulumi stack name (defaults to current stack)
-            account_id: AWS account ID (defaults to current account)
             opts: Optional resource options
         """
         super().__init__("chromadb:storage:S3Buckets", name, None, opts)
@@ -62,6 +63,7 @@ class ChromaDBBuckets(ComponentResource):
         self.bucket_versioning = aws.s3.BucketVersioning(
             f"{name}-vectors-versioning",
             bucket=self.bucket.id,
+            # pylint: disable=line-too-long
             versioning_configuration=aws.s3.BucketVersioningVersioningConfigurationArgs(
                 status="Enabled",
             ),
@@ -69,13 +71,17 @@ class ChromaDBBuckets(ComponentResource):
         )
 
         # Configure server-side encryption as a separate resource
+        # pylint: disable=line-too-long
         self.bucket_encryption = aws.s3.BucketServerSideEncryptionConfiguration(
             f"{name}-vectors-encryption",
             bucket=self.bucket.id,
             rules=[
                 aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
-                    apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
-                        sse_algorithm="AES256",
+                    apply_server_side_encryption_by_default=(
+                        # pylint: disable=line-too-long
+                        aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
+                            sse_algorithm="AES256",
+                        )
                     ),
                     bucket_key_enabled=True,
                 ),
@@ -95,18 +101,21 @@ class ChromaDBBuckets(ComponentResource):
                     filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(
                         prefix="delta/",
                     ),
+                    # pylint: disable=line-too-long
                     expiration=aws.s3.BucketLifecycleConfigurationRuleExpirationArgs(
                         days=7,
                     ),
                 ),
                 # Delete old timestamped snapshots after 14 days
-                # Only targets snapshot/timestamped/* prefix, preserving snapshot/latest/
+                # Only targets snapshot/timestamped/* prefix,
+                # preserving snapshot/latest/
                 aws.s3.BucketLifecycleConfigurationRuleArgs(
                     id="delete-old-timestamped-snapshots",
                     status="Enabled",
                     filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(
                         prefix="snapshot/timestamped/",
                     ),
+                    # pylint: disable=line-too-long
                     expiration=aws.s3.BucketLifecycleConfigurationRuleExpirationArgs(
                         days=14,
                     ),

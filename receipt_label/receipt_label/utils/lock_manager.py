@@ -14,6 +14,7 @@ from typing import Optional
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities.compaction_lock import CompactionLock
+from receipt_dynamo.constants import ChromaDBCollection
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,7 @@ class LockManager:
     def __init__(
         self,
         dynamo_client: DynamoClient,
+        collection: ChromaDBCollection,
         heartbeat_interval: int = 60,
         lock_duration_minutes: int = 5,
     ) -> None:
@@ -59,10 +61,12 @@ class LockManager:
 
         Args:
             dynamo_client: DynamoDB client for lock operations
+            collection: ChromaDB collection this lock protects (lines or words)
             heartbeat_interval: Seconds between heartbeat updates (default: 60)
             lock_duration_minutes: Initial lock duration in minutes (default: 5)
         """
         self.dynamo_client = dynamo_client
+        self.collection = collection
         self.heartbeat_interval = heartbeat_interval
         self.lock_duration_minutes = lock_duration_minutes
 
@@ -104,6 +108,7 @@ class LockManager:
                     owner=owner,
                     expires=datetime.utcnow()
                     + timedelta(minutes=self.lock_duration_minutes),
+                    collection=self.collection,
                     heartbeat=datetime.utcnow(),
                 )
 
@@ -224,6 +229,7 @@ class LockManager:
                     owner=self.lock_owner,
                     expires=datetime.utcnow()
                     + timedelta(minutes=self.lock_duration_minutes),
+                    collection=self.collection,
                     heartbeat=datetime.utcnow(),
                 )
 
