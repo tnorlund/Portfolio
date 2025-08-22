@@ -728,9 +728,7 @@ def test_add_receipt_conditional_check_failed(
         ),
     )
 
-    with pytest.raises(
-        EntityAlreadyExistsError, match="receipt already exists"
-    ):
+    with pytest.raises(EntityAlreadyExistsError, match="receipt already exists"):
         client.add_receipt(sample_receipt)
     mock_put.assert_called_once()
 
@@ -887,9 +885,7 @@ def test_add_receipt_duplicate_raises(
     client = DynamoClient(dynamodb_table)
     client.add_receipt(sample_receipt)
 
-    with pytest.raises(
-        EntityAlreadyExistsError, match="receipt already exists"
-    ):
+    with pytest.raises(EntityAlreadyExistsError, match="receipt already exists"):
         client.add_receipt(sample_receipt)
 
 
@@ -1382,13 +1378,15 @@ def test_get_receipts_from_image_empty_result(
 # -------------------------------------------------------------------
 
 
-@pytest.mark.integration
+@pytest.mark.integration 
 def test_list_receipt_and_words_success(
     dynamodb_table: Literal["MyMockedTable"],
     sample_receipt: Receipt,
     sample_receipt_words: list[ReceiptWord],
 ) -> None:
-    """Tests retrieving a receipt and its words together."""
+    """Tests retrieving a receipt and its words together.
+    
+    NOTE: This method is deprecated. This test will emit a deprecation warning."""
     client = DynamoClient(dynamodb_table)
 
     # Add receipt and words

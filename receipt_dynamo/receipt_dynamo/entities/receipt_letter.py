@@ -103,7 +103,7 @@ class ReceiptLetter(
 
         # Use validation utils mixin for common validation (handles image_id and text)
         self._validate_common_geometry_entity_fields()
-
+        
         # Additional validation specific to letter
         if len(self.text) != 1:
             raise ValueError("text must be exactly one character")
@@ -236,6 +236,7 @@ class ReceiptLetter(
             int: The hash value for the ReceiptLetter object.
         """
         return hash(self._get_geometry_hash_fields())
+
 
 
 def item_to_receipt_letter(item: Dict[str, Any]) -> ReceiptLetter:

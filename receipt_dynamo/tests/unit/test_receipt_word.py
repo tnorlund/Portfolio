@@ -49,9 +49,6 @@ def test_receipt_word_init_valid(
     assert receipt_word_fixture.angle_degrees == 1.0
     assert receipt_word_fixture.angle_radians == 5.0
     assert receipt_word_fixture.confidence == 0.9
-    # Check default values for new fields
-    assert receipt_word_fixture.valid_label_count == 0
-    assert receipt_word_fixture.invalid_label_count == 0
 
 
 @pytest.mark.unit
@@ -483,138 +480,12 @@ def test_receipt_word_init_invalid_is_noise():
 
 
 @pytest.mark.unit
-def test_receipt_word_init_invalid_valid_label_count():
-    """Test that valid_label_count must be a non-negative integer."""
-    with pytest.raises(
-        ValueError,
-        match="valid_label_count must be an integer, got str",
-    ):
-        ReceiptWord(
-            receipt_id=1,
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=3,
-            word_id=4,
-            text="Test",
-            bounding_box={"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4},
-            top_right={"x": 1.0, "y": 2.0},
-            top_left={"x": 1.0, "y": 3.0},
-            bottom_right={"x": 4.0, "y": 2.0},
-            bottom_left={"x": 1.0, "y": 1.0},
-            angle_degrees=1.0,
-            angle_radians=5.0,
-            confidence=0.9,
-            valid_label_count="5",  # Should be int, not string
-        )
-
-    with pytest.raises(
-        ValueError,
-        match="valid_label_count must be non-negative",
-    ):
-        ReceiptWord(
-            receipt_id=1,
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=3,
-            word_id=4,
-            text="Test",
-            bounding_box={"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4},
-            top_right={"x": 1.0, "y": 2.0},
-            top_left={"x": 1.0, "y": 3.0},
-            bottom_right={"x": 4.0, "y": 2.0},
-            bottom_left={"x": 1.0, "y": 1.0},
-            angle_degrees=1.0,
-            angle_radians=5.0,
-            confidence=0.9,
-            valid_label_count=-1,  # Should be non-negative
-        )
-
-
-@pytest.mark.unit
-def test_receipt_word_init_invalid_invalid_label_count():
-    """Test that invalid_label_count must be a non-negative integer."""
-    with pytest.raises(
-        ValueError,
-        match="invalid_label_count must be an integer, got str",
-    ):
-        ReceiptWord(
-            receipt_id=1,
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=3,
-            word_id=4,
-            text="Test",
-            bounding_box={"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4},
-            top_right={"x": 1.0, "y": 2.0},
-            top_left={"x": 1.0, "y": 3.0},
-            bottom_right={"x": 4.0, "y": 2.0},
-            bottom_left={"x": 1.0, "y": 1.0},
-            angle_degrees=1.0,
-            angle_radians=5.0,
-            confidence=0.9,
-            invalid_label_count="3",  # Should be int, not string
-        )
-
-    with pytest.raises(
-        ValueError,
-        match="invalid_label_count must be non-negative",
-    ):
-        ReceiptWord(
-            receipt_id=1,
-            image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            line_id=3,
-            word_id=4,
-            text="Test",
-            bounding_box={"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4},
-            top_right={"x": 1.0, "y": 2.0},
-            top_left={"x": 1.0, "y": 3.0},
-            bottom_right={"x": 4.0, "y": 2.0},
-            bottom_left={"x": 1.0, "y": 1.0},
-            angle_degrees=1.0,
-            angle_radians=5.0,
-            confidence=0.9,
-            invalid_label_count=-2,  # Should be non-negative
-        )
-
-
-@pytest.mark.unit
 def test_receipt_word_key(receipt_word_fixture):
     """Test that the key() method returns a properly formatted DynamoDB key."""
     assert receipt_word_fixture.key == {
         "PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "SK": {"S": "RECEIPT#00001#LINE#00003#WORD#00004"},
     }
-
-
-@pytest.mark.unit
-def test_receipt_word_with_label_counts():
-    """Test that a ReceiptWord with label counts works correctly."""
-    word = ReceiptWord(
-        receipt_id=1,
-        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-        line_id=3,
-        word_id=4,
-        text="Test",
-        bounding_box={"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4},
-        top_right={"x": 1.0, "y": 2.0},
-        top_left={"x": 1.0, "y": 3.0},
-        bottom_right={"x": 4.0, "y": 2.0},
-        bottom_left={"x": 1.0, "y": 1.0},
-        angle_degrees=1.0,
-        angle_radians=5.0,
-        confidence=0.9,
-        valid_label_count=3,
-        invalid_label_count=1,
-    )
-    assert word.valid_label_count == 3
-    assert word.invalid_label_count == 1
-
-    # Test that to_item includes the counts
-    item = word.to_item()
-    assert item["valid_label_count"]["N"] == "3"
-    assert item["invalid_label_count"]["N"] == "1"
-
-    # Test round-trip conversion
-    word2 = item_to_receipt_word(item)
-    assert word2.valid_label_count == 3
-    assert word2.invalid_label_count == 1
 
 
 @pytest.mark.unit
@@ -713,8 +584,8 @@ def test_receipt_word_gsi3_key():
         confidence=0.95,
     )
     assert word.gsi3_key() == {
-        "GSI3PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
-        "GSI3SK": {"S": "RECEIPT#00001#LINE#00003#WORD#00004"},
+        "GSI3PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"},
+        "GSI3SK": {"S": "WORD"},
     }
 
 
@@ -766,9 +637,7 @@ def test_repr(receipt_word_fixture):
         "angle_radians=5.0, "
         "confidence=0.9, "
         "embedding_status='NONE', "
-        "is_noise=False, "
-        "valid_label_count=0, "
-        "invalid_label_count=0"
+        "is_noise=False"
         ")"
     )
     assert repr(receipt_word_fixture) == expected_repr
@@ -804,8 +673,6 @@ def test_receipt_word_iter(receipt_word_fixture):
         "extracted_data",
         "embedding_status",
         "is_noise",
-        "valid_label_count",
-        "invalid_label_count",
     }
     assert set(receipt_word_dict.keys()) == expected_keys
     assert receipt_word_dict["receipt_id"] == 1
