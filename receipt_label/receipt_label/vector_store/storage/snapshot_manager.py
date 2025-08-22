@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 class SnapshotManager:
     """
     High-level manager for vector store snapshots.
-    
+
     This class provides a convenient interface for creating snapshots,
     uploading them to S3, downloading and restoring them, and managing
     snapshot lifecycle.
@@ -35,14 +35,14 @@ class SnapshotManager:
     ):
         """
         Initialize the snapshot manager.
-        
+
         Args:
             bucket_name: S3 bucket for snapshot storage
             s3_prefix: S3 prefix for snapshots (default: "snapshots/")
             s3_client: Optional boto3 S3 client
         """
         self.bucket_name = bucket_name
-        self.s3_prefix = s3_prefix.rstrip('/') + '/'
+        self.s3_prefix = s3_prefix.rstrip("/") + "/"
         self.s3_ops = S3Operations(bucket_name, s3_client)
 
     def create_snapshot(
@@ -56,7 +56,7 @@ class SnapshotManager:
     ) -> Dict[str, Any]:
         """
         Create a snapshot of a vector store collection.
-        
+
         Args:
             vector_client: Vector store client instance
             collection_name: Name of the collection to snapshot
@@ -64,62 +64,79 @@ class SnapshotManager:
             database_name: Optional database name for organization
             upload_to_s3: Whether to upload the snapshot to S3
             include_metadata: Optional metadata to include with snapshot
-            
+
         Returns:
             Dict with snapshot creation results
-            
+
         Raises:
             RuntimeError: If snapshot creation fails
         """
         # Validate collection exists
         if not vector_client.collection_exists(collection_name):
-            raise RuntimeError(f"Collection '{collection_name}' does not exist")
+            raise RuntimeError(
+                f"Collection '{collection_name}' does not exist"
+            )
 
         # Use temporary directory if none provided
         cleanup_temp = False
         if local_directory is None:
-            local_directory = tempfile.mkdtemp(prefix=f"snapshot_{collection_name}_")
+            local_directory = tempfile.mkdtemp(
+                prefix=f"snapshot_{collection_name}_"
+            )
             cleanup_temp = True
-            logger.info("Created temporary snapshot directory: %s", local_directory)
+            logger.info(
+                "Created temporary snapshot directory: %s", local_directory
+            )
 
         try:
             # For ChromaDB clients, we need to handle persistence differently
-            if hasattr(vector_client, 'persist_directory') and hasattr(vector_client, 'client'):
+            if hasattr(vector_client, "persist_directory") and hasattr(
+                vector_client, "client"
+            ):
                 # This is a ChromaDB client with persistent storage
                 if vector_client.persist_directory:
                     # Copy existing persistent data
                     import shutil
+
                     if os.path.exists(vector_client.persist_directory):
                         shutil.copytree(
-                            vector_client.persist_directory, 
+                            vector_client.persist_directory,
                             local_directory,
-                            dirs_exist_ok=True
+                            dirs_exist_ok=True,
                         )
-                        logger.info("Copied persistent data to snapshot directory")
+                        logger.info(
+                            "Copied persistent data to snapshot directory"
+                        )
                     else:
                         # Force persistence to the snapshot directory
-                        if hasattr(vector_client.client, 'persist'):
+                        if hasattr(vector_client.client, "persist"):
                             try:
                                 vector_client.client.persist()
                                 logger.info("Persisted vector store data")
                             except Exception as e:
-                                logger.warning("Could not explicitly persist: %s", e)
-                        
+                                logger.warning(
+                                    "Could not explicitly persist: %s", e
+                                )
+
                         # If no persistent directory exists, we may need to create a new client
                         # that points to our snapshot directory
                         if not os.path.exists(vector_client.persist_directory):
-                            logger.warning("No persistent data found, creating empty snapshot")
+                            logger.warning(
+                                "No persistent data found, creating empty snapshot"
+                            )
                 else:
                     # In-memory client, need to create persistent version for snapshot
                     logger.warning("Cannot snapshot in-memory vector store")
-                    raise RuntimeError("Cannot create snapshot from in-memory vector store")
+                    raise RuntimeError(
+                        "Cannot create snapshot from in-memory vector store"
+                    )
             else:
                 # Generic vector store interface - assume it handles persistence
                 logger.info("Creating snapshot for generic vector store")
 
             # Calculate snapshot statistics
             collection_count = 0
-            if hasattr(vector_client, 'count'):
+            if hasattr(vector_client, "count"):
                 try:
                     collection_count = vector_client.count(collection_name)
                 except Exception as e:
@@ -127,11 +144,15 @@ class SnapshotManager:
 
             # Calculate directory hash
             hash_result = None
-            if os.path.exists(local_directory) and any(os.scandir(local_directory)):
+            if os.path.exists(local_directory) and any(
+                os.scandir(local_directory)
+            ):
                 hash_result = HashCalculator.calculate_directory_hash(
                     local_directory, include_file_list=False
                 )
-                logger.info("Calculated snapshot hash: %s", hash_result.directory_hash)
+                logger.info(
+                    "Calculated snapshot hash: %s", hash_result.directory_hash
+                )
             else:
                 logger.warning("Snapshot directory is empty or doesn't exist")
 
@@ -145,12 +166,14 @@ class SnapshotManager:
             }
 
             if hash_result:
-                result.update({
-                    "directory_hash": hash_result.directory_hash,
-                    "file_count": hash_result.file_count,
-                    "total_size_bytes": hash_result.total_size_bytes,
-                    "hash_algorithm": hash_result.hash_algorithm,
-                })
+                result.update(
+                    {
+                        "directory_hash": hash_result.directory_hash,
+                        "file_count": hash_result.file_count,
+                        "total_size_bytes": hash_result.total_size_bytes,
+                        "hash_algorithm": hash_result.hash_algorithm,
+                    }
+                )
 
             if include_metadata:
                 result["metadata"] = include_metadata
@@ -167,9 +190,15 @@ class SnapshotManager:
                 )
                 result["s3_upload"] = upload_result
                 result["s3_prefix"] = upload_result["snapshot_prefix"]
-                logger.info("Uploaded snapshot to S3: %s", upload_result["snapshot_prefix"])
+                logger.info(
+                    "Uploaded snapshot to S3: %s",
+                    upload_result["snapshot_prefix"],
+                )
 
-            logger.info("Successfully created snapshot for collection '%s'", collection_name)
+            logger.info(
+                "Successfully created snapshot for collection '%s'",
+                collection_name,
+            )
             return result
 
         except Exception as e:
@@ -177,6 +206,7 @@ class SnapshotManager:
             # Cleanup temporary directory on failure
             if cleanup_temp and os.path.exists(local_directory):
                 import shutil
+
                 shutil.rmtree(local_directory)
             raise RuntimeError(f"Snapshot creation failed: {e}")
 
@@ -193,7 +223,7 @@ class SnapshotManager:
     ) -> Dict[str, Any]:
         """
         Restore a vector store collection from a snapshot.
-        
+
         Args:
             collection_name: Name of the collection to restore
             local_directory: Local directory to restore to
@@ -203,10 +233,10 @@ class SnapshotManager:
             verify_hash: Whether to verify hash after download
             create_client: Whether to create and return a vector client
             client_mode: Mode for created client ("read" or "write")
-            
+
         Returns:
             Dict with restoration results and optional client
-            
+
         Raises:
             RuntimeError: If restoration fails
         """
@@ -239,20 +269,26 @@ class SnapshotManager:
 
         # Verify local directory has data
         if not os.path.exists(local_directory):
-            raise RuntimeError(f"Snapshot directory does not exist: {local_directory}")
+            raise RuntimeError(
+                f"Snapshot directory does not exist: {local_directory}"
+            )
 
         if not any(os.scandir(local_directory)):
-            raise RuntimeError(f"Snapshot directory is empty: {local_directory}")
+            raise RuntimeError(
+                f"Snapshot directory is empty: {local_directory}"
+            )
 
         # Calculate local hash for verification
         local_hash = HashCalculator.calculate_directory_hash(
             local_directory, include_file_list=False
         )
-        result.update({
-            "local_hash": local_hash.directory_hash,
-            "file_count": local_hash.file_count,
-            "total_size_bytes": local_hash.total_size_bytes,
-        })
+        result.update(
+            {
+                "local_hash": local_hash.directory_hash,
+                "file_count": local_hash.file_count,
+                "total_size_bytes": local_hash.total_size_bytes,
+            }
+        )
 
         # Create vector client if requested
         if create_client:
@@ -261,19 +297,28 @@ class SnapshotManager:
                 persist_directory=local_directory,
                 mode=client_mode,
             )
-            
+
             # Verify the collection is accessible
             if client.collection_exists(collection_name):
                 collection_count = client.count(collection_name)
                 result["collection_count"] = collection_count
-                logger.info("Restored collection '%s' with %d items", 
-                          collection_name, collection_count)
+                logger.info(
+                    "Restored collection '%s' with %d items",
+                    collection_name,
+                    collection_count,
+                )
             else:
-                logger.warning("Collection '%s' not found in restored snapshot", collection_name)
-            
+                logger.warning(
+                    "Collection '%s' not found in restored snapshot",
+                    collection_name,
+                )
+
             result["client"] = client
 
-        logger.info("Successfully restored snapshot for collection '%s'", collection_name)
+        logger.info(
+            "Successfully restored snapshot for collection '%s'",
+            collection_name,
+        )
         return result
 
     def list_snapshots(
@@ -283,11 +328,11 @@ class SnapshotManager:
     ) -> List[Dict[str, Any]]:
         """
         List available snapshots in S3.
-        
+
         Args:
             collection_name: Optional collection name to filter by
             database_name: Optional database name to filter by
-            
+
         Returns:
             List of snapshot metadata dictionaries
         """
@@ -304,11 +349,11 @@ class SnapshotManager:
     ) -> Dict[str, Any]:
         """
         Delete a snapshot from S3.
-        
+
         Args:
             collection_name: Collection name
             database_name: Optional database name
-            
+
         Returns:
             Dict with deletion results
         """
@@ -327,22 +372,24 @@ class SnapshotManager:
     ) -> Dict[str, Any]:
         """
         Compare a local directory with the latest S3 snapshot.
-        
+
         Args:
             local_directory: Local directory to compare
             collection_name: Collection name
             database_name: Optional database name
             download_for_comparison: Whether to download S3 snapshot for comparison
-            
+
         Returns:
             Dict with comparison results
-            
+
         Raises:
             RuntimeError: If comparison fails
         """
         # Calculate local hash
         if not os.path.exists(local_directory):
-            raise RuntimeError(f"Local directory does not exist: {local_directory}")
+            raise RuntimeError(
+                f"Local directory does not exist: {local_directory}"
+            )
 
         local_hash = HashCalculator.calculate_directory_hash(
             local_directory, include_file_list=False
@@ -358,7 +405,7 @@ class SnapshotManager:
             hash_response = self.s3_ops.s3_client.get_object(
                 Bucket=self.bucket_name, Key=hash_key
             )
-            hash_content = hash_response['Body'].read().decode('utf-8')
+            hash_content = hash_response["Body"].read().decode("utf-8")
             s3_hash = HashCalculator.parse_hash_metadata(hash_content)
 
         except Exception as e:
@@ -387,7 +434,9 @@ class SnapshotManager:
         # Download for detailed comparison if requested and hashes differ
         if download_for_comparison and not comparison["is_identical"]:
             try:
-                temp_dir = tempfile.mkdtemp(prefix=f"snapshot_compare_{collection_name}_")
+                temp_dir = tempfile.mkdtemp(
+                    prefix=f"snapshot_compare_{collection_name}_"
+                )
                 download_result = self.restore_snapshot(
                     collection_name=collection_name,
                     local_directory=temp_dir,
@@ -399,7 +448,9 @@ class SnapshotManager:
                 result["downloaded_for_comparison"] = temp_dir
                 result["download_result"] = download_result
             except Exception as e:
-                logger.warning("Could not download snapshot for comparison: %s", e)
+                logger.warning(
+                    "Could not download snapshot for comparison: %s", e
+                )
                 result["download_error"] = str(e)
 
         return result
