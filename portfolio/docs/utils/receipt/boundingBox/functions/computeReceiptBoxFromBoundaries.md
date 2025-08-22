@@ -8,7 +8,7 @@
 
 > **computeReceiptBoxFromBoundaries**(`topBoundary`, `bottomBoundary`, `leftBoundary`, `rightBoundary`, `fallbackCentroid?`): [`Point`](../../../../types/api/interfaces/Point.md)[]
 
-Defined in: [utils/receipt/boundingBox.ts:541](https://github.com/tnorlund/Portfolio/blob/caeaad140c4d2a0e0cc0781c3f7548ea9aca04e9/portfolio/utils/receipt/boundingBox.ts#L541)
+Defined in: [utils/receipt/boundingBox.ts:541](https://github.com/tnorlund/Portfolio/blob/bc0cb3606619f2006b8bf63589daf2662ecceac3/portfolio/utils/receipt/boundingBox.ts#L541)
 
 Compute the final receipt bounding box from four boundary lines (Step 9).
 
