@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class PatternMatcher:
     """
     Pattern matching system integrated with vector stores.
-    
+
     This class provides functionality for storing, retrieving, and matching
     patterns using vector similarity search, enabling intelligent pattern
     recognition for receipt processing.
@@ -31,7 +31,7 @@ class PatternMatcher:
     ):
         """
         Initialize the pattern matcher.
-        
+
         Args:
             vector_client: Vector store client instance
             patterns_collection: Collection name for storing patterns
@@ -52,7 +52,7 @@ class PatternMatcher:
     ) -> bool:
         """
         Store a pattern in the vector store.
-        
+
         Args:
             pattern_id: Unique identifier for the pattern
             pattern_text: The pattern text to store
@@ -60,7 +60,7 @@ class PatternMatcher:
             merchant_name: Optional merchant name for merchant-specific patterns
             confidence: Confidence level of the pattern (0.0 to 1.0)
             additional_metadata: Optional additional metadata
-            
+
         Returns:
             True if stored successfully, False otherwise
         """
@@ -103,20 +103,23 @@ class PatternMatcher:
     ) -> List[Dict[str, Any]]:
         """
         Find patterns similar to the query text.
-        
+
         Args:
             query_text: Text to search for similar patterns
             pattern_type: Optional pattern type filter
             merchant_name: Optional merchant name filter
             n_results: Maximum number of results to return
             similarity_threshold: Similarity threshold (uses default if None)
-            
+
         Returns:
             List of matching patterns with metadata and similarity scores
         """
         try:
             if not self.client.collection_exists(self.patterns_collection):
-                logger.debug("Patterns collection does not exist: %s", self.patterns_collection)
+                logger.debug(
+                    "Patterns collection does not exist: %s",
+                    self.patterns_collection,
+                )
                 return []
 
             # Build filter conditions
@@ -132,10 +135,13 @@ class PatternMatcher:
                 query_texts=[query_text],
                 n_results=n_results,
                 where=where_filter if where_filter else None,
-                include=["metadatas", "documents", "distances"]
+                include=["metadatas", "documents", "distances"],
             )
 
-            if not query_results.get("distances") or not query_results["distances"][0]:
+            if (
+                not query_results.get("distances")
+                or not query_results["distances"][0]
+            ):
                 return []
 
             # Process results and apply similarity threshold
@@ -144,7 +150,7 @@ class PatternMatcher:
 
             for i, distance in enumerate(query_results["distances"][0]):
                 similarity = 1.0 - distance  # Convert distance to similarity
-                
+
                 if similarity >= threshold:
                     match = {
                         "pattern_id": query_results["ids"][0][i],
@@ -158,7 +164,11 @@ class PatternMatcher:
             # Sort by similarity (highest first)
             matches.sort(key=lambda x: x["similarity"], reverse=True)
 
-            logger.debug("Found %d similar patterns for query: %s", len(matches), query_text)
+            logger.debug(
+                "Found %d similar patterns for query: %s",
+                len(matches),
+                query_text,
+            )
             return matches
 
         except Exception as e:
@@ -174,13 +184,13 @@ class PatternMatcher:
     ) -> Optional[Dict[str, Any]]:
         """
         Get the best matching pattern for the query text.
-        
+
         Args:
             query_text: Text to search for patterns
             pattern_type: Optional pattern type filter
             merchant_name: Optional merchant name filter
             similarity_threshold: Similarity threshold (uses default if None)
-            
+
         Returns:
             Best matching pattern or None if no good matches found
         """
@@ -201,7 +211,7 @@ class PatternMatcher:
     ) -> Dict[str, Any]:
         """
         Store multiple patterns for a merchant.
-        
+
         Args:
             merchant_name: Name of the merchant
             patterns: List of pattern dictionaries with keys:
@@ -209,7 +219,7 @@ class PatternMatcher:
                      - type: Pattern type
                      - confidence: Optional confidence (default 1.0)
                      - metadata: Optional additional metadata
-                     
+
         Returns:
             Dict with storage results
         """
@@ -229,7 +239,9 @@ class PatternMatcher:
                 continue
 
             # Generate pattern ID
-            pattern_id = f"{merchant_name}_{pattern_type}_{i}_{self._get_timestamp()}"
+            pattern_id = (
+                f"{merchant_name}_{pattern_type}_{i}_{self._get_timestamp()}"
+            )
 
             success = self.store_pattern(
                 pattern_id=pattern_id,
@@ -257,8 +269,12 @@ class PatternMatcher:
         if failed_patterns:
             result["failed_patterns"] = failed_patterns
 
-        logger.info("Stored merchant patterns for '%s': %d/%d successful", 
-                   merchant_name, stored_count, len(patterns))
+        logger.info(
+            "Stored merchant patterns for '%s': %d/%d successful",
+            merchant_name,
+            stored_count,
+            len(patterns),
+        )
 
         return result
 
@@ -270,12 +286,12 @@ class PatternMatcher:
     ) -> List[Dict[str, Any]]:
         """
         Get all patterns for a specific merchant.
-        
+
         Args:
             merchant_name: Name of the merchant
             pattern_type: Optional pattern type filter
             limit: Maximum number of patterns to return
-            
+
         Returns:
             List of merchant patterns
         """
@@ -296,7 +312,7 @@ class PatternMatcher:
                 query_texts=[merchant_name],  # Use merchant name as query
                 n_results=limit,
                 where=where_filter,
-                include=["metadatas", "documents"]
+                include=["metadatas", "documents"],
             )
 
             if not query_results.get("ids") or not query_results["ids"][0]:
@@ -326,13 +342,13 @@ class PatternMatcher:
     ) -> Dict[str, Any]:
         """
         Validate text against known patterns.
-        
+
         Args:
             text: Text to validate
             pattern_type: Type of pattern to validate against
             merchant_name: Optional merchant name for merchant-specific validation
             similarity_threshold: Similarity threshold for validation
-            
+
         Returns:
             Dict with validation results
         """
@@ -376,12 +392,12 @@ class PatternMatcher:
     ) -> bool:
         """
         Update the confidence score of a pattern based on usage feedback.
-        
+
         Args:
             pattern_id: ID of the pattern to update
             new_confidence: New confidence score (0.0 to 1.0)
             usage_count: Optional usage count to track pattern popularity
-            
+
         Returns:
             True if updated successfully, False otherwise
         """
@@ -390,11 +406,13 @@ class PatternMatcher:
             existing = self.client.get_by_ids(
                 collection_name=self.patterns_collection,
                 ids=[pattern_id],
-                include=["metadatas", "documents"]
+                include=["metadatas", "documents"],
             )
 
             if not existing.get("ids") or pattern_id not in existing["ids"]:
-                logger.warning("Pattern not found for confidence update: %s", pattern_id)
+                logger.warning(
+                    "Pattern not found for confidence update: %s", pattern_id
+                )
                 return False
 
             # Update metadata
@@ -402,7 +420,7 @@ class PatternMatcher:
             metadata = existing["metadatas"][idx].copy()
             metadata["confidence"] = new_confidence
             metadata["last_updated"] = self._get_timestamp()
-            
+
             if usage_count is not None:
                 metadata["usage_count"] = usage_count
 
@@ -414,7 +432,11 @@ class PatternMatcher:
                 metadatas=[metadata],
             )
 
-            logger.debug("Updated pattern confidence '%s': %.2f", pattern_id, new_confidence)
+            logger.debug(
+                "Updated pattern confidence '%s': %.2f",
+                pattern_id,
+                new_confidence,
+            )
             return True
 
         except Exception as e:
@@ -427,10 +449,10 @@ class PatternMatcher:
     ) -> Dict[str, Any]:
         """
         Delete patterns from the vector store.
-        
+
         Args:
             pattern_ids: List of pattern IDs to delete
-            
+
         Returns:
             Dict with deletion results
         """
@@ -458,7 +480,7 @@ class PatternMatcher:
     def get_pattern_statistics(self) -> Dict[str, Any]:
         """
         Get statistics about stored patterns.
-        
+
         Returns:
             Dict with pattern statistics
         """
@@ -476,7 +498,7 @@ class PatternMatcher:
                 collection_name=self.patterns_collection,
                 query_texts=["sample"],  # Generic query
                 n_results=min(1000, total_count),  # Sample up to 1000 patterns
-                include=["metadatas"]
+                include=["metadatas"],
             )
 
             pattern_types = set()
@@ -484,7 +506,10 @@ class PatternMatcher:
             avg_confidence = 0.0
             confidence_count = 0
 
-            if sample_results.get("metadatas") and sample_results["metadatas"][0]:
+            if (
+                sample_results.get("metadatas")
+                and sample_results["metadatas"][0]
+            ):
                 for metadata in sample_results["metadatas"][0]:
                     if isinstance(metadata, dict):
                         if "pattern_type" in metadata:
@@ -502,7 +527,11 @@ class PatternMatcher:
                 "pattern_types": list(pattern_types),
                 "unique_merchants": len(merchants),
                 "sample_merchants": list(merchants)[:10],  # First 10 merchants
-                "average_confidence": avg_confidence / confidence_count if confidence_count > 0 else 0.0,
+                "average_confidence": (
+                    avg_confidence / confidence_count
+                    if confidence_count > 0
+                    else 0.0
+                ),
                 "similarity_threshold": self.similarity_threshold,
             }
 
@@ -517,4 +546,5 @@ class PatternMatcher:
     def _get_timestamp(self) -> str:
         """Get current timestamp as ISO string."""
         from datetime import datetime, timezone
+
         return datetime.now(timezone.utc).isoformat()

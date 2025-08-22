@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 class MerchantReliabilityData:
     """Data structure for merchant reliability metrics."""
-    
+
     def __init__(
         self,
         merchant_name: str,
@@ -40,7 +40,7 @@ class MerchantReliabilityData:
 class VectorDecisionEngine:
     """
     Vector store integration for decision engines.
-    
+
     This class provides decision engine functionality using vector stores,
     including merchant reliability lookup and pattern validation.
     """
@@ -54,7 +54,7 @@ class VectorDecisionEngine:
     ):
         """
         Initialize the vector decision engine.
-        
+
         Args:
             vector_client: Vector store client instance
             collection_name: Collection name for merchant patterns
@@ -65,7 +65,7 @@ class VectorDecisionEngine:
         self.collection_name = collection_name
         self.enable_vector_validation = enable_vector_validation
         self.cache_ttl_hours = cache_ttl_hours
-        
+
         # Internal cache for merchant reliability data
         self._reliability_cache: Dict[str, MerchantReliabilityData] = {}
 
@@ -76,16 +76,18 @@ class VectorDecisionEngine:
     ) -> Optional[MerchantReliabilityData]:
         """
         Get merchant reliability data from the vector store.
-        
+
         Args:
             merchant_name: Name of the merchant to look up
             refresh_cache: Whether to refresh cached data
-            
+
         Returns:
             MerchantReliabilityData if merchant found, None otherwise
         """
         if not self.enable_vector_validation:
-            logger.debug("Vector validation disabled, skipping merchant lookup")
+            logger.debug(
+                "Vector validation disabled, skipping merchant lookup"
+            )
             return None
 
         if not merchant_name:
@@ -95,10 +97,15 @@ class VectorDecisionEngine:
         cache_key = merchant_name.lower().strip()
         if not refresh_cache and cache_key in self._reliability_cache:
             cached_data = self._reliability_cache[cache_key]
-            
+
             # Check if cache is still valid
-            if datetime.now() - cached_data.last_updated < timedelta(hours=self.cache_ttl_hours):
-                logger.debug("Using cached reliability data for merchant: %s", merchant_name)
+            if datetime.now() - cached_data.last_updated < timedelta(
+                hours=self.cache_ttl_hours
+            ):
+                logger.debug(
+                    "Using cached reliability data for merchant: %s",
+                    merchant_name,
+                )
                 return cached_data
 
         try:
@@ -113,13 +120,17 @@ class VectorDecisionEngine:
                     "success_rate=%.2f, receipts=%d",
                     merchant_name,
                     reliability_data.pattern_only_success_rate,
-                    reliability_data.total_receipts_processed
+                    reliability_data.total_receipts_processed,
                 )
 
             return reliability_data
 
         except Exception as e:
-            logger.error("Error querying vector store for merchant '%s': %s", merchant_name, e)
+            logger.error(
+                "Error querying vector store for merchant '%s': %s",
+                merchant_name,
+                e,
+            )
             return None
 
     async def _query_merchant_data(
@@ -128,19 +139,22 @@ class VectorDecisionEngine:
     ) -> Optional[MerchantReliabilityData]:
         """
         Query vector store for merchant-specific pattern data.
-        
+
         This method analyzes historical receipt data for the merchant to calculate
         reliability metrics.
-        
+
         Args:
             merchant_name: Name of the merchant
-            
+
         Returns:
             MerchantReliabilityData if found, None otherwise
         """
         try:
             if not self.client.collection_exists(self.collection_name):
-                logger.debug("Merchant patterns collection does not exist: %s", self.collection_name)
+                logger.debug(
+                    "Merchant patterns collection does not exist: %s",
+                    self.collection_name,
+                )
                 return None
 
             # Query for merchant-specific patterns using metadata filtering
@@ -149,15 +163,19 @@ class VectorDecisionEngine:
                 query_texts=[merchant_name],
                 n_results=50,  # Get top 50 matches
                 where={"merchant_name": merchant_name},
-                include=["metadatas", "documents", "distances"]
+                include=["metadatas", "documents", "distances"],
             )
 
             if not query_results.get("ids") or not query_results["ids"][0]:
-                logger.debug("No patterns found for merchant: %s", merchant_name)
+                logger.debug(
+                    "No patterns found for merchant: %s", merchant_name
+                )
                 return None
 
             # Analyze the results to calculate reliability metrics
-            return self._analyze_merchant_patterns(merchant_name, query_results)
+            return self._analyze_merchant_patterns(
+                merchant_name, query_results
+            )
 
         except Exception as e:
             logger.error("Error in merchant data query: %s", e)
@@ -170,11 +188,11 @@ class VectorDecisionEngine:
     ) -> Optional[MerchantReliabilityData]:
         """
         Analyze query results to calculate merchant reliability metrics.
-        
+
         Args:
             merchant_name: Name of the merchant
             query_results: Results from vector store query
-            
+
         Returns:
             MerchantReliabilityData with calculated metrics
         """
@@ -210,12 +228,20 @@ class VectorDecisionEngine:
 
             # Calculate success rate
             total_attempts = successful_matches + failed_matches
-            success_rate = successful_matches / total_attempts if total_attempts > 0 else 0.0
+            success_rate = (
+                successful_matches / total_attempts
+                if total_attempts > 0
+                else 0.0
+            )
 
             # Build common patterns info
             common_patterns = {
                 "pattern_types": dict(pattern_types),
-                "most_common_pattern": max(pattern_types, key=pattern_types.get) if pattern_types else None,
+                "most_common_pattern": (
+                    max(pattern_types, key=pattern_types.get)
+                    if pattern_types
+                    else None
+                ),
                 "total_pattern_types": len(pattern_types),
             }
 
@@ -244,7 +270,7 @@ class VectorDecisionEngine:
     ) -> bool:
         """
         Store a merchant pattern result in the vector store.
-        
+
         Args:
             merchant_name: Name of the merchant
             pattern_text: The pattern text that was matched
@@ -252,7 +278,7 @@ class VectorDecisionEngine:
             success: Whether the pattern match was successful
             receipt_count: Number of receipts this pattern applies to
             additional_metadata: Optional additional metadata
-            
+
         Returns:
             True if stored successfully, False otherwise
         """
@@ -273,7 +299,9 @@ class VectorDecisionEngine:
                 metadata.update(additional_metadata)
 
             # Generate a unique ID for this pattern
-            pattern_id = f"{merchant_name}_{pattern_type}_{datetime.now().timestamp()}"
+            pattern_id = (
+                f"{merchant_name}_{pattern_type}_{datetime.now().timestamp()}"
+            )
 
             # Store in vector store
             self.client.upsert_vectors(
@@ -283,7 +311,11 @@ class VectorDecisionEngine:
                 metadatas=[metadata],
             )
 
-            logger.debug("Stored pattern for merchant '%s': %s", merchant_name, pattern_type)
+            logger.debug(
+                "Stored pattern for merchant '%s': %s",
+                merchant_name,
+                pattern_type,
+            )
             return True
 
         except Exception as e:
@@ -299,19 +331,22 @@ class VectorDecisionEngine:
     ) -> Dict[str, Any]:
         """
         Validate a pattern against known merchant patterns.
-        
+
         Args:
             merchant_name: Name of the merchant
             pattern_text: Pattern text to validate
             pattern_type: Type of pattern to validate
             similarity_threshold: Similarity threshold for matches
-            
+
         Returns:
             Dict with validation results
         """
         try:
             if not self.enable_vector_validation:
-                return {"validated": False, "reason": "vector_validation_disabled"}
+                return {
+                    "validated": False,
+                    "reason": "vector_validation_disabled",
+                }
 
             if not self.client.collection_exists(self.collection_name):
                 return {"validated": False, "reason": "no_pattern_collection"}
@@ -325,28 +360,39 @@ class VectorDecisionEngine:
                     "merchant_name": merchant_name,
                     "pattern_type": pattern_type,
                 },
-                include=["metadatas", "documents", "distances"]
+                include=["metadatas", "documents", "distances"],
             )
 
-            if not query_results.get("distances") or not query_results["distances"][0]:
+            if (
+                not query_results.get("distances")
+                or not query_results["distances"][0]
+            ):
                 return {"validated": False, "reason": "no_similar_patterns"}
 
             # Find the best match
             distances = query_results["distances"][0]
             best_distance = min(distances)
-            best_similarity = 1.0 - best_distance  # Convert distance to similarity
+            best_similarity = (
+                1.0 - best_distance
+            )  # Convert distance to similarity
 
             if best_similarity >= similarity_threshold:
                 best_idx = distances.index(best_distance)
                 best_metadata = query_results["metadatas"][0][best_idx]
-                
+
                 return {
                     "validated": True,
                     "similarity": best_similarity,
                     "confidence": best_similarity,
-                    "matching_pattern": query_results["documents"][0][best_idx],
-                    "pattern_successful": best_metadata.get("pattern_successful", False),
-                    "historical_success_rate": best_metadata.get("pattern_successful", 0),
+                    "matching_pattern": query_results["documents"][0][
+                        best_idx
+                    ],
+                    "pattern_successful": best_metadata.get(
+                        "pattern_successful", False
+                    ),
+                    "historical_success_rate": best_metadata.get(
+                        "pattern_successful", 0
+                    ),
                 }
             else:
                 return {
@@ -358,12 +404,18 @@ class VectorDecisionEngine:
 
         except Exception as e:
             logger.error("Error validating pattern: %s", e)
-            return {"validated": False, "reason": "query_error", "error": str(e)}
+            return {
+                "validated": False,
+                "reason": "query_error",
+                "error": str(e),
+            }
 
-    def clear_merchant_cache(self, merchant_name: Optional[str] = None) -> None:
+    def clear_merchant_cache(
+        self, merchant_name: Optional[str] = None
+    ) -> None:
         """
         Clear merchant reliability cache.
-        
+
         Args:
             merchant_name: Specific merchant to clear, or None to clear all
         """
@@ -378,7 +430,7 @@ class VectorDecisionEngine:
     def get_cache_stats(self) -> Dict[str, Any]:
         """
         Get cache statistics.
-        
+
         Returns:
             Dict with cache statistics
         """
