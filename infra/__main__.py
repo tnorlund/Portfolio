@@ -39,7 +39,10 @@ from validate_merchant_step_functions import ValidateMerchantStepFunctions
 from validation_by_merchant import ValidationByMerchantStepFunction
 from validation_pipeline import ValidationPipeline
 
-from chromadb_compaction import ChromaDBBuckets, ChromaDBQueues
+from chromadb_compaction import (
+    ChromaDBBuckets,
+    create_chromadb_compaction_infrastructure,
+)
 
 # Using the optimized docker-build based base images with scoped contexts
 from base_images.base_images import BaseImages
@@ -50,6 +53,7 @@ from base_images.base_images import BaseImages
 # from job_queue import JobQueue
 # from ml_packages import MLPackageBuilder
 # from networking import VpcForCodeBuild  # Import the new VPC component
+from word_label_step_functions import WordLabelStepFunctions
 
 # Import other necessary components
 try:
@@ -96,10 +100,33 @@ notification_system = NotificationSystem(
 # Create base images first - they're used by multiple components
 base_images = BaseImages("base-images", stack=pulumi.get_stack())
 
+word_label_step_functions = WordLabelStepFunctions("word-label-step-functions")
 validate_merchant_step_functions = ValidateMerchantStepFunctions(
     "validate-merchant"
 )
 validation_pipeline = ValidationPipeline("validation-pipeline")
+
+# Create shared ChromaDB bucket (used by both compaction and embedding)
+shared_chromadb_buckets = ChromaDBBuckets(
+    f"chromadb-{pulumi.get_stack()}-shared-buckets",
+)
+
+# Create ChromaDB compaction infrastructure using shared bucket
+chromadb_infrastructure = create_chromadb_compaction_infrastructure(
+    name=f"chromadb-{pulumi.get_stack()}",
+    dynamodb_table_arn=dynamodb_table.arn,
+    dynamodb_stream_arn=dynamodb_table.stream_arn,
+    chromadb_buckets=shared_chromadb_buckets,
+    base_images=base_images,
+)
+
+# Create embedding infrastructure using shared bucket and queues
+embedding_infrastructure = EmbeddingInfrastructure(
+    f"embedding-infra-{pulumi.get_stack()}",
+    chromadb_queues=chromadb_infrastructure.chromadb_queues,
+    chromadb_buckets=shared_chromadb_buckets,
+    base_images=base_images,
+)
 validation_by_merchant_step_functions = ValidationByMerchantStepFunction(
     "validation-by-merchant"
 )
@@ -153,23 +180,7 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
     policy_arn="arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
 )
 
-# Create shared ChromaDB resources ONCE
-chromadb_storage = ChromaDBBuckets(
-    "chromadb",  # Changed from "chromadb-test" to "chromadb" for clarity
-)
-
-# Create shared ChromaDB SQS queues
-chromadb_queues = ChromaDBQueues(
-    "chromadb",  # Changed from "chromadb-test" to "chromadb" for clarity
-)
-
-# Create embedding infrastructure with shared ChromaDB resources
-embedding_infrastructure = EmbeddingInfrastructure(
-    "embedding-infra",
-    base_images=base_images,
-    chromadb_buckets=chromadb_storage,  # Pass shared ChromaDB buckets
-    chromadb_queues=chromadb_queues,  # Pass shared ChromaDB queues
-)
+# ChromaDB compaction infrastructure already created above
 
 # Create spot interruption handler
 # spot_handler = SpotInterruptionHandler(
@@ -695,18 +706,19 @@ embedding_infrastructure = EmbeddingInfrastructure(
 # pulumi.export("instance_registry_table_name", instance_registry.table_name)
 # pulumi.export("ml_packages_built", ml_package_builder.packages)
 
-# ChromaDB infrastructure exports
-pulumi.export("chromadb_bucket_name", chromadb_storage.bucket_name)
-pulumi.export("chromadb_bucket_arn", chromadb_storage.bucket_arn)
-pulumi.export("chromadb_delta_queue_url", chromadb_queues.delta_queue_url)
-pulumi.export("chromadb_delta_queue_arn", chromadb_queues.delta_queue_arn)
-
-# Export the embedding infrastructure ChromaDB bucket (the one actually used!)
+# ChromaDB infrastructure exports (hybrid deployment)
+pulumi.export("chromadb_bucket_name", shared_chromadb_buckets.bucket_name)
 pulumi.export(
-    "embedding_chromadb_bucket_name",
-    embedding_infrastructure.chromadb_buckets.bucket_name,
+    "chromadb_lines_queue_url", chromadb_infrastructure.lines_queue_url
 )
 pulumi.export(
-    "embedding_chromadb_bucket_arn",
-    embedding_infrastructure.chromadb_buckets.bucket_arn,
+    "chromadb_words_queue_url", chromadb_infrastructure.words_queue_url
+)
+pulumi.export(
+    "stream_processor_function_arn",
+    chromadb_infrastructure.stream_processor_arn,
+)
+pulumi.export(
+    "enhanced_compaction_function_arn",
+    chromadb_infrastructure.enhanced_compaction_arn,
 )

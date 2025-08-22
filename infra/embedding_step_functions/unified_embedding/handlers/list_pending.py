@@ -33,7 +33,7 @@ def handle(event: Dict[str, Any], context: Any) -> List[Dict[str, str]]:
         pending_batches = list_pending_line_embedding_batches()
 
         logger.info(
-            "Found %d pending line embedding batches", len(pending_batches)
+            "Found pending line embedding batches", count=len(pending_batches)
         )
 
         # Format response for Step Function
@@ -48,15 +48,17 @@ def handle(event: Dict[str, Any], context: Any) -> List[Dict[str, str]]:
         return batch_list
 
     except AttributeError as e:
-        logger.error("Client manager configuration error: %s", str(e))
+        logger.error("Client manager configuration error", error=str(e))
         raise RuntimeError(f"Configuration error: {str(e)}") from e
 
     except KeyError as e:
-        logger.error("Missing expected field in DynamoDB response: %s", str(e))
+        logger.error(
+            "Missing expected field in DynamoDB response", error=str(e)
+        )
         raise RuntimeError(f"Data format error: {str(e)}") from e
 
     except Exception as e:
         logger.error(
-            "Unexpected error listing pending line batches: %s", str(e)
+            "Unexpected error listing pending line batches", error=str(e)
         )
         raise RuntimeError(f"Internal error: {str(e)}") from e
