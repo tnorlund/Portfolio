@@ -644,7 +644,9 @@ class _ReceiptWordLabel(
             },
             expression_attribute_values={
                 ":pk": {"S": f"IMAGE#{image_id}"},
-                ":sk_prefix": {"S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LABEL#"},
+                ":sk_prefix": {
+                    "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#LABEL#"
+                },
             },
             converter_func=item_to_receipt_word_label,
             limit=limit,
