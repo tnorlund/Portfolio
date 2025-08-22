@@ -121,3 +121,10 @@ class ImageType(Enum):
     SCAN = "SCAN"
     PHOTO = "PHOTO"
     NATIVE = "NATIVE"
+
+
+class ChromaDBCollection(str, Enum):
+    """ChromaDB collection types for receipt embeddings."""
+
+    LINES = "lines"
+    WORDS = "words"
