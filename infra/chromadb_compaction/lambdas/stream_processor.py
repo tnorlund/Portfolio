@@ -343,7 +343,10 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         return result
         
     except Exception as e:
-        logger.error("Stream processor failed", error=str(e), error_type=type(e).__name__)
+        if OBSERVABILITY_AVAILABLE:
+            logger.error("Stream processor failed", error=str(e), error_type=type(e).__name__)
+        else:
+            logger.error("Stream processor failed: %s (%s)", str(e), type(e).__name__)
         
         if OBSERVABILITY_AVAILABLE:
             metrics.count("StreamProcessorError", 1, {"error_type": type(e).__name__})
@@ -495,7 +498,10 @@ def parse_stream_record(
         )
 
     except (KeyError, ValueError) as e:
-        logger.warning("Failed to parse stream record", error=str(e))
+        if OBSERVABILITY_AVAILABLE:
+            logger.warning("Failed to parse stream record", error=str(e))
+        else:
+            logger.warning("Failed to parse stream record: %s", str(e))
         
         if OBSERVABILITY_AVAILABLE:
             metrics.count("StreamRecordParsingError", 1)
