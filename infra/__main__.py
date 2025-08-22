@@ -705,7 +705,6 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 # pulumi.export("instance_registry_table_name", instance_registry.table_name)
 # pulumi.export("ml_packages_built", ml_package_builder.packages)
 
-<<<<<<< HEAD
 # ChromaDB infrastructure exports (hybrid deployment)
 pulumi.export("chromadb_bucket_name", shared_chromadb_buckets.bucket_name)
 pulumi.export(
@@ -721,12 +720,7 @@ pulumi.export(
 pulumi.export(
     "enhanced_compaction_function_arn",
     chromadb_infrastructure.enhanced_compaction_arn,
-=======
-# ChromaDB infrastructure exports
-pulumi.export("chromadb_bucket_name", chromadb_storage.bucket_name)
-pulumi.export("chromadb_bucket_arn", chromadb_storage.bucket_arn)
-pulumi.export("chromadb_delta_queue_url", chromadb_queues.delta_queue_url)
-pulumi.export("chromadb_delta_queue_arn", chromadb_queues.delta_queue_arn)
+)
 
 # Export the embedding infrastructure ChromaDB bucket (the one actually used!)
 pulumi.export(
@@ -736,5 +730,4 @@ pulumi.export(
 pulumi.export(
     "embedding_chromadb_bucket_arn",
     embedding_infrastructure.chromadb_buckets.bucket_arn,
->>>>>>> origin/main
 )
