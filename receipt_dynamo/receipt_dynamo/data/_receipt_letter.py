@@ -81,7 +81,9 @@ class _ReceiptLetter(
         self._add_entity(receipt_letter)
 
     @handle_dynamodb_errors("add_receipt_letters")
-    def add_receipt_letters(self, receipt_letters: list[ReceiptLetter]) -> None:
+    def add_receipt_letters(
+        self, receipt_letters: list[ReceiptLetter]
+    ) -> None:
         """
         Adds multiple ReceiptLetters to DynamoDB in batches.
 
@@ -133,7 +135,9 @@ class _ReceiptLetter(
         self._update_entity(receipt_letter)
 
     @handle_dynamodb_errors("update_receipt_letters")
-    def update_receipt_letters(self, receipt_letters: list[ReceiptLetter]) -> None:
+    def update_receipt_letters(
+        self, receipt_letters: list[ReceiptLetter]
+    ) -> None:
         """
         Updates multiple ReceiptLetters in the database.
 
@@ -157,7 +161,9 @@ class _ReceiptLetter(
                     f"receipt_letters[{i}] must be an instance of ReceiptLetter, "
                     f"got {type(receipt_letter).__name__}"
                 )
-        self._update_entities(receipt_letters, ReceiptLetter, "receipt_letters")
+        self._update_entities(
+            receipt_letters, ReceiptLetter, "receipt_letters"
+        )
 
     @handle_dynamodb_errors("delete_receipt_letter")
     def delete_receipt_letter(
@@ -218,7 +224,9 @@ class _ReceiptLetter(
         )
 
     @handle_dynamodb_errors("delete_receipt_letters")
-    def delete_receipt_letters(self, receipt_letters: list[ReceiptLetter]) -> None:
+    def delete_receipt_letters(
+        self, receipt_letters: list[ReceiptLetter]
+    ) -> None:
         """
         Deletes multiple ReceiptLetters in batch.
 
@@ -285,7 +293,9 @@ class _ReceiptLetter(
         if not isinstance(receipt_id, int):
             raise EntityValidationError("receipt_id must be an integer")
         if receipt_id <= 0:
-            raise EntityValidationError("receipt_id must be a positive integer")
+            raise EntityValidationError(
+                "receipt_id must be a positive integer"
+            )
         if image_id is None:
             raise EntityValidationError("image_id cannot be None")
         self._validate_image_id(image_id)
