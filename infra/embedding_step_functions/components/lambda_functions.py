@@ -26,6 +26,12 @@ GIGABYTE = 1024
 MINUTE = 60
 
 
+# Helper to express memory/ephemeral storage in MiB (AWS expects MiB integers).
+# Example: GiB(0.5) == 512, GiB(2) == 2048
+def GiB(n: float | int) -> int:
+    return int(n * 1024)
+
+
 class LambdaFunctionsComponent(ComponentResource):
     """Component for creating Lambda functions and related resources."""
 
@@ -296,23 +302,24 @@ class LambdaFunctionsComponent(ComponentResource):
         self.container_lambda_functions = {}
 
         # Define container-based Lambda configurations
+        # Optimized based on actual usage patterns from observability data
         container_configs = {
             "embedding-line-poll": {
-                "memory": GIGABYTE * 3,
-                "timeout": MINUTE * 15,  # Fix: Use 15 minutes to match config.py
-                "ephemeral_storage": GIGABYTE * 5,
+                "memory": GiB(1.5),  # Reduced from 3GB, usage was 668-818MB (22-27%)
+                "timeout": MINUTE * 15,
+                "ephemeral_storage": GiB(1.5),  # Reduced from 5GB, no evidence of high disk usage
                 "handler_type": "line_polling",
             },
             "embedding-word-poll": {
-                "memory": GIGABYTE * 3,
-                "timeout": MINUTE * 15,  # Fix: Use 15 minutes to match config.py
-                "ephemeral_storage": GIGABYTE * 5,
+                "memory": GiB(1),  # Reduced from 3GB, usage was 322-360MB (11-12%)
+                "timeout": MINUTE * 15,
+                "ephemeral_storage": GiB(1),  # Reduced from 5GB, processing streaming data
                 "handler_type": "word_polling",
             },
             "embedding-vector-compact": {
-                "memory": GIGABYTE * 8,
+                "memory": GiB(2),  # Reduced from 8GB, peak usage was 1402MB (17%)
                 "timeout": MINUTE * 15,
-                "ephemeral_storage": GIGABYTE * 10,
+                "ephemeral_storage": GiB(2),  # Reduced from 10GB, mostly in-memory operations
                 "handler_type": "compaction",
             },
         }
