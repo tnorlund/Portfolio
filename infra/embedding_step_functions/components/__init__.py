@@ -9,10 +9,12 @@ from .docker_image import DockerImageComponent
 from .lambda_functions import LambdaFunctionsComponent
 from .line_workflow import LineEmbeddingWorkflow
 from .word_workflow import WordEmbeddingWorkflow
+from .monitoring import MonitoringComponent
 
 __all__ = [
     "DockerImageComponent",
     "LambdaFunctionsComponent",
     "LineEmbeddingWorkflow",
     "WordEmbeddingWorkflow",
+    "MonitoringComponent",
 ]
