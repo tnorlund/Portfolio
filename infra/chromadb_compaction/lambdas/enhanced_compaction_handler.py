@@ -1379,45 +1379,190 @@ def remove_receipt_metadata(collection, image_id: str, receipt_id: int) -> int:
     return len(matching_ids)
 
 
+def reconstruct_label_metadata(
+    image_id: str, 
+    receipt_id: int, 
+    line_id: int, 
+    word_id: int,
+    dynamo_client
+) -> Dict[str, Any]:
+    """
+    Reconstruct all label-related metadata fields exactly as the step function does.
+    
+    Args:
+        image_id: Image ID
+        receipt_id: Receipt ID  
+        line_id: Line ID
+        word_id: Word ID
+        dynamo_client: DynamoDB client instance
+        
+    Returns:
+        Dictionary with reconstructed label metadata fields:
+        - validated_labels: comma-delimited string of valid labels
+        - invalid_labels: comma-delimited string of invalid labels  
+        - label_status: overall status (validated/auto_suggested/unvalidated)
+        - label_confidence: confidence from latest pending label
+        - label_proposed_by: proposer of latest pending label
+        - label_validated_at: timestamp of most recent validation
+    """
+    from receipt_dynamo.constants import ValidationStatus
+    
+    # Get all labels for this specific word
+    labels, _ = dynamo_client.list_receipt_word_labels_for_receipt(
+        image_id=image_id,
+        receipt_id=receipt_id,
+        limit=None  # Get all labels for this receipt
+    )
+    
+    # Filter labels to only those for our specific word
+    word_labels = [
+        lbl for lbl in labels 
+        if lbl.line_id == line_id and lbl.word_id == word_id
+    ]
+    
+    # Calculate label_status - overall state for this word
+    if any(
+        lbl.validation_status == ValidationStatus.VALID.value
+        for lbl in word_labels
+    ):
+        label_status = "validated"
+    elif any(
+        lbl.validation_status == ValidationStatus.PENDING.value
+        for lbl in word_labels
+    ):
+        label_status = "auto_suggested"
+    else:
+        label_status = "unvalidated"
+    
+    # Get auto suggestions for confidence and proposed_by
+    auto_suggestions = [
+        lbl for lbl in word_labels
+        if lbl.validation_status == ValidationStatus.PENDING.value
+    ]
+    
+    # label_confidence & label_proposed_by from latest auto suggestion
+    if auto_suggestions:
+        latest = sorted(auto_suggestions, key=lambda l: l.timestamp_added)[-1]
+        label_confidence = getattr(latest, "confidence", None)
+        label_proposed_by = latest.label_proposed_by
+    else:
+        label_confidence = None
+        label_proposed_by = None
+    
+    # validated_labels - all labels with status VALID
+    validated_labels = [
+        lbl.label for lbl in word_labels
+        if lbl.validation_status == ValidationStatus.VALID.value
+    ]
+    
+    # invalid_labels - all labels with status INVALID
+    invalid_labels = [
+        lbl.label for lbl in word_labels
+        if lbl.validation_status == ValidationStatus.INVALID.value
+    ]
+    
+    # label_validated_at - timestamp of most recent VALID label
+    valid_labels = [
+        lbl for lbl in word_labels
+        if lbl.validation_status == ValidationStatus.VALID.value
+    ]
+    label_validated_at = (
+        sorted(valid_labels, key=lambda l: l.timestamp_added)[-1].timestamp_added
+        if valid_labels
+        else None
+    )
+    
+    # Build metadata dictionary matching step function structure
+    label_metadata = {
+        "label_status": label_status,
+    }
+    
+    # Add optional fields only if they have values
+    if label_confidence is not None:
+        label_metadata["label_confidence"] = label_confidence
+    if label_proposed_by is not None:
+        label_metadata["label_proposed_by"] = label_proposed_by
+    
+    # Store validated labels with delimiters for exact matching
+    if validated_labels:
+        label_metadata["validated_labels"] = f",{','.join(validated_labels)},"
+    else:
+        label_metadata["validated_labels"] = ""
+    
+    # Store invalid labels with delimiters for exact matching  
+    if invalid_labels:
+        label_metadata["invalid_labels"] = f",{','.join(invalid_labels)},"
+    else:
+        label_metadata["invalid_labels"] = ""
+    
+    if label_validated_at is not None:
+        label_metadata["label_validated_at"] = label_validated_at
+    
+    return label_metadata
+
+
 def update_word_labels(
     collection, chromadb_id: str, changes: Dict[str, Any]
 ) -> int:
-    """Update label metadata for a specific word embedding."""
+    """Update label metadata for a specific word embedding using proper metadata structure."""
     try:
-        # Get the specific record
+        # Parse ChromaDB ID to extract word identifiers
+        # Format: IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}
+        parts = chromadb_id.split("#")
+        if len(parts) < 8 or "WORD" not in parts:
+            logger.error("Invalid ChromaDB ID format for word", chromadb_id=chromadb_id)
+            if OBSERVABILITY_AVAILABLE:
+                metrics.count("CompactionInvalidChromaDBID", 1)
+            return 0
+            
+        image_id = parts[1]
+        receipt_id = int(parts[3])
+        line_id = int(parts[5])
+        word_id = int(parts[7])
+        
+        # Get the specific record from ChromaDB
         result = collection.get(ids=[chromadb_id], include=["metadatas"])
-
         if not result["ids"]:
             logger.warning("Word embedding not found", chromadb_id=chromadb_id)
-            
             if OBSERVABILITY_AVAILABLE:
                 metrics.count("CompactionWordEmbeddingNotFound", 1)
             return 0
 
-        # Update metadata with label changes
+        # Get DynamoDB client
+        dynamo_client = get_dynamo_client()
+        
+        # Reconstruct complete label metadata using the same logic as step function
+        reconstructed_metadata = reconstruct_label_metadata(
+            image_id=image_id,
+            receipt_id=receipt_id, 
+            line_id=line_id,
+            word_id=word_id,
+            dynamo_client=dynamo_client
+        )
+        
+        # Get existing metadata and update with reconstructed label fields
         existing_metadata = result["metadatas"][0] or {}
         updated_metadata = existing_metadata.copy()
-
-        # Apply label field changes with "label_" prefix to avoid conflicts
-        for field, change in changes.items():
-            label_field = f"label_{field}"
-            new_value = change["new"]
-            if new_value is not None:
-                updated_metadata[label_field] = new_value
-            elif label_field in updated_metadata:
-                del updated_metadata[label_field]
-
+        
+        # Update with all reconstructed label fields (using same field names as step function)
+        updated_metadata.update(reconstructed_metadata)
+        
         # Add update timestamp
-        updated_metadata["last_label_update"] = datetime.now(
-            timezone.utc
-        ).isoformat()
-
-        # Update the record
+        updated_metadata["last_label_update"] = datetime.now(timezone.utc).isoformat()
+        
+        # Update the ChromaDB record
         collection.update(ids=[chromadb_id], metadatas=[updated_metadata])
-
-        logger.info("Updated labels for word", chromadb_id=chromadb_id)
+        
+        logger.info("Updated labels for word with reconstructed metadata", 
+                   chromadb_id=chromadb_id,
+                   label_status=reconstructed_metadata.get("label_status"),
+                   validated_labels_count=len(reconstructed_metadata.get("validated_labels", "").split(",")) - 2 if reconstructed_metadata.get("validated_labels") else 0)
+        
         if OBSERVABILITY_AVAILABLE:
             metrics.count("CompactionWordLabelUpdated", 1)
+            metrics.gauge("CompactionValidatedLabelsCount", 
+                         len(reconstructed_metadata.get("validated_labels", "").split(",")) - 2 if reconstructed_metadata.get("validated_labels") else 0)
+        
         return 1
 
     except Exception as e:  # pylint: disable=broad-exception-caught
@@ -1449,11 +1594,27 @@ def remove_word_labels(collection, chromadb_id: str) -> int:
         existing_metadata = result["metadatas"][0] or {}
         updated_metadata = existing_metadata.copy()
 
-        # Remove all fields that start with "label_"
-        label_fields = [
+        # Remove all label-related fields (matching step function structure)
+        label_fields_to_remove = [
+            "label_status",
+            "label_confidence", 
+            "label_proposed_by",
+            "validated_labels",
+            "invalid_labels",
+            "label_validated_at",
+            # Also remove any legacy prefixed fields for backward compatibility
+        ]
+        
+        # Remove standard label fields
+        for field in label_fields_to_remove:
+            if field in updated_metadata:
+                del updated_metadata[field]
+        
+        # Remove any remaining fields that start with "label_" (legacy cleanup)
+        legacy_label_fields = [
             key for key in updated_metadata.keys() if key.startswith("label_")
         ]
-        for field in label_fields:
+        for field in legacy_label_fields:
             del updated_metadata[field]
 
         # Add removal timestamp
