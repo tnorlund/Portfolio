@@ -187,7 +187,7 @@ class LineEmbeddingWorkflow(ComponentResource):
                     "PollBatches": {
                         "Type": "Map",
                         "ItemsPath": "$.pending_batches",
-                        "MaxConcurrency": 10,
+                        "MaxConcurrency": 50,
                         "Parameters": {
                             "batch_id.$": "$$.Map.Item.Value.batch_id",
                             "openai_batch_id.$": (
@@ -202,6 +202,27 @@ class LineEmbeddingWorkflow(ComponentResource):
                                     "Type": "Task",
                                     "Resource": arns[1],
                                     "End": True,
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": [
+                                                "Lambda.ServiceException",
+                                                "Lambda.AWSLambdaException",
+                                                "Runtime.ExitError",
+                                            ],
+                                            "IntervalSeconds": 2,
+                                            "MaxAttempts": 3,
+                                            "BackoffRate": 2.0,
+                                            "JitterStrategy": "FULL",
+                                        },
+                                        {
+                                            "ErrorEquals": [
+                                                "Lambda.TooManyRequestsException"
+                                            ],
+                                            "IntervalSeconds": 5,
+                                            "MaxAttempts": 3,
+                                            "BackoffRate": 2.0,
+                                        },
+                                    ],
                                 },
                             },
                         },
@@ -253,7 +274,7 @@ class LineEmbeddingWorkflow(ComponentResource):
                         "Type": "Map",
                         "Comment": "Process chunks in parallel",
                         "ItemsPath": "$.chunked_data.chunks",
-                        "MaxConcurrency": 5,
+                        "MaxConcurrency": 15,
                         "Parameters": {"chunk.$": "$$.Map.Item.Value"},
                         "Iterator": {
                             "StartAt": "ProcessSingleChunk",
@@ -263,7 +284,7 @@ class LineEmbeddingWorkflow(ComponentResource):
                                     "Resource": arns[2],
                                     "Comment": "Process a single chunk",
                                     "Parameters": {
-                                        "operation.$": "$.chunk.operation",
+                                        "operation": "process_chunk",
                                         "batch_id.$": "$.chunk.batch_id",
                                         "chunk_index.$": (
                                             "$.chunk.chunk_index"
@@ -279,9 +300,10 @@ class LineEmbeddingWorkflow(ComponentResource):
                                             "ErrorEquals": [
                                                 "Lambda.ServiceException",
                                                 "Lambda.AWSLambdaException",
+                                                "Runtime.ExitError",
                                             ],
                                             "IntervalSeconds": 2,
-                                            "MaxAttempts": 2,
+                                            "MaxAttempts": 3,
                                             "BackoffRate": 2.0,
                                             "JitterStrategy": "FULL",
                                         },
@@ -298,21 +320,122 @@ class LineEmbeddingWorkflow(ComponentResource):
                                 },
                             },
                         },
-                        "ResultPath": None,
-                        "Next": "PrepareFinalMerge",
+                        "ResultPath": "$.chunk_results",
+                        "Next": "GroupChunksForMerge",
                         "Catch": [
                             {
                                 "ErrorEquals": ["States.ALL"],
                                 "Next": "ChunkProcessingFailed",
+                                "ResultPath": "$.error",
                             }
                         ],
+                    },
+                    "GroupChunksForMerge": {
+                        "Type": "Pass",
+                        "Comment": "Group processed chunks for hierarchical merging",
+                        "Parameters": {
+                            "batch_id.$": "$.chunked_data.batch_id",
+                            "total_chunks.$": "$.chunked_data.total_chunks",
+                            "chunk_results.$": "$.chunk_results",
+                            "group_size": 10,
+                        },
+                        "Next": "CheckChunkGroupCount",
+                    },
+                    "CheckChunkGroupCount": {
+                        "Type": "Choice",
+                        "Comment": "Determine if hierarchical merge is beneficial",
+                        "Choices": [
+                            {
+                                "Variable": "$.total_chunks",
+                                "NumericGreaterThan": 4,
+                                "Next": "CreateChunkGroups",
+                            }
+                        ],
+                        "Default": "PrepareFinalMerge",
+                    },
+                    "CreateChunkGroups": {
+                        "Type": "Pass",
+                        "Comment": "Create chunk groups for parallel merging (simple grouping for now)",
+                        "Parameters": {
+                            "batch_id.$": "$.batch_id",
+                            "groups.$": "States.ArrayPartition($.chunk_results, 10)",
+                            "total_groups.$": "States.ArrayLength(States.ArrayPartition($.chunk_results, 10))",
+                        },
+                        "ResultPath": "$.chunk_groups",
+                        "Next": "MergeChunkGroupsInParallel",
+                    },
+                    "MergeChunkGroupsInParallel": {
+                        "Type": "Map",
+                        "Comment": "Merge chunk groups in parallel for faster processing",
+                        "ItemsPath": "$.chunk_groups.groups",
+                        "MaxConcurrency": 6,
+                        "Parameters": {
+                            "chunk_group.$": "$$.Map.Item.Value",
+                            "batch_id.$": "$.batch_id",
+                            "group_index.$": "$$.Map.Item.Index",
+                        },
+                        "Iterator": {
+                            "StartAt": "MergeSingleChunkGroup",
+                            "States": {
+                                "MergeSingleChunkGroup": {
+                                    "Type": "Task",
+                                    "Resource": arns[2],
+                                    "Comment": "Merge intermediate snapshots from chunk group",
+                                    "Parameters": {
+                                        "operation": "merge_chunk_group",
+                                        "batch_id.$": "States.Format('{}-group-{}', $.batch_id, $.group_index)",
+                                        "group_index.$": "$.group_index",
+                                        "chunk_group.$": "$.chunk_group",
+                                        "database": "lines",
+                                    },
+                                    "End": True,
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": [
+                                                "Lambda.ServiceException",
+                                                "Lambda.AWSLambdaException",
+                                                "Runtime.ExitError",
+                                            ],
+                                            "IntervalSeconds": 2,
+                                            "MaxAttempts": 3,
+                                            "BackoffRate": 2.0,
+                                            "JitterStrategy": "FULL",
+                                        },
+                                    ],
+                                },
+                            },
+                        },
+                        "ResultPath": "$.merged_groups",
+                        "Next": "PrepareHierarchicalFinalMerge",
+                        "Catch": [
+                            {
+                                "ErrorEquals": ["States.ALL"],
+                                "Next": "GroupMergeFailed",
+                                "ResultPath": "$.error",
+                            }
+                        ],
+                    },
+                    "PrepareHierarchicalFinalMerge": {
+                        "Type": "Pass",
+                        "Comment": "Prepare data for final merge of pre-merged groups",
+                        "Parameters": {
+                            "batch_id.$": "$.batch_id",
+                            "operation": "final_merge",
+                            "chunk_results.$": "$.merged_groups",
+                        },
+                        "Next": "FinalMerge",
+                    },
+                    "GroupMergeFailed": {
+                        "Type": "Fail",
+                        "Error": "GroupMergeFailed",
+                        "Cause": "Failed to merge chunk groups in parallel",
                     },
                     "PrepareFinalMerge": {
                         "Type": "Pass",
                         "Comment": "Prepare data for final merge",
                         "Parameters": {
                             "batch_id.$": "$.chunked_data.batch_id",
-                            "total_chunks.$": ("$.chunked_data.total_chunks"),
+                            "chunk_results.$": "$.chunk_results",
                             "operation": "final_merge",
                         },
                         "Next": "FinalMerge",
@@ -326,9 +449,9 @@ class LineEmbeddingWorkflow(ComponentResource):
                         "Resource": arns[2],
                         "Comment": "Final merge of all chunks",
                         "Parameters": {
-                            "operation.$": "$.operation",
+                            "operation": "final_merge",
                             "batch_id.$": "$.batch_id",
-                            "total_chunks.$": "$.total_chunks",
+                            "chunk_results.$": "$.chunk_results",
                             "database": "lines",
                         },
                         "End": True,
@@ -337,9 +460,10 @@ class LineEmbeddingWorkflow(ComponentResource):
                                 "ErrorEquals": [
                                     "Lambda.ServiceException",
                                     "Lambda.AWSLambdaException",
+                                    "Runtime.ExitError",
                                 ],
                                 "IntervalSeconds": 1,
-                                "MaxAttempts": 2,
+                                "MaxAttempts": 3,
                                 "BackoffRate": 1.5,
                                 "JitterStrategy": "FULL",
                             },

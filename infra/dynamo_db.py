@@ -53,7 +53,7 @@ dynamodb_table = aws.dynamodb.Table(
         enabled=True,
     ),
     stream_enabled=True,
-    stream_view_type="NEW_IMAGE",
+    stream_view_type="NEW_AND_OLD_IMAGES",
     point_in_time_recovery=aws.dynamodb.TablePointInTimeRecoveryArgs(
         enabled=True
     ),
@@ -92,3 +92,4 @@ dynamodb_table = aws.dynamodb.Table(
 
 pulumi.export("dynamodb_table_name", dynamodb_table.name)
 pulumi.export("dynamodb_table_arn", dynamodb_table.arn)
+pulumi.export("dynamodb_stream_arn", dynamodb_table.stream_arn)
