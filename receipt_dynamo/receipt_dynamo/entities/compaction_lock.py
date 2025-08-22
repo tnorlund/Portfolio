@@ -78,9 +78,7 @@ class CompactionLock(DynamoDBEntity):
             if isinstance(self.heartbeat, datetime):
                 self.heartbeat = self.heartbeat.isoformat()
             elif not isinstance(self.heartbeat, str):
-                raise ValueError(
-                    "heartbeat must be datetime, ISO-8601 string, or None"
-                )
+                raise ValueError("heartbeat must be datetime, ISO-8601 string, or None")
 
     # ───────────────────────── DynamoDB keys ──────────────────────────
     @property
@@ -94,11 +92,7 @@ class CompactionLock(DynamoDBEntity):
     @property
     def gsi1_key(self) -> Dict[str, Any]:
         # Enables "list all active locks by collection and expiry" admin queries
-        expires_str = (
-            self.expires
-            if isinstance(self.expires, str)
-            else self.expires.isoformat()
-        )
+        expires_str = self.expires if isinstance(self.expires, str) else self.expires.isoformat()
         return {
             "GSI1PK": {"S": f"LOCK#{self.collection.value}"},
             "GSI1SK": {"S": f"EXPIRES#{expires_str}"},
@@ -107,19 +101,11 @@ class CompactionLock(DynamoDBEntity):
     # ───────────────────── DynamoDB marshalling ───────────────────────
     def to_item(self) -> Dict[str, Any]:
         # Ensure datetime fields are converted to ISO strings
-        expires_str = (
-            self.expires
-            if isinstance(self.expires, str)
-            else self.expires.isoformat()
-        )
+        expires_str = self.expires if isinstance(self.expires, str) else self.expires.isoformat()
         heartbeat_str = None
         if self.heartbeat:
-            heartbeat_str = (
-                self.heartbeat
-                if isinstance(self.heartbeat, str)
-                else self.heartbeat.isoformat()
-            )
-
+            heartbeat_str = self.heartbeat if isinstance(self.heartbeat, str) else self.heartbeat.isoformat()
+        
         return {
             **self.key,
             **self.gsi1_key,
@@ -156,7 +142,7 @@ def item_to_compaction_lock(item: Dict[str, Any]) -> "CompactionLock":
     pk_parts = item["PK"]["S"].split("#")
     if len(pk_parts) < 3 or pk_parts[0] != "LOCK":
         raise ValueError(f"Invalid lock PK format: {item['PK']['S']}")
-
+    
     collection_value = pk_parts[1]
     lock_id = "#".join(pk_parts[2:])  # Rejoin in case lock_id contains #
 

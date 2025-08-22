@@ -64,14 +64,10 @@ class ReceiptValidationResult(SerializationMixin):
         if self.field is not None and not isinstance(self.field, str):
             raise ValueError("field must be a string or None")
 
-        if self.expected_value is not None and not isinstance(
-            self.expected_value, str
-        ):
+        if self.expected_value is not None and not isinstance(self.expected_value, str):
             raise ValueError("expected_value must be a string or None")
 
-        if self.actual_value is not None and not isinstance(
-            self.actual_value, str
-        ):
+        if self.actual_value is not None and not isinstance(self.actual_value, str):
             raise ValueError("actual_value must be a string or None")
 
         if isinstance(self.validation_timestamp, datetime):
@@ -211,6 +207,7 @@ class ReceiptValidationResult(SerializationMixin):
             validation_timestamp=validation_timestamp,
             metadata=metadata,
         )
+
 
     def __repr__(self) -> str:
         return (

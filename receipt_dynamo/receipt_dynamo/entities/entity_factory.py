@@ -91,12 +91,12 @@ class EntityFactory(SerializationMixin):
         # Extract fields using custom extractors first
         for field_name, extractor in custom_extractors.items():
             kwargs[field_name] = extractor(item)
-
+        
         # Extract remaining required fields
         for field_name in required_keys:
             if field_name in {"PK", "SK", "TYPE"}:
                 continue  # Already handled by key parsers or not a constructor param
-
+            
             if field_name in custom_extractors:
                 continue  # Already handled above
 
@@ -243,15 +243,15 @@ class EntityFactory(SerializationMixin):
 
         extracted_data = item["extracted_data"]["M"]
         result: Dict[str, Any] = {}
-
+        
         # Extract type if present
         if "type" in extracted_data and "S" in extracted_data["type"]:
             result["type"] = cast(str, extracted_data["type"]["S"])
-
+        
         # Extract value if present
         if "value" in extracted_data and "S" in extracted_data["value"]:
             result["value"] = cast(str, extracted_data["value"]["S"])
-
+        
         return result if result else None
 
     @staticmethod
@@ -358,27 +358,11 @@ def create_receipt_line_word_sk_parser() -> KeyParser:
     def parser(sk: str) -> Dict[str, Any]:
         parsed = EntityFactory.parse_image_receipt_key("IMAGE#dummy", sk)
         sk_parts = sk.split("#")
-
-        # Expected format: RECEIPT#123#LINE#456#WORD#789
-        # Should have 6 parts: ['RECEIPT', '123', 'LINE', '456', 'WORD', '789']
-        if len(sk_parts) < 6:
-            raise ValueError(
-                f"Invalid SK format for receipt word: '{sk}'. Expected format: RECEIPT#id#LINE#id#WORD#id"
-            )
-
-        try:
-            line_id = int(sk_parts[3])  # LINE is at position 3
-            word_id = int(sk_parts[5])  # WORD is at position 5
-
-            return {
-                "receipt_id": parsed["receipt_id"],
-                "line_id": line_id,
-                "word_id": word_id,
-            }
-        except (ValueError, IndexError) as e:
-            raise ValueError(
-                f"Invalid SK format for receipt word: '{sk}'. Error: {e}"
-            ) from e
+        return {
+            "receipt_id": parsed["receipt_id"],
+            "line_id": int(sk_parts[3]),  # LINE is at position 3
+            "word_id": int(sk_parts[5]),  # WORD is at position 5
+        }
 
     return parser
 

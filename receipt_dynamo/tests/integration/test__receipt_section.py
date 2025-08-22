@@ -24,7 +24,10 @@ def sample_receipt_section():
 
 
 # This entity is not used in production infrastructure
-pytestmark = [pytest.mark.integration, pytest.mark.unused_in_production]
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.unused_in_production
+]
 
 
 def test_add_receipt_section(
