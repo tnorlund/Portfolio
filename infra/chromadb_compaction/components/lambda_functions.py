@@ -228,6 +228,7 @@ class HybridLambdaDeployment(ComponentResource):
                     self.lambda_role,
                     self.stream_log_group,
                 ],
+                ignore_changes=["layers"],
             ),
         )
 
