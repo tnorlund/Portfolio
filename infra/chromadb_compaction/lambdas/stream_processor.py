@@ -29,19 +29,22 @@ try:
     from utils import (
         get_operation_logger,
         metrics,
-        trace_lambda_handler,
+        trace_function,
         start_compaction_lambda_monitoring,
         stop_compaction_lambda_monitoring,
         with_compaction_timeout_protection,
         format_response,
     )
     OBSERVABILITY_AVAILABLE = True
-except ImportError:
+except ImportError as e:
+    # Log the specific import error for debugging
+    import logging
+    logging.error(f"Failed to import utils: {e}")
     # Fallback for development/testing - provide no-op decorators
     OBSERVABILITY_AVAILABLE = False
     
     # No-op decorator functions for fallback
-    def trace_lambda_handler(operation_name=None):
+    def trace_function(operation_name=None, collection=None):
         def decorator(func):
             return func
         return decorator
@@ -139,7 +142,7 @@ else:
     logger = fallback_get_operation_logger(__name__)
 
 
-@trace_lambda_handler(operation_name="stream_processor")
+@trace_function(operation_name="stream_processor")
 @with_compaction_timeout_protection(max_duration=60)  # Stream processing should be fast
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """

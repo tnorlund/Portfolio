@@ -28,7 +28,7 @@ try:
     from utils import (
         get_operation_logger,
         metrics,
-        trace_lambda_handler,
+        trace_function,
         trace_compaction_operation,
         start_compaction_lambda_monitoring,
         stop_compaction_lambda_monitoring,
@@ -41,7 +41,7 @@ except ImportError:
     OBSERVABILITY_AVAILABLE = False
     
     # No-op decorator functions for fallback
-    def trace_lambda_handler(operation_name=None):
+    def trace_function(operation_name=None, collection=None):
         def decorator(func):
             return func
         return decorator
@@ -217,7 +217,7 @@ lock_duration_minutes = int(os.environ.get("LOCK_DURATION_MINUTES", "15"))
 compaction_queue_url = os.environ.get("COMPACTION_QUEUE_URL", "")
 
 
-@trace_lambda_handler(operation_name="enhanced_compaction_handler")
+@trace_function(operation_name="enhanced_compaction_handler")
 @with_compaction_timeout_protection(max_duration=840)  # 14 minutes for long compaction operations
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """Enhanced entry point for Lambda handler.
