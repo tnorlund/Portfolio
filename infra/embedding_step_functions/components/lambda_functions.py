@@ -307,19 +307,19 @@ class LambdaFunctionsComponent(ComponentResource):
             "embedding-line-poll": {
                 "memory": GiB(1.5),  # Reduced from 3GB, usage was 668-818MB (22-27%)
                 "timeout": MINUTE * 15,
-                "ephemeral_storage": GiB(1.5),  # Reduced from 5GB, no evidence of high disk usage
+                "ephemeral_storage": GiB(4),  # Increased back - ChromaDB needs disk space for snapshots/SQLite
                 "handler_type": "line_polling",
             },
             "embedding-word-poll": {
                 "memory": GiB(1),  # Reduced from 3GB, usage was 322-360MB (11-12%)
                 "timeout": MINUTE * 15,
-                "ephemeral_storage": GiB(1),  # Reduced from 5GB, processing streaming data
+                "ephemeral_storage": GiB(4),  # Increased back - ChromaDB operations require disk space
                 "handler_type": "word_polling",
             },
             "embedding-vector-compact": {
                 "memory": GiB(2),  # Reduced from 8GB, peak usage was 1402MB (17%)
                 "timeout": MINUTE * 15,
-                "ephemeral_storage": GiB(2),  # Reduced from 10GB, mostly in-memory operations
+                "ephemeral_storage": GiB(6),  # Increased - compaction downloads/uploads large snapshots
                 "handler_type": "compaction",
             },
         }
