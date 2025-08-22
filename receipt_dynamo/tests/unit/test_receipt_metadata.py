@@ -266,18 +266,14 @@ def test_address_validation_quality():
         if should_pass:
             assert (
                 m.validation_status == MerchantValidationStatus.MATCHED.value
-            ), (
-                f"{description}: Address '{address}' should have passed "
-                "validation"
-            )
+            ), (f"{description}: Address '{address}' should have passed "
+                "validation")
         else:
             # If address quality fails, it's effectively only 1 field (phone)
             assert (
                 m.validation_status == MerchantValidationStatus.UNSURE.value
-            ), (
-                f"{description}: Address '{address}' should have failed "
-                "quality validation"
-            )
+            ), (f"{description}: Address '{address}' should have failed "
+                "quality validation")
 
 
 @pytest.mark.unit
