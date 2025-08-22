@@ -14,7 +14,6 @@ from pulumi import ComponentResource, Output, ResourceOptions
 # pylint: disable=import-error
 from chromadb_compaction import (  # type: ignore[import-not-found]
     ChromaDBBuckets,
-    ChromaDBQueues,
 )
 
 # pylint: enable=import-error
@@ -24,6 +23,7 @@ from .components import (
     LambdaFunctionsComponent,
     LineEmbeddingWorkflow,
     WordEmbeddingWorkflow,
+    MonitoringComponent,
 )
 
 
@@ -38,18 +38,18 @@ class EmbeddingInfrastructure(ComponentResource):
     def __init__(
         self,
         name: str,
+        chromadb_queues,
+        chromadb_buckets=None,
         base_images=None,
-        chromadb_buckets: Optional[ChromaDBBuckets] = None,
-        chromadb_queues: Optional[ChromaDBQueues] = None,
         opts: Optional[ResourceOptions] = None,
     ):
         """Initialize embedding infrastructure.
 
         Args:
             name: Component name
+            chromadb_queues: ChromaDB SQS queues component (from chromadb_compaction)
+            chromadb_buckets: Shared ChromaDB S3 buckets component
             base_images: Optional base images for Docker builds
-            chromadb_buckets: Optional ChromaDB buckets (creates new if not provided)
-            chromadb_queues: Optional ChromaDB queues (creates new if not provided)
             opts: Pulumi resource options
         """
         super().__init__(
@@ -61,20 +61,16 @@ class EmbeddingInfrastructure(ComponentResource):
 
         self.base_images = base_images
 
-        # Use provided ChromaDB resources or create new ones
-        if chromadb_buckets:
+        # Use provided ChromaDB queues instead of creating our own
+        self.chromadb_queues = chromadb_queues
+
+        # Use provided ChromaDB buckets or create new ones
+        if chromadb_buckets is not None:
             self.chromadb_buckets = chromadb_buckets
         else:
+            # Fallback: create ChromaDB buckets for embedding-specific storage
             self.chromadb_buckets = ChromaDBBuckets(
                 f"{name}-chromadb-buckets",
-                opts=ResourceOptions(parent=self),
-            )
-
-        if chromadb_queues:
-            self.chromadb_queues = chromadb_queues
-        else:
-            self.chromadb_queues = ChromaDBQueues(
-                f"{name}-chromadb-queues",
                 opts=ResourceOptions(parent=self),
             )
 
@@ -104,6 +100,19 @@ class EmbeddingInfrastructure(ComponentResource):
         self.word_workflow = WordEmbeddingWorkflow(
             f"{name}-word",
             lambda_functions=self.lambdas.all_functions,
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Create monitoring component
+        self.monitoring = MonitoringComponent(
+            f"{name}-monitoring",
+            lambda_functions=self.lambdas.all_functions,
+            step_functions={
+                "line_submit": self.line_workflow.submit_sf,
+                "line_ingest": self.line_workflow.ingest_sf,
+                "word_submit": self.word_workflow.submit_sf,
+                "word_ingest": self.word_workflow.ingest_sf,
+            },
             opts=ResourceOptions(parent=self),
         )
 
@@ -164,7 +173,7 @@ class EmbeddingInfrastructure(ComponentResource):
                     else None
                 ),
                 "chromadb_bucket_name": self.chromadb_buckets.bucket_name,
-                "chromadb_queue_url": self.chromadb_queues.delta_queue_url,
+                "chromadb_queue_url": self.chromadb_queues.lines_queue_url,
                 "batch_bucket_name": self.batch_bucket.bucket,
                 # Line workflows
                 "embedding_line_submit_sf_arn": (
@@ -189,5 +198,7 @@ class EmbeddingInfrastructure(ComponentResource):
                 "poll_word_embeddings_sf_arn": (
                     self.poll_word_embeddings_sf.arn
                 ),
+                # Monitoring outputs
+                "alert_topic_arn": self.monitoring.alert_topic.arn,
             }
         )

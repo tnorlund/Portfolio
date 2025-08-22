@@ -1,0 +1,15 @@
+# Exclude the zip-based Lambda function (only include enhanced_compaction_handler.py)
+stream_processor.py
+__init__.py
+
+# Exclude development files
+*.pyc
+__pycache__/
+.pytest_cache/
+.coverage
+*.egg-info/
+
+# Exclude other non-runtime files
+*.md
+.git/
+.gitignore
