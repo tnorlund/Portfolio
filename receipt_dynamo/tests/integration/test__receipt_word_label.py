@@ -68,7 +68,7 @@ def _batch_receipt_word_labels() -> List[ReceiptWordLabel]:
     """Provides a list of 100 receipt word labels for batch testing."""
     labels = []
     base_time = datetime.fromisoformat("2024-03-20T12:00:00+00:00")
-
+    
     for i in range(100):
         labels.append(
             ReceiptWordLabel(
@@ -82,7 +82,7 @@ def _batch_receipt_word_labels() -> List[ReceiptWordLabel]:
                 validation_status=ValidationStatus.VALID,
             )
         )
-
+    
     return labels
 
 
@@ -404,9 +404,7 @@ def test_get_receipt_word_label_invalid_params(
     client = DynamoClient(dynamodb_table)
 
     with pytest.raises((EntityValidationError, OperationError)):
-        client.get_receipt_word_label(
-            image_id, receipt_id, line_id, word_id, label
-        )
+        client.get_receipt_word_label(image_id, receipt_id, line_id, word_id, label)
 
 
 # -------------------------------------------------------------------
@@ -421,10 +419,10 @@ def test_update_receipt_word_label_success(
 ) -> None:
     """Tests successful update of a receipt word label."""
     client = DynamoClient(dynamodb_table)
-
+    
     # First add the label
     client.add_receipt_word_label(sample_receipt_word_label)
-
+    
     # Update it with new reasoning
     updated_label = ReceiptWordLabel(
         receipt_id=sample_receipt_word_label.receipt_id,
@@ -436,9 +434,9 @@ def test_update_receipt_word_label_success(
         timestamp_added=sample_receipt_word_label.timestamp_added,
         validation_status=ValidationStatus.INVALID,
     )
-
+    
     client.update_receipt_word_label(updated_label)
-
+    
     # Verify the update
     retrieved = client.get_receipt_word_label(
         updated_label.image_id,
@@ -460,11 +458,11 @@ def test_update_receipt_word_labels_batch(
 ) -> None:
     """Tests successful batch update of receipt word labels."""
     client = DynamoClient(dynamodb_table)
-
+    
     # First add both labels
     client.add_receipt_word_label(sample_receipt_word_label)
     client.add_receipt_word_label(another_receipt_word_label)
-
+    
     # Update both with new reasoning
     updated_labels = [
         ReceiptWordLabel(
@@ -488,9 +486,9 @@ def test_update_receipt_word_labels_batch(
             validation_status=another_receipt_word_label.validation_status,
         ),
     ]
-
+    
     client.update_receipt_word_labels(updated_labels)
-
+    
     # Verify both updates
     for updated in updated_labels:
         retrieved = client.get_receipt_word_label(
@@ -515,13 +513,13 @@ def test_delete_receipt_word_label_success(
 ) -> None:
     """Tests successful deletion of a receipt word label."""
     client = DynamoClient(dynamodb_table)
-
+    
     # First add the label
     client.add_receipt_word_label(sample_receipt_word_label)
-
+    
     # Delete it
     client.delete_receipt_word_label(sample_receipt_word_label)
-
+    
     # Verify it's gone
     with pytest.raises(EntityNotFoundError):
         client.get_receipt_word_label(
@@ -540,7 +538,7 @@ def test_delete_receipt_word_label_not_found(
 ) -> None:
     """Tests that deleting a non-existent label raises EntityNotFoundError."""
     client = DynamoClient(dynamodb_table)
-
+    
     # Delete non-existent label - should raise
     with pytest.raises(EntityNotFoundError):
         client.delete_receipt_word_label(sample_receipt_word_label)
@@ -553,15 +551,15 @@ def test_delete_receipt_word_labels_batch(
 ) -> None:
     """Tests batch deletion of receipt word labels."""
     client = DynamoClient(dynamodb_table)
-
+    
     # Add first 10 labels
     labels_to_delete = batch_receipt_word_labels[:10]
     for label in labels_to_delete:
         client.add_receipt_word_label(label)
-
+    
     # Delete them in batch
     client.delete_receipt_word_labels(labels_to_delete)
-
+    
     # Verify all are deleted
     for label in labels_to_delete:
         with pytest.raises(EntityNotFoundError):
@@ -586,7 +584,7 @@ def test_list_receipt_word_labels_for_image_success(
 ) -> None:
     """Tests listing receipt word labels by image ID."""
     client = DynamoClient(dynamodb_table)
-
+    
     # Add multiple labels for the same image
     labels = []
     for i in range(5):
@@ -601,16 +599,14 @@ def test_list_receipt_word_labels_for_image_success(
         )
         labels.append(label)
         client.add_receipt_word_label(label)
-
+    
     # List them
     retrieved, last_key = client.list_receipt_word_labels_for_image(
         sample_receipt_word_label.image_id
     )
-
+    
     assert len(retrieved) == 5
-    assert all(
-        l.image_id == sample_receipt_word_label.image_id for l in retrieved
-    )
+    assert all(l.image_id == sample_receipt_word_label.image_id for l in retrieved)
     assert last_key is None
 
 
@@ -620,15 +616,13 @@ def test_list_receipt_word_labels_for_image_empty(
 ) -> None:
     """Tests listing receipt word labels for an image with no labels."""
     client = DynamoClient(dynamodb_table)
-
+    
     # Use a new image ID that has no labels
     empty_image_id = str(uuid4())
-
+    
     # List labels for empty image
-    retrieved, last_key = client.list_receipt_word_labels_for_image(
-        empty_image_id
-    )
-
+    retrieved, last_key = client.list_receipt_word_labels_for_image(empty_image_id)
+    
     assert len(retrieved) == 0
     assert last_key is None
 
@@ -639,7 +633,7 @@ def test_list_receipt_word_labels_for_image_with_pagination(
 ) -> None:
     """Tests listing receipt word labels with pagination."""
     client = DynamoClient(dynamodb_table)
-
+    
     # Add 30 labels for the same image to test pagination
     image_id = str(uuid4())
     labels = []
@@ -647,36 +641,34 @@ def test_list_receipt_word_labels_for_image_with_pagination(
         label = ReceiptWordLabel(
             receipt_id=(i // 3) + 1,  # 10 receipts
             image_id=image_id,
-            line_id=(i % 3) + 1,  # 3 lines per receipt
-            word_id=(i % 2) + 1,  # 2 words per line
+            line_id=(i % 3) + 1,      # 3 lines per receipt
+            word_id=(i % 2) + 1,      # 2 words per line
             label="ITEM" if i % 2 == 0 else "PRICE",
             reasoning=f"Label {i}",
             timestamp_added="2024-03-20T12:00:00+00:00",
         )
         labels.append(label)
         client.add_receipt_word_label(label)
-
+    
     # Test pagination with limit
-    page1, last_key1 = client.list_receipt_word_labels_for_image(
-        image_id, limit=10
-    )
+    page1, last_key1 = client.list_receipt_word_labels_for_image(image_id, limit=10)
     assert len(page1) == 10
     assert last_key1 is not None
-
+    
     # Get second page
     page2, last_key2 = client.list_receipt_word_labels_for_image(
         image_id, limit=10, last_evaluated_key=last_key1
     )
     assert len(page2) == 10
     assert last_key2 is not None
-
+    
     # Get remaining items
     page3, last_key3 = client.list_receipt_word_labels_for_image(
         image_id, limit=10, last_evaluated_key=last_key2
     )
     assert len(page3) == 10
     assert last_key3 is None  # No more items
-
+    
     # Verify all items retrieved
     all_retrieved = page1 + page2 + page3
     assert len(all_retrieved) == 30
@@ -689,8 +681,8 @@ def test_list_receipt_word_labels_success(
 ) -> None:
     """Tests listing all receipt word labels."""
     client = DynamoClient(dynamodb_table)
-
-    # Add multiple labels
+    
+    # Add multiple labels 
     labels = []
     for i in range(6):
         label = ReceiptWordLabel(
@@ -704,10 +696,10 @@ def test_list_receipt_word_labels_success(
         )
         labels.append(label)
         client.add_receipt_word_label(label)
-
+    
     # List them
     retrieved, _ = client.list_receipt_word_labels(limit=10)
-
+    
     assert len(retrieved) >= 6  # May have more from other tests
 
 
@@ -718,11 +710,11 @@ def test_list_receipt_word_labels_for_receipt_success(
     """Tests listing all receipt word labels for a specific receipt."""
     client = DynamoClient(dynamodb_table)
     image_id = str(uuid4())
-
+    
     # Add labels for multiple receipts
     labels_receipt_1 = []
     labels_receipt_2 = []
-
+    
     # Add 5 labels for receipt 1
     for i in range(5):
         label = ReceiptWordLabel(
@@ -736,7 +728,7 @@ def test_list_receipt_word_labels_for_receipt_success(
         )
         labels_receipt_1.append(label)
         client.add_receipt_word_label(label)
-
+    
     # Add 3 labels for receipt 2
     for i in range(3):
         label = ReceiptWordLabel(
@@ -750,22 +742,22 @@ def test_list_receipt_word_labels_for_receipt_success(
         )
         labels_receipt_2.append(label)
         client.add_receipt_word_label(label)
-
+    
     # List labels for receipt 1
     retrieved_r1, last_key = client.list_receipt_word_labels_for_receipt(
         image_id, 1
     )
-
+    
     assert len(retrieved_r1) == 5
     assert all(l.receipt_id == 1 for l in retrieved_r1)
     assert all(l.image_id == image_id for l in retrieved_r1)
     assert last_key is None
-
+    
     # List labels for receipt 2
     retrieved_r2, last_key = client.list_receipt_word_labels_for_receipt(
         image_id, 2
     )
-
+    
     assert len(retrieved_r2) == 3
     assert all(l.receipt_id == 2 for l in retrieved_r2)
     assert all(l.image_id == image_id for l in retrieved_r2)
@@ -778,15 +770,15 @@ def test_list_receipt_word_labels_for_receipt_empty(
 ) -> None:
     """Tests listing receipt word labels for a receipt with no labels."""
     client = DynamoClient(dynamodb_table)
-
+    
     # Use a new image ID and receipt ID that have no labels
     empty_image_id = str(uuid4())
-
+    
     # List labels for non-existent receipt
     retrieved, last_key = client.list_receipt_word_labels_for_receipt(
         empty_image_id, 999
     )
-
+    
     assert len(retrieved) == 0
     assert last_key is None
 
@@ -799,7 +791,7 @@ def test_list_receipt_word_labels_for_receipt_with_pagination(
     client = DynamoClient(dynamodb_table)
     image_id = str(uuid4())
     receipt_id = 1
-
+    
     # Add 20 labels for the same receipt to test pagination
     labels = []
     for line_id in range(1, 11):  # 10 lines
@@ -815,28 +807,28 @@ def test_list_receipt_word_labels_for_receipt_with_pagination(
             )
             labels.append(label)
             client.add_receipt_word_label(label)
-
+    
     # Test pagination with limit
     page1, last_key1 = client.list_receipt_word_labels_for_receipt(
         image_id, receipt_id, limit=8
     )
     assert len(page1) == 8
     assert last_key1 is not None
-
+    
     # Get second page
     page2, last_key2 = client.list_receipt_word_labels_for_receipt(
         image_id, receipt_id, limit=8, last_evaluated_key=last_key1
     )
     assert len(page2) == 8
     assert last_key2 is not None
-
+    
     # Get remaining items
     page3, last_key3 = client.list_receipt_word_labels_for_receipt(
         image_id, receipt_id, limit=8, last_evaluated_key=last_key2
     )
     assert len(page3) == 4  # Only 4 items left
     assert last_key3 is None  # No more items
-
+    
     # Verify all items retrieved
     all_retrieved = page1 + page2 + page3
     assert len(all_retrieved) == 20
@@ -850,26 +842,10 @@ def test_list_receipt_word_labels_for_receipt_with_pagination(
     [
         (None, 1, "image_id must be a string, got NoneType"),
         ("not-a-uuid", 1, "uuid must be a valid UUIDv4"),
-        (
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            None,
-            "receipt_id must be an integer, got NoneType",
-        ),
-        (
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            "not-an-int",
-            "receipt_id must be an integer, got str",
-        ),
-        (
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            0,
-            "receipt_id must be a positive integer",
-        ),
-        (
-            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
-            -1,
-            "receipt_id must be a positive integer",
-        ),
+        ("3f52804b-2fad-4e00-92c8-b593da3a8ed3", None, "receipt_id must be an integer, got NoneType"),
+        ("3f52804b-2fad-4e00-92c8-b593da3a8ed3", "not-an-int", "receipt_id must be an integer, got str"),
+        ("3f52804b-2fad-4e00-92c8-b593da3a8ed3", 0, "receipt_id must be a positive integer"),
+        ("3f52804b-2fad-4e00-92c8-b593da3a8ed3", -1, "receipt_id must be a positive integer"),
     ],
 )
 def test_list_receipt_word_labels_for_receipt_validation(
@@ -880,10 +856,8 @@ def test_list_receipt_word_labels_for_receipt_validation(
 ) -> None:
     """Tests validation for list_receipt_word_labels_for_receipt parameters."""
     client = DynamoClient(dynamodb_table)
-
-    with pytest.raises(
-        (EntityValidationError, OperationError), match=expected_error
-    ):
+    
+    with pytest.raises((EntityValidationError, OperationError), match=expected_error):
         client.list_receipt_word_labels_for_receipt(image_id, receipt_id)
 
 
@@ -901,7 +875,7 @@ def test_add_receipt_word_labels_batch_with_unprocessed(
     """Tests that add_receipt_word_labels handles unprocessed items correctly."""
     client = DynamoClient(dynamodb_table)
     labels_to_add = batch_receipt_word_labels[:5]
-
+    
     # Mock batch_write_item to return unprocessed items on first call
     # pylint: disable=protected-access
     mock_batch = mocker.patch.object(
@@ -918,9 +892,9 @@ def test_add_receipt_word_labels_batch_with_unprocessed(
             {},  # Success on retry
         ],
     )
-
+    
     client.add_receipt_word_labels(labels_to_add)
-
+    
     # Should be called twice (initial + retry)
     assert mock_batch.call_count == 2
 
@@ -932,7 +906,7 @@ def test_update_receipt_word_label_not_found(
 ) -> None:
     """Tests that updating a non-existent label raises EntityNotFoundError."""
     client = DynamoClient(dynamodb_table)
-
+    
     with pytest.raises(
         EntityNotFoundError,
         match="not found during update_receipt_word_label",
@@ -952,11 +926,11 @@ def test_list_receipt_word_labels_with_validation_status(
     """Tests listing receipt word labels filtered by validation status."""
     client = DynamoClient(dynamodb_table)
     image_id = str(uuid4())
-
+    
     # Add labels with different validation statuses
     valid_labels = []
     invalid_labels = []
-
+    
     for i in range(3):
         valid_label = ReceiptWordLabel(
             receipt_id=i + 1,
@@ -970,7 +944,7 @@ def test_list_receipt_word_labels_with_validation_status(
         )
         valid_labels.append(valid_label)
         client.add_receipt_word_label(valid_label)
-
+        
         invalid_label = ReceiptWordLabel(
             receipt_id=i + 10,
             image_id=image_id,
@@ -983,7 +957,7 @@ def test_list_receipt_word_labels_with_validation_status(
         )
         invalid_labels.append(invalid_label)
         client.add_receipt_word_label(invalid_label)
-
+    
     # List labels with specific validation status
     valid_only, _ = client.list_receipt_word_labels_with_status(
         ValidationStatus.VALID
@@ -991,17 +965,12 @@ def test_list_receipt_word_labels_with_validation_status(
     invalid_only, _ = client.list_receipt_word_labels_with_status(
         ValidationStatus.INVALID
     )
-
+    
     # Filter by image_id since list_receipt_word_labels_with_status returns all labels
     valid_for_image = [l for l in valid_only if l.image_id == image_id]
     invalid_for_image = [l for l in invalid_only if l.image_id == image_id]
-
+    
     assert len(valid_for_image) == 3
     assert len(invalid_for_image) == 3
-    assert all(
-        l.validation_status == ValidationStatus.VALID for l in valid_for_image
-    )
-    assert all(
-        l.validation_status == ValidationStatus.INVALID
-        for l in invalid_for_image
-    )
+    assert all(l.validation_status == ValidationStatus.VALID for l in valid_for_image)
+    assert all(l.validation_status == ValidationStatus.INVALID for l in invalid_for_image)

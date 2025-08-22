@@ -70,11 +70,6 @@ class ReceiptWord(
             by Apple's NL API.
         embedding_status (str): The status of the embedding for the receipt
             word.
-        is_noise (bool): Whether the word is considered noise.
-        valid_label_count (int): Count of valid labels associated with this
-            word.
-        invalid_label_count (int): Count of invalid labels associated with
-            this word.
     """
 
     receipt_id: int
@@ -93,8 +88,6 @@ class ReceiptWord(
     extracted_data: Optional[Dict[str, Any]] = None
     embedding_status: EmbeddingStatus | str = EmbeddingStatus.NONE
     is_noise: bool = False
-    valid_label_count: int = 0
-    invalid_label_count: int = 0
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
@@ -152,27 +145,6 @@ class ReceiptWord(
                     f"{type(self.is_noise).__name__}"
                 )
             )
-
-        # Validate label counts
-        if not isinstance(self.valid_label_count, int):
-            raise ValueError(
-                (
-                    "valid_label_count must be an integer, got "
-                    f"{type(self.valid_label_count).__name__}"
-                )
-            )
-        if self.valid_label_count < 0:
-            raise ValueError("valid_label_count must be non-negative")
-
-        if not isinstance(self.invalid_label_count, int):
-            raise ValueError(
-                (
-                    "invalid_label_count must be an integer, got "
-                    f"{type(self.invalid_label_count).__name__}"
-                )
-            )
-        if self.invalid_label_count < 0:
-            raise ValueError("invalid_label_count must be non-negative")
 
     @property
     def key(self) -> Dict[str, Any]:
@@ -236,14 +208,10 @@ class ReceiptWord(
             dict: The secondary index key for the receipt word.
         """
         return {
-            "GSI3PK": {"S": f"IMAGE#{self.image_id}"},
-            "GSI3SK": {
-                "S": (
-                    f"RECEIPT#{self.receipt_id:05d}#"
-                    f"LINE#{self.line_id:05d}#"
-                    f"WORD#{self.word_id:05d}"
-                )
+            "GSI3PK": {
+                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
             },
+            "GSI3SK": {"S": "WORD"},
         }
 
     def to_item(self) -> Dict[str, Any]:
@@ -261,8 +229,6 @@ class ReceiptWord(
             "extracted_data": self._serialize_value(self.extracted_data),
             "embedding_status": {"S": self.embedding_status},
             "is_noise": {"BOOL": self.is_noise},
-            "valid_label_count": {"N": str(self.valid_label_count)},
-            "invalid_label_count": {"N": str(self.invalid_label_count)},
         }
 
         return self.build_dynamodb_item(
@@ -282,8 +248,6 @@ class ReceiptWord(
                 "extracted_data",
                 "embedding_status",
                 "is_noise",
-                "valid_label_count",
-                "invalid_label_count",
             },
         )
 
@@ -302,9 +266,7 @@ class ReceiptWord(
             f"word_id={self.word_id}, "
             f"{geometry_fields}, "
             f"embedding_status='{self.embedding_status}', "
-            f"is_noise={self.is_noise}, "
-            f"valid_label_count={self.valid_label_count}, "
-            f"invalid_label_count={self.invalid_label_count}"
+            f"is_noise={self.is_noise}"
             f")"
         )
 
@@ -377,8 +339,6 @@ class ReceiptWord(
             ),
             self.embedding_status,
             self.is_noise,
-            self.valid_label_count,
-            self.invalid_label_count,
         )
 
 
@@ -415,12 +375,6 @@ def item_to_receipt_word(item: Dict[str, Any]) -> ReceiptWord:
         "text": EntityFactory.extract_text_field,
         "embedding_status": EntityFactory.extract_embedding_status,
         "is_noise": EntityFactory.extract_is_noise,
-        "valid_label_count": lambda item: int(
-            item.get("valid_label_count", {}).get("N", "0")
-        ),
-        "invalid_label_count": lambda item: int(
-            item.get("invalid_label_count", {}).get("N", "0")
-        ),
         **create_geometry_extractors(),  # Handles all geometry fields
     }
 
