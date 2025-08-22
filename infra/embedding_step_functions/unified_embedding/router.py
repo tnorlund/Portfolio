@@ -9,16 +9,16 @@ import logging
 from typing import Any, Dict
 
 # Import handlers when needed, not at module level
-from .handlers import word_polling
-from .handlers import line_polling
-from .handlers import compaction
-from .handlers import find_unembedded
-from .handlers import submit_openai
-from .handlers import list_pending
-from .handlers import split_into_chunks
-from .handlers import find_unembedded_words
-from .handlers import submit_words_openai
-from .utils import response as response_utils
+from handlers import word_polling
+from handlers import line_polling
+from handlers import compaction
+from handlers import find_unembedded
+from handlers import submit_openai
+from handlers import list_pending
+from handlers import split_into_chunks
+from handlers import find_unembedded_words
+from handlers import submit_words_openai
+from utils import response as response_utils
 
 # Set up logging
 logger = logging.getLogger(__name__)
