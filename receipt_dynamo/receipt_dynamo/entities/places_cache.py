@@ -191,7 +191,6 @@ class PlacesCache:
 
         return item
 
-
     def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
         """
         Returns an iterator over the PlacesCache object's attributes.

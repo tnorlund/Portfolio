@@ -75,7 +75,6 @@ class SpatialPattern:
             metadata=data.get("metadata", {}),
         )
 
-
     def __repr__(self) -> str:
         """Return a string representation of the SpatialPattern."""
         return (
@@ -163,7 +162,6 @@ class ContentPattern:
             examples=examples,
             metadata=data.get("metadata", {}),
         )
-
 
     def __repr__(self) -> str:
         """Return a string representation of the ContentPattern."""
