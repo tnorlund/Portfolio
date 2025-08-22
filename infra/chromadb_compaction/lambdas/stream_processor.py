@@ -196,7 +196,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                    record_count=len(event["Records"]))
 
         # Avoid logging entire event to prevent PII exposure
-        if logger.level <= logging.DEBUG:
+        if hasattr(logger, 'logger') and logger.logger.level <= logging.DEBUG:
             logger.debug("Stream event structure present")
 
         messages_to_send = []
