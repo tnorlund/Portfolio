@@ -96,21 +96,19 @@ def compact_handler(
 
     if operation == "process_chunk":
         return process_chunk_handler(event)
-    if operation == "process_chunk_hierarchical":
-        return process_chunk_hierarchical_handler(event)
-    if operation == "process_chunk_combined":
-        return process_chunk_combined_handler(event)
+    if operation == "merge_chunk_group":
+        return merge_chunk_group_handler(event)
     if operation == "final_merge":
         return final_merge_handler(event)
 
     logger.error(
-        "Invalid operation. Expected 'process_chunk', 'process_chunk_hierarchical', 'process_chunk_combined', or 'final_merge'",
+        "Invalid operation. Expected 'process_chunk', 'merge_chunk_group', or 'final_merge'",
         operation=operation,
     )
     return {
         "statusCode": 400,
         "error": f"Invalid operation: {operation}",
-        "message": "Operation must be 'process_chunk', 'process_chunk_hierarchical', 'process_chunk_combined', or 'final_merge'",
+        "message": "Operation must be 'process_chunk', 'merge_chunk_group', or 'final_merge'",
     }
 
 
@@ -210,119 +208,129 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         }
 
 
-def process_chunk_hierarchical_handler(event: Dict[str, Any]) -> Dict[str, Any]:
+def merge_chunk_group_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Process a chunk of deltas and return both intermediate result and original delta_results.
+    Merge a group of intermediate chunks WITHOUT acquiring a lock.
     
-    This operation is designed for hierarchical processing where the output needs to 
-    be passed to another parallel processing stage.
-    
-    Returns both:
-    1. The intermediate snapshot reference (like process_chunk)
-    2. The original delta_results for further hierarchical processing
-    """
-    logger.info("Processing chunk with hierarchical output")
-    
-    # Reuse the same processing logic as process_chunk
-    result = process_chunk_handler(event)
-    
-    # For hierarchical processing, we just return the same minimal response as process_chunk
-    # Stage 2 will use final_merge on the intermediate snapshots directly
-    logger.info("Hierarchical processing - returning minimal response for stage 2 merging")
-    
-    return result
-
-
-def process_chunk_combined_handler(event: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Process combined delta references from multiple chunk groups.
+    This operation merges up to 10 intermediate chunk snapshots into a single
+    intermediate snapshot for hierarchical processing. No mutex lock is required
+    as this operates on intermediate data, not the final snapshot.
     
     Input format:
     {
-        "operation": "process_chunk_combined",
+        "operation": "merge_chunk_group",
         "batch_id": "batch-group-0", 
-        "chunk_index": 0,
+        "group_index": 0,
         "chunk_group": [
-            {
-                "intermediate_key": "s3://bucket/path",
-                "delta_references": [...],
-                "metadata": {...}
-            },
+            {"intermediate_key": "intermediate/batch-id/chunk-0/"},
+            {"intermediate_key": "intermediate/batch-id/chunk-1/"},
             ...
-        ]
+        ],
+        "database": "lines" or "words"
+    }
+    
+    Returns:
+    {
+        "intermediate_key": "intermediate/batch-group-0/merged/"
     }
     """
-    logger.info("Processing combined chunk group")
+    logger.info("Starting chunk group merge (no lock)")
     
     batch_id = event.get("batch_id")
-    chunk_index = event.get("chunk_index")
-    chunk_objects = event.get("chunk_group", [])
-    database_name = event.get("database")
+    group_index = event.get("group_index", 0)
+    chunk_group = event.get("chunk_group", [])
+    database_name = event.get("database", "lines")
     
     if not batch_id:
         return {
             "statusCode": 400,
-            "error": "batch_id is required for combined chunk processing",
+            "error": "batch_id is required for chunk group merging",
         }
 
-    if chunk_index is None:
-        return {
-            "statusCode": 400,
-            "error": "chunk_index is required for combined chunk processing",
-        }
-
-    # Extract and flatten all delta_references
-    combined_delta_refs = []
-    for chunk_obj in chunk_objects:
-        delta_refs = chunk_obj.get("delta_references", [])
-        combined_delta_refs.extend(delta_refs)
-    
-    if not combined_delta_refs:
-        logger.info(
-            "No delta references in combined chunks, skipping",
-            chunk_index=chunk_index,
-            chunk_count=len(chunk_objects)
-        )
+    if not chunk_group:
+        logger.info("Empty chunk group, skipping merge", batch_id=batch_id, group_index=group_index)
         return {
             "statusCode": 200,
             "batch_id": batch_id,
-            "chunk_index": chunk_index,
-            "embeddings_processed": 0,
-            "message": "Empty combined chunk processed",
+            "group_index": group_index,
+            "message": "Empty chunk group processed",
         }
-    
+
+    # Limit to 10 chunks per group for consistent processing
+    chunk_group = chunk_group[:10]
+    if len(event.get("chunk_group", [])) > 10:
+        logger.warning(
+            "Chunk group has more than 10 chunks, processing first 10",
+            group_index=group_index,
+            chunk_count=len(event.get("chunk_group", [])),
+        )
+
+    # Extract intermediate keys
+    intermediate_keys = []
+    for chunk in chunk_group:
+        if isinstance(chunk, dict) and "intermediate_key" in chunk:
+            intermediate_keys.append(chunk["intermediate_key"])
+        elif isinstance(chunk, str):
+            intermediate_keys.append(chunk)
+        else:
+            logger.error("Invalid chunk format in group", chunk=chunk, chunk_type=type(chunk))
+            return {
+                "statusCode": 400,
+                "error": f"Invalid chunk format: {chunk}",
+            }
+
     logger.info(
-        "Processing combined delta references",
-        chunk_index=chunk_index,
-        original_chunk_count=len(chunk_objects),
-        combined_delta_count=len(combined_delta_refs),
+        "Merging chunk group",
         batch_id=batch_id,
+        group_index=group_index,
+        chunk_count=len(intermediate_keys),
+        database=database_name,
     )
-    
-    # Create a new event with the combined delta references and process normally
-    combined_event = {
-        "operation": "process_chunk",
-        "batch_id": batch_id,
-        "chunk_index": chunk_index,
-        "delta_results": combined_delta_refs,  # These are just references now, not full data
-        "database": database_name,
-    }
-    
-    return process_chunk_handler(combined_event)
+
+    try:
+        # Perform the merge without locks
+        merge_result = perform_intermediate_merge(
+            batch_id, group_index, intermediate_keys, database_name
+        )
+
+        # Return intermediate key for further processing
+        return {
+            "intermediate_key": merge_result["intermediate_key"],
+        }
+
+    except Exception as e:
+        logger.error("Chunk group merge failed", batch_id=batch_id, group_index=group_index, error=str(e))
+        return {
+            "statusCode": 500,
+            "error": str(e),
+            "batch_id": batch_id,
+            "group_index": group_index,
+            "message": "Chunk group merge failed",
+        }
 
 
 def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Final merge step that acquires lock and combines intermediate chunks.
+    Final merge step that ALWAYS acquires mutex lock and merges to final snapshot.
 
-    Can handle two input formats:
-    1. Legacy: {"batch_id": "...", "total_chunks": 5, "database": "..."}
-    2. New: {"batch_id": "...", "chunk_results": [...], "database": "..."}
+    This is the ONLY operation that should modify the final snapshot and
+    must always acquire a mutex lock to prevent conflicts.
+
+    Input format:
+    {
+        "operation": "final_merge",
+        "batch_id": "batch-uuid",
+        "chunk_results": [
+            {"intermediate_key": "intermediate/batch-id/chunk-0/"},
+            {"intermediate_key": "intermediate/batch-group-0/merged/"},
+            ...
+        ],
+        "database": "lines" or "words"
+    }
     """
-    logger.info("Starting final merge compaction")
+    logger.info("Starting FINAL merge with mutex lock")
 
     batch_id = event.get("batch_id")
-    total_chunks = event.get("total_chunks")
     chunk_results = event.get("chunk_results", [])
     database_name = event.get("database", "lines")
 
@@ -332,27 +340,18 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             "error": "batch_id is required for final merge",
         }
 
-    # Handle both legacy (total_chunks) and new (chunk_results) formats
-    if chunk_results:
-        # New format: we have chunk_results with intermediate_key objects
-        total_chunks = len(chunk_results)
-        logger.info(
-            "Using new chunk_results format",
-            chunk_count=total_chunks,
-            batch_id=batch_id
-        )
-    elif total_chunks is not None:
-        # Legacy format: we have total_chunks number
-        logger.info(
-            "Using legacy total_chunks format", 
-            total_chunks=total_chunks,
-            batch_id=batch_id
-        )
-    else:
+    if not chunk_results:
         return {
             "statusCode": 400,
-            "error": "Either total_chunks or chunk_results is required for final merge",
+            "error": "chunk_results is required for final merge",
         }
+
+    logger.info(
+        "Final merge with lock - processing intermediate snapshots",
+        chunk_count=len(chunk_results),
+        batch_id=batch_id,
+        database=database_name,
+    )
 
     # Determine collection from database name
     collection = (
@@ -383,29 +382,26 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
 
         # Perform final merge with database awareness
         merge_result = perform_final_merge(
-            batch_id, total_chunks, database_name, chunk_results
+            batch_id, len(chunk_results), database_name, chunk_results
         )
 
-        # Clean up intermediate chunks
-        cleanup_intermediate_chunks(batch_id, total_chunks)
+        # Clean up intermediate chunks - extract intermediate keys for cleanup
+        intermediate_keys = []
+        for chunk in chunk_results:
+            if isinstance(chunk, dict) and "intermediate_key" in chunk:
+                intermediate_keys.append(chunk["intermediate_key"])
+        
+        cleanup_intermediate_chunks_by_keys(intermediate_keys)
 
-        # Return minimal format for hierarchical processing (Stage 2) 
-        # or full format for final merge (Stage 3)
-        if chunk_results:
-            # Stage 2: return minimal format for next stage
-            return {
-                "intermediate_key": merge_result["snapshot_key"],
-            }
-        else:
-            # Stage 3: return full format (legacy final merge)
-            return {
-                "statusCode": 200,
-                "batch_id": batch_id,
-                "snapshot_key": merge_result["snapshot_key"],
-                "total_embeddings": merge_result["total_embeddings"],
-                "processing_time_seconds": merge_result["processing_time"],
-                "message": "Final merge completed successfully",
-            }
+        # Always return full format for final merge
+        return {
+            "statusCode": 200,
+            "batch_id": batch_id,
+            "snapshot_key": merge_result["snapshot_key"],
+            "total_embeddings": merge_result["total_embeddings"],
+            "processing_time_seconds": merge_result["processing_time"],
+            "message": "Final merge completed successfully",
+        }
 
     except Exception as e:  # pylint: disable=broad-exception-caught
         logger.error("Final merge failed", error=str(e))
@@ -618,6 +614,138 @@ def download_and_merge_delta(
     finally:
         # Clean up delta temp directory
         shutil.rmtree(delta_temp, ignore_errors=True)
+
+
+def perform_intermediate_merge(
+    batch_id: str, group_index: int, intermediate_keys: List[str], database_name: str
+) -> Dict[str, Any]:
+    """
+    Merge intermediate chunks into a single intermediate snapshot WITHOUT locks.
+    
+    This function is used by merge_chunk_group to merge multiple intermediate
+    snapshots into a single intermediate snapshot for hierarchical processing.
+    
+    Args:
+        batch_id: Unique identifier for this batch group
+        group_index: Index of the group being merged
+        intermediate_keys: List of S3 keys to intermediate snapshots
+        database_name: Database name ('lines' or 'words')
+        
+    Returns:
+        Dictionary with intermediate_key for the merged snapshot
+    """
+    start_time = time.time()
+    bucket = os.environ["CHROMADB_BUCKET"]
+    temp_dir = tempfile.mkdtemp()
+    total_embeddings = 0
+    
+    # Create intermediate output key
+    intermediate_key = f"intermediate/{batch_id}-group-{group_index}/merged/"
+    
+    try:
+        # Initialize ChromaDB in memory for merging
+        chroma_client = chromadb.PersistentClient(path=temp_dir)
+        
+        logger.info(
+            "Starting intermediate merge",
+            batch_id=batch_id,
+            group_index=group_index,
+            chunk_count=len(intermediate_keys),
+            intermediate_key=intermediate_key,
+        )
+        
+        # Process each intermediate chunk
+        for i, chunk_key in enumerate(intermediate_keys):
+            logger.info(
+                "Processing intermediate chunk",
+                current_chunk=i + 1,
+                total_chunks=len(intermediate_keys),
+                chunk_key=chunk_key,
+            )
+            chunk_temp = tempfile.mkdtemp()
+            
+            try:
+                # Download intermediate chunk
+                download_from_s3(bucket, chunk_key, chunk_temp)
+                logger.info("Downloaded intermediate chunk", chunk_index=i, chunk_key=chunk_key)
+                
+                # Load chunk ChromaDB
+                chunk_client = chromadb.PersistentClient(path=chunk_temp)
+                
+                # Merge all collections from this chunk
+                for collection_meta in chunk_client.list_collections():
+                    collection_name = collection_meta.name
+                    chunk_collection = chunk_client.get_collection(collection_name)
+                    chunk_count = chunk_collection.count()
+                    
+                    if chunk_count == 0:
+                        logger.info("Skipping empty collection", collection_name=collection_name)
+                        continue
+                    
+                    logger.info(
+                        "Merging collection from chunk",
+                        collection_name=collection_name,
+                        embedding_count=chunk_count,
+                    )
+                    
+                    # Get or create collection in main client
+                    try:
+                        main_collection = chroma_client.get_collection(collection_name)
+                    except Exception:
+                        main_collection = chroma_client.create_collection(collection_name)
+                    
+                    # Get all data from chunk collection
+                    chunk_data = chunk_collection.get(include=['embeddings', 'documents', 'metadatas'])
+                    
+                    if chunk_data['ids']:
+                        # Add to main collection
+                        main_collection.add(
+                            ids=chunk_data['ids'],
+                            embeddings=chunk_data['embeddings'],
+                            documents=chunk_data['documents'],
+                            metadatas=chunk_data['metadatas'],
+                        )
+                        total_embeddings += len(chunk_data['ids'])
+                        
+                        logger.info(
+                            "Merged chunk collection data",
+                            collection_name=collection_name,
+                            embeddings_added=len(chunk_data['ids']),
+                            total_embeddings=total_embeddings,
+                        )
+                
+            except Exception as e:
+                logger.error("Failed to process intermediate chunk", chunk_key=chunk_key, error=str(e))
+                raise
+            finally:
+                shutil.rmtree(chunk_temp, ignore_errors=True)
+        
+        logger.info(
+            "Intermediate merge completed",
+            total_embeddings=total_embeddings,
+            processing_time=time.time() - start_time,
+        )
+        
+        # Upload merged intermediate snapshot
+        upload_result = upload_to_s3(temp_dir, bucket, intermediate_key, calculate_hash=False)
+        
+        logger.info(
+            "Uploaded merged intermediate snapshot",
+            intermediate_key=intermediate_key,
+            upload_result=upload_result,
+        )
+        
+        return {
+            "intermediate_key": intermediate_key,
+            "total_embeddings": total_embeddings,
+            "processing_time": time.time() - start_time,
+        }
+        
+    except Exception as e:
+        logger.error("Intermediate merge failed", error=str(e))
+        raise
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 def perform_final_merge(
@@ -860,6 +988,31 @@ def cleanup_intermediate_chunks(batch_id: str, total_chunks: int):
         except Exception as e:
             logger.warning(
                 "Failed to delete chunk", chunk_index=chunk_index, error=str(e)
+            )
+
+
+def cleanup_intermediate_chunks_by_keys(intermediate_keys: List[str]):
+    """Clean up specific intermediate chunk files from S3 by their keys."""
+    bucket = os.environ["CHROMADB_BUCKET"]
+
+    for intermediate_key in intermediate_keys:
+        try:
+            # List and delete all objects with this prefix
+            response = s3_client.list_objects_v2(
+                Bucket=bucket, Prefix=intermediate_key
+            )
+
+            if "Contents" in response:
+                objects = [{"Key": obj["Key"]} for obj in response["Contents"]]
+                s3_client.delete_objects(
+                    Bucket=bucket, Delete={"Objects": objects}  # type: ignore
+                )
+                logger.info(
+                    "Deleted intermediate chunk by key", intermediate_key=intermediate_key
+                )
+        except Exception as e:
+            logger.warning(
+                "Failed to delete intermediate chunk", intermediate_key=intermediate_key, error=str(e)
             )
 
 

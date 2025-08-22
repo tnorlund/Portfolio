@@ -284,7 +284,7 @@ class WordEmbeddingWorkflow(ComponentResource):
                                     "Resource": arns[2],
                                     "Comment": "Process a single word chunk",
                                     "Parameters": {
-                                        "operation": "process_chunk_hierarchical",
+                                        "operation": "process_chunk",
                                         "batch_id.$": "$.chunk.batch_id",
                                         "chunk_index.$": (
                                             "$.chunk.chunk_index"
@@ -337,7 +337,7 @@ class WordEmbeddingWorkflow(ComponentResource):
                             "batch_id.$": "$.chunked_data.batch_id",
                             "total_chunks.$": "$.chunked_data.total_chunks",
                             "chunk_results.$": "$.chunk_results",
-                            "group_size": 3,
+                            "group_size": 10,
                         },
                         "Next": "CheckChunkGroupCount",
                     },
@@ -358,8 +358,8 @@ class WordEmbeddingWorkflow(ComponentResource):
                         "Comment": "Create chunk groups for parallel merging (simple grouping for now)",
                         "Parameters": {
                             "batch_id.$": "$.batch_id",
-                            "groups.$": "States.ArrayPartition($.chunk_results, 3)",
-                            "total_groups.$": "States.ArrayLength(States.ArrayPartition($.chunk_results, 3))",
+                            "groups.$": "States.ArrayPartition($.chunk_results, 10)",
+                            "total_groups.$": "States.ArrayLength(States.ArrayPartition($.chunk_results, 10))",
                         },
                         "ResultPath": "$.chunk_groups",
                         "Next": "MergeChunkGroupsInParallel",
@@ -382,9 +382,10 @@ class WordEmbeddingWorkflow(ComponentResource):
                                     "Resource": arns[2],
                                     "Comment": "Merge intermediate snapshots from chunk group",
                                     "Parameters": {
-                                        "operation": "final_merge",
+                                        "operation": "merge_chunk_group",
                                         "batch_id.$": "States.Format('{}-group-{}', $.batch_id, $.group_index)",
-                                        "chunk_results.$": "$.chunk_group",
+                                        "group_index.$": "$.group_index",
+                                        "chunk_group.$": "$.chunk_group",
                                         "database": "words",
                                     },
                                     "End": True,
@@ -434,7 +435,7 @@ class WordEmbeddingWorkflow(ComponentResource):
                         "Comment": "Prepare data for final merge",
                         "Parameters": {
                             "batch_id.$": "$.chunked_data.batch_id",
-                            "total_chunks.$": ("$.chunked_data.total_chunks"),
+                            "chunk_results.$": "$.chunk_results",
                             "operation": "final_merge",
                         },
                         "Next": "WordFinalMerge",
@@ -448,7 +449,7 @@ class WordEmbeddingWorkflow(ComponentResource):
                         "Resource": arns[2],
                         "Comment": "Final merge of all word chunks",
                         "Parameters": {
-                            "operation.$": "$.operation",
+                            "operation": "final_merge",
                             "batch_id.$": "$.batch_id",
                             "chunk_results.$": "$.chunk_results",
                             "database": "words",
