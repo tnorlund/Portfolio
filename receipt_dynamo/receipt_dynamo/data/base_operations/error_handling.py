@@ -203,9 +203,7 @@ class ErrorHandler:
             if "add_" in operation:
                 entity_type = operation.replace("add_", "")
                 # Keep snake_case to match parameter naming convention
-                raise EntityAlreadyExistsError(
-                    f"{entity_type} already exists"
-                )
+                raise EntityAlreadyExistsError(f"{entity_type} already exists")
             if any(op in operation for op in ["update_", "delete_"]):
                 self._raise_not_found_error(operation, context_kwargs)
                 return
@@ -255,7 +253,7 @@ class ErrorHandler:
             # Try to extract entity type from context for more descriptive message
             entity_type = context.get("entity_type", "")
             entity_name = context.get("entity_name", "")
-            
+
             # Use the more specific one if available
             if entity_type:
                 message = f"{entity_type} not found during {operation}"
@@ -351,7 +349,7 @@ def _extract_operation_context(
         if len(args) > 0 and hasattr(args[0], "__class__"):
             entity_type = type(args[0]).__name__.lower()
             context["entity_type"] = entity_type
-            
+
         if "receipt_id" in kwargs:
             context["receipt_id"] = kwargs["receipt_id"]
         elif len(args) > 0 and hasattr(args[0], "receipt_id"):
