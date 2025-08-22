@@ -16,7 +16,6 @@ class CompletionBatchResult:
     """
     A completion batch result is a result of a completion batch.
     """
-
     batch_id: str
     image_id: str
     receipt_id: int

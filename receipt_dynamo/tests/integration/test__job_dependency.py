@@ -141,8 +141,7 @@ def test_addJobDependency_raises_resource_not_found(
 
     # Attempt to add the job dependency
     with pytest.raises(
-        OperationError,
-        match="DynamoDB resource not found during add_job_dependency",
+        OperationError, match="DynamoDB resource not found during add_job_dependency"
     ):
         job_dependency_dynamo.add_job_dependency(sample_job_dependency)
 
@@ -498,8 +497,7 @@ def test_deleteJobDependency_raises_conditional_check_failed(
     """
     # Try to delete a job dependency that doesn't exist
     with pytest.raises(
-        EntityNotFoundError,
-        match="jobdependency not found during delete_job_dependency",
+        EntityNotFoundError, match="jobdependency not found during delete_job_dependency"
     ):
         job_dependency_dynamo.delete_job_dependency(sample_job_dependency)
 

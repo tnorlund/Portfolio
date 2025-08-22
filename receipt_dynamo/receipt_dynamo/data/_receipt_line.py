@@ -346,13 +346,33 @@ class _ReceiptLine(FlattenedStandardMixin):
 
         return results
 
+    @handle_dynamodb_errors("list_receipt_lines_from_receipt")
     def list_receipt_lines_from_receipt(
-        self, receipt_id: int, image_id: str
+        self, image_id: str, receipt_id: int
     ) -> list[ReceiptLine]:
         """Returns all lines under a specific receipt/image."""
-        results, _ = self._query_by_parent(
-            parent_key_prefix=f"IMAGE#{image_id}",
-            child_key_prefix=f"RECEIPT#{receipt_id:05d}#LINE#",
+        # Validate parameters
+        if image_id is None:
+            raise EntityValidationError("image_id cannot be None")
+        assert_valid_uuid(image_id)
+        if receipt_id is None or not isinstance(receipt_id, int):
+            raise EntityValidationError("receipt_id must be an integer")
+        if receipt_id <= 0:
+            raise EntityValidationError(
+                "receipt_id must be a positive integer"
+            )
+
+        # Use GSI3 for efficient querying by image_id + receipt_id
+        # This eliminates the need for client-side filtering
+        results, _ = self._query_entities(
+            index_name="GSI3",
+            key_condition_expression="GSI3PK = :pk AND GSI3SK = :sk",
+            expression_attribute_names=None,
+            expression_attribute_values={
+                ":pk": {"S": f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"},
+                ":sk": {"S": "LINE"},
+            },
             converter_func=item_to_receipt_line,
         )
+
         return results

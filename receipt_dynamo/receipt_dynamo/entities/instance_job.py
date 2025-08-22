@@ -59,14 +59,11 @@ class InstanceJob:
         valid_statuses = [
             "assigned",
             "running",
-            "completed",
+            "completed", 
             "failed",
             "cancelled",
         ]
-        if (
-            not isinstance(self.status, str)
-            or self.status.lower() not in valid_statuses
-        ):
+        if not isinstance(self.status, str) or self.status.lower() not in valid_statuses:
             raise ValueError(f"status must be one of {valid_statuses}")
         self.status = self.status.lower()
 
@@ -150,6 +147,7 @@ class InstanceJob:
         yield "assigned_at", self.assigned_at
         yield "status", self.status
         yield "resource_utilization", self.resource_utilization
+
 
     def __hash__(self) -> int:
         """Returns the hash value of the InstanceJob object.

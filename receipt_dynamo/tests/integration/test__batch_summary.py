@@ -67,28 +67,20 @@ def _batch_summaries() -> List[BatchSummary]:
     """Provides a list of 30 batch summaries for batch testing."""
     summaries = []
     base_time = datetime(2024, 1, 1, 12, 0, 0)
-
+    
     for i in range(30):
         summaries.append(
             BatchSummary(
                 batch_id=str(uuid4()),
-                batch_type=[
-                    BatchType.EMBEDDING,
-                    BatchType.COMPLETION,
-                    BatchType.LINE_EMBEDDING,
-                ][i % 3].value,
+                batch_type=[BatchType.EMBEDDING, BatchType.COMPLETION, BatchType.LINE_EMBEDDING][i % 3].value,
                 openai_batch_id=f"openai-{i:03d}",
                 submitted_at=base_time,
-                status=[
-                    BatchStatus.PENDING,
-                    BatchStatus.COMPLETED,
-                    BatchStatus.FAILED,
-                ][i % 3].value,
+                status=[BatchStatus.PENDING, BatchStatus.COMPLETED, BatchStatus.FAILED][i % 3].value,
                 result_file_id=f"file-{i:03d}",
                 receipt_refs=[(str(uuid4()), i + 100)] if i % 3 != 2 else [],
             )
         )
-
+    
     return summaries
 
 
@@ -426,11 +418,11 @@ def test_add_batch_summaries_success(
 ) -> None:
     """Tests successful batch addition of batch summaries."""
     client = DynamoClient(dynamodb_table)
-
+    
     # Add first 10 summaries
     summaries_to_add = batch_summaries[:10]
     client.add_batch_summaries(summaries_to_add)
-
+    
     # Verify all were added
     for summary in summaries_to_add:
         retrieved = client.get_batch_summary(summary.batch_id)
@@ -500,16 +492,16 @@ def test_update_batch_summary_success(
 ) -> None:
     """Tests successful update of a batch summary."""
     client = DynamoClient(dynamodb_table)
-
+    
     # First add the summary
     client.add_batch_summary(sample_batch_summary)
-
+    
     # Update it with new values
     sample_batch_summary.status = BatchStatus.COMPLETED.value
     sample_batch_summary.result_file_id = "file-999"
-
+    
     client.update_batch_summary(sample_batch_summary)
-
+    
     # Verify the update
     retrieved = client.get_batch_summary(sample_batch_summary.batch_id)
     assert retrieved.status == BatchStatus.COMPLETED.value
@@ -523,7 +515,7 @@ def test_update_batch_summary_not_found(
 ) -> None:
     """Tests that updating a non-existent summary raises EntityNotFoundError."""
     client = DynamoClient(dynamodb_table)
-
+    
     with pytest.raises(
         EntityNotFoundError,
         match="not found during update_batch_summary",
@@ -539,25 +531,23 @@ def test_update_batch_summaries_batch(
 ) -> None:
     """Tests successful batch update of batch summaries."""
     client = DynamoClient(dynamodb_table)
-
+    
     # First add both summaries
     client.add_batch_summary(sample_batch_summary)
     client.add_batch_summary(another_batch_summary)
-
+    
     # Update both with new status
     sample_batch_summary.status = BatchStatus.FAILED.value
     another_batch_summary.status = BatchStatus.FAILED.value
     sample_batch_summary.result_file_id = "file-error-1"
     another_batch_summary.result_file_id = "file-error-2"
-
-    client.update_batch_summaries(
-        [sample_batch_summary, another_batch_summary]
-    )
-
+    
+    client.update_batch_summaries([sample_batch_summary, another_batch_summary])
+    
     # Verify both updates
     retrieved1 = client.get_batch_summary(sample_batch_summary.batch_id)
     retrieved2 = client.get_batch_summary(another_batch_summary.batch_id)
-
+    
     assert retrieved1.status == BatchStatus.FAILED.value
     assert retrieved1.result_file_id == "file-error-1"
     assert retrieved2.status == BatchStatus.FAILED.value
@@ -576,13 +566,13 @@ def test_delete_batch_summary_success(
 ) -> None:
     """Tests successful deletion of a batch summary."""
     client = DynamoClient(dynamodb_table)
-
+    
     # First add the summary
     client.add_batch_summary(sample_batch_summary)
-
+    
     # Delete it
     client.delete_batch_summary(sample_batch_summary)
-
+    
     # Verify it's gone
     with pytest.raises(EntityNotFoundError):
         client.get_batch_summary(sample_batch_summary.batch_id)
@@ -595,7 +585,7 @@ def test_delete_batch_summary_not_found(
 ) -> None:
     """Tests that deleting a non-existent summary raises EntityNotFoundError."""
     client = DynamoClient(dynamodb_table)
-
+    
     # Delete non-existent summary - should raise
     with pytest.raises(EntityNotFoundError):
         client.delete_batch_summary(sample_batch_summary)
@@ -608,15 +598,15 @@ def test_delete_batch_summaries_batch(
 ) -> None:
     """Tests batch deletion of batch summaries."""
     client = DynamoClient(dynamodb_table)
-
+    
     # Add first 10 summaries
     summaries_to_delete = batch_summaries[:10]
     for summary in summaries_to_delete:
         client.add_batch_summary(summary)
-
+    
     # Delete them in batch
     client.delete_batch_summaries(summaries_to_delete)
-
+    
     # Verify all are deleted
     for summary in summaries_to_delete:
         with pytest.raises(EntityNotFoundError):
@@ -634,7 +624,7 @@ def test_list_batch_summaries_success(
 ) -> None:
     """Tests listing all batch summaries."""
     client = DynamoClient(dynamodb_table)
-
+    
     # Add multiple summaries
     summaries = []
     for i in range(5):
@@ -649,10 +639,10 @@ def test_list_batch_summaries_success(
         )
         summaries.append(summary)
         client.add_batch_summary(summary)
-
+    
     # List them
     retrieved, last_key = client.list_batch_summaries(limit=10)
-
+    
     assert len(retrieved) >= 5  # May have more from other tests
     assert last_key is None
 
@@ -664,22 +654,22 @@ def test_list_batch_summaries_with_pagination(
 ) -> None:
     """Tests listing batch summaries with pagination."""
     client = DynamoClient(dynamodb_table)
-
+    
     # Add 30 summaries
     for summary in batch_summaries:
         client.add_batch_summary(summary)
-
+    
     # Get first page
     page1, last_key1 = client.list_batch_summaries(limit=15)
     assert len(page1) == 15
     assert last_key1 is not None
-
+    
     # Get second page
     page2, last_key2 = client.list_batch_summaries(
         limit=15, last_evaluated_key=last_key1
     )
     assert len(page2) <= 15  # May be fewer items on second page
-
+    
     # Get remaining items if there are more
     all_retrieved = page1 + page2
     if last_key2 is not None:
@@ -687,7 +677,7 @@ def test_list_batch_summaries_with_pagination(
             limit=15, last_evaluated_key=last_key2
         )
         all_retrieved.extend(page3)
-
+    
     # Verify we got all our items
     assert len(all_retrieved) >= 30
 
@@ -703,11 +693,11 @@ def test_get_batch_summaries_by_status_success(
 ) -> None:
     """Tests retrieving batch summaries by status."""
     client = DynamoClient(dynamodb_table)
-
+    
     # Add summaries with different statuses
     statuses = [BatchStatus.PENDING, BatchStatus.COMPLETED, BatchStatus.FAILED]
     summaries = []
-
+    
     for i, status in enumerate(statuses):
         for j in range(3):  # 3 summaries per status
             summary = BatchSummary(
@@ -721,33 +711,23 @@ def test_get_batch_summaries_by_status_success(
             )
             summaries.append(summary)
             client.add_batch_summary(summary)
-
+    
     # Query by status
-    pending_summaries, _ = client.get_batch_summaries_by_status(
-        BatchStatus.PENDING, BatchType.EMBEDDING
-    )
-    completed_summaries, _ = client.get_batch_summaries_by_status(
-        BatchStatus.COMPLETED, BatchType.EMBEDDING
-    )
-    failed_summaries, _ = client.get_batch_summaries_by_status(
-        BatchStatus.FAILED, BatchType.EMBEDDING
-    )
-
+    pending_summaries, _ = client.get_batch_summaries_by_status(BatchStatus.PENDING, BatchType.EMBEDDING)
+    completed_summaries, _ = client.get_batch_summaries_by_status(BatchStatus.COMPLETED, BatchType.EMBEDDING)
+    failed_summaries, _ = client.get_batch_summaries_by_status(BatchStatus.FAILED, BatchType.EMBEDDING)
+    
     # Filter to only our test summaries (may have others from other tests)
     test_batch_ids = {s.batch_id for s in summaries}
-
-    pending_test = [
-        s for s in pending_summaries if s.batch_id in test_batch_ids
-    ]
-    completed_test = [
-        s for s in completed_summaries if s.batch_id in test_batch_ids
-    ]
+    
+    pending_test = [s for s in pending_summaries if s.batch_id in test_batch_ids]
+    completed_test = [s for s in completed_summaries if s.batch_id in test_batch_ids]
     failed_test = [s for s in failed_summaries if s.batch_id in test_batch_ids]
-
+    
     assert len(pending_test) == 3
     assert len(completed_test) == 3
     assert len(failed_test) == 3
-
+    
     assert all(s.status == BatchStatus.PENDING.value for s in pending_test)
     assert all(s.status == BatchStatus.COMPLETED.value for s in completed_test)
     assert all(s.status == BatchStatus.FAILED.value for s in failed_test)
@@ -759,15 +739,11 @@ def test_get_batch_summaries_by_status_with_batch_type(
 ) -> None:
     """Tests retrieving batch summaries by status and batch type."""
     client = DynamoClient(dynamodb_table)
-
+    
     # Add summaries with different batch types
-    batch_types = [
-        BatchType.EMBEDDING,
-        BatchType.COMPLETION,
-        BatchType.LINE_EMBEDDING,
-    ]
+    batch_types = [BatchType.EMBEDDING, BatchType.COMPLETION, BatchType.LINE_EMBEDDING]
     summaries = []
-
+    
     for batch_type in batch_types:
         summary = BatchSummary(
             batch_id=str(uuid4()),
@@ -780,7 +756,7 @@ def test_get_batch_summaries_by_status_with_batch_type(
         )
         summaries.append(summary)
         client.add_batch_summary(summary)
-
+    
     # Query by status and specific batch type
     embedding_summaries, _ = client.get_batch_summaries_by_status(
         BatchStatus.PENDING, batch_type=BatchType.EMBEDDING
@@ -788,17 +764,13 @@ def test_get_batch_summaries_by_status_with_batch_type(
     completion_summaries, _ = client.get_batch_summaries_by_status(
         BatchStatus.PENDING, batch_type=BatchType.COMPLETION
     )
-
+    
     # Filter to only our test summaries
     test_batch_ids = {s.batch_id for s in summaries}
-
-    embedding_test = [
-        s for s in embedding_summaries if s.batch_id in test_batch_ids
-    ]
-    completion_test = [
-        s for s in completion_summaries if s.batch_id in test_batch_ids
-    ]
-
+    
+    embedding_test = [s for s in embedding_summaries if s.batch_id in test_batch_ids]
+    completion_test = [s for s in completion_summaries if s.batch_id in test_batch_ids]
+    
     assert len(embedding_test) == 1
     assert len(completion_test) == 1
     assert embedding_test[0].batch_type == BatchType.EMBEDDING.value
@@ -811,7 +783,7 @@ def test_get_batch_summaries_by_status_with_pagination(
 ) -> None:
     """Tests retrieving batch summaries by status with pagination."""
     client = DynamoClient(dynamodb_table)
-
+    
     # Add 15 pending summaries
     summaries = []
     for i in range(15):
@@ -826,23 +798,20 @@ def test_get_batch_summaries_by_status_with_pagination(
         )
         summaries.append(summary)
         client.add_batch_summary(summary)
-
+    
     # Get first page
     page1, last_key1 = client.get_batch_summaries_by_status(
         BatchStatus.PENDING, BatchType.EMBEDDING, limit=8
     )
     assert len(page1) >= 8  # At least 8
     assert last_key1 is not None
-
+    
     # Get second page
     page2, last_key2 = client.get_batch_summaries_by_status(
-        BatchStatus.PENDING,
-        BatchType.EMBEDDING,
-        limit=8,
-        last_evaluated_key=last_key1,
+        BatchStatus.PENDING, BatchType.EMBEDDING, limit=8, last_evaluated_key=last_key1
     )
     assert len(page2) >= 0  # May have items
-
+    
     # All items should be pending
     all_retrieved = page1 + page2
     assert all(s.status == BatchStatus.PENDING.value for s in all_retrieved)
@@ -869,7 +838,7 @@ def test_get_batch_summaries_by_status_validation(
 ) -> None:
     """Tests validation for get_batch_summaries_by_status parameters."""
     client = DynamoClient(dynamodb_table)
-
+    
     with pytest.raises(EntityValidationError, match=expected_error):
         client.get_batch_summaries_by_status(status)  # type: ignore
 
@@ -889,7 +858,7 @@ def test_get_batch_summaries_by_status_batch_type_validation(
 ) -> None:
     """Tests validation for batch_type parameter."""
     client = DynamoClient(dynamodb_table)
-
+    
     with pytest.raises(EntityValidationError, match=expected_error):
         client.get_batch_summaries_by_status(
             BatchStatus.PENDING, batch_type=batch_type
@@ -912,7 +881,7 @@ def test_list_batch_summaries_limit_validation(
 ) -> None:
     """Tests validation for list_batch_summaries limit parameter."""
     client = DynamoClient(dynamodb_table)
-
+    
     with pytest.raises(EntityValidationError, match=expected_error):
         client.list_batch_summaries(limit=limit)
 
@@ -931,7 +900,7 @@ def test_add_batch_summaries_with_unprocessed(
     """Tests that add_batch_summaries handles unprocessed items correctly."""
     client = DynamoClient(dynamodb_table)
     summaries_to_add = batch_summaries[:5]
-
+    
     # Mock batch_write_item to return unprocessed items on first call
     # pylint: disable=protected-access
     mock_batch = mocker.patch.object(
@@ -948,9 +917,9 @@ def test_add_batch_summaries_with_unprocessed(
             {},  # Success on retry
         ],
     )
-
+    
     client.add_batch_summaries(summaries_to_add)
-
+    
     # Should be called twice (initial + retry)
     assert mock_batch.call_count == 2
 
@@ -963,11 +932,11 @@ def test_update_batch_summaries_chunked(
 ) -> None:
     """Tests that update_batch_summaries properly chunks large batches."""
     client = DynamoClient(dynamodb_table)
-
+    
     # Add all summaries first
     for summary in batch_summaries:
         client.add_batch_summary(summary)
-
+    
     # Mock transact_write_items to verify chunking
     # pylint: disable=protected-access
     mock_transact = mocker.patch.object(
@@ -975,10 +944,10 @@ def test_update_batch_summaries_chunked(
         "transact_write_items",
         return_value={},
     )
-
+    
     # Update all 30 summaries (should be chunked into 2 calls)
     client.update_batch_summaries(batch_summaries)
-
+    
     # Should be called twice (25 + 5 items)
     assert mock_transact.call_count == 2
 
@@ -991,11 +960,11 @@ def test_delete_batch_summaries_chunked(
 ) -> None:
     """Tests that delete_batch_summaries properly chunks large batches."""
     client = DynamoClient(dynamodb_table)
-
+    
     # Add all summaries first
     for summary in batch_summaries:
         client.add_batch_summary(summary)
-
+    
     # Mock transact_write_items to verify chunking
     # pylint: disable=protected-access
     mock_transact = mocker.patch.object(
@@ -1003,10 +972,10 @@ def test_delete_batch_summaries_chunked(
         "transact_write_items",
         return_value={},
     )
-
+    
     # Delete all 30 summaries (should be chunked into 2 calls)
     client.delete_batch_summaries(batch_summaries)
-
+    
     # Should be called twice (25 + 5 items)
     assert mock_transact.call_count == 2
 
@@ -1022,7 +991,7 @@ def test_batch_summary_with_empty_receipt_refs(
 ) -> None:
     """Tests batch summary with empty receipt_refs list."""
     client = DynamoClient(dynamodb_table)
-
+    
     # Create summary with empty receipt_refs
     summary = BatchSummary(
         batch_id=str(uuid4()),
@@ -1033,11 +1002,11 @@ def test_batch_summary_with_empty_receipt_refs(
         result_file_id="file-empty",
         receipt_refs=[],  # Empty list
     )
-
+    
     # Add and retrieve
     client.add_batch_summary(summary)
     retrieved = client.get_batch_summary(summary.batch_id)
-
+    
     assert retrieved == summary
     assert retrieved.receipt_refs == []
 
@@ -1048,7 +1017,7 @@ def test_batch_summary_with_multiple_receipt_refs(
 ) -> None:
     """Tests batch summary with multiple receipt references."""
     client = DynamoClient(dynamodb_table)
-
+    
     # Create summary with multiple receipt_refs
     receipt_refs = [(str(uuid4()), i) for i in range(10)]
     summary = BatchSummary(
@@ -1060,11 +1029,11 @@ def test_batch_summary_with_multiple_receipt_refs(
         result_file_id="file-multiple",
         receipt_refs=receipt_refs,
     )
-
+    
     # Add and retrieve
     client.add_batch_summary(summary)
     retrieved = client.get_batch_summary(summary.batch_id)
-
+    
     assert retrieved == summary
     assert len(retrieved.receipt_refs) == 10
     assert retrieved.receipt_refs == receipt_refs
@@ -1077,26 +1046,26 @@ def test_batch_summary_status_transitions(
 ) -> None:
     """Tests batch summary status transitions."""
     client = DynamoClient(dynamodb_table)
-
+    
     # Add summary with PENDING status
     sample_batch_summary.status = BatchStatus.PENDING.value
     client.add_batch_summary(sample_batch_summary)
-
+    
     # Transition to COMPLETED
     sample_batch_summary.status = BatchStatus.COMPLETED.value
     sample_batch_summary.result_file_id = "file-completed"
     client.update_batch_summary(sample_batch_summary)
-
+    
     # Verify
     retrieved = client.get_batch_summary(sample_batch_summary.batch_id)
     assert retrieved.status == BatchStatus.COMPLETED.value
     assert retrieved.result_file_id == "file-completed"
-
+    
     # Transition to FAILED
     sample_batch_summary.status = BatchStatus.FAILED.value
     sample_batch_summary.result_file_id = "file-failed"
     client.update_batch_summary(sample_batch_summary)
-
+    
     # Verify final state
     retrieved = client.get_batch_summary(sample_batch_summary.batch_id)
     assert retrieved.status == BatchStatus.FAILED.value
@@ -1109,14 +1078,14 @@ def test_batch_summary_different_batch_types(
 ) -> None:
     """Tests batch summaries with different batch types."""
     client = DynamoClient(dynamodb_table)
-
+    
     # Create summaries with different types
     batch_types = [
         (BatchType.EMBEDDING, "openai-emb"),
         (BatchType.COMPLETION, "openai-comp"),
         (BatchType.LINE_EMBEDDING, "openai-line"),
     ]
-
+    
     summaries = []
     for batch_type, openai_id in batch_types:
         summary = BatchSummary(
@@ -1130,7 +1099,7 @@ def test_batch_summary_different_batch_types(
         )
         summaries.append(summary)
         client.add_batch_summary(summary)
-
+    
     # Retrieve and verify each type
     for summary in summaries:
         retrieved = client.get_batch_summary(summary.batch_id)
@@ -1143,7 +1112,7 @@ def test_get_batch_summaries_by_status_enum_vs_string(
 ) -> None:
     """Tests that both enum and string values work for status queries."""
     client = DynamoClient(dynamodb_table)
-
+    
     # Add a pending summary
     summary = BatchSummary(
         batch_id=str(uuid4()),
@@ -1155,21 +1124,17 @@ def test_get_batch_summaries_by_status_enum_vs_string(
         receipt_refs=[(str(uuid4()), 1)],
     )
     client.add_batch_summary(summary)
-
+    
     # Query with enum
-    enum_results, _ = client.get_batch_summaries_by_status(
-        BatchStatus.PENDING, BatchType.EMBEDDING
-    )
-
+    enum_results, _ = client.get_batch_summaries_by_status(BatchStatus.PENDING, BatchType.EMBEDDING)
+    
     # Query with string
-    string_results, _ = client.get_batch_summaries_by_status(
-        "PENDING", BatchType.EMBEDDING
-    )
-
+    string_results, _ = client.get_batch_summaries_by_status("PENDING", BatchType.EMBEDDING)
+    
     # Filter to our test summary
     enum_test = [r for r in enum_results if r.batch_id == summary.batch_id]
     string_test = [r for r in string_results if r.batch_id == summary.batch_id]
-
+    
     assert len(enum_test) == 1
     assert len(string_test) == 1
     assert enum_test[0] == string_test[0]

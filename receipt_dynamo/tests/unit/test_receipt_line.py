@@ -506,3 +506,32 @@ def test_item_to_receipt_line(example_receipt_line: ReceiptLine) -> None:
                 "embedding_status": {"S": "NONE"},
             }
         )
+
+
+@pytest.mark.unit
+def test_receipt_line_gsi3_key():
+    """Test that the gsi3_key() method returns a properly
+    formatted DynamoDB key for efficient querying by image_id + receipt_id."""
+    line = ReceiptLine(
+        receipt_id=1,
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        line_id=10,
+        text="Test line",
+        bounding_box={
+            "x": 0.1,
+            "y": 0.2,
+            "width": 0.5,
+            "height": 0.2,
+        },
+        top_left={"x": 0.1, "y": 0.2},
+        top_right={"x": 0.6, "y": 0.2},
+        bottom_left={"x": 0.1, "y": 0.4},
+        bottom_right={"x": 0.6, "y": 0.4},
+        angle_degrees=0.0,
+        angle_radians=0.0,
+        confidence=0.95,
+    )
+    assert line.gsi3_key() == {
+        "GSI3PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"},
+        "GSI3SK": {"S": "LINE"},
+    }

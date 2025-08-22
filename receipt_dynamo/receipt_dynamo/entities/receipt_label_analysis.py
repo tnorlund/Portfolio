@@ -220,6 +220,7 @@ class ReceiptLabelAnalysis:
         yield "overall_reasoning", self.overall_reasoning
         yield "metadata", self.metadata
 
+
     def __hash__(self) -> int:
         """Returns a hash of the ReceiptLabelAnalysis object.
 

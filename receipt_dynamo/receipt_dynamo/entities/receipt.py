@@ -155,17 +155,6 @@ class Receipt(DynamoDBEntity, CDNFieldsMixin):
             },
         }
 
-    def gsi3_key(self) -> Dict[str, Any]:
-        """Generates the GSI3 key for the receipt.
-
-        Returns:
-            dict: The GSI3 key for the receipt.
-        """
-        return {
-            "GSI3PK": {"S": f"IMAGE#{self.image_id}"},
-            "GSI3SK": {"S": f"RECEIPT#{self.receipt_id:05d}"},
-        }
-
     def to_item(self) -> Dict[str, Any]:
         """Converts the Receipt object to a DynamoDB item.
 
@@ -176,7 +165,6 @@ class Receipt(DynamoDBEntity, CDNFieldsMixin):
             **self.key,
             **self.gsi1_key(),
             **self.gsi2_key(),
-            **self.gsi3_key(),
             "TYPE": {"S": "RECEIPT"},
             "width": {"N": str(self.width)},
             "height": {"N": str(self.height)},

@@ -17,7 +17,10 @@ from receipt_dynamo.data.shared_exceptions import (
 )
 
 # This entity is not used in production infrastructure
-pytestmark = [pytest.mark.integration, pytest.mark.unused_in_production]
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.unused_in_production
+]
 
 # =============================================================================
 # TEST DATA AND FIXTURES
@@ -74,9 +77,7 @@ CORRECT_RECEIPT_VALIDATION_SUMMARY_PARAMS: Dict[str, Any] = {
 @pytest.fixture(name="sample_receipt_validation_summary")
 def _sample_receipt_validation_summary() -> ReceiptValidationSummary:
     """Provides a valid ReceiptValidationSummary for testing."""
-    return ReceiptValidationSummary(
-        **CORRECT_RECEIPT_VALIDATION_SUMMARY_PARAMS
-    )
+    return ReceiptValidationSummary(**CORRECT_RECEIPT_VALIDATION_SUMMARY_PARAMS)
 
 
 # -------------------------------------------------------------------
@@ -244,9 +245,7 @@ def test_addReceiptValidationSummary_client_errors(
         ),
     )
     with pytest.raises(expected_exception, match=error_match):
-        client.add_receipt_validation_summary(
-            sample_receipt_validation_summary
-        )
+        client.add_receipt_validation_summary(sample_receipt_validation_summary)
     mock_put.assert_called_once()
 
 
@@ -356,16 +355,11 @@ def test_updateReceiptValidationSummary_not_exists_raises(
         )
 
     # Check that the error message contains useful information
-    assert (
-        "receiptvalidationsummary not found during update_receipt_validation_summary"
-        in str(excinfo.value)
-    )
+    assert "receiptvalidationsummary not found during update_receipt_validation_summary" in str(excinfo.value)
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    "invalid_input,error_match", UPDATE_VALIDATION_SCENARIOS
-)
+@pytest.mark.parametrize("invalid_input,error_match", UPDATE_VALIDATION_SCENARIOS)
 def test_updateReceiptValidationSummary_invalid_parameters(
     dynamodb_table: Literal["MyMockedTable"],
     invalid_input: Any,
@@ -408,9 +402,7 @@ def test_updateReceiptValidationSummary_client_errors(
         ),
     )
     with pytest.raises(expected_exception, match=error_match):
-        client.update_receipt_validation_summary(
-            sample_receipt_validation_summary
-        )
+        client.update_receipt_validation_summary(sample_receipt_validation_summary)
     mock_put.assert_called_once()
 
 
@@ -567,9 +559,7 @@ def test_deleteReceiptValidationSummary_client_errors(
         ),
     )
     with pytest.raises(expected_exception, match=error_match):
-        client.delete_receipt_validation_summary(
-            sample_receipt_validation_summary
-        )
+        client.delete_receipt_validation_summary(sample_receipt_validation_summary)
     mock_delete.assert_called_once()
 
 
