@@ -721,3 +721,13 @@ pulumi.export(
     "enhanced_compaction_function_arn",
     chromadb_infrastructure.enhanced_compaction_arn,
 )
+
+# Export the embedding infrastructure ChromaDB bucket (the one actually used!)
+pulumi.export(
+    "embedding_chromadb_bucket_name",
+    embedding_infrastructure.chromadb_buckets.bucket_name,
+)
+pulumi.export(
+    "embedding_chromadb_bucket_arn",
+    embedding_infrastructure.chromadb_buckets.bucket_arn,
+)
