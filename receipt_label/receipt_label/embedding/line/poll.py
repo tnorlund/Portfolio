@@ -33,7 +33,7 @@ from receipt_dynamo.entities import (
 
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
-from receipt_label.utils.chroma_s3_helpers import produce_embedding_delta
+from receipt_label.vector_store import produce_embedding_delta
 
 
 def _parse_prev_next_from_formatted(fmt: str) -> tuple[str, str]:

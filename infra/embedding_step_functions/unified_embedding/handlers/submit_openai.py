@@ -49,19 +49,19 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         filepath = download_serialized_lines(
             s3_bucket=s3_bucket, s3_key=s3_key
         )
-        logger.info("Downloaded file to %s", filepath)
+        logger.info("Downloaded file", filepath=filepath)
 
         # Deserialize the lines
         lines = deserialize_receipt_lines(filepath)
-        logger.info("Deserialized %d lines", len(lines))
+        logger.info("Deserialized lines", count=len(lines))
 
         # Format for embedding
         formatted = format_line_context_embedding(lines)
-        logger.info("Formatted %d lines", len(formatted))
+        logger.info("Formatted lines", count=len(formatted))
 
         # Write to NDJSON file
         input_file = write_ndjson(batch_id, formatted)
-        logger.info("Wrote input file to %s", input_file)
+        logger.info("Wrote input file", filepath=input_file)
 
         # Upload to OpenAI
         openai_file = upload_to_openai(input_file)
@@ -69,13 +69,13 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Submit the batch
         openai_batch = submit_openai_batch(openai_file.id)
-        logger.info("Submitted OpenAI batch %s", openai_batch.id)
+        logger.info("Submitted OpenAI batch", batch_id=openai_batch.id)
 
         # Create and save batch summary
         batch_summary = create_batch_summary(
             batch_id, openai_batch.id, input_file
         )
-        logger.info("Created batch summary with ID %s", batch_summary.batch_id)
+        logger.info("Created batch summary", batch_id=batch_summary.batch_id)
 
         # Update line statuses
         update_line_embedding_status(lines)
@@ -83,10 +83,10 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Save batch summary to database
         add_batch_summary(batch_summary)
-        logger.info("Added batch summary with ID %s", batch_summary.batch_id)
+        logger.info("Added batch summary", batch_id=batch_summary.batch_id)
 
         return {"batch_id": batch_id}
 
     except Exception as e:
-        logger.error("Error submitting to OpenAI: %s", str(e))
+        logger.error("Error submitting to OpenAI", error=str(e))
         raise RuntimeError(f"Error submitting to OpenAI: {str(e)}") from e

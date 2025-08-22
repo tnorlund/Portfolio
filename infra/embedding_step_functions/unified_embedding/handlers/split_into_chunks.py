@@ -1,24 +1,21 @@
 """Handler for splitting delta results into chunks for parallel processing.
 
-NOTE: This handler is part of the unified Docker container but is NOT currently used.
-The active split_into_chunks handler is in simple_lambdas/split_into_chunks/handler.py
-which uses dynamic chunk sizing (5 for words, 10 for lines).
-
-This handler takes a list of delta results and splits them into chunks of 25
+This handler takes a list of delta results and splits them into chunks of 10
 for efficient parallel processing by the compaction Lambda.
 """
 
-import logging
+import os
 from typing import Any, Dict, List
 
-# Set up logging
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+import utils.logging
 
-# Configuration
-CHUNK_SIZE = (
-    25  # Increased from 10 to reduce number of chunks and memory usage
-)
+get_logger = utils.logging.get_logger
+get_operation_logger = utils.logging.get_operation_logger
+
+logger = get_operation_logger(__name__)
+
+# Configuration - get chunk size from environment
+CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", "10"))  # Default 10 if not set
 
 
 def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -36,7 +33,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             - chunks: Array of chunk objects for Map state processing
             - total_chunks: Total number of chunks created
     """
-    logger.info("Starting split_into_chunks handler")
+    logger.info("Starting split_into_chunks handler", chunk_size=CHUNK_SIZE)
 
     try:
         # Extract parameters
@@ -47,7 +44,9 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             raise ValueError("batch_id is required")
 
         logger.info(
-            f"Processing {len(poll_results)} delta results for batch {batch_id}"
+            "Processing delta results for batch",
+            delta_count=len(poll_results),
+            batch_id=batch_id,
         )
 
         # Filter out any invalid results
@@ -56,12 +55,12 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             # Each result should have delta_key and collection info
             if isinstance(result, dict) and "delta_key" in result:
 
-                # Ensure collection is set (default to receipt_words for backward compat)
+                # Ensure collection is set (default to words for backward compat)
                 if "collection" not in result:
-                    result["collection"] = "receipt_words"
+                    result["collection"] = "words"
                 valid_deltas.append(result)
             else:
-                logger.warning("Skipping invalid delta result: %s", result)
+                logger.warning("Skipping invalid delta result", result=result)
 
         if not valid_deltas:
             logger.info("No valid deltas to process")
@@ -85,12 +84,18 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
             # Log chunk details for debugging
             logger.info(
-                f"Chunk {chunk['chunk_index']}: {len(chunk_deltas)} deltas, "
-                f"collections: {set(d.get('collection', 'unknown') for d in chunk_deltas)}"
+                "Chunk details",
+                chunk_index=chunk["chunk_index"],
+                delta_count=len(chunk_deltas),
+                collections=list(
+                    set(d.get("collection", "unknown") for d in chunk_deltas)
+                ),
             )
 
         logger.info(
-            f"Created {len(chunks)} chunks from {len(valid_deltas)} deltas"
+            "Created chunks from deltas",
+            chunk_count=len(chunks),
+            delta_count=len(valid_deltas),
         )
 
         return {
@@ -100,7 +105,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
 
     except ValueError as e:
-        logger.error("Validation error: %s", str(e))
+        logger.error("Validation error", error=str(e))
         return {
             "statusCode": 400,
             "error": str(e),
@@ -108,7 +113,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
 
     except Exception as e:
-        logger.error("Unexpected error splitting into chunks: %s", str(e))
+        logger.error("Unexpected error splitting into chunks", error=str(e))
         return {
             "statusCode": 500,
             "error": str(e),

@@ -5,7 +5,6 @@ chunks them into batches, and uploads to S3 for processing.
 """
 
 import os
-import logging
 from typing import Any, Dict
 from receipt_label.embedding.word import (
     chunk_into_embedding_batches,
@@ -14,9 +13,12 @@ from receipt_label.embedding.word import (
     upload_serialized_words,
 )
 
-# Set up logging
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+import utils.logging
+
+get_logger = utils.logging.get_logger
+get_operation_logger = utils.logging.get_operation_logger
+
+logger = get_operation_logger(__name__)
 
 
 def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -41,13 +43,13 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         if not bucket:
             raise ValueError("S3_BUCKET environment variable not set")
 
-        logger.info("Using S3 bucket: %s", bucket)
+        logger.info("Using S3 bucket", bucket=bucket)
 
         # Get words without embeddings (noise words are already filtered)
         words = list_receipt_words_with_no_embeddings()
         logger.info(
-            "Found %d words without embeddings (noise words filtered)",
-            len(words),
+            "Found words without embeddings (noise words filtered)",
+            count=len(words),
         )
 
         if not words:
@@ -56,7 +58,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Chunk words into batches (returns nested dict structure)
         batches = chunk_into_embedding_batches(words)
-        logger.info("Chunked into %d batches", len(batches))
+        logger.info("Chunked into batches", count=len(batches))
 
         # Log batch details for debugging
         for image_id, receipts in batches.items():
@@ -65,20 +67,25 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 unique = len({(w.line_id, w.word_id) for w in words_list})
                 if total != unique:
                     logger.warning(
-                        f"Duplicate words in image {image_id}, receipt {receipt_id}: "
-                        f"total {total}, unique {unique}"
+                        "Duplicate words in image receipt",
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                        total=total,
+                        unique=unique,
                     )
                 else:
                     logger.info(
-                        f"Words count OK for image {image_id}, receipt {receipt_id}: "
-                        f"{total} words"
+                        "Words count OK for image receipt",
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                        word_count=total,
                     )
 
         # Serialize and upload in one step
         uploaded = upload_serialized_words(
             serialize_receipt_words(batches), bucket
         )
-        logger.info("Uploaded %d files", len(uploaded))
+        logger.info("Uploaded files", count=len(uploaded))
 
         # Clean the output to match expected format
         cleaned = [
@@ -92,7 +99,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         ]
 
         logger.info(
-            "Successfully prepared %d batches for processing", len(cleaned)
+            "Successfully prepared batches for processing", count=len(cleaned)
         )
 
         return {
@@ -102,13 +109,13 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
 
     except AttributeError as e:
-        logger.error("Client manager configuration error: %s", str(e))
+        logger.error("Client manager configuration error", error=str(e))
         raise RuntimeError(f"Configuration error: {str(e)}") from e
 
     except KeyError as e:
-        logger.error("Missing expected field in data: %s", str(e))
+        logger.error("Missing expected field in data", error=str(e))
         raise RuntimeError(f"Data format error: {str(e)}") from e
 
     except Exception as e:
-        logger.error("Unexpected error finding unembedded words: %s", str(e))
+        logger.error("Unexpected error finding unembedded words", error=str(e))
         raise RuntimeError(f"Internal error: {str(e)}") from e
