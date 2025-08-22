@@ -11,7 +11,7 @@ from .timeout_handler import (
 from .tracing import (
     trace_chromadb_operation,
 )
-from . import metrics
+from .metrics import metrics
 
 # Create aliases for function name compatibility
 def trace_function(operation_name=None, collection=None):
