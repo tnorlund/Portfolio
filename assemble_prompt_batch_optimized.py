@@ -28,6 +28,7 @@ from receipt_dynamo.entities import (
     ReceiptMetadata,
 )
 from receipt_dynamo.constants import ValidationStatus
+from receipt_label.constants import CORE_LABELS
 
 from receipt_label.vector_store import (
     VectorClient,
@@ -337,7 +338,7 @@ class BatchedPromptAssembler:
 def display_receipt_context_from_prompt_data(
     prompt_data: ValidationPromptData,
 ) -> None:
-    """Display receipt context using ReceiptLines text attribute."""
+    """Display receipt context using ReceiptLines text attribute with simple layout."""
     if not prompt_data.context_lines:
         print("No context lines available")
         return
@@ -380,6 +381,9 @@ def display_validation_results_from_prompt_data(
     target_word = prompt_data.target_word
     print(f"\n{result_index}. Word needing validation: '{target_word.text}'")
     print(f"Label being validated: {prompt_data.label_to_validate}")
+    print(
+        f"Label definition: {CORE_LABELS.get(prompt_data.label_to_validate, 'Unknown')}"
+    )
     print(f"Image: {prompt_data.image_id[:8]}...")
 
     # Display rich metadata information if available
@@ -405,7 +409,7 @@ def display_validation_results_from_prompt_data(
     # Display receipt context with visual alignment
     display_receipt_context_from_prompt_data(prompt_data)
 
-    print(f"\n🧠 SEMANTIC SIMILARITY:")
+    print("\n🧠 SEMANTIC SIMILARITY:")
     print(
         f"  Similar words where '{prompt_data.label_to_validate}' was VALID: ({len(words_with_label_valid)} found)"
     )
