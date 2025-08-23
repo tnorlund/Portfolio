@@ -122,16 +122,14 @@ class ValidationConfig:
         except ValueError:
             mode = ValidationMode.SMART_BATCH
 
-        # Ollama configuration (supports both local and Turbo)
-        base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        # Ollama Turbo configuration
+        base_url = "https://ollama.com"
         api_key = os.getenv("OLLAMA_API_KEY")
-        is_turbo = api_key is not None or "api.ollama" in base_url
+        is_turbo = True
 
         ollama_config = OllamaConfig(
             base_url=base_url,
-            model=os.getenv(
-                "OLLAMA_MODEL", "turbo" if is_turbo else "llama3.1:8b"
-            ),
+            model="gpt-oss:120b",
             api_key=api_key,
             temperature=float(os.getenv("OLLAMA_TEMPERATURE", "0.0")),
             timeout=int(os.getenv("OLLAMA_TIMEOUT", "60")),

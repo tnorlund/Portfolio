@@ -22,7 +22,7 @@ from .models import ValidationResult, ValidationResponse
 
 
 def get_quick_similar_words(
-    word_text: str, word_embedding_id: Optional[str] = None, n_results: int = 3, s3_bucket: str
+    word_text: str, s3_bucket: str, word_embedding_id: Optional[str] = None, n_results: int = 3
 ) -> List[dict]:
     """
     Quick similarity lookup for a single word using the working similarity analysis approach.
@@ -510,9 +510,13 @@ def parse_llm_response(
 
 def get_ollama_llm() -> ChatOllama:
     """Get configured Ollama instance for structured output"""
-    base_url = os.getenv("OLLAMA_BASE_URL", "https://ollama.com")
+    # Load environment variables from .env file
+    from dotenv import load_dotenv
+    load_dotenv()
+    
+    base_url = "https://ollama.com"
     api_key = os.getenv("OLLAMA_API_KEY")
-    model = os.getenv("OLLAMA_MODEL", "gpt-oss:120b")
+    model = "gpt-oss:120b"
 
     # Configure headers for Ollama Turbo API authentication
     headers = {}

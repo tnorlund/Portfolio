@@ -18,7 +18,6 @@ from .graph_design import (
     validate_receipt_labels_optimized,
     CachedValidator,
     get_ollama_llm,
-    MinimalValidationState,
 )
 from .models import ValidationResponse, ValidationResult
 
@@ -177,6 +176,14 @@ async def validate_receipt_labels(
 async def test_ollama_connection() -> bool:
     """Test if Ollama is working"""
     try:
+        # Load environment variables from .env file
+        from dotenv import load_dotenv
+        load_dotenv()
+        
+        # Verify API key is loaded
+        if not os.getenv('OLLAMA_API_KEY'):
+            print("❌ OLLAMA_API_KEY not found in environment")
+            return False
         llm = get_ollama_llm()
 
         # Simple connectivity test
@@ -192,8 +199,8 @@ async def test_ollama_connection() -> bool:
 
         if response and response.content:
             print(f"✅ Ollama connection successful")
-            print(f"   Model: {os.getenv('OLLAMA_MODEL', 'default')}")
-            print(f"   Base URL: {os.getenv('OLLAMA_BASE_URL', 'default')}")
+            print(f"   Model: gpt-oss:120b")
+            print(f"   Base URL: https://ollama.com")
             return True
         else:
             print(f"❌ No response from Ollama")
@@ -211,6 +218,10 @@ async def test_ollama_connection() -> bool:
 
 async def demo() -> None:
     """Demo showing the optimized validation"""
+    
+    # Load environment variables from .env file
+    from dotenv import load_dotenv
+    load_dotenv()
 
     print("=" * 60)
     print("OPTIMIZED LANGCHAIN VALIDATION DEMO")
@@ -353,16 +364,10 @@ def print_setup_guide() -> None:
 OPTIMIZED VALIDATION SETUP
 ==========================
 
-1. For LOCAL Ollama:
-   export OLLAMA_BASE_URL="http://localhost:11434"
-   export OLLAMA_MODEL="llama3.1:8b"
+1. Set your Ollama Turbo API key in .env file:
+   OLLAMA_API_KEY=your-api-key-here
 
-2. For OLLAMA TURBO:
-   export OLLAMA_BASE_URL="https://api.ollama.com"
-   export OLLAMA_API_KEY="your-api-key"
-   export OLLAMA_MODEL="turbo"
-
-3. Run validation:
+2. Run validation:
    from receipt_label.langchain_validation import validate_receipt_labels
    
    result = await validate_receipt_labels(
@@ -374,16 +379,21 @@ OPTIMIZED VALIDATION SETUP
    )
 
 Benefits:
-- Context is prepared once and cached
+- Uses Ollama Turbo (gpt-oss:120b model) for fast processing
+- Context is prepared once and cached  
 - LLM is only called when needed
 - Database updates are decoupled from validation
+- Only requires API key - base URL and model are hardcoded
     """
     )
 
 
 if __name__ == "__main__":
-    # Check if Ollama is configured
-    if not os.getenv("OLLAMA_BASE_URL"):
+    # Load environment and check if Ollama API key is configured
+    from dotenv import load_dotenv
+    load_dotenv()
+    
+    if not os.getenv("OLLAMA_API_KEY"):
         print_setup_guide()
     else:
         # Run the demo
