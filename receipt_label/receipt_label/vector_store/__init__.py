@@ -41,6 +41,14 @@ from .compaction.delta_processor import DeltaProcessor
 # Integration modules
 from .integration.decision_engine import VectorDecisionEngine, MerchantReliabilityData
 from .integration.pattern_matching import PatternMatcher
+from .integration.id_utils import (
+    word_to_vector_id,
+    line_to_vector_id,
+    parse_word_vector_id,
+    parse_line_vector_id,
+    is_word_vector_id,
+    is_line_vector_id,
+)
 
 # Legacy compatibility functions
 from .client.factory import (
@@ -72,6 +80,12 @@ __all__ = [
     "VectorDecisionEngine",
     "MerchantReliabilityData",
     "PatternMatcher",
+    "word_to_vector_id",
+    "line_to_vector_id",
+    "parse_word_vector_id",
+    "parse_line_vector_id",
+    "is_word_vector_id",
+    "is_line_vector_id",
     
     # Legacy compatibility
     "get_chroma_client",

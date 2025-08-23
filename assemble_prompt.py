@@ -15,7 +15,7 @@ from receipt_label.utils.chroma_client import (
 
 LOCAL_CHROMA_WORD_PATH = Path(__file__).parent / "dev.word_chroma"
 LOCAL_CHROMA_LINE_PATH = Path(__file__).parent / "dev.line_chroma"
-LABEL_TO_VALIDATE = "DATE"
+LABEL_TO_VALIDATE = "GRAND_TOTAL"
 
 
 def _labels_for_word(
