@@ -1,0 +1,79 @@
+# Layer Version Configuration
+#
+# This file defines the target versions for Lambda layers.
+# The script will update all Lambda functions to use these specific versions.
+#
+# Configuration format:
+#   layers:
+#     layer-name:
+#       version: target_version_number
+#       description: Optional description of the layer
+#       compatible_runtimes: List of compatible Python runtimes
+#
+# Layer names should match the layer names in AWS (without the stack suffix)
+# For example: if your layer is named "receipt-dynamo-dev", use "receipt-dynamo"
+
+layers:
+  # DynamoDB operations layer
+  receipt-dynamo:
+    version: 1  # Update this to the desired version number
+    description: "DynamoDB layer for receipt-dynamo operations"
+    compatible_runtimes:
+      - "python3.12"
+    
+  # ML labeling and processing layer  
+  receipt-label:
+    version: 1  # Update this to the desired version number
+    description: "Label layer for receipt-label ML operations"
+    compatible_runtimes:
+      - "python3.12"
+      
+  # Upload and OCR processing layer
+  receipt-upload:
+    version: 1  # Update this to the desired version number
+    description: "Upload layer for receipt-upload OCR operations"
+    compatible_runtimes:
+      - "python3.12"
+
+# Global settings
+settings:
+  # AWS region where layers are deployed
+  aws_region: "us-east-1"
+  
+  # Default AWS account ID (will be auto-detected if not specified)
+  aws_account_id: null
+  
+  # Backup settings
+  backup_retention_days: 30
+  
+  # Validation settings
+  validate_layer_exists: true  # Check if layer version exists in AWS before updating
+  
+  # Stack-specific overrides (optional)
+  stack_overrides:
+    dev:
+      # Development-specific layer versions
+      receipt-dynamo:
+        version: 2  # Dev might use a newer version for testing
+    prod:
+      # Production versions - use stable versions
+      receipt-dynamo:
+        version: 1
+      receipt-label:
+        version: 1
+      receipt-upload:
+        version: 1
+
+# Example of how to add new layers:
+#   my-new-layer:
+#     version: 1
+#     description: "Description of the new layer"
+#     compatible_runtimes:
+#       - "python3.12"
+
+# Notes:
+# - Layer names are matched against actual AWS layer names
+# - Version numbers must be positive integers
+# - The script will automatically handle layer ARN construction
+# - Stack-specific overrides take precedence over global settings
+# - Use dry-run mode first to see what changes would be made
