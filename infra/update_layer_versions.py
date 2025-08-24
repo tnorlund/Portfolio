@@ -24,6 +24,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import subprocess
 import sys
 from datetime import datetime
@@ -55,7 +56,7 @@ class LayerVersionUpdater:
         """
         # Validate stack name to prevent path traversal
         if not re.match(r'^[a-zA-Z0-9_-]+$', stack_name):
-            raise ValueError(f"Invalid stack name: {stack_name}")
+            raise ValueError(f"Invalid stack name: {stack_name}. Must contain only alphanumeric characters, hyphens, and underscores.")
         
         self.stack_name = stack_name
         self.config_path = config_path
@@ -64,6 +65,9 @@ class LayerVersionUpdater:
 
         # Load configuration
         self.config = self._load_config()
+        self._validate_config()
+        
+        # Process configuration
         self.settings = self.config.get("settings", {}) or {}
         base_layers = self.config.get("layers", {}) or {}
         stack_overrides = (self.config.get("stack_overrides", {}) or {}).get(self.stack_name, {}) or {}
@@ -89,13 +93,45 @@ class LayerVersionUpdater:
             with open(self.config_path, "r") as f:
                 config = yaml.safe_load(f)
                 logger.info(f"Loaded configuration from {self.config_path}")
-                return config
+                return config or {}
         except FileNotFoundError:
             logger.error(f"Configuration file not found: {self.config_path}")
             sys.exit(1)
         except yaml.YAMLError as e:
             logger.error(f"Error parsing configuration file: {e}")
             sys.exit(1)
+
+    def _validate_config(self) -> None:
+        """Validate the loaded configuration structure."""
+        required_fields = ['layers']
+        for field in required_fields:
+            if field not in self.config:
+                raise ValueError(f"Missing required field in config: {field}")
+        
+        # Validate layer configurations
+        layers = self.config.get('layers', {})
+        for layer_name, layer_config in layers.items():
+            if not isinstance(layer_config, dict):
+                raise ValueError(f"Layer '{layer_name}' must be a dictionary")
+            
+            version = layer_config.get('version')
+            if not isinstance(version, int) or version < 1:
+                raise ValueError(f"Invalid version for layer '{layer_name}': must be a positive integer")
+        
+        # Validate stack overrides if present
+        stack_overrides = self.config.get('stack_overrides', {})
+        if stack_overrides:
+            for stack, overrides in stack_overrides.items():
+                if not isinstance(overrides, dict):
+                    raise ValueError(f"Stack overrides for '{stack}' must be a dictionary")
+                
+                for layer_name, layer_config in overrides.items():
+                    if not isinstance(layer_config, dict):
+                        raise ValueError(f"Layer override '{layer_name}' in stack '{stack}' must be a dictionary")
+                    
+                    version = layer_config.get('version')
+                    if not isinstance(version, int) or version < 1:
+                        raise ValueError(f"Invalid version for layer '{layer_name}' in stack '{stack}': must be a positive integer")
 
     def _validate_layer_arn(self, arn: str) -> bool:
         """
@@ -124,14 +160,19 @@ class LayerVersionUpdater:
 
         Returns:
             Complete layer ARN
+            
+        Raises:
+            ValueError: If region or account_id cannot be determined
         """
         region = region or self.aws_region
         account_id = account_id or self.aws_account_id
+        
         if not region or not account_id:
             raise ValueError(
                 "Cannot build layer ARN: missing region/account_id. "
                 "Provide settings.aws_region and settings.aws_account_id or configure AWS credentials."
             )
+        
         return f"arn:aws:lambda:{region}:{account_id}:layer:{layer_name}:{version}"
 
     def _parse_layer_arn(self, arn: str) -> Dict[str, str]:
@@ -171,19 +212,18 @@ class LayerVersionUpdater:
 
         logger.info(f"Exporting stack state for {self.stack_name}")
         try:
-            subprocess.run(
-                [
-                    "pulumi", "stack", "export",
-                    "--stack", self.stack_name,
-                    "--show-secrets",
-                    "--file", str(backup_file),
-                ],
-                check=True,
-            )
+            subprocess.run([
+                "pulumi", "stack", "export", 
+                "--stack", self.stack_name,
+                "--show-secrets", "--file", str(backup_file)
+            ], cwd=Path.cwd(), check=True)
             logger.info(f"State exported to: {backup_file}")
             return str(backup_file)
-        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        except subprocess.CalledProcessError as e:
             logger.error(f"Failed to export stack state: {e}")
+            raise
+        except FileNotFoundError:
+            logger.error("Pulumi CLI not found. Please install Pulumi.")
             raise
 
     def load_state_from_file(self, file_path: str) -> Dict[str, Any]:
@@ -337,13 +377,17 @@ class LayerVersionUpdater:
         """
         logger.info(f"Importing state for stack {self.stack_name}")
         try:
-            subprocess.run(
-                ["pulumi", "stack", "import", "--stack", self.stack_name, "--file", str(file_path)],
-                check=True,
-            )
+            subprocess.run([
+                "pulumi", "stack", "import",
+                "--stack", self.stack_name,
+                "--file", file_path
+            ], cwd=Path.cwd(), check=True)
             logger.info("State import completed")
-        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        except subprocess.CalledProcessError as e:
             logger.error(f"Failed to import stack state: {e}")
+            raise
+        except FileNotFoundError:
+            logger.error("Pulumi CLI not found. Please install Pulumi.")
             raise
 
     def sync_with_aws(self, changes: List[str], dry_run: bool = True) -> None:

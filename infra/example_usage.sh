@@ -12,22 +12,22 @@ echo "======================================="
 # Example 1: Dry run to see what would change
 echo ""
 echo "1. Dry-run to preview changes:"
-echo "python update_layer_versions.py --config layer_config.yaml --stack dev --dry-run"
+echo "python \"$DIR/update_layer_versions.py\" --config \"$DIR/layer_config.yaml\" --stack dev --dry-run"
 echo ""
 
 # Example 2: Update development stack
 echo "2. Update development stack:"
-echo "python update_layer_versions.py --config layer_config.yaml --stack dev"
+echo "python \"$DIR/update_layer_versions.py\" --config \"$DIR/layer_config.yaml\" --stack dev"
 echo ""
 
 # Example 3: Update production with AWS sync
 echo "3. Update production with AWS synchronization:"
-echo "python update_layer_versions.py --config layer_config.yaml --stack prod --sync-aws"
+echo "python \"$DIR/update_layer_versions.py\" --config \"$DIR/layer_config.yaml\" --stack prod --sync-aws"
 echo ""
 
 # Example 4: Verbose output for debugging
 echo "4. Verbose output for debugging:"
-echo "python update_layer_versions.py --config layer_config.yaml --stack dev --dry-run --verbose"
+echo "python \"$DIR/update_layer_versions.py\" --config \"$DIR/layer_config.yaml\" --stack dev --dry-run --verbose"
 echo ""
 
 # Example 5: Quick test of current config
