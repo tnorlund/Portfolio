@@ -4,6 +4,7 @@
 #
 
 set -e
+DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "🚀 Lambda Layer Version Update Examples"
 echo "======================================="
@@ -31,11 +32,11 @@ echo ""
 
 # Example 5: Quick test of current config
 echo "5. Test current configuration (dry-run):"
-if [ -f "layer_config.yaml" ]; then
+if [ -f "$DIR/layer_config.yaml" ]; then
     echo "Running test with current configuration..."
-    python update_layer_versions.py --config layer_config.yaml --stack dev --dry-run --verbose
+    python "$DIR/update_layer_versions.py" --config "$DIR/layer_config.yaml" --stack dev --dry-run --verbose
 else
-    echo "❌ layer_config.yaml not found. Please create it first."
+    echo "❌ $DIR/layer_config.yaml not found. Please create it first."
 fi
 
 echo ""

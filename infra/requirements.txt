@@ -3,3 +3,5 @@ pulumi-aws==7.1.0
 pulumi-command==1.1.0
 pulumi-docker==4.8.0
 pulumi-docker-build==0.0.12
+boto3>=1.26.0
+pyyaml>=6.0

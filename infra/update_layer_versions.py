@@ -19,16 +19,16 @@ Features:
 """
 
 import argparse
+import copy
 import json
 import logging
 import os
 import re
-import shutil
+import subprocess
 import sys
-import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Tuple
 
 import boto3
 import yaml
@@ -53,6 +53,10 @@ class LayerVersionUpdater:
             config_path: Path to the layer configuration file
             stack_name: Pulumi stack name (dev or prod)
         """
+        # Validate stack name to prevent path traversal
+        if not re.match(r'^[a-zA-Z0-9_-]+$', stack_name):
+            raise ValueError(f"Invalid stack name: {stack_name}")
+        
         self.stack_name = stack_name
         self.config_path = config_path
         self.backup_dir = Path("backups")
@@ -60,18 +64,24 @@ class LayerVersionUpdater:
 
         # Load configuration
         self.config = self._load_config()
-        self.layer_mappings = self.config.get("layers", {})
+        self.settings = self.config.get("settings", {}) or {}
+        base_layers = self.config.get("layers", {}) or {}
+        stack_overrides = (self.config.get("stack_overrides", {}) or {}).get(self.stack_name, {}) or {}
+        # Merge base and overrides (overrides win)
+        self.layer_mappings = {**base_layers, **stack_overrides}
 
-        # Initialize AWS client
+        # Initialize AWS client/metadata
+        cfg_region = self.settings.get("aws_region")
+        cfg_account = self.settings.get("aws_account_id")
         try:
-            self.lambda_client = boto3.client("lambda")
-            self.aws_account_id = boto3.client("sts").get_caller_identity()["Account"]
-            self.aws_region = self.lambda_client.meta.region_name
+            self.lambda_client = boto3.client("lambda", region_name=cfg_region)
+            self.aws_account_id = cfg_account or boto3.client("sts").get_caller_identity()["Account"]
+            self.aws_region = cfg_region or self.lambda_client.meta.region_name
         except (NoCredentialsError, ClientError) as e:
             logger.warning(f"AWS credentials not configured: {e}")
             self.lambda_client = None
-            self.aws_account_id = None
-            self.aws_region = None
+            self.aws_account_id = cfg_account
+            self.aws_region = cfg_region
 
     def _load_config(self) -> Dict[str, Any]:
         """Load layer configuration from YAML file."""
@@ -115,8 +125,13 @@ class LayerVersionUpdater:
         Returns:
             Complete layer ARN
         """
-        region = region or self.aws_region or "us-east-1"
-        account_id = account_id or self.aws_account_id or "123456789012"
+        region = region or self.aws_region
+        account_id = account_id or self.aws_account_id
+        if not region or not account_id:
+            raise ValueError(
+                "Cannot build layer ARN: missing region/account_id. "
+                "Provide settings.aws_region and settings.aws_account_id or configure AWS credentials."
+            )
         return f"arn:aws:lambda:{region}:{account_id}:layer:{layer_name}:{version}"
 
     def _parse_layer_arn(self, arn: str) -> Dict[str, str]:
@@ -130,17 +145,18 @@ class LayerVersionUpdater:
             Dictionary with ARN components
         """
         parts = arn.split(":")
-        if len(parts) != 7:
+        # Expected: arn:aws:lambda:<region>:<account_id>:layer:<layer_name>:<version>
+        if len(parts) != 8 or parts[5] != "layer":
             raise ValueError(f"Invalid layer ARN format: {arn}")
 
         return {
-            "partition": parts[1],
-            "service": parts[2],
+            "partition": parts[1],    # aws
+            "service": parts[2],      # lambda
             "region": parts[3],
             "account_id": parts[4],
-            "resource_type": parts[5],
+            "resource_type": parts[5],  # layer
             "layer_name": parts[6],
-            "version": parts[7] if len(parts) > 7 else None,
+            "version": parts[7],
         }
 
     def export_stack_state(self) -> str:
@@ -155,13 +171,18 @@ class LayerVersionUpdater:
 
         logger.info(f"Exporting stack state for {self.stack_name}")
         try:
-            os.system(
-                f"cd {Path.cwd()} && pulumi stack export --stack {self.stack_name} "
-                f"--show-secrets --file {backup_file}"
+            subprocess.run(
+                [
+                    "pulumi", "stack", "export",
+                    "--stack", self.stack_name,
+                    "--show-secrets",
+                    "--file", str(backup_file),
+                ],
+                check=True,
             )
             logger.info(f"State exported to: {backup_file}")
             return str(backup_file)
-        except Exception as e:
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
             logger.error(f"Failed to export stack state: {e}")
             raise
 
@@ -197,8 +218,12 @@ class LayerVersionUpdater:
         """
         lambda_resources = []
         
-        # Navigate through the state structure
-        resources = state.get("checkpoint", {}).get("latest", {}).get("resources", [])
+        # Navigate through the state structure (Pulumi v3+ exports)
+        resources = (
+            state.get("deployment", {}).get("resources")
+            or state.get("checkpoint", {}).get("latest", {}).get("resources", [])
+            or []
+        )
         
         for resource in resources:
             if resource.get("type") == "aws:lambda/function:Function":
@@ -221,7 +246,7 @@ class LayerVersionUpdater:
             Tuple of (updated_state, list_of_changes)
         """
         changes = []
-        updated_state = state.copy() if not dry_run else state
+        updated_state = copy.deepcopy(state) if not dry_run else state
         
         lambda_resources = self.find_lambda_resources(state)
         
@@ -312,12 +337,12 @@ class LayerVersionUpdater:
         """
         logger.info(f"Importing state for stack {self.stack_name}")
         try:
-            os.system(
-                f"cd {Path.cwd()} && pulumi stack import --stack {self.stack_name} "
-                f"--file {file_path}"
+            subprocess.run(
+                ["pulumi", "stack", "import", "--stack", self.stack_name, "--file", str(file_path)],
+                check=True,
             )
             logger.info("State import completed")
-        except Exception as e:
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
             logger.error(f"Failed to import stack state: {e}")
             raise
 
@@ -348,7 +373,9 @@ class LayerVersionUpdater:
                             Resource=function["FunctionArn"]
                         ).get("Tags", {})
                         
-                        if tags.get("environment") != self.stack_name:
+                        tag_key = self.settings.get("tag_key", "environment")
+                        stack_match = tags.get(tag_key) == self.stack_name or tags.get("pulumi:stack") == self.stack_name
+                        if not stack_match:
                             continue
                             
                     except ClientError:
