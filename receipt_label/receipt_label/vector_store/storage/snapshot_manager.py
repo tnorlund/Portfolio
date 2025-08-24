@@ -25,6 +25,26 @@ class SnapshotManager:
     This class provides a convenient interface for creating snapshots,
     uploading them to S3, downloading and restoring them, and managing
     snapshot lifecycle.
+    
+    DEPRECATION NOTICE for client-side usage:
+    For client-side snapshot downloading and restoration, use the new
+    ChromaDBSnapshotClient instead, which provides:
+    - Proper S3 path structure alignment with infrastructure
+    - Hash verification using existing .snapshot_hash files
+    - Better error handling and retry logic
+    
+    SnapshotManager should primarily be used for infrastructure operations
+    like compaction and snapshot creation.
+    
+    Example migration:
+        # OLD (deprecated for clients):
+        manager = SnapshotManager(bucket, prefix)
+        manager.restore_snapshot(collection, local_dir)
+        
+        # NEW (recommended for clients):
+        from receipt_label.vector_store import ChromaDBSnapshotClient, ChromaDBCollection
+        client = ChromaDBSnapshotClient(bucket)
+        client.download_collection_snapshot(ChromaDBCollection.WORDS, local_dir)
     """
 
     def __init__(
@@ -223,6 +243,11 @@ class SnapshotManager:
     ) -> Dict[str, Any]:
         """
         Restore a vector store collection from a snapshot.
+        
+        DEPRECATED for client-side usage:
+        This method has S3 path construction issues and doesn't align with
+        the actual infrastructure. For client-side snapshot downloading,
+        use ChromaDBSnapshotClient instead.
 
         Args:
             collection_name: Name of the collection to restore
@@ -240,6 +265,16 @@ class SnapshotManager:
         Raises:
             RuntimeError: If restoration fails
         """
+        # Issue deprecation warning for client-side usage
+        import warnings
+        warnings.warn(
+            "SnapshotManager.restore_snapshot() is deprecated for client-side usage. "
+            "Use ChromaDBSnapshotClient.download_collection_snapshot() instead for "
+            "proper S3 path structure and hash verification.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        
         result = {
             "status": "success",
             "collection_name": collection_name,

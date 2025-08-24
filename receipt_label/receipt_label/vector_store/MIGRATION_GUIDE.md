@@ -85,12 +85,32 @@ upload_snapshot_with_hash(local_dir, bucket, prefix, collection)
 hash_result = calculate_chromadb_hash(directory)
 ```
 
-**New Way:**
+**New Way (Client-Side Downloads):**
 ```python
-# Organized classes
+# For client applications downloading snapshots
+from receipt_label.vector_store import ChromaDBSnapshotClient, ChromaDBCollection
+
+# Infrastructure-aligned client with hash verification
+client = ChromaDBSnapshotClient(bucket_name="my-bucket")
+result = client.download_collection_snapshot(
+    collection=ChromaDBCollection.WORDS,
+    local_directory="/tmp/chroma",
+    verify_hash=True
+)
+
+# Fast sync verification without downloading
+sync_result = client.verify_collection_sync(
+    collection=ChromaDBCollection.WORDS,
+    local_directory="/tmp/chroma"
+)
+```
+
+**New Way (Infrastructure/Server-Side):**
+```python
+# For infrastructure operations (compaction, snapshot creation)
 from receipt_label.vector_store import SnapshotManager, HashCalculator
 
-# High-level operations
+# High-level operations (primarily for infrastructure)
 manager = SnapshotManager(bucket="my-bucket", s3_prefix="snapshots/")
 snapshot_result = manager.create_snapshot(
     vector_client=client,
@@ -98,7 +118,7 @@ snapshot_result = manager.create_snapshot(
     upload_to_s3=True
 )
 
-# Or lower-level operations
+# Hash calculations
 calculator = HashCalculator()
 hash_result = calculator.calculate_directory_hash(directory)
 ```

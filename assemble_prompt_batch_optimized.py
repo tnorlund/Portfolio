@@ -32,7 +32,6 @@ from receipt_label.constants import CORE_LABELS
 
 from receipt_label.vector_store import (
     VectorClient,
-    SnapshotManager,
     ChromaDBClient,
     word_to_vector_id,
 )
@@ -238,12 +237,37 @@ class BatchedPromptAssembler:
 
         logger.info("Querying %d embeddings from ChromaDB", len(chroma_ids))
 
-        # Batch retrieve from ChromaDB
-        response = self.chroma_client.get_by_ids(
-            collection_name="words",
-            ids=chroma_ids,
-            include=["embeddings", "documents", "metadatas"],
-        )
+        try:
+            # Check what collections exist first
+            available_collections = self.chroma_client.list_collections()
+            if "words" not in available_collections:
+                logger.error("Collection 'words' not found!")
+                logger.error("Available collections: %s", available_collections if available_collections else "None")
+                if not available_collections:
+                    logger.error("The ChromaDB appears to be empty. Try re-downloading the snapshot.")
+                else:
+                    logger.error("Consider using one of the available collections or check collection naming.")
+                return {}
+
+            # Batch retrieve from ChromaDB
+            response = self.chroma_client.get_by_ids(
+                collection_name="words",
+                ids=chroma_ids,
+                include=["embeddings", "documents", "metadatas"],
+            )
+        except Exception as e:
+            logger.error("ChromaDB access error: %s", e)
+            logger.error("Attempting to list available collections...")
+            try:
+                collections = self.chroma_client.list_collections()
+                logger.error("Available collections: %s", collections if collections else "None")
+                if not collections:
+                    logger.error("ChromaDB database exists but contains no collections.")
+                    logger.error("This suggests the snapshot was not properly restored.")
+                    logger.error("Try deleting 'dev.word_chroma' directory and re-running the script.")
+            except Exception as list_error:
+                logger.error("Could not list collections: %s", list_error)
+            return {}
 
         # Create lookup map
         embeddings_map = {}
@@ -526,37 +550,76 @@ def analyze_label_similarity(
 
 
 def ensure_chroma_snapshots(pulumi_env: Dict) -> None:
-    """Ensure ChromaDB snapshots exist locally, downloading from S3 if needed."""
+    """Ensure ChromaDB snapshots exist locally using infrastructure-aligned client."""
     chroma_s3_bucket = pulumi_env.get("embedding_chromadb_bucket_name")
     if not chroma_s3_bucket:
         raise ValueError(
             "ChromaDB bucket name not found in Pulumi environment"
         )
 
-    # Setup snapshot managers for both collections
-    word_snapshot_manager = SnapshotManager(
-        bucket_name=chroma_s3_bucket, s3_prefix="words/snapshot/latest/"
-    )
-
     # Check and restore word embeddings
     if not LOCAL_CHROMA_WORD_PATH.exists() or not any(
         LOCAL_CHROMA_WORD_PATH.iterdir()
     ):
-        logger.info("Downloading word embeddings from S3...")
+        logger.info("Downloading word embeddings using infrastructure-aligned client...")
+        
         try:
-            word_snapshot_manager.restore_snapshot(
-                collection_name="words",
+            # Use the new infrastructure-aligned snapshot client
+            from receipt_label.vector_store.client.snapshot_client import (
+                ChromaDBSnapshotClient, 
+                ChromaDBCollection
+            )
+            
+            # Create snapshot client
+            snapshot_client = ChromaDBSnapshotClient(bucket_name=chroma_s3_bucket)
+            
+            # Download words collection snapshot with hash verification
+            result = snapshot_client.download_collection_snapshot(
+                collection=ChromaDBCollection.WORDS,
                 local_directory=str(LOCAL_CHROMA_WORD_PATH),
-                download_from_s3=True,
-                create_client=False,
-                verify_hash=False,
+                verify_hash=True,  # Use infrastructure hash verification
+                hash_algorithm="md5"
             )
-            logger.info("Successfully downloaded word embeddings")
+            
+            if result["status"] == "downloaded":
+                logger.info("Successfully downloaded and verified word embeddings")
+                logger.info("Hash verification: %s", result.get("hash_verified", "unknown"))
+                
+                # The infrastructure functions already verify collection exists
+                if "collection_count" in result:
+                    logger.info("Collection contains %d items", result["collection_count"])
+                    
+            else:
+                logger.error("Failed to download snapshot: %s", result.get("error", "unknown"))
+                raise ValueError(f"Snapshot download failed: {result.get('error', 'unknown')}")
+                
+        except ImportError as e:
+            logger.error("Failed to import snapshot client: %s", e)
+            logger.error("Falling back to VectorClient approach...")
+            
+            # Fallback to existing VectorClient method if snapshot client unavailable
+            try:
+                from receipt_label.vector_store import VectorClient
+                client = VectorClient.create_chromadb_client(
+                    persist_directory=str(LOCAL_CHROMA_WORD_PATH),
+                    mode="read",
+                    metadata_only=True,
+                )
+                # This will attempt to download if not present
+                collections = client.list_collections()
+                if "words" in collections:
+                    logger.info("Fallback successful - words collection available")
+                else:
+                    raise ValueError(f"Words collection not found. Available: {collections}")
+                    
+            except Exception as fallback_error:
+                logger.error("Fallback also failed: %s", fallback_error)
+                raise
+                
         except Exception as e:
-            logger.warning(
-                "Could not download word embeddings using SnapshotManager: %s",
-                e,
-            )
+            logger.error("Failed to download word embeddings: %s", e)
+            logger.error("Try manually deleting the 'dev.word_chroma' directory and re-running")
+            raise
 
 
 def main():

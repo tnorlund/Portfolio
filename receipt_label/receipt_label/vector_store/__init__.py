@@ -28,6 +28,7 @@ Usage:
 from .client.factory import VectorClient
 from .client.base import VectorStoreInterface
 from .client.chromadb_client import ChromaDBClient
+from .client.snapshot_client import ChromaDBSnapshotClient, ChromaDBCollection
 
 # Storage operations
 from .storage.snapshot_manager import SnapshotManager
@@ -65,6 +66,8 @@ __all__ = [
     "VectorClient", 
     "VectorStoreInterface",
     "ChromaDBClient",
+    "ChromaDBSnapshotClient",
+    "ChromaDBCollection",
     
     # Storage operations
     "SnapshotManager",
