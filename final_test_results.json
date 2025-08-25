@@ -1,0 +1,297 @@
+{
+  "report_date": "2025-08-24T21:47:56.375920",
+  "analysis_period_days": 30,
+  "overall_stats": {
+    "total_labels": 2154,
+    "status_distribution": {
+      "VALID": 1185,
+      "INVALID": 531,
+      "NEEDS_REVIEW": 296,
+      "NONE": 142
+    },
+    "label_type_distribution": {
+      "MERCHANT_NAME": 380,
+      "LINE_TOTAL": 341,
+      "GRAND_TOTAL": 223,
+      "PRODUCT_NAME": 181,
+      "UNIT_PRICE": 158,
+      "PHONE_NUMBER": 123,
+      "SUBTOTAL": 121,
+      "QUANTITY": 99,
+      "DISCOUNT": 76,
+      "PAYMENT_METHOD": 75,
+      "COUPON": 70,
+      "LOYALTY_ID": 49,
+      "ADDRESS_LINE": 44,
+      "OTHER": 44,
+      "TAX": 42,
+      "WEBSITE": 21,
+      "TIME": 18,
+      "STORE_HOURS": 17,
+      "NONE": 16,
+      "TEXT": 14
+    },
+    "recent_langchain_changes": 0,
+    "recent_changes_sample": [],
+    "analysis_date": "2025-08-24T21:47:58.260722"
+  },
+  "label_analysis": {
+    "GRAND_TOTAL": {
+      "distribution": {
+        "total_labels": 588,
+        "status_distribution": {
+          "INVALID": 166,
+          "NONE": 56,
+          "VALID": 366
+        },
+        "label_type_distribution": {
+          "GRAND_TOTAL": 588
+        },
+        "recent_langchain_changes": 1,
+        "recent_changes_sample": [
+          {
+            "label": "GRAND_TOTAL",
+            "status": "INVALID",
+            "reasoning": "The label \u2018GRAND_TOTAL\u2019 is intended to be assigned to the numeric value that represents the final amount due, such as \"14.10\". In the receipt context the word \u2018USD$\u2019 is merely a currency symbol or part of the formatting of the line that contains the total. It does not convey any amount itself, nor does it indicate a total; therefore applying the GRAND_TOTAL label to \u2018USD$\u2019 is incorrect. The correct token for the label would be the following word on the same line, namely the value \"14.10\", which actually represents the final total. Hence the label on \u2018USD$\u2019 should be marked INVALID.",
+            "timestamp": "2025-08-24T21:33:35.886033",
+            "proposed_by": "langchain_validation_batch"
+          }
+        ],
+        "analysis_date": "2025-08-24T21:47:58.489207"
+      },
+      "accuracy": {
+        "label_type": "GRAND_TOTAL",
+        "valid_count": 16,
+        "invalid_count": 10,
+        "needs_review_count": 0,
+        "total_analyzed": 26,
+        "accuracy_rate": 0.6153846153846154,
+        "rejection_rate": 0.38461538461538464,
+        "review_rate": 0.0,
+        "sample_invalid_reasoning": [
+          "The label \u2018GRAND_TOTAL\u2019 is intended to be assigned to the numeric value that represents the final am"
+        ],
+        "analysis_date": "2025-08-24T21:47:58.835029"
+      },
+      "changes": {
+        "analysis_period_days": 30,
+        "total_langchain_processed": 1,
+        "change_patterns": {
+          "Marked_Invalid": 1
+        },
+        "reasoning_keywords": {
+          "context_based": 1,
+          "amount_related": 1
+        },
+        "validation_quality": {
+          "total_processed": 1,
+          "with_reasoning": 1,
+          "avg_reasoning_length": 588.0,
+          "common_rejection_reasons": {
+            "Incorrect_Label": 1
+          }
+        },
+        "analysis_date": "2025-08-24T21:47:59.046246"
+      }
+    },
+    "DATE": {
+      "distribution": {
+        "total_labels": 52,
+        "status_distribution": {
+          "VALID": 11,
+          "INVALID": 35,
+          "NONE": 6
+        },
+        "label_type_distribution": {
+          "DATE": 52
+        },
+        "recent_langchain_changes": 1,
+        "recent_changes_sample": [
+          {
+            "label": "DATE",
+            "status": "VALID",
+            "reasoning": "The word '05/09/2024' appears in the receipt line that is clearly part of the transaction record section. Its format matches the standard MM/DD/YYYY date notation used throughout the document, and similar date entries such as '04/30/2024' are present elsewhere on the receipt. There is no indication that this string serves another purpose (e.g., a product code or phone number). Therefore, labeling it as a DATE is correct.",
+            "timestamp": "2025-08-24T21:47:47.302264",
+            "proposed_by": "langchain_validation_batch"
+          }
+        ],
+        "analysis_date": "2025-08-24T21:47:59.171605"
+      },
+      "accuracy": {
+        "label_type": "DATE",
+        "valid_count": 5,
+        "invalid_count": 16,
+        "needs_review_count": 0,
+        "total_analyzed": 21,
+        "accuracy_rate": 0.23809523809523808,
+        "rejection_rate": 0.7619047619047619,
+        "review_rate": 0.0,
+        "sample_invalid_reasoning": [
+          "The text provides the date of the transaction in the format 'Day, Month Date, Year Time', clearly in",
+          "The text provides the date of the transaction in the format 'Day, Month Date, Year Time', clearly in",
+          "Indicates the timeframe for the promotion, valid from 'September 23' to 'September 29' (Partial matc",
+          "Indicates the timeframe for the promotion, valid from 'September 23' to 'September 29' (Partial matc",
+          "Provides the date of the transaction: September 22, 2024 (Partial match confidence: 1.00)"
+        ],
+        "analysis_date": "2025-08-24T21:47:59.524339"
+      },
+      "changes": {
+        "analysis_period_days": 30,
+        "total_langchain_processed": 1,
+        "change_patterns": {
+          "Confirmed_Valid": 1
+        },
+        "reasoning_keywords": {},
+        "validation_quality": {
+          "total_processed": 1,
+          "with_reasoning": 1,
+          "avg_reasoning_length": 424.0,
+          "common_rejection_reasons": {}
+        },
+        "analysis_date": "2025-08-24T21:47:59.638437"
+      }
+    },
+    "MERCHANT_NAME": {
+      "distribution": {
+        "total_labels": 993,
+        "status_distribution": {
+          "VALID": 536,
+          "INVALID": 417,
+          "NONE": 40
+        },
+        "label_type_distribution": {
+          "MERCHANT_NAME": 993
+        },
+        "recent_langchain_changes": 0,
+        "recent_changes_sample": [],
+        "analysis_date": "2025-08-24T21:47:59.895570"
+      },
+      "accuracy": {
+        "label_type": "MERCHANT_NAME",
+        "valid_count": 33,
+        "invalid_count": 20,
+        "needs_review_count": 0,
+        "total_analyzed": 53,
+        "accuracy_rate": 0.6226415094339622,
+        "rejection_rate": 0.37735849056603776,
+        "review_rate": 0.0,
+        "sample_invalid_reasoning": [],
+        "analysis_date": "2025-08-24T21:48:00.235777"
+      },
+      "changes": {
+        "analysis_period_days": 30,
+        "total_langchain_processed": 0,
+        "change_patterns": {},
+        "reasoning_keywords": {},
+        "validation_quality": {
+          "total_processed": 0,
+          "with_reasoning": 0,
+          "avg_reasoning_length": 0,
+          "common_rejection_reasons": {}
+        },
+        "analysis_date": "2025-08-24T21:48:00.472772"
+      }
+    },
+    "PRODUCT_NAME": {
+      "distribution": {
+        "total_labels": 456,
+        "status_distribution": {
+          "VALID": 224,
+          "NEEDS_REVIEW": 217,
+          "NONE": 15
+        },
+        "label_type_distribution": {
+          "PRODUCT_NAME": 456
+        },
+        "recent_langchain_changes": 0,
+        "recent_changes_sample": [],
+        "analysis_date": "2025-08-24T21:48:00.690329"
+      },
+      "accuracy": {
+        "label_type": "PRODUCT_NAME",
+        "valid_count": 3,
+        "invalid_count": 0,
+        "needs_review_count": 79,
+        "total_analyzed": 82,
+        "accuracy_rate": 0.036585365853658534,
+        "rejection_rate": 0.0,
+        "review_rate": 0.9634146341463414,
+        "sample_invalid_reasoning": [],
+        "analysis_date": "2025-08-24T21:48:01.091977"
+      },
+      "changes": {
+        "analysis_period_days": 30,
+        "total_langchain_processed": 0,
+        "change_patterns": {},
+        "reasoning_keywords": {},
+        "validation_quality": {
+          "total_processed": 0,
+          "with_reasoning": 0,
+          "avg_reasoning_length": 0,
+          "common_rejection_reasons": {}
+        },
+        "analysis_date": "2025-08-24T21:48:01.226611"
+      }
+    },
+    "LINE_TOTAL": {
+      "distribution": {
+        "total_labels": 893,
+        "status_distribution": {
+          "VALID": 694,
+          "NONE": 36,
+          "INVALID": 163
+        },
+        "label_type_distribution": {
+          "LINE_TOTAL": 893
+        },
+        "recent_langchain_changes": 0,
+        "recent_changes_sample": [],
+        "analysis_date": "2025-08-24T21:48:01.466222"
+      },
+      "accuracy": {
+        "label_type": "LINE_TOTAL",
+        "valid_count": 38,
+        "invalid_count": 5,
+        "needs_review_count": 0,
+        "total_analyzed": 43,
+        "accuracy_rate": 0.8837209302325582,
+        "rejection_rate": 0.11627906976744186,
+        "review_rate": 0.0,
+        "sample_invalid_reasoning": [],
+        "analysis_date": "2025-08-24T21:48:01.782747"
+      },
+      "changes": {
+        "analysis_period_days": 30,
+        "total_langchain_processed": 0,
+        "change_patterns": {},
+        "reasoning_keywords": {},
+        "validation_quality": {
+          "total_processed": 0,
+          "with_reasoning": 0,
+          "avg_reasoning_length": 0,
+          "common_rejection_reasons": {}
+        },
+        "analysis_date": "2025-08-24T21:48:02.113269"
+      }
+    }
+  },
+  "validation_trends": {
+    "analysis_period_days": 30,
+    "total_langchain_processed": 0,
+    "change_patterns": {},
+    "reasoning_keywords": {},
+    "validation_quality": {
+      "total_processed": 0,
+      "with_reasoning": 0,
+      "avg_reasoning_length": 0,
+      "common_rejection_reasons": {}
+    },
+    "analysis_date": "2025-08-24T21:48:02.701099"
+  },
+  "quality_metrics": {
+    "total_labels_in_system": 2154,
+    "langchain_processed_count": 0,
+    "langchain_coverage_rate": 0.0,
+    "avg_processing_quality": 0
+  }
+}

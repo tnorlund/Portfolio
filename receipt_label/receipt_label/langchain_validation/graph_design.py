@@ -6,14 +6,27 @@ This version prepares all context OUTSIDE the graph, so the graph
 only handles LLM validation. This minimizes Ollama API calls.
 """
 
+import json
+import os
+import re
+import traceback
 from typing import TypedDict, List, Optional, Any, Dict, cast
-from langchain_core.messages import HumanMessage, SystemMessage
+
+from dotenv import load_dotenv
+from langchain_core.messages import HumanMessage
 from langchain_ollama import ChatOllama
 from langgraph.graph import StateGraph, END
+from pydantic import ValidationError
 
-import os
+from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.entities import ReceiptLine
+from receipt_label.completion._format_prompt import (
+    _format_receipt_lines,
+    CORE_LABELS,
+)
+from receipt_label.utils import get_client_manager
 
-from .models import ValidationResult, ValidationResponse
+from .validation_tool import ValidationResult, ValidationResponse
 
 
 # ============================================================================
@@ -22,7 +35,7 @@ from .models import ValidationResult, ValidationResponse
 
 
 def get_quick_similar_words(
-    word_text: str, s3_bucket: str, word_embedding_id: Optional[str] = None, n_results: int = 3
+    word_text: str, word_embedding_id: Optional[str] = None, n_results: int = 3
 ) -> List[dict]:
     """
     Quick similarity lookup for a single word using the working similarity analysis approach.
@@ -38,7 +51,6 @@ def get_quick_similar_words(
     """
     try:
         from receipt_label.utils.chroma_client import ChromaDBClient
-        import os
 
         # Setup ChromaDB client - reuse working setup from our analysis script
         word_bucket = "embedding-infra-chromadb-buckets-vectors-fc18686"
@@ -46,10 +58,11 @@ def get_quick_similar_words(
 
         chroma_client = ChromaDBClient(
             persist_directory="./chroma_words_local_words_specific",
-            collection_prefix="",
             mode="read",
         )
-        collection = chroma_client.client.get_collection("receipt_words")
+        if chroma_client.client is None:
+            return []
+        collection = chroma_client.client.get_collection("words")
 
         # If we have the embedding ID, use it directly
         if not word_embedding_id:
@@ -309,6 +322,12 @@ def prepare_validation_context(
                     f"WORD#{label['word_id']:05d}#"
                     f"LABEL#{label['label']}",
                     "text": word["text"],
+                    "word_text": word["text"],  # Add this for consistency
+                    "image_id": label['image_id'],  # Add this 
+                    "receipt_id": label['receipt_id'],  # Add this
+                    "line_id": label['line_id'],  # Add this
+                    "word_id": label['word_id'],  # Add this
+                    "label": label['label'],  # Add this
                     "proposed_label": label["label"],
                     "similar_words": similar_words,
                     "invalid_attempts": invalid_label_count,  # NEW: Track failed attempts
@@ -345,37 +364,121 @@ def prepare_validation_context(
         ]
     )
 
-    # Create the validation prompt with similarity guidance and label definitions
-    prompt = f"""You are validating receipt labels. For each word, determine if the proposed label is correct based on the label definitions.
+    # Create the validation prompt using proven format from _format_prompt.py
+    from receipt_label.constants import CORE_LABELS
+    import json
+    
+    # Schema for validate_labels function (matching proven format)
+    schema = {
+        "type": "object",
+        "properties": {
+            "results": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "is_valid": {"type": "boolean"},
+                        "correct_label": {
+                            "type": "string",
+                            "enum": list(CORE_LABELS.keys()),
+                        },
+                    },
+                    "required": ["id", "is_valid"],
+                    "additionalProperties": False,
+                },
+            }
+        },
+        "required": ["results"],
+    }
+    
+    # Build targets in proven format
+    formatted_targets = []
+    for target in targets:
+        # Create unique ID matching proven format
+        target_id = (
+            f"IMAGE#{target['image_id']}#"
+            f"RECEIPT#{target['receipt_id']:05d}#" 
+            f"LINE#{target['line_id']:05d}#"
+            f"WORD#{target['word_id']:05d}#"
+            f"LABEL#{target['label']}#"
+            f"VALIDATION_STATUS#NONE"
+        )
+        formatted_targets.append({
+            "id": target_id,
+            "text": target['word_text'],
+            "line_id": target['line_id'],
+            "proposed_label": target['label'],
+        })
 
-MERCHANT: {receipt_metadata['merchant_name']}
+    prompt_lines = []
+    prompt_lines.append("### Schema")
+    prompt_lines.append("```json")
+    prompt_lines.append(json.dumps(schema, indent=2))
+    prompt_lines.append("```")
+    prompt_lines.append("")
+    
+    prompt_lines.append("### Task")
+    prompt_lines.append(
+        f'Validate these labels on one "{receipt_metadata["merchant_name"]}" receipt. '
+        "Return **only** a call to the **`validate_labels`** function with a "
+        "`results` array, and do NOT renumber the `id` field.\n"
+    )
+    
+    # Add merchant information in proven format
+    prompt_lines.append("### Merchant Information")
+    prompt_lines.append(f"🏪 Merchant: {receipt_metadata['merchant_name']}")
+    if receipt_metadata.get('merchant_category'):
+        prompt_lines.append(f"   Category: {receipt_metadata['merchant_category']}")
+    if receipt_metadata.get('address'):
+        prompt_lines.append(f"   Address: {receipt_metadata['address']}")
+    if receipt_metadata.get('phone_number'):
+        prompt_lines.append(f"   Phone: {receipt_metadata['phone_number']}")
+    if receipt_metadata.get('validation_status'):
+        prompt_lines.append(f"   Validation Status: {receipt_metadata['validation_status']}")
+    if receipt_metadata.get('matched_fields'):
+        prompt_lines.append(f"   Matched Fields: {', '.join(receipt_metadata['matched_fields'])}")
+    prompt_lines.append("")
+    prompt_lines.append("Each result object must include:")
+    prompt_lines.append('- `"id"`: the original label identifier')
+    prompt_lines.append('- `"is_valid"`: true or false')
+    prompt_lines.append('- `"correct_label"`: (only if `"is_valid": false`)')
+    
+    prompt_lines.append("### Examples (for guidance only)")
+    prompt_lines.append(
+        'SPROUTS → {"results":[{"id":"IMAGE#abc123#RECEIPT#00001#LINE#'
+        '00003#WORD#00001#LABEL#MERCHANT_NAME#VALIDATION_STATUS#NONE",'
+        '"is_valid":true}]}'
+    )
+    prompt_lines.append(
+        '4.99 → {"results":[{"id":"IMAGE#abc123#RECEIPT#00001#LINE#00010#'
+        'WORD#00002#LABEL#LINE_TOTAL#VALIDATION_STATUS#NONE","is_valid":'
+        'false,"correct_label":"UNIT_PRICE"}]}'
+    )
+    
+    prompt_lines.append("### Allowed labels")
+    prompt_lines.append(", ".join(CORE_LABELS.keys()))
+    prompt_lines.append(
+        "Only labels from the above list are valid; do NOT propose any other "
+        "label."
+    )
+    prompt_lines.append("")
+    
+    prompt_lines.append("### Targets")
+    prompt_lines.append(json.dumps(formatted_targets))
+    prompt_lines.append("")
 
-LABEL DEFINITIONS:
-{label_definitions}
+    prompt_lines.append("### Receipt")
+    prompt_lines.append(
+        "Below is the receipt for context. Each line determines the range of "
+        "line IDs\n"
+    )
+    prompt_lines.append("---")
+    prompt_lines.append(receipt_text)
+    prompt_lines.append("---")
+    prompt_lines.append("### END PROMPT — reply with JSON only ###")
 
-WORDS TO VALIDATE:
-{targets_text}
-
-RECEIPT TEXT:
-{receipt_text}
-
-VALIDATION RULES:
-- Use the label definitions above to determine if a word matches its proposed label
-- Consider the context of the word within the receipt
-- Use similar words (if provided) as guidance but not as strict rules
-- Some words may not need any label (e.g., punctuation, separators)
-- IMPORTANT: If a word has 5+ previous invalid label attempts, it likely doesn't fit any CORE_LABELS category and shouldn't be labeled
-- Words that are generic/noise (like single punctuation, random characters) shouldn't be labeled
-
-For each word, return one of these responses:
-1. Label is CORRECT: {{"id": "<id>", "is_valid": true}}
-2. Label is WRONG, here's the correct one: {{"id": "<id>", "is_valid": false, "correct_label": "<CORRECT_LABEL>"}}
-3. Word shouldn't be labeled: {{"id": "<id>", "is_valid": false}}
-
-Return ONLY a JSON array with your responses:
-[
-  {{"id": "...", "is_valid": true/false, "correct_label": "..."}}
-]"""
+    prompt = "\n".join(prompt_lines)
 
     return {
         "image_id": image_id,
@@ -495,10 +598,10 @@ def parse_llm_response(
         # Create the ValidationResponse using Pydantic
         return ValidationResponse(results=validated_results)
 
-    except (json.JSONDecodeError, ValidationError) as e:
+    except (json.JSONDecodeError, ValidationError):
         # Parsing or validation failed
         return None
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         # Unexpected error
         return None
 
@@ -511,9 +614,8 @@ def parse_llm_response(
 def get_ollama_llm() -> ChatOllama:
     """Get configured Ollama instance for structured output"""
     # Load environment variables from .env file
-    from dotenv import load_dotenv
     load_dotenv()
-    
+
     base_url = "https://ollama.com"
     api_key = os.getenv("OLLAMA_API_KEY")
     model = "gpt-oss:120b"
@@ -559,10 +661,11 @@ async def validate_with_ollama(
             response = await structured_llm.ainvoke(state["formatted_prompt"])
 
             # Response is already a ValidationResponse Pydantic object
-            state["validation_response"] = response
-            state["validation_results"] = [
-                r.model_dump() for r in response.results
-            ]
+            if isinstance(response, ValidationResponse):
+                state["validation_response"] = response
+                state["validation_results"] = [
+                    r.model_dump() for r in response.results
+                ]
             state["completed"] = True
             return state
 
@@ -583,9 +686,15 @@ async def validate_with_ollama(
             return state
 
         # Convert JSON response to Pydantic models
-        validation_response = parse_llm_response(
-            response.content, state["validation_targets"]
+        content = (
+            response.content if hasattr(response, "content") else str(response)
         )
+        if isinstance(content, str):
+            validation_response = parse_llm_response(
+                content, state["validation_targets"]
+            )
+        else:
+            validation_response = None
 
         if validation_response:
             # Store the Pydantic model
@@ -596,7 +705,7 @@ async def validate_with_ollama(
             ]
             state["completed"] = True
         else:
-            state["error"] = f"Failed to parse response to Pydantic models"
+            state["error"] = "Failed to parse response to Pydantic models"
             state["validation_results"] = []
             state["completed"] = False
 
@@ -621,7 +730,6 @@ async def process_results(
 
     # If we have a structured response, we can access the results directly
     if state.get("validation_response"):
-        response = state["validation_response"]
         # Could add logging here if needed
         pass
 

@@ -743,3 +743,60 @@ class _ReceiptWordLabel(
             limit=limit,
             last_evaluated_key=last_evaluated_key,
         )
+
+    @handle_dynamodb_errors("get_receipt_word_labels_by_validation_status_and_label")
+    def get_receipt_word_labels_by_validation_status_and_label(
+        self,
+        status: ValidationStatus,
+        label: str,
+        limit: Optional[int] = None,
+        last_evaluated_key: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:
+        """Get receipt word labels by validation status and label type.
+        
+        This method efficiently queries labels by validation status using GSI3
+        and then filters by label type. Optimized for re-validation workflows.
+
+        Args:
+            status (ValidationStatus): The validation status to filter by
+            label (str): The label type to filter by (e.g., "GRAND_TOTAL")
+            limit (Optional[int]): The maximum number of items to return
+            last_evaluated_key (Optional[Dict[str, Any]]): The key to start from
+
+        Returns:
+            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: The labels
+                and last evaluated key
+        """
+        if not isinstance(status, ValidationStatus):
+            raise EntityValidationError(
+                "status must be a ValidationStatus instance"
+            )
+        if not isinstance(label, str) or not label.strip():
+            raise EntityValidationError(
+                "label must be a non-empty string"
+            )
+        if limit is not None and not isinstance(limit, int):
+            raise EntityValidationError("limit must be an integer or None")
+
+        # Query all labels with the validation status, then filter by label type
+        all_labels, last_key = self._query_entities(
+            index_name="GSI3",
+            key_condition_expression="#pk = :pk",
+            expression_attribute_names={"#pk": "GSI3PK"},
+            expression_attribute_values={
+                ":pk": {"S": f"VALIDATION_STATUS#{status.value}"}
+            },
+            converter_func=item_to_receipt_word_label,
+            limit=limit * 3 if limit else None,  # Get extra to account for filtering
+            last_evaluated_key=last_evaluated_key,
+        )
+
+        # Filter by label type
+        filtered_labels = [l for l in all_labels if l.label == label]
+
+        # If we don't have enough results and there are more pages, we would need
+        # to implement pagination logic here. For now, return what we have.
+        if limit and len(filtered_labels) > limit:
+            filtered_labels = filtered_labels[:limit]
+
+        return filtered_labels, last_key

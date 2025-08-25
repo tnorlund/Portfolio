@@ -7,9 +7,11 @@ context outside the graph to minimize Ollama API calls.
 """
 
 import asyncio
-from typing import List, Dict, Any, Optional
-from dataclasses import dataclass
 import os
+from dataclasses import dataclass
+from typing import List, Dict, Any, Optional
+
+from dotenv import load_dotenv
 
 from .graph_design import (
     prepare_validation_context,
@@ -19,7 +21,7 @@ from .graph_design import (
     CachedValidator,
     get_ollama_llm,
 )
-from .models import ValidationResponse, ValidationResult
+# Removed unused imports - keeping only what's needed
 
 
 @dataclass
@@ -177,7 +179,6 @@ async def test_ollama_connection() -> bool:
     """Test if Ollama is working"""
     try:
         # Load environment variables from .env file
-        from dotenv import load_dotenv
         load_dotenv()
         
         # Verify API key is loaded
@@ -198,15 +199,15 @@ async def test_ollama_connection() -> bool:
         response = await llm.ainvoke(test_prompt)
 
         if response and response.content:
-            print(f"✅ Ollama connection successful")
-            print(f"   Model: gpt-oss:120b")
-            print(f"   Base URL: https://ollama.com")
+            print("✅ Ollama connection successful")
+            print("   Model: gpt-oss:120b")
+            print("   Base URL: https://ollama.com")
             return True
-        else:
-            print(f"❌ No response from Ollama")
-            return False
+        
+        print("❌ No response from Ollama")
+        return False
 
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         print(f"❌ Ollama connection failed: {e}")
         return False
 
@@ -220,7 +221,6 @@ async def demo() -> None:
     """Demo showing the optimized validation"""
     
     # Load environment variables from .env file
-    from dotenv import load_dotenv
     load_dotenv()
 
     print("=" * 60)
@@ -299,7 +299,7 @@ async def demo() -> None:
                         "validation_status": "NONE",
                     }
                 ]
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         print(f"   Database error: {e}, using mock data")
         sample_labels = [
             {
@@ -347,7 +347,7 @@ async def demo() -> None:
         for key, value in stats.items():
             print(f"   {key}: {value}")
 
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         print(f"\n❌ Validation failed: {e}")
 
     print("\n" + "=" * 60)
@@ -390,7 +390,6 @@ Benefits:
 
 if __name__ == "__main__":
     # Load environment and check if Ollama API key is configured
-    from dotenv import load_dotenv
     load_dotenv()
     
     if not os.getenv("OLLAMA_API_KEY"):

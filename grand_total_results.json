@@ -1,0 +1,267 @@
+{
+  "report_date": "2025-08-24T21:59:02.359297",
+  "analysis_period_days": 30,
+  "overall_stats": {
+    "total_labels": 2154,
+    "status_distribution": {
+      "VALID": 1180,
+      "INVALID": 536,
+      "NEEDS_REVIEW": 296,
+      "NONE": 142
+    },
+    "label_type_distribution": {
+      "MERCHANT_NAME": 380,
+      "LINE_TOTAL": 341,
+      "GRAND_TOTAL": 223,
+      "PRODUCT_NAME": 181,
+      "UNIT_PRICE": 158,
+      "PHONE_NUMBER": 123,
+      "SUBTOTAL": 121,
+      "QUANTITY": 99,
+      "DISCOUNT": 76,
+      "PAYMENT_METHOD": 75,
+      "COUPON": 70,
+      "LOYALTY_ID": 49,
+      "ADDRESS_LINE": 44,
+      "OTHER": 44,
+      "TAX": 42,
+      "WEBSITE": 21,
+      "TIME": 18,
+      "STORE_HOURS": 17,
+      "NONE": 16,
+      "TEXT": 14
+    },
+    "recent_langchain_changes": 20,
+    "recent_changes_sample": [
+      {
+        "label": "GRAND_TOTAL",
+        "status": "VALID",
+        "reasoning": "The word '$7.45' appears on line 21 and line 38 marked 'AMT:' which in transaction receipts typically denotes the final amount charged. Its placement at the very start of the receipt and the absence of any other higher-valued amount indicate it is the grand total rather than an item subtotal or tax. Therefore, labeling it as GRAND_TOTAL is appropriate.",
+        "timestamp": "2025-08-24T21:54:19.480955",
+        "proposed_by": "langchain_revalidation_batch"
+      },
+      {
+        "label": "GRAND_TOTAL",
+        "status": "VALID",
+        "reasoning": "The word '$356.26' appears on line 79 of the receipt, immediately following the label 'TOTAL'. This line represents the final amount due after including all items, taxes, and any other charges. In a typical Home\u202fDepot receipt, the 'TOTAL' displayed there is the amount that the customer must pay, which aligns with the definition of a GRAND_TOTAL. No other monetary field in the surrounding context appears to be a final total; the values on preceding lines are subtotals or individual item prices, and the value following it (line 81) is a debit entry, not the grand total. Therefore, the label 'GRAND_TOTAL' correctly identifies this word in its context.",
+        "timestamp": "2025-08-24T21:53:56.570976",
+        "proposed_by": "langchain_revalidation_batch"
+      },
+      {
+        "label": "GRAND_TOTAL",
+        "status": "INVALID",
+        "reasoning": "The word '0.00' appears in the context of the receipt's \"CHANGE\" section (line 54: 'CHANGE' followed by line 55: '0.00'). This denotes the amount of change returned to the customer, not the final amount due. The grand total, according to the label definition, should be the amount the customer owed after all transactions, which elsewhere on the receipt appears as '14.18'. Therefore labeling '0.00' as GRAND_TOTAL is incorrect.",
+        "timestamp": "2025-08-24T21:53:50.369655",
+        "proposed_by": "langchain_revalidation_batch"
+      },
+      {
+        "label": "GRAND_TOTAL",
+        "status": "VALID",
+        "reasoning": "The word \"38.69\" appears several times near the bottom of the receipt: as the value following the word \"AMOUNT\", as a value under the tag \"CHANGE\", and especially highlighted at line 60 (\u219238.69\u2190), which is the target line for the label.  The surrounding context includes typical indicators of a final total \u2013 the presence of TAX, BALANCE, and discount lines earlier in the receipt, and a zero change amount (line 37: 0.00) indicating that the full amount was paid.  These cues strongly suggest that 38.69 represents the final amount due after all discounts, taxes, and fees, matching the definition of the GRAND_TOTAL label.\"}",
+        "timestamp": "2025-08-24T21:53:33.586374",
+        "proposed_by": "langchain_revalidation_batch"
+      },
+      {
+        "label": "GRAND_TOTAL",
+        "status": "INVALID",
+        "reasoning": "The word '$5,224.35' appears on line 34, following the text 'XTRA' and the word 'SUMMARY'.  In the receipt the term 'TOTAL' is already used on line 22 (and the next lines list amounts that look like subtotal, tax, and final total: 128.85, 12.24, and $141.09).  Thus, the figure $5,224.35 is not the final amount due that follows the standard subtotal\u2011tax\u2011total flow; it appears to be a separate line item or a credit amount.  According to the definition of GRAND_TOTAL \u2013 the final amount due after all discounts, taxes and fees \u2013 the correct label for that line should be something like \"LINE_ITEM\" or \"EXTRA_CHARGE\", not GRAND_TOTAL.  Therefore the label GRAND_TOTAL is not appropriate for this word in this context.",
+        "timestamp": "2025-08-24T21:54:25.326695",
+        "proposed_by": "langchain_revalidation_batch"
+      },
+      {
+        "label": "GRAND_TOTAL",
+        "status": "INVALID",
+        "reasoning": "The receipt is from a Chase Bank ATM showing a deposit entry and the resulting account balance of $25,803.88. According to the label definition, GRAND_TOTAL refers to the final amount due for a purchase after all discounts, taxes, and fees. This figure represents an account balance rather than a purchase total, and therefore the label is not appropriate in this context.",
+        "timestamp": "2025-08-24T21:50:24.576124",
+        "proposed_by": "langchain_revalidation_batch"
+      },
+      {
+        "label": "GRAND_TOTAL",
+        "status": "VALID",
+        "reasoning": "The word '26.75' appears in the receipt under the 'DUE' line and as the final total amount displayed after the purchase details. This numeric value matches the expected format for a final amount due, including taxes and fees, and appears multiple times, indicating it is indeed the grand total. Therefore, labeling this word as 'GRAND_TOTAL' is appropriate.",
+        "timestamp": "2025-08-24T21:52:50.800784",
+        "proposed_by": "langchain_revalidation_batch"
+      },
+      {
+        "label": "GRAND_TOTAL",
+        "status": "VALID",
+        "reasoning": "The word '438.39' occurs on line 26 of the receipt, which is immediately followed by a 'Total' label on lines 27 and 28. This positioning indicates that 438.39 is the final charge presented to the customer after applying all discounts, taxes, and fees, matching the definition of the GRAND_TOTAL label. Additionally, the semantic similarity analysis supports this interpretation, listing several similar examples where the label was valid. No conflicting amounts or alternative totals appear elsewhere in the receipt, so the label is both appropriate and correct in this context.",
+        "timestamp": "2025-08-24T21:53:10.669529",
+        "proposed_by": "langchain_revalidation_batch"
+      },
+      {
+        "label": "GRAND_TOTAL",
+        "status": "VALID",
+        "reasoning": "The word \"7.98\" appears on line 42 surrounded by the arrow markers \"\u21927.98\u2190\" and immediately follows the word \"DUE\", which is a clear indicator of the amount the customer must pay. In addition, there are no additional line items or subtotals that alter the total; the same amount also appears on line 44 as \"$7.98\". Because line 42 is explicitly marked as the target line for the grand total on this receipt, labeling the word \"7.98\" as GRAND_TOTAL is correct and appropriate.",
+        "timestamp": "2025-08-24T21:53:15.845054",
+        "proposed_by": "langchain_revalidation_batch"
+      },
+      {
+        "label": "GRAND_TOTAL",
+        "status": "INVALID",
+        "reasoning": "In the provided receipt, the lines preceding the target line clearly indicate a typical receipt structure: line 16 labels the subtotal, line 17 the tax, and line 18 the total. The value that follows these labels\u2014line 19\u2014shows \"42.44\", but later in the receipt (line 21) a value of \"67.43\" appears and again in line 33 is displayed as \"$67.43\" alongside an item total. The presence of a second, larger amount that appears to be the overall purchase total (and the fact that the final printed total on the receipt is 67.43, not 42.44) strongly suggests that 67.43 is the actual grand total. Therefore, labeling 42.44 as GRAND_TOTAL is incorrect. The word 42.44 likely represents a subtotal or intermediate amount rather than the final amount due. Consequently, the correct validation status for this label is INVALID.",
+        "timestamp": "2025-08-24T21:52:35.027406",
+        "proposed_by": "langchain_revalidation_batch"
+      }
+    ],
+    "analysis_date": "2025-08-24T21:59:04.475132"
+  },
+  "label_analysis": {
+    "GRAND_TOTAL": {
+      "distribution": {
+        "total_labels": 588,
+        "status_distribution": {
+          "INVALID": 174,
+          "NONE": 56,
+          "VALID": 356,
+          "NEEDS_REVIEW": 2
+        },
+        "label_type_distribution": {
+          "GRAND_TOTAL": 588
+        },
+        "recent_langchain_changes": 58,
+        "recent_changes_sample": [
+          {
+            "label": "GRAND_TOTAL",
+            "status": "INVALID",
+            "reasoning": "The label \u2018GRAND_TOTAL\u2019 is intended to be assigned to the numeric value that represents the final amount due, such as \"14.10\". In the receipt context the word \u2018USD$\u2019 is merely a currency symbol or part of the formatting of the line that contains the total. It does not convey any amount itself, nor does it indicate a total; therefore applying the GRAND_TOTAL label to \u2018USD$\u2019 is incorrect. The correct token for the label would be the following word on the same line, namely the value \"14.10\", which actually represents the final total. Hence the label on \u2018USD$\u2019 should be marked INVALID.",
+            "timestamp": "2025-08-24T21:33:35.886033",
+            "proposed_by": "langchain_validation_batch"
+          },
+          {
+            "label": "GRAND_TOTAL",
+            "status": "VALID",
+            "reasoning": "The number 39.97 appears directly after a \"Total:\" header and also follows a \"DUE\" label, both typical indicators of the final amount payable on a receipt. In the surrounding context the value is repeated but without any additional descriptive item names, confirming it represents the combined price after discounts and taxes. Hence, the label \"GRAND_TOTAL\" is correctly assigned.",
+            "timestamp": "2025-08-24T21:52:29.545076",
+            "proposed_by": "langchain_revalidation_batch"
+          },
+          {
+            "label": "GRAND_TOTAL",
+            "status": "VALID",
+            "reasoning": "The word \"39.97\" appears immediately after the word \"DUE\" on line 52, and is also later displayed as \"$39.97\" on line 54. This placement indicates it is the final amount to be paid after all items, discounts, taxes, and fees have been applied. Therefore, labeling it as GRAND_TOTAL is appropriate.",
+            "timestamp": "2025-08-24T21:52:30.832577",
+            "proposed_by": "langchain_revalidation_batch"
+          },
+          {
+            "label": "GRAND_TOTAL",
+            "status": "VALID",
+            "reasoning": "The word \"$39.97\" appears on line 54 of the receipt, positioned as the final amount due. It is immediately preceded by \"DUE\" on line 52 and follows typical formatting for a grand total (a dollar amount in a prominent, centered line). The surrounding context lists individual item prices (e.g., \"SUGAR\" $16.99, \"MILK\" $17.99) and a change amount of $0.00, confirming that \"$39.97\" represents the final total after all discounts, taxes, and fees. Therefore, labeling this word as GRAND_TOTAL is correct.",
+            "timestamp": "2025-08-24T21:52:32.784439",
+            "proposed_by": "langchain_revalidation_batch"
+          },
+          {
+            "label": "GRAND_TOTAL",
+            "status": "INVALID",
+            "reasoning": "In the provided receipt, the lines preceding the target line clearly indicate a typical receipt structure: line 16 labels the subtotal, line 17 the tax, and line 18 the total. The value that follows these labels\u2014line 19\u2014shows \"42.44\", but later in the receipt (line 21) a value of \"67.43\" appears and again in line 33 is displayed as \"$67.43\" alongside an item total. The presence of a second, larger amount that appears to be the overall purchase total (and the fact that the final printed total on the receipt is 67.43, not 42.44) strongly suggests that 67.43 is the actual grand total. Therefore, labeling 42.44 as GRAND_TOTAL is incorrect. The word 42.44 likely represents a subtotal or intermediate amount rather than the final amount due. Consequently, the correct validation status for this label is INVALID.",
+            "timestamp": "2025-08-24T21:52:35.027406",
+            "proposed_by": "langchain_revalidation_batch"
+          },
+          {
+            "label": "GRAND_TOTAL",
+            "status": "INVALID",
+            "reasoning": "The receipt is from a Chase Bank ATM showing a deposit entry and the resulting account balance of $25,803.88. According to the label definition, GRAND_TOTAL refers to the final amount due for a purchase after all discounts, taxes, and fees. This figure represents an account balance rather than a purchase total, and therefore the label is not appropriate in this context.",
+            "timestamp": "2025-08-24T21:50:24.576124",
+            "proposed_by": "langchain_revalidation_batch"
+          },
+          {
+            "label": "GRAND_TOTAL",
+            "status": "INVALID",
+            "reasoning": "The word '44.41' is immediately preceded by the label 'Tip:' (line\u00a019). In the typical structure of this receipt, a tip amount follows the 'Tip:' label, while the 'Total:' line appears later (line\u00a021). Therefore, the numeric value '44.41' represents the tip, not the final grand total. Labeling it as GRAND_TOTAL is incorrect. ",
+            "timestamp": "2025-08-24T21:52:36.512667",
+            "proposed_by": "langchain_revalidation_batch"
+          },
+          {
+            "label": "GRAND_TOTAL",
+            "status": "VALID",
+            "reasoning": "The value \"126.71\" appears on the receipt in the final section, immediately after the \"Tender:\" field and before the credit card information, indicating the amount paid. In receipt context, the word is presented as the last numeric figure on the page, typically representing the final amount due after all taxes, fees, and discounts. This aligns with the provided label definition for GRAND_TOTAL. Therefore the label is correct for this word.",
+            "timestamp": "2025-08-24T21:52:38.206553",
+            "proposed_by": "langchain_revalidation_batch"
+          },
+          {
+            "label": "GRAND_TOTAL",
+            "status": "VALID",
+            "reasoning": "The word '126.71' appears in the context of the receipt immediately after the line marked as \"Total\" and before the payment information (Tender: VISADEBIT). This placement matches the typical location of the grand total on receipts \u2013 the final amount due after all items, discounts, taxes, and fees have been applied. The presence of the same amount on the subsequent tender line confirms that it is the amount being paid. Therefore, labeling this word as GRAND_TOTAL is correct and warranted.",
+            "timestamp": "2025-08-24T21:52:39.650434",
+            "proposed_by": "langchain_revalidation_batch"
+          },
+          {
+            "label": "GRAND_TOTAL",
+            "status": "VALID",
+            "reasoning": "The numeric value \"126.71\" appears near the bottom of the receipt, directly following the itemized total amounts and immediately preceding the payment details (e.g., \"Tender:\" and the credit card information). It is also highlighted in the raw context as the \u201cTARGET LINE\u201d. This placement matches the definition of GRAND_TOTAL: the final amount due after all discounts, taxes, and fees. No other amount in the receipt is formatted or positioned as a final total, and the surrounding context confirms it is the amount the customer pays. Therefore the label GRAND_TOTAL is correctly applied to this word.",
+            "timestamp": "2025-08-24T21:52:41.832124",
+            "proposed_by": "langchain_revalidation_batch"
+          }
+        ],
+        "analysis_date": "2025-08-24T21:59:04.685938"
+      },
+      "accuracy": {
+        "label_type": "GRAND_TOTAL",
+        "valid_count": 12,
+        "invalid_count": 14,
+        "needs_review_count": 2,
+        "total_analyzed": 28,
+        "accuracy_rate": 0.42857142857142855,
+        "rejection_rate": 0.5,
+        "review_rate": 0.07142857142857142,
+        "sample_invalid_reasoning": [
+          "The label \u2018GRAND_TOTAL\u2019 is intended to be assigned to the numeric value that represents the final am",
+          "In the provided receipt, the lines preceding the target line clearly indicate a typical receipt stru",
+          "The receipt is from a Chase Bank ATM showing a deposit entry and the resulting account balance of $2",
+          "The word '44.41' is immediately preceded by the label 'Tip:' (line\u00a019). In the typical structure of ",
+          "The word '$2.09' appears immediately between the 'TOTAL' label and a larger amount of '$24.07', whic"
+        ],
+        "analysis_date": "2025-08-24T21:59:05.043648"
+      },
+      "changes": {
+        "analysis_period_days": 30,
+        "total_langchain_processed": 58,
+        "change_patterns": {
+          "Marked_Invalid": 9,
+          "Confirmed_Valid": 47,
+          "Needs_Review": 2
+        },
+        "reasoning_keywords": {
+          "amount_related": 58,
+          "context_based": 44,
+          "merchant_related": 5
+        },
+        "validation_quality": {
+          "total_processed": 58,
+          "with_reasoning": 58,
+          "avg_reasoning_length": 521.7068965517242,
+          "common_rejection_reasons": {
+            "Incorrect_Label": 10
+          }
+        },
+        "analysis_date": "2025-08-24T21:59:05.257025"
+      }
+    }
+  },
+  "validation_trends": {
+    "analysis_period_days": 30,
+    "total_langchain_processed": 8,
+    "change_patterns": {
+      "Confirmed_Valid": 5,
+      "Marked_Invalid": 3
+    },
+    "reasoning_keywords": {
+      "amount_related": 8,
+      "context_based": 6
+    },
+    "validation_quality": {
+      "total_processed": 8,
+      "with_reasoning": 8,
+      "avg_reasoning_length": 511.125,
+      "common_rejection_reasons": {
+        "Incorrect_Label": 1
+      }
+    },
+    "analysis_date": "2025-08-24T21:59:05.958985"
+  },
+  "quality_metrics": {
+    "total_labels_in_system": 2154,
+    "langchain_processed_count": 8,
+    "langchain_coverage_rate": 0.003714020427112349,
+    "avg_processing_quality": 511.125
+  }
+}

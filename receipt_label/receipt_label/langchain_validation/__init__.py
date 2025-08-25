@@ -1,60 +1,74 @@
 """
-LangChain Validation Module - Optimized for Minimal LLM Usage
+LangChain Validation Module - Clean Structured Output Implementation
+=================================================================
+
+This module provides structured validation using LangChain with Ollama Turbo API.
+Includes exact prompt format matching assemble_prompt_batch_optimized.py.
 """
 
-from .graph_design import (
-    # Context preparation (no LLM)
-    prepare_validation_context,
-    # Graph components
-    create_minimal_validation_graph,
-    MinimalValidationState,
-    # Database operations (no LLM)
-    update_database_with_results,
-    # Main validation functions
-    validate_receipt_labels_optimized,
-    CachedValidator,
-    # LLM configuration
-    get_ollama_llm,
+from .structured_validation import (
+    StructuredReceiptValidator,
 )
 
-from .implementation import (
-    # Main validator class
-    OptimizedReceiptValidator,
-    # Configuration
-    SimpleConfig,
-    # Convenience functions
-    validate_receipt_labels,
-    test_ollama_connection,
+from .validation_tool import (
+    ValidationResult,
+    ValidationResponse,
+    validate_word_label,
+    create_validation_tools,
+)
+
+from .ollama_turbo_client import (
+    ChatOllamaTurbo,
+    create_ollama_turbo_client,
+)
+
+from .context_preparation import (
+    ContextPreparationService,
+    ContextPreparationConfig,
+    prepare_contexts_for_validation,
+)
+
+from .models.context import (
+    ValidationContext,
+    WordContext,
+    ReceiptContext,
+    SemanticContext,
 )
 
 from .config import ValidationConfig, OllamaConfig
 
-from .models import (
-    ValidationResult,
-    ValidationResponse,
+from .update_receipt_labels import (
+    update_label_with_validation_result,
+    update_receipt_labels_batch,
+    validate_and_update_labels,
 )
 
 __all__ = [
-    # Context and database (no LLM usage)
-    "prepare_validation_context",
-    "update_database_with_results",
-    # Graph components
-    "create_minimal_validation_graph",
-    "MinimalValidationState",
-    # Validation functions
-    "validate_receipt_labels",
-    "validate_receipt_labels_optimized",
-    # Classes
-    "OptimizedReceiptValidator",
-    "CachedValidator",
-    "SimpleConfig",
+    # Main validator
+    "StructuredReceiptValidator",
+    # Pydantic models
+    "ValidationResult",
+    "ValidationResponse",
+    # Tools
+    "validate_word_label",
+    "create_validation_tools",
+    # Ollama client
+    "ChatOllamaTurbo", 
+    "create_ollama_turbo_client",
+    # Context preparation
+    "ContextPreparationService",
+    "ContextPreparationConfig",
+    "prepare_contexts_for_validation",
+    # Data models
+    "ValidationContext",
+    "WordContext",
+    "ReceiptContext", 
+    "SemanticContext",
     # Configuration
     "ValidationConfig",
     "OllamaConfig",
-    # Pydantic Models
-    "ValidationResult",
-    "ValidationResponse",
-    # Utilities
-    "get_ollama_llm",
-    "test_ollama_connection",
+    # Update utilities
+    "update_label_with_validation_result",
+    "update_receipt_labels_batch", 
+    "validate_and_update_labels",
 ]

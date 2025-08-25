@@ -99,10 +99,10 @@ class ValidationConfig:
     """Main validation configuration"""
 
     mode: ValidationMode = ValidationMode.SMART_BATCH
-    ollama: OllamaConfig = None
-    batch: BatchConfig = None
-    cache: CacheConfig = None
-    monitoring: MonitoringConfig = None
+    ollama: Optional[OllamaConfig] = None
+    batch: Optional[BatchConfig] = None
+    cache: Optional[CacheConfig] = None
+    monitoring: Optional[MonitoringConfig] = None
 
     # Data sources
     dynamodb_table_name: str = "receipt-dev"
@@ -129,30 +129,30 @@ class ValidationConfig:
 
         ollama_config = OllamaConfig(
             base_url=base_url,
-            model="gpt-oss:120b",
+            model="gpt-oss:20b",
             api_key=api_key,
             temperature=float(os.getenv("OLLAMA_TEMPERATURE", "0.0")),
             timeout=int(os.getenv("OLLAMA_TIMEOUT", "60")),
             max_retries=int(os.getenv("OLLAMA_MAX_RETRIES", "3")),
             is_turbo=is_turbo,
             num_ctx=(
-                int(os.getenv("OLLAMA_NUM_CTX"))
-                if os.getenv("OLLAMA_NUM_CTX")
+                int(ctx_value)
+                if (ctx_value := os.getenv("OLLAMA_NUM_CTX"))
                 else None
             ),
             num_predict=(
-                int(os.getenv("OLLAMA_NUM_PREDICT"))
-                if os.getenv("OLLAMA_NUM_PREDICT")
+                int(predict_value)
+                if (predict_value := os.getenv("OLLAMA_NUM_PREDICT"))
                 else None
             ),
             top_k=(
-                int(os.getenv("OLLAMA_TOP_K"))
-                if os.getenv("OLLAMA_TOP_K")
+                int(top_k_value)
+                if (top_k_value := os.getenv("OLLAMA_TOP_K"))
                 else None
             ),
             top_p=(
-                float(os.getenv("OLLAMA_TOP_P"))
-                if os.getenv("OLLAMA_TOP_P")
+                float(top_p_value)
+                if (top_p_value := os.getenv("OLLAMA_TOP_P"))
                 else None
             ),
         )
