@@ -465,6 +465,8 @@ def process_sqs_messages(records: List[Dict[str, Any]]) -> Dict[str, Any]:
         metrics.gauge("CompactionProcessedMessages", processed_count)
         metrics.gauge("CompactionStreamMessages", len(stream_messages))
         metrics.gauge("CompactionDeltaMessages", len(delta_message_records))
+        metrics.gauge("CompactionBatchProcessedSuccessfully", len(records))
+        metrics.count("CompactionBatchProcessingSuccess", 1)
         
     return response.to_dict()
 
@@ -475,10 +477,14 @@ def process_stream_messages(
 ) -> Dict[str, Any]:
     """Process DynamoDB stream messages for metadata updates.
 
-    Groups messages by collection and processes each collection separately
-    with collection-specific locks to enable parallel processing.
+    Groups messages by collection and processes each collection in batches
+    for improved efficiency with bulk ChromaDB operations.
     """
-    logger.info("Processing stream messages", message_count=len(stream_messages))
+    logger.info("Processing stream messages with batch optimization", 
+               message_count=len(stream_messages))
+    
+    if OBSERVABILITY_AVAILABLE:
+        metrics.gauge("CompactionBatchSize", len(stream_messages))
 
     # Group messages by collection
     messages_by_collection = {}
