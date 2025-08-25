@@ -103,10 +103,10 @@ def process_native(
         sha256=image_hash,
         image_type=ImageType.NATIVE,
     )
-    dynamo_client.addImage(image_record)
-    dynamo_client.addLines(lines)
-    dynamo_client.addWords(words)
-    dynamo_client.addLetters(letters)
+    dynamo_client.add_image(image_record)
+    dynamo_client.add_lines(lines)
+    dynamo_client.add_words(words)
+    dynamo_client.add_letters(letters)
 
     # Add the receipt and OCR data to DynamoDB
     receipt = Receipt(
@@ -139,13 +139,13 @@ def process_native(
         bottom_left={"x": 0.0, "y": 0.0},
         bottom_right={"x": 1.0, "y": 0.0},
     )
-    dynamo_client.addReceipt(receipt)
-    dynamo_client.addReceiptLines(receipt_lines)
-    dynamo_client.addReceiptWords(receipt_words)
-    dynamo_client.addReceiptLetters(receipt_letters)
+    dynamo_client.add_receipt(receipt)
+    dynamo_client.add_receipt_lines(receipt_lines)
+    dynamo_client.add_receipt_words(receipt_words)
+    dynamo_client.add_receipt_letters(receipt_letters)
 
     # Update the OCR routing decision
     ocr_routing_decision.status = OCRStatus.COMPLETED.value
     ocr_routing_decision.receipt_count = 1
     ocr_routing_decision.updated_at = current_time
-    dynamo_client.updateOCRRoutingDecision(ocr_routing_decision)
+    dynamo_client.update_ocr_routing_decision(ocr_routing_decision)
