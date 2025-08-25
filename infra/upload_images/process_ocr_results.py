@@ -231,7 +231,7 @@ def _update_routing_decision_with_error(ocr_routing_decision):
     ocr_routing_decision.status = OCRStatus.FAILED.value
     ocr_routing_decision.receipt_count = 0
     ocr_routing_decision.updated_at = datetime.now(timezone.utc)
-    dynamo_client.updateOCRRoutingDecision(ocr_routing_decision)
+    dynamo_client.update_ocr_routing_decision(ocr_routing_decision)
 
 
 def handler(event, _context):
