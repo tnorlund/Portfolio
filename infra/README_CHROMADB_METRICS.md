@@ -16,13 +16,19 @@ Quick script to gather comprehensive metrics for all ChromaDB compaction infrast
 
 # Save to file to avoid terminal pipe errors
 ./get_chromadb_metrics.sh 24 chromadb_metrics_$(date +%Y%m%d_%H%M%S).txt
+
+# Use environment variables to override resource names
+CHROMADB_BUCKET=my-custom-bucket ./get_chromadb_metrics.sh 12
+
+# Get help
+./get_chromadb_metrics.sh --help
 ```
 
 ## What It Collects
 
 ### Lambda Functions
 - **Stream Processor**: Invocations, duration, errors
-- **Enhanced Compaction**: Invocations, duration
+- **Enhanced Compaction**: Invocations, duration, errors
 
 ### SQS Queues  
 - **Lines Queue**: Messages sent/received
@@ -45,11 +51,13 @@ The script provides structured output with:
 
 ## Resource Names
 
-The script automatically uses these resource identifiers:
+The script uses these default resource identifiers (override via environment variables):
 - Stream Processor: `chromadb-dev-lambdas-stream-processor-e79a370`
 - Enhanced Compaction: `chromadb-dev-lambdas-enhanced-compaction-79f6426`  
 - Lines Queue: `chromadb-dev-queues-lines-queue-b3d38e1`
 - Words Queue: `chromadb-dev-queues-words-queue-6e2171c`
+- Lines DLQ: `chromadb-dev-queues-lines-dlq-67a9812`
+- Words DLQ: `chromadb-dev-queues-words-dlq-0b5f487`
 - S3 Bucket: `chromadb-dev-shared-buckets-vectors-c239843`
 
 ## Prerequisites
@@ -57,11 +65,12 @@ The script automatically uses these resource identifiers:
 - AWS CLI configured with appropriate permissions
 - CloudWatch metrics read access
 - S3 list permissions for the ChromaDB bucket
-- macOS compatible (uses `date -v` syntax)
+- Cross-platform compatible (macOS and Linux)
+- Handles both `date -v` (macOS) and `date -d` (Linux) syntax
 
 ## Example Output
 
-```
+```text
 === ChromaDB Compaction Metrics Report ===
 Time Range: 2025-08-24T23:49:38 to 2025-08-25T05:49:38 (6 hours)
 
