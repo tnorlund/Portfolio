@@ -212,8 +212,9 @@ def get_dynamo_client():
 
 
 # Get configuration from environment
-heartbeat_interval = int(os.environ.get("HEARTBEAT_INTERVAL_SECONDS", "60"))
-lock_duration_minutes = int(os.environ.get("LOCK_DURATION_MINUTES", "15"))
+heartbeat_interval = int(os.environ.get("HEARTBEAT_INTERVAL_SECONDS", "30"))
+lock_duration_minutes = int(os.environ.get("LOCK_DURATION_MINUTES", "3"))
+max_heartbeat_failures = int(os.environ.get("MAX_HEARTBEAT_FAILURES", "3"))
 compaction_queue_url = os.environ.get("COMPACTION_QUEUE_URL", "")
 
 
@@ -584,6 +585,7 @@ def _process_collection_messages(
         collection=collection,
         heartbeat_interval=heartbeat_interval,
         lock_duration_minutes=lock_duration_minutes,
+        max_heartbeat_failures=max_heartbeat_failures,
     )
 
     try:
@@ -626,17 +628,57 @@ def _process_collection_messages(
         # Start heartbeat
         lock_manager.start_heartbeat()
 
-        # Process metadata updates
+        # Process metadata updates with lock validation
         metadata_results = []
         if metadata_updates:
+            # Validate lock ownership before critical operations
+            if not lock_manager.validate_ownership():
+                if OBSERVABILITY_AVAILABLE:
+                    logger.error("Lock ownership validation failed before metadata updates",
+                               collection=collection.value, lock_id=lock_id)
+                    metrics.count("CompactionLockValidationFailed", 1, {
+                        "collection": collection.value,
+                        "operation": "metadata_updates"
+                    })
+                else:
+                    logger.error("Lock validation failed before metadata updates for %s", collection.value)
+                
+                return {
+                    "error": f"Lock validation failed for {collection.value} collection",
+                    "metadata_updates": 0,
+                    "label_updates": 0,
+                    "metadata_results": [],
+                    "label_results": [],
+                }
+            
             metadata_results = process_metadata_updates(
-                metadata_updates, collection
+                metadata_updates, collection, lock_manager
             )
 
-        # Process label updates
+        # Process label updates with lock validation
         label_results = []
         if label_updates:
-            label_results = process_label_updates(label_updates, collection)
+            # Validate lock ownership before critical operations
+            if not lock_manager.validate_ownership():
+                if OBSERVABILITY_AVAILABLE:
+                    logger.error("Lock ownership validation failed before label updates",
+                               collection=collection.value, lock_id=lock_id)
+                    metrics.count("CompactionLockValidationFailed", 1, {
+                        "collection": collection.value,
+                        "operation": "label_updates"
+                    })
+                else:
+                    logger.error("Lock validation failed before label updates for %s", collection.value)
+                
+                return {
+                    "error": f"Lock validation failed for {collection.value} collection",
+                    "metadata_updates": len(metadata_results) if metadata_results else 0,
+                    "label_updates": 0,
+                    "metadata_results": metadata_results,
+                    "label_results": [],
+                }
+            
+            label_results = process_label_updates(label_updates, collection, lock_manager)
 
         total_metadata_updates = sum(
             result.updated_count
@@ -710,6 +752,7 @@ def _process_collection_messages(
 def process_metadata_updates(
     metadata_updates: List[StreamMessage],
     collection: ChromaDBCollection,
+    lock_manager: Optional["LockManager"] = None,
 ) -> List[MetadataUpdateResult]:
     """Process RECEIPT_METADATA updates for a specific collection.
 
@@ -748,6 +791,26 @@ def process_metadata_updates(
             snapshot_key = f"{database}/snapshot/latest/"
 
             try:
+                # Validate lock ownership before S3 operations
+                if lock_manager and not lock_manager.validate_ownership():
+                    error_msg = f"Lock validation failed during metadata update for {collection.value}"
+                    if OBSERVABILITY_AVAILABLE:
+                        logger.error("Lock ownership lost during metadata processing",
+                                   collection=collection.value, receipt_id=receipt_id)
+                        metrics.count("CompactionLockValidationFailed", 1, {
+                            "collection": collection.value,
+                            "operation": "s3_download"
+                        })
+                    else:
+                        logger.error(error_msg)
+                    
+                    results.append(MetadataUpdateResult(
+                        image_id=image_id,
+                        error=error_msg,
+                        updated_count=0
+                    ))
+                    continue
+
                 # Download current snapshot using helper
                 temp_dir = tempfile.mkdtemp()
                 download_result = download_snapshot_from_s3(
@@ -804,6 +867,27 @@ def process_metadata_updates(
                     )
 
                 if updated_count > 0:
+                    # Validate lock ownership before S3 upload
+                    if lock_manager and not lock_manager.validate_ownership():
+                        error_msg = f"Lock validation failed before snapshot upload for {collection.value}"
+                        if OBSERVABILITY_AVAILABLE:
+                            logger.error("Lock ownership lost before snapshot upload",
+                                       collection=collection.value, receipt_id=receipt_id)
+                            metrics.count("CompactionLockValidationFailed", 1, {
+                                "collection": collection.value,
+                                "operation": "s3_upload"
+                            })
+                        else:
+                            logger.error(error_msg)
+                        
+                        results.append(MetadataUpdateResult(
+                            image_id=image_id,
+                            error=error_msg,
+                            updated_count=0
+                        ))
+                        shutil.rmtree(temp_dir, ignore_errors=True)
+                        continue
+
                     # Upload updated snapshot with hash using enhanced helper
                     upload_result = upload_snapshot_with_hash(
                         local_snapshot_path=temp_dir,
@@ -904,6 +988,7 @@ def process_metadata_updates(
 def process_label_updates(
     label_updates: List[StreamMessage],
     collection: ChromaDBCollection,
+    lock_manager: Optional["LockManager"] = None,
 ) -> List[LabelUpdateResult]:
     """Process RECEIPT_WORD_LABEL updates for a specific collection.
 
@@ -1022,6 +1107,28 @@ def process_label_updates(
             r.updated_count for r in results if r.error is None
         )
         if total_updates > 0:
+            # Validate lock ownership before final S3 upload
+            if lock_manager and not lock_manager.validate_ownership():
+                error_msg = f"Lock validation failed before label snapshot upload for {collection.value}"
+                if OBSERVABILITY_AVAILABLE:
+                    logger.error("Lock ownership lost before label snapshot upload",
+                               collection=collection.value)
+                    metrics.count("CompactionLockValidationFailed", 1, {
+                        "collection": collection.value,
+                        "operation": "label_upload"
+                    })
+                else:
+                    logger.error(error_msg)
+                
+                # Add error to all successful results
+                for result in results:
+                    if result.error is None:
+                        result.error = error_msg
+                        result.updated_count = 0
+
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                return results
+
             upload_result = upload_snapshot_with_hash(
                 local_snapshot_path=temp_dir,
                 bucket=bucket,

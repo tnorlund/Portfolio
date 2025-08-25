@@ -315,6 +315,42 @@ aws cloudwatch get-metric-statistics \
   --query 'sort_by(Datapoints[?Sum != `0`], &Timestamp)[].[Timestamp,Sum]' \
   --output table 2>/dev/null || echo "No lock failures found (good!)"
 
+# Heartbeat Failures
+echo "Heartbeat Failures (network/connectivity issues):"
+aws cloudwatch get-metric-statistics \
+  --namespace EmbeddingWorkflow \
+  --metric-name CompactionHeartbeatFailed \
+  --start-time ${START_TIME} \
+  --end-time ${END_TIME} \
+  --period ${PERIOD} \
+  --statistics Sum \
+  --query 'sort_by(Datapoints[?Sum != `0`], &Timestamp)[].[Timestamp,Sum]' \
+  --output table 2>/dev/null || echo "No heartbeat failures found (good!)"
+
+# Lock Expiration Events
+echo "Lock Expiration Events (critical - indicates data race risk):"
+aws cloudwatch get-metric-statistics \
+  --namespace EmbeddingWorkflow \
+  --metric-name CompactionLockExpired \
+  --start-time ${START_TIME} \
+  --end-time ${END_TIME} \
+  --period ${PERIOD} \
+  --statistics Sum \
+  --query 'sort_by(Datapoints[?Sum != `0`], &Timestamp)[].[Timestamp,Sum]' \
+  --output table 2>/dev/null || echo "No lock expirations found (good!)"
+
+# Lock Validation Failures
+echo "Lock Validation Failures (operations canceled for safety):"
+aws cloudwatch get-metric-statistics \
+  --namespace EmbeddingWorkflow \
+  --metric-name CompactionLockValidationFailed \
+  --start-time ${START_TIME} \
+  --end-time ${END_TIME} \
+  --period ${PERIOD} \
+  --statistics Sum \
+  --query 'sort_by(Datapoints[?Sum != `0`], &Timestamp)[].[Timestamp,Sum]' \
+  --output table 2>/dev/null || echo "No validation failures found (good!)"
+
 echo ""
 echo "=== PROCESSING METRICS ==="
 

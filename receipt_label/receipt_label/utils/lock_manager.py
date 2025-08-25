@@ -16,6 +16,13 @@ from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities.compaction_lock import CompactionLock
 from receipt_dynamo.constants import ChromaDBCollection
 
+# Metrics support (optional for testing environments)
+try:
+    from utils import metrics
+    METRICS_AVAILABLE = True
+except ImportError:
+    METRICS_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -55,6 +62,7 @@ class LockManager:
         collection: ChromaDBCollection,
         heartbeat_interval: int = 60,
         lock_duration_minutes: int = 5,
+        max_heartbeat_failures: int = 3,
     ) -> None:
         """
         Initialize the lock manager.
@@ -64,11 +72,13 @@ class LockManager:
             collection: ChromaDB collection this lock protects (lines or words)
             heartbeat_interval: Seconds between heartbeat updates (default: 60)
             lock_duration_minutes: Initial lock duration in minutes (default: 5)
+            max_heartbeat_failures: Max consecutive heartbeat failures before release (default: 3)
         """
         self.dynamo_client = dynamo_client
         self.collection = collection
         self.heartbeat_interval = heartbeat_interval
         self.lock_duration_minutes = lock_duration_minutes
+        self.max_heartbeat_failures = max_heartbeat_failures
 
         # Lock state
         self.lock_id: Optional[str] = None
@@ -77,6 +87,9 @@ class LockManager:
         # Heartbeat thread management
         self.heartbeat_thread: Optional[threading.Thread] = None
         self.stop_heartbeat_event = threading.Event()
+
+        # Heartbeat failure tracking
+        self.consecutive_heartbeat_failures = 0
 
         # Thread safety
         self._lock = threading.Lock()
@@ -224,6 +237,11 @@ class LockManager:
                 return False
 
             try:
+                # Validate ownership before updating to prevent race conditions
+                if not self.validate_ownership():
+                    logger.error("Lock ownership validation failed during heartbeat update")
+                    return False
+
                 updated_lock = CompactionLock(
                     lock_id=self.lock_id,
                     owner=self.lock_owner,
@@ -261,8 +279,46 @@ class LockManager:
 
         while not self.stop_heartbeat_event.is_set():
             # Update heartbeat
-            if not self.update_heartbeat():
-                logger.error("Heartbeat update failed - lock may be lost")
+            if self.update_heartbeat():
+                # Reset failure counter on successful heartbeat
+                with self._lock:
+                    self.consecutive_heartbeat_failures = 0
+            else:
+                with self._lock:
+                    self.consecutive_heartbeat_failures += 1
+                    logger.error(
+                        "Heartbeat update failed (attempt %d/%d) - lock may be lost",
+                        self.consecutive_heartbeat_failures,
+                        self.max_heartbeat_failures
+                    )
+                    
+                    # Emit heartbeat failure metric
+                    if METRICS_AVAILABLE:
+                        metrics.count("CompactionHeartbeatFailed", 1, {
+                            "collection": self.collection.value,
+                            "failure_count": str(self.consecutive_heartbeat_failures)
+                        })
+                    
+                    # Auto-release lock after too many failures
+                    if self.consecutive_heartbeat_failures >= self.max_heartbeat_failures:
+                        logger.critical(
+                            "Maximum heartbeat failures reached (%d) - releasing lock %s",
+                            self.max_heartbeat_failures,
+                            self.lock_id
+                        )
+                        
+                        # Emit lock expired metric
+                        if METRICS_AVAILABLE:
+                            metrics.count("CompactionLockExpired", 1, {
+                                "collection": self.collection.value,
+                                "reason": "heartbeat_failure"
+                            })
+                        
+                        # Stop heartbeat thread and clear lock state
+                        self.stop_heartbeat_event.set()
+                        self.lock_id = None
+                        self.lock_owner = None
+                        break
 
             # Wait for next interval or stop signal
             if self.stop_heartbeat_event.wait(self.heartbeat_interval):
@@ -300,6 +356,138 @@ class LockManager:
                     self.heartbeat_thread and self.heartbeat_thread.is_alive()
                 ),
             }
+
+    def validate_ownership(self) -> bool:
+        """
+        Verify that we still own the current lock.
+
+        This method checks with DynamoDB to ensure the lock hasn't expired
+        or been acquired by another process.
+
+        Returns:
+            True if we still own the lock, False otherwise
+        """
+        with self._lock:
+            if not self.lock_id or not self.lock_owner:
+                logger.warning("Cannot validate ownership - no lock held")
+                return False
+
+            try:
+                current_lock = self.dynamo_client.get_compaction_lock(self.lock_id)
+                
+                if current_lock is None:
+                    logger.warning("Lock %s no longer exists", self.lock_id)
+                    return False
+                
+                # Check ownership
+                if current_lock.owner != self.lock_owner:
+                    logger.warning(
+                        "Lock %s ownership mismatch: expected %s, found %s",
+                        self.lock_id,
+                        self.lock_owner,
+                        current_lock.owner
+                    )
+                    return False
+                
+                # Check expiration
+                now = datetime.utcnow()
+                if current_lock.expires <= now:
+                    logger.warning(
+                        "Lock %s has expired: %s <= %s",
+                        self.lock_id,
+                        current_lock.expires.isoformat(),
+                        now.isoformat()
+                    )
+                    return False
+                
+                logger.debug("Lock ownership validated for %s", self.lock_id)
+                return True
+
+            except Exception as e:
+                logger.error(
+                    "Failed to validate ownership for lock %s: %s",
+                    self.lock_id,
+                    str(e),
+                )
+                return False
+
+    def get_remaining_time(self) -> Optional[timedelta]:
+        """
+        Get the remaining time before the lock expires.
+
+        Returns:
+            Timedelta representing remaining time, or None if no lock held or error
+        """
+        with self._lock:
+            if not self.lock_id or not self.lock_owner:
+                return None
+
+            try:
+                current_lock = self.dynamo_client.get_compaction_lock(self.lock_id)
+                
+                if current_lock is None or current_lock.owner != self.lock_owner:
+                    return None
+                
+                remaining = current_lock.expires - datetime.utcnow()
+                return remaining if remaining.total_seconds() > 0 else timedelta(0)
+
+            except Exception as e:
+                logger.error(
+                    "Failed to get remaining time for lock %s: %s",
+                    self.lock_id,
+                    str(e),
+                )
+                return None
+
+    def refresh_lock(self) -> bool:
+        """
+        Atomically refresh the lock with ownership validation.
+
+        This is safer than update_heartbeat() as it includes ownership checks.
+
+        Returns:
+            True if lock was refreshed, False otherwise
+        """
+        with self._lock:
+            if not self.lock_id or not self.lock_owner:
+                logger.warning("Cannot refresh lock - no lock held")
+                return False
+
+            try:
+                # First validate we still own it
+                if not self.validate_ownership():
+                    logger.error("Cannot refresh lock - ownership validation failed")
+                    return False
+
+                # Create updated lock with extended expiration
+                updated_lock = CompactionLock(
+                    lock_id=self.lock_id,
+                    owner=self.lock_owner,
+                    expires=datetime.utcnow()
+                    + timedelta(minutes=self.lock_duration_minutes),
+                    collection=self.collection,
+                    heartbeat=datetime.utcnow(),
+                )
+
+                self.dynamo_client.update_compaction_lock(updated_lock)
+
+                logger.info("Successfully refreshed lock %s", self.lock_id)
+                
+                # Emit lock refresh metric
+                if METRICS_AVAILABLE:
+                    metrics.count("CompactionLockRefreshed", 1, {
+                        "collection": self.collection.value
+                    })
+                
+                return True
+
+            except Exception as e:
+                logger.error(
+                    "Failed to refresh lock %s: %s",
+                    self.lock_id,
+                    str(e),
+                )
+                return False
 
     def __enter__(self):
         """Context manager entry - acquire lock."""

@@ -1307,3 +1307,171 @@ def verify_chromadb_sync(
             "error": str(e),
             "recommendation": "check_configuration"
         }
+
+
+def safe_atomic_s3_write(
+    local_path: str,
+    bucket: str,
+    final_key: str,
+    lock_manager: Optional[object] = None,
+    metadata: Optional[Dict[str, str]] = None,
+) -> Dict[str, Any]:
+    """
+    Perform atomic S3 write with lock validation to prevent race conditions.
+    
+    This function writes to a temporary S3 key first, validates lock ownership,
+    then atomically moves to the final location. This prevents partial writes
+    if the lock is lost during the operation.
+    
+    Args:
+        local_path: Path to local file/directory to upload
+        bucket: S3 bucket name
+        final_key: Final S3 key path
+        lock_manager: Optional lock manager to validate ownership during operation
+        metadata: Optional metadata to attach to S3 objects
+    
+    Returns:
+        Dict with status, temp_key, final_key, and error information
+    """
+    import boto3
+    import shutil
+    from pathlib import Path
+    
+    s3_client = boto3.client('s3')
+    temp_key = f"temp/{uuid.uuid4()}/{final_key.lstrip('/')}"
+    
+    try:
+        # Validate lock ownership before starting
+        if lock_manager and not lock_manager.validate_ownership():
+            return {
+                "status": "error",
+                "error": "Lock validation failed before S3 operation",
+                "temp_key": temp_key,
+                "final_key": final_key
+            }
+        
+        logger.info("Starting atomic S3 write: temp=%s, final=%s", temp_key, final_key)
+        
+        # Step 1: Upload to temporary location
+        if Path(local_path).is_file():
+            # Single file upload
+            extra_args = {"Metadata": metadata} if metadata else {}
+            s3_client.upload_file(local_path, bucket, temp_key, ExtraArgs=extra_args)
+        else:
+            # Directory upload (use existing upload function)
+            from ..vector_store import upload_snapshot_with_hash
+            temp_result = upload_snapshot_with_hash(
+                local_snapshot_path=local_path,
+                bucket=bucket,
+                snapshot_key=temp_key,
+                calculate_hash=False,  # Skip hash for temp upload
+                clear_destination=False,  # Don't clear temp location
+                metadata=metadata
+            )
+            
+            if temp_result.get("status") != "uploaded":
+                return {
+                    "status": "error",
+                    "error": f"Failed to upload to temp location: {temp_result}",
+                    "temp_key": temp_key,
+                    "final_key": final_key
+                }
+        
+        # Step 2: Validate lock ownership again before atomic move
+        if lock_manager and not lock_manager.validate_ownership():
+            # Clean up temp upload
+            try:
+                if Path(local_path).is_file():
+                    s3_client.delete_object(Bucket=bucket, Key=temp_key)
+                else:
+                    # Delete all temp objects
+                    paginator = s3_client.get_paginator('list_objects_v2')
+                    for page in paginator.paginate(Bucket=bucket, Prefix=temp_key):
+                        if 'Contents' in page:
+                            delete_keys = [{'Key': obj['Key']} for obj in page['Contents']]
+                            s3_client.delete_objects(
+                                Bucket=bucket,
+                                Delete={'Objects': delete_keys}
+                            )
+            except Exception as cleanup_error:
+                logger.warning("Failed to cleanup temp S3 objects: %s", cleanup_error)
+            
+            return {
+                "status": "error", 
+                "error": "Lock validation failed before atomic commit",
+                "temp_key": temp_key,
+                "final_key": final_key
+            }
+        
+        # Step 3: Atomic move from temp to final location
+        if Path(local_path).is_file():
+            # Simple copy and delete for single file
+            s3_client.copy_object(
+                Bucket=bucket,
+                CopySource={'Bucket': bucket, 'Key': temp_key},
+                Key=final_key,
+                Metadata=metadata or {},
+                MetadataDirective='REPLACE'
+            )
+            s3_client.delete_object(Bucket=bucket, Key=temp_key)
+        else:
+            # For directories, we need to move all objects
+            paginator = s3_client.get_paginator('list_objects_v2')
+            for page in paginator.paginate(Bucket=bucket, Prefix=temp_key):
+                if 'Contents' in page:
+                    for obj in page['Contents']:
+                        old_key = obj['Key']
+                        # Replace temp prefix with final prefix
+                        new_key = final_key + old_key[len(temp_key):]
+                        
+                        # Copy to final location
+                        s3_client.copy_object(
+                            Bucket=bucket,
+                            CopySource={'Bucket': bucket, 'Key': old_key},
+                            Key=new_key,
+                            Metadata=metadata or {},
+                            MetadataDirective='REPLACE'
+                        )
+            
+            # Clean up temp objects
+            for page in paginator.paginate(Bucket=bucket, Prefix=temp_key):
+                if 'Contents' in page:
+                    delete_keys = [{'Key': obj['Key']} for obj in page['Contents']]
+                    s3_client.delete_objects(
+                        Bucket=bucket,
+                        Delete={'Objects': delete_keys}
+                    )
+        
+        logger.info("Atomic S3 write completed successfully: %s", final_key)
+        return {
+            "status": "uploaded",
+            "temp_key": temp_key,
+            "final_key": final_key,
+            "message": "Atomic write completed successfully"
+        }
+        
+    except Exception as e:
+        logger.error("Error during atomic S3 write: %s", e)
+        
+        # Attempt cleanup of temp objects
+        try:
+            if Path(local_path).is_file():
+                s3_client.delete_object(Bucket=bucket, Key=temp_key)
+            else:
+                paginator = s3_client.get_paginator('list_objects_v2')
+                for page in paginator.paginate(Bucket=bucket, Prefix=temp_key):
+                    if 'Contents' in page:
+                        delete_keys = [{'Key': obj['Key']} for obj in page['Contents']]
+                        s3_client.delete_objects(
+                            Bucket=bucket,
+                            Delete={'Objects': delete_keys}
+                        )
+        except Exception as cleanup_error:
+            logger.warning("Failed to cleanup temp S3 objects after error: %s", cleanup_error)
+        
+        return {
+            "status": "error",
+            "error": str(e),
+            "temp_key": temp_key,
+            "final_key": final_key
+        }
