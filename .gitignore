@@ -230,3 +230,6 @@ receipt_label/test_results/
 .venv_test/
 # Local ChromaDB databases
 chroma_words_local_words_specific/
+
+# Lambda layer update tool backups (contain sensitive state)
+infra/backups/
