@@ -39,7 +39,9 @@ CHROMADB_BUCKET=my-custom-bucket ./get_chromadb_metrics.sh 12
 - **ChromaDB Bucket**: Current contents, structure, CloudWatch metrics
 
 ### Custom Metrics
-- Checks for any custom ChromaDB namespace metrics
+- **Lock Metrics**: Lock acquisition success/failure rates
+- **Processing Metrics**: Batch processing success and error counts
+- Checks for any custom ChromaDB namespace metrics in EmbeddingWorkflow
 
 ## Output Format
 
