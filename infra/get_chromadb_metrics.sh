@@ -283,7 +283,64 @@ echo ""
 
 # Custom Metrics Check
 echo "=== CUSTOM METRICS ==="
-aws cloudwatch list-metrics --namespace "ChromaDB/Compaction" --query 'Metrics[*].{MetricName:MetricName,Dimensions:Dimensions}' --output table || echo "No custom ChromaDB metrics found"
+
+# Check for custom ChromaDB compaction metrics (try multiple namespaces)
+echo "Available Custom Metrics:"
+aws cloudwatch list-metrics --namespace "EmbeddingWorkflow" --query 'Metrics[?contains(MetricName, `Compaction`)].[MetricName,Dimensions[0].Value]' --output table 2>/dev/null || echo "No EmbeddingWorkflow metrics found"
+
+echo ""
+echo "=== LOCK METRICS ==="
+
+# Lock Acquisition Success
+echo "Lock Acquisitions (by collection):"
+aws cloudwatch get-metric-statistics \
+  --namespace EmbeddingWorkflow \
+  --metric-name CompactionLockAcquired \
+  --start-time ${START_TIME} \
+  --end-time ${END_TIME} \
+  --period ${PERIOD} \
+  --statistics Sum \
+  --query 'sort_by(Datapoints[?Sum != `0`], &Timestamp)[].[Timestamp,Sum]' \
+  --output table 2>/dev/null || echo "No lock acquisition metrics found"
+
+# Lock Acquisition Failures  
+echo "Lock Acquisition Failures (indicates contention):"
+aws cloudwatch get-metric-statistics \
+  --namespace EmbeddingWorkflow \
+  --metric-name CompactionLockAcquisitionFailed \
+  --start-time ${START_TIME} \
+  --end-time ${END_TIME} \
+  --period ${PERIOD} \
+  --statistics Sum \
+  --query 'sort_by(Datapoints[?Sum != `0`], &Timestamp)[].[Timestamp,Sum]' \
+  --output table 2>/dev/null || echo "No lock failures found (good!)"
+
+echo ""
+echo "=== PROCESSING METRICS ==="
+
+# Batch Processing Success
+echo "Batch Processing Success:"
+aws cloudwatch get-metric-statistics \
+  --namespace EmbeddingWorkflow \
+  --metric-name CompactionBatchProcessingSuccess \
+  --start-time ${START_TIME} \
+  --end-time ${END_TIME} \
+  --period ${PERIOD} \
+  --statistics Sum \
+  --query 'sort_by(Datapoints[?Sum != `0`], &Timestamp)[].[Timestamp,Sum]' \
+  --output table 2>/dev/null || echo "No batch processing metrics found"
+
+# Collection Processing Errors
+echo "Collection Processing Errors:"
+aws cloudwatch get-metric-statistics \
+  --namespace EmbeddingWorkflow \
+  --metric-name CompactionCollectionProcessingError \
+  --start-time ${START_TIME} \
+  --end-time ${END_TIME} \
+  --period ${PERIOD} \
+  --statistics Sum \
+  --query 'sort_by(Datapoints[?Sum != `0`], &Timestamp)[].[Timestamp,Sum]' \
+  --output table 2>/dev/null || echo "No collection processing errors found (good!)"
 
 echo ""
 echo "=== SUMMARY ==="
