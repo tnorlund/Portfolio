@@ -1,0 +1,56 @@
+# Layer Version Configuration
+#
+# This file defines the target versions for Lambda layers.
+# The script will update all Lambda functions to use these specific versions.
+
+layers:
+  # DynamoDB operations layer
+  receipt-dynamo:
+    version: 1  # Update this to the desired version number
+    description: "DynamoDB layer for receipt-dynamo operations"
+
+  # ML labeling and processing layer
+  receipt-label:
+    version: 1  # Update this to the desired version number
+    description: "Label layer for receipt-label ML operations"
+
+  # Upload and OCR processing layer
+  receipt-upload:
+    version: 1  # Update this to the desired version number
+    description: "Upload layer for receipt-upload OCR operations"
+
+# Global settings
+settings:
+  # AWS region where layers are deployed
+  aws_region: "us-east-1"
+
+  # Default AWS account ID (will be auto-detected if not specified)
+  aws_account_id: null
+
+  # Backup settings
+  backup_retention_days: 30
+
+  # Validation settings
+  validate_layer_exists: true  # Check if layer version exists in AWS before updating
+
+# Stack-specific overrides (optional)
+stack_overrides:
+  dev:
+    # Development-specific layer versions
+    receipt-dynamo:
+      version: 2  # Dev might use a newer version for testing
+  prod:
+    # Production versions - use stable versions
+    receipt-dynamo:
+      version: 1
+    receipt-label:
+      version: 1
+    receipt-upload:
+      version: 1
+
+# Notes:
+# - Layer names are matched against actual AWS layer names
+# - Version numbers must be positive integers
+# - The script will automatically handle layer ARN construction
+# - Stack-specific overrides take precedence over global settings
+# - Use dry-run mode first to see what changes would be made

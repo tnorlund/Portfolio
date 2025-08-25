@@ -250,3 +250,6 @@ simple_*.py
 # Backup files
 *_old.py
 *_refactored.py
+
+# Lambda layer update tool backups (contain sensitive state)
+infra/backups/
