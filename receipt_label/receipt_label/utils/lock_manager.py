@@ -9,7 +9,7 @@ operations.
 import logging
 import threading
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
@@ -119,10 +119,10 @@ class LockManager:
                 lock = CompactionLock(
                     lock_id=lock_id,
                     owner=owner,
-                    expires=datetime.utcnow()
+                    expires=datetime.now(timezone.utc)
                     + timedelta(minutes=self.lock_duration_minutes),
                     collection=self.collection,
-                    heartbeat=datetime.utcnow(),
+                    heartbeat=datetime.now(timezone.utc),
                 )
 
                 self.dynamo_client.add_compaction_lock(lock)
@@ -245,10 +245,10 @@ class LockManager:
                 updated_lock = CompactionLock(
                     lock_id=self.lock_id,
                     owner=self.lock_owner,
-                    expires=datetime.utcnow()
+                    expires=datetime.now(timezone.utc)
                     + timedelta(minutes=self.lock_duration_minutes),
                     collection=self.collection,
-                    heartbeat=datetime.utcnow(),
+                    heartbeat=datetime.now(timezone.utc),
                 )
 
                 self.dynamo_client.update_compaction_lock(updated_lock)
@@ -256,7 +256,7 @@ class LockManager:
                 logger.debug(
                     "Updated heartbeat for lock %s at %s",
                     self.lock_id,
-                    datetime.utcnow().isoformat(),
+                    datetime.now(timezone.utc).isoformat(),
                 )
                 return True
 
@@ -390,7 +390,7 @@ class LockManager:
                     return False
                 
                 # Check expiration
-                now = datetime.utcnow()
+                now = datetime.now(timezone.utc)
                 if current_lock.expires <= now:
                     logger.warning(
                         "Lock %s has expired: %s <= %s",
@@ -428,7 +428,7 @@ class LockManager:
                 if current_lock is None or current_lock.owner != self.lock_owner:
                     return None
                 
-                remaining = current_lock.expires - datetime.utcnow()
+                remaining = current_lock.expires - datetime.now(timezone.utc)
                 return remaining if remaining.total_seconds() > 0 else timedelta(0)
 
             except Exception as e:
@@ -463,10 +463,10 @@ class LockManager:
                 updated_lock = CompactionLock(
                     lock_id=self.lock_id,
                     owner=self.lock_owner,
-                    expires=datetime.utcnow()
+                    expires=datetime.now(timezone.utc)
                     + timedelta(minutes=self.lock_duration_minutes),
                     collection=self.collection,
-                    heartbeat=datetime.utcnow(),
+                    heartbeat=datetime.now(timezone.utc),
                 )
 
                 self.dynamo_client.update_compaction_lock(updated_lock)

@@ -806,7 +806,7 @@ def process_metadata_updates(
                     
                     results.append(MetadataUpdateResult(
                         database=database,
-                        collection=f"receipt_{database}",
+                        collection=database,
                         image_id=image_id,
                         receipt_id=receipt_id,
                         error=error_msg,
@@ -885,7 +885,7 @@ def process_metadata_updates(
                         
                         results.append(MetadataUpdateResult(
                             database=database,
-                            collection=f"receipt_{database}",
+                            collection=database,
                             image_id=image_id,
                             receipt_id=receipt_id,
                             error=error_msg,
@@ -937,7 +937,7 @@ def process_metadata_updates(
 
                 result = MetadataUpdateResult(
                     database=database,
-                    collection=f"receipt_{database}",
+                    collection=database,
                     updated_count=updated_count,
                     image_id=image_id,
                     receipt_id=receipt_id,
@@ -957,7 +957,7 @@ def process_metadata_updates(
                     
                 result = MetadataUpdateResult(
                     database=database,
-                    collection=f"receipt_{database}",
+                    collection=database,
                     updated_count=0,
                     image_id=image_id,
                     receipt_id=receipt_id,
