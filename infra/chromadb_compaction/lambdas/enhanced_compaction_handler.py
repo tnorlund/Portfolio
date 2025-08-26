@@ -72,6 +72,8 @@ from receipt_label.vector_store import upload_snapshot_with_hash
 from receipt_label.utils.chroma_s3_helpers import (
     download_snapshot_from_s3,
     upload_delta_to_s3,
+    upload_snapshot_atomic,
+    download_snapshot_atomic,
 )
 
 
@@ -814,12 +816,12 @@ def process_metadata_updates(
                     ))
                     continue
 
-                # Download current snapshot using helper
+                # Download current snapshot using atomic helper
                 temp_dir = tempfile.mkdtemp()
-                download_result = download_snapshot_from_s3(
+                download_result = download_snapshot_atomic(
                     bucket=bucket,
-                    snapshot_key=snapshot_key,
-                    local_snapshot_path=temp_dir,
+                    collection=collection.value,  # "lines" or "words"
+                    local_path=temp_dir,
                     verify_integrity=True,
                 )
 
@@ -894,13 +896,12 @@ def process_metadata_updates(
                         shutil.rmtree(temp_dir, ignore_errors=True)
                         continue
 
-                    # Upload updated snapshot with hash using enhanced helper
-                    upload_result = upload_snapshot_with_hash(
-                        local_snapshot_path=temp_dir,
+                    # Upload updated snapshot atomically with lock validation
+                    upload_result = upload_snapshot_atomic(
+                        local_path=temp_dir,
                         bucket=bucket,
-                        snapshot_key=snapshot_key.rstrip("/") + "/",
-                        calculate_hash=True,  # Enable hash calculation
-                        clear_destination=True,  # Explicitly clear S3 destination before upload
+                        collection=collection.value,  # "lines" or "words"
+                        lock_manager=lock_manager,
                         metadata={
                             "update_type": "metadata_update",
                             "image_id": image_id,
@@ -1009,12 +1010,12 @@ def process_label_updates(
     snapshot_key = f"{database}/snapshot/latest/"
 
     try:
-        # Download current snapshot using helper
+        # Download current snapshot using atomic helper
         temp_dir = tempfile.mkdtemp()
-        download_result = download_snapshot_from_s3(
+        download_result = download_snapshot_atomic(
             bucket=bucket,
-            snapshot_key=snapshot_key,
-            local_snapshot_path=temp_dir,
+            collection=collection.value,  # "lines" or "words"
+            local_path=temp_dir,
             verify_integrity=True,
         )
 
@@ -1141,12 +1142,11 @@ def process_label_updates(
                 shutil.rmtree(temp_dir, ignore_errors=True)
                 return results
 
-            upload_result = upload_snapshot_with_hash(
-                local_snapshot_path=temp_dir,
+            upload_result = upload_snapshot_atomic(
+                local_path=temp_dir,
                 bucket=bucket,
-                snapshot_key=snapshot_key.rstrip("/") + "/",
-                calculate_hash=True,  # Enable hash calculation
-                clear_destination=True,  # Explicitly clear S3 destination before upload
+                collection=collection.value,  # "lines" or "words"
+                lock_manager=lock_manager,
                 metadata={
                     "update_type": "label_update",
                     "total_updates": str(total_updates),

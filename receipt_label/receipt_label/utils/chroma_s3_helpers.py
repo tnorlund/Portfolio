@@ -1309,169 +1309,245 @@ def verify_chromadb_sync(
         }
 
 
-def safe_atomic_s3_write(
+def upload_snapshot_atomic(
     local_path: str,
     bucket: str,
-    final_key: str,
+    collection: str,  # "lines" or "words"
     lock_manager: Optional[object] = None,
     metadata: Optional[Dict[str, str]] = None,
+    keep_versions: int = 2,
 ) -> Dict[str, Any]:
     """
-    Perform atomic S3 write with lock validation to prevent race conditions.
+    Upload ChromaDB snapshot using blue-green atomic deployment pattern.
     
-    This function writes to a temporary S3 key first, validates lock ownership,
-    then atomically moves to the final location. This prevents partial writes
-    if the lock is lost during the operation.
+    This function uploads to a timestamped version, then atomically updates
+    a pointer file to reference the new version. Readers will get complete
+    snapshots with no race conditions.
     
     Args:
-        local_path: Path to local file/directory to upload
+        local_path: Path to local ChromaDB directory to upload
         bucket: S3 bucket name
-        final_key: Final S3 key path
+        collection: ChromaDB collection name ("lines" or "words") 
         lock_manager: Optional lock manager to validate ownership during operation
         metadata: Optional metadata to attach to S3 objects
+        keep_versions: Number of versions to retain (default: 2)
     
     Returns:
-        Dict with status, temp_key, final_key, and error information
+        Dict with status, version_id, versioned_key, and pointer_key
     """
     import boto3
-    import shutil
-    from pathlib import Path
+    from datetime import datetime, timezone
     
     s3_client = boto3.client('s3')
-    temp_key = f"temp/{uuid.uuid4()}/{final_key.lstrip('/')}"
     
     try:
         # Validate lock ownership before starting
         if lock_manager and not lock_manager.validate_ownership():
             return {
                 "status": "error",
-                "error": "Lock validation failed before S3 operation",
-                "temp_key": temp_key,
-                "final_key": final_key
+                "error": "Lock validation failed before snapshot upload",
+                "collection": collection
             }
         
-        logger.info("Starting atomic S3 write: temp=%s, final=%s", temp_key, final_key)
+        # Generate version identifier using timestamp
+        version_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        versioned_key = f"{collection}/snapshot/timestamped/{version_id}/"
+        pointer_key = f"{collection}/snapshot/latest-pointer.txt"
         
-        # Step 1: Upload to temporary location
-        if Path(local_path).is_file():
-            # Single file upload
-            extra_args = {"Metadata": metadata} if metadata else {}
-            s3_client.upload_file(local_path, bucket, temp_key, ExtraArgs=extra_args)
-        else:
-            # Directory upload (use existing upload function)
-            from ..vector_store import upload_snapshot_with_hash
-            temp_result = upload_snapshot_with_hash(
-                local_snapshot_path=local_path,
-                bucket=bucket,
-                snapshot_key=temp_key,
-                calculate_hash=False,  # Skip hash for temp upload
-                clear_destination=False,  # Don't clear temp location
-                metadata=metadata
-            )
-            
-            if temp_result.get("status") != "uploaded":
-                return {
-                    "status": "error",
-                    "error": f"Failed to upload to temp location: {temp_result}",
-                    "temp_key": temp_key,
-                    "final_key": final_key
-                }
+        logger.info("Starting atomic snapshot upload: collection=%s, version=%s", 
+                   collection, version_id)
         
-        # Step 2: Validate lock ownership again before atomic move
+        # Step 1: Upload to versioned location (no race condition possible)
+        upload_result = upload_snapshot_with_hash(
+            local_snapshot_path=local_path,
+            bucket=bucket,
+            snapshot_key=versioned_key,
+            calculate_hash=True,
+            clear_destination=False,  # Don't clear - versioned path is unique
+            metadata=metadata
+        )
+        
+        if upload_result.get("status") != "uploaded":
+            return {
+                "status": "error",
+                "error": f"Failed to upload to versioned location: {upload_result}",
+                "collection": collection,
+                "version_id": version_id
+            }
+        
+        # Step 2: Final lock validation before atomic promotion
         if lock_manager and not lock_manager.validate_ownership():
-            # Clean up temp upload
+            # Clean up versioned upload
             try:
-                if Path(local_path).is_file():
-                    s3_client.delete_object(Bucket=bucket, Key=temp_key)
-                else:
-                    # Delete all temp objects
-                    paginator = s3_client.get_paginator('list_objects_v2')
-                    for page in paginator.paginate(Bucket=bucket, Prefix=temp_key):
-                        if 'Contents' in page:
-                            delete_keys = [{'Key': obj['Key']} for obj in page['Contents']]
-                            s3_client.delete_objects(
-                                Bucket=bucket,
-                                Delete={'Objects': delete_keys}
-                            )
+                _cleanup_s3_prefix(s3_client, bucket, versioned_key)
+                logger.info("Cleaned up versioned upload after lock loss: %s", versioned_key)
             except Exception as cleanup_error:
-                logger.warning("Failed to cleanup temp S3 objects: %s", cleanup_error)
+                logger.warning("Failed to cleanup versioned upload: %s", cleanup_error)
             
             return {
-                "status": "error", 
-                "error": "Lock validation failed before atomic commit",
-                "temp_key": temp_key,
-                "final_key": final_key
+                "status": "error",
+                "error": "Lock validation failed before atomic promotion",
+                "collection": collection,
+                "version_id": version_id
             }
         
-        # Step 3: Atomic move from temp to final location
-        if Path(local_path).is_file():
-            # Simple copy and delete for single file
-            s3_client.copy_object(
-                Bucket=bucket,
-                CopySource={'Bucket': bucket, 'Key': temp_key},
-                Key=final_key,
-                Metadata=metadata or {},
-                MetadataDirective='REPLACE'
-            )
-            s3_client.delete_object(Bucket=bucket, Key=temp_key)
-        else:
-            # For directories, we need to move all objects
-            paginator = s3_client.get_paginator('list_objects_v2')
-            for page in paginator.paginate(Bucket=bucket, Prefix=temp_key):
-                if 'Contents' in page:
-                    for obj in page['Contents']:
-                        old_key = obj['Key']
-                        # Replace temp prefix with final prefix
-                        new_key = final_key + old_key[len(temp_key):]
-                        
-                        # Copy to final location
-                        s3_client.copy_object(
-                            Bucket=bucket,
-                            CopySource={'Bucket': bucket, 'Key': old_key},
-                            Key=new_key,
-                            Metadata=metadata or {},
-                            MetadataDirective='REPLACE'
-                        )
-            
-            # Clean up temp objects
-            for page in paginator.paginate(Bucket=bucket, Prefix=temp_key):
-                if 'Contents' in page:
-                    delete_keys = [{'Key': obj['Key']} for obj in page['Contents']]
-                    s3_client.delete_objects(
-                        Bucket=bucket,
-                        Delete={'Objects': delete_keys}
-                    )
+        # Step 3: Atomic promotion - single S3 write operation
+        s3_client.put_object(
+            Bucket=bucket,
+            Key=pointer_key,
+            Body=version_id.encode('utf-8'),
+            ContentType="text/plain",
+            Metadata=metadata or {}
+        )
         
-        logger.info("Atomic S3 write completed successfully: %s", final_key)
+        # Step 4: Background cleanup of old versions
+        try:
+            _cleanup_old_snapshot_versions(s3_client, bucket, collection, keep_versions)
+        except Exception as cleanup_error:
+            logger.warning("Failed to cleanup old versions: %s", cleanup_error)
+        
+        logger.info("Atomic snapshot upload completed: collection=%s, version=%s", 
+                   collection, version_id)
         return {
             "status": "uploaded",
-            "temp_key": temp_key,
-            "final_key": final_key,
-            "message": "Atomic write completed successfully"
+            "collection": collection,
+            "version_id": version_id,
+            "versioned_key": versioned_key,
+            "pointer_key": pointer_key,
+            "hash": upload_result.get("hash", "not_calculated")
         }
         
     except Exception as e:
-        logger.error("Error during atomic S3 write: %s", e)
-        
-        # Attempt cleanup of temp objects
-        try:
-            if Path(local_path).is_file():
-                s3_client.delete_object(Bucket=bucket, Key=temp_key)
-            else:
-                paginator = s3_client.get_paginator('list_objects_v2')
-                for page in paginator.paginate(Bucket=bucket, Prefix=temp_key):
-                    if 'Contents' in page:
-                        delete_keys = [{'Key': obj['Key']} for obj in page['Contents']]
-                        s3_client.delete_objects(
-                            Bucket=bucket,
-                            Delete={'Objects': delete_keys}
-                        )
-        except Exception as cleanup_error:
-            logger.warning("Failed to cleanup temp S3 objects after error: %s", cleanup_error)
-        
+        logger.error("Error during atomic snapshot upload: %s", e)
         return {
             "status": "error",
             "error": str(e),
-            "temp_key": temp_key,
-            "final_key": final_key
+            "collection": collection
         }
+
+
+def download_snapshot_atomic(
+    bucket: str,
+    collection: str,  # "lines" or "words"
+    local_path: str,
+    verify_integrity: bool = True,
+) -> Dict[str, Any]:
+    """
+    Download ChromaDB snapshot using atomic pointer resolution.
+    
+    This function reads the version pointer and downloads the corresponding
+    timestamped version, ensuring consistent snapshots with no race conditions.
+    
+    Args:
+        bucket: S3 bucket name
+        collection: ChromaDB collection name ("lines" or "words")
+        local_path: Local directory to download to
+        verify_integrity: Whether to verify snapshot integrity
+    
+    Returns:
+        Dict with status, version_id, and download information
+    """
+    import boto3
+    from botocore.exceptions import ClientError
+    
+    s3_client = boto3.client('s3')
+    pointer_key = f"{collection}/snapshot/latest-pointer.txt"
+    
+    try:
+        # Step 1: Resolve current version pointer
+        try:
+            response = s3_client.get_object(Bucket=bucket, Key=pointer_key)
+            version_id = response['Body'].read().decode('utf-8').strip()
+            versioned_key = f"{collection}/snapshot/timestamped/{version_id}/"
+            
+            logger.info("Resolved snapshot pointer: collection=%s, version=%s", 
+                       collection, version_id)
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'NoSuchKey':
+                # Fallback to direct /latest/ path for backward compatibility
+                logger.info("No pointer found, falling back to /latest/ path: %s", collection)
+                versioned_key = f"{collection}/snapshot/latest/"
+                version_id = "latest-direct"
+            else:
+                raise
+        
+        # Step 2: Download from resolved version (immutable)
+        download_result = download_snapshot_from_s3(
+            bucket=bucket,
+            snapshot_key=versioned_key,
+            local_snapshot_path=local_path,
+            verify_integrity=verify_integrity
+        )
+        
+        if download_result.get("status") != "downloaded":
+            return {
+                "status": "error", 
+                "error": f"Failed to download snapshot: {download_result}",
+                "collection": collection,
+                "version_id": version_id
+            }
+        
+        logger.info("Atomic snapshot download completed: collection=%s, version=%s", 
+                   collection, version_id)
+        return {
+            "status": "downloaded",
+            "collection": collection,
+            "version_id": version_id,
+            "versioned_key": versioned_key,
+            "local_path": local_path
+        }
+        
+    except Exception as e:
+        logger.error("Error during atomic snapshot download: %s", e)
+        return {
+            "status": "error",
+            "error": str(e),
+            "collection": collection
+        }
+
+
+def _cleanup_s3_prefix(s3_client, bucket: str, prefix: str) -> None:
+    """Helper function to delete all objects under an S3 prefix."""
+    paginator = s3_client.get_paginator('list_objects_v2')
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+        if 'Contents' in page:
+            delete_keys = [{'Key': obj['Key']} for obj in page['Contents']]
+            s3_client.delete_objects(
+                Bucket=bucket,
+                Delete={'Objects': delete_keys}
+            )
+
+
+def _cleanup_old_snapshot_versions(
+    s3_client, 
+    bucket: str, 
+    collection: str, 
+    keep_versions: int
+) -> None:
+    """Helper function to clean up old timestamped snapshot versions."""
+    timestamped_prefix = f"{collection}/snapshot/timestamped/"
+    
+    # List all timestamped versions
+    paginator = s3_client.get_paginator('list_objects_v2')
+    versions = []
+    
+    for page in paginator.paginate(Bucket=bucket, Prefix=timestamped_prefix, Delimiter='/'):
+        if 'CommonPrefixes' in page:
+            for prefix_info in page['CommonPrefixes']:
+                version_path = prefix_info['Prefix']
+                # Extract version ID from path like "lines/snapshot/timestamped/20250826_143052/"
+                version_id = version_path.split('/')[-2]
+                versions.append(version_id)
+    
+    # Sort versions by timestamp (newest first)
+    versions.sort(reverse=True)
+    
+    # Delete old versions beyond keep_versions
+    versions_to_delete = versions[keep_versions:]
+    for version_id in versions_to_delete:
+        version_prefix = f"{collection}/snapshot/timestamped/{version_id}/"
+        try:
+            _cleanup_s3_prefix(s3_client, bucket, version_prefix)
+            logger.info("Cleaned up old snapshot version: %s", version_prefix)
+        except Exception as e:
+            logger.warning("Failed to cleanup version %s: %s", version_prefix, e)
