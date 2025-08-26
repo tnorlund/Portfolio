@@ -1354,10 +1354,13 @@ def upload_snapshot_atomic(
         versioned_key = f"{collection}/snapshot/timestamped/{version_id}/"
         pointer_key = f"{collection}/snapshot/latest-pointer.txt"
         
-        logger.info("Starting atomic snapshot upload: collection=%s, version=%s", 
-                   collection, version_id)
+        logger.info("DEBUG: Starting atomic snapshot upload: collection=%s, version=%s, local_path=%s", 
+                   collection, version_id, local_path)
+        logger.info("DEBUG: Atomic upload paths - versioned_key=%s, pointer_key=%s", 
+                   versioned_key, pointer_key)
         
         # Step 1: Upload to versioned location (no race condition possible)
+        logger.info("DEBUG: Step 1 - uploading to versioned location: %s", versioned_key)
         upload_result = upload_snapshot_with_hash(
             local_snapshot_path=local_path,
             bucket=bucket,
@@ -1367,7 +1370,11 @@ def upload_snapshot_atomic(
             metadata=metadata
         )
         
+        logger.info("DEBUG: Step 1 result - status=%s, hash=%s", 
+                   upload_result.get("status"), upload_result.get("hash", "not_calculated"))
+        
         if upload_result.get("status") != "uploaded":
+            logger.error("DEBUG: Step 1 failed - upload_result=%s", upload_result)
             return {
                 "status": "error",
                 "error": f"Failed to upload to versioned location: {upload_result}",
@@ -1376,13 +1383,15 @@ def upload_snapshot_atomic(
             }
         
         # Step 2: Final lock validation before atomic promotion
+        logger.info("DEBUG: Step 2 - validating lock ownership before atomic promotion")
         if lock_manager and not lock_manager.validate_ownership():
+            logger.error("DEBUG: Step 2 failed - lock validation failed, cleaning up versioned upload")
             # Clean up versioned upload
             try:
                 _cleanup_s3_prefix(s3_client, bucket, versioned_key)
-                logger.info("Cleaned up versioned upload after lock loss: %s", versioned_key)
+                logger.info("DEBUG: Cleaned up versioned upload after lock loss: %s", versioned_key)
             except Exception as cleanup_error:
-                logger.warning("Failed to cleanup versioned upload: %s", cleanup_error)
+                logger.warning("DEBUG: Failed to cleanup versioned upload: %s", cleanup_error)
             
             return {
                 "status": "error",
@@ -1392,6 +1401,8 @@ def upload_snapshot_atomic(
             }
         
         # Step 3: Atomic promotion - single S3 write operation
+        logger.info("DEBUG: Step 3 - atomic promotion, writing pointer file: %s -> %s", 
+                   pointer_key, version_id)
         s3_client.put_object(
             Bucket=bucket,
             Key=pointer_key,
@@ -1399,14 +1410,17 @@ def upload_snapshot_atomic(
             ContentType="text/plain",
             Metadata=metadata or {}
         )
+        logger.info("DEBUG: Step 3 completed - pointer file written successfully")
         
         # Step 4: Background cleanup of old versions
+        logger.info("DEBUG: Step 4 - cleaning up old versions (keep_versions=%d)", keep_versions)
         try:
             _cleanup_old_snapshot_versions(s3_client, bucket, collection, keep_versions)
+            logger.info("DEBUG: Step 4 completed - old versions cleaned up successfully")
         except Exception as cleanup_error:
-            logger.warning("Failed to cleanup old versions: %s", cleanup_error)
+            logger.warning("DEBUG: Step 4 warning - failed to cleanup old versions: %s", cleanup_error)
         
-        logger.info("Atomic snapshot upload completed: collection=%s, version=%s", 
+        logger.info("DEBUG: Atomic snapshot upload completed successfully: collection=%s, version=%s", 
                    collection, version_id)
         return {
             "status": "uploaded",

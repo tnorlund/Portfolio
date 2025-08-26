@@ -1184,7 +1184,10 @@ def process_label_updates(
         total_updates = sum(
             r.updated_count for r in results if r.error is None
         )
+        logger.info("DEBUG: Label update summary - total_updates=%d, results_count=%d", 
+                   total_updates, len(results))
         if total_updates > 0:
+            logger.info("DEBUG: Total updates > 0, proceeding with atomic S3 upload")
             # Validate lock ownership before final S3 upload
             if lock_manager and not lock_manager.validate_ownership():
                 error_msg = f"Lock validation failed before label snapshot upload for {collection.value}"
@@ -1213,9 +1216,9 @@ def process_label_updates(
                 shutil.rmtree(temp_dir, ignore_errors=True)
                 return results
 
-            logger.info("Starting atomic snapshot upload for label updates",
+            logger.info("DEBUG: Starting atomic snapshot upload for label updates",
                        collection=collection.value, bucket=bucket,
-                       total_updates=total_updates)
+                       total_updates=total_updates, temp_dir=temp_dir)
             upload_start_time = time.time()
             
             upload_result = upload_snapshot_atomic(
@@ -1230,11 +1233,13 @@ def process_label_updates(
             )
             
             upload_time = time.time() - upload_start_time
-            logger.info("Atomic snapshot upload completed",
+            logger.info("DEBUG: Atomic snapshot upload completed",
                        collection=collection.value,
                        status=upload_result.get("status"),
                        upload_time_ms=upload_time * 1000,
                        version_id=upload_result.get("version_id"),
+                       versioned_key=upload_result.get("versioned_key"),
+                       pointer_key=upload_result.get("pointer_key"),
                        hash=upload_result.get("hash"))
 
             if upload_result["status"] == "uploaded":
