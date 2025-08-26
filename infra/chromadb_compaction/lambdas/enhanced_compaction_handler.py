@@ -661,10 +661,23 @@ def _process_collection_messages(
         label_results = []
         if label_updates:
             # Validate lock ownership before critical operations
-            if not lock_manager.validate_ownership():
+            logger.info("Validating lock ownership before label updates",
+                       collection=collection.value, lock_id=lock_id, 
+                       label_count=len(label_updates))
+            
+            lock_validation_start = time.time()
+            is_owner = lock_manager.validate_ownership()
+            lock_validation_time = time.time() - lock_validation_start
+            
+            logger.info("Lock validation completed",
+                       collection=collection.value, lock_id=lock_id,
+                       is_owner=is_owner, validation_time_ms=lock_validation_time * 1000)
+            
+            if not is_owner:
                 if OBSERVABILITY_AVAILABLE:
                     logger.error("Lock ownership validation failed before label updates",
-                               collection=collection.value, lock_id=lock_id)
+                               collection=collection.value, lock_id=lock_id,
+                               validation_time_ms=lock_validation_time * 1000)
                     metrics.count("CompactionLockValidationFailed", 1, {
                         "collection": collection.value,
                         "operation": "label_updates"
@@ -1011,13 +1024,24 @@ def process_label_updates(
 
     try:
         # Download current snapshot using atomic helper
+        logger.info("Starting atomic snapshot download for label updates",
+                   collection=collection.value, bucket=bucket)
         temp_dir = tempfile.mkdtemp()
+        download_start_time = time.time()
+        
         download_result = download_snapshot_atomic(
             bucket=bucket,
             collection=collection.value,  # "lines" or "words"
             local_path=temp_dir,
             verify_integrity=True,
         )
+        
+        download_time = time.time() - download_start_time
+        logger.info("Atomic snapshot download completed",
+                   collection=collection.value, 
+                   status=download_result.get("status"),
+                   download_time_ms=download_time * 1000,
+                   version_id=download_result.get("version_id"))
 
         if download_result["status"] != "downloaded":
             logger.error("Failed to download snapshot", result=download_result)
@@ -1142,6 +1166,11 @@ def process_label_updates(
                 shutil.rmtree(temp_dir, ignore_errors=True)
                 return results
 
+            logger.info("Starting atomic snapshot upload for label updates",
+                       collection=collection.value, bucket=bucket,
+                       total_updates=total_updates)
+            upload_start_time = time.time()
+            
             upload_result = upload_snapshot_atomic(
                 local_path=temp_dir,
                 bucket=bucket,
@@ -1152,6 +1181,14 @@ def process_label_updates(
                     "total_updates": str(total_updates),
                 },
             )
+            
+            upload_time = time.time() - upload_start_time
+            logger.info("Atomic snapshot upload completed",
+                       collection=collection.value,
+                       status=upload_result.get("status"),
+                       upload_time_ms=upload_time * 1000,
+                       version_id=upload_result.get("version_id"),
+                       hash=upload_result.get("hash"))
 
             if upload_result["status"] == "uploaded":
                 if OBSERVABILITY_AVAILABLE:
