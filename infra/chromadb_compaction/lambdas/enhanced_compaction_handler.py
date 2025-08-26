@@ -229,16 +229,22 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     - SQS messages: Process stream events and traditional deltas
     - Direct invocation: Traditional compaction operations
     """
-    # Configure receipt_label logger to respect Lambda's LOG_LEVEL for debugging
+    # Configure receipt_label loggers to respect Lambda's LOG_LEVEL for debugging
     import logging
-    receipt_label_logger = logging.getLogger('receipt_label')
-    if not receipt_label_logger.handlers:  # Only configure if not already configured
-        level = getattr(logging, os.environ.get("LOG_LEVEL", "INFO"), logging.INFO)
-        receipt_label_logger.setLevel(level)
+    log_level = getattr(logging, os.environ.get("LOG_LEVEL", "INFO"), logging.INFO)
     
-    # Test message to verify receipt_label logger configuration is working
-    receipt_label_logger.debug("DEBUG: receipt_label logger configured successfully")
-    receipt_label_logger.info("INFO: receipt_label logger test - this should be visible")
+    # Configure the main receipt_label logger and its child loggers
+    receipt_label_logger = logging.getLogger('receipt_label')
+    receipt_label_logger.setLevel(log_level)
+    
+    # Specifically configure the lock_manager logger that we need for debugging
+    lock_manager_logger = logging.getLogger('receipt_label.utils.lock_manager')
+    lock_manager_logger.setLevel(log_level)
+    
+    # Test messages to verify logger configuration is working
+    receipt_label_logger.info("INFO: receipt_label logger configured for level %s", os.environ.get("LOG_LEVEL", "INFO"))
+    lock_manager_logger.debug("DEBUG: lock_manager logger configured successfully")
+    lock_manager_logger.info("INFO: lock_manager logger test - this should be visible")
     
     correlation_id = None
     
