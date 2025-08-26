@@ -9,7 +9,7 @@ requires-python = ">=3.12"
 dependencies = [
     "pulumi>=3.0.0,<4.0.0",
     "pulumi-aws>=6.0.0,<8.0.0",
-    "pulumi-command>=0.9.0,<1.0.0",
+    "pulumi-command>=0.9.0,<2.0.0",  # Updated to allow 1.x versions
     # Lambda Layer Version Update Tool dependencies
     "boto3>=1.26.0",
     "PyYAML>=6.0",
@@ -19,10 +19,10 @@ dependencies = [
 dev = [
     "black==25.1.0",
     "isort==6.0.1",
-    "flake8",
+    "flake8>=7.0.0",  # Added version specification
     "mypy>=1.16.1",
-    "pytest",
-    "pytest-cov",
+    "pytest>=8.0.0",  # Added version specification
+    "pytest-cov>=6.0.0",  # Added version specification
 ]
 
 [tool.hatch.build.targets.wheel]
