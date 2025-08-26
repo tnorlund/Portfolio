@@ -14,6 +14,8 @@ from receipt_dynamo.data.base_operations import (
     DeleteRequestTypeDef,
     FlattenedStandardMixin,
     WriteRequestTypeDef,
+    TransactWriteItemTypeDef,
+    DeleteTypeDef,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
@@ -54,7 +56,9 @@ class _CompactionLock(FlattenedStandardMixin):
         if lock is None:
             raise EntityValidationError("lock cannot be None")
         if not isinstance(lock, CompactionLock):
-            raise EntityValidationError("lock must be an instance of CompactionLock")
+            raise EntityValidationError(
+                "lock must be an instance of CompactionLock"
+            )
 
         # Since _add_entity doesn't support complex conditions with expression
         # values, we need to handle this at the DynamoDB client level
@@ -74,7 +78,9 @@ class _CompactionLock(FlattenedStandardMixin):
         self._client.put_item(**put_params)
 
     @handle_dynamodb_errors("delete_compaction_lock")
-    def delete_compaction_lock(self, lock_id: str, owner: str, collection: "ChromaDBCollection") -> None:
+    def delete_compaction_lock(
+        self, lock_id: str, owner: str, collection: "ChromaDBCollection"
+    ) -> None:
         """
         Deletes a compaction lock if owned by the specified owner.
 
@@ -93,11 +99,14 @@ class _CompactionLock(FlattenedStandardMixin):
             raise EntityValidationError("owner cannot be empty")
 
         # Use low-level client for conditional delete
-        # Note: 'owner' is a reserved keyword in DynamoDB, 
+        # Note: 'owner' is a reserved keyword in DynamoDB,
         # so we use ExpressionAttributeNames
         delete_params = {
             "TableName": self.table_name,
-            "Key": {"PK": {"S": f"LOCK#{collection.value}#{lock_id}"}, "SK": {"S": "LOCK"}},
+            "Key": {
+                "PK": {"S": f"LOCK#{collection.value}#{lock_id}"},
+                "SK": {"S": "LOCK"},
+            },
             "ConditionExpression": "#owner = :owner",
             "ExpressionAttributeNames": {"#owner": "owner"},
             "ExpressionAttributeValues": {":owner": {"S": owner}},
@@ -122,6 +131,30 @@ class _CompactionLock(FlattenedStandardMixin):
                 ) from e
             raise
 
+    @handle_dynamodb_errors("delete_compaction_locks")
+    def delete_compaction_locks(self, locks: List[CompactionLock]) -> None:
+        """
+        Deletes multiple compaction locks in batch.
+
+        Args:
+            locks: List of CompactionLocks to delete
+        """
+        self._validate_entity_list(locks, CompactionLock, "locks")
+        # Create transactional delete items
+        transact_items = [
+            TransactWriteItemTypeDef(
+                Delete=DeleteTypeDef(
+                    TableName=self.table_name,
+                    Key=item.key,
+                    ConditionExpression=(
+                        "attribute_exists(PK) AND attribute_exists(SK)"
+                    ),
+                )
+            )
+            for item in locks
+        ]
+        self._transact_write_with_chunking(transact_items)
+
     @handle_dynamodb_errors("update_compaction_lock")
     def update_compaction_lock(self, lock: CompactionLock) -> None:
         """
@@ -137,7 +170,9 @@ class _CompactionLock(FlattenedStandardMixin):
         if lock is None:
             raise EntityValidationError("lock cannot be None")
         if not isinstance(lock, CompactionLock):
-            raise EntityValidationError("lock must be an instance of CompactionLock")
+            raise EntityValidationError(
+                "lock must be an instance of CompactionLock"
+            )
 
         # _update_entity does a PUT, which replaces the entire item
         # We use attribute_exists to ensure the lock still exists
@@ -149,7 +184,9 @@ class _CompactionLock(FlattenedStandardMixin):
         )
 
     @handle_dynamodb_errors("get_compaction_lock")
-    def get_compaction_lock(self, lock_id: str, collection: "ChromaDBCollection") -> Optional[CompactionLock]:
+    def get_compaction_lock(
+        self, lock_id: str, collection: "ChromaDBCollection"
+    ) -> Optional[CompactionLock]:
         """
         Retrieves a compaction lock by ID and collection.
 
@@ -243,11 +280,11 @@ class _CompactionLock(FlattenedStandardMixin):
                     limit=None,  # Get all for this collection
                 )
                 all_locks.extend(locks)
-            
+
             # Apply limit if specified
             if limit is not None:
                 all_locks = all_locks[:limit]
-            
+
             return all_locks, None  # No pagination for combined results
 
     @handle_dynamodb_errors("cleanup_expired_locks")
