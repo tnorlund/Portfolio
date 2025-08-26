@@ -391,11 +391,21 @@ class LockManager:
                 
                 # Check expiration
                 now = datetime.now(timezone.utc)
-                if current_lock.expires <= now:
+                # Convert expires string back to datetime for comparison
+                logger.debug(f"DEBUG: current_lock.expires type: {type(current_lock.expires)}, value: {current_lock.expires}")
+                if isinstance(current_lock.expires, str):
+                    expires_dt = datetime.fromisoformat(current_lock.expires.replace('Z', '+00:00'))
+                    logger.debug(f"DEBUG: Converted to expires_dt type: {type(expires_dt)}, value: {expires_dt}")
+                else:
+                    expires_dt = current_lock.expires
+                    logger.debug(f"DEBUG: Using original expires_dt type: {type(expires_dt)}, value: {expires_dt}")
+                    
+                logger.debug(f"DEBUG: About to compare expires_dt ({type(expires_dt)}) <= now ({type(now)})")
+                if expires_dt <= now:
                     logger.warning(
                         "Lock %s has expired: %s <= %s",
                         self.lock_id,
-                        current_lock.expires.isoformat(),
+                        expires_dt.isoformat(),
                         now.isoformat()
                     )
                     return False
@@ -428,7 +438,13 @@ class LockManager:
                 if current_lock is None or current_lock.owner != self.lock_owner:
                     return None
                 
-                remaining = current_lock.expires - datetime.now(timezone.utc)
+                # Convert expires string back to datetime for comparison
+                if isinstance(current_lock.expires, str):
+                    expires_dt = datetime.fromisoformat(current_lock.expires.replace('Z', '+00:00'))
+                else:
+                    expires_dt = current_lock.expires
+                    
+                remaining = expires_dt - datetime.now(timezone.utc)
                 return remaining if remaining.total_seconds() > 0 else timedelta(0)
 
             except Exception as e:
