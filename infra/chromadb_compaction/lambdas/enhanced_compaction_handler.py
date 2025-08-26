@@ -236,6 +236,10 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         level = getattr(logging, os.environ.get("LOG_LEVEL", "INFO"), logging.INFO)
         receipt_label_logger.setLevel(level)
     
+    # Test message to verify receipt_label logger configuration is working
+    receipt_label_logger.debug("DEBUG: receipt_label logger configured successfully")
+    receipt_label_logger.info("INFO: receipt_label logger test - this should be visible")
+    
     correlation_id = None
     
     # Start enhanced monitoring if available
