@@ -280,7 +280,7 @@ def test_image_to_item(example_image):
         "GSI2PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "GSI2SK": {"S": "IMAGE"},
         "GSI3PK": {"S": "IMAGE#SCAN"},
-        "GSI3SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "GSI3SK": {"S": "NUM_RECEIPTS#00000"},
         "TYPE": {"S": "IMAGE"},
         "width": {"N": "10"},
         "height": {"N": "20"},
@@ -305,6 +305,7 @@ def test_image_to_item(example_image):
         "cdn_medium_s3_key": {"NULL": True},
         "cdn_medium_webp_s3_key": {"NULL": True},
         "cdn_medium_avif_s3_key": {"NULL": True},
+        "receipt_count": {"NULL": True},
     }
 
 
@@ -320,7 +321,7 @@ def test_image_to_item_no_sha(example_image_no_sha):
         "GSI2PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "GSI2SK": {"S": "IMAGE"},
         "GSI3PK": {"S": "IMAGE#SCAN"},
-        "GSI3SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "GSI3SK": {"S": "NUM_RECEIPTS#00000"},
         "TYPE": {"S": "IMAGE"},
         "width": {"N": "10"},
         "height": {"N": "20"},
@@ -345,6 +346,7 @@ def test_image_to_item_no_sha(example_image_no_sha):
         "cdn_medium_s3_key": {"NULL": True},
         "cdn_medium_webp_s3_key": {"NULL": True},
         "cdn_medium_avif_s3_key": {"NULL": True},
+        "receipt_count": {"NULL": True},
     }
 
 
@@ -360,7 +362,7 @@ def test_image_to_item_no_cdn_bucket(example_image_no_cdn_bucket):
         "GSI2PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "GSI2SK": {"S": "IMAGE"},
         "GSI3PK": {"S": "IMAGE#SCAN"},
-        "GSI3SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "GSI3SK": {"S": "NUM_RECEIPTS#00000"},
         "TYPE": {"S": "IMAGE"},
         "width": {"N": "10"},
         "height": {"N": "20"},
@@ -385,6 +387,7 @@ def test_image_to_item_no_cdn_bucket(example_image_no_cdn_bucket):
         "cdn_medium_s3_key": {"NULL": True},
         "cdn_medium_webp_s3_key": {"NULL": True},
         "cdn_medium_avif_s3_key": {"NULL": True},
+        "receipt_count": {"NULL": True},
     }
 
 
@@ -400,7 +403,7 @@ def test_image_to_item_no_cdn_key(example_image_no_cdn_key):
         "GSI2PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "GSI2SK": {"S": "IMAGE"},
         "GSI3PK": {"S": "IMAGE#SCAN"},
-        "GSI3SK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
+        "GSI3SK": {"S": "NUM_RECEIPTS#00000"},
         "TYPE": {"S": "IMAGE"},
         "width": {"N": "10"},
         "height": {"N": "20"},
@@ -425,6 +428,7 @@ def test_image_to_item_no_cdn_key(example_image_no_cdn_key):
         "cdn_medium_s3_key": {"NULL": True},
         "cdn_medium_webp_s3_key": {"NULL": True},
         "cdn_medium_avif_s3_key": {"NULL": True},
+        "receipt_count": {"NULL": True},
     }
 
 
@@ -453,7 +457,8 @@ def test_image_repr(example_image):
         "cdn_medium_s3_key=None, "
         "cdn_medium_webp_s3_key=None, "
         "cdn_medium_avif_s3_key=None, "
-        "image_type='SCAN'"
+        "image_type='SCAN', "
+        "receipt_count=None"
         ")"
     )
 
@@ -484,6 +489,7 @@ def test_image_iter(example_image):
         "cdn_medium_webp_s3_key": None,
         "cdn_medium_avif_s3_key": None,
         "image_type": "SCAN",
+        "receipt_count": None,
     }
 
 
@@ -677,3 +683,85 @@ def test_item_to_image(
                 "image_type": {"S": "SCAN"},
             }
         )
+
+
+@pytest.mark.unit
+def test_image_init_invalid_receipt_count():
+    """Test that invalid receipt_count values raise appropriate errors."""
+    
+    # Test negative receipt_count
+    with pytest.raises(ValueError, match="receipt_count must be a non-negative integer"):
+        Image(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            10,
+            20,
+            "2021-01-01T00:00:00",
+            "bucket",
+            "key",
+            receipt_count=-1,
+        )
+    
+    # Test string receipt_count
+    with pytest.raises(ValueError, match="receipt_count must be an integer"):
+        Image(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            10,
+            20,
+            "2021-01-01T00:00:00",
+            "bucket", 
+            "key",
+            receipt_count="5",
+        )
+    
+    # Test float receipt_count
+    with pytest.raises(ValueError, match="receipt_count must be an integer"):
+        Image(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            10,
+            20,
+            "2021-01-01T00:00:00",
+            "bucket",
+            "key", 
+            receipt_count=5.5,
+        )
+
+
+@pytest.mark.unit
+def test_image_init_valid_receipt_count():
+    """Test that valid receipt_count values work correctly."""
+    
+    # Test positive receipt_count
+    image1 = Image(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        10,
+        20,
+        "2021-01-01T00:00:00",
+        "bucket",
+        "key",
+        receipt_count=5,
+    )
+    assert image1.receipt_count == 5
+    
+    # Test zero receipt_count
+    image2 = Image(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        10,
+        20,
+        "2021-01-01T00:00:00",
+        "bucket",
+        "key",
+        receipt_count=0,
+    )
+    assert image2.receipt_count == 0
+    
+    # Test None receipt_count (should work)
+    image3 = Image(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        10,
+        20,
+        "2021-01-01T00:00:00",
+        "bucket",
+        "key",
+        receipt_count=None,
+    )
+    assert image3.receipt_count is None

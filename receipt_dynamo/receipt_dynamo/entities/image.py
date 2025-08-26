@@ -110,10 +110,11 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
         else:
             raise ValueError("image_type must be a ImageType or a string")
 
-        if self.receipt_count is not None and not isinstance(
-            self.receipt_count, int
-        ):
-            raise ValueError("receipt_count must be an integer")
+        if self.receipt_count is not None:
+            if not isinstance(self.receipt_count, int):
+                raise ValueError("receipt_count must be an integer")
+            if self.receipt_count < 0:
+                raise ValueError("receipt_count must be a non-negative integer")
 
     @property
     def key(self) -> Dict[str, Any]:
@@ -298,8 +299,8 @@ def item_to_image(item: Dict[str, Any]) -> Image:
             ),
             image_type=image_type if image_type else ImageType.SCAN.value,
             receipt_count=(
-                int(item.get("receipt_count", {}).get("N"))
-                if "receipt_count" in item
+                int(item["receipt_count"]["N"])
+                if "receipt_count" in item and "N" in item["receipt_count"]
                 else None
             ),
         )
