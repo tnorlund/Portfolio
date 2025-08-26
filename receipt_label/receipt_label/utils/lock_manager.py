@@ -410,31 +410,36 @@ class LockManager:
                 # Check expiration
                 now = datetime.now(timezone.utc)
                 # Convert expires string back to datetime for comparison
-                logger.debug(
-                    f"DEBUG: current_lock.expires type: {type(current_lock.expires)}, value: {current_lock.expires}"
+                logger.info(
+                    "TEMP DEBUG: current_lock.expires type: %s, value: %s", 
+                    type(current_lock.expires), current_lock.expires
                 )
                 if isinstance(current_lock.expires, str):
                     expires_dt = datetime.fromisoformat(
                         current_lock.expires.replace("Z", "+00:00")
                     )
-                    logger.debug(
-                        f"DEBUG: Converted to expires_dt type: {type(expires_dt)}, value: {expires_dt}"
+                    logger.info(
+                        "TEMP DEBUG: Converted to expires_dt type: %s, value: %s", 
+                        type(expires_dt), expires_dt
                     )
                 else:
                     expires_dt = current_lock.expires
-                    logger.debug(
-                        f"DEBUG: Using original expires_dt type: {type(expires_dt)}, value: {expires_dt}"
+                    logger.info(
+                        "TEMP DEBUG: Using original expires_dt type: %s, value: %s", 
+                        type(expires_dt), expires_dt
                     )
 
                 # Ensure expires_dt is a datetime object
                 if not isinstance(expires_dt, datetime):
                     logger.error(
-                        f"expires_dt is not a datetime object: {type(expires_dt)}, value: {expires_dt}"
+                        "expires_dt is not a datetime object: %s, value: %s", 
+                        type(expires_dt), expires_dt
                     )
                     return False
 
-                logger.debug(
-                    f"DEBUG: About to compare expires_dt ({type(expires_dt)}) <= now ({type(now)})"
+                logger.info(
+                    "TEMP DEBUG: About to compare expires_dt (%s) <= now (%s)", 
+                    type(expires_dt), type(now)
                 )
                 if expires_dt <= now:
                     logger.warning(
@@ -445,7 +450,7 @@ class LockManager:
                     )
                     return False
 
-                logger.debug("Lock ownership validated for %s", self.lock_id)
+                logger.info("TEMP DEBUG: Lock ownership validated for %s", self.lock_id)
                 return True
 
             except Exception as e:
