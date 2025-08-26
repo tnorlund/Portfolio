@@ -229,6 +229,13 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     - SQS messages: Process stream events and traditional deltas
     - Direct invocation: Traditional compaction operations
     """
+    # Configure receipt_label logger to respect Lambda's LOG_LEVEL for debugging
+    import logging
+    receipt_label_logger = logging.getLogger('receipt_label')
+    if not receipt_label_logger.handlers:  # Only configure if not already configured
+        level = getattr(logging, os.environ.get("LOG_LEVEL", "INFO"), logging.INFO)
+        receipt_label_logger.setLevel(level)
+    
     correlation_id = None
     
     # Start enhanced monitoring if available
