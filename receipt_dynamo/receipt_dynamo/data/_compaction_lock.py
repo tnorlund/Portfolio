@@ -21,6 +21,7 @@ from receipt_dynamo.data.shared_exceptions import (
     EntityNotFoundError,
     EntityValidationError,
 )
+from receipt_dynamo.constants import ChromaDBCollection
 from receipt_dynamo.entities.compaction_lock import (
     CompactionLock,
     item_to_compaction_lock,
@@ -48,8 +49,12 @@ class _CompactionLock(FlattenedStandardMixin):
         Raises:
             EntityAlreadyExistsError: If lock is held by another owner and not
                 expired
+            EntityValidationError: If lock is None or wrong type
         """
-        self._validate_entity(lock, CompactionLock, "lock")
+        if lock is None:
+            raise EntityValidationError("lock cannot be None")
+        if not isinstance(lock, CompactionLock):
+            raise EntityValidationError("lock must be an instance of CompactionLock")
 
         # Since _add_entity doesn't support complex conditions with expression
         # values, we need to handle this at the DynamoDB client level
@@ -69,13 +74,14 @@ class _CompactionLock(FlattenedStandardMixin):
         self._client.put_item(**put_params)
 
     @handle_dynamodb_errors("delete_compaction_lock")
-    def delete_compaction_lock(self, lock_id: str, owner: str) -> None:
+    def delete_compaction_lock(self, lock_id: str, owner: str, collection: "ChromaDBCollection") -> None:
         """
         Deletes a compaction lock if owned by the specified owner.
 
         Args:
             lock_id: The ID of the lock to delete
             owner: The UUID of the owner deleting the lock
+            collection: The ChromaDB collection this lock protects
 
         Raises:
             EntityNotFoundError: If lock doesn't exist
@@ -91,7 +97,7 @@ class _CompactionLock(FlattenedStandardMixin):
         # so we use ExpressionAttributeNames
         delete_params = {
             "TableName": self.table_name,
-            "Key": {"PK": {"S": f"LOCK#{lock_id}"}, "SK": {"S": "LOCK"}},
+            "Key": {"PK": {"S": f"LOCK#{collection.value}#{lock_id}"}, "SK": {"S": "LOCK"}},
             "ConditionExpression": "#owner = :owner",
             "ExpressionAttributeNames": {"#owner": "owner"},
             "ExpressionAttributeValues": {":owner": {"S": owner}},
@@ -105,13 +111,13 @@ class _CompactionLock(FlattenedStandardMixin):
                 == "ConditionalCheckFailedException"
             ):
                 # Check if lock exists and who owns it
-                existing_lock = self.get_compaction_lock(lock_id)
+                existing_lock = self.get_compaction_lock(lock_id, collection)
                 if existing_lock is None:
                     raise EntityNotFoundError(
-                        f"Lock '{lock_id}' not found"
+                        f"Lock '{lock_id}' for collection '{collection.value}' not found"
                     ) from e
                 raise EntityValidationError(
-                    f"Cannot delete lock '{lock_id}' - "
+                    f"Cannot delete lock '{lock_id}' for collection '{collection.value}' - "
                     f"owned by {existing_lock.owner}"
                 ) from e
             raise
@@ -126,8 +132,12 @@ class _CompactionLock(FlattenedStandardMixin):
 
         Raises:
             EntityNotFoundError: If lock doesn't exist
+            EntityValidationError: If lock is None or wrong type
         """
-        self._validate_entity(lock, CompactionLock, "lock")
+        if lock is None:
+            raise EntityValidationError("lock cannot be None")
+        if not isinstance(lock, CompactionLock):
+            raise EntityValidationError("lock must be an instance of CompactionLock")
 
         # _update_entity does a PUT, which replaces the entire item
         # We use attribute_exists to ensure the lock still exists
@@ -139,12 +149,13 @@ class _CompactionLock(FlattenedStandardMixin):
         )
 
     @handle_dynamodb_errors("get_compaction_lock")
-    def get_compaction_lock(self, lock_id: str) -> Optional[CompactionLock]:
+    def get_compaction_lock(self, lock_id: str, collection: "ChromaDBCollection") -> Optional[CompactionLock]:
         """
-        Retrieves a compaction lock by ID.
+        Retrieves a compaction lock by ID and collection.
 
         Args:
             lock_id: The ID of the lock to retrieve
+            collection: The ChromaDB collection this lock protects
 
         Returns:
             The CompactionLock if found, None otherwise
@@ -153,7 +164,7 @@ class _CompactionLock(FlattenedStandardMixin):
             raise EntityValidationError("lock_id cannot be empty")
 
         return self._get_entity(
-            primary_key=f"LOCK#{lock_id}",
+            primary_key=f"LOCK#{collection.value}#{lock_id}",
             sort_key="LOCK",
             entity_class=CompactionLock,
             converter_func=item_to_compaction_lock,
@@ -185,6 +196,7 @@ class _CompactionLock(FlattenedStandardMixin):
     @handle_dynamodb_errors("list_active_compaction_locks")
     def list_active_compaction_locks(
         self,
+        collection: Optional[ChromaDBCollection] = None,
         limit: Optional[int] = None,
         last_evaluated_key: Optional[Dict] = None,
     ) -> Tuple[List[CompactionLock], Optional[Dict[str, Any]]]:
@@ -192,6 +204,7 @@ class _CompactionLock(FlattenedStandardMixin):
         Lists all active (non-expired) compaction locks.
 
         Args:
+            collection: Optional collection filter. If None, returns locks from all collections.
             limit: Maximum number of locks to return
             last_evaluated_key: Pagination token
 
@@ -200,18 +213,42 @@ class _CompactionLock(FlattenedStandardMixin):
         """
         now = datetime.now(timezone.utc).isoformat()
 
-        return self._query_entities(
-            index_name="GSI1",
-            key_condition_expression="GSI1PK = :pk AND GSI1SK > :sk",
-            expression_attribute_names=None,  # No reserved keywords
-            expression_attribute_values={
-                ":pk": {"S": "LOCK"},
-                ":sk": {"S": f"EXPIRES#{now}"},
-            },
-            converter_func=item_to_compaction_lock,
-            limit=limit,
-            last_evaluated_key=last_evaluated_key,
-        )
+        if collection is not None:
+            # Query specific collection
+            return self._query_entities(
+                index_name="GSI1",
+                key_condition_expression="GSI1PK = :pk AND GSI1SK > :sk",
+                expression_attribute_names=None,  # No reserved keywords
+                expression_attribute_values={
+                    ":pk": {"S": f"LOCK#{collection.value}"},
+                    ":sk": {"S": f"EXPIRES#{now}"},
+                },
+                converter_func=item_to_compaction_lock,
+                limit=limit,
+                last_evaluated_key=last_evaluated_key,
+            )
+        else:
+            # Query all collections and combine results
+            all_locks = []
+            for coll in ChromaDBCollection:
+                locks, _ = self._query_entities(
+                    index_name="GSI1",
+                    key_condition_expression="GSI1PK = :pk AND GSI1SK > :sk",
+                    expression_attribute_names=None,
+                    expression_attribute_values={
+                        ":pk": {"S": f"LOCK#{coll.value}"},
+                        ":sk": {"S": f"EXPIRES#{now}"},
+                    },
+                    converter_func=item_to_compaction_lock,
+                    limit=None,  # Get all for this collection
+                )
+                all_locks.extend(locks)
+            
+            # Apply limit if specified
+            if limit is not None:
+                all_locks = all_locks[:limit]
+            
+            return all_locks, None  # No pagination for combined results
 
     @handle_dynamodb_errors("cleanup_expired_locks")
     def cleanup_expired_locks(self) -> int:
@@ -226,20 +263,23 @@ class _CompactionLock(FlattenedStandardMixin):
         """
         now = datetime.now(timezone.utc).isoformat()
 
-        # Query for expired locks
-        expired_locks, _ = self._query_entities(
-            index_name="GSI1",
-            key_condition_expression="GSI1PK = :pk AND GSI1SK < :sk",
-            expression_attribute_names=None,  # No reserved keywords
-            expression_attribute_values={
-                ":pk": {"S": "LOCK"},
-                ":sk": {"S": f"EXPIRES#{now}"},
-            },
-            converter_func=item_to_compaction_lock,
-            limit=None,  # Get all expired locks
-        )
+        # Query for expired locks from all collections
+        all_expired_locks = []
+        for collection in ChromaDBCollection:
+            expired_locks, _ = self._query_entities(
+                index_name="GSI1",
+                key_condition_expression="GSI1PK = :pk AND GSI1SK < :sk",
+                expression_attribute_names=None,  # No reserved keywords
+                expression_attribute_values={
+                    ":pk": {"S": f"LOCK#{collection.value}"},
+                    ":sk": {"S": f"EXPIRES#{now}"},
+                },
+                converter_func=item_to_compaction_lock,
+                limit=None,  # Get all expired locks
+            )
+            all_expired_locks.extend(expired_locks)
 
-        if not expired_locks:
+        if not all_expired_locks:
             return 0
 
         # Batch delete expired locks
@@ -247,8 +287,8 @@ class _CompactionLock(FlattenedStandardMixin):
             WriteRequestTypeDef(
                 DeleteRequest=DeleteRequestTypeDef(Key=lock.key)
             )
-            for lock in expired_locks
+            for lock in all_expired_locks
         ]
 
         self._batch_write_with_retry(delete_requests)
-        return len(expired_locks)
+        return len(all_expired_locks)

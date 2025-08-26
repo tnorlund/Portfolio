@@ -155,7 +155,7 @@ class LockManager:
 
             try:
                 self.dynamo_client.delete_compaction_lock(
-                    self.lock_id, self.lock_owner
+                    self.lock_id, self.lock_owner, self.collection
                 )
                 logger.info("Released lock: %s", self.lock_id)
 
@@ -373,7 +373,7 @@ class LockManager:
                 return False
 
             try:
-                current_lock = self.dynamo_client.get_compaction_lock(self.lock_id)
+                current_lock = self.dynamo_client.get_compaction_lock(self.lock_id, self.collection)
                 
                 if current_lock is None:
                     logger.warning("Lock %s no longer exists", self.lock_id)
@@ -423,7 +423,7 @@ class LockManager:
                 return None
 
             try:
-                current_lock = self.dynamo_client.get_compaction_lock(self.lock_id)
+                current_lock = self.dynamo_client.get_compaction_lock(self.lock_id, self.collection)
                 
                 if current_lock is None or current_lock.owner != self.lock_owner:
                     return None
