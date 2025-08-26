@@ -237,12 +237,42 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     receipt_label_logger = logging.getLogger('receipt_label')
     receipt_label_logger.setLevel(log_level)
     
+    # CRITICAL FIX: Add handler to receipt_label loggers so they can output to CloudWatch
+    if not receipt_label_logger.handlers:
+        # Create a handler that outputs to stdout (CloudWatch captures this)
+        handler = logging.StreamHandler()
+        
+        # Use the same JSON formatter as ChromaDB if available, otherwise simple format
+        if OBSERVABILITY_AVAILABLE:
+            # Try to use the same structured formatter as ChromaDB
+            try:
+                from utils.logging import StructuredFormatter
+                formatter = StructuredFormatter()
+            except ImportError:
+                # Fallback to simple format
+                formatter = logging.Formatter(
+                    "[%(levelname)s] %(asctime)s.%(msecs)03dZ %(name)s - %(message)s",
+                    datefmt="%Y-%m-%d %H:%M:%S"
+                )
+        else:
+            # Simple format for fallback logging
+            formatter = logging.Formatter(
+                "[%(levelname)s] %(asctime)s.%(msecs)03dZ %(name)s - %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S"
+            )
+        
+        handler.setFormatter(formatter)
+        receipt_label_logger.addHandler(handler)
+        
+        # Prevent propagation to avoid duplicate logs
+        receipt_label_logger.propagate = False
+    
     # Specifically configure the lock_manager logger that we need for debugging
     lock_manager_logger = logging.getLogger('receipt_label.utils.lock_manager')
     lock_manager_logger.setLevel(log_level)
     
     # Test messages to verify logger configuration is working
-    receipt_label_logger.info("INFO: receipt_label logger configured for level %s", os.environ.get("LOG_LEVEL", "INFO"))
+    receipt_label_logger.info("INFO: receipt_label logger configured for level %s with handler", os.environ.get("LOG_LEVEL", "INFO"))
     lock_manager_logger.debug("DEBUG: lock_manager logger configured successfully")
     lock_manager_logger.info("INFO: lock_manager logger test - this should be visible")
     
