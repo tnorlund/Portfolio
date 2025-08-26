@@ -1,0 +1,103 @@
+=== ChromaDB Compaction Metrics Report ===
+Time Range: 2025-08-25T03:29:00 to 2025-08-25T06:29:00 (3 hours)
+Generated: Sun Aug 24 23:29:00 PDT 2025
+
+=== LAMBDA FUNCTIONS ===
+Stream Processor (chromadb-dev-lambdas-stream-processor-e79a370):
+Invocations:
+---------------------------------------
+|         GetMetricStatistics         |
++-----------------------------+-------+
+|  2025-08-25T04:29:00+00:00  |  56.0 |
+|  2025-08-25T05:29:00+00:00  |  73.0 |
+|  2025-08-25T03:29:00+00:00  |  67.0 |
++-----------------------------+-------+
+Duration (ms) - Average:
+-----------------------------------------------------
+|                GetMetricStatistics                |
++----------------------------+----------------------+
+|  2025-08-25T05:29:00+00:00 |  211.85520520547945  |
+|  2025-08-25T03:29:00+00:00 |  57.33955222388061   |
+|  2025-08-25T04:29:00+00:00 |  175.43803551785714  |
++----------------------------+----------------------+
+Errors:
+
+Enhanced Compaction (chromadb-dev-lambdas-enhanced-compaction-79f6426):
+Invocations:
+---------------------------------------
+|         GetMetricStatistics         |
++-----------------------------+-------+
+|  2025-08-25T04:29:00+00:00  |  17.0 |
+|  2025-08-25T05:29:00+00:00  |  15.0 |
+|  2025-08-25T03:29:00+00:00  |  48.0 |
++-----------------------------+-------+
+Duration (ms) - Average:
+----------------------------------------------------
+|                GetMetricStatistics               |
++----------------------------+---------------------+
+|  2025-08-25T05:29:00+00:00 |  5619.476666666667  |
+|  2025-08-25T03:29:00+00:00 |  7686.904166666667  |
+|  2025-08-25T04:29:00+00:00 |  6447.688229411765  |
++----------------------------+---------------------+
+
+=== SQS QUEUES ===
+Lines Queue (chromadb-dev-queues-lines-queue-b3d38e1):
+Messages Sent:
+Messages Received:
+
+Words Queue (chromadb-dev-queues-words-queue-6e2171c):
+Messages Sent:
+---------------------------------------
+|         GetMetricStatistics         |
++-----------------------------+-------+
+|  2025-08-25T04:29:00+00:00  |  92.0 |
+|  2025-08-25T05:29:00+00:00  |  85.0 |
+|  2025-08-25T03:29:00+00:00  |  21.0 |
++-----------------------------+-------+
+Messages Received:
+----------------------------------------
+|          GetMetricStatistics         |
++-----------------------------+--------+
+|  2025-08-25T04:29:00+00:00  |  92.0  |
+|  2025-08-25T05:29:00+00:00  |  85.0  |
+|  2025-08-25T03:29:00+00:00  |  159.0 |
++-----------------------------+--------+
+
+=== DEAD LETTER QUEUES ===
+Lines DLQ (chromadb-dev-queues-lines-dlq-67a9812):
+Words DLQ (chromadb-dev-queues-words-dlq-0b5f487):
+
+=== S3 STORAGE ===
+ChromaDB Bucket (chromadb-dev-shared-buckets-vectors-c239843):
+Current Contents:
+                           PRE delta/
+                           PRE intermediate/
+                           PRE lines/
+                           PRE snapshot/
+                           PRE words/
+2025-08-23 14:44:39     174376 pending_batches_20250823_144327.ndjson
+
+Total Objects: 1
+   Total Size: 174376
+
+Bucket Structure (first 10 files):
+2025-08-21 13:15:12         41 delta/.placeholder
+2025-08-23 14:47:12   89056848 intermediate/2d144259-9a76-4aff-9154-b73b0e0f3a25-group-0-group-0/merged/07405d99-b1da-40a0-8b15-adad86bce93d/data_level0.bin
+2025-08-23 14:47:12        100 intermediate/2d144259-9a76-4aff-9154-b73b0e0f3a25-group-0-group-0/merged/07405d99-b1da-40a0-8b15-adad86bce93d/header.bin
+2025-08-23 14:47:12    2494456 intermediate/2d144259-9a76-4aff-9154-b73b0e0f3a25-group-0-group-0/merged/07405d99-b1da-40a0-8b15-adad86bce93d/index_metadata.pickle
+2025-08-23 14:47:12      56688 intermediate/2d144259-9a76-4aff-9154-b73b0e0f3a25-group-0-group-0/merged/07405d99-b1da-40a0-8b15-adad86bce93d/length.bin
+2025-08-23 14:47:12     121628 intermediate/2d144259-9a76-4aff-9154-b73b0e0f3a25-group-0-group-0/merged/07405d99-b1da-40a0-8b15-adad86bce93d/link_lists.bin
+2025-08-23 14:47:11   41730048 intermediate/2d144259-9a76-4aff-9154-b73b0e0f3a25-group-0-group-0/merged/chroma.sqlite3
+2025-08-23 14:47:12   40439808 intermediate/2d144259-9a76-4aff-9154-b73b0e0f3a25-group-1-group-1/merged/chroma.sqlite3
+2025-08-23 14:47:13   89283072 intermediate/2d144259-9a76-4aff-9154-b73b0e0f3a25-group-1-group-1/merged/f49a0287-a3c7-4d91-b179-c2d690d4630b/data_level0.bin
+2025-08-23 14:47:12        100 intermediate/2d144259-9a76-4aff-9154-b73b0e0f3a25-group-1-group-1/merged/f49a0287-a3c7-4d91-b179-c2d690d4630b/header.bin
+
+S3 CloudWatch Metrics (if available):
+
+=== CUSTOM METRICS ===
+
+=== SUMMARY ===
+Script completed at: Sun Aug 24 23:29:13 PDT 2025
+Usage: ./get_chromadb_metrics.sh [hours_back] [output_file]
+  hours_back: Time range in hours (default: 24)
+  output_file: Save to file instead of stdout (optional)
