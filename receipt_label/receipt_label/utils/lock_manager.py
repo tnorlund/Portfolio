@@ -19,6 +19,7 @@ from receipt_dynamo.constants import ChromaDBCollection
 # Metrics support (optional for testing environments)
 try:
     from utils import metrics
+
     METRICS_AVAILABLE = True
 except ImportError:
     METRICS_AVAILABLE = False
@@ -239,7 +240,9 @@ class LockManager:
             try:
                 # Validate ownership before updating to prevent race conditions
                 if not self.validate_ownership():
-                    logger.error("Lock ownership validation failed during heartbeat update")
+                    logger.error(
+                        "Lock ownership validation failed during heartbeat update"
+                    )
                     return False
 
                 updated_lock = CompactionLock(
@@ -289,31 +292,44 @@ class LockManager:
                     logger.error(
                         "Heartbeat update failed (attempt %d/%d) - lock may be lost",
                         self.consecutive_heartbeat_failures,
-                        self.max_heartbeat_failures
+                        self.max_heartbeat_failures,
                     )
-                    
+
                     # Emit heartbeat failure metric
                     if METRICS_AVAILABLE:
-                        metrics.count("CompactionHeartbeatFailed", 1, {
-                            "collection": self.collection.value,
-                            "failure_count": str(self.consecutive_heartbeat_failures)
-                        })
-                    
+                        metrics.count(
+                            "CompactionHeartbeatFailed",
+                            1,
+                            {
+                                "collection": self.collection.value,
+                                "failure_count": str(
+                                    self.consecutive_heartbeat_failures
+                                ),
+                            },
+                        )
+
                     # Auto-release lock after too many failures
-                    if self.consecutive_heartbeat_failures >= self.max_heartbeat_failures:
+                    if (
+                        self.consecutive_heartbeat_failures
+                        >= self.max_heartbeat_failures
+                    ):
                         logger.critical(
                             "Maximum heartbeat failures reached (%d) - releasing lock %s",
                             self.max_heartbeat_failures,
-                            self.lock_id
+                            self.lock_id,
                         )
-                        
+
                         # Emit lock expired metric
                         if METRICS_AVAILABLE:
-                            metrics.count("CompactionLockExpired", 1, {
-                                "collection": self.collection.value,
-                                "reason": "heartbeat_failure"
-                            })
-                        
+                            metrics.count(
+                                "CompactionLockExpired",
+                                1,
+                                {
+                                    "collection": self.collection.value,
+                                    "reason": "heartbeat_failure",
+                                },
+                            )
+
                         # Stop heartbeat thread and clear lock state
                         self.stop_heartbeat_event.set()
                         self.lock_id = None
@@ -373,43 +389,55 @@ class LockManager:
                 return False
 
             try:
-                current_lock = self.dynamo_client.get_compaction_lock(self.lock_id, self.collection)
-                
+                current_lock = self.dynamo_client.get_compaction_lock(
+                    self.lock_id, self.collection
+                )
+
                 if current_lock is None:
                     logger.warning("Lock %s no longer exists", self.lock_id)
                     return False
-                
+
                 # Check ownership
                 if current_lock.owner != self.lock_owner:
                     logger.warning(
                         "Lock %s ownership mismatch: expected %s, found %s",
                         self.lock_id,
                         self.lock_owner,
-                        current_lock.owner
+                        current_lock.owner,
                     )
                     return False
-                
+
                 # Check expiration
                 now = datetime.now(timezone.utc)
                 # Convert expires string back to datetime for comparison
-                logger.debug(f"DEBUG: current_lock.expires type: {type(current_lock.expires)}, value: {current_lock.expires}")
+                logger.debug(
+                    f"DEBUG: current_lock.expires type: {type(current_lock.expires)}, value: {current_lock.expires}"
+                )
                 if isinstance(current_lock.expires, str):
-                    expires_dt = datetime.fromisoformat(current_lock.expires.replace('Z', '+00:00'))
-                    logger.debug(f"DEBUG: Converted to expires_dt type: {type(expires_dt)}, value: {expires_dt}")
+                    expires_dt = datetime.fromisoformat(
+                        current_lock.expires.replace("Z", "+00:00")
+                    )
+                    logger.debug(
+                        f"DEBUG: Converted to expires_dt type: {type(expires_dt)}, value: {expires_dt}"
+                    )
                 else:
                     expires_dt = current_lock.expires
-                    logger.debug(f"DEBUG: Using original expires_dt type: {type(expires_dt)}, value: {expires_dt}")
-                    
-                logger.debug(f"DEBUG: About to compare expires_dt ({type(expires_dt)}) <= now ({type(now)})")
+                    logger.debug(
+                        f"DEBUG: Using original expires_dt type: {type(expires_dt)}, value: {expires_dt}"
+                    )
+
+                logger.debug(
+                    f"DEBUG: About to compare expires_dt ({type(expires_dt)}) <= now ({type(now)})"
+                )
                 if expires_dt <= now:
                     logger.warning(
                         "Lock %s has expired: %s <= %s",
                         self.lock_id,
                         expires_dt.isoformat(),
-                        now.isoformat()
+                        now.isoformat(),
                     )
                     return False
-                
+
                 logger.debug("Lock ownership validated for %s", self.lock_id)
                 return True
 
@@ -433,19 +461,30 @@ class LockManager:
                 return None
 
             try:
-                current_lock = self.dynamo_client.get_compaction_lock(self.lock_id, self.collection)
-                
-                if current_lock is None or current_lock.owner != self.lock_owner:
+                current_lock = self.dynamo_client.get_compaction_lock(
+                    self.lock_id, self.collection
+                )
+
+                if (
+                    current_lock is None
+                    or current_lock.owner != self.lock_owner
+                ):
                     return None
-                
+
                 # Convert expires string back to datetime for comparison
                 if isinstance(current_lock.expires, str):
-                    expires_dt = datetime.fromisoformat(current_lock.expires.replace('Z', '+00:00'))
+                    expires_dt = datetime.fromisoformat(
+                        current_lock.expires.replace("Z", "+00:00")
+                    )
                 else:
                     expires_dt = current_lock.expires
-                    
+
                 remaining = expires_dt - datetime.now(timezone.utc)
-                return remaining if remaining.total_seconds() > 0 else timedelta(0)
+                return (
+                    remaining
+                    if remaining.total_seconds() > 0
+                    else timedelta(0)
+                )
 
             except Exception as e:
                 logger.error(
@@ -472,7 +511,9 @@ class LockManager:
             try:
                 # First validate we still own it
                 if not self.validate_ownership():
-                    logger.error("Cannot refresh lock - ownership validation failed")
+                    logger.error(
+                        "Cannot refresh lock - ownership validation failed"
+                    )
                     return False
 
                 # Create updated lock with extended expiration
@@ -488,13 +529,15 @@ class LockManager:
                 self.dynamo_client.update_compaction_lock(updated_lock)
 
                 logger.info("Successfully refreshed lock %s", self.lock_id)
-                
+
                 # Emit lock refresh metric
                 if METRICS_AVAILABLE:
-                    metrics.count("CompactionLockRefreshed", 1, {
-                        "collection": self.collection.value
-                    })
-                
+                    metrics.count(
+                        "CompactionLockRefreshed",
+                        1,
+                        {"collection": self.collection.value},
+                    )
+
                 return True
 
             except Exception as e:
