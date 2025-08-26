@@ -426,6 +426,13 @@ class LockManager:
                         f"DEBUG: Using original expires_dt type: {type(expires_dt)}, value: {expires_dt}"
                     )
 
+                # Ensure expires_dt is a datetime object
+                if not isinstance(expires_dt, datetime):
+                    logger.error(
+                        f"expires_dt is not a datetime object: {type(expires_dt)}, value: {expires_dt}"
+                    )
+                    return False
+
                 logger.debug(
                     f"DEBUG: About to compare expires_dt ({type(expires_dt)}) <= now ({type(now)})"
                 )
