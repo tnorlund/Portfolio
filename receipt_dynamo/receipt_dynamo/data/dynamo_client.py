@@ -50,6 +50,9 @@ from receipt_dynamo.data._receipt_validation_summary import (
 )
 from receipt_dynamo.data._receipt_word import _ReceiptWord
 from receipt_dynamo.data._receipt_word_label import _ReceiptWordLabel
+from receipt_dynamo.data._receipt_word_label_spatial_analysis import (
+    _ReceiptWordLabelSpatialAnalysis,
+)
 from receipt_dynamo.data._word import _Word
 
 if TYPE_CHECKING:
@@ -77,6 +80,7 @@ class DynamoClient(
     _PlacesCache,
     _LabelCountCache,
     _ReceiptWordLabel,
+    _ReceiptWordLabelSpatialAnalysis,
     _ReceiptField,
     _ReceiptLabelAnalysis,
     _ReceiptStructureAnalysis,
