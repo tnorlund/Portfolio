@@ -341,6 +341,7 @@ class FlattenedStandardMixin:
         limit: Optional[int] = None,
         last_evaluated_key: Optional[Dict[str, Any]] = None,
         filter_expression: Optional[str] = None,
+        scan_index_forward: Optional[bool] = None,
     ) -> Tuple[List[T], Optional[Dict[str, Any]]]:
         """Query entities with pagination support."""
         entities = []
@@ -356,6 +357,8 @@ class FlattenedStandardMixin:
                 expression_attribute_names,
                 filter_expression,
                 current_last_key,
+                limit=None,  # Will be set separately below
+                scan_index_forward=scan_index_forward,
             )
 
             # Set query limit
