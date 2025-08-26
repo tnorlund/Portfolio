@@ -10,6 +10,7 @@ dependencies = [
     "pulumi>=3.0.0,<4.0.0",
     "pulumi-aws>=6.0.0,<8.0.0",
     "pulumi-command>=0.9.0,<2.0.0",  # Updated to allow 1.x versions
+    "pulumi-docker-build>=0.0.12",  # Used for Docker image building
     # Lambda Layer Version Update Tool dependencies
     "boto3>=1.26.0",
     "PyYAML>=6.0",
