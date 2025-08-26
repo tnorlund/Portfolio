@@ -805,7 +805,10 @@ def process_metadata_updates(
                         logger.error(error_msg)
                     
                     results.append(MetadataUpdateResult(
+                        database=database,
+                        collection=f"receipt_{database}",
                         image_id=image_id,
+                        receipt_id=receipt_id,
                         error=error_msg,
                         updated_count=0
                     ))
@@ -881,7 +884,10 @@ def process_metadata_updates(
                             logger.error(error_msg)
                         
                         results.append(MetadataUpdateResult(
+                            database=database,
+                            collection=f"receipt_{database}",
                             image_id=image_id,
+                            receipt_id=receipt_id,
                             error=error_msg,
                             updated_count=0
                         ))
@@ -1120,11 +1126,17 @@ def process_label_updates(
                 else:
                     logger.error(error_msg)
                 
-                # Add error to all successful results
-                for result in results:
-                    if result.error is None:
-                        result.error = error_msg
-                        result.updated_count = 0
+                # Replace successful results with error results
+                results = [
+                    LabelUpdateResult(
+                        chromadb_id=result.chromadb_id,
+                        updated_count=0,
+                        event_name=result.event_name,
+                        changes=result.changes,
+                        error=error_msg if result.error is None else result.error
+                    )
+                    for result in results
+                ]
 
                 shutil.rmtree(temp_dir, ignore_errors=True)
                 return results
