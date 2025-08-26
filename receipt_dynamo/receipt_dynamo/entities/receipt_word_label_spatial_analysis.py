@@ -56,6 +56,10 @@ class ReceiptWordLabelSpatialAnalysis:
     for validating new labels by checking if they follow expected spatial patterns
     relative to existing validated labels.
     
+    GSI Design:
+    - GSI1: Cross-receipt label analysis (SPATIAL_ANALYSIS#<label>)  
+    - GSI2: Receipt-based validation (IMAGE#<image_id>#RECEIPT#<receipt_id>#SPATIAL)
+    
     Attributes:
         image_id (str): UUID identifying the associated image.
         receipt_id (int): Number identifying the receipt.
@@ -144,38 +148,26 @@ class ReceiptWordLabelSpatialAnalysis:
         """Generate the GSI1 key for finding spatial analyses by label type.
         
         GSI1PK: SPATIAL_ANALYSIS#<label> 
-        GSI1SK: TIMESTAMP#<timestamp>
+        GSI1SK: IMAGE#<image_id>#RECEIPT#<receipt_id>#TIMESTAMP#<timestamp>
         """
         return {
             "GSI1PK": {"S": f"SPATIAL_ANALYSIS#{self.from_label}"},
-            "GSI1SK": {"S": f"TIMESTAMP#{self.timestamp_added}"},
+            "GSI1SK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#TIMESTAMP#{self.timestamp_added}"},
         }
 
     def gsi2_key(self) -> Dict[str, Any]:
         """Generate the GSI2 key for finding all spatial analyses for a receipt.
         
-        GSI2PK: RECEIPT#<receipt_id>#SPATIAL
+        GSI2PK: IMAGE#<image_id>#RECEIPT#<receipt_id>#SPATIAL
         GSI2SK: LABEL#<label>#LINE#<line_id>#WORD#<word_id>
         """
         return {
-            "GSI2PK": {"S": f"RECEIPT#{self.receipt_id:05d}#SPATIAL"},
+            "GSI2PK": {"S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}#SPATIAL"},
             "GSI2SK": {
                 "S": f"LABEL#{self.from_label}#LINE#{self.line_id:05d}#WORD#{self.word_id:05d}"
             },
         }
 
-    def gsi3_key(self) -> Dict[str, Any]:
-        """Generate the GSI3 key for finding analyses by relationship count (complexity).
-        
-        GSI3PK: SPATIAL_COMPLEXITY
-        GSI3SK: COUNT#<relationship_count>#RECEIPT#<receipt_id>
-        """
-        return {
-            "GSI3PK": {"S": "SPATIAL_COMPLEXITY"},
-            "GSI3SK": {
-                "S": f"COUNT#{len(self.spatial_relationships):03d}#RECEIPT#{self.receipt_id:05d}"
-            },
-        }
 
     def to_item(self) -> Dict[str, Any]:
         """Converts the ReceiptWordLabelSpatialAnalysis object to a DynamoDB item.
@@ -200,7 +192,6 @@ class ReceiptWordLabelSpatialAnalysis:
             **self.key,
             **self.gsi1_key(),
             **self.gsi2_key(),
-            **self.gsi3_key(),
             "TYPE": {"S": "RECEIPT_WORD_LABEL_SPATIAL_ANALYSIS"},
             "from_label": {"S": self.from_label},
             "from_position": {
