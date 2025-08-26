@@ -76,28 +76,24 @@ def handle_get_request(image_type):
         # For PHOTO type, we want images with exactly 1 receipt
         target_receipt_count = 2 if image_type == ImageType.SCAN else 1
 
-        # Query images with the exact receipt count using GSI3
-        all_images = []
-
         images, lek = client.list_images_by_type(
-            image_type,
+            image_type=image_type,
             receipt_count=target_receipt_count,
             limit=QUERY_LIMIT,
         )
-        all_images.extend(images)
 
         # Continue pagination if needed
         while lek:
-            images, lek = client.list_images_by_type(
-                image_type,
+            next_images, lek = client.list_images_by_type(
+                image_type=image_type,
                 receipt_count=target_receipt_count,
                 limit=QUERY_LIMIT,
                 last_evaluated_key=lek,
             )
-            all_images.extend(images)
+            images.extend(next_images)
 
         # Check if we found any matching images
-        if not all_images:
+        if not images:
             return {
                 "statusCode": 404,
                 "body": (
@@ -107,11 +103,10 @@ def handle_get_request(image_type):
             }
 
         # Randomly select one image
-        selected_image = random.choice(all_images)
-        image_id = selected_image.image_id
+        selected_image = random.choice(images)
 
         # Get all details for the randomly selected image
-        image_details = client.get_image_details(image_id)
+        image_details = client.get_image_details(selected_image.image_id)
 
         # Extract relevant fields from ImageDetails object
         image = dict(image_details.images[0]) if image_details.images else None
