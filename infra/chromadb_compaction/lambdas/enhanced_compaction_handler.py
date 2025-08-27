@@ -1184,8 +1184,8 @@ def process_label_updates(
         total_updates = sum(
             r.updated_count for r in results if r.error is None
         )
-        logger.info("DEBUG: Label update summary - total_updates=%d, results_count=%d", 
-                   total_updates, len(results))
+        logger.info("DEBUG: Label update summary", 
+                   total_updates=total_updates, results_count=len(results))
         if total_updates > 0:
             logger.info("DEBUG: Total updates > 0, proceeding with atomic S3 upload")
             # Validate lock ownership before final S3 upload
