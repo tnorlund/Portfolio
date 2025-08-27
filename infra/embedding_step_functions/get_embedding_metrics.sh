@@ -5,17 +5,75 @@
 
 set -euo pipefail
 
-# Configuration
+# Help message
+if [[ "${1:-}" =~ ^(-h|--help)$ ]]; then
+    cat <<EOF
+Embedding Step Functions Metrics Collection Script
+
+Usage: $0 [hours_back] [output_file] [pulumi_stack]
+       $0 -h|--help
+
+Parameters:
+  hours_back    Number of hours to look back (default: 6, must be positive integer)
+  output_file   Save output to file instead of stdout (optional)
+  pulumi_stack  Pulumi stack to use: 'dev' or 'prod' (default: current active stack)
+
+Environment Variables (override resource names):
+  PULUMI_STACK           Pulumi stack to use (dev/prod)
+  ENHANCED_COMPACTION    Lambda function name for enhanced compaction
+  CHROMADB_BUCKET        S3 bucket name for ChromaDB storage
+  STEP_FUNCTION_ARN      Step function ARN to monitor
+
+Examples:
+  $0                           # Last 6 hours, current stack
+  $0 12                        # Last 12 hours, current stack
+  $0 24 embedding_report.txt   # Last 24 hours to file, current stack
+  $0 6 - dev                   # Last 6 hours, dev stack (- = stdout)
+  $0 24 prod_report.txt prod   # Last 24 hours to file, prod stack
+  PULUMI_STACK=prod $0 12      # Override stack via environment
+
+EOF
+    exit 0
+fi
+
+# Parse command line arguments
 HOURS_BACK=${1:-6}
+OUTPUT_FILE=${2:-""}
+PULUMI_STACK=${3:-${PULUMI_STACK:-""}}  # Third param or env var
 REGION="us-east-1"
 PERIOD=3600
+
+# Handle special case where output_file is "-" (stdout)
+if [ "$OUTPUT_FILE" = "-" ]; then
+    OUTPUT_FILE=""
+fi
+
+# Redirect output to file if specified
+if [ -n "$OUTPUT_FILE" ]; then
+    # Check if directory exists and is writable
+    OUTPUT_DIR=$(dirname "$OUTPUT_FILE")
+    if [ ! -d "$OUTPUT_DIR" ] || [ ! -w "$OUTPUT_DIR" ]; then
+        echo "Error: Output directory '$OUTPUT_DIR' does not exist or is not writable" >&2
+        exit 2
+    fi
+    # Redirect all output to file
+    exec > "$OUTPUT_FILE" 2>&1
+fi
 
 # Get resource names from Pulumi outputs (can be overridden via environment variables)
 echo "Fetching embedding infrastructure resource names from Pulumi stack outputs..."
 
 # Try to get Pulumi outputs, with fallback to hardcoded values if Pulumi isn't available
 if command -v pulumi >/dev/null 2>&1; then
-    PULUMI_OUTPUTS=$(pulumi stack output --json 2>/dev/null)
+    # Use specified stack or current active stack
+    if [ -n "$PULUMI_STACK" ]; then
+        echo "Using Pulumi stack: $PULUMI_STACK"
+        PULUMI_OUTPUTS=$(pulumi stack output --stack "$PULUMI_STACK" --json 2>/dev/null)
+    else
+        CURRENT_STACK=$(pulumi stack --show-name 2>/dev/null || echo "unknown")
+        echo "Using current Pulumi stack: $CURRENT_STACK"
+        PULUMI_OUTPUTS=$(pulumi stack output --json 2>/dev/null)
+    fi
     if [ $? -eq 0 ] && [ -n "$PULUMI_OUTPUTS" ]; then
         # Extract resource names from Pulumi outputs
         if command -v jq >/dev/null 2>&1; then

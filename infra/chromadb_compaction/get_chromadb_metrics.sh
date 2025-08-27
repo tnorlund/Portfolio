@@ -10,14 +10,16 @@ if [[ "${1:-}" =~ ^(-h|--help)$ ]]; then
     cat <<EOF
 ChromaDB Compaction Metrics Collection Script
 
-Usage: $0 [hours_back] [output_file]
+Usage: $0 [hours_back] [output_file] [pulumi_stack]
        $0 -h|--help
 
 Parameters:
   hours_back    Number of hours to look back (default: 24, must be positive integer)
   output_file   Save output to file instead of stdout (optional)
+  pulumi_stack  Pulumi stack to use: 'dev' or 'prod' (default: current active stack)
 
 Environment Variables (override resource names):
+  PULUMI_STACK        Pulumi stack to use (dev/prod)
   STREAM_PROCESSOR     Lambda function name for stream processor
   ENHANCED_COMPACTION  Lambda function name for enhanced compaction
   LINES_QUEUE         SQS queue name for lines processing
@@ -27,10 +29,12 @@ Environment Variables (override resource names):
   CHROMADB_BUCKET     S3 bucket name for ChromaDB storage
 
 Examples:
-  $0                           # Last 24 hours to stdout
-  $0 6                         # Last 6 hours to stdout
-  $0 48 report.txt             # Last 48 hours to file
-  HOURS_BACK=12 $0 12 metrics_\$(date +%Y%m%d).txt
+  $0                           # Last 24 hours, current stack
+  $0 6                         # Last 6 hours, current stack
+  $0 48 report.txt             # Last 48 hours to file, current stack
+  $0 6 - dev                   # Last 6 hours, dev stack (- = stdout)
+  $0 24 prod_metrics.txt prod  # Last 24 hours to file, prod stack
+  PULUMI_STACK=prod $0 12      # Override stack via environment
 
 EOF
     exit 0
@@ -39,8 +43,14 @@ fi
 # Configuration
 HOURS_BACK=${1:-24}
 OUTPUT_FILE=${2:-""}
+PULUMI_STACK=${3:-${PULUMI_STACK:-""}}  # Third param or env var
 REGION="us-east-1"
 PERIOD=3600
+
+# Handle special case where output_file is "-" (stdout)
+if [ "$OUTPUT_FILE" = "-" ]; then
+    OUTPUT_FILE=""
+fi
 
 # Input validation
 if ! [[ "${HOURS_BACK}" =~ ^[0-9]+$ ]] || [ "${HOURS_BACK}" -le 0 ]; then
@@ -65,7 +75,15 @@ echo "Fetching resource names from Pulumi stack outputs..."
 
 # Try to get Pulumi outputs, with fallback to hardcoded values if Pulumi isn't available
 if command -v pulumi >/dev/null 2>&1; then
-    PULUMI_OUTPUTS=$(pulumi stack output --json 2>/dev/null)
+    # Use specified stack or current active stack
+    if [ -n "$PULUMI_STACK" ]; then
+        echo "Using Pulumi stack: $PULUMI_STACK"
+        PULUMI_OUTPUTS=$(pulumi stack output --stack "$PULUMI_STACK" --json 2>/dev/null)
+    else
+        CURRENT_STACK=$(pulumi stack --show-name 2>/dev/null || echo "unknown")
+        echo "Using current Pulumi stack: $CURRENT_STACK"
+        PULUMI_OUTPUTS=$(pulumi stack output --json 2>/dev/null)
+    fi
     if [ $? -eq 0 ] && [ -n "$PULUMI_OUTPUTS" ]; then
         # Extract function names from ARNs using jq (if available) or grep/awk fallback
         if command -v jq >/dev/null 2>&1; then
