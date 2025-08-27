@@ -443,7 +443,8 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          python3 -m pip install -r infra/requirements.txt
+          cd infra
+          python3 -m pip install -e .
 
       - name: Deploy with Pulumi
         run: |
