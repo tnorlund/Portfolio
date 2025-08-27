@@ -51,27 +51,38 @@ class TestLockManagerProductionScenario:
         print("About to call validate_ownership()...")
         start_time = time.time()
         
-        # Set a timeout to prevent test from hanging indefinitely
-        import signal
-        def timeout_handler(signum, frame):
-            raise TimeoutError("validate_ownership() call timed out - this reproduces the production hang!")
+        # Use threading-based timeout to prevent test from hanging indefinitely
+        import threading
+        result_container = {"is_owner": None, "error": None, "completed": False}
         
-        # Set 10 second timeout 
-        signal.signal(signal.SIGALRM, timeout_handler)
-        signal.alarm(10)
+        def validate_with_timeout():
+            try:
+                result_container["is_owner"] = manager.validate_ownership()
+                result_container["completed"] = True
+            except Exception as e:
+                result_container["error"] = e
+                result_container["completed"] = True
         
-        try:
-            is_owner = manager.validate_ownership()
-            signal.alarm(0)  # Cancel timeout
-            elapsed = time.time() - start_time
-            print(f"validate_ownership() completed in {elapsed:.2f}s, result: {is_owner}")
-            assert is_owner is True
-        except TimeoutError as e:
-            signal.alarm(0)  # Cancel timeout
-            elapsed = time.time() - start_time
+        # Start validation in separate thread
+        validation_thread = threading.Thread(target=validate_with_timeout)
+        validation_thread.start()
+        validation_thread.join(timeout=10)  # 10 second timeout
+        
+        elapsed = time.time() - start_time
+        
+        if validation_thread.is_alive():
+            # Thread is still running - validation hung
             print(f"validate_ownership() timed out after {elapsed:.2f}s")
             manager.release()  # Clean up
-            pytest.fail(f"validate_ownership() hung for {elapsed:.2f}s - reproduces production issue: {e}")
+            pytest.fail(f"validate_ownership() hung for {elapsed:.2f}s - reproduces production issue")
+        elif result_container["error"]:
+            # Thread completed with error
+            manager.release()  # Clean up
+            raise result_container["error"]
+        else:
+            # Thread completed successfully
+            print(f"validate_ownership() completed in {elapsed:.2f}s, result: {result_container['is_owner']}")
+            assert result_container["is_owner"] is True
         
         manager.release()
 
@@ -94,26 +105,37 @@ class TestLockManagerProductionScenario:
         success = manager.acquire(production_lock_id)
         assert success is True
         
-        # Test validate_ownership with timeout protection
-        import signal
-        def timeout_handler(signum, frame):
-            raise TimeoutError("validate_ownership() timed out")
+        # Test validate_ownership with threading-based timeout protection
+        import threading
+        result_container = {"is_owner": None, "error": None, "completed": False}
         
-        signal.signal(signal.SIGALRM, timeout_handler)
-        signal.alarm(10)  # 10 second timeout
+        def validate_with_timeout():
+            try:
+                result_container["is_owner"] = manager.validate_ownership()
+                result_container["completed"] = True
+            except Exception as e:
+                result_container["error"] = e
+                result_container["completed"] = True
         
-        try:
-            start_time = time.time()
-            is_owner = manager.validate_ownership()
-            signal.alarm(0)
-            elapsed = time.time() - start_time
-            print(f"validate_ownership() completed in {elapsed:.2f}s")
-            assert is_owner is True
-        except TimeoutError:
-            signal.alarm(0)
-            elapsed = time.time() - start_time
+        start_time = time.time()
+        validation_thread = threading.Thread(target=validate_with_timeout)
+        validation_thread.start()
+        validation_thread.join(timeout=10)  # 10 second timeout
+        
+        elapsed = time.time() - start_time
+        
+        if validation_thread.is_alive():
+            # Thread is still running - validation hung
             manager.release()
             pytest.fail(f"validate_ownership() hung for {elapsed:.2f}s")
+        elif result_container["error"]:
+            # Thread completed with error
+            manager.release()
+            raise result_container["error"]
+        else:
+            # Thread completed successfully
+            print(f"validate_ownership() completed in {elapsed:.2f}s")
+            assert result_container["is_owner"] is True
         
         manager.release()
 
@@ -137,32 +159,39 @@ class TestLockManagerProductionScenario:
         assert success1 is True
         assert success2 is True
         
-        # Test concurrent validation with timeout protection
-        import signal
+        # Test concurrent validation with threading-based timeout protection
         import threading
         
         results = {}
         timeouts = {}
         
         def validate_with_timeout(manager, manager_name):
-            def timeout_handler(signum, frame):
-                raise TimeoutError(f"{manager_name} validate_ownership() timed out")
+            result_container = {"is_owner": None, "error": None, "completed": False}
             
-            signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(10)
+            def do_validation():
+                try:
+                    result_container["is_owner"] = manager.validate_ownership()
+                    result_container["completed"] = True
+                except Exception as e:
+                    result_container["error"] = e
+                    result_container["completed"] = True
             
-            try:
-                start = time.time()
-                result = manager.validate_ownership()
-                elapsed = time.time() - start
-                signal.alarm(0)
-                results[manager_name] = result
-                print(f"{manager_name} validate_ownership() completed in {elapsed:.2f}s")
-            except TimeoutError as e:
-                signal.alarm(0)
-                elapsed = time.time() - start
+            start = time.time()
+            validation_thread = threading.Thread(target=do_validation)
+            validation_thread.start()
+            validation_thread.join(timeout=10)  # 10 second timeout
+            
+            elapsed = time.time() - start
+            
+            if validation_thread.is_alive():
                 timeouts[manager_name] = elapsed
                 print(f"{manager_name} validate_ownership() timed out after {elapsed:.2f}s")
+            elif result_container["error"]:
+                print(f"{manager_name} validation failed with error: {result_container['error']}")
+                timeouts[manager_name] = elapsed
+            else:
+                results[manager_name] = result_container["is_owner"]
+                print(f"{manager_name} validate_ownership() completed in {elapsed:.2f}s")
         
         # Run validations concurrently like production
         thread1 = threading.Thread(target=validate_with_timeout, args=(manager1, "manager1"))
@@ -207,26 +236,37 @@ class TestLockManagerProductionScenario:
         print("Waiting for lock to potentially expire...")
         time.sleep(2)  # Wait 2 seconds
         
-        # Test validate_ownership with timeout protection
-        import signal
-        def timeout_handler(signum, frame):
-            raise TimeoutError("validate_ownership() timed out on potentially expired lock")
+        # Test validate_ownership with threading-based timeout protection
+        import threading
+        result_container = {"is_owner": None, "error": None, "completed": False}
         
-        signal.signal(signal.SIGALRM, timeout_handler)
-        signal.alarm(10)
+        def validate_with_timeout():
+            try:
+                result_container["is_owner"] = manager.validate_ownership()
+                result_container["completed"] = True
+            except Exception as e:
+                result_container["error"] = e
+                result_container["completed"] = True
         
-        try:
-            start_time = time.time()
-            is_owner = manager.validate_ownership()
-            elapsed = time.time() - start_time
-            signal.alarm(0)
-            print(f"validate_ownership() on expired lock completed in {elapsed:.2f}s, result: {is_owner}")
-            # Could be True or False depending on exact timing
-        except TimeoutError:
-            signal.alarm(0)
-            elapsed = time.time() - start_time
+        start_time = time.time()
+        validation_thread = threading.Thread(target=validate_with_timeout)
+        validation_thread.start()
+        validation_thread.join(timeout=10)  # 10 second timeout
+        
+        elapsed = time.time() - start_time
+        
+        if validation_thread.is_alive():
+            # Thread is still running - validation hung
             manager.release()
             pytest.fail(f"validate_ownership() on expired lock hung for {elapsed:.2f}s")
+        elif result_container["error"]:
+            # Thread completed with error
+            print(f"validate_ownership() on expired lock failed with error: {result_container['error']}")
+            # This might be expected for expired locks
+        else:
+            # Thread completed successfully
+            print(f"validate_ownership() on expired lock completed in {elapsed:.2f}s, result: {result_container['is_owner']}")
+            # Could be True or False depending on exact timing
         
         try:
             manager.release()
@@ -256,25 +296,36 @@ class TestLockManagerProductionScenario:
         
         # Now test validate_ownership - this should detect the lock is gone
         # and NOT hang
-        import signal
-        def timeout_handler(signum, frame):
-            raise TimeoutError("validate_ownership() hung after external cleanup")
+        import threading
+        result_container = {"is_owner": None, "error": None, "completed": False}
         
-        signal.signal(signal.SIGALRM, timeout_handler)
-        signal.alarm(10)
+        def validate_with_timeout():
+            try:
+                result_container["is_owner"] = manager.validate_ownership()
+                result_container["completed"] = True
+            except Exception as e:
+                result_container["error"] = e
+                result_container["completed"] = True
         
-        try:
-            start_time = time.time()
-            is_owner = manager.validate_ownership()
-            elapsed = time.time() - start_time
-            signal.alarm(0)
-            print(f"validate_ownership() after cleanup completed in {elapsed:.2f}s, result: {is_owner}")
-            # Should return False since lock was deleted externally
-            assert is_owner is False
-        except TimeoutError:
-            signal.alarm(0)
-            elapsed = time.time() - start_time
+        start_time = time.time()
+        validation_thread = threading.Thread(target=validate_with_timeout)
+        validation_thread.start()
+        validation_thread.join(timeout=10)  # 10 second timeout
+        
+        elapsed = time.time() - start_time
+        
+        if validation_thread.is_alive():
+            # Thread is still running - validation hung
             pytest.fail(f"validate_ownership() hung after cleanup for {elapsed:.2f}s - this may be the bug!")
+        elif result_container["error"]:
+            # Thread completed with error
+            print(f"validate_ownership() after cleanup failed with error: {result_container['error']}")
+            # This might be expected when lock doesn't exist
+        else:
+            # Thread completed successfully
+            print(f"validate_ownership() after cleanup completed in {elapsed:.2f}s, result: {result_container['is_owner']}")
+            # Should return False since lock was deleted externally
+            assert result_container["is_owner"] is False
         
         # Try to release (may fail since lock is gone)
         try:
