@@ -257,8 +257,9 @@ class HybridLambdaDeployment(ComponentResource):
                     "CHROMADB_BUCKET": chromadb_buckets.bucket_name,
                     "LINES_QUEUE_URL": chromadb_queues.lines_queue_url,
                     "WORDS_QUEUE_URL": chromadb_queues.words_queue_url,
-                    "HEARTBEAT_INTERVAL_SECONDS": "60",
-                    "LOCK_DURATION_MINUTES": "15",
+                    "HEARTBEAT_INTERVAL_SECONDS": "30",
+                    "LOCK_DURATION_MINUTES": "3",
+                    "MAX_HEARTBEAT_FAILURES": "3",
                     "LOG_LEVEL": "INFO",
                 }
             },
