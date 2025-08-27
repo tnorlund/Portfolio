@@ -273,7 +273,7 @@ class EnhancedCompactionLambda(ComponentResource):
                     "WORDS_QUEUE_URL": chromadb_queues.words_queue_url,
                     "HEARTBEAT_INTERVAL_SECONDS": "60",
                     "LOCK_DURATION_MINUTES": "15",
-                    "LOG_LEVEL": "DEBUG",
+                    "LOG_LEVEL": "INFO",
                 }
             },
             description=(
