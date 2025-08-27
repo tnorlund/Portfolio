@@ -4,26 +4,23 @@ This handler efficiently compacts multiple ChromaDB deltas created during
 parallel embedding processing, with support for collection-aware processing.
 """
 
-from typing import Optional
-
 import json
 import os
 import shutil
 import tempfile
 import time
-import uuid
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
+
 import utils.logging
 
 import boto3
 import chromadb
 
 # Import receipt_dynamo for proper DynamoDB operations
-from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.constants import ChromaDBCollection
+from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_label.utils.lock_manager import LockManager
-from receipt_label.vector_store import VectorClient
 
 get_logger = utils.logging.get_logger
 get_operation_logger = utils.logging.get_operation_logger
@@ -31,12 +28,17 @@ get_operation_logger = utils.logging.get_operation_logger
 logger = get_operation_logger(__name__)
 
 try:
+    from receipt_label.utils.chroma_s3_helpers import upload_snapshot_atomic
     from receipt_label.vector_store import upload_snapshot_with_hash
 
+    ATOMIC_UPLOAD_AVAILABLE = True
     HASH_UPLOAD_AVAILABLE = True
 except ImportError:
+    ATOMIC_UPLOAD_AVAILABLE = False
     HASH_UPLOAD_AVAILABLE = False
-    logger.warning("Hash-enabled upload not available, using legacy upload")
+    logger.warning(
+        "Atomic and hash-enabled uploads not available, using legacy upload"
+    )
 
 # Initialize clients
 s3_client = boto3.client("s3")
@@ -103,13 +105,17 @@ def compact_handler(
         return final_merge_handler(event)
 
     logger.error(
-        "Invalid operation. Expected 'process_chunk', 'merge_chunk_group', or 'final_merge'",
+        "Invalid operation. Expected 'process_chunk', "
+        "'merge_chunk_group', or 'final_merge'",
         operation=operation,
     )
     return {
         "statusCode": 400,
         "error": f"Invalid operation: {operation}",
-        "message": "Operation must be 'process_chunk', 'merge_chunk_group', or 'final_merge'",
+        "message": (
+            "Operation must be 'process_chunk', 'merge_chunk_group', "
+            "or 'final_merge'"
+        ),
     }
 
 
@@ -212,15 +218,15 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
 def merge_chunk_group_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     """
     Merge a group of intermediate chunks WITHOUT acquiring a lock.
-    
+
     This operation merges up to 10 intermediate chunk snapshots into a single
     intermediate snapshot for hierarchical processing. No mutex lock is required
     as this operates on intermediate data, not the final snapshot.
-    
+
     Input format:
     {
         "operation": "merge_chunk_group",
-        "batch_id": "batch-group-0", 
+        "batch_id": "batch-group-0",
         "group_index": 0,
         "chunk_group": [
             {"intermediate_key": "intermediate/batch-id/chunk-0/"},
@@ -229,19 +235,19 @@ def merge_chunk_group_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         ],
         "database": "lines" or "words"
     }
-    
+
     Returns:
     {
         "intermediate_key": "intermediate/batch-group-0/merged/"
     }
     """
     logger.info("Starting chunk group merge (no lock)")
-    
+
     batch_id = event.get("batch_id")
     group_index = event.get("group_index", 0)
     chunk_group = event.get("chunk_group", [])
     database_name = event.get("database", "lines")
-    
+
     if not batch_id:
         return {
             "statusCode": 400,
@@ -249,7 +255,11 @@ def merge_chunk_group_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         }
 
     if not chunk_group:
-        logger.info("Empty chunk group, skipping merge", batch_id=batch_id, group_index=group_index)
+        logger.info(
+            "Empty chunk group, skipping merge",
+            batch_id=batch_id,
+            group_index=group_index,
+        )
         return {
             "statusCode": 200,
             "batch_id": batch_id,
@@ -274,7 +284,11 @@ def merge_chunk_group_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         elif isinstance(chunk, str):
             intermediate_keys.append(chunk)
         else:
-            logger.error("Invalid chunk format in group", chunk=chunk, chunk_type=type(chunk))
+            logger.error(
+                "Invalid chunk format in group",
+                chunk=chunk,
+                chunk_type=type(chunk),
+            )
             return {
                 "statusCode": 400,
                 "error": f"Invalid chunk format: {chunk}",
@@ -300,7 +314,12 @@ def merge_chunk_group_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         }
 
     except Exception as e:
-        logger.error("Chunk group merge failed", batch_id=batch_id, group_index=group_index, error=str(e))
+        logger.error(
+            "Chunk group merge failed",
+            batch_id=batch_id,
+            group_index=group_index,
+            error=str(e),
+        )
         return {
             "statusCode": 500,
             "error": str(e),
@@ -391,7 +410,7 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         for chunk in chunk_results:
             if isinstance(chunk, dict) and "intermediate_key" in chunk:
                 intermediate_keys.append(chunk["intermediate_key"])
-        
+
         cleanup_intermediate_chunks_by_keys(intermediate_keys)
 
         # Always return full format for final merge
@@ -486,7 +505,7 @@ def process_chunk_deltas(
                 file_path = os.path.join(root, file)
                 file_size = os.path.getsize(file_path)
                 temp_files.append(f"{file} ({file_size} bytes)")
-        
+
         logger.info(
             "Temp directory contents before upload",
             temp_dir=temp_dir,
@@ -503,11 +522,11 @@ def process_chunk_deltas(
             temp_dir=temp_dir,
             total_embeddings=total_embeddings,
         )
-        
+
         upload_result = upload_to_s3(
             temp_dir, bucket, intermediate_key, calculate_hash=False
         )  # No hash for intermediate chunks
-        
+
         logger.info(
             "Completed intermediate chunk upload to S3",
             intermediate_key=intermediate_key,
@@ -618,20 +637,23 @@ def download_and_merge_delta(
 
 
 def perform_intermediate_merge(
-    batch_id: str, group_index: int, intermediate_keys: List[str], database_name: str
+    batch_id: str,
+    group_index: int,
+    intermediate_keys: List[str],
+    database_name: str,
 ) -> Dict[str, Any]:
     """
     Merge intermediate chunks into a single intermediate snapshot WITHOUT locks.
-    
+
     This function is used by merge_chunk_group to merge multiple intermediate
     snapshots into a single intermediate snapshot for hierarchical processing.
-    
+
     Args:
         batch_id: Unique identifier for this batch group
         group_index: Index of the group being merged
         intermediate_keys: List of S3 keys to intermediate snapshots
         database_name: Database name ('lines' or 'words')
-        
+
     Returns:
         Dictionary with intermediate_key for the merged snapshot
     """
@@ -639,14 +661,14 @@ def perform_intermediate_merge(
     bucket = os.environ["CHROMADB_BUCKET"]
     temp_dir = tempfile.mkdtemp()
     total_embeddings = 0
-    
+
     # Create intermediate output key
     intermediate_key = f"intermediate/{batch_id}-group-{group_index}/merged/"
-    
+
     try:
         # Initialize ChromaDB in memory for merging
         chroma_client = chromadb.PersistentClient(path=temp_dir)
-        
+
         logger.info(
             "Starting intermediate merge",
             batch_id=batch_id,
@@ -654,7 +676,7 @@ def perform_intermediate_merge(
             chunk_count=len(intermediate_keys),
             intermediate_key=intermediate_key,
         )
-        
+
         # Process each intermediate chunk
         for i, chunk_key in enumerate(intermediate_keys):
             logger.info(
@@ -664,84 +686,105 @@ def perform_intermediate_merge(
                 chunk_key=chunk_key,
             )
             chunk_temp = tempfile.mkdtemp()
-            
+
             try:
                 # Download intermediate chunk
                 download_from_s3(bucket, chunk_key, chunk_temp)
-                logger.info("Downloaded intermediate chunk", chunk_index=i, chunk_key=chunk_key)
-                
+                logger.info(
+                    "Downloaded intermediate chunk",
+                    chunk_index=i,
+                    chunk_key=chunk_key,
+                )
+
                 # Load chunk ChromaDB
                 chunk_client = chromadb.PersistentClient(path=chunk_temp)
-                
+
                 # Merge all collections from this chunk
                 for collection_meta in chunk_client.list_collections():
                     collection_name = collection_meta.name
-                    chunk_collection = chunk_client.get_collection(collection_name)
+                    chunk_collection = chunk_client.get_collection(
+                        collection_name
+                    )
                     chunk_count = chunk_collection.count()
-                    
+
                     if chunk_count == 0:
-                        logger.info("Skipping empty collection", collection_name=collection_name)
+                        logger.info(
+                            "Skipping empty collection",
+                            collection_name=collection_name,
+                        )
                         continue
-                    
+
                     logger.info(
                         "Merging collection from chunk",
                         collection_name=collection_name,
                         embedding_count=chunk_count,
                     )
-                    
+
                     # Get or create collection in main client
                     try:
-                        main_collection = chroma_client.get_collection(collection_name)
+                        main_collection = chroma_client.get_collection(
+                            collection_name
+                        )
                     except Exception:
-                        main_collection = chroma_client.create_collection(collection_name)
-                    
+                        main_collection = chroma_client.create_collection(
+                            collection_name
+                        )
+
                     # Get all data from chunk collection
-                    chunk_data = chunk_collection.get(include=['embeddings', 'documents', 'metadatas'])
-                    
-                    if chunk_data['ids']:
+                    chunk_data = chunk_collection.get(
+                        include=["embeddings", "documents", "metadatas"]
+                    )
+
+                    if chunk_data["ids"]:
                         # Add to main collection
                         main_collection.add(
-                            ids=chunk_data['ids'],
-                            embeddings=chunk_data['embeddings'],
-                            documents=chunk_data['documents'],
-                            metadatas=chunk_data['metadatas'],
+                            ids=chunk_data["ids"],
+                            embeddings=chunk_data["embeddings"],
+                            documents=chunk_data["documents"],
+                            metadatas=chunk_data["metadatas"],
                         )
-                        total_embeddings += len(chunk_data['ids'])
-                        
+                        total_embeddings += len(chunk_data["ids"])
+
                         logger.info(
                             "Merged chunk collection data",
                             collection_name=collection_name,
-                            embeddings_added=len(chunk_data['ids']),
+                            embeddings_added=len(chunk_data["ids"]),
                             total_embeddings=total_embeddings,
                         )
-                
+
             except Exception as e:
-                logger.error("Failed to process intermediate chunk", chunk_key=chunk_key, error=str(e))
+                logger.error(
+                    "Failed to process intermediate chunk",
+                    chunk_key=chunk_key,
+                    error=str(e),
+                )
                 raise
             finally:
                 shutil.rmtree(chunk_temp, ignore_errors=True)
-        
+
         logger.info(
             "Intermediate merge completed",
             total_embeddings=total_embeddings,
             processing_time=time.time() - start_time,
         )
-        
+
         # Upload merged intermediate snapshot
-        upload_result = upload_to_s3(temp_dir, bucket, intermediate_key, calculate_hash=False)
-        
+        upload_result = upload_to_s3(
+            temp_dir, bucket, intermediate_key, calculate_hash=False
+        )
+
         logger.info(
             "Uploaded merged intermediate snapshot",
             intermediate_key=intermediate_key,
             upload_result=upload_result,
         )
-        
+
         return {
             "intermediate_key": intermediate_key,
             "total_embeddings": total_embeddings,
             "processing_time": time.time() - start_time,
         }
-        
+
     except Exception as e:
         logger.error("Intermediate merge failed", error=str(e))
         raise
@@ -750,7 +793,10 @@ def perform_intermediate_merge(
 
 
 def perform_final_merge(
-    batch_id: str, total_chunks: int, database_name: Optional[str] = None, chunk_results: Optional[List[Dict[str, Any]]] = None
+    batch_id: str,
+    total_chunks: int,
+    database_name: Optional[str] = None,
+    chunk_results: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """
     Perform the final merge of all intermediate chunks into a snapshot.
@@ -792,9 +838,12 @@ def perform_final_merge(
         # Merge intermediate chunks - handle both legacy and new formats
         if chunk_results:
             # New format: we have specific intermediate_key objects
-            logger.info("Merging using chunk_results format", chunk_count=len(chunk_results))
+            logger.info(
+                "Merging using chunk_results format",
+                chunk_count=len(chunk_results),
+            )
             logger.info("Chunk results format", chunk_results=chunk_results)
-            
+
             # Handle different possible formats
             chunk_keys = []
             for chunk in chunk_results:
@@ -804,14 +853,24 @@ def perform_final_merge(
                     # Direct string key
                     chunk_keys.append(chunk)
                 else:
-                    logger.error("Unexpected chunk format", chunk=chunk, chunk_type=type(chunk))
+                    logger.error(
+                        "Unexpected chunk format",
+                        chunk=chunk,
+                        chunk_type=type(chunk),
+                    )
                     raise ValueError(f"Unexpected chunk format: {chunk}")
-            
+
             logger.info("Extracted chunk keys", chunk_keys=chunk_keys)
         else:
             # Legacy format: generate keys from batch_id and chunk indices
-            logger.info("Merging using legacy total_chunks format", total_chunks=total_chunks)
-            chunk_keys = [f"intermediate/{batch_id}/chunk-{i}/" for i in range(total_chunks)]
+            logger.info(
+                "Merging using legacy total_chunks format",
+                total_chunks=total_chunks,
+            )
+            chunk_keys = [
+                f"intermediate/{batch_id}/chunk-{i}/"
+                for i in range(total_chunks)
+            ]
 
         for i, intermediate_key in enumerate(chunk_keys):
             logger.info(
@@ -825,7 +884,11 @@ def perform_final_merge(
             try:
                 # Download intermediate chunk
                 download_from_s3(bucket, intermediate_key, chunk_temp)
-                logger.info("Downloaded chunk", chunk_index=i, intermediate_key=intermediate_key)
+                logger.info(
+                    "Downloaded chunk",
+                    chunk_index=i,
+                    intermediate_key=intermediate_key,
+                )
 
                 # Load chunk
                 chunk_client = chromadb.PersistentClient(path=chunk_temp)
@@ -896,70 +959,108 @@ def perform_final_merge(
             finally:
                 shutil.rmtree(chunk_temp, ignore_errors=True)
 
-        # Create timestamped snapshot with dedicated prefix for
-        # lifecycle management
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        # Use atomic upload pattern if available, fallback to legacy method
+        if ATOMIC_UPLOAD_AVAILABLE:
+            # Determine collection name for atomic upload
+            collection_name = (
+                database_name or "words"
+            )  # Default to words for backward compatibility
 
-        # Use database-specific path if provided
-        if database_name:
-            timestamped_key = (
-                f"{database_name}/snapshot/timestamped/{timestamp}/"
+            atomic_result = upload_snapshot_atomic(
+                local_path=temp_dir,
+                bucket=bucket,
+                collection=collection_name,
+                lock_manager=None,  # No lock needed, step function provides coordination
+                metadata={
+                    "batch_id": batch_id,
+                    "total_embeddings": str(total_embeddings),
+                    "merge_operation": "final_merge",
+                    "database": database_name or "unknown",
+                },
+                keep_versions=2,
             )
+            logger.info(
+                "Uploaded snapshot using atomic pattern",
+                version_id=atomic_result.get("version_id"),
+                collection=collection_name,
+                total_embeddings=total_embeddings,
+            )
+
+            return {
+                "snapshot_key": atomic_result.get("versioned_key"),
+                "total_embeddings": total_embeddings,
+                "processing_time": time.time() - start_time,
+                "atomic_upload": True,
+                "version_id": atomic_result.get("version_id"),
+            }
         else:
-            # Backward compatibility
-            timestamped_key = f"snapshot/timestamped/{timestamp}/"
+            # Fallback to legacy non-atomic upload
+            logger.warning("Atomic upload not available, using legacy method")
 
-        # Upload timestamped snapshot with hash
-        timestamped_result = upload_to_s3(
-            temp_dir,
-            bucket,
-            timestamped_key,
-            calculate_hash=True,
-            metadata={
-                "batch_id": batch_id,
-                "total_embeddings": str(total_embeddings),
-                "merge_operation": "final_merge",
-                "database": database_name or "unknown",
-            },
-        )
-        logger.info(
-            "Uploaded timestamped snapshot",
-            snapshot_key=timestamped_key,
-            hash=timestamped_result.get("hash", "not_calculated"),
-        )
+            # Create timestamped snapshot with dedicated prefix for lifecycle management
+            timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
 
-        # Update latest pointer with hash
-        latest_result = upload_to_s3(
-            temp_dir,
-            bucket,
-            snapshot_key,
-            calculate_hash=True,
-            metadata={
-                "batch_id": batch_id,
-                "total_embeddings": str(total_embeddings),
-                "merge_operation": "final_merge",
-                "database": database_name or "unknown",
-                "pointer_to": timestamped_key,
-            },
-        )
-        logger.info(
-            "Updated latest snapshot pointer",
-            snapshot_key=snapshot_key,
-            hash=latest_result.get("hash", "not_calculated"),
-        )
+            # Use database-specific path if provided
+            if database_name:
+                timestamped_key = (
+                    f"{database_name}/snapshot/timestamped/{timestamp}/"
+                )
+            else:
+                # Backward compatibility
+                timestamped_key = f"snapshot/timestamped/{timestamp}/"
 
-        processing_time = time.time() - start_time
-        logger.info(
-            "Final merge completed",
-            total_embeddings=total_embeddings,
-            processing_time_seconds=processing_time,
-        )
+            # Upload timestamped snapshot with hash
+            timestamped_result = upload_to_s3(
+                temp_dir,
+                bucket,
+                timestamped_key,
+                calculate_hash=True,
+                metadata={
+                    "batch_id": batch_id,
+                    "total_embeddings": str(total_embeddings),
+                    "merge_operation": "final_merge",
+                    "database": database_name or "unknown",
+                },
+            )
+            logger.info(
+                "Uploaded timestamped snapshot (legacy)",
+                snapshot_key=timestamped_key,
+                hash=timestamped_result.get("hash", "not_calculated"),
+            )
 
-        return {
-            "snapshot_key": timestamped_key,
-            "total_embeddings": total_embeddings,
-            "processing_time": processing_time,
-        }
+            # Update latest pointer with hash
+            latest_result = upload_to_s3(
+                temp_dir,
+                bucket,
+                snapshot_key,
+                calculate_hash=True,
+                metadata={
+                    "batch_id": batch_id,
+                    "total_embeddings": str(total_embeddings),
+                    "merge_operation": "final_merge",
+                    "database": database_name or "unknown",
+                    "pointer_to": timestamped_key,
+                },
+            )
+            logger.info(
+                "Updated latest snapshot pointer (legacy)",
+                snapshot_key=snapshot_key,
+                hash=latest_result.get("hash", "not_calculated"),
+            )
+
+            processing_time = time.time() - start_time
+            logger.info(
+                "Final merge completed (legacy)",
+                total_embeddings=total_embeddings,
+                processing_time_seconds=processing_time,
+            )
+
+            return {
+                "snapshot_key": timestamped_key,
+                "total_embeddings": total_embeddings,
+                "processing_time": processing_time,
+                "atomic_upload": False,
+            }
 
     finally:
         # Clean up temp directory
@@ -1009,11 +1110,14 @@ def cleanup_intermediate_chunks_by_keys(intermediate_keys: List[str]):
                     Bucket=bucket, Delete={"Objects": objects}  # type: ignore
                 )
                 logger.info(
-                    "Deleted intermediate chunk by key", intermediate_key=intermediate_key
+                    "Deleted intermediate chunk by key",
+                    intermediate_key=intermediate_key,
                 )
         except Exception as e:
             logger.warning(
-                "Failed to delete intermediate chunk", intermediate_key=intermediate_key, error=str(e)
+                "Failed to delete intermediate chunk",
+                intermediate_key=intermediate_key,
+                error=str(e),
             )
 
 
