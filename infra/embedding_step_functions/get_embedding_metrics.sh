@@ -10,6 +10,49 @@ HOURS_BACK=${1:-6}
 REGION="us-east-1"
 PERIOD=3600
 
+# Get resource names from Pulumi outputs (can be overridden via environment variables)
+echo "Fetching embedding infrastructure resource names from Pulumi stack outputs..."
+
+# Try to get Pulumi outputs, with fallback to hardcoded values if Pulumi isn't available
+if command -v pulumi >/dev/null 2>&1; then
+    PULUMI_OUTPUTS=$(pulumi stack output --json 2>/dev/null)
+    if [ $? -eq 0 ] && [ -n "$PULUMI_OUTPUTS" ]; then
+        # Extract resource names from Pulumi outputs
+        if command -v jq >/dev/null 2>&1; then
+            # Get step function ARN
+            STEP_FUNCTION_ARN=$(echo "$PULUMI_OUTPUTS" | jq -r '.enhanced_receipt_processor_arn // empty')
+            
+            # Get function ARNs and extract names
+            ENHANCED_COMPACTION_ARN=$(echo "$PULUMI_OUTPUTS" | jq -r '.enhanced_compaction_function_arn // empty')
+            ENHANCED_COMPACTION_DEFAULT=$(echo "$ENHANCED_COMPACTION_ARN" | grep -o '[^/]*$')
+            
+            # Get S3 bucket name
+            CHROMADB_BUCKET_NAME=$(echo "$PULUMI_OUTPUTS" | jq -r '.embedding_chromadb_bucket_name // empty')
+        else
+            # Fallback without jq
+            STEP_FUNCTION_ARN=$(echo "$PULUMI_OUTPUTS" | grep -o '"enhanced_receipt_processor_arn":"[^"]*' | cut -d'"' -f4)
+            ENHANCED_COMPACTION_ARN=$(echo "$PULUMI_OUTPUTS" | grep -o '"enhanced_compaction_function_arn":"[^"]*' | cut -d'"' -f4)
+            ENHANCED_COMPACTION_DEFAULT=$(echo "$ENHANCED_COMPACTION_ARN" | grep -o '[^/]*$')
+            CHROMADB_BUCKET_NAME=$(echo "$PULUMI_OUTPUTS" | grep -o '"embedding_chromadb_bucket_name":"[^"]*' | cut -d'"' -f4)
+        fi
+        
+        echo "✓ Successfully retrieved embedding infrastructure resource names from Pulumi"
+    else
+        echo "⚠ Pulumi stack outputs unavailable, using fallback detection methods"
+    fi
+else
+    echo "⚠ Pulumi not available, using fallback detection methods"
+fi
+
+# Resource names with Pulumi defaults (can still be overridden via environment variables)
+ENHANCED_COMPACTION="${ENHANCED_COMPACTION:-${ENHANCED_COMPACTION_DEFAULT:-chromadb-dev-lambdas-enhanced-compaction-79f6426}}"
+CHROMADB_BUCKET="${CHROMADB_BUCKET:-${CHROMADB_BUCKET_NAME:-chromadb-dev-shared-buckets-vectors-c239843}}"
+STEP_FUNCTION_ARN="${STEP_FUNCTION_ARN:-arn:aws:states:us-east-1:681647709217:stateMachine:receipt_processor_enhanced_step_function-bc8ffad}"
+
+# AWS Configuration
+export AWS_DEFAULT_REGION="${REGION}"
+export AWS_PAGER=""
+
 # Time calculation
 if [[ "$OSTYPE" == "darwin"* ]]; then
     START_TIME=$(date -u -v-${HOURS_BACK}H +%Y-%m-%dT%H:%M:%S)
@@ -31,11 +74,23 @@ aws stepfunctions list-state-machines --query 'stateMachines[?contains(name, `re
 
 echo ""
 
-# Check recent executions for each step function
+# Check recent executions for the main step function (from Pulumi outputs)
+if [ -n "$STEP_FUNCTION_ARN" ]; then
+    sf_name=$(echo "$STEP_FUNCTION_ARN" | cut -d: -f7)
+    echo "Recent executions for enhanced step function (${sf_name}):"
+    aws stepfunctions list-executions --state-machine-arn "$STEP_FUNCTION_ARN" --max-items 5 --query "executions[].{name:name,status:status,start:startDate,end:stopDate}" --output table 2>/dev/null || echo "No recent executions"
+    echo ""
+else
+    echo "No step function ARN found in Pulumi outputs"
+    echo ""
+fi
+
+# Also check all step functions for completeness
+echo "All receipt processor step functions:"
 for sf_arn in $(aws stepfunctions list-state-machines --query 'stateMachines[?contains(name, `receipt_processor`)].stateMachineArn' --output text); do
     sf_name=$(echo $sf_arn | cut -d: -f7)
     echo "Recent executions for ${sf_name}:"
-    aws stepfunctions list-executions --state-machine-arn "$sf_arn" --max-items 5 --query "executions[].{name:name,status:status,start:startDate,end:stopDate}" --output table 2>/dev/null || echo "No recent executions"
+    aws stepfunctions list-executions --state-machine-arn "$sf_arn" --max-items 3 --query "executions[].{name:name,status:status,start:startDate}" --output table 2>/dev/null || echo "No recent executions"
     echo ""
 done
 
@@ -85,29 +140,14 @@ for func_name in $recent_functions; do
       --output table 2>/dev/null || echo "    No errors (good!)"
 done
 
-# Get embedding function names from Pulumi outputs
-if command -v pulumi >/dev/null 2>&1; then
-    PULUMI_OUTPUTS=$(pulumi stack output --json 2>/dev/null)
-    if [ $? -eq 0 ] && [ -n "$PULUMI_OUTPUTS" ]; then
-        if command -v jq >/dev/null 2>&1; then
-            ENHANCED_COMPACTION_ARN=$(echo "$PULUMI_OUTPUTS" | jq -r '.enhanced_compaction_function_arn // empty')
-            compact_function=$(echo "$ENHANCED_COMPACTION_ARN" | grep -o '[^/]*$')
-        else
-            ENHANCED_COMPACTION_ARN=$(echo "$PULUMI_OUTPUTS" | grep -o '"enhanced_compaction_function_arn":"[^"]*' | cut -d'"' -f4)
-            compact_function=$(echo "$ENHANCED_COMPACTION_ARN" | grep -o '[^/]*$')
-        fi
-    fi
-fi
-
 echo ""
 echo "=== COMPACTION FUNCTION METRICS ==="
-compact_function="${compact_function:-embedding-vector-compact-lambda-dev-bd077b7}"
-echo "Compaction Function: ${compact_function}"
+echo "Enhanced Compaction Function: ${ENHANCED_COMPACTION}"
 echo "Recent Invocations:"
 aws cloudwatch get-metric-statistics \
   --namespace AWS/Lambda \
   --metric-name Invocations \
-  --dimensions Name=FunctionName,Value=${compact_function} \
+  --dimensions Name=FunctionName,Value=${ENHANCED_COMPACTION} \
   --start-time ${START_TIME} \
   --end-time ${END_TIME} \
   --period ${PERIOD} \
@@ -118,14 +158,18 @@ aws cloudwatch get-metric-statistics \
 echo ""
 echo "=== S3 STORAGE CHECK ==="
 echo "ChromaDB S3 Bucket Contents (recent snapshots):"
-# Try to find ChromaDB bucket
-chromadb_bucket=$(aws s3api list-buckets --query 'Buckets[?contains(Name, `chromadb`) || contains(Name, `vectors`)].Name' --output text | head -1)
-if [ -n "$chromadb_bucket" ]; then
-    echo "Bucket: $chromadb_bucket"
+echo "Bucket: ${CHROMADB_BUCKET}"
+
+# Check for recent snapshot activity using the Pulumi-resolved bucket name
+if [ -n "$CHROMADB_BUCKET" ]; then
     echo "Recent snapshot activity:"
-    aws s3 ls "s3://${chromadb_bucket}/" --recursive | grep -E "(snapshot|latest)" | tail -10 || echo "No snapshot files found"
+    aws s3 ls "s3://${CHROMADB_BUCKET}/" --recursive | grep -E "(snapshot|latest)" | tail -10 || echo "No snapshot files found"
+    
+    echo ""
+    echo "Recent intermediate processing files:"
+    aws s3 ls "s3://${CHROMADB_BUCKET}/intermediate/" --recursive | tail -5 || echo "No intermediate files found"
 else
-    echo "No ChromaDB bucket found"
+    echo "No ChromaDB bucket configured"
 fi
 
 echo ""
