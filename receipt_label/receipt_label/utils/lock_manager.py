@@ -239,7 +239,7 @@ class LockManager:
 
             try:
                 # Create updated lock with extended expiration
-                # Note: Heartbeat updates don't need ownership validation as they're 
+                # Note: Heartbeat updates don't need ownership validation as they're
                 # designed to maintain an existing valid lock
                 updated_lock = CompactionLock(
                     lock_id=self.lock_id,
@@ -407,35 +407,40 @@ class LockManager:
                 now = datetime.now(timezone.utc)
                 # Convert expires string back to datetime for comparison
                 logger.info(
-                    "TEMP DEBUG: current_lock.expires type: %s, value: %s", 
-                    type(current_lock.expires), current_lock.expires
+                    "TEMP DEBUG: current_lock.expires type: %s, value: %s",
+                    type(current_lock.expires),
+                    current_lock.expires,
                 )
                 if isinstance(current_lock.expires, str):
                     expires_dt = datetime.fromisoformat(
                         current_lock.expires.replace("Z", "+00:00")
                     )
                     logger.info(
-                        "TEMP DEBUG: Converted to expires_dt type: %s, value: %s", 
-                        type(expires_dt), expires_dt
+                        "TEMP DEBUG: Converted to expires_dt type: %s, value: %s",
+                        type(expires_dt),
+                        expires_dt,
                     )
                 else:
                     expires_dt = current_lock.expires
                     logger.info(
-                        "TEMP DEBUG: Using original expires_dt type: %s, value: %s", 
-                        type(expires_dt), expires_dt
+                        "TEMP DEBUG: Using original expires_dt type: %s, value: %s",
+                        type(expires_dt),
+                        expires_dt,
                     )
 
                 # Ensure expires_dt is a datetime object
                 if not isinstance(expires_dt, datetime):
                     logger.error(
-                        "expires_dt is not a datetime object: %s, value: %s", 
-                        type(expires_dt), expires_dt
+                        "expires_dt is not a datetime object: %s, value: %s",
+                        type(expires_dt),
+                        expires_dt,
                     )
                     return False
 
                 logger.info(
-                    "TEMP DEBUG: About to compare expires_dt (%s) <= now (%s)", 
-                    type(expires_dt), type(now)
+                    "TEMP DEBUG: About to compare expires_dt (%s) <= now (%s)",
+                    type(expires_dt),
+                    type(now),
                 )
                 if expires_dt <= now:
                     logger.warning(
@@ -446,7 +451,9 @@ class LockManager:
                     )
                     return False
 
-                logger.info("TEMP DEBUG: Lock ownership validated for %s", self.lock_id)
+                logger.info(
+                    "TEMP DEBUG: Lock ownership validated for %s", self.lock_id
+                )
                 return True
 
             except Exception as e:
