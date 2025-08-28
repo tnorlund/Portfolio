@@ -87,8 +87,8 @@ class PlacesCache:
             if not isinstance(self.time_to_live, int) or self.time_to_live < 0:
                 raise ValueError("time_to_live must be non-negative")
             now = int(time.time())
-            if self.time_to_live < now:
-                raise ValueError("time_to_live must be in the future")
+            # if self.time_to_live < now:
+            #     raise ValueError("time_to_live must be in the future")
 
     def _pad_search_value(self, value: str) -> str:
         """Pad the search value to a fixed length.

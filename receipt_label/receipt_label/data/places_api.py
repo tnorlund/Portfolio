@@ -81,7 +81,7 @@ class PlacesAPI:
 
                 # Skip cache for route-level results
                 try:
-                    cached_item = self.client_manager.dynamo.getPlacesCache(
+                    cached_item = self.client_manager.dynamo.get_places_cache(
                         search_type, search_value
                     )
                     if cached_item and cached_item.places_response.get(
@@ -96,7 +96,7 @@ class PlacesAPI:
 
             # Try to get from cache
             try:
-                cached_item = self.client_manager.dynamo.getPlacesCache(
+                cached_item = self.client_manager.dynamo.get_places_cache(
                     search_type, search_value
                 )
                 if cached_item:
@@ -109,7 +109,7 @@ class PlacesAPI:
                     logger.info("   Query count: %s", cached_item.query_count)
                     # Increment query count
                     try:
-                        self.client_manager.dynamo.incrementQueryCount(
+                        self.client_manager.dynamo.increment_query_count(
                             cached_item
                         )
                         logger.info(
@@ -218,7 +218,7 @@ class PlacesAPI:
             )
 
             try:
-                self.client_manager.dynamo.addPlacesCache(cache_item)
+                self.client_manager.dynamo.add_places_cache(cache_item)
                 logger.info(
                     "SUCCESS: Cached %s - %s", search_type, search_value
                 )
