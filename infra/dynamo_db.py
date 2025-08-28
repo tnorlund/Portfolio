@@ -49,7 +49,7 @@ dynamodb_table = aws.dynamodb.Table(
     range_key="SK",
     billing_mode="PAY_PER_REQUEST",
     ttl=aws.dynamodb.TableTtlArgs(
-        attribute_name="TimeToLive",
+        attribute_name="time_to_live",
         enabled=True,
     ),
     stream_enabled=True,

@@ -63,7 +63,7 @@ class LabelCountCache:
             "last_updated": {"S": self.last_updated},
         }
         if self.time_to_live is not None:
-            item["TimeToLive"] = {"N": str(self.time_to_live)}
+            item["time_to_live"] = {"N": str(self.time_to_live)}
         return item
 
     def __iter__(self) -> Generator[Tuple[str, Any], None, None]:
