@@ -50,9 +50,9 @@ class _ReceiptWordLabelSpatialAnalysis(
                 already exists
         """
         self._validate_entity(
-            spatial_analysis, 
-            ReceiptWordLabelSpatialAnalysis, 
-            "spatial_analysis"
+            spatial_analysis,
+            ReceiptWordLabelSpatialAnalysis,
+            "spatial_analysis",
         )
         self._add_entity(spatial_analysis)
 
@@ -72,7 +72,7 @@ class _ReceiptWordLabelSpatialAnalysis(
         self._validate_entity_list(
             spatial_analyses,
             ReceiptWordLabelSpatialAnalysis,
-            "spatial_analyses"
+            "spatial_analyses",
         )
 
         from receipt_dynamo.data.base_operations import (
@@ -105,7 +105,7 @@ class _ReceiptWordLabelSpatialAnalysis(
         self._validate_entity(
             spatial_analysis,
             ReceiptWordLabelSpatialAnalysis,
-            "spatial_analysis"
+            "spatial_analysis",
         )
         self._update_entity(spatial_analysis)
 
@@ -125,7 +125,7 @@ class _ReceiptWordLabelSpatialAnalysis(
         self._update_entities(
             spatial_analyses,
             ReceiptWordLabelSpatialAnalysis,
-            "spatial_analyses"
+            "spatial_analyses",
         )
 
     @handle_dynamodb_errors("delete_receipt_word_label_spatial_analysis")
@@ -144,7 +144,7 @@ class _ReceiptWordLabelSpatialAnalysis(
         self._validate_entity(
             spatial_analysis,
             ReceiptWordLabelSpatialAnalysis,
-            "spatial_analysis"
+            "spatial_analysis",
         )
         self._delete_entity(spatial_analysis)
 
@@ -164,7 +164,7 @@ class _ReceiptWordLabelSpatialAnalysis(
         self._validate_entity_list(
             spatial_analyses,
             ReceiptWordLabelSpatialAnalysis,
-            "spatial_analyses"
+            "spatial_analyses",
         )
 
         # Use transactional writes for deletes to ensure items exist
@@ -269,7 +269,9 @@ class _ReceiptWordLabelSpatialAnalysis(
         receipt_id: int,
         limit: Optional[int] = None,
         last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[ReceiptWordLabelSpatialAnalysis], Optional[Dict[str, Any]]]:
+    ) -> Tuple[
+        List[ReceiptWordLabelSpatialAnalysis], Optional[Dict[str, Any]]
+    ]:
         """Lists all spatial analyses for a specific receipt using GSI2
 
         Args:
@@ -310,7 +312,9 @@ class _ReceiptWordLabelSpatialAnalysis(
             key_condition_expression="#pk = :pk",
             expression_attribute_names={"#pk": "GSI2PK"},
             expression_attribute_values={
-                ":pk": {"S": f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#SPATIAL"}
+                ":pk": {
+                    "S": f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#SPATIAL"
+                }
             },
             converter_func=item_to_receipt_word_label_spatial_analysis,
             limit=limit,
@@ -323,7 +327,9 @@ class _ReceiptWordLabelSpatialAnalysis(
         label: str,
         limit: Optional[int] = None,
         last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[ReceiptWordLabelSpatialAnalysis], Optional[Dict[str, Any]]]:
+    ) -> Tuple[
+        List[ReceiptWordLabelSpatialAnalysis], Optional[Dict[str, Any]]
+    ]:
         """Retrieves spatial analyses by label type using GSI1
 
         This method enables cross-receipt analysis of spatial patterns for
@@ -371,7 +377,9 @@ class _ReceiptWordLabelSpatialAnalysis(
         image_id: str,
         limit: Optional[int] = None,
         last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[ReceiptWordLabelSpatialAnalysis], Optional[Dict[str, Any]]]:
+    ) -> Tuple[
+        List[ReceiptWordLabelSpatialAnalysis], Optional[Dict[str, Any]]
+    ]:
         """Lists all spatial analyses for a given image
 
         Args:
@@ -399,18 +407,20 @@ class _ReceiptWordLabelSpatialAnalysis(
 
         assert_valid_uuid(image_id)
 
+        # Since we need to find SK patterns ending with SPATIAL_ANALYSIS,
+        # we'll scan the partition but this should be limited to one image
         return self._query_entities(
             index_name=None,  # Use main table
             key_condition_expression="#pk = :pk",
             expression_attribute_names={
                 "#pk": "PK",
-                "#sk": "SK",
+                "#type": "TYPE",
             },
             expression_attribute_values={
                 ":pk": {"S": f"IMAGE#{image_id}"},
-                ":spatial_suffix": {"S": "SPATIAL_ANALYSIS"},
+                ":type": {"S": "RECEIPT_WORD_LABEL_SPATIAL_ANALYSIS"},
             },
-            filter_expression="contains(#sk, :spatial_suffix)",
+            filter_expression="#type = :type",
             converter_func=item_to_receipt_word_label_spatial_analysis,
             limit=limit,
             last_evaluated_key=last_evaluated_key,
@@ -421,7 +431,9 @@ class _ReceiptWordLabelSpatialAnalysis(
         self,
         limit: Optional[int] = None,
         last_evaluated_key: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[ReceiptWordLabelSpatialAnalysis], Optional[Dict[str, Any]]]:
+    ) -> Tuple[
+        List[ReceiptWordLabelSpatialAnalysis], Optional[Dict[str, Any]]
+    ]:
         """Lists all spatial analyses with pagination
 
         Args:

@@ -87,6 +87,22 @@ class _PlacesCache(
             )
         self._update_entity(item, condition_expression="attribute_exists(PK)")
 
+    @handle_dynamodb_errors("update_places_caches")
+    def update_places_caches(self, caches: List[PlacesCache]):
+        """
+        Updates a list of PlacesCache items in the database.
+        """
+        if caches is None:
+            raise EntityValidationError("caches cannot be None")
+        if not isinstance(caches, list):
+            raise EntityValidationError("caches must be a list")
+        for cache in caches:
+            if not isinstance(cache, PlacesCache):
+                raise EntityValidationError(
+                    "caches must be a list of PlacesCache objects"
+                )
+        self._update_entities(caches, PlacesCache, "caches")
+
     @handle_dynamodb_errors("increment_query_count")
     def increment_query_count(self, item: PlacesCache) -> PlacesCache:
         """
