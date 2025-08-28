@@ -556,6 +556,7 @@ class _ReceiptWordLabel(
         if last_evaluated_key is not None:
             validate_last_evaluated_key(last_evaluated_key)
 
+        # Use TYPE field to filter instead of SK-based filter expression
         results, last_key = self._query_entities(
             index_name=None,
             key_condition_expression=(
@@ -564,14 +565,15 @@ class _ReceiptWordLabel(
             expression_attribute_names={
                 "#pk": "PK",
                 "#sk": "SK",
+                "#type": "TYPE",
             },
             expression_attribute_values={
                 ":pk": {"S": f"IMAGE#{image_id}"},
                 ":sk_prefix": {"S": f"RECEIPT#{receipt_id:05d}#"},
-                ":label_suffix": {"S": "#LABEL#"},
+                ":type": {"S": "RECEIPT_WORD_LABEL"},
             },
             converter_func=item_to_receipt_word_label,
-            filter_expression="contains(#sk, :label_suffix)",
+            filter_expression="#type = :type",
             limit=limit,
             last_evaluated_key=last_evaluated_key,
         )

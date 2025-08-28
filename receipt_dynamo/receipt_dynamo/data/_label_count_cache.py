@@ -54,6 +54,24 @@ class _LabelCountCache(FlattenedStandardMixin):
         ]
         self._batch_write_with_retry(request_items)
 
+    @handle_dynamodb_errors("delete_label_count_caches")
+    def delete_label_count_caches(self, caches: list[LabelCountCache]) -> None:
+        if caches is None:
+            raise EntityValidationError("caches cannot be None")
+        if not isinstance(caches, list) or not all(
+            isinstance(cache, LabelCountCache) for cache in caches
+        ):
+            raise EntityValidationError(
+                "items must be a list of LabelCountCache objects."
+            )
+        for i, cache in enumerate(caches):
+            if not isinstance(cache, LabelCountCache):
+                raise EntityValidationError(
+                    f"caches[{i}] must be a LabelCountCache object, "
+                    f"got {type(cache).__name__}"
+                )
+        self._delete_entities(caches)
+
     @handle_dynamodb_errors("update_label_count_cache")
     def update_label_count_cache(self, item: LabelCountCache) -> None:
         if item is None:

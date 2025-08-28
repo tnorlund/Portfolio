@@ -32,8 +32,9 @@ class TestCoreCompactionLogic:
             "COMPACTION_QUEUE_URL": (
                 "https://sqs.us-east-1.amazonaws.com/123/test-queue"
             ),
-            "HEARTBEAT_INTERVAL_SECONDS": "60",
-            "LOCK_DURATION_MINUTES": "15",
+            "HEARTBEAT_INTERVAL_SECONDS": "30",
+            "LOCK_DURATION_MINUTES": "3",
+            "MAX_HEARTBEAT_FAILURES": "3",
         },
     )
     @patch('infra.chromadb_compaction.lambdas.enhanced_compaction_handler.get_dynamo_client')

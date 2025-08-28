@@ -132,6 +132,18 @@ class ChromaDBBuckets(ComponentResource):
                         days=1,
                     ),
                 ),
+                # Clean up temp directories after 1 day
+                # These are temporary files created during atomic uploads
+                aws.s3.BucketLifecycleConfigurationRuleArgs(
+                    id="delete-temp-uploads",
+                    status="Enabled",
+                    filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(
+                        prefix="temp/",
+                    ),
+                    expiration=aws.s3.BucketLifecycleConfigurationRuleExpirationArgs(
+                        days=1,
+                    ),
+                ),
             ],
             opts=ResourceOptions(parent=self),
         )

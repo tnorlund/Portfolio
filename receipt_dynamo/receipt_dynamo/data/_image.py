@@ -256,8 +256,22 @@ class _Image(FlattenedStandardMixin):
         image_type: str | ImageType,
         limit: Optional[int] = None,
         last_evaluated_key: Optional[Dict] = None,
+        receipt_count: Optional[int] = None,
     ) -> Tuple[List[Image], Optional[Dict]]:
-        """Lists images from the database by type."""
+        """Lists images from the database by type, optionally filtered by exact receipt count.
+        
+        Args:
+            image_type: The type of images to retrieve
+            limit: Maximum number of items to return
+            last_evaluated_key: Pagination key from previous query
+            receipt_count: If provided, only return images with this exact receipt count
+            
+        Returns:
+            Tuple of (images_list, next_pagination_key)
+            
+        When receipt_count is provided, returns only images with that exact count.
+        When receipt_count is None, returns all images ordered by receipt count (descending).
+        """
         # Validate image type
         if not isinstance(image_type, ImageType):
             if not isinstance(image_type, str):
@@ -273,15 +287,40 @@ class _Image(FlattenedStandardMixin):
         if isinstance(image_type, ImageType):
             image_type = image_type.value
 
-        return self._query_entities(
-            index_name="GSI3",
-            key_condition_expression="#t = :val",
-            expression_attribute_names={"#t": "GSI3PK"},
-            expression_attribute_values={":val": {"S": f"IMAGE#{image_type}"}},
-            converter_func=item_to_image,
-            limit=limit,
-            last_evaluated_key=last_evaluated_key,
-        )
+        # Validate receipt_count if provided
+        if receipt_count is not None and (not isinstance(receipt_count, int) or receipt_count < 0):
+            raise EntityValidationError(
+                "receipt_count must be a non-negative integer"
+            )
+
+        # Build query based on whether receipt_count is specified
+        if receipt_count is not None:
+            # Query for exact receipt count using both PK and SK
+            receipt_count_str = f"{receipt_count:05d}"
+            return self._query_entities(
+                index_name="GSI3",
+                key_condition_expression="#t = :pk AND #sk = :sk",
+                expression_attribute_names={"#t": "GSI3PK", "#sk": "GSI3SK"},
+                expression_attribute_values={
+                    ":pk": {"S": f"IMAGE#{image_type}"},
+                    ":sk": {"S": f"NUM_RECEIPTS#{receipt_count_str}"}
+                },
+                converter_func=item_to_image,
+                limit=limit,
+                last_evaluated_key=last_evaluated_key,
+            )
+        else:
+            # Query all images of this type, sorted by receipt count (descending)
+            return self._query_entities(
+                index_name="GSI3",
+                key_condition_expression="#t = :val",
+                expression_attribute_names={"#t": "GSI3PK"},
+                expression_attribute_values={":val": {"S": f"IMAGE#{image_type}"}},
+                converter_func=item_to_image,
+                limit=limit,
+                last_evaluated_key=last_evaluated_key,
+                scan_index_forward=False,  # Sort descending by receipt count
+            )
 
     def _query_by_type(
         self,

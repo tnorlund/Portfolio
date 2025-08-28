@@ -68,6 +68,7 @@ def build_query_params(
     filter_expression: Optional[str] = None,
     exclusive_start_key: Optional[Dict[str, Any]] = None,
     limit: Optional[int] = None,
+    scan_index_forward: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """
     Build query parameters for DynamoDB queries.
@@ -81,6 +82,7 @@ def build_query_params(
         filter_expression: Optional filter expression
         exclusive_start_key: Optional start key for pagination
         limit: Optional query limit
+        scan_index_forward: Optional sort order flag (True=ascending, False=descending)
 
     Returns:
         Dictionary of query parameters
@@ -101,6 +103,8 @@ def build_query_params(
         query_params["ExclusiveStartKey"] = exclusive_start_key
     if limit:
         query_params["Limit"] = limit
+    if scan_index_forward is not None:
+        query_params["ScanIndexForward"] = scan_index_forward
 
     return query_params
 

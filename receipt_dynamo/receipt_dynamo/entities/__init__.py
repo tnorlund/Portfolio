@@ -127,6 +127,11 @@ from receipt_dynamo.entities.receipt_word_label import (  # noqa: F401
     ReceiptWordLabel,
     item_to_receipt_word_label,
 )
+from receipt_dynamo.entities.receipt_word_label_spatial_analysis import (  # noqa: F401
+    ReceiptWordLabelSpatialAnalysis,
+    SpatialRelationship,
+    item_to_receipt_word_label_spatial_analysis,
+)
 from receipt_dynamo.entities.rwl_queue import Queue  # noqa: F401
 from receipt_dynamo.entities.rwl_queue import item_to_queue
 
@@ -179,6 +184,8 @@ __all__ = [
     "ReceiptValidationSummary",
     "ReceiptWord",
     "ReceiptWordLabel",
+    "ReceiptWordLabelSpatialAnalysis",
+    "SpatialRelationship",
     "Word",
     # Item conversion functions
     "item_to_ai_usage_metric",
@@ -221,6 +228,7 @@ __all__ = [
     "item_to_receipt_validation_summary",
     "item_to_receipt_word",
     "item_to_receipt_word_label",
+    "item_to_receipt_word_label_spatial_analysis",
     "item_to_word",
     # Utility functions
     "assert_valid_uuid",

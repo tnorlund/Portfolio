@@ -10,14 +10,16 @@ if [[ "${1:-}" =~ ^(-h|--help)$ ]]; then
     cat <<EOF
 ChromaDB Compaction Metrics Collection Script
 
-Usage: $0 [hours_back] [output_file]
+Usage: $0 [hours_back] [output_file] [pulumi_stack]
        $0 -h|--help
 
 Parameters:
   hours_back    Number of hours to look back (default: 24, must be positive integer)
   output_file   Save output to file instead of stdout (optional)
+  pulumi_stack  Pulumi stack to use: 'dev' or 'prod' (default: current active stack)
 
 Environment Variables (override resource names):
+  PULUMI_STACK        Pulumi stack to use (dev/prod)
   STREAM_PROCESSOR     Lambda function name for stream processor
   ENHANCED_COMPACTION  Lambda function name for enhanced compaction
   LINES_QUEUE         SQS queue name for lines processing
@@ -27,10 +29,12 @@ Environment Variables (override resource names):
   CHROMADB_BUCKET     S3 bucket name for ChromaDB storage
 
 Examples:
-  $0                           # Last 24 hours to stdout
-  $0 6                         # Last 6 hours to stdout
-  $0 48 report.txt             # Last 48 hours to file
-  HOURS_BACK=12 $0 12 metrics_\$(date +%Y%m%d).txt
+  $0                           # Last 24 hours, current stack
+  $0 6                         # Last 6 hours, current stack
+  $0 48 report.txt             # Last 48 hours to file, current stack
+  $0 6 - dev                   # Last 6 hours, dev stack (- = stdout)
+  $0 24 prod_metrics.txt prod  # Last 24 hours to file, prod stack
+  PULUMI_STACK=prod $0 12      # Override stack via environment
 
 EOF
     exit 0
@@ -39,8 +43,14 @@ fi
 # Configuration
 HOURS_BACK=${1:-24}
 OUTPUT_FILE=${2:-""}
+PULUMI_STACK=${3:-${PULUMI_STACK:-""}}  # Third param or env var
 REGION="us-east-1"
 PERIOD=3600
+
+# Handle special case where output_file is "-" (stdout)
+if [ "$OUTPUT_FILE" = "-" ]; then
+    OUTPUT_FILE=""
+fi
 
 # Input validation
 if ! [[ "${HOURS_BACK}" =~ ^[0-9]+$ ]] || [ "${HOURS_BACK}" -le 0 ]; then
@@ -60,14 +70,67 @@ if [ -n "$OUTPUT_FILE" ]; then
     exec > "$OUTPUT_FILE" 2>&1
 fi
 
-# Resource names (override via environment variables)
-STREAM_PROCESSOR="${STREAM_PROCESSOR:-chromadb-dev-lambdas-stream-processor-e79a370}"
-ENHANCED_COMPACTION="${ENHANCED_COMPACTION:-chromadb-dev-lambdas-enhanced-compaction-79f6426}"
-LINES_QUEUE="${LINES_QUEUE:-chromadb-dev-queues-lines-queue-b3d38e1}"
-WORDS_QUEUE="${WORDS_QUEUE:-chromadb-dev-queues-words-queue-6e2171c}"
-LINES_DLQ="${LINES_DLQ:-chromadb-dev-queues-lines-dlq-67a9812}"
-WORDS_DLQ="${WORDS_DLQ:-chromadb-dev-queues-words-dlq-0b5f487}"
-CHROMADB_BUCKET="${CHROMADB_BUCKET:-chromadb-dev-shared-buckets-vectors-c239843}"
+# Get resource names from Pulumi outputs (can be overridden via environment variables)
+echo "Fetching resource names from Pulumi stack outputs..."
+
+# Try to get Pulumi outputs, with fallback to hardcoded values if Pulumi isn't available
+if command -v pulumi >/dev/null 2>&1; then
+    # Use specified stack or current active stack
+    if [ -n "$PULUMI_STACK" ]; then
+        echo "Using Pulumi stack: $PULUMI_STACK"
+        PULUMI_OUTPUTS=$(pulumi stack output --stack "$PULUMI_STACK" --json 2>/dev/null)
+    else
+        CURRENT_STACK=$(pulumi stack --show-name 2>/dev/null || echo "unknown")
+        echo "Using current Pulumi stack: $CURRENT_STACK"
+        PULUMI_OUTPUTS=$(pulumi stack output --json 2>/dev/null)
+    fi
+    if [ $? -eq 0 ] && [ -n "$PULUMI_OUTPUTS" ]; then
+        # Extract function names from ARNs using jq (if available) or grep/awk fallback
+        if command -v jq >/dev/null 2>&1; then
+            STREAM_PROCESSOR_ARN=$(echo "$PULUMI_OUTPUTS" | jq -r '.stream_processor_function_arn // empty')
+            ENHANCED_COMPACTION_ARN=$(echo "$PULUMI_OUTPUTS" | jq -r '.enhanced_compaction_function_arn // empty')
+            CHROMADB_BUCKET_NAME=$(echo "$PULUMI_OUTPUTS" | jq -r '.chromadb_bucket_name // empty')
+            
+            # Extract function names from ARNs
+            STREAM_PROCESSOR_DEFAULT=$(echo "$STREAM_PROCESSOR_ARN" | grep -o '[^/]*$')
+            ENHANCED_COMPACTION_DEFAULT=$(echo "$ENHANCED_COMPACTION_ARN" | grep -o '[^/]*$')
+            
+            # Extract queue names from URLs
+            LINES_QUEUE_URL=$(echo "$PULUMI_OUTPUTS" | jq -r '.chromadb_lines_queue_url // empty')
+            WORDS_QUEUE_URL=$(echo "$PULUMI_OUTPUTS" | jq -r '.chromadb_words_queue_url // empty')
+            LINES_QUEUE_DEFAULT=$(echo "$LINES_QUEUE_URL" | grep -o '[^/]*$')
+            WORDS_QUEUE_DEFAULT=$(echo "$WORDS_QUEUE_URL" | grep -o '[^/]*$')
+        else
+            # Fallback without jq - use grep/sed
+            STREAM_PROCESSOR_ARN=$(echo "$PULUMI_OUTPUTS" | grep -o '"stream_processor_function_arn":"[^"]*' | cut -d'"' -f4)
+            ENHANCED_COMPACTION_ARN=$(echo "$PULUMI_OUTPUTS" | grep -o '"enhanced_compaction_function_arn":"[^"]*' | cut -d'"' -f4)
+            CHROMADB_BUCKET_NAME=$(echo "$PULUMI_OUTPUTS" | grep -o '"chromadb_bucket_name":"[^"]*' | cut -d'"' -f4)
+            
+            STREAM_PROCESSOR_DEFAULT=$(echo "$STREAM_PROCESSOR_ARN" | grep -o '[^/]*$')
+            ENHANCED_COMPACTION_DEFAULT=$(echo "$ENHANCED_COMPACTION_ARN" | grep -o '[^/]*$')
+            
+            LINES_QUEUE_URL=$(echo "$PULUMI_OUTPUTS" | grep -o '"chromadb_lines_queue_url":"[^"]*' | cut -d'"' -f4)
+            WORDS_QUEUE_URL=$(echo "$PULUMI_OUTPUTS" | grep -o '"chromadb_words_queue_url":"[^"]*' | cut -d'"' -f4)
+            LINES_QUEUE_DEFAULT=$(echo "$LINES_QUEUE_URL" | grep -o '[^/]*$')
+            WORDS_QUEUE_DEFAULT=$(echo "$WORDS_QUEUE_URL" | grep -o '[^/]*$')
+        fi
+        
+        echo "✓ Successfully retrieved resource names from Pulumi"
+    else
+        echo "⚠ Pulumi stack outputs unavailable, using fallback values"
+    fi
+else
+    echo "⚠ Pulumi not available, using fallback values"
+fi
+
+# Resource names with Pulumi defaults (can still be overridden via environment variables)
+STREAM_PROCESSOR="${STREAM_PROCESSOR:-${STREAM_PROCESSOR_DEFAULT:-chromadb-dev-lambdas-stream-processor-e79a370}}"
+ENHANCED_COMPACTION="${ENHANCED_COMPACTION:-${ENHANCED_COMPACTION_DEFAULT:-chromadb-dev-lambdas-enhanced-compaction-79f6426}}"
+LINES_QUEUE="${LINES_QUEUE:-${LINES_QUEUE_DEFAULT:-chromadb-dev-queues-lines-queue-b3d38e1}}"
+WORDS_QUEUE="${WORDS_QUEUE:-${WORDS_QUEUE_DEFAULT:-chromadb-dev-queues-words-queue-6e2171c}}"
+LINES_DLQ="${LINES_DLQ:-chromadb-dev-queues-lines-dlq-67a9812}"  # TODO: Add to Pulumi outputs
+WORDS_DLQ="${WORDS_DLQ:-chromadb-dev-queues-words-dlq-0b5f487}"  # TODO: Add to Pulumi outputs
+CHROMADB_BUCKET="${CHROMADB_BUCKET:-${CHROMADB_BUCKET_NAME:-chromadb-dev-shared-buckets-vectors-c239843}}"
 
 # AWS Configuration
 export AWS_DEFAULT_REGION="${REGION}"
@@ -314,6 +377,42 @@ aws cloudwatch get-metric-statistics \
   --statistics Sum \
   --query 'sort_by(Datapoints[?Sum != `0`], &Timestamp)[].[Timestamp,Sum]' \
   --output table 2>/dev/null || echo "No lock failures found (good!)"
+
+# Heartbeat Failures
+echo "Heartbeat Failures (network/connectivity issues):"
+aws cloudwatch get-metric-statistics \
+  --namespace EmbeddingWorkflow \
+  --metric-name CompactionHeartbeatFailed \
+  --start-time ${START_TIME} \
+  --end-time ${END_TIME} \
+  --period ${PERIOD} \
+  --statistics Sum \
+  --query 'sort_by(Datapoints[?Sum != `0`], &Timestamp)[].[Timestamp,Sum]' \
+  --output table 2>/dev/null || echo "No heartbeat failures found (good!)"
+
+# Lock Expiration Events
+echo "Lock Expiration Events (critical - indicates data race risk):"
+aws cloudwatch get-metric-statistics \
+  --namespace EmbeddingWorkflow \
+  --metric-name CompactionLockExpired \
+  --start-time ${START_TIME} \
+  --end-time ${END_TIME} \
+  --period ${PERIOD} \
+  --statistics Sum \
+  --query 'sort_by(Datapoints[?Sum != `0`], &Timestamp)[].[Timestamp,Sum]' \
+  --output table 2>/dev/null || echo "No lock expirations found (good!)"
+
+# Lock Validation Failures
+echo "Lock Validation Failures (operations canceled for safety):"
+aws cloudwatch get-metric-statistics \
+  --namespace EmbeddingWorkflow \
+  --metric-name CompactionLockValidationFailed \
+  --start-time ${START_TIME} \
+  --end-time ${END_TIME} \
+  --period ${PERIOD} \
+  --statistics Sum \
+  --query 'sort_by(Datapoints[?Sum != `0`], &Timestamp)[].[Timestamp,Sum]' \
+  --output table 2>/dev/null || echo "No validation failures found (good!)"
 
 echo ""
 echo "=== PROCESSING METRICS ==="

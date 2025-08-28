@@ -65,6 +65,7 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
     cdn_medium_webp_s3_key: Optional[str] = None
     cdn_medium_avif_s3_key: Optional[str] = None
     image_type: ImageType | str = ImageType.SCAN
+    receipt_count: Optional[int] = None  # Only for query filtering
 
     # CDN field lists for CDNFieldsMixin
     CDN_BASIC_FIELDS = ["cdn_s3_key", "cdn_webp_s3_key", "cdn_avif_s3_key"]
@@ -109,6 +110,12 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
         else:
             raise ValueError("image_type must be a ImageType or a string")
 
+        if self.receipt_count is not None:
+            if not isinstance(self.receipt_count, int):
+                raise ValueError("receipt_count must be an integer")
+            if self.receipt_count < 0:
+                raise ValueError("receipt_count must be a non-negative integer")
+
     @property
     def key(self) -> Dict[str, Any]:
         """Generates the primary key for the image.
@@ -149,9 +156,14 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
         Returns:
             dict: The GSI3 key for the image.
         """
+        receipt_count_str = (
+            f"{self.receipt_count:05d}"
+            if self.receipt_count is not None
+            else "00000"
+        )
         return {
             "GSI3PK": {"S": f"IMAGE#{self.image_type}"},
-            "GSI3SK": {"S": f"IMAGE#{self.image_id}"},
+            "GSI3SK": {"S": f"NUM_RECEIPTS#{receipt_count_str}"},
         }
 
     def to_item(self) -> Dict[str, Any]:
@@ -180,6 +192,11 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
             ),
             **self.cdn_fields_to_dynamodb_item(),
             "image_type": {"S": self.image_type},
+            "receipt_count": (
+                {"N": str(self.receipt_count)}
+                if self.receipt_count is not None
+                else {"NULL": True}
+            ),
         }
 
     def __repr__(self) -> str:
@@ -209,7 +226,8 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
             f"{_repr_str(self.cdn_medium_webp_s3_key)}, "
             f"cdn_medium_avif_s3_key="
             f"{_repr_str(self.cdn_medium_avif_s3_key)}, "
-            f"image_type={_repr_str(self.image_type)}"
+            f"image_type={_repr_str(self.image_type)}, "
+            f"receipt_count={_repr_str(self.receipt_count)}"
             ")"
         )
 
@@ -280,6 +298,11 @@ def item_to_image(item: Dict[str, Any]) -> Image:
                 "S"
             ),
             image_type=image_type if image_type else ImageType.SCAN.value,
+            receipt_count=(
+                int(item["receipt_count"]["N"])
+                if "receipt_count" in item and "N" in item["receipt_count"]
+                else None
+            ),
         )
     except KeyError as e:
         raise ValueError(f"Error converting item to Image: {e}") from e
