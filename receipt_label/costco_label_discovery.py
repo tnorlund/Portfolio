@@ -13,16 +13,17 @@ Approach:
 """
 
 import asyncio
-import json
 import logging
 import os
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, TypedDict, Any
 from dataclasses import dataclass
 from pydantic import BaseModel, Field
 from enum import Enum
 import re
 from datetime import datetime
 from receipt_label.prompt_formatting import format_receipt_lines_visual_order
+from langgraph.graph import StateGraph, END
+from decimal import Decimal, InvalidOperation
 
 try:
     from langchain_core.output_parsers import PydanticOutputParser
@@ -40,7 +41,7 @@ except ImportError:
 
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.data._pulumi import load_env
-from receipt_dynamo.entities import ReceiptWord, ReceiptLine
+from receipt_dynamo.entities import ReceiptLine
 from receipt_label.constants import CORE_LABELS
 
 logging.basicConfig(level=logging.INFO)
@@ -79,6 +80,10 @@ class CurrencyLabel(BaseModel):
     word_text: str = Field(description="The exact text of the currency amount")
     label_type: LabelType = Field(description="The classified label type")
     line_number: int = Field(description="Line number in the receipt")
+    line_ids: List[int] = Field(
+        default_factory=list,
+        description="Underlying OCR line_id values contributing to this group",
+    )
     confidence: float = Field(
         ge=0.0, le=1.0, description="Confidence in this classification"
     )
@@ -263,7 +268,7 @@ class ReceiptTextReconstructor:
         text_lines = formatted_text.split("\n")
         enhanced_lines = []
 
-        for i, (text_line, group) in enumerate(zip(text_lines, text_groups)):
+        for text_line, group in zip(text_lines, text_groups):
             # Calculate relative position (0.0 = top, 1.0 = bottom)
             relative_pos = (
                 (group.centroid_y - min_y) / y_range if y_range > 0 else 0.0
@@ -290,7 +295,6 @@ class ReceiptTextReconstructor:
         self, text_groups: List[ReceiptTextGroup]
     ) -> List[Dict]:
         """Extract all currency amounts with their context from grouped text."""
-        import re
 
         currency_pattern = re.compile(r"\$?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)")
         currency_contexts = []
@@ -386,6 +390,78 @@ VALIDATION:
     return prompt
 
 
+# ============================================================
+# Word resolution helpers (amount -> ReceiptWord on lines)
+# ============================================================
+
+NUM_RE = re.compile(r"^\$?\s*([0-9][0-9,]*)(?:[.,]([0-9]{1,3}))?\D*$")
+
+
+def _to_decimal_safely(text: str) -> Optional[Decimal]:
+    """Parse a currency-like string from one OCR token into Decimal."""
+    m = NUM_RE.match(text.strip())
+    if not m:
+        return None
+    int_part = m.group(1).replace(",", "")
+    frac = m.group(2) or ""
+    if len(frac) == 0:
+        normalized = int_part
+    elif len(frac) == 1:
+        normalized = f"{int_part}.{frac}0"
+    elif len(frac) == 2:
+        normalized = f"{int_part}.{frac}"
+    else:
+        normalized = f"{int_part}.{frac[:2]}"
+    try:
+        return Decimal(normalized)
+    except InvalidOperation:
+        return None
+
+
+def find_matching_word_for_label(
+    client: DynamoClient,
+    image_id: str,
+    receipt_id: int,
+    label_amount: float,
+    line_ids: List[int],
+    tolerance: Decimal = Decimal("0.01"),
+) -> Optional[Dict[str, Any]]:
+    """Return details of the matching ReceiptWord for a classified amount."""
+    target = Decimal(f"{label_amount:.2f}")
+    # 1) Single-token matches
+    for line_id in line_ids:
+        words = client.list_receipt_words_from_line(
+            receipt_id, image_id, line_id
+        )
+        for w in words:
+            val = _to_decimal_safely(w.text)
+            if val is not None and abs(val - target) <= tolerance:
+                return {
+                    "line_id": w.line_id,
+                    "word_id": w.word_id,
+                    "text": w.text,
+                }
+
+    # 2) Adjacent-token join (e.g., ['35', '.68'])
+    for line_id in line_ids:
+        words = client.list_receipt_words_from_line(
+            receipt_id, image_id, line_id
+        )
+        words = sorted(words, key=lambda x: x.word_id)
+        for i in range(len(words) - 1):
+            joined = (words[i].text + words[i + 1].text).replace(" ", "")
+            val = _to_decimal_safely(joined)
+            if val is not None and abs(val - target) <= tolerance:
+                w = words[i]
+                return {
+                    "line_id": w.line_id,
+                    "word_id": w.word_id,
+                    "text": joined,
+                }
+
+    return None
+
+
 # Define structured response models for currency classification
 class CurrencyClassificationItem(BaseModel):
     """Individual currency classification item."""
@@ -399,6 +475,14 @@ class CurrencyClassificationItem(BaseModel):
     )
     reasoning: Optional[str] = Field(
         description="Brief reasoning for this classification"
+    )
+    line_ids: Optional[List[int]] = Field(
+        default=None,
+        description=(
+            "OCR line_id values for the line(s) containing this amount. "
+            "Derive from the formatted receipt text which prefixes each row "
+            "with comma-separated line IDs."
+        ),
     )
 
 
@@ -416,14 +500,18 @@ async def analyze_with_ollama(
     known_total: float,
     receipt_id: str = None,
 ) -> List[CurrencyLabel]:
-    """Use Ollama LLM with LangChain structured output to analyze and classify currency amounts."""
+    """Use Ollama LLM with LangChain structured output to analyze and classify currency amounts.
+
+    Note: This version removes the concept of 'target amounts' from the prompt input and
+    asks the model to classify all currency amounts found in the provided receipt text.
+    """
 
     if not LANGCHAIN_AVAILABLE:
         return []
 
     # Create authenticated Ollama Turbo client using the helper function
     llm = create_ollama_turbo_client(
-        model="gpt-oss:20b",
+        model="gpt-oss:120b",
         base_url="https://ollama.com",
         api_key=os.getenv("OLLAMA_API_KEY"),
         temperature=0.0,
@@ -434,38 +522,8 @@ async def analyze_with_ollama(
         pydantic_object=CurrencyClassificationResponse
     )
 
-    # Focus on most relevant currency amounts (known total and nearby values)
-    relevant_contexts = []
-
-    # Always include the known total
-    for ctx in currency_contexts:
-        if abs(ctx["value"] - known_total) < 0.01:
-            relevant_contexts.append(ctx)
-
-    # Add potential tax amounts (5-20% of known total)
-    tax_min, tax_max = known_total * 0.05, known_total * 0.20
-    for ctx in currency_contexts:
-        if tax_min <= ctx["value"] <= tax_max and ctx not in relevant_contexts:
-            relevant_contexts.append(ctx)
-
-    # Add some item-level amounts (under 50% of total)
-    item_max = known_total * 0.5
-    item_contexts = [
-        ctx
-        for ctx in currency_contexts
-        if ctx["value"] < item_max and ctx not in relevant_contexts
-    ]
-    relevant_contexts.extend(item_contexts[:10])  # Limit to 10 items
-
-    # We need to get the lines and format them properly like _format_receipt_lines
-    # The prompt parameter is the old approach - we need to get lines from the caller
-    # For now, let's extract what we can from the existing prompt, but ideally we'd pass the lines directly
-
-    # Extract relevant currency amounts for targeting
-    relevant_amounts = [f"${ctx['value']:.2f}" for ctx in relevant_contexts]
-    amounts_text = ", ".join(
-        relevant_amounts[:15]
-    )  # Show more amounts for context
+    # No 'target amounts' filter: consider all detected currency contexts
+    # Matching back to contexts will use currency_contexts directly.
 
     # Create prompt template using the properly formatted receipt text
     prompt_template = PromptTemplate(
@@ -474,7 +532,6 @@ async def analyze_with_ollama(
 RECEIPT TEXT (formatted with line IDs):
 {receipt_text}
 
-TARGET CURRENCY AMOUNTS: {target_amounts}
 KNOWN GRAND TOTAL: ${known_total:.2f}
 
 LABEL DEFINITIONS (from receipt_label.constants):
@@ -491,7 +548,7 @@ The correct receipt arithmetic should follow:
 INSTRUCTIONS:
 Analyze the complete receipt text above. The text is formatted with line IDs (e.g., "5:", "12-15:") showing how OCR lines are grouped.
 
-Look for currency amounts and classify ONLY the target amounts listed above as GRAND_TOTAL, TAX, LINE_TOTAL, or SUBTOTAL based on:
+Identify ALL currency amounts you find in the receipt text and classify them as GRAND_TOTAL, TAX, LINE_TOTAL, or SUBTOTAL based on:
 
 1. **Surrounding text context**: Look for keywords like "TOTAL", "TAX", "SUBTOTAL", product names
 2. **Line position**: Earlier lines are usually items, later lines are totals
@@ -503,10 +560,8 @@ Look for currency amounts and classify ONLY the target amounts listed above as G
 
 4. **Arithmetic validation**: Ensure the relationships make sense
 
-Focus ONLY on the target amounts. Do not classify amounts not in the target list.
-
 {format_instructions}""",
-        input_variables=["receipt_text", "target_amounts"],
+        input_variables=["receipt_text"],
         partial_variables={
             "format_instructions": output_parser.get_format_instructions(),
             "known_total": known_total,
@@ -524,20 +579,21 @@ Focus ONLY on the target amounts. Do not classify amounts not in the target list
         print(
             f"\n🤖 Calling Ollama Turbo gpt-oss:20b with PydanticOutputParser..."
         )
-        print(f"Analyzing {len(relevant_contexts)} key currency amounts")
+        print(
+            f"Analyzing receipt text; {len(currency_contexts)} detected currency values for matching context"
+        )
 
         # Execute the chain with metadata for LangSmith tracing
         response = await chain.ainvoke(
             {
                 "receipt_text": formatted_receipt_text,
-                "target_amounts": amounts_text,
             },
             config={
                 "metadata": {
                     "receipt_type": "COSTCO",
                     "receipt_id": receipt_id or "unknown",
                     "known_total": known_total,
-                    "currency_amounts_analyzed": len(relevant_contexts),
+                    "currency_amounts_analyzed": len(currency_contexts),
                     "use_case": "currency_label_classification",
                 },
                 "tags": [
@@ -561,17 +617,24 @@ Focus ONLY on the target amounts. Do not classify amounts not in the target list
             matching_ctx = None
             target_amount = float(item.amount)
 
-            for ctx in relevant_contexts:
+            for ctx in currency_contexts:
                 if abs(target_amount - ctx["value"]) < 0.01:
                     matching_ctx = ctx
                     break
 
             if matching_ctx:
                 try:
+                    # Prefer line_ids provided by the model; fallback to context-derived
+                    line_ids_value = (
+                        item.line_ids
+                        if getattr(item, "line_ids", None)
+                        else matching_ctx.get("line_ids", [])
+                    )
                     label = CurrencyLabel(
                         word_text=f"${matching_ctx['value']:.2f}",
                         label_type=item.type,
                         line_number=matching_ctx["group_number"],
+                        line_ids=line_ids_value,
                         confidence=item.confidence,
                         reasoning=item.reasoning
                         or f"LLM classified as {item.type.value}",
@@ -580,8 +643,14 @@ Focus ONLY on the target amounts. Do not classify amounts not in the target list
                         context=matching_ctx["context"],
                     )
                     discovered_labels.append(label)
+                    if len(line_ids_value) > 1:
+                        line_span = f"{line_ids_value[0]}-{line_ids_value[-1]}"
+                    else:
+                        line_span = (
+                            f"{line_ids_value[0] if line_ids_value else '?'}"
+                        )
                     print(
-                        f"   📄 {item.type.value}: ${item.amount:.2f} (confidence: {item.confidence:.2f})"
+                        f"   📄 {item.type.value}: ${item.amount:.2f} (confidence: {item.confidence:.2f}) lines {line_span}"
                     )
                 except Exception as e:
                     print(f"⚠️ Error creating label for ${item.amount}: {e}")
@@ -787,7 +856,9 @@ async def analyze_costco_receipt(
 
     # Generate clean formatted receipt text exactly like _format_receipt_lines
     # formatted_receipt_text = reconstructor.format_receipt_lines_exactly(lines)
-    formatted_receipt_text = format_receipt_lines_visual_order(lines)
+    formatted_receipt_text = format_receipt_lines_visual_order(
+        lines, show_line_ids=True
+    )
 
     print(
         f"📄 Reconstructed {len(text_groups)} visual groups from {len(lines)} lines"
@@ -841,31 +912,121 @@ async def analyze_costco_receipt(
     print(prompt[:500] + "..." if len(prompt) > 500 else prompt)
     print("=" * 50)
 
-    # Integrate actual LLM analysis
-    discovered_labels = []
-    arithmetic_validation = {}
+    # Integrate actual LLM analysis via a tiny LangGraph and resolve words
+    discovered_labels: List[CurrencyLabel] = []
+    resolved_word_matches: List[Dict[str, Any]] = []
+    arithmetic_validation: Dict[str, Any] = {}
 
     if LANGCHAIN_AVAILABLE and currency_contexts:
-        try:
-            discovered_labels = await analyze_with_ollama(
-                formatted_receipt_text,
-                currency_contexts,
-                known_total,
-                receipt_identifier,
-            )
-            print(
-                f"\n🤖 LLM ANALYSIS COMPLETE: {len(discovered_labels)} labels discovered"
-            )
 
-            # Validate arithmetic relationships
-            if discovered_labels:
-                arithmetic_validation = validate_arithmetic_relationships(
-                    discovered_labels, known_total
+        class DiscoveryState(TypedDict, total=False):
+            client: DynamoClient
+            image_id: str
+            receipt_id: int
+            formatted_receipt_text: str
+            currency_contexts: List[Dict]
+            known_total: float
+            discovered_labels: List[CurrencyLabel]
+            resolved_word_matches: List[Dict[str, Any]]
+            error: Optional[str]
+
+        async def classify_node(state: DiscoveryState) -> DiscoveryState:
+            try:
+                labels = await analyze_with_ollama(
+                    state["formatted_receipt_text"],
+                    state["currency_contexts"],
+                    state["known_total"],
+                    f"{state['image_id']}/{state['receipt_id']}",
                 )
+                state["discovered_labels"] = labels
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                state["error"] = f"classification_failed: {e}"
+                state["discovered_labels"] = []
+            return state
 
-        except Exception as e:
-            print(f"\n❌ LLM analysis failed: {e}")
-            logger.error(f"LLM analysis error: {e}")
+        async def resolve_words_node(state: DiscoveryState) -> DiscoveryState:
+            matches: List[Dict[str, Any]] = []
+            for label in state.get("discovered_labels", []):
+                match = find_matching_word_for_label(
+                    client=state["client"],
+                    image_id=state["image_id"],
+                    receipt_id=state["receipt_id"],
+                    label_amount=label.value,
+                    line_ids=label.line_ids,
+                )
+                existing_labels: List[str] = []
+                already_labeled = False
+                if match:
+                    try:
+                        word_labels, _ = state[
+                            "client"
+                        ].list_receipt_word_labels_for_word(
+                            state["image_id"],
+                            state["receipt_id"],
+                            match["line_id"],
+                            match["word_id"],
+                        )
+                        existing_labels = [wl.label for wl in word_labels]
+                        already_labeled = (
+                            label.label_type.value in existing_labels
+                        )
+                    except Exception:
+                        existing_labels = []
+                        already_labeled = False
+                matches.append(
+                    {
+                        "amount": label.value,
+                        "type": label.label_type.value,
+                        "line_ids": label.line_ids,
+                        "matched_word": match,
+                        "existing_labels": existing_labels,
+                        "already_labeled": already_labeled,
+                    }
+                )
+            state["resolved_word_matches"] = matches
+            return state
+
+        graph = StateGraph(DiscoveryState)
+        graph.add_node("classify", classify_node)
+        graph.add_node("resolve_words", resolve_words_node)
+        graph.add_edge("classify", "resolve_words")
+        graph.add_edge("resolve_words", END)
+        graph.set_entry_point("classify")
+        app = graph.compile()
+
+        initial: DiscoveryState = {
+            "client": client,
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "formatted_receipt_text": formatted_receipt_text,
+            "currency_contexts": currency_contexts,
+            "known_total": known_total,
+        }
+
+        final_state: DiscoveryState = await app.ainvoke(initial)
+        discovered_labels = final_state.get("discovered_labels", [])
+        resolved_word_matches = final_state.get("resolved_word_matches", [])
+
+        print(
+            f"\n🤖 LLM ANALYSIS COMPLETE: {len(discovered_labels)} labels discovered; "
+            f"resolved {sum(1 for m in resolved_word_matches if m.get('matched_word'))} word matches"
+        )
+
+        # Print existing label status for each resolved word
+        for m in resolved_word_matches:
+            mw = m.get("matched_word")
+            if not mw:
+                continue
+            print(
+                f"   → {m['type']}: ${m['amount']:.2f} @ line {mw['line_id']} word {mw['word_id']} | "
+                f"labels: {', '.join(m.get('existing_labels', [])) or 'NONE'}"
+            )
+
+        # Validate arithmetic relationships
+        if discovered_labels:
+            arithmetic_validation = validate_arithmetic_relationships(
+                discovered_labels, known_total
+            )
 
     # Combine all validation results
     all_validation_results = {
@@ -993,7 +1154,18 @@ async def main():
             print(f"   📄 Discovered labels:")
             for label_type, labels in labels_by_type.items():
                 if labels:
-                    values = [f"${label.value:.2f}" for label in labels]
+
+                    def _lines(l):
+                        return (
+                            f"{l.line_ids[0]}-{l.line_ids[-1]}"
+                            if len(l.line_ids) > 1
+                            else (str(l.line_ids[0]) if l.line_ids else "?")
+                        )
+
+                    values = [
+                        f"${label.value:.2f} (lines {_lines(label)})"
+                        for label in labels
+                    ]
                     print(f"      {label_type}: {', '.join(values)}")
 
             # Show arithmetic validation results
@@ -1012,7 +1184,7 @@ async def main():
 
     # Write summary output
     output_file = "costco_receipt_labels_discovered.txt"
-    with open(output_file, "w") as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         f.write("COSTCO RECEIPT LABEL DISCOVERY RESULTS\n")
         f.write("=" * 50 + "\n")
         f.write(
@@ -1052,8 +1224,18 @@ async def main():
 
                 for label_type, labels in labels_by_type.items():
                     if labels:
+
+                        def _lines(l):
+                            return (
+                                f"{l.line_ids[0]}-{l.line_ids[-1]}"
+                                if len(l.line_ids) > 1
+                                else (
+                                    str(l.line_ids[0]) if l.line_ids else "?"
+                                )
+                            )
+
                         values = [
-                            f"${label.value:.2f} (conf: {label.confidence:.2f})"
+                            f"${label.value:.2f} (conf: {label.confidence:.2f}, lines {_lines(label)})"
                             for label in labels
                         ]
                         f.write(f"    {label_type}: {', '.join(values)}\n")
