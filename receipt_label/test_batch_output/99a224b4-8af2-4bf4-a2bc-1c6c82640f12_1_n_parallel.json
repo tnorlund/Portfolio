@@ -1,0 +1,24 @@
+{
+  "image_id": "99a224b4-8af2-4bf4-a2bc-1c6c82640f12",
+  "receipt_id": 1,
+  "analyzer_type": "n_parallel",
+  "analysis_timestamp": "2023-01-01T00:00:00",
+  "status": "success",
+  "discovered_labels": [
+    {
+      "word_text": "CHIPS",
+      "label_type": "PRODUCT_NAME",
+      "confidence": 0.95,
+      "value": 0.0
+    },
+    {
+      "word_text": "6.29",
+      "label_type": "LINE_TOTAL",
+      "confidence": 0.99,
+      "value": 6.29
+    }
+  ],
+  "confidence_score": 0.97,
+  "processing_time": 25.5,
+  "total_lines": 45
+}

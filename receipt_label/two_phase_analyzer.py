@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from receipt_label.costco_models import CurrencyLabel, LabelType
 from receipt_label.llm_classifier import analyze_with_ollama
 from receipt_label.constants import CORE_LABELS
+from receipt_dynamo.entities import ReceiptLine
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,7 @@ class TargetedLineAnalysisResponse(BaseModel):
 async def two_phase_line_item_analysis(
     formatted_receipt_text: str,
     currency_contexts: List[Dict],
+    lines: List[ReceiptLine] = None,
     receipt_id: str = None,
 ) -> List[CurrencyLabel]:
     """Two-phase approach: currency analysis first, then targeted line-item analysis."""
@@ -74,7 +76,8 @@ async def two_phase_line_item_analysis(
     currency_labels = await analyze_with_ollama(
         formatted_receipt_text,
         currency_contexts,
-        receipt_id=receipt_id
+        receipt_id=receipt_id,
+        lines=lines  # Pass ReceiptLine data for proper visual formatting
     )
     
     # Extract LINE_TOTAL labels for Phase 2
@@ -93,7 +96,14 @@ async def two_phase_line_item_analysis(
     print(f"Analyzing {len(line_total_labels)} specific lines with LINE_TOTAL amounts")
     
     # Build targets for focused analysis
-    targets = _build_line_item_targets(formatted_receipt_text, line_total_labels)
+    if lines:
+        # Use proper visual line formatting when original ReceiptLine data is available
+        targets = _build_line_item_targets_with_visual_lines(lines, line_total_labels)
+        print("   Using visual line formatting for better product name detection")
+    else:
+        # Fallback to the old approach
+        targets = _build_line_item_targets(formatted_receipt_text, line_total_labels)
+        print("   Using fallback context approach")
     
     # Analyze each target line individually
     line_item_labels = []
@@ -132,8 +142,44 @@ async def two_phase_line_item_analysis(
     return all_labels
 
 
+def _build_line_item_targets_with_visual_lines(lines: List[ReceiptLine], line_total_labels: List[CurrencyLabel]) -> List[LineItemTarget]:
+    """Build focused targets using proper visual line formatting."""
+    
+    from receipt_label.prompt_formatting.lines import format_receipt_lines_visual_order
+    
+    # Get properly formatted visual lines
+    visual_receipt_text = format_receipt_lines_visual_order(lines)
+    visual_lines = visual_receipt_text.split('\n')
+    
+    targets = []
+    
+    for label in line_total_labels:
+        if not label.line_ids:
+            continue
+            
+        # Find which visual line contains the currency amount
+        amount_text = f"{label.value:.2f}"
+        target_visual_line = None
+        
+        for visual_line in visual_lines:
+            if amount_text in visual_line:
+                target_visual_line = visual_line
+                break
+        
+        if target_visual_line:
+            target = LineItemTarget(
+                line_ids=label.line_ids,
+                line_text=target_visual_line,  # Complete visual line with product name and price
+                line_total_amount=label.value,
+                line_total_label=label
+            )
+            targets.append(target)
+    
+    return targets
+
+
 def _build_line_item_targets(formatted_receipt_text: str, line_total_labels: List[CurrencyLabel]) -> List[LineItemTarget]:
-    """Build focused targets for line-item analysis."""
+    """Build focused targets for line-item analysis with surrounding context."""
     
     targets = []
     receipt_lines = formatted_receipt_text.split('\n')
@@ -142,29 +188,98 @@ def _build_line_item_targets(formatted_receipt_text: str, line_total_labels: Lis
         if not label.line_ids:
             continue
             
-        # Find the formatted line text containing this LINE_TOTAL
+        # Find the line index containing this LINE_TOTAL
+        target_line_idx = None
         target_line_text = None
-        for line in receipt_lines:
+        
+        for i, line in enumerate(receipt_lines):
             # Check if this line contains any of the line_ids from the label
             for line_id in label.line_ids:
                 if line.startswith(f"{line_id}:") or f"{line_id}-" in line or f"-{line_id}:" in line:
+                    target_line_idx = i
                     # Extract the text part (after the line ID prefix)
                     if ':' in line:
                         target_line_text = line.split(':', 1)[1].strip()
                         break
-            if target_line_text:
+            if target_line_idx is not None:
                 break
         
-        if target_line_text:
+        if target_line_idx is not None:
+            # Smart context building: look for product fragments with consistent offset pattern
+            enhanced_context = _build_smart_context(receipt_lines, target_line_idx, label.value)
+            
             target = LineItemTarget(
                 line_ids=label.line_ids,
-                line_text=target_line_text,
+                line_text=enhanced_context,  # Now includes surrounding context
                 line_total_amount=label.value,
                 line_total_label=label
             )
             targets.append(target)
     
     return targets
+
+
+def _build_smart_context(receipt_lines: List[str], price_line_idx: int, price_value: float) -> str:
+    """Build intelligent context by identifying product fragments that map to this price."""
+    
+    def extract_text(line: str) -> str:
+        """Extract text part from formatted line."""
+        if ':' in line:
+            return line.split(':', 1)[1].strip()
+        return line.strip()
+    
+    price_text = extract_text(receipt_lines[price_line_idx])
+    
+    # Sprouts receipt pattern analysis:
+    # CHIPS(line 15) → 6.29(line 18) = offset 3
+    # GARLIC(line 16) → 3.99(line 19) = offset 3  
+    # SUGAR(line 17) → 6.49(line 20) = offset 3
+    # Consistent pattern: product fragment appears exactly 3 lines before price
+    
+    primary_offset = 3
+    primary_fragment_idx = price_line_idx - primary_offset
+    
+    if primary_fragment_idx >= 0:
+        primary_fragment = extract_text(receipt_lines[primary_fragment_idx])
+        
+        # Check if this looks like a product fragment (alphabetic, not numeric)
+        if (len(primary_fragment) > 2 and 
+            any(char.isalpha() for char in primary_fragment) and
+            not primary_fragment.replace('.', '').replace(',', '').isdigit()):
+            
+            # Look for additional fragments 1-2 lines before the primary fragment
+            additional_fragments = []
+            
+            for extra_offset in [1, 2]:
+                extra_idx = primary_fragment_idx - extra_offset
+                if extra_idx >= 0:
+                    extra_text = extract_text(receipt_lines[extra_idx])
+                    if (len(extra_text) > 2 and 
+                        any(char.isalpha() for char in extra_text) and 
+                        not extra_text.replace('.', '').replace(',', '').isdigit() and
+                        extra_text not in ['SPROUTS', 'MARKET', 'BLVD', 'Store']):  # Skip header words
+                        additional_fragments.append(extra_text)
+            
+            # Build complete product name from fragments
+            if additional_fragments:
+                # Reverse to get natural reading order (first fragment first)
+                all_fragments = list(reversed(additional_fragments)) + [primary_fragment]
+                product_name = " ".join(all_fragments)
+            else:
+                product_name = primary_fragment
+            
+            return f"PRODUCT: {product_name} → [PRICE: {price_text}]"
+    
+    # Fallback: use simple context window if pattern doesn't match
+    context_start = max(0, price_line_idx - 2)
+    context_parts = []
+    for i in range(context_start, price_line_idx + 1):
+        text = extract_text(receipt_lines[i])
+        if i == price_line_idx:
+            context_parts.append(f"[PRICE: {text}]")
+        else:
+            context_parts.append(text)
+    return " | ".join(context_parts)
 
 
 async def _analyze_single_line_item(target: LineItemTarget, receipt_id: str = None) -> Optional[LineItemComponents]:
@@ -184,8 +299,8 @@ async def _analyze_single_line_item(target: LineItemTarget, receipt_id: str = No
     # Create output parser
     output_parser = PydanticOutputParser(pydantic_object=TargetedLineAnalysisResponse)
     
-    # Focused prompt template for single line analysis
-    template = """You are analyzing a SINGLE line item from a COSTCO receipt to identify its components.
+    # Adaptive prompt template that handles both visual lines and context fragments
+    template = """You are analyzing a line item from a receipt to identify its components.
 
 LINE TO ANALYZE:
 Line IDs: {line_ids}
@@ -198,36 +313,47 @@ COMPONENT DEFINITIONS:
 - UNIT_PRICE: {unit_price_def}
 
 TASK:
-Analyze ONLY this single line to identify:
+Analyze the line to identify components for the item with LINE_TOTAL ${line_total:.2f}:
 
-1. **PRODUCT_NAME**: The item description (e.g., "ORGANIC BANANAS", "MILK WHOLE GALLON")
-2. **QUANTITY**: The amount purchased (e.g., "2 lb", "3", "1.5", "1 ea")
-3. **UNIT_PRICE**: The price per unit (e.g., $1.99, $4.49)
+1. **PRODUCT_NAME**: The item description (e.g., "MILK CHOCOLATE CHIPS", "ORGANIC GARLIC POWDER")
+2. **QUANTITY**: The amount purchased (e.g., "2", "1 lb", "1.5")  
+3. **UNIT_PRICE**: The price per unit (if present)
 
-SPATIAL PATTERNS in COSTCO receipts:
-- Product names typically appear first (leftmost)
-- Quantities often have units: "2 lb", "1.5 oz", "3 ea"
-- Unit prices often preceded by "@": "2 lb @ $1.99"
-- Line total appears last (rightmost): "${line_total:.2f}"
+LINE FORMAT UNDERSTANDING:
+The line text may be in one of these formats:
+
+FORMAT A - Complete Visual Line:
+"MILK CHOCOLATE CHIPS 6.29" or "ORGANIC BANANAS 2 lb @ 1.99 3.98"
+→ Product name appears first, followed by quantity/price info
+
+FORMAT B - Context Fragments:
+"PRODUCT: MILK CHOCOLATE CHIPS → [PRICE: 6.29]"
+→ Reconstructed from OCR fragments
+
+EXTRACTION STRATEGY:
+- Look for descriptive text (alphabetic words) as PRODUCT_NAME candidates
+- Look for numeric values with units (lb, oz, ea) as QUANTITY
+- Look for prices with @ symbol as UNIT_PRICE
+- The LINE_TOTAL (${line_total:.2f}) should appear in the text
 
 ARITHMETIC VALIDATION:
-Verify: QUANTITY × UNIT_PRICE ≈ LINE_TOTAL (${line_total:.2f})
+If QUANTITY and UNIT_PRICE are found: QUANTITY × UNIT_PRICE ≈ LINE_TOTAL (${line_total:.2f})
 
 EXAMPLES:
-Line: "ORGANIC BANANAS 2 lb @ $1.99 $3.98"
+Line: "MILK CHOCOLATE CHIPS 6.29"
+LINE_TOTAL: $6.29
+→ PRODUCT_NAME: "MILK CHOCOLATE CHIPS"
+→ QUANTITY: null
+→ UNIT_PRICE: null
+
+Line: "ORGANIC BANANAS 2 lb @ 1.99 3.98"
+LINE_TOTAL: $3.98
 → PRODUCT_NAME: "ORGANIC BANANAS"
-→ QUANTITY: "2 lb" 
-→ UNIT_PRICE: $1.99
-→ ARITHMETIC: 2 × $1.99 = $3.98 ✅
+→ QUANTITY: "2 lb"
+→ UNIT_PRICE: 1.99
 
-Line: "MILK WHOLE GALLON 1 ea $4.49"
-→ PRODUCT_NAME: "MILK WHOLE GALLON"
-→ QUANTITY: "1 ea"
-→ UNIT_PRICE: $4.49
-→ ARITHMETIC: 1 × $4.49 = $4.49 ✅
-
-Focus ONLY on this line: "{line_text}"
-Extract only the components present - if something is missing, mark it as null.
+Analyze this line: "{line_text}"
+Extract components for the item with LINE_TOTAL ${line_total:.2f}.
 
 {format_instructions}"""
 
@@ -362,6 +488,7 @@ async def analyze_costco_receipt_two_phase(
     discovered_labels = await two_phase_line_item_analysis(
         formatted_receipt_text,
         currency_contexts,
+        lines=lines,  # Pass original ReceiptLine data for proper visual formatting
         receipt_id=receipt_identifier
     )
     

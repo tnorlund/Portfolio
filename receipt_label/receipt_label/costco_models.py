@@ -100,3 +100,4 @@ class ReceiptAnalysis(BaseModel):
     total_lines: int
     confidence_score: float
     formatted_text: str
+    processing_time: Optional[float] = Field(default=None, description="Processing time in seconds")

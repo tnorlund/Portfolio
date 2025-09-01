@@ -28,6 +28,7 @@ async def analyze_with_ollama(
     currency_contexts: List[Dict],
     known_total: float = None,
     receipt_id: str = None,
+    lines: List = None,  # Optional ReceiptLine data for better formatting
 ) -> List[CurrencyLabel]:
     """Use Ollama LLM with LangChain structured output to analyze and classify currency amounts.
 
@@ -110,10 +111,20 @@ Identify ALL currency amounts you find in the receipt text and classify them as 
             f"Analyzing receipt text; {len(currency_contexts)} detected currency values for matching context"
         )
 
+        # Use proper visual formatting if ReceiptLine data is available
+        if lines:
+            from receipt_label.prompt_formatting.lines import format_receipt_lines_visual_order
+            visual_receipt_text = format_receipt_lines_visual_order(lines, show_line_ids=True)
+            receipt_text_for_prompt = visual_receipt_text
+            print("   Using visual line formatting with line IDs for better receipt structure")
+        else:
+            receipt_text_for_prompt = formatted_receipt_text
+            print("   Using fallback formatted receipt text")
+
         # Execute the chain with metadata for LangSmith tracing
         response = await chain.ainvoke(
             {
-                "receipt_text": formatted_receipt_text,
+                "receipt_text": receipt_text_for_prompt,
             },
             config={
                 "metadata": {
