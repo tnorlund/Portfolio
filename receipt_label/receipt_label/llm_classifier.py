@@ -26,7 +26,7 @@ except ImportError:
 async def analyze_with_ollama(
     formatted_receipt_text: str,
     currency_contexts: List[Dict],
-    known_total: float,
+    known_total: float = None,
     receipt_id: str = None,
 ) -> List[CurrencyLabel]:
     """Use Ollama LLM with LangChain structured output to analyze and classify currency amounts.
@@ -51,17 +51,14 @@ async def analyze_with_ollama(
         pydantic_object=CurrencyClassificationResponse
     )
 
-    # Create prompt template using the properly formatted receipt text
-    prompt_template = PromptTemplate(
-        template="""You are analyzing a COSTCO receipt to classify currency amounts. 
+    # Create optimized prompt template (hint removed based on A/B test results)
+    template = """You are analyzing a COSTCO receipt to classify currency amounts. 
 
 RECEIPT TEXT (formatted with line IDs):
 {receipt_text}
 
-KNOWN GRAND TOTAL: ${known_total:.2f}
-
 LABEL DEFINITIONS (from receipt_label.constants):
-- GRAND_TOTAL: {grand_total_def} (must equal ${known_total:.2f})
+- GRAND_TOTAL: {grand_total_def} (the final total amount paid)
 - TAX: {tax_def}
 - LINE_TOTAL: {line_total_def}  
 - SUBTOTAL: {subtotal_def}
@@ -86,16 +83,20 @@ Identify ALL currency amounts you find in the receipt text and classify them as 
 
 4. **Arithmetic validation**: Ensure the relationships make sense
 
-{format_instructions}""",
+{format_instructions}"""
+    
+    partial_vars = {
+        "format_instructions": output_parser.get_format_instructions(),
+        "grand_total_def": CORE_LABELS["GRAND_TOTAL"],
+        "tax_def": CORE_LABELS["TAX"],
+        "line_total_def": CORE_LABELS["LINE_TOTAL"],
+        "subtotal_def": CORE_LABELS["SUBTOTAL"],
+    }
+    
+    prompt_template = PromptTemplate(
+        template=template,
         input_variables=["receipt_text"],
-        partial_variables={
-            "format_instructions": output_parser.get_format_instructions(),
-            "known_total": known_total,
-            "grand_total_def": CORE_LABELS["GRAND_TOTAL"],
-            "tax_def": CORE_LABELS["TAX"],
-            "line_total_def": CORE_LABELS["LINE_TOTAL"],
-            "subtotal_def": CORE_LABELS["SUBTOTAL"],
-        },
+        partial_variables=partial_vars,
     )
 
     # Create the chain: prompt | llm | output_parser

@@ -24,14 +24,13 @@ logger = logging.getLogger(__name__)
 async def analyze_costco_receipt(
     client: DynamoClient, 
     image_id: str, 
-    receipt_id: int, 
-    known_total: float
+    receipt_id: int
 ) -> ReceiptAnalysis:
-    """Analyze a single COSTCO receipt to discover labels - main orchestration function."""
+    """Analyze a single COSTCO receipt to discover labels - optimized without hints."""
     
     receipt_identifier = f"{image_id}/{receipt_id}"
     print(f"\n🔍 ANALYZING COSTCO RECEIPT: {receipt_identifier}")
-    print(f"   Known GRAND_TOTAL: ${known_total:.2f}")
+    print(f"   Discovering all labels from context (no hints)")
     print("-" * 60)
     
     # Step 1: Get receipt data from DynamoDB
@@ -40,25 +39,28 @@ async def analyze_costco_receipt(
     
     # Step 2: Reconstruct readable text using our modular component
     reconstructor = ReceiptTextReconstructor()
-    formatted_text, text_groups = reconstructor.reconstruct_receipt(lines)
-    
-    # Use the existing prompt formatting for consistency
-    formatted_receipt_text = format_receipt_lines_visual_order(lines)
+    formatted_receipt_text, text_groups = reconstructor.reconstruct_receipt(lines)
     
     # Extract currency contexts for LLM analysis
     currency_contexts = reconstructor.extract_currency_context(text_groups)
     print(f"💰 Found {len(currency_contexts)} currency amounts in text")
     
-    # Step 3: Classify currencies using LLM
+    # Step 3: Classify currencies using LLM (optimized without hint)
     discovered_labels = await analyze_with_ollama(
         formatted_receipt_text, 
         currency_contexts, 
-        known_total, 
-        receipt_identifier
+        receipt_id=receipt_identifier
     )
     
-    # Step 4: Validate arithmetic relationships
-    validation_results = validate_arithmetic_relationships(discovered_labels, known_total)
+    # Step 4: Validate arithmetic relationships using discovered grand total
+    validation_total = 0.0
+    if discovered_labels:
+        # Find the discovered grand total for validation
+        grand_totals = [label for label in discovered_labels if label.label_type.value == "GRAND_TOTAL"]
+        if grand_totals:
+            validation_total = grand_totals[0].value
+    
+    validation_results = validate_arithmetic_relationships(discovered_labels, validation_total) if validation_total else {}
     
     # Step 5: Calculate overall confidence score
     confidence_score = (
@@ -69,7 +71,7 @@ async def analyze_costco_receipt(
     # Return structured analysis result
     return ReceiptAnalysis(
         receipt_id=receipt_identifier,
-        known_total=known_total,
+        known_total=validation_total,  # Use discovered grand total
         discovered_labels=discovered_labels,
         validation_results=validation_results,
         total_lines=len(lines),
@@ -112,7 +114,7 @@ def display_analysis_summary(results: list[ReceiptAnalysis]):
     # Display results for each receipt
     for i, result in enumerate(results, 1):
         print(f"Receipt {i}: {result.receipt_id}")
-        print(f"  Known total: ${result.known_total:.2f}")
+        print(f"  Discovered total: ${result.known_total:.2f}")
         print(f"  Labels found: {len(result.discovered_labels)}")
         print(f"  Confidence: {result.confidence_score:.2f}")
         
@@ -141,9 +143,9 @@ def display_analysis_summary(results: list[ReceiptAnalysis]):
 async def main():
     """Main entry point - analyze COSTCO receipts to discover labels."""
     
-    print("🏪 COSTCO LABEL DISCOVERY USING LANGCHAIN")
+    print("🏪 OPTIMIZED COSTCO LABEL DISCOVERY")
     print("=" * 80)
-    print("Discovering GRAND_TOTAL, TAX, LINE_TOTAL, SUBTOTAL from raw OCR text")
+    print("Discovering GRAND_TOTAL, TAX, LINE_TOTAL, SUBTOTAL from context (no hints)")
     print()
     
     # Setup LangSmith tracing
@@ -154,20 +156,20 @@ async def main():
     env_vars = load_env()
     client = DynamoClient(env_vars.get("dynamodb_table_name"))
     
-    # COSTCO test receipts with known grand totals
+    # COSTCO test receipts (optimized - no hints needed)
     costco_receipts = [
-        ("6cd1f7f5-d988-4e11-9209-cb6535fc3b04", 1, 198.93),
-        ("314ac65b-2b97-45d6-81c2-e48fb0b8cef4", 1, 87.71),
-        ("a861f6a6-8d6d-42bc-907c-3330d8bd2022", 1, 35.68),
-        ("8388d1f1-b5d6-4560-b7dc-db273815dda1", 1, 37.66),
+        ("6cd1f7f5-d988-4e11-9209-cb6535fc3b04", 1),
+        ("314ac65b-2b97-45d6-81c2-e48fb0b8cef4", 1),
+        ("a861f6a6-8d6d-42bc-907c-3330d8bd2022", 1),
+        ("8388d1f1-b5d6-4560-b7dc-db273815dda1", 1),
     ]
     
     results = []
     
-    # Analyze each receipt using our modular components
-    for image_id, receipt_id, known_total in costco_receipts:
+    # Analyze each receipt using optimized modular components
+    for image_id, receipt_id in costco_receipts:
         try:
-            result = await analyze_costco_receipt(client, image_id, receipt_id, known_total)
+            result = await analyze_costco_receipt(client, image_id, receipt_id)
             results.append(result)
         except Exception as e:
             logger.error(f"Error analyzing {image_id}/{receipt_id}: {e}")
