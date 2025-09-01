@@ -16,6 +16,7 @@ from receipt_label.costco_models import ReceiptAnalysis
 from receipt_label.text_reconstruction import ReceiptTextReconstructor
 from receipt_label.llm_classifier import analyze_with_ollama
 from receipt_label.validator import validate_arithmetic_relationships
+from receipt_label.label_updater import ReceiptLabelUpdater, display_label_update_results
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -24,7 +25,9 @@ logger = logging.getLogger(__name__)
 async def analyze_costco_receipt(
     client: DynamoClient, 
     image_id: str, 
-    receipt_id: int
+    receipt_id: int,
+    update_labels: bool = False,
+    dry_run: bool = False
 ) -> ReceiptAnalysis:
     """Analyze a single COSTCO receipt to discover labels - optimized without hints."""
     
@@ -62,7 +65,24 @@ async def analyze_costco_receipt(
     
     validation_results = validate_arithmetic_relationships(discovered_labels, validation_total) if validation_total else {}
     
-    # Step 5: Calculate overall confidence score
+    # Step 5: Update word labels in DynamoDB (optional)
+    label_update_results = []
+    if update_labels and discovered_labels:
+        label_updater = ReceiptLabelUpdater(client)
+        label_update_results = await label_updater.apply_currency_labels(
+            image_id=image_id,
+            receipt_id=receipt_id, 
+            currency_labels=discovered_labels,
+            dry_run=dry_run
+        )
+        
+        if dry_run:
+            print("\n🔍 DRY RUN - Label Updates That Would Be Applied:")
+        else:
+            print("\n📝 Applied Label Updates:")
+        display_label_update_results(label_update_results)
+    
+    # Step 6: Calculate overall confidence score
     confidence_score = (
         sum(label.confidence for label in discovered_labels) / len(discovered_labels)
         if discovered_labels else 0.0
@@ -167,9 +187,16 @@ async def main():
     results = []
     
     # Analyze each receipt using optimized modular components
+    # Set update_labels=True and dry_run=True to see what labels would be updated
     for image_id, receipt_id in costco_receipts:
         try:
-            result = await analyze_costco_receipt(client, image_id, receipt_id)
+            result = await analyze_costco_receipt(
+                client=client, 
+                image_id=image_id, 
+                receipt_id=receipt_id,
+                update_labels=True,  # Enable label updating
+                dry_run=True         # Show what would be done without making changes
+            )
             results.append(result)
         except Exception as e:
             logger.error(f"Error analyzing {image_id}/{receipt_id}: {e}")
