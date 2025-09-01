@@ -175,7 +175,27 @@ class ReceiptLabelUpdater:
                     None
                 )
                 if conflicting_label:
-                    # Create consolidated label with history preservation
+                    # Option 1: Mark old label as invalid (preserve full audit trail)
+                    if conflicting_label.validation_status != ValidationStatus.INVALID.value:
+                        # Update old label to mark as invalid
+                        invalidated_label = ReceiptWordLabel(
+                            image_id=conflicting_label.image_id,
+                            receipt_id=conflicting_label.receipt_id,
+                            line_id=conflicting_label.line_id,
+                            word_id=conflicting_label.word_id,
+                            label=conflicting_label.label,
+                            reasoning=conflicting_label.reasoning,
+                            timestamp_added=conflicting_label.timestamp_added,
+                            validation_status=ValidationStatus.INVALID.value,  # Mark as invalid
+                            label_proposed_by=conflicting_label.label_proposed_by,
+                            label_consolidated_from=conflicting_label.label_consolidated_from
+                        )
+                        
+                        # Update the old label's validation status
+                        self.client.delete_receipt_word_label(conflicting_label)
+                        self.client.add_receipt_word_label(invalidated_label)
+                    
+                    # Option 2: Create new consolidated label
                     consolidated_label = ReceiptWordLabel(
                         image_id=image_id,
                         receipt_id=receipt_id,
@@ -189,10 +209,9 @@ class ReceiptLabelUpdater:
                         label_consolidated_from=conflicting_label.label  # Preserve history!
                     )
                     
-                    # Delete old label and add consolidated one
-                    self.client.delete_receipt_word_label(conflicting_label)
+                    # Add the new consolidated label
                     self.client.add_receipt_word_label(consolidated_label)
-                    logger.info(f"Consolidated label for word '{best_match.word.text}' from {conflicting_label.label} to {currency_label.label_type.value}")
+                    logger.info(f"Consolidated label for word '{best_match.word.text}': {conflicting_label.label}→INVALID, added {currency_label.label_type.value} (VALID)")
         
         return LabelUpdateResult(
             word=best_match.word,
