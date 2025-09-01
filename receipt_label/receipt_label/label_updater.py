@@ -169,16 +169,30 @@ class ReceiptLabelUpdater:
                 self.client.add_receipt_word_label(new_label)
                 logger.info(f"Added {currency_label.label_type.value} label to word '{best_match.word.text}' (${currency_label.value:.2f})")
             elif action == "update":
-                # Find the conflicting label and update it
+                # Find the conflicting label and consolidate it (preserve history)
                 conflicting_label = next(
                     (label for label in existing_labels if label.label != currency_label.label_type.value), 
                     None
                 )
                 if conflicting_label:
-                    # Delete old label and add new one
+                    # Create consolidated label with history preservation
+                    consolidated_label = ReceiptWordLabel(
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                        line_id=best_match.word.line_id,
+                        word_id=best_match.word.word_id,
+                        label=currency_label.label_type.value,  # New correct label
+                        reasoning=f"LLM Classification: {currency_label.reasoning} (confidence: {currency_label.confidence:.2f})",
+                        timestamp_added=datetime.now(),
+                        validation_status=ValidationStatus.VALID.value,
+                        label_proposed_by="costco_analyzer_llm",
+                        label_consolidated_from=conflicting_label.label  # Preserve history!
+                    )
+                    
+                    # Delete old label and add consolidated one
                     self.client.delete_receipt_word_label(conflicting_label)
-                    self.client.add_receipt_word_label(new_label)
-                    logger.info(f"Updated label for word '{best_match.word.text}' from {conflicting_label.label} to {currency_label.label_type.value}")
+                    self.client.add_receipt_word_label(consolidated_label)
+                    logger.info(f"Consolidated label for word '{best_match.word.text}' from {conflicting_label.label} to {currency_label.label_type.value}")
         
         return LabelUpdateResult(
             word=best_match.word,
@@ -338,7 +352,12 @@ def display_label_update_results(results: List[LabelUpdateResult]):
             print(f"  Reason: {result.conflict_reason}")
             
         if result.existing_labels:
-            existing_types = [label.label for label in result.existing_labels]
-            print(f"  Existing labels: {', '.join(existing_types)}")
+            existing_info = []
+            for label in result.existing_labels:
+                if label.label_consolidated_from:
+                    existing_info.append(f"{label.label_consolidated_from}→{label.label}")
+                else:
+                    existing_info.append(label.label)
+            print(f"  Existing labels: {', '.join(existing_info)}")
         
         print()

@@ -7,6 +7,7 @@ Extracted from the original 1,269-line costco_label_discovery.py script.
 import asyncio
 import logging
 import os
+import time
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.data._pulumi import load_env
 from receipt_label.prompt_formatting import format_receipt_lines_visual_order
@@ -208,5 +209,77 @@ async def main():
     print("🎉 Analysis complete!")
 
 
+async def analyze_receipts_parallel(
+    client: DynamoClient,
+    receipts: list,
+    max_concurrent: int = 3,
+    **kwargs
+) -> list:
+    """Analyze multiple receipts in parallel with concurrency control."""
+    
+    semaphore = asyncio.Semaphore(max_concurrent)
+    
+    async def analyze_with_semaphore(image_id, receipt_id):
+        async with semaphore:
+            return await analyze_costco_receipt(client, image_id, receipt_id, **kwargs)
+    
+    print(f"🚀 Starting parallel analysis of {len(receipts)} receipts (max_concurrent={max_concurrent})...")
+    start_time = time.time()
+    
+    # Create tasks for all receipts
+    tasks = [
+        analyze_with_semaphore(image_id, receipt_id)
+        for image_id, receipt_id in receipts
+    ]
+    
+    # Run with progress tracking
+    results = []
+    for i, coro in enumerate(asyncio.as_completed(tasks)):
+        try:
+            result = await coro
+            results.append(result)
+            print(f"✅ Completed {i+1}/{len(receipts)}: {result.receipt_id}")
+        except Exception as e:
+            print(f"❌ Error {i+1}/{len(receipts)}: {e}")
+            results.append(None)
+    
+    elapsed = time.time() - start_time
+    print(f"⏱️ Completed in {elapsed:.2f}s ({elapsed/len(receipts):.2f}s per receipt)")
+    
+    return [r for r in results if r is not None]
+
+
+async def main_parallel():
+    """Demo parallel processing."""
+    
+    print("🏪 PARALLEL COSTCO ANALYSIS")
+    print("=" * 80)
+    
+    # Setup
+    setup_langsmith_tracing()
+    env_vars = load_env()
+    client = DynamoClient(env_vars.get("dynamodb_table_name"))
+    
+    receipts = [
+        ("6cd1f7f5-d988-4e11-9209-cb6535fc3b04", 1),
+        ("314ac65b-2b97-45d6-81c2-e48fb0b8cef4", 1),
+        ("a861f6a6-8d6d-42bc-907c-3330d8bd2022", 1),
+        ("8388d1f1-b5d6-4560-b7dc-db273815dda1", 1),
+    ]
+    
+    # Run in parallel
+    results = await analyze_receipts_parallel(
+        client, receipts, max_concurrent=2, update_labels=False
+    )
+    
+    # Display summary
+    display_analysis_summary(results)
+    print("🎉 Parallel analysis complete!")
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "parallel":
+        asyncio.run(main_parallel())
+    else:
+        asyncio.run(main())
