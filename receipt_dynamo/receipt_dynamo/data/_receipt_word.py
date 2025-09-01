@@ -394,12 +394,18 @@ class _ReceiptWord(
             key_condition_expression=(
                 "#pk = :pk_val AND begins_with(#sk, :sk_val)"
             ),
-            expression_attribute_names={"#pk": "PK", "#sk": "SK"},
+            filter_expression="#type = :type",
+            expression_attribute_names={
+                "#pk": "PK",
+                "#sk": "SK",
+                "#type": "TYPE",
+            },
             expression_attribute_values={
                 ":pk_val": {"S": f"IMAGE#{image_id}"},
                 ":sk_val": {
                     "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#"
                 },
+                ":type": {"S": "RECEIPT_WORD"},
             },
             converter_func=item_to_receipt_word,
         )
@@ -464,11 +470,11 @@ class _ReceiptWord(
                 filter_expression="#type = :receipt_word",
                 expression_attribute_names={
                     "#gsi1pk": "GSI1PK",
-                    "#type": "TYPE"
+                    "#type": "TYPE",
                 },
                 expression_attribute_values={
                     ":status": {"S": f"EMBEDDING_STATUS#{status_str}"},
-                    ":receipt_word": {"S": "RECEIPT_WORD"}
+                    ":receipt_word": {"S": "RECEIPT_WORD"},
                 },
                 converter_func=item_to_receipt_word,
             )
