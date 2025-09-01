@@ -160,7 +160,7 @@ class ReceiptLabelUpdater:
             label=currency_label.label_type.value,
             reasoning=f"LLM Classification: {currency_label.reasoning} (confidence: {currency_label.confidence:.2f})",
             timestamp_added=datetime.now(),
-            validation_status=ValidationStatus.NEEDS_REVIEW.value if currency_label.confidence < 0.95 else ValidationStatus.VERIFIED.value,
+            validation_status=ValidationStatus.VALID.value,
             label_proposed_by="costco_analyzer_llm"
         )
         
