@@ -322,16 +322,22 @@ class ReceiptLabelUpdater:
         if new_label_type in existing_types:
             return "skip"  # Same label already exists
         
-        # Check for conflicting currency label types
-        currency_types = {LabelType.GRAND_TOTAL.value, LabelType.TAX.value, LabelType.LINE_TOTAL.value, LabelType.SUBTOTAL.value}
+        # Define mutually exclusive label groups
+        currency_types = {LabelType.GRAND_TOTAL.value, LabelType.TAX.value, LabelType.LINE_TOTAL.value, LabelType.SUBTOTAL.value, LabelType.UNIT_PRICE.value}
+        line_item_types = {LabelType.PRODUCT_NAME.value, LabelType.QUANTITY.value}
         
+        # Check for currency label conflicts (mutually exclusive)
         if new_label_type in currency_types:
-            # Check if word already has a different currency label
             existing_currency_types = existing_types & currency_types
             if existing_currency_types:
-                # There's a conflict - existing currency label of different type
                 logger.warning(f"Currency label conflict: existing {existing_currency_types}, new {new_label_type}")
-                return "update"  # Replace the conflicting label
+                return "update"  # Replace conflicting currency label
+        
+        # Line-item component labels can coexist, but check for duplicates
+        elif new_label_type in line_item_types:
+            # These can coexist with currency labels, but not duplicate their own type
+            if new_label_type in existing_types:
+                return "skip"  # Same line-item component already exists
         
         return "add"  # No conflicts, safe to add
 

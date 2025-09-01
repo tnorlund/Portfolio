@@ -10,12 +10,18 @@ from enum import Enum
 
 
 class LabelType(str, Enum):
-    """Currency label types to identify."""
+    """Label types for currency amounts and line-item components."""
 
+    # Currency labels
     GRAND_TOTAL = "GRAND_TOTAL"
     TAX = "TAX"
     LINE_TOTAL = "LINE_TOTAL"
     SUBTOTAL = "SUBTOTAL"
+    
+    # Line-item component labels
+    PRODUCT_NAME = "PRODUCT_NAME"
+    QUANTITY = "QUANTITY"
+    UNIT_PRICE = "UNIT_PRICE"
 
 
 @dataclass
