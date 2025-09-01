@@ -85,19 +85,25 @@ def _group_lines_into_rows(
 
 
 def format_receipt_lines_visual_order(
-    lines: List[ReceiptLine], delimiter: str = " "
+    receipt_lines: List[ReceiptLine],
+    delimiter: str = " ",
+    show_line_ids: bool = False,
 ) -> str:
     """Return a string with OCR lines ordered to match the image layout.
 
     - Groups lines by Y using centroids and span overlap
     - Sorts each row left-to-right by X centroid
     - Joins row items with a single space (configurable)
+    - Optionally prefixes each rendered row with the comma-separated line_ids
     """
-    rows = _group_lines_into_rows(lines)
+    rows = _group_lines_into_rows(receipt_lines)
     formatted_lines: List[str] = []
     for row in rows:
         row_sorted = sorted(row, key=lambda l: _line_centroid(l)[0])
-        formatted_lines.append(
-            delimiter.join(l.text.strip() for l in row_sorted if l.text)
-        )
+        row_text = delimiter.join(l.text.strip() for l in row_sorted if l.text)
+        if show_line_ids:
+            ids = ",".join(str(l.line_id) for l in row_sorted)
+            formatted_lines.append(f"{ids}: {row_text}")
+        else:
+            formatted_lines.append(row_text)
     return "\n".join(formatted_lines)
