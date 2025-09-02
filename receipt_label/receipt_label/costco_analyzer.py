@@ -13,7 +13,7 @@ from receipt_dynamo.data._pulumi import load_env
 from receipt_label.prompt_formatting import format_receipt_lines_visual_order
 
 # Import our modular components
-from receipt_label.costco_models import ReceiptAnalysis
+from receipt_label.receipt_models import ReceiptAnalysis
 from receipt_label.text_reconstruction import ReceiptTextReconstructor
 from receipt_label.llm_classifier import analyze_with_ollama
 from receipt_label.validator import validate_arithmetic_relationships

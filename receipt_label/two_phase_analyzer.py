@@ -14,7 +14,7 @@ from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
 from pydantic import BaseModel, Field
 
-from receipt_label.costco_models import CurrencyLabel, LabelType
+from receipt_label.receipt_models import CurrencyLabel, LabelType
 from receipt_label.llm_classifier import analyze_with_ollama
 from receipt_label.constants import CORE_LABELS
 from receipt_dynamo.entities import ReceiptLine
@@ -468,7 +468,7 @@ async def analyze_costco_receipt_two_phase(
     from receipt_label.text_reconstruction import ReceiptTextReconstructor
     from receipt_label.validator import validate_arithmetic_relationships
     from receipt_label.label_updater import ReceiptLabelUpdater, display_label_update_results
-    from receipt_label.costco_models import ReceiptAnalysis
+    from receipt_label.receipt_models import ReceiptAnalysis
     
     receipt_identifier = f"{image_id}/{receipt_id}"
     print(f"\n🔍 TWO-PHASE COSTCO RECEIPT ANALYSIS: {receipt_identifier}")

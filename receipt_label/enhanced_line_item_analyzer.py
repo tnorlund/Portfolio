@@ -9,7 +9,7 @@ from typing import List, Dict, Optional
 from pydantic import BaseModel, Field
 from enum import Enum
 
-from receipt_label.costco_models import LabelType, CurrencyLabel
+from receipt_label.receipt_models import LabelType, CurrencyLabel
 
 
 class LineItemLabelType(Enum):

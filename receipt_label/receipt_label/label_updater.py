@@ -19,7 +19,7 @@ from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 from receipt_dynamo.constants import ValidationStatus
 
-from receipt_label.costco_models import CurrencyLabel, LabelType
+from receipt_label.receipt_models import CurrencyLabel, LabelType
 
 logger = logging.getLogger(__name__)
 
@@ -48,15 +48,17 @@ class LabelUpdateResult:
 class ReceiptLabelUpdater:
     """Updates receipt word labels based on LLM currency classification results."""
     
-    def __init__(self, client: DynamoClient):
+    def __init__(self, client: DynamoClient, merchant_name: Optional[str] = None):
         self.client = client
+        self.merchant_name = merchant_name or "unknown"
         
     async def apply_currency_labels(
         self, 
         image_id: str,
         receipt_id: int,
         currency_labels: List[CurrencyLabel],
-        dry_run: bool = False
+        dry_run: bool = False,
+        preload_existing_labels: bool = True
     ) -> List[LabelUpdateResult]:
         """Apply currency labels to receipt words in DynamoDB.
         
@@ -65,18 +67,38 @@ class ReceiptLabelUpdater:
             receipt_id: The receipt ID number
             currency_labels: List of currency labels from LLM analysis
             dry_run: If True, show what would be done without making changes
+            preload_existing_labels: If True, preload all existing labels to avoid redundant queries
             
         Returns:
             List of update results showing what was done for each label
         """
         results = []
+        existing_labels_cache = None
         
         logger.info(f"Applying {len(currency_labels)} currency labels to {image_id}/{receipt_id}")
+        
+        # Optionally preload all existing labels to avoid redundant queries
+        if preload_existing_labels and currency_labels:
+            logger.info(f"Preloading existing labels for optimization...")
+            existing_labels_cache = {}
+            
+            # Preload ALL labels for this receipt (more efficient than individual line queries)
+            all_labels, _ = self.client.list_receipt_word_labels_for_receipt(
+                image_id=image_id,
+                receipt_id=receipt_id
+            )
+            
+            # Group labels by (line_id, word_id) for fast lookup
+            for label in all_labels:
+                word_key = (label.line_id, label.word_id)
+                if word_key not in existing_labels_cache:
+                    existing_labels_cache[word_key] = []
+                existing_labels_cache[word_key].append(label)
         
         for currency_label in currency_labels:
             try:
                 result = await self._apply_single_currency_label(
-                    image_id, receipt_id, currency_label, dry_run
+                    image_id, receipt_id, currency_label, dry_run, existing_labels_cache
                 )
                 results.append(result)
                 
@@ -97,7 +119,8 @@ class ReceiptLabelUpdater:
         image_id: str,
         receipt_id: int, 
         currency_label: CurrencyLabel,
-        dry_run: bool
+        dry_run: bool,
+        existing_labels_cache: Optional[Dict[Tuple[int, int], List[ReceiptWordLabel]]] = None
     ) -> LabelUpdateResult:
         """Apply a single currency label to the best matching word."""
         
@@ -130,12 +153,18 @@ class ReceiptLabelUpdater:
             )
         
         # Step 3: Check existing labels for this word
-        existing_labels, _ = self.client.list_receipt_word_labels_for_word(
-            image_id=image_id,
-            receipt_id=receipt_id,
-            line_id=best_match.word.line_id,
-            word_id=best_match.word.word_id
-        )
+        word_key = (best_match.word.line_id, best_match.word.word_id)
+        if existing_labels_cache is not None:
+            # Use cache (empty list if no labels for this word)
+            existing_labels = existing_labels_cache.get(word_key, [])
+        else:
+            # Fallback to individual query (should only happen if preload_existing_labels=False)
+            existing_labels, _ = self.client.list_receipt_word_labels_for_word(
+                image_id=image_id,
+                receipt_id=receipt_id,
+                line_id=best_match.word.line_id,
+                word_id=best_match.word.word_id
+            )
         
         # Step 4: Decide what action to take
         action = self._determine_label_action(
@@ -161,7 +190,7 @@ class ReceiptLabelUpdater:
             reasoning=f"LLM Classification: {currency_label.reasoning} (confidence: {currency_label.confidence:.2f})",
             timestamp_added=datetime.now(),
             validation_status=ValidationStatus.VALID.value,
-            label_proposed_by="costco_analyzer_llm"
+            label_proposed_by=f"{self.merchant_name.lower()}_analyzer_llm"
         )
         
         if not dry_run:
@@ -169,49 +198,33 @@ class ReceiptLabelUpdater:
                 self.client.add_receipt_word_label(new_label)
                 logger.info(f"Added {currency_label.label_type.value} label to word '{best_match.word.text}' (${currency_label.value:.2f})")
             elif action == "update":
-                # Find the conflicting label and consolidate it (preserve history)
+                # Find the conflicting label and consolidate it (preserve full audit trail)
                 conflicting_label = next(
                     (label for label in existing_labels if label.label != currency_label.label_type.value), 
                     None
                 )
                 if conflicting_label:
-                    # Option 1: Mark old label as invalid (preserve full audit trail)
-                    if conflicting_label.validation_status != ValidationStatus.INVALID.value:
-                        # Update old label to mark as invalid
-                        invalidated_label = ReceiptWordLabel(
-                            image_id=conflicting_label.image_id,
-                            receipt_id=conflicting_label.receipt_id,
-                            line_id=conflicting_label.line_id,
-                            word_id=conflicting_label.word_id,
-                            label=conflicting_label.label,
-                            reasoning=conflicting_label.reasoning,
-                            timestamp_added=conflicting_label.timestamp_added,
-                            validation_status=ValidationStatus.INVALID.value,  # Mark as invalid
-                            label_proposed_by=conflicting_label.label_proposed_by,
-                            label_consolidated_from=conflicting_label.label_consolidated_from
-                        )
-                        
-                        # Update the old label's validation status
-                        self.client.delete_receipt_word_label(conflicting_label)
-                        self.client.add_receipt_word_label(invalidated_label)
-                    
-                    # Option 2: Create new consolidated label
+                    # APPEND-ONLY APPROACH: Never delete original labels!
+                    # Just add a new consolidated label that supersedes the old one
                     consolidated_label = ReceiptWordLabel(
                         image_id=image_id,
                         receipt_id=receipt_id,
                         line_id=best_match.word.line_id,
                         word_id=best_match.word.word_id,
                         label=currency_label.label_type.value,  # New correct label
-                        reasoning=f"LLM Classification: {currency_label.reasoning} (confidence: {currency_label.confidence:.2f})",
+                        reasoning=f"LLM Consolidation: {currency_label.reasoning} (confidence: {currency_label.confidence:.2f}). Supersedes previous '{conflicting_label.label}' label.",
                         timestamp_added=datetime.now(),
                         validation_status=ValidationStatus.VALID.value,
-                        label_proposed_by="costco_analyzer_llm",
+                        label_proposed_by=f"{self.merchant_name.lower()}_analyzer_llm",
                         label_consolidated_from=conflicting_label.label  # Preserve history!
                     )
                     
-                    # Add the new consolidated label
+                    # ONLY ADD - never delete the original label
                     self.client.add_receipt_word_label(consolidated_label)
-                    logger.info(f"Consolidated label for word '{best_match.word.text}': {conflicting_label.label}→INVALID, added {currency_label.label_type.value} (VALID)")
+                    logger.info(f"Consolidated label for word '{best_match.word.text}': {conflicting_label.label} superseded by {currency_label.label_type.value} (original preserved)")
+                    
+                    # Note: The original conflicting_label remains unchanged in the database
+                    # Queries will need to find the "most recent VALID" label per word
         
         return LabelUpdateResult(
             word=best_match.word,

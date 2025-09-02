@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from pydantic import BaseModel, Field
 from operator import add
 
-from receipt_label.costco_models import CurrencyLabel, LabelType
+from receipt_label.receipt_models import CurrencyLabel, LabelType
 from receipt_label.llm_classifier import analyze_with_ollama
 from receipt_label.constants import CORE_LABELS
 from receipt_dynamo.entities import ReceiptLine
@@ -372,6 +372,18 @@ def create_n_parallel_graph(line_total_count: int):
     return workflow.compile()
 
 
+def _get_merchant_name_for_receipt(client, image_id: str, receipt_id: int) -> str:
+    """Get merchant name from ReceiptMetadata or return 'unknown'."""
+    try:
+        metadata = client.get_receipt_metadata(image_id, receipt_id)
+        # Use canonical name if available, otherwise use merchant_name
+        merchant_name = metadata.canonical_merchant_name or metadata.merchant_name
+        return merchant_name if merchant_name else "unknown"
+    except Exception:
+        # If no metadata found or error occurs, use generic name
+        return "unknown"
+
+
 async def analyze_receipt_n_parallel(
     client,
     image_id: str,
@@ -384,7 +396,7 @@ async def analyze_receipt_n_parallel(
     import time
     from receipt_label.text_reconstruction import ReceiptTextReconstructor
     from receipt_label.validator import validate_arithmetic_relationships
-    from receipt_label.costco_models import ReceiptAnalysis
+    from receipt_label.receipt_models import ReceiptAnalysis
     
     receipt_identifier = f"{image_id}/{receipt_id}"
     print(f"\n🚀 N-PARALLEL TWO-PHASE ANALYSIS: {receipt_identifier}")
@@ -450,7 +462,10 @@ async def analyze_receipt_n_parallel(
     if update_labels and discovered_labels:
         from receipt_label.label_updater import ReceiptLabelUpdater, display_label_update_results
         
-        label_updater = ReceiptLabelUpdater(client)
+        # Get merchant name for proper label attribution
+        merchant_name = _get_merchant_name_for_receipt(client, image_id, receipt_id)
+        
+        label_updater = ReceiptLabelUpdater(client, merchant_name=merchant_name)
         label_update_results = await label_updater.apply_currency_labels(
             image_id=image_id,
             receipt_id=receipt_id,

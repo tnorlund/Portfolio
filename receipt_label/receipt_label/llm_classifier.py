@@ -7,7 +7,7 @@ import os
 import logging
 from typing import List, Dict
 from receipt_label.constants import CORE_LABELS
-from receipt_label.costco_models import CurrencyLabel, CurrencyClassificationResponse, LabelType
+from receipt_label.receipt_models import CurrencyLabel, CurrencyClassificationResponse, LabelType
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +52,8 @@ async def analyze_with_ollama(
         pydantic_object=CurrencyClassificationResponse
     )
 
-    # Create optimized prompt template (hint removed based on A/B test results)
-    template = """You are analyzing a COSTCO receipt to classify currency amounts. 
+    # Create optimized prompt template (merchant-agnostic)
+    template = """You are analyzing a retail receipt to classify currency amounts. 
 
 RECEIPT TEXT (formatted with line IDs):
 {receipt_text}
@@ -76,8 +76,8 @@ Identify ALL currency amounts you find in the receipt text and classify them as 
 
 1. **Surrounding text context**: Look for keywords like "TOTAL", "TAX", "SUBTOTAL", product names
 2. **Line position**: Earlier lines are usually items, later lines are totals
-3. **COSTCO patterns**: 
-   - Tax is often $0.00 
+3. **Common retail patterns**: 
+   - Tax may be $0.00 in tax-free locations
    - Grand total appears multiple times (receipt total, payment confirmation)
    - Subtotal may be missing or equal to grand total when tax is $0.00
    - Line totals are individual item prices
@@ -128,8 +128,8 @@ Identify ALL currency amounts you find in the receipt text and classify them as 
             },
             config={
                 "metadata": {
-                    "receipt_type": "COSTCO",
-                    "receipt_id": receipt_id or "unknown",
+                    "receipt_type": "retail",
+                    "receipt_id": receipt_id or "unknown", 
                     "known_total": known_total,
                     "currency_amounts_analyzed": len(currency_contexts),
                     "use_case": "currency_label_classification",
@@ -137,7 +137,7 @@ Identify ALL currency amounts you find in the receipt text and classify them as 
                 "tags": [
                     "receipt-labeling",
                     "currency-classification",
-                    "costco",
+                    "retail",
                     "ollama-turbo",
                 ],
             },
@@ -201,18 +201,18 @@ Identify ALL currency amounts you find in the receipt text and classify them as 
         return []
 
 
-def create_costco_labeling_prompt(
+def create_receipt_labeling_prompt(
     receipt_text: str, known_total: float, currency_contexts: List[Dict]
 ) -> str:
-    """Create a specialized prompt for COSTCO receipt labeling."""
+    """Create a specialized prompt for retail receipt labeling."""
 
-    prompt = f"""You are analyzing a COSTCO receipt to identify currency labels from OCR text.
+    prompt = f"""You are analyzing a retail receipt to identify currency labels from OCR text.
 
-COSTCO RECEIPT PATTERNS:
-- GRAND_TOTAL: Final total including tax (appears multiple times, usually at ~85% down receipt)  
-- TAX: Sales tax amount (6-12% rate typical for COSTCO, appears at ~70% down receipt)
+RETAIL RECEIPT PATTERNS:
+- GRAND_TOTAL: Final total including tax (appears multiple times, usually near bottom of receipt)  
+- TAX: Sales tax amount (varies by location, appears before grand total)
 - LINE_TOTAL: Individual item/group prices (scattered throughout receipt)
-- SUBTOTAL: Pre-tax total (OFTEN MISSING on COSTCO receipts)
+- SUBTOTAL: Pre-tax total (may be missing if tax is $0.00)
 
 KNOWN INFORMATION:
 - This receipt's grand total should be: ${known_total:.2f}
@@ -244,7 +244,7 @@ For each currency amount, classify it and explain your reasoning based on:
 - Position on receipt (top/middle/bottom)
 - Surrounding text context
 - Mathematical relationships
-- COSTCO receipt patterns
+- Common retail receipt patterns
 
 Return your analysis in this format:
 GRAND_TOTAL: [amount] - [reasoning]
@@ -322,7 +322,7 @@ async def analyze_with_line_items(
     )
 
     # Enhanced prompt template for complete line-item analysis
-    template = """You are analyzing a COSTCO receipt to identify complete line items with all components.
+    template = """You are analyzing a retail receipt to identify complete line items with all components.
 
 RECEIPT TEXT (formatted with line IDs):
 {receipt_text}
@@ -358,7 +358,7 @@ ARITHMETIC VALIDATION:
 For each line item, validate: QUANTITY × UNIT_PRICE ≈ LINE_TOTAL
 Example: 2 lb × $1.99 = $3.98 ✓
 
-COSTCO PATTERNS:
+RETAIL PATTERNS:
 - Product names are descriptive (ORGANIC BANANAS, MILK WHOLE GALLON)
 - Quantities often include units (lb, oz, ea, each)
 - Unit prices preceded by @ symbol: "2 lb @ $1.99"
@@ -397,7 +397,7 @@ Focus on lines that appear to be individual product purchases, not summary lines
             {"receipt_text": formatted_receipt_text},
             config={
                 "metadata": {
-                    "receipt_type": "COSTCO",
+                    "receipt_type": "retail",
                     "receipt_id": receipt_id or "unknown",
                     "analysis_type": "enhanced_line_items",
                     "use_case": "complete_line_item_classification",
@@ -405,7 +405,7 @@ Focus on lines that appear to be individual product purchases, not summary lines
                 "tags": [
                     "receipt-labeling",
                     "line-item-analysis", 
-                    "costco",
+                    "retail",
                     "ollama-turbo",
                 ],
             },

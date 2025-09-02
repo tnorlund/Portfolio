@@ -13,7 +13,7 @@ from typing import List, Dict, TypedDict, Optional
 from dataclasses import dataclass
 from pydantic import BaseModel, Field
 
-from receipt_label.costco_models import CurrencyLabel, LabelType
+from receipt_label.receipt_models import CurrencyLabel, LabelType
 from receipt_label.llm_classifier import analyze_with_ollama
 from receipt_label.constants import CORE_LABELS
 from receipt_dynamo.entities import ReceiptLine
@@ -361,7 +361,7 @@ async def analyze_receipt_parallel_two_phase(
     import time
     from receipt_label.text_reconstruction import ReceiptTextReconstructor
     from receipt_label.validator import validate_arithmetic_relationships
-    from receipt_label.costco_models import ReceiptAnalysis
+    from receipt_label.receipt_models import ReceiptAnalysis
     
     receipt_identifier = f"{image_id}/{receipt_id}"
     print(f"\n🚀 PARALLEL TWO-PHASE ANALYSIS: {receipt_identifier}")

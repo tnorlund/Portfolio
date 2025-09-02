@@ -4,7 +4,7 @@ Extracted from costco_label_discovery.py to improve modularity.
 """
 
 from typing import List, Dict
-from receipt_label.costco_models import CurrencyLabel, LabelType
+from receipt_label.receipt_models import CurrencyLabel, LabelType
 
 
 def validate_arithmetic_relationships(
@@ -154,7 +154,7 @@ def validate_arithmetic_relationships(
         validation_results["line_totals_approximate_subtotal"] = None
         print(f"   ⚠️ Missing data for line totals vs subtotal check")
 
-    # Check 5: Tax rate reasonableness (6-12% typical for COSTCO)
+    # Check 5: Tax rate reasonableness (0-15% typical for retail)
     if taxes and subtotals:
         for tax in taxes:
             for subtotal in subtotals:

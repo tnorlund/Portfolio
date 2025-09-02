@@ -20,7 +20,7 @@ from receipt_dynamo.data._pulumi import load_env
 from receipt_label.costco_analyzer import setup_langsmith_tracing
 from receipt_label.two_phase_analyzer import analyze_costco_receipt_two_phase
 from receipt_label.enhanced_line_item_analyzer import analyze_costco_receipt_with_line_items
-from receipt_label.costco_models import LabelType
+from receipt_label.receipt_models import LabelType
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

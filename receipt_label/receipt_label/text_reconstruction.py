@@ -6,7 +6,7 @@ Extracted from costco_label_discovery.py to improve modularity.
 import re
 from typing import List, Dict, Tuple
 from receipt_dynamo.entities import ReceiptLine
-from receipt_label.costco_models import ReceiptTextGroup
+from receipt_label.receipt_models import ReceiptTextGroup
 
 
 class ReceiptTextReconstructor:
