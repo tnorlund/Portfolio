@@ -1,4 +1,5 @@
 from .currency_validation import (
+    LabelType,
     CurrencyClassificationItem,
     CurrencyClassificationResponse,
     CurrencyLabel,
@@ -6,6 +7,7 @@ from .currency_validation import (
 )
 
 __all__ = [
+    "LabelType",
     "CurrencyClassificationItem",
     "CurrencyClassificationResponse",
     "CurrencyLabel",
