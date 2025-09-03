@@ -194,9 +194,39 @@ class ReceiptLabelUpdater:
         )
         
         if not dry_run:
-            if action == "add":
-                self.client.add_receipt_word_label(new_label)
-                logger.info(f"Added {currency_label.label_type.value} label to word '{best_match.word.text}' (${currency_label.value:.2f})")
+            try:
+                if action == "add":
+                    self.client.add_receipt_word_label(new_label)
+                    logger.info(f"Added {currency_label.label_type.value} label to word '{best_match.word.text}' (${currency_label.value:.2f})")
+                elif action == "consolidate":
+                    # CONSOLIDATION: Mark all non-target labels as INVALID, ensure target is VALID
+                    target_label_type = currency_label.label_type.value
+                    
+                    # Find the best existing label of the target type (highest confidence or most recent)
+                    target_candidates = [label for label in existing_labels if label.label == target_label_type]
+                    if target_candidates:
+                        # Keep the most recent one as the base (or create new if needed)
+                        best_target = max(target_candidates, key=lambda x: x.timestamp_added)
+                        
+                        # Mark all OTHER labels as INVALID
+                        for label in existing_labels:
+                            if label != best_target and label.validation_status == ValidationStatus.VALID.value:
+                                label.validation_status = ValidationStatus.INVALID.value
+                                label.reasoning = f"Superseded by {target_label_type} consolidation. Original: {label.reasoning}"
+                                self.client.update_receipt_word_label(label)
+                                logger.info(f"Marked {label.label} as INVALID during consolidation")
+                        
+                        # Ensure the target is VALID and up-to-date
+                        if best_target.validation_status != ValidationStatus.VALID.value:
+                            best_target.validation_status = ValidationStatus.VALID.value
+                            best_target.reasoning = f"LLM Consolidation: {currency_label.reasoning} (confidence: {currency_label.confidence:.2f})"
+                            self.client.update_receipt_word_label(best_target)
+                            logger.info(f"Updated {target_label_type} to VALID during consolidation")
+                    else:
+                        # No existing target label, add it as VALID
+                        self.client.add_receipt_word_label(new_label)
+                        logger.info(f"Added {target_label_type} as VALID during consolidation")
+                    
             elif action == "update":
                 # Find the currently VALID conflicting label
                 valid_conflicting_labels = [
@@ -230,6 +260,18 @@ class ReceiptLabelUpdater:
                     
                     self.client.add_receipt_word_label(consolidated_label)
                     logger.info(f"Updated label for word '{best_match.word.text}': {conflicting_label.label} marked INVALID, {currency_label.label_type.value} added as VALID")
+                    
+            except Exception as e:
+                error_msg = str(e)
+                # Handle DynamoDB primary key constraint violations
+                if "already exists" in error_msg:
+                    logger.warning(f"Label {currency_label.label_type.value} already exists for word '{best_match.word.text}' - treating as consolidation")
+                    # Re-run with consolidation logic
+                    action = "consolidate" 
+                    # This will be handled by the consolidation logic above on retry
+                else:
+                    logger.error(f"Error applying {currency_label.label_type.value} label: {error_msg}")
+                    raise e
         
         return LabelUpdateResult(
             word=best_match.word,
@@ -336,11 +378,24 @@ class ReceiptLabelUpdater:
         
         # Find currently VALID labels (not historical ones)
         valid_labels = [label for label in existing_labels if label.validation_status == ValidationStatus.VALID.value]
+        invalid_labels = [label for label in existing_labels if label.validation_status != ValidationStatus.VALID.value]
         valid_types = {label.label for label in valid_labels}
+        
+        logger.info(f"Label conflict analysis for {new_label_type}:")
+        logger.info(f"  Total existing labels: {len(existing_labels)}")
+        logger.info(f"  VALID labels: {len(valid_labels)} - {[f'{l.label}({l.validation_status})' for l in valid_labels]}")
+        logger.info(f"  INVALID/historical labels: {len(invalid_labels)} - {[f'{l.label}({l.validation_status})' for l in invalid_labels]}")
         
         # Check if exact same VALID label type already exists
         if new_label_type in valid_types:
-            return "skip"  # Same VALID label already exists
+            # Special case: If we're adding the same label type that's already VALID,
+            # we should consolidate - mark all conflicting labels as INVALID and ensure this one is VALID
+            if len(existing_labels) > 1:  # Multiple labels exist, needs cleanup
+                logger.info(f"  Action: CONSOLIDATE - Clean up multiple labels, ensure {new_label_type} is VALID")
+                return "consolidate"
+            else:
+                logger.info(f"  Action: SKIP - Same VALID {new_label_type} already exists (no conflicts)")
+                return "skip"  # Same VALID label already exists, clean state
         
         # Define mutually exclusive label groups
         currency_types = {LabelType.GRAND_TOTAL.value, LabelType.TAX.value, LabelType.LINE_TOTAL.value, LabelType.SUBTOTAL.value, LabelType.UNIT_PRICE.value}
@@ -352,18 +407,24 @@ class ReceiptLabelUpdater:
             if existing_currency_types:
                 # Special case: LINE_TOTAL takes precedence over UNIT_PRICE
                 if LabelType.LINE_TOTAL.value in existing_currency_types and new_label_type == LabelType.UNIT_PRICE.value:
-                    logger.info(f"Skipping UNIT_PRICE - word already has VALID LINE_TOTAL label (avoiding conflict)")
+                    logger.info(f"  Action: SKIP - LINE_TOTAL precedence over UNIT_PRICE")
+                    logger.info(f"    VALID LINE_TOTAL exists, refusing UNIT_PRICE for same word")
                     return "skip"  # LINE_TOTAL takes precedence
                 
-                logger.warning(f"Currency label conflict: existing VALID {existing_currency_types}, new {new_label_type}")
+                logger.info(f"  Action: UPDATE - Currency conflict needs resolution")
+                logger.info(f"    Existing VALID currency: {existing_currency_types}")
+                logger.info(f"    New currency: {new_label_type}")
+                logger.info(f"    Will mark existing as INVALID and add new as VALID")
                 return "update"  # Replace conflicting currency label
         
         # Line-item component labels can coexist, but check for duplicates
         elif new_label_type in line_item_types:
             # These can coexist with currency labels, but not duplicate their own type
             if new_label_type in valid_types:
+                logger.info(f"  Action: SKIP - Same VALID line-item {new_label_type} already exists")
                 return "skip"  # Same VALID line-item component already exists
         
+        logger.info(f"  Action: ADD - No conflicts, safe to add {new_label_type}")
         return "add"  # No conflicts, safe to add
 
 
@@ -402,12 +463,26 @@ def display_label_update_results(results: List[LabelUpdateResult]):
             print(f"  Reason: {result.conflict_reason}")
             
         if result.existing_labels:
-            existing_info = []
-            for label in result.existing_labels:
-                if label.label_consolidated_from:
-                    existing_info.append(f"{label.label_consolidated_from}→{label.label}")
-                else:
-                    existing_info.append(label.label)
-            print(f"  Existing labels: {', '.join(existing_info)}")
+            # Show VALID vs INVALID labels separately for clarity
+            valid_existing = [label for label in result.existing_labels if label.validation_status == ValidationStatus.VALID.value]
+            invalid_existing = [label for label in result.existing_labels if label.validation_status != ValidationStatus.VALID.value]
+            
+            if valid_existing:
+                valid_info = []
+                for label in valid_existing:
+                    if label.label_consolidated_from:
+                        valid_info.append(f"{label.label_consolidated_from}→{label.label}({label.validation_status})")
+                    else:
+                        valid_info.append(f"{label.label}({label.validation_status})")
+                print(f"  VALID existing: {', '.join(valid_info)}")
+            
+            if invalid_existing:
+                invalid_info = []
+                for label in invalid_existing:
+                    if label.label_consolidated_from:
+                        invalid_info.append(f"{label.label_consolidated_from}→{label.label}({label.validation_status})")
+                    else:
+                        invalid_info.append(f"{label.label}({label.validation_status})")
+                print(f"  INVALID/historical: {', '.join(invalid_info)}")
         
         print()

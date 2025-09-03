@@ -273,7 +273,25 @@ async def combine_results(state: NParallelState) -> NParallelState:
     
     print(f"\n🔗 COMBINING N-PARALLEL RESULTS")
     
-    currency_labels = state["currency_labels"] or []
+    raw_currency_labels = state["currency_labels"] or []
+    
+    # DEDUPLICATION: Remove duplicate Phase 1 currency classifications
+    # Group by (word_text, label_type, line_ids) and keep highest confidence
+    currency_dedup_map = {}
+    for label in raw_currency_labels:
+        # Create unique key for this label position and type
+        line_ids_key = tuple(sorted(label.line_ids)) if label.line_ids else ()
+        dedup_key = (label.word_text, label.label_type.value, line_ids_key)
+        
+        # Keep the highest confidence version
+        if dedup_key not in currency_dedup_map or label.confidence > currency_dedup_map[dedup_key].confidence:
+            currency_dedup_map[dedup_key] = label
+    
+    currency_labels = list(currency_dedup_map.values())
+    duplicates_removed = len(raw_currency_labels) - len(currency_labels)
+    
+    if duplicates_removed > 0:
+        print(f"   Deduplicated Phase 1: {len(raw_currency_labels)} → {len(currency_labels)} (-{duplicates_removed} duplicates)")
     
     # Collect all line-item labels from parallel results
     # line_item_results is now a list of labels from all parallel nodes
