@@ -10,13 +10,16 @@ Simplified version of n_parallel_analyzer.py that:
 - Uses fixed graph: START → Phase1 → Phase2 → END
 """
 
+import os
 import time
-from typing import List, TypedDict
-from langgraph.graph import StateGraph, END
+from typing import List, TypedDict, Annotated, Sequence
+from langgraph.graph import StateGraph, START, END
+from langgraph.types import Send
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_ollama import ChatOllama
 from langgraph.graph.state import CompiledStateGraph
+import operator
 
 
 # Core dependencies (same as current system)
@@ -33,23 +36,20 @@ from receipt_label.constants import CORE_LABELS
 
 
 class CurrencyAnalysisState(TypedDict):
-    """State for the currency validation workflow."""
-
-    llm_120b: ChatOllama
-    llm_20b: ChatOllama
+    """State for the currency validation workflow with Send API support."""
 
     # Input
     receipt_id: str
     image_id: str
-    # receipt_metadata: ReceiptMetadata
     lines: List[ReceiptLine]
     formatted_text: str
+    ollama_api_key: str
 
     # Phase 1 Results
     currency_labels: List[CurrencyLabel]
 
-    # Phase 2 Results
-    line_item_labels: List[CurrencyLabel]
+    # Phase 2 Results - Uses reducer to combine parallel results
+    line_item_labels: Annotated[List[CurrencyLabel], operator.add]
 
     # Final Results
     discovered_labels: List[CurrencyLabel]
@@ -73,7 +73,15 @@ async def load_receipt_data(
 
 async def phase1_currency_analysis(state: CurrencyAnalysisState):
     """Node 1: Analyze currency amounts (GRAND_TOTAL, TAX, etc.)."""
-    llm = state["llm_120b"]
+
+    # Create LLM client locally to avoid state conflicts
+    llm = ChatOllama(
+        model="gpt-oss:120b",
+        base_url="https://ollama.com",
+        client_kwargs={
+            "headers": {"Authorization": f"Bearer {state['ollama_api_key']}"}
+        },
+    )
 
     subset = ["GRAND_TOTAL", "TAX", "SUBTOTAL", "LINE_TOTAL"]
     subset_definitions = "\n".join(
@@ -129,187 +137,203 @@ Focus on the most obvious currency amounts first.
             )
             for item in response.currency_amounts
         ]
-        return {**state, "currency_labels": currency_labels}
+        return {"currency_labels": currency_labels}
     except Exception as e:
         print(f"Phase 1 failed: {e}")
-        return {**state, "currency_labels": []}
+        return {"currency_labels": []}
 
 
-def create_phase1_only_graph() -> CompiledStateGraph:
-    """Create graph for Phase 1 only: load → currency analysis → end"""
+def dispatch_to_parallel_phase2(
+    state: CurrencyAnalysisState,
+) -> Sequence[Send]:
+    """Dispatcher that creates Send commands for parallel Phase 2 nodes."""
 
-    workflow = StateGraph(CurrencyAnalysisState)
-
-    # Phase 1 workflow
-    workflow.add_node("load_data", load_receipt_data)
-    workflow.add_node("phase1_currency", phase1_currency_analysis)
-
-    # Linear flow: load → phase1 → end
-    workflow.set_entry_point("load_data")
-    workflow.add_edge("load_data", "phase1_currency")
-    workflow.add_edge("phase1_currency", END)
-
-    return workflow.compile()
-
-
-def create_dynamic_analysis_graph(
-    currency_labels: List[CurrencyLabel],
-) -> CompiledStateGraph:
-    """Create graph with dynamic Phase 2 nodes based on LINE_TOTALs found."""
-
-    workflow = StateGraph(CurrencyAnalysisState)
-
-    # Phase 1 is already done - currency_labels contains the results
-    # We're building Phase 2 graph dynamically based on Phase 1 results
+    print(f"🔄 Dispatching parallel Phase 2 analysis")
 
     # Find LINE_TOTALs from Phase 1
     line_totals = [
         label
-        for label in currency_labels
+        for label in state["currency_labels"]
         if label.label_type == LabelType.LINE_TOTAL
     ]
 
     if not line_totals:
-        # No line items to analyze - create simple passthrough
-        workflow.add_node(
-            "no_line_items", lambda state: {**state, "line_item_labels": []}
-        )
-        workflow.set_entry_point("no_line_items")
-        workflow.add_edge("no_line_items", END)
-        return workflow.compile()
+        print("   No LINE_TOTAL amounts found - skipping Phase 2")
+        # Return empty list - will go directly to combine_results
+        return []
 
-    # Create dispatcher node for parallel execution
-    workflow.add_node("dispatch", lambda state: state)  # Simple passthrough
-    workflow.set_entry_point("dispatch")
+    print(f"   Creating {len(line_totals)} parallel Phase 2 tasks")
 
-    # Create dynamic Phase 2 nodes - one per LINE_TOTAL
-    phase2_nodes = []
+    # Create Send command for each LINE_TOTAL
+    sends = []
     for i, line_total in enumerate(line_totals):
-        node_name = f"phase2_line_{i}"
+        # Each Send creates a separate instance with its own context
+        send_data = {
+            "line_total_index": i,
+            "target_line_total": line_total,
+            "receipt_text": state["formatted_text"],
+            "receipt_id": state["receipt_id"],
+            "ollama_api_key": state["ollama_api_key"],
+        }
+        sends.append(Send("phase2_line_analysis", send_data))
 
-        # Create specialized analyzer for this specific line total
-        analyzer_func = create_line_item_analyzer(line_total, i)
-        workflow.add_node(node_name, analyzer_func)
-        phase2_nodes.append(node_name)
-
-        # Connect dispatcher to this phase2 node for parallel execution
-        workflow.add_edge("dispatch", node_name)
-
-    # Combine results node
-    workflow.add_node("combine_results", combine_results)
-
-    # All phase2 nodes connect to combine_results
-    for node_name in phase2_nodes:
-        workflow.add_edge(node_name, "combine_results")
-
-    # End after combining
-    workflow.add_edge("combine_results", END)
-
-    return workflow.compile()
+    return sends
 
 
-def create_line_item_analyzer(line_total: CurrencyLabel, index: int):
-    """Create a specialized analyzer function for a specific LINE_TOTAL."""
+async def phase2_line_analysis(send_data: dict) -> dict:
+    """Phase 2 node: Analyze individual line items (PRODUCT_NAME, QUANTITY, etc.)."""
 
-    async def phase2_lineitem_analysis(
-        state: CurrencyAnalysisState,
-    ) -> CurrencyAnalysisState:
-        """Node 2: Analyze line items (PRODUCT_NAME, QUANTITY, etc.)."""
-        llm = state["llm_20b"]
+    index = send_data["line_total_index"]
+    line_total = send_data["target_line_total"]
+    receipt_text = send_data["receipt_text"]
+    receipt_id = send_data["receipt_id"]
+    ollama_api_key = send_data["ollama_api_key"]
 
-        subset = ["PRODUCT_NAME", "QUANTITY", "UNIT_PRICE"]
-        subset_definitions = "\n".join(
-            f"- {l}: {CORE_LABELS[l]}" for l in subset if l in CORE_LABELS
-        )
+    print(f"   🤖 Phase 2.{index}: Analyzing line with {line_total.word_text}")
 
-        template = """You are analyzing receipt line items to identify products and quantities.
+    # Create LLM client for line analysis
+    llm = ChatOllama(
+        model="gpt-oss:20b",
+        base_url="https://ollama.com",
+        client_kwargs={
+            "headers": {"Authorization": f"Bearer {ollama_api_key}"}
+        },
+    )
 
-    RECEIPT TEXT:
-    {receipt_text}
+    subset = ["PRODUCT_NAME", "QUANTITY", "UNIT_PRICE"]
+    subset_definitions = "\n".join(
+        f"- {l}: {CORE_LABELS[l]}" for l in subset if l in CORE_LABELS
+    )
 
-    CURRENCY AMOUNTS ALREADY FOUND:
-    {currency_context}
+    template = """You are analyzing a specific line item from a receipt to identify its components.
 
-    Find product information:
-    {subset_definitions}
+TARGET LINE ITEM: {target_line_text}
+TARGET AMOUNT: {target_amount}
 
-    Focus on lines that look like individual product purchases.
+FULL RECEIPT CONTEXT:
+{receipt_text}
 
-    {format_instructions}"""
+Focus ONLY on the target line item "{target_line_text}" that contains the amount {target_amount}.
 
-        currency_context = "\n".join(
-            [
-                f"- {label.label_type.value}: {label.word_text}"
-                for label in state["currency_labels"]
-            ]
-        )
-        output_parser = PydanticOutputParser(
-            pydantic_object=SimpleReceiptResponse
-        )
-        prompt = PromptTemplate(
-            template=template,
-            input_variables=[
-                "receipt_text",
-                "currency_context",
-                "subset_definitions",
-            ],
-            partial_variables={
-                "format_instructions": output_parser.get_format_instructions()
+For this specific line item, identify:
+{subset_definitions}
+
+IMPORTANT: Only label words that appear in the target line "{target_line_text}". 
+Do not label words from other lines in the receipt.
+
+{format_instructions}"""
+
+    output_parser = PydanticOutputParser(pydantic_object=SimpleReceiptResponse)
+    prompt = PromptTemplate(
+        template=template,
+        input_variables=[
+            "target_line_text",
+            "target_amount",
+            "receipt_text",
+            "subset_definitions",
+        ],
+        partial_variables={
+            "format_instructions": output_parser.get_format_instructions()
+        },
+    )
+
+    chain = prompt | llm | output_parser
+    try:
+        response = await chain.ainvoke(
+            {
+                "target_line_text": line_total.word_text,
+                "target_amount": line_total.word_text,
+                "receipt_text": receipt_text,
+                "subset_definitions": subset_definitions,
+            },
+            config={
+                "metadata": {
+                    "receipt_id": receipt_id,
+                    "phase": "lineitem_analysis",
+                    "model": "20b",
+                    "line_index": index,
+                },
+                "tags": ["phase2", "line-items", "receipt-analysis"],
             },
         )
 
-        chain = prompt | llm | output_parser
-        try:
-            response = await chain.ainvoke(
-                {
-                    "receipt_text": state["formatted_text"],
-                    "currency_context": currency_context,
-                    "subset_definitions": subset_definitions,
-                },
-                config={
-                    "metadata": {
-                        "receipt_id": state["receipt_id"],
-                        "phase": "lineitem_analysis",
-                        "model": "20b",
-                    },
-                    "tags": ["phase2", "line-items", "receipt-analysis"],
-                },
-            )
-            # Convert to CurrencyLabel objects using currency_amounts (not line_items)
-            line_item_labels = []
-            for (
-                item
-            ) in (
-                response.currency_amounts
-            ):  # ✅ Changed from line_items to currency_amounts
+        # Convert to CurrencyLabel objects
+        line_item_labels = []
+        for item in response.currency_amounts:
+            try:
+                label_type = getattr(LabelType, item.label_type)
                 label = CurrencyLabel(
                     word_text=item.word_text,
-                    label_type=getattr(LabelType, item.label_type),
+                    label_type=label_type,
                     line_ids=item.line_ids,
                     confidence=item.confidence,
                     reasoning=item.reasoning,
                 )
                 line_item_labels.append(label)
-            return {**state, "line_item_labels": line_item_labels}
+            except AttributeError:
+                print(
+                    f"⚠️ Warning: Unknown label type '{item.label_type}' for '{item.word_text}', skipping"
+                )
+                continue
 
-        except Exception as e:
-            print(f"Phase 2 failed: {e}")
-            return {**state, "line_item_labels": []}
+        print(
+            f"   ✅ Phase 2.{index}: Found {len(line_item_labels)} labels for {line_total.word_text}"
+        )
 
-    return phase2_lineitem_analysis
+        # Return line_item_labels which will be added to the state via the reducer
+        return {"line_item_labels": line_item_labels}
+
+    except Exception as e:
+        print(f"Phase 2.{index} failed: {e}")
+        return {"line_item_labels": []}
+
+
+def create_unified_analysis_graph() -> CompiledStateGraph:
+    """Create single unified graph: load → phase1 → dispatch → parallel phase2 → combine → end"""
+
+    workflow = StateGraph(CurrencyAnalysisState)
+
+    # Add all nodes
+    workflow.add_node("load_data", load_receipt_data)
+    workflow.add_node("phase1_currency", phase1_currency_analysis)
+    workflow.add_node("phase2_line_analysis", phase2_line_analysis)
+    workflow.add_node("combine_results", combine_results)
+
+    # Define the flow using Send API for dynamic dispatch
+    workflow.add_edge(START, "load_data")
+    workflow.add_edge("load_data", "phase1_currency")
+
+    # Use conditional edge to dispatch parallel Phase 2 nodes
+    workflow.add_conditional_edges(
+        "phase1_currency",
+        dispatch_to_parallel_phase2,
+        ["phase2_line_analysis"],
+    )
+
+    # All Phase 2 instances automatically go to combine_results
+    workflow.add_edge("phase2_line_analysis", "combine_results")
+    workflow.add_edge("combine_results", END)
+
+    return workflow.compile()
 
 
 async def combine_results(
     state: CurrencyAnalysisState,
 ) -> CurrencyAnalysisState:
-    """Node 4: Combine all results and calculate final metrics."""
+    """Final node: Combine all results and calculate final metrics."""
 
     print(f"🔄 Combining results")
 
     # Combine all discovered labels
     discovered_labels = []
-    discovered_labels.extend(state.get("currency_labels", []))
-    discovered_labels.extend(state.get("line_item_labels", []))
+
+    # Add currency labels from Phase 1
+    currency_labels = state.get("currency_labels", [])
+    discovered_labels.extend(currency_labels)
+
+    # Add line item labels from Phase 2 (automatically combined by reducer)
+    line_item_labels = state.get("line_item_labels", [])
+    discovered_labels.extend(line_item_labels)
 
     # Calculate overall confidence
     if discovered_labels:
@@ -320,10 +344,11 @@ async def combine_results(
         confidence_score = 0.0
 
     print(f"   ✅ Combined {len(discovered_labels)} total labels")
+    print(f"   ✅ Phase 1: {len(currency_labels)} currency labels")
+    print(f"   ✅ Phase 2: {len(line_item_labels)} line item labels")
     print(f"   ✅ Overall confidence: {confidence_score:.2f}")
 
     return {
-        **state,
         "discovered_labels": discovered_labels,
         "confidence_score": confidence_score,
     }
@@ -335,105 +360,61 @@ async def analyze_receipt_simple(
     receipt_id: int,
     ollama_api_key: str,
 ) -> ReceiptAnalysis:
-    """Analyze a receipt using the currency analysis graph."""
+    """Analyze a receipt using the unified single-trace graph."""
+
+    # Setup LangSmith tracing
+    langchain_api_key = os.getenv("LANGCHAIN_API_KEY")
+    if langchain_api_key and langchain_api_key.strip():
+        os.environ["LANGCHAIN_TRACING_V2"] = "true"
+        os.environ["LANGCHAIN_PROJECT"] = (
+            f"receipt-analysis-unified-{image_id[:8]}"
+        )
+        print("✅ LangSmith tracing enabled")
+        print(f"   Project: receipt-analysis-unified-{image_id[:8]}")
+        print("   View at: https://smith.langchain.com/")
+    else:
+        print("⚠️ LANGCHAIN_API_KEY not set - tracing disabled")
 
     print(f"🚀 Analyzing receipt {image_id}/{receipt_id}")
     print("=" * 60)
-    print("Fixed workflow: Load → Phase1(120B) → Phase2(20B) → Combine")
+    print(
+        "UNIFIED WORKFLOW: load → phase1 → dispatch → parallel phase2 → combine → end"
+    )
+    print("✨ Single trace with dynamic parallel execution")
     print()
 
     start_time = time.time()
     lines = client.list_receipt_lines_from_receipt(image_id, receipt_id)
 
-    llm_120b = ChatOllama(
-        model="gpt-oss:120b",
-        base_url="https://ollama.com",
-        client_kwargs={
-            "headers": {"Authorization": f"Bearer {ollama_api_key}"}
-        },
-    )
-    llm_20b = ChatOllama(
-        model="gpt-oss:20b",
-        base_url="https://ollama.com",
-        client_kwargs={
-            "headers": {"Authorization": f"Bearer {ollama_api_key}"}
-        },
-    )
-
-    # Simple test message
-    # from langchain_core.messages import HumanMessage
-
-    # response = llm_20b.invoke([HumanMessage(content="Hello")])
-    # print(f"✅ Authentication working: {response.content[:50]}...")
-
+    # Initial state for unified graph
     initial_state: CurrencyAnalysisState = {
         "receipt_id": f"{image_id}/{receipt_id}",
         "image_id": image_id,
         "lines": lines,
         "formatted_text": "",
+        "ollama_api_key": ollama_api_key,
         "currency_labels": [],
         "line_item_labels": [],
         "discovered_labels": [],
         "confidence_score": 0.0,
         "processing_time": 0.0,
-        "llm_120b": llm_120b,
-        "llm_20b": llm_20b,
     }
-    print("\n🔵 PHASE 1: Currency Analysis")
-    print("-" * 30)
 
-    # STEP 1: Run Phase 1 only graph (load + currency analysis)
-    phase1_graph = create_phase1_only_graph()
-    phase1_result = await phase1_graph.ainvoke(
+    # Create and run the unified graph - SINGLE TRACE!
+    unified_graph = create_unified_analysis_graph()
+    result = await unified_graph.ainvoke(
         initial_state,
         config={
             "metadata": {
                 "receipt_id": f"{image_id}/{receipt_id}",
-                "phase": "phase1",
+                "workflow": "unified_parallel",
             },
-            "tags": ["phase1", "currency-analysis"],
+            "tags": ["unified", "parallel", "receipt-analysis"],
         },
     )
 
-    print(
-        f"Phase 1 found {len(phase1_result['currency_labels'])} currency labels"
-    )
-
-    # STEP 2: Build dynamic Phase 2 graph based on Phase 1 results
-    print("\n🟢 PHASE 2: Dynamic Line Item Analysis")
-    print("-" * 40)
-
-    if phase1_result["currency_labels"]:
-        line_totals = [
-            label
-            for label in phase1_result["currency_labels"]
-            if label.label_type == LabelType.LINE_TOTAL
-        ]
-        print(f"Building dynamic graph for {len(line_totals)} LINE_TOTALs")
-
-        dynamic_phase2_graph = create_dynamic_analysis_graph(
-            phase1_result["currency_labels"]
-        )
-
-        # STEP 3: Run dynamic Phase 2 graph with Phase 1 results as input
-        result = await dynamic_phase2_graph.ainvoke(
-            phase1_result,
-            config={
-                "metadata": {
-                    "receipt_id": f"{image_id}/{receipt_id}",
-                    "phase": "phase2",
-                },
-                "tags": ["phase2", "dynamic-analysis"],
-            },
-        )
-    else:
-        print("No currency labels found - skipping Phase 2")
-        # No currency labels, just add empty line_item_labels and combine
-        result = await combine_results(
-            {**phase1_result, "line_item_labels": []}
-        )
-
     processing_time = time.time() - start_time
+    print(f"\n⚡ UNIFIED EXECUTION TIME: {processing_time:.2f}s")
 
     return ReceiptAnalysis(
         discovered_labels=result["discovered_labels"],
