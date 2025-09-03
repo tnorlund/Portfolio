@@ -4,6 +4,10 @@ from .currency_validation import (
     CurrencyClassificationResponse,
     CurrencyLabel,
     ReceiptAnalysis,
+    ReceiptTextGroup,
+    CurrencyItem,
+    LineItem,
+    SimpleReceiptResponse,
 )
 
 __all__ = [
@@ -12,4 +16,8 @@ __all__ = [
     "CurrencyClassificationResponse",
     "CurrencyLabel",
     "ReceiptAnalysis",
+    "ReceiptTextGroup",
+    "CurrencyItem",
+    "LineItem",
+    "SimpleReceiptResponse",
 ]
