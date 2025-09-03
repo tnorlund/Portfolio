@@ -33,6 +33,20 @@ def setup_environment():
     return True
 
 
+def setup_langsmith_tracing(project_name: str = "receipt-label-analysis"):
+    """Setup LangSmith tracing for LLM interactions."""
+    langchain_api_key = os.getenv("LANGCHAIN_API_KEY")
+    
+    if langchain_api_key and langchain_api_key.strip():
+        os.environ["LANGCHAIN_TRACING_V2"] = "true"
+        os.environ["LANGCHAIN_PROJECT"] = project_name
+        print("✅ LangSmith tracing enabled")
+        print(f"   Project: {project_name}")
+        print(f"   View traces at: https://smith.langchain.com/")
+    else:
+        print("⚠️ LANGCHAIN_API_KEY not set - tracing disabled")
+
+
 def list_available_receipts(client: DynamoClient, merchant_filter: Optional[str] = None):
     """List available receipts in the database."""
     print("📋 AVAILABLE RECEIPTS")
@@ -75,6 +89,9 @@ async def analyze_single_receipt(
     
     print(f"🔍 ANALYZING RECEIPT: {image_id}/{receipt_id}")
     print("=" * 60)
+    
+    # Setup LangSmith tracing with dynamic project name
+    setup_langsmith_tracing(f"receipt-analysis-{image_id[:8]}")
     
     # Check if receipt exists
     try:
