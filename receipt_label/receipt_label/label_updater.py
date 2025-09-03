@@ -198,14 +198,23 @@ class ReceiptLabelUpdater:
                 self.client.add_receipt_word_label(new_label)
                 logger.info(f"Added {currency_label.label_type.value} label to word '{best_match.word.text}' (${currency_label.value:.2f})")
             elif action == "update":
-                # Find the conflicting label and consolidate it (preserve full audit trail)
-                conflicting_label = next(
-                    (label for label in existing_labels if label.label != currency_label.label_type.value), 
-                    None
-                )
-                if conflicting_label:
-                    # APPEND-ONLY APPROACH: Never delete original labels!
-                    # Just add a new consolidated label that supersedes the old one
+                # Find the currently VALID conflicting label
+                valid_conflicting_labels = [
+                    label for label in existing_labels 
+                    if label.validation_status == ValidationStatus.VALID.value 
+                    and label.label != currency_label.label_type.value
+                ]
+                
+                if valid_conflicting_labels:
+                    # Should only be one VALID conflicting label
+                    conflicting_label = valid_conflicting_labels[0]
+                    
+                    # Step 1: Mark the conflicting label as INVALID
+                    conflicting_label.validation_status = ValidationStatus.INVALID.value
+                    conflicting_label.reasoning = f"Superseded by {currency_label.label_type.value} from LLM analysis. Original reasoning: {conflicting_label.reasoning}"
+                    self.client.update_receipt_word_label(conflicting_label)
+                    
+                    # Step 2: Add new VALID consolidated label
                     consolidated_label = ReceiptWordLabel(
                         image_id=image_id,
                         receipt_id=receipt_id,
@@ -219,12 +228,8 @@ class ReceiptLabelUpdater:
                         label_consolidated_from=conflicting_label.label  # Preserve history!
                     )
                     
-                    # ONLY ADD - never delete the original label
                     self.client.add_receipt_word_label(consolidated_label)
-                    logger.info(f"Consolidated label for word '{best_match.word.text}': {conflicting_label.label} superseded by {currency_label.label_type.value} (original preserved)")
-                    
-                    # Note: The original conflicting_label remains unchanged in the database
-                    # Queries will need to find the "most recent VALID" label per word
+                    logger.info(f"Updated label for word '{best_match.word.text}': {conflicting_label.label} marked INVALID, {currency_label.label_type.value} added as VALID")
         
         return LabelUpdateResult(
             word=best_match.word,
@@ -329,11 +334,13 @@ class ReceiptLabelUpdater:
         if not existing_labels:
             return "add"
         
-        # Check if exact same label type already exists
-        existing_types = {label.label for label in existing_labels}
+        # Find currently VALID labels (not historical ones)
+        valid_labels = [label for label in existing_labels if label.validation_status == ValidationStatus.VALID.value]
+        valid_types = {label.label for label in valid_labels}
         
-        if new_label_type in existing_types:
-            return "skip"  # Same label already exists
+        # Check if exact same VALID label type already exists
+        if new_label_type in valid_types:
+            return "skip"  # Same VALID label already exists
         
         # Define mutually exclusive label groups
         currency_types = {LabelType.GRAND_TOTAL.value, LabelType.TAX.value, LabelType.LINE_TOTAL.value, LabelType.SUBTOTAL.value, LabelType.UNIT_PRICE.value}
@@ -341,21 +348,21 @@ class ReceiptLabelUpdater:
         
         # Check for currency label conflicts (mutually exclusive)
         if new_label_type in currency_types:
-            existing_currency_types = existing_types & currency_types
+            existing_currency_types = valid_types & currency_types
             if existing_currency_types:
                 # Special case: LINE_TOTAL takes precedence over UNIT_PRICE
                 if LabelType.LINE_TOTAL.value in existing_currency_types and new_label_type == LabelType.UNIT_PRICE.value:
-                    logger.info(f"Skipping UNIT_PRICE - word already has LINE_TOTAL label (avoiding conflict)")
+                    logger.info(f"Skipping UNIT_PRICE - word already has VALID LINE_TOTAL label (avoiding conflict)")
                     return "skip"  # LINE_TOTAL takes precedence
                 
-                logger.warning(f"Currency label conflict: existing {existing_currency_types}, new {new_label_type}")
+                logger.warning(f"Currency label conflict: existing VALID {existing_currency_types}, new {new_label_type}")
                 return "update"  # Replace conflicting currency label
         
         # Line-item component labels can coexist, but check for duplicates
         elif new_label_type in line_item_types:
             # These can coexist with currency labels, but not duplicate their own type
-            if new_label_type in existing_types:
-                return "skip"  # Same line-item component already exists
+            if new_label_type in valid_types:
+                return "skip"  # Same VALID line-item component already exists
         
         return "add"  # No conflicts, safe to add
 
