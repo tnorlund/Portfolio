@@ -84,13 +84,24 @@ class ReceiptTextReconstructor:
         # Group visually contiguous lines using the same logic as _format_receipt_lines
         grouped = self._group_visual_lines(sorted_lines)
 
-        # Build formatted text with line ID ranges
+        # Helper to format IDs: use range only if strictly consecutive; otherwise comma-separated
+        def _format_ids_smart(ids: List[int]) -> str:
+            if not ids:
+                return ":"
+            unique_sorted = sorted(set(ids))
+            if len(unique_sorted) == 1:
+                return f"{unique_sorted[0]}:"
+            is_consecutive = all(
+                (b - a) == 1 for a, b in zip(unique_sorted, unique_sorted[1:])
+            )
+            if is_consecutive:
+                return f"{unique_sorted[0]}-{unique_sorted[-1]}:"
+            return f"{','.join(str(i) for i in unique_sorted)}:"
+
+        # Build formatted text with smart ID display
         formatted_lines = []
         for ids, text in grouped:
-            if len(ids) == 1:
-                formatted_lines.append(f"{ids[0]}: {text}")
-            else:
-                formatted_lines.append(f"{ids[0]}-{ids[-1]}: {text}")
+            formatted_lines.append(f"{_format_ids_smart(ids)} {text}")
 
         formatted_text = "\n".join(formatted_lines)
 
@@ -114,42 +125,51 @@ class ReceiptTextReconstructor:
     def _group_visual_lines(
         self, lines: List[ReceiptLine]
     ) -> List[Tuple[List[int], str]]:
-        """Group visually contiguous lines based on Y coordinate overlap."""
+        """Group visually contiguous lines based on Y coordinate overlap.
+
+        Important: This function preserves the input order. Callers should
+        pre-sort `lines` into visual order (e.g., by descending centroid Y).
+        We do NOT re-sort by `line_id` here because those IDs are not
+        guaranteed to reflect visual placement and doing so can scramble rows.
+        """
         if not lines:
             return []
 
-        # Sort lines by line_id to ensure proper order
-        sorted_lines = sorted(lines, key=lambda x: x.line_id)
+        # Initialize with the first line; we will keep actual line objects in
+        # the current group so we can sort left->right before rendering.
+        grouped_pairs: List[Tuple[List[int], str]] = []
+        current_group: List[ReceiptLine] = [lines[0]]
 
-        # Initialize first group
-        grouped = []
-        current_ids = [sorted_lines[0].line_id]
-        current_text = sorted_lines[0].text
+        for prev_line, curr_line in zip(lines, lines[1:]):
+            _cx, cy = curr_line.calculate_centroid()
 
-        for prev_line, curr_line in zip(sorted_lines, sorted_lines[1:]):
-            curr_id = curr_line.line_id
-            centroid = curr_line.calculate_centroid()
-
-            # Decide if on same visual line as previous
-            if (
-                prev_line.bottom_left["y"]
-                < centroid[1]
-                < prev_line.top_left["y"]
-            ):
-                # Same group: append text
-                current_ids.append(curr_id)
-                current_text += " " + curr_line.text
+            # Same visual row if the current centroid Y falls within the
+            # previous line's vertical span. In this coordinate system, higher
+            # rows have larger Y values.
+            if prev_line.bottom_left["y"] < cy < prev_line.top_left["y"]:
+                current_group.append(curr_line)
             else:
-                # Flush previous group
-                grouped.append((current_ids, current_text))
-                # Start new group
-                current_ids = [curr_id]
-                current_text = curr_line.text
+                # Flush the completed group, sorting tokens left->right
+                current_group_sorted = sorted(
+                    current_group,
+                    key=lambda l: l.calculate_centroid()[0],
+                )
+                ids = [l.line_id for l in current_group_sorted]
+                text = " ".join(l.text for l in current_group_sorted)
+                grouped_pairs.append((ids, text))
 
-        # Flush final group
-        grouped.append((current_ids, current_text))
+                # Start a new group
+                current_group = [curr_line]
 
-        return grouped
+        # Flush the final group
+        current_group_sorted = sorted(
+            current_group, key=lambda l: l.calculate_centroid()[0]
+        )
+        ids = [l.line_id for l in current_group_sorted]
+        text = " ".join(l.text for l in current_group_sorted)
+        grouped_pairs.append((ids, text))
+
+        return grouped_pairs
 
     def add_spatial_markers(
         self, formatted_text: str, text_groups: List[ReceiptTextGroup]
