@@ -60,7 +60,7 @@ def get_receipts_to_process(
             receipts, _ = client.get_receipt_metadatas_by_merchant(merchant_filter, limit=limit)
         else:
             print(f"   Getting all receipts (limit: {limit or 'none'})")
-            receipts, _ = client.list_receipt_metadatas(limit=limit or 100)
+            receipts, _ = client.list_receipt_metadatas(limit=limit)
         
         receipt_list = [(r.image_id, r.receipt_id, r.canonical_merchant_name or r.merchant_name or "Unknown") 
                        for r in receipts]

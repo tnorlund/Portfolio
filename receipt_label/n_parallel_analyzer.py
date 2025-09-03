@@ -65,12 +65,16 @@ class NParallelState(TypedDict):
 
 
 # Pydantic model for individual line-item analysis (20B model)
+class WordLabel(BaseModel):
+    """Label for a single word."""
+    word: str = Field(description="The exact word from the receipt")
+    label: str = Field(description="Label type: PRODUCT_NAME, QUANTITY, or UNIT_PRICE")
+    confidence: float = Field(ge=0.0, le=1.0, description="Confidence in this label")
+
 class SingleLineItemResponse(BaseModel):
-    """Response for analyzing a single line item."""
+    """Response for analyzing a single line item with per-word labels."""
     
-    product_name: Optional[str] = Field(default=None, description="Product description")
-    quantity: Optional[str] = Field(default=None, description="Quantity with units")
-    unit_price: Optional[float] = Field(default=None, description="Price per unit")
+    word_labels: List[WordLabel] = Field(description="Labels for individual words")
     reasoning: str = Field(description="Explanation of the analysis")
 
 
@@ -133,26 +137,34 @@ async def analyze_single_line_item(
     # Create output parser
     output_parser = PydanticOutputParser(pydantic_object=SingleLineItemResponse)
     
-    # Simple, focused prompt for single line analysis
-    template = """You are analyzing ONE line item from a receipt.
+    # Per-word labeling prompt
+    template = """You are analyzing ONE line item from a receipt and labeling individual words.
 
 LINE TO ANALYZE:
 "{line_text}"
-Known LINE_TOTAL: ${line_total:.2f}
 
-TASK: Extract the components from this single line:
-1. PRODUCT_NAME: The item description (e.g., "CHIPS", "MILK", "SUGAR")
-2. QUANTITY: Amount purchased (e.g., "2", "1 lb") if present
-3. UNIT_PRICE: Price per unit (e.g., 1.99) if present
+TASK: Label each word individually with one of these types:
+- PRODUCT_NAME: Words describing the item (e.g., "ORGANIC", "BANANAS", "CHIPS")
+- QUANTITY: Words indicating amount (e.g., "2", "LB", "CT", "EACH")  
+- UNIT_PRICE: Price amounts (e.g., "1.99", "$5.98")
 
-The line shows: product name followed by price.
-Focus only on this one line. Extract what's clearly present.
+For each word in the line, determine its label type. If a word doesn't fit any category, don't include it.
+
+Example:
+Line: "ORGANIC BANANAS 2 LB 3.99"
+Response: [
+  {{"word": "ORGANIC", "label": "PRODUCT_NAME", "confidence": 0.9}},
+  {{"word": "BANANAS", "label": "PRODUCT_NAME", "confidence": 0.95}},
+  {{"word": "2", "label": "QUANTITY", "confidence": 0.9}},
+  {{"word": "LB", "label": "QUANTITY", "confidence": 0.9}},
+  {{"word": "3.99", "label": "UNIT_PRICE", "confidence": 0.95}}
+]
 
 {format_instructions}"""
 
     prompt_template = PromptTemplate(
         template=template,
-        input_variables=["line_text", "line_total"],
+        input_variables=["line_text"],
         partial_variables={
             "format_instructions": output_parser.get_format_instructions(),
         }
@@ -164,8 +176,7 @@ Focus only on this one line. Extract what's clearly present.
     try:
         response = await chain.ainvoke(
             {
-                "line_text": target.line_text,
-                "line_total": target.line_total_amount
+                "line_text": target.line_text
             },
             config={
                 "metadata": {
@@ -178,50 +189,39 @@ Focus only on this one line. Extract what's clearly present.
             }
         )
         
-        # Convert response to CurrencyLabel objects
+        # Convert word labels to CurrencyLabel objects
         line_item_labels = []
         
-        if response.product_name:
-            product_label = CurrencyLabel(
-                word_text=response.product_name,
-                label_type=LabelType.PRODUCT_NAME,
+        for word_label in response.word_labels:
+            # Determine label type and value
+            if word_label.label == "PRODUCT_NAME":
+                label_type = LabelType.PRODUCT_NAME
+                value = 0.0
+            elif word_label.label == "QUANTITY":
+                label_type = LabelType.QUANTITY
+                value = 0.0
+            elif word_label.label == "UNIT_PRICE":
+                label_type = LabelType.UNIT_PRICE
+                try:
+                    # Parse currency value
+                    value = float(word_label.word.replace('$', '').replace(',', ''))
+                except:
+                    value = 0.0
+            else:
+                continue  # Skip unknown label types
+            
+            currency_label = CurrencyLabel(
+                word_text=word_label.word,
+                label_type=label_type,
                 line_number=target.line_ids[0] if target.line_ids else 0,
                 line_ids=target.line_ids,
-                confidence=0.95,
-                reasoning=f"Product name from {target.target_id}: {response.reasoning}",
-                value=0.0,
+                confidence=word_label.confidence,
+                reasoning=f"Word-level {word_label.label} from {target.target_id}: {response.reasoning}",
+                value=value,
                 position_y=0.5,
                 context=target.line_text
             )
-            line_item_labels.append(product_label)
-        
-        if response.quantity:
-            quantity_label = CurrencyLabel(
-                word_text=response.quantity,
-                label_type=LabelType.QUANTITY,
-                line_number=target.line_ids[0] if target.line_ids else 0,
-                line_ids=target.line_ids,
-                confidence=0.95,
-                reasoning=f"Quantity from {target.target_id}: {response.reasoning}",
-                value=0.0,
-                position_y=0.5,
-                context=target.line_text
-            )
-            line_item_labels.append(quantity_label)
-        
-        if response.unit_price:
-            unit_price_label = CurrencyLabel(
-                word_text=str(response.unit_price),
-                label_type=LabelType.UNIT_PRICE,
-                line_number=target.line_ids[0] if target.line_ids else 0,
-                line_ids=target.line_ids,
-                confidence=0.95,
-                reasoning=f"Unit price from {target.target_id}: {response.reasoning}",
-                value=response.unit_price,
-                position_y=0.5,
-                context=target.line_text
-            )
-            line_item_labels.append(unit_price_label)
+            line_item_labels.append(currency_label)
         
         print(f"   ✅ {target.target_id}: Found {len(line_item_labels)} components")
         return line_item_labels
@@ -278,9 +278,14 @@ async def combine_results(state: NParallelState) -> NParallelState:
     # Collect all line-item labels from parallel results
     # line_item_results is now a list of labels from all parallel nodes
     line_item_results = state["line_item_results"] or []
-    line_item_labels = line_item_results  # Already a flat list
+    raw_line_item_labels = line_item_results  # Already a flat list
     
-    print(f"   Received {len(line_item_labels)} total components from parallel nodes")
+    print(f"   Received {len(raw_line_item_labels)} total components from parallel nodes")
+    
+    # Phase 2 line-item labels (conflict resolution happens during label application)
+    line_item_labels = raw_line_item_labels
+    
+    print(f"   Phase 2 labels: {len(line_item_labels)} (conflict filtering during application)")
     
     all_labels = currency_labels + line_item_labels
     

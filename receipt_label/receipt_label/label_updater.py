@@ -343,6 +343,11 @@ class ReceiptLabelUpdater:
         if new_label_type in currency_types:
             existing_currency_types = existing_types & currency_types
             if existing_currency_types:
+                # Special case: LINE_TOTAL takes precedence over UNIT_PRICE
+                if LabelType.LINE_TOTAL.value in existing_currency_types and new_label_type == LabelType.UNIT_PRICE.value:
+                    logger.info(f"Skipping UNIT_PRICE - word already has LINE_TOTAL label (avoiding conflict)")
+                    return "skip"  # LINE_TOTAL takes precedence
+                
                 logger.warning(f"Currency label conflict: existing {existing_currency_types}, new {new_label_type}")
                 return "update"  # Replace conflicting currency label
         
