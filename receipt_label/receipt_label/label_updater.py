@@ -226,40 +226,40 @@ class ReceiptLabelUpdater:
                         # No existing target label, add it as VALID
                         self.client.add_receipt_word_label(new_label)
                         logger.info(f"Added {target_label_type} as VALID during consolidation")
+                        
+                elif action == "update":
+                    # Find the currently VALID conflicting label
+                    valid_conflicting_labels = [
+                        label for label in existing_labels 
+                        if label.validation_status == ValidationStatus.VALID.value 
+                        and label.label != currency_label.label_type.value
+                    ]
                     
-            elif action == "update":
-                # Find the currently VALID conflicting label
-                valid_conflicting_labels = [
-                    label for label in existing_labels 
-                    if label.validation_status == ValidationStatus.VALID.value 
-                    and label.label != currency_label.label_type.value
-                ]
-                
-                if valid_conflicting_labels:
-                    # Should only be one VALID conflicting label
-                    conflicting_label = valid_conflicting_labels[0]
-                    
-                    # Step 1: Mark the conflicting label as INVALID
-                    conflicting_label.validation_status = ValidationStatus.INVALID.value
-                    conflicting_label.reasoning = f"Superseded by {currency_label.label_type.value} from LLM analysis. Original reasoning: {conflicting_label.reasoning}"
-                    self.client.update_receipt_word_label(conflicting_label)
-                    
-                    # Step 2: Add new VALID consolidated label
-                    consolidated_label = ReceiptWordLabel(
-                        image_id=image_id,
-                        receipt_id=receipt_id,
-                        line_id=best_match.word.line_id,
-                        word_id=best_match.word.word_id,
-                        label=currency_label.label_type.value,  # New correct label
-                        reasoning=f"LLM Consolidation: {currency_label.reasoning} (confidence: {currency_label.confidence:.2f}). Supersedes previous '{conflicting_label.label}' label.",
-                        timestamp_added=datetime.now(),
-                        validation_status=ValidationStatus.VALID.value,
-                        label_proposed_by=f"{self.merchant_name.lower()}_analyzer_llm",
-                        label_consolidated_from=conflicting_label.label  # Preserve history!
-                    )
-                    
-                    self.client.add_receipt_word_label(consolidated_label)
-                    logger.info(f"Updated label for word '{best_match.word.text}': {conflicting_label.label} marked INVALID, {currency_label.label_type.value} added as VALID")
+                    if valid_conflicting_labels:
+                        # Should only be one VALID conflicting label
+                        conflicting_label = valid_conflicting_labels[0]
+                        
+                        # Step 1: Mark the conflicting label as INVALID
+                        conflicting_label.validation_status = ValidationStatus.INVALID.value
+                        conflicting_label.reasoning = f"Superseded by {currency_label.label_type.value} from LLM analysis. Original reasoning: {conflicting_label.reasoning}"
+                        self.client.update_receipt_word_label(conflicting_label)
+                        
+                        # Step 2: Add new VALID consolidated label
+                        consolidated_label = ReceiptWordLabel(
+                            image_id=image_id,
+                            receipt_id=receipt_id,
+                            line_id=best_match.word.line_id,
+                            word_id=best_match.word.word_id,
+                            label=currency_label.label_type.value,  # New correct label
+                            reasoning=f"LLM Consolidation: {currency_label.reasoning} (confidence: {currency_label.confidence:.2f}). Supersedes previous '{conflicting_label.label}' label.",
+                            timestamp_added=datetime.now(),
+                            validation_status=ValidationStatus.VALID.value,
+                            label_proposed_by=f"{self.merchant_name.lower()}_analyzer_llm",
+                            label_consolidated_from=conflicting_label.label  # Preserve history!
+                        )
+                        
+                        self.client.add_receipt_word_label(consolidated_label)
+                        logger.info(f"Updated label for word '{best_match.word.text}': {conflicting_label.label} marked INVALID, {currency_label.label_type.value} added as VALID")
                     
             except Exception as e:
                 error_msg = str(e)
