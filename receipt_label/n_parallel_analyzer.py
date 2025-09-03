@@ -416,20 +416,14 @@ async def analyze_receipt_n_parallel(
     currency_contexts = reconstructor.extract_currency_context(text_groups)
     print(f"💰 Found {len(currency_contexts)} currency amounts")
     
-    # First, do a quick analysis to determine LINE_TOTAL count
-    print(f"🔍 Pre-analysis to determine parallel node count...")
-    temp_labels = await analyze_with_ollama(
-        formatted_receipt_text,
-        currency_contexts,
-        lines=lines
-    )
-    line_totals = [l for l in temp_labels if l.label_type == LabelType.LINE_TOTAL]
-    line_total_count = len(line_totals)
+    # Estimate parallel node count from currency contexts (avoid extra LLM call)
+    # Most receipts have 2-6 line items, so use conservative estimate
+    estimated_line_total_count = min(max(len(currency_contexts) // 8, 2), 8)  # 2-8 nodes
+    print(f"🔍 Estimated {estimated_line_total_count} LINE_TOTAL amounts from {len(currency_contexts)} currency contexts")
+    print(f"📈 Creating graph with {estimated_line_total_count} parallel Phase 2 nodes")
     
-    print(f"📈 Creating graph with {line_total_count} parallel Phase 2 nodes")
-    
-    # Create dynamic graph based on LINE_TOTAL count
-    graph = create_n_parallel_graph(line_total_count)
+    # Create dynamic graph based on estimated LINE_TOTAL count
+    graph = create_n_parallel_graph(estimated_line_total_count)
     
     # Initial state
     initial_state = NParallelState(
