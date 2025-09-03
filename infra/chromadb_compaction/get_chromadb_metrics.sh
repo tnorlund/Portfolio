@@ -317,19 +317,12 @@ aws cloudwatch get-metric-statistics \
 
 echo ""
 
-# S3 Storage Metrics
+# S3 Storage Metrics (basic info only - no listing for performance)
 echo "=== S3 STORAGE ==="
 
-echo "ChromaDB Bucket (${CHROMADB_BUCKET}):"
-echo "Current Contents:"
-aws s3 ls "s3://${CHROMADB_BUCKET}" --summarize || echo "Unable to list bucket (missing or access denied)"
-
-echo ""
-echo "Bucket Structure (first 10 files):"
-aws s3api list-objects-v2 --bucket "${CHROMADB_BUCKET}" --max-keys 10 --query 'Contents[].[LastModified,Size,Key]' --output table 2>/dev/null || echo "Unable to list bucket contents"
+echo "ChromaDB Bucket: ${CHROMADB_BUCKET}"
 
 # Try to get S3 CloudWatch metrics (may be empty)
-echo ""
 echo "S3 CloudWatch Metrics (if available):"
 aws --region us-east-1 cloudwatch get-metric-statistics \
   --namespace AWS/S3 \
