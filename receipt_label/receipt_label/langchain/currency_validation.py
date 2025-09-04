@@ -49,7 +49,7 @@ def save_state_for_development(
     stage: str = "combine_results",
     receipt_id: str = None,
     save_format: str = "json",  # "json", "pickle", "both"
-    output_dir: str = "./dev_states",
+    output_dir: str = "./dev.states",
 ) -> dict:
     """Save workflow state for development and debugging.
 
