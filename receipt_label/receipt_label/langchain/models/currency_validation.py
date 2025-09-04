@@ -24,6 +24,23 @@ class LabelType(str, Enum):
     UNIT_PRICE = "UNIT_PRICE"
 
 
+class CurrencyLabelType(str, Enum):
+    """Currency labels."""
+
+    GRAND_TOTAL = "GRAND_TOTAL"
+    TAX = "TAX"
+    LINE_TOTAL = "LINE_TOTAL"
+    SUBTOTAL = "SUBTOTAL"
+
+
+class LineItemLabelType(str, Enum):
+    """Line-item component labels."""
+
+    PRODUCT_NAME = "PRODUCT_NAME"
+    QUANTITY = "QUANTITY"
+    UNIT_PRICE = "UNIT_PRICE"
+
+
 @dataclass
 class ReceiptTextGroup:
     """A group of visually contiguous receipt lines."""
@@ -44,11 +61,36 @@ class SpatialMarker:
 class CurrencyLabel(BaseModel):
     """A discovered currency label with LLM reasoning."""
 
-    word_text: str = Field(description="The exact text of the currency amount")
-    label_type: LabelType = Field(description="The classified label type")
+    line_text: str = Field(description="The exact text of the currency amount")
+    amount: float = Field(description="The currency amount value")
+    label_type: CurrencyLabelType = Field(
+        description="The classified label type"
+    )
     line_ids: List[int] = Field(
         default_factory=list,
         description="Underlying OCR line_id values contributing to this group",
+    )
+    confidence: float = Field(
+        ge=0.0, le=1.0, description="Confidence in this classification"
+    )
+    reasoning: str = Field(
+        description="Explanation for why this classification was chosen"
+    )
+
+
+class LineItemLabel(BaseModel):
+    """A discovered line-item label with LLM reasoning."""
+
+    line_text: str = Field(description="The exact text on the line")
+    word_text: str = Field(
+        description="The exact text of th specific word that's being labeled"
+    )
+    label_type: LineItemLabelType = Field(
+        description="The classified label type"
+    )
+    line_ids: List[int] = Field(
+        default_factory=list,
+        description="Underlying OCR line_id values contributing to this word",
     )
     confidence: float = Field(
         ge=0.0, le=1.0, description="Confidence in this classification"
@@ -62,7 +104,9 @@ class CurrencyClassificationItem(BaseModel):
     """Individual currency classification item."""
 
     amount: float = Field(description="The currency amount value")
-    label_type: LabelType = Field(description="The predicted label type")
+    label_type: CurrencyLabelType = Field(
+        description="The predicted label type"
+    )
     line_number: int = Field(description="Line number in the receipt")
     confidence: float = Field(
         ge=0.0, le=1.0, description="Confidence in this classification"
@@ -144,6 +188,28 @@ class SimpleReceiptResponse(BaseModel):
         description="Currency classifications"
     )
     line_items: List[LineItem] = Field(description="Product line items")
+    reasoning: str = Field(description="Overall analysis reasoning")
+    confidence: float = Field(
+        ge=0.0, le=1.0, description="Overall confidence score"
+    )
+
+
+class Phase1Response(BaseModel):
+    """Response model for phase 1."""
+
+    currency_labels: List[CurrencyLabel] = Field(
+        description="Currency classifications"
+    )
+    reasoning: str = Field(description="Overall analysis reasoning")
+    confidence: float = Field(
+        ge=0.0, le=1.0, description="Overall confidence score"
+    )
+
+
+class Phase2Response(BaseModel):
+    line_item_labels: List[LineItemLabel] = Field(
+        description="Line item classifications"
+    )
     reasoning: str = Field(description="Overall analysis reasoning")
     confidence: float = Field(
         ge=0.0, le=1.0, description="Overall confidence score"

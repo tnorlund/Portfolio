@@ -1,23 +1,31 @@
 from .currency_validation import (
-    LabelType,
+    CurrencyLabelType,
+    LineItemLabelType,
     CurrencyClassificationItem,
     CurrencyClassificationResponse,
     CurrencyLabel,
+    LineItemLabel,
     ReceiptAnalysis,
     ReceiptTextGroup,
     CurrencyItem,
     LineItem,
     SimpleReceiptResponse,
+    Phase1Response,
+    Phase2Response,
 )
 
 __all__ = [
-    "LabelType",
+    "CurrencyLabelType",
+    "LineItemLabelType",
     "CurrencyClassificationItem",
     "CurrencyClassificationResponse",
     "CurrencyLabel",
+    "LineItemLabel",
     "ReceiptAnalysis",
     "ReceiptTextGroup",
     "CurrencyItem",
     "LineItem",
     "SimpleReceiptResponse",
+    "Phase1Response",
+    "Phase2Response",
 ]
