@@ -4,7 +4,7 @@ Extracted from costco_label_discovery.py to improve modularity.
 """
 
 from enum import Enum
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Union
 from dataclasses import dataclass
 from pydantic import BaseModel, Field
 
@@ -61,8 +61,14 @@ class SpatialMarker:
 class CurrencyLabel(BaseModel):
     """A discovered currency label with LLM reasoning."""
 
-    line_text: str = Field(description="The exact text of the currency amount")
-    amount: float = Field(description="The currency amount value")
+    line_text: str = Field(
+        description="The exact text on the line of the receipt. This is the "
+        "text to the right of the line IDs and colon."
+    )
+    amount: float = Field(
+        description="The currency amount value. This amount is the number that "
+        "is the GRAND_TOTAL, TAX, LINE_TOTAL, or SUBTOTAL."
+    )
     label_type: CurrencyLabelType = Field(
         description="The classified label type"
     )
@@ -81,16 +87,11 @@ class CurrencyLabel(BaseModel):
 class LineItemLabel(BaseModel):
     """A discovered line-item label with LLM reasoning."""
 
-    line_text: str = Field(description="The exact text on the line")
     word_text: str = Field(
         description="The exact text of th specific word that's being labeled"
     )
     label_type: LineItemLabelType = Field(
         description="The classified label type"
-    )
-    line_ids: List[int] = Field(
-        default_factory=list,
-        description="Underlying OCR line_id values contributing to this word",
     )
     confidence: float = Field(
         ge=0.0, le=1.0, description="Confidence in this classification"
@@ -133,7 +134,7 @@ class ReceiptAnalysis(BaseModel):
 
     receipt_id: str
     known_total: float
-    discovered_labels: List[CurrencyLabel]
+    discovered_labels: List[Union[CurrencyLabel, LineItemLabel]]
     validation_results: (
         Dict  # Allow any values including None for missing validations
     )
@@ -208,7 +209,7 @@ class Phase1Response(BaseModel):
 
 class Phase2Response(BaseModel):
     line_item_labels: List[LineItemLabel] = Field(
-        description="Line item classifications"
+        description="Line item classifications (line_ids optional, ignored)"
     )
     reasoning: str = Field(description="Overall analysis reasoning")
     confidence: float = Field(
