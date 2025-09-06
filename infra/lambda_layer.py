@@ -687,12 +687,12 @@ echo "🎉 Parallel function updates completed!"'''
             opts=pulumi.ResourceOptions(parent=self),
         )
 
-        # Configure versioning as a separate resource
-        aws.s3.BucketVersioningV2(
-            f"{self.name}-artifacts-versioning",
+        # Configure versioning as a separate resource and keep a handle for dependency ordering
+        bucket_versioning = aws.s3.BucketVersioning(
+            f"{self.name}-artifacts-versioning_test",
             bucket=build_bucket.id,
             versioning_configuration=(
-                aws.s3.BucketVersioningV2VersioningConfigurationArgs(
+                aws.s3.BucketVersioningVersioningConfigurationArgs(
                     status="Enabled"
                 )
             ),
@@ -1200,7 +1200,9 @@ echo "🎉 Parallel function updates completed!"'''
                     ],
                 ),
             ],
-            opts=pulumi.ResourceOptions(parent=self),
+            opts=pulumi.ResourceOptions(
+                parent=self, depends_on=[bucket_versioning]
+            ),
         )
 
         # Trigger pipeline run when source is updated
@@ -1623,7 +1625,9 @@ layers_to_build = [
 
 # Create Lambda layers using the fast approach
 # TEMPORARILY SKIP LAYER BUILDING
-SKIP_LAYER_BUILDING = os.environ.get("PYTEST_RUNNING") == "1" or False  # Skip building during tests
+SKIP_LAYER_BUILDING = (
+    os.environ.get("PYTEST_RUNNING") == "1" or False
+)  # Skip building during tests
 
 # SYNC MODE: Set to True when ARNs are needed immediately (e.g., after major changes)
 # Set to False for faster pulumi up once layers are stable
