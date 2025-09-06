@@ -6,7 +6,7 @@
 
 # Interface: FormatSupport
 
-Defined in: [utils/image.ts:1](https://github.com/tnorlund/Portfolio/blob/4dc1c3a42fe0571dec0b1939d49c87f0663eed15/portfolio/utils/image.ts#L1)
+Defined in: [utils/image.ts:1](https://github.com/tnorlund/Portfolio/blob/ed809a84b311878a5d5ab0478e10ed8cf2141530/portfolio/utils/image.ts#L1)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [utils/image.ts:1](https://github.com/tnorlund/Portfolio/blob/4dc1c3
 
 > **supportsAVIF**: `boolean`
 
-Defined in: [utils/image.ts:2](https://github.com/tnorlund/Portfolio/blob/4dc1c3a42fe0571dec0b1939d49c87f0663eed15/portfolio/utils/image.ts#L2)
+Defined in: [utils/image.ts:2](https://github.com/tnorlund/Portfolio/blob/ed809a84b311878a5d5ab0478e10ed8cf2141530/portfolio/utils/image.ts#L2)
 
 ***
 
@@ -22,4 +22,4 @@ Defined in: [utils/image.ts:2](https://github.com/tnorlund/Portfolio/blob/4dc1c3
 
 > **supportsWebP**: `boolean`
 
-Defined in: [utils/image.ts:3](https://github.com/tnorlund/Portfolio/blob/4dc1c3a42fe0571dec0b1939d49c87f0663eed15/portfolio/utils/image.ts#L3)
+Defined in: [utils/image.ts:3](https://github.com/tnorlund/Portfolio/blob/ed809a84b311878a5d5ab0478e10ed8cf2141530/portfolio/utils/image.ts#L3)
