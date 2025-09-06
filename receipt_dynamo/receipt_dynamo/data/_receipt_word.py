@@ -394,14 +394,21 @@ class _ReceiptWord(
             key_condition_expression=(
                 "#pk = :pk_val AND begins_with(#sk, :sk_val)"
             ),
-            expression_attribute_names={"#pk": "PK", "#sk": "SK"},
+            expression_attribute_names={
+                "#pk": "PK",
+                "#sk": "SK",
+                "#type": "TYPE",
+            },
             expression_attribute_values={
                 ":pk_val": {"S": f"IMAGE#{image_id}"},
                 ":sk_val": {
                     "S": f"RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#"
                 },
+                ":type": {"S": "RECEIPT_WORD"},
             },
             converter_func=item_to_receipt_word,
+            # Filter to only words (exclude labels/items sharing the SK prefix)
+            filter_expression="#type = :type",
         )
         return results
 
