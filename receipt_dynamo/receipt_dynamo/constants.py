@@ -13,7 +13,7 @@ class ValidationStatus(str, Enum):
     PENDING = "PENDING"  # Validation has been queued
     VALID = "VALID"  # Validation succeeded
     INVALID = "INVALID"  # Validation rejected
-    NEEDS_REVIEW = "NEEDS_REVIEW"  # Validation needs review
+    NEEDS_REVIEW = "NEEDS_REVIEW"  # Validation needs review test
 
 
 class BatchStatus(str, Enum):
