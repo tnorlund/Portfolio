@@ -38,6 +38,7 @@ from receipt_label.langchain.models import (
     Phase2Response,
 )
 from receipt_dynamo.entities import ReceiptLine, ReceiptMetadata
+from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 from datetime import datetime
 from receipt_label.utils.text_reconstruction import ReceiptTextReconstructor
@@ -150,23 +151,29 @@ def prepare_state_for_serialization(state: dict) -> dict:
             "line_item_labels",
             "discovered_labels",
         ]:
-            # Convert CurrencyLabel objects to dicts
+            # Convert label objects (CurrencyLabel or LineItemLabel) to dicts
             if isinstance(value, list):
-                serializable_state[key] = [
-                    {
-                        "line_text": label.line_text,
-                        "amount": label.amount,
+                serialized_list = []
+                for label in value:
+                    item = {
+                        "line_text": getattr(label, "line_text", None),
                         "label_type": (
                             label.label_type.value
                             if hasattr(label.label_type, "value")
-                            else str(label.label_type)
+                            else str(getattr(label, "label_type", ""))
                         ),
-                        "line_ids": label.line_ids,
-                        "confidence": label.confidence,
-                        "reasoning": label.reasoning,
+                        "line_ids": getattr(label, "line_ids", []),
+                        "confidence": getattr(label, "confidence", 0.0),
+                        "reasoning": getattr(label, "reasoning", None),
                     }
-                    for label in value
-                ]
+                    # CurrencyLabel has amount
+                    if hasattr(label, "amount"):
+                        item["amount"] = getattr(label, "amount")
+                    # LineItemLabel has word_text
+                    if hasattr(label, "word_text"):
+                        item["word_text"] = getattr(label, "word_text")
+                    serialized_list.append(item)
+                serializable_state[key] = serialized_list
             else:
                 serializable_state[key] = value
 
@@ -182,6 +189,23 @@ def prepare_state_for_serialization(state: dict) -> dict:
                         "confidence": getattr(line, "confidence", 0.0),
                     }
                     for line in value
+                ]
+            else:
+                serializable_state[key] = value
+
+        elif key == "words":
+            # Convert ReceiptWord objects to basic info
+            if isinstance(value, list):
+                serializable_state[key] = [
+                    {
+                        "receipt_id": word.receipt_id,
+                        "image_id": word.image_id,
+                        "line_id": word.line_id,
+                        "word_id": word.word_id,
+                        "text": getattr(word, "text", "<no text>"),
+                        "confidence": getattr(word, "confidence", 0.0),
+                    }
+                    for word in value
                 ]
             else:
                 serializable_state[key] = value
@@ -231,14 +255,16 @@ class CurrencyAnalysisState(TypedDict):
     receipt_id: str
     image_id: str
     lines: List[ReceiptLine]
+    words: List[ReceiptWord]
     formatted_text: str
     dynamo_client: DynamoClient  # Added for word label creation
+    existing_word_labels: List[ReceiptWordLabel]
 
     # Phase 1 Results
     currency_labels: List[CurrencyLabel]
 
     # Phase 2 Results - Uses reducer to combine parallel results
-    line_item_labels: Annotated[List[CurrencyLabel], operator.add]
+    line_item_labels: Annotated[List[LineItemLabel], operator.add]
 
     # Final Results
     discovered_labels: List[CurrencyLabel]
@@ -253,11 +279,24 @@ async def load_receipt_data(
 
     print(f"📋 Loading receipt data for {state['receipt_id']}")
 
+    # Load full receipt details (lines + words) for reliable downstream mapping
+    image_id, receipt_id_str = state["receipt_id"].split("/")
+    receipt_id_int = int(receipt_id_str)
+    client: DynamoClient = state["dynamo_client"]
+    details = client.get_receipt_details(image_id, receipt_id_int)
+
+    # Reconstruct formatted text from loaded lines
     formatted_text, _ = ReceiptTextReconstructor().reconstruct_receipt(
-        state["lines"]
+        details.lines
     )
 
-    return {**state, "formatted_text": formatted_text}
+    return {
+        **state,
+        "lines": details.lines,
+        "words": details.words,
+        "existing_word_labels": details.labels,
+        "formatted_text": formatted_text,
+    }
 
 
 async def phase1_currency_analysis(
@@ -326,7 +365,6 @@ Focus on the most obvious currency amounts first.
                 "tags": ["phase1", "currency", "receipt-analysis"],
             },
         )
-
         # Convert to CurrencyLabel objects directly
         currency_labels = [
             CurrencyLabel(
@@ -371,14 +409,39 @@ def dispatch_to_parallel_phase2(
 
     print(f"   Creating {len(line_totals)} parallel Phase 2 tasks")
 
+    # Build quick lookup for words by line_id to compile target line text
+    words: List[ReceiptWord] = state.get("words", []) or []
+    words_by_line: dict[int, List[str]] = {}
+    try:
+        for w in words:
+            words_by_line.setdefault(w.line_id, []).append(
+                getattr(w, "text", "")
+            )
+        # Sort tokens per line by their order if possible (word_id), otherwise keep insertion order
+        # For simplicity, we joined in insertion order from the preloaded list
+    except Exception:
+        pass
+
     # Create Send command for each LINE_TOTAL
     sends = []
     for i, line_total in enumerate(line_totals):
         # Each Send creates a separate instance with its own context
         # API key injected here from closure, not stored in state
+        # Compile target line text from the authoritative Phase 1 line_ids
+        target_lines_text_parts: List[str] = []
+        try:
+            for lid in getattr(line_total, "line_ids", []) or []:
+                tokens = words_by_line.get(lid, [])
+                if tokens:
+                    target_lines_text_parts.append(" ".join(tokens))
+        except Exception:
+            pass
+        compiled_text = " ".join([t for t in target_lines_text_parts if t])
+
         send_data = {
             "line_total_index": i,
             "target_line_total": line_total,
+            "target_line_text_compiled": compiled_text,
             "receipt_text": state["formatted_text"],
             "receipt_id": state["receipt_id"],
             "ollama_api_key": ollama_api_key,  # ✅ Secure injection from closure
@@ -421,9 +484,10 @@ async def phase2_line_analysis(send_data: dict) -> dict:
         f"- {l}: {CORE_LABELS[l]}" for l in subset if l in CORE_LABELS
     )
 
-    template = """You are analyzing a specific line item from a receipt to identify its components.
+    template = """You are analyzing a receipt snippet to identify line item components.
 
-TARGET LINE ITEM: {target_line_text}
+TARGET SNIPPET (COMPILED FROM OCR WORDS):
+{target_line_text}
 TARGET AMOUNT: {target_amount}
 
 CURRENCY CONTEXT FROM PHASE 1:
@@ -432,17 +496,13 @@ CURRENCY CONTEXT FROM PHASE 1:
 FULL RECEIPT CONTEXT:
 {receipt_text}
 
-Focus ONLY on the target line item "{target_line_text}" that contains the amount {target_amount}.
-
-For this specific line item, identify:
+Identify only the components on the target snippet:
 {subset_definitions}
 
-IMPORTANT: 
-1. Only label words that appear in the target line "{target_line_text}". 
-2. Do not label words from other lines in the receipt.
-3. Focus on identifying: PRODUCT_NAME, QUANTITY, UNIT_PRICE for line items
-4. You may also identify currency amounts (LINE_TOTAL, etc.) if they appear in this line
-5. Be precise - label each component separately
+IMPORTANT:
+1. Output only labels for words that could plausibly co-occur with the amount.
+2. Do not include line positions or IDs; only the word text and label type.
+3. Focus on PRODUCT_NAME, QUANTITY, UNIT_PRICE.
 
 {format_instructions}"""
 
@@ -473,8 +533,10 @@ IMPORTANT:
     try:
         response = await chain.ainvoke(
             {
-                "target_line_text": line_total.line_text,
-                "target_amount": line_total.word_text,
+                "target_line_text": send_data.get(
+                    "target_line_text_compiled", ""
+                ),
+                "target_amount": str(getattr(line_total, "amount", "")),
                 "currency_context": currency_context,
                 "receipt_text": receipt_text,
                 "subset_definitions": subset_definitions,
@@ -498,26 +560,30 @@ IMPORTANT:
             LineItemLabelType.UNIT_PRICE.value,
         }
 
-        # Convert to CurrencyLabel objects with validation
+        # Convert LLM output to internal LineItemLabel objects (no line_ids at this stage)
         line_item_labels = []
         for item in response.line_item_labels:
             # ✅ Validate label type is in our allowed subset
-            if item.label_type not in allowed_label_types:
+            lt_value = (
+                item.label_type.value
+                if hasattr(item.label_type, "value")
+                else item.label_type
+            )
+            if lt_value not in allowed_label_types:
                 print(
-                    f"⚠️ Skipping invalid label type '{item.label_type}' for '{item.line_text}' - not in Phase 2 subset"
+                    f"⚠️ Skipping invalid label type '{lt_value}' for '{getattr(item, 'word_text', '')}' - not in Phase 2 subset"
                 )
                 continue
 
             try:
-                label_type = getattr(LineItemLabelType, item.label_type)
+                label_type = getattr(LineItemLabelType, lt_value)
                 label = LineItemLabel(
-                    line_text=item.line_text,
                     word_text=item.word_text,
                     label_type=label_type,
-                    line_ids=item.line_ids,
                     confidence=item.confidence,
                     reasoning=item.reasoning,
                 )
+
                 line_item_labels.append(label)
 
             except AttributeError:
@@ -527,7 +593,7 @@ IMPORTANT:
                 continue
 
         print(
-            f"   ✅ Phase 2.{index}: Found {len(line_item_labels)} labels for {line_total.word_text}"
+            f"   ✅ Phase 2.{index}: Found {len(line_item_labels)} labels for amount {getattr(line_total, 'amount', '')}"
         )
 
         # Return line_item_labels which will be added to the state via the reducer
@@ -594,6 +660,7 @@ def create_unified_analysis_graph(
 def create_receipt_word_labels_from_currency_labels(
     discovered_labels: List[CurrencyLabel],
     lines: List[ReceiptLine],
+    words: List[ReceiptWord] | None,
     image_id: str,
     receipt_id: str,
     client: DynamoClient,
@@ -607,36 +674,83 @@ def create_receipt_word_labels_from_currency_labels(
 
     # Create word mapping: (line_id, word_text) -> List[word_id]
     word_mapping = {}
+    # Global mapping for line-item labels without line constraints: word_text -> List[(line_id, word_id)]
+    global_word_index: dict[str, List[tuple[int, int]]] = {}
+    # For debug: track per-line word texts and word id→text
+    line_to_word_texts = {}
+    word_text_map: dict[tuple, str] = {}
 
-    # Get all words for each line to build the mapping
-    for line in lines:
-        try:
-            # Get all ReceiptWords for this line
-            words = client.list_receipt_words_from_line(
-                actual_receipt_id, image_id, line.line_id
+    # Build mapping from preloaded words if available, else fallback to client per-line
+    if words is None:
+        # Get all words for each line to build the mapping
+        for line in lines:
+            try:
+                _words = client.list_receipt_words_from_line(
+                    image_id=line.image_id,
+                    receipt_id=line.receipt_id,
+                    line_id=line.line_id,
+                )
+                print(
+                    f"   🔎 Loaded {len(_words)} words for line {line.line_id}"
+                )
+                for word in _words:
+                    key = (line.line_id, word.text.strip().upper())
+                    if key not in word_mapping:
+                        word_mapping[key] = []
+                    word_mapping[key].append(word.word_id)
+                    line_to_word_texts.setdefault(line.line_id, set()).add(
+                        word.text.strip().upper()
+                    )
+                    word_text_map[(line.line_id, word.word_id)] = word.text
+                    for token in word.text.strip().split():
+                        token_key = (line.line_id, token.upper())
+                        if token_key not in word_mapping:
+                            word_mapping[token_key] = []
+                        if word.word_id not in word_mapping[token_key]:
+                            word_mapping[token_key].append(word.word_id)
+                    # Populate global index
+                    t = word.text.strip().upper()
+                    if t:
+                        global_word_index.setdefault(t, []).append(
+                            (line.line_id, word.word_id)
+                        )
+                        for tok in t.split():
+                            global_word_index.setdefault(tok, []).append(
+                                (line.line_id, word.word_id)
+                            )
+            except Exception as e:
+                print(
+                    f"   ⚠️ Warning: Could not load words for line {line.line_id}: {e}"
+                )
+                continue
+    else:
+        # Preloaded words: one pass
+        print(f"   🔎 Using preloaded words: {len(words)} total")
+        for word in words:
+            key = (word.line_id, word.text.strip().upper())
+            if key not in word_mapping:
+                word_mapping[key] = []
+            word_mapping[key].append(word.word_id)
+            line_to_word_texts.setdefault(word.line_id, set()).add(
+                word.text.strip().upper()
             )
-            for word in words:
-                # Handle multiple words with same text on same line
-                key = (line.line_id, word.text.strip().upper())
-                if key not in word_mapping:
-                    word_mapping[key] = []
-                word_mapping[key].append(word.word_id)
-
-                # Also create partial matches for compound labels
-                # e.g., "YOGURT 8.99" can match both "YOGURT" and "8.99"
-                word_tokens = word.text.strip().split()
-                for token in word_tokens:
-                    token_key = (line.line_id, token.upper())
-                    if token_key not in word_mapping:
-                        word_mapping[token_key] = []
-                    if word.word_id not in word_mapping[token_key]:
-                        word_mapping[token_key].append(word.word_id)
-
-        except Exception as e:
-            print(
-                f"   ⚠️ Warning: Could not load words for line {line.line_id}: {e}"
-            )
-            continue
+            word_text_map[(word.line_id, word.word_id)] = word.text
+            for token in word.text.strip().split():
+                token_key = (word.line_id, token.upper())
+                if token_key not in word_mapping:
+                    word_mapping[token_key] = []
+                if word.word_id not in word_mapping[token_key]:
+                    word_mapping[token_key].append(word.word_id)
+            # Populate global index
+            t = word.text.strip().upper()
+            if t:
+                global_word_index.setdefault(t, []).append(
+                    (word.line_id, word.word_id)
+                )
+                for tok in t.split():
+                    global_word_index.setdefault(tok, []).append(
+                        (word.line_id, word.word_id)
+                    )
 
     print(
         f"   📝 Built word mapping for {len(word_mapping)} unique (line_id, word_text) combinations"
@@ -646,36 +760,106 @@ def create_receipt_word_labels_from_currency_labels(
     current_time = datetime.now()
 
     for label in discovered_labels:
-        if not label.line_ids:
-            print(f"   ⚠️ Skipping label '{label.line_text}' - no line_ids")
-            continue
+        # Decide mapping strategy by label type
+        label_type_str = (
+            label.label_type.value
+            if hasattr(label.label_type, "value")
+            else str(label.label_type)
+        )
+        is_currency_label = label_type_str in {
+            "GRAND_TOTAL",
+            "TAX",
+            "SUBTOTAL",
+            "LINE_TOTAL",
+        }
 
-        # For each line_id this label applies to
-        for line_id in label.line_ids:
-            # Try to find word_ids that match this label's text
-            label_text = label.line_text.strip().upper()
-            lookup_key = (line_id, label_text)
-
-            word_ids = word_mapping.get(lookup_key, [])
-
-            if not word_ids:
-                # Try partial matching for compound words
-                for (
-                    mapped_line_id,
-                    mapped_text,
-                ), mapped_word_ids in word_mapping.items():
-                    if mapped_line_id == line_id and label_text in mapped_text:
-                        word_ids.extend(mapped_word_ids)
-                        break
-
-            if not word_ids:
+        if is_currency_label:
+            if not getattr(label, "line_ids", None):
                 print(
-                    f"   ⚠️ No words found for label '{label.line_text}' on line {line_id}"
+                    f"   ⚠️ Skipping currency label '{getattr(label, 'line_text', '')}' - no line_ids"
                 )
                 continue
 
-            # Create ReceiptWordLabel for each matching word
-            for word_id in word_ids:
+            for line_id in getattr(label, "line_ids", []) or []:
+                word_ids: List[int] = []
+                # Map currency strictly by amount token(s)
+                amount_tokens: List[str] = []
+                try:
+                    amt = float(getattr(label, "amount"))
+                    amt_str = f"{amt:.2f}".upper()
+                    amount_tokens = [amt_str, f"${amt_str}"]
+                except Exception:
+                    amount_tokens = []
+
+                for cand in amount_tokens:
+                    ids = word_mapping.get((line_id, cand), [])
+                    if ids:
+                        word_ids.extend(ids)
+                if word_ids:
+                    texts = [
+                        word_text_map.get((line_id, wid), "")
+                        for wid in word_ids
+                    ]
+                    print(
+                        f"   ✅ Amount match for {label_type_str} {getattr(label, 'amount', None)} on line {line_id}: tokens={amount_tokens} word_ids={sorted(set(word_ids))} texts={texts}"
+                    )
+
+                if not word_ids:
+                    available = sorted(
+                        list(line_to_word_texts.get(line_id, []))
+                    )
+                    sample = ", ".join(available[:10])
+                    print(
+                        f"   🔬 Debug: No amount-token match for {label_type_str} {getattr(label, 'amount', None)} on line {line_id}. Tried {amount_tokens} Available: [{sample}]"
+                    )
+
+                if not word_ids:
+                    print(
+                        f"   ⚠️ No words found for currency label '{label_type_str}' on line {line_id}"
+                    )
+                    continue
+
+                for word_id in word_ids:
+                    receipt_word_label = ReceiptWordLabel(
+                        image_id=image_id,
+                        receipt_id=actual_receipt_id,
+                        line_id=line_id,
+                        word_id=word_id,
+                        label=label.label_type.value,
+                        reasoning=label.reasoning
+                        or "Identified by simple_receipt_analyzer",
+                        timestamp_added=current_time,
+                        label_proposed_by="simple_receipt_analyzer",
+                        validation_status="PENDING",
+                    )
+                    receipt_word_labels.append(receipt_word_label)
+        else:
+            # Line item: search globally for the word_text across all words
+            candidate_texts = set()
+            wt = str(getattr(label, "word_text", "")).strip().upper()
+            if wt:
+                candidate_texts.add(wt)
+                for tok in wt.split():
+                    candidate_texts.add(tok)
+
+            matches: List[tuple[int, int]] = []  # (line_id, word_id)
+            for cand in candidate_texts:
+                for loc in global_word_index.get(cand, []) or []:
+                    matches.append(loc)
+
+            # Partial containment fallback across entire receipt
+            if not matches and candidate_texts:
+                for text_key, locations in global_word_index.items():
+                    if any(text_key in cand for cand in candidate_texts):
+                        matches.extend(locations)
+
+            if not matches:
+                print(
+                    f"   ⚠️ No words found for line-item label '{label_type_str}' text='{wt}' across receipt"
+                )
+                continue
+
+            for line_id, word_id in matches:
                 receipt_word_label = ReceiptWordLabel(
                     image_id=image_id,
                     receipt_id=actual_receipt_id,
@@ -698,54 +882,77 @@ def create_receipt_word_labels_from_currency_labels(
 
 async def save_receipt_word_labels(
     client: DynamoClient,
-    receipt_word_labels: List[ReceiptWordLabel],
+    receipt_word_labels_to_add: List[ReceiptWordLabel],
+    receipt_word_labels_to_update: Optional[List[ReceiptWordLabel]] = None,
     dry_run: bool = False,
 ) -> dict:
-    """Save ReceiptWordLabels to DynamoDB using proper DynamoClient methods."""
+    """Save ReceiptWordLabels to DynamoDB (adds and updates)."""
+
+    to_add = receipt_word_labels_to_add or []
+    to_update = receipt_word_labels_to_update or []
 
     if dry_run:
         print(
-            f"   🔍 DRY RUN: Would save {len(receipt_word_labels)} ReceiptWordLabel entities"
+            f"   🔍 DRY RUN: Would add {len(to_add)} and update {len(to_update)} ReceiptWordLabel entities"
         )
-        return {"saved": 0, "skipped": len(receipt_word_labels)}
+        return {
+            "saved": 0,
+            "updated": 0,
+            "skipped": len(to_add) + len(to_update),
+        }
 
-    if not receipt_word_labels:
-        print(f"   📝 No ReceiptWordLabel entities to save")
-        return {"saved": 0, "failed": 0}
+    saved_count = 0
+    updated_count = 0
+    failed_count = 0
+
+    # Adds (bulk then fallback)
+    if to_add:
+        print(f"   💾 Adding {len(to_add)} ReceiptWordLabel entities...")
+        try:
+            client.add_receipt_word_labels(to_add)
+            saved_count += len(to_add)
+            print(f"   ✅ Added {len(to_add)} labels")
+        except Exception as e:
+            print(f"   ⚠️ Bulk add failed: {e}")
+            print("   🔄 Attempting individual adds...")
+            for label in to_add:
+                try:
+                    client.add_receipt_word_label(label)
+                    saved_count += 1
+                except Exception as individual_error:
+                    print(
+                        f"   ⚠️ Failed to add label {label.label} for word {label.word_id}: {individual_error}"
+                    )
+                    failed_count += 1
+
+    # Updates (bulk-friendly API provided by client)
+    if to_update:
+        print(f"   ♻️ Updating {len(to_update)} ReceiptWordLabel entities...")
+        try:
+            client.update_receipt_word_labels(to_update)
+            updated_count += len(to_update)
+            print(f"   ✅ Updated {len(to_update)} labels")
+        except Exception as e:
+            print(f"   ⚠️ Bulk update failed: {e}")
+            print("   🔄 Attempting individual updates...")
+            for label in to_update:
+                try:
+                    client.update_receipt_word_label(label)
+                    updated_count += 1
+                except Exception as individual_error:
+                    print(
+                        f"   ⚠️ Failed to update label {label.label} for word {label.word_id}: {individual_error}"
+                    )
+                    failed_count += 1
 
     print(
-        f"   💾 Saving {len(receipt_word_labels)} ReceiptWordLabel entities to DynamoDB..."
+        f"   📊 Save Results → added: {saved_count}, updated: {updated_count}, failed: {failed_count}"
     )
-
-    try:
-        # Use the bulk method for better performance
-        client.add_receipt_word_labels(receipt_word_labels)
-        print(f"   ✅ Successfully saved {len(receipt_word_labels)} labels")
-        return {"saved": len(receipt_word_labels), "failed": 0}
-
-    except Exception as e:
-        print(f"   ⚠️ Failed to save labels in bulk: {e}")
-        print(f"   🔄 Attempting individual saves...")
-
-        # Fallback to individual saves
-        saved_count = 0
-        failed_count = 0
-
-        for label in receipt_word_labels:
-            try:
-                client.add_receipt_word_label(label)
-                saved_count += 1
-
-            except Exception as individual_error:
-                print(
-                    f"   ⚠️ Failed to save label {label.label} for word {label.word_id}: {individual_error}"
-                )
-                failed_count += 1
-
-        print(
-            f"   📊 Individual saves: {saved_count} success, {failed_count} failed"
-        )
-        return {"saved": saved_count, "failed": failed_count}
+    return {
+        "saved": saved_count,
+        "updated": updated_count,
+        "failed": failed_count,
+    }
 
 
 async def combine_results(
@@ -760,15 +967,15 @@ async def combine_results(
 
     print(f"🔄 Combining results")
 
-    # 💾 Save state for development if requested
+    # 💾 Save state for development if requested (align with ./dev.states)
     if save_dev_state:
         print(f"   💾 Saving state for development...")
         save_state_for_development(
             state=dict(state),
             stage="combine_results_start",
             receipt_id=state.get("receipt_id"),
-            save_format="both",  # Save both JSON and pickle
-            output_dir="./dev_states",
+            save_format="both",
+            output_dir="./dev.states",
         )
 
     # Combine all discovered labels
@@ -778,8 +985,20 @@ async def combine_results(
     currency_labels = state.get("currency_labels", [])
     discovered_labels.extend(currency_labels)
 
-    # Add line item labels from Phase 2 (automatically combined by reducer)
+    # Add line item labels from Phase 2 (already reduced by graph reducer)
     line_item_labels = state.get("line_item_labels", [])
+    print(f"   🧮 Phase 2 raw labels: {len(line_item_labels)}")
+    if line_item_labels:
+        try:
+            preview = ", ".join(
+                [
+                    f"{getattr(lbl.label_type, 'value', str(getattr(lbl, 'label_type', '')))}:'{getattr(lbl, 'word_text', getattr(lbl, 'line_text', ''))}'@{getattr(lbl, 'line_ids', [])}"
+                    for lbl in line_item_labels[:5]
+                ]
+            )
+            print(f"      ↳ sample: [{preview}]")
+        except Exception:
+            pass
 
     # Filter out currency duplicates - prefer Phase 1 currency labels over Phase 2
     currency_types = {"GRAND_TOTAL", "TAX", "SUBTOTAL", "LINE_TOTAL"}
@@ -789,7 +1008,6 @@ async def combine_results(
         if label.label_type.value in currency_types
     }
 
-    # Only add Phase 2 labels that aren't currency duplicates
     filtered_line_labels = [
         label
         for label in line_item_labels
@@ -804,15 +1022,261 @@ async def combine_results(
     print(
         f"   🔍 Filtered out {len(line_item_labels) - len(filtered_line_labels)} duplicate currency labels"
     )
+    if line_item_labels and not filtered_line_labels:
+        print(
+            "   ℹ️ All Phase 2 labels were dropped by duplicate-currency filter"
+        )
+    if not line_item_labels:
+        print("   ℹ️ Phase 2 reducer produced 0 labels")
 
-    # Create ReceiptWordLabel entities from discovered labels
-    receipt_word_labels = create_receipt_word_labels_from_currency_labels(
+    # Create initial proposed ReceiptWordLabel entities from discovered labels
+    proposed_labels_raw = create_receipt_word_labels_from_currency_labels(
         discovered_labels=discovered_labels,
         lines=state.get("lines", []),
+        words=state.get("words"),
         image_id=state.get("image_id", ""),
         receipt_id=state.get("receipt_id", ""),
         client=state.get("dynamo_client"),
     )
+
+    # Aggregate duplicates from proposals and set audit trail
+    def combine_text(a: Optional[str], b: Optional[str]) -> Optional[str]:
+        if a and b:
+            if b in a:
+                return a
+            return f"{a} | {b}" if a != b else a
+        return a or b
+
+    def combine_sources(a: Optional[str], b: Optional[str]) -> Optional[str]:
+        if not a and not b:
+            return None
+        if not a:
+            return b
+        if not b:
+            return a
+        parts = {p.strip() for p in (a.split(";") + b.split(";")) if p.strip()}
+        return ";".join(sorted(parts))
+
+    aggregated: dict[tuple, ReceiptWordLabel] = {}
+    for lbl in proposed_labels_raw:
+        key = (
+            lbl.image_id,
+            lbl.receipt_id,
+            lbl.line_id,
+            lbl.word_id,
+            lbl.label,
+        )
+        if key not in aggregated:
+            aggregated[key] = lbl
+        else:
+            # Merge reasoning and mark consolidation
+            existing = aggregated[key]
+            merged_reason = combine_text(existing.reasoning, lbl.reasoning)
+            merged_consolidated = combine_sources(
+                existing.label_consolidated_from, "MULTIPLE_SOURCES"
+            )
+            aggregated[key] = ReceiptWordLabel(
+                image_id=existing.image_id,
+                receipt_id=existing.receipt_id,
+                line_id=existing.line_id,
+                word_id=existing.word_id,
+                label=existing.label,
+                reasoning=merged_reason,
+                timestamp_added=existing.timestamp_added,
+                validation_status=existing.validation_status,
+                label_proposed_by=existing.label_proposed_by,
+                label_consolidated_from=merged_consolidated,
+            )
+
+    proposed_labels = list(aggregated.values())
+
+    # Enforce precedence: If a word has a LINE_TOTAL (from Phase 1),
+    # drop competing Phase 2 labels (e.g., UNIT_PRICE/PRODUCT_NAME) for that word
+    try:
+        line_total_words: set[tuple] = set(
+            (
+                lbl.line_id,
+                lbl.word_id,
+            )
+            for lbl in proposed_labels
+            if lbl.label == "LINE_TOTAL"
+        )
+
+        if line_total_words:
+            before_count = len(proposed_labels)
+            proposed_labels = [
+                lbl
+                for lbl in proposed_labels
+                if (lbl.line_id, lbl.word_id) not in line_total_words
+                or lbl.label == "LINE_TOTAL"
+            ]
+            after_count = len(proposed_labels)
+            dropped = before_count - after_count
+            if dropped:
+                print(
+                    f"   🧹 Precedence: dropped {dropped} non-LINE_TOTAL labels on words with LINE_TOTAL"
+                )
+    except Exception:
+        pass
+
+    # Load existing labels from DynamoDB for this receipt
+    client: DynamoClient = state.get("dynamo_client")
+    image_id = state.get("image_id", "")
+    receipt_id_str = state.get("receipt_id", "")  # format: image/receipt
+    try:
+        actual_receipt_id = int(str(receipt_id_str).split("/")[-1])
+    except Exception:
+        actual_receipt_id = 0
+
+    # Prefer labels preloaded from get_receipt_details; fallback to paged call
+    if state.get("existing_word_labels") is not None:
+        existing = state.get("existing_word_labels")
+        print(f"   📦 Loaded {len(existing)} existing labels (preloaded)")
+    else:
+        print("   📥 Loading existing ReceiptWordLabels for this receipt...")
+        existing = []
+        lek = None
+        while True:
+            batch, lek = client.list_receipt_word_labels_for_receipt(
+                image_id, actual_receipt_id, last_evaluated_key=lek
+            )
+            existing.extend(batch)
+            if not lek:
+                break
+        print(f"   📦 Loaded {len(existing)} existing labels")
+
+    existing_by_key = {
+        (e.image_id, e.receipt_id, e.line_id, e.word_id, e.label): e
+        for e in existing
+    }
+
+    # Compute adds and updates
+    to_add: List[ReceiptWordLabel] = []
+    to_update: List[ReceiptWordLabel] = []
+
+    for lbl in proposed_labels:
+        key = (
+            lbl.image_id,
+            lbl.receipt_id,
+            lbl.line_id,
+            lbl.word_id,
+            lbl.label,
+        )
+        current = existing_by_key.get(key)
+        if current is None:
+            to_add.append(lbl)
+            continue
+        # Determine if an update is needed (reasoning or audit trail improvement)
+        needs_update = False
+
+        new_reasoning = combine_text(current.reasoning, lbl.reasoning)
+        new_consolidated = combine_sources(
+            current.label_consolidated_from,
+            lbl.label_consolidated_from or "simple_receipt_analyzer",
+        )
+
+        # We preserve original timestamp_added and validation_status
+        updated = ReceiptWordLabel(
+            image_id=current.image_id,
+            receipt_id=current.receipt_id,
+            line_id=current.line_id,
+            word_id=current.word_id,
+            label=current.label,
+            reasoning=new_reasoning,
+            timestamp_added=current.timestamp_added,
+            validation_status=current.validation_status,
+            label_proposed_by=current.label_proposed_by
+            or lbl.label_proposed_by,
+            label_consolidated_from=new_consolidated,
+        )
+
+        # Consider validation_status to avoid churn on validated items
+        is_pending = str(current.validation_status or "").upper() in {
+            "PENDING",
+            "NONE",
+            "",
+        }
+
+        if not is_pending:
+            # Fully skip any updates for validated items (freeze state)
+            print(
+                f"   ℹ️ Skipping update for validated label {current.label} on word {current.word_id}"
+            )
+            continue
+
+        # Decide if any meaningful change remains
+        if (
+            (updated.label_consolidated_from or "")
+            != (current.label_consolidated_from or "")
+        ) or (
+            is_pending
+            and (
+                (updated.reasoning != current.reasoning)
+                or (
+                    (updated.label_proposed_by or "")
+                    != (current.label_proposed_by or "")
+                )
+            )
+        ):
+            needs_update = True
+        else:
+            # No-op; validated labels are already handled above
+            pass
+
+        if needs_update:
+            to_update.append(updated)
+
+    # Detailed per-word debug of proposals vs existing vs adds/updates
+    try:
+        # Build (line_id, word_id) -> text map from preloaded words if available
+        word_text_map: dict[tuple, str] = {}
+        try:
+            for w in state.get("words", []) or []:
+                word_text_map[(w.line_id, w.word_id)] = getattr(
+                    w, "text", ""
+                ).strip()
+        except Exception:
+            pass
+
+        def group_labels_by_word(
+            labels: List[ReceiptWordLabel],
+        ) -> dict[tuple, List[str]]:
+            grouped: dict[tuple, List[str]] = {}
+            for l in labels:
+                wkey = (l.line_id, l.word_id)
+                grouped.setdefault(wkey, []).append(l.label)
+            return grouped
+
+        proposed_by_word = group_labels_by_word(proposed_labels)
+        existing_by_word_only = group_labels_by_word(existing)
+        add_by_word = group_labels_by_word(to_add)
+        update_by_word = group_labels_by_word(to_update)
+
+        all_word_keys = (
+            set(proposed_by_word.keys())
+            | set(existing_by_word_only.keys())
+            | set(add_by_word.keys())
+            | set(update_by_word.keys())
+        )
+        for line_id_dbg, word_id_dbg in sorted(all_word_keys):
+            proposed_labels_list = sorted(
+                set(proposed_by_word.get((line_id_dbg, word_id_dbg), []))
+            )
+            existing_labels_list = sorted(
+                set(existing_by_word_only.get((line_id_dbg, word_id_dbg), []))
+            )
+            add_labels_list = sorted(
+                set(add_by_word.get((line_id_dbg, word_id_dbg), []))
+            )
+            update_labels_list = sorted(
+                set(update_by_word.get((line_id_dbg, word_id_dbg), []))
+            )
+            word_text_dbg = word_text_map.get((line_id_dbg, word_id_dbg), "")
+            print(
+                f"   🧾 Word line={line_id_dbg} word={word_id_dbg} text='{word_text_dbg}' → proposed={proposed_labels_list} existing={existing_labels_list} add={add_labels_list} update={update_labels_list}"
+            )
+    except Exception as _dbg_e:
+        print(f"   ⚠️ Debug aggregation failed: {_dbg_e}")
 
     # Calculate overall confidence
     if discovered_labels:
@@ -827,11 +1291,18 @@ async def combine_results(
     print(
         f"   ✅ Phase 2: {len(filtered_line_labels)} line item labels (after dedup)"
     )
+    print(
+        f"   📌 Proposed adds: {len(to_add)}, updates: {len(to_update)} (existing: {len(existing)})"
+    )
     print(f"   ✅ Overall confidence: {confidence_score:.2f}")
 
     return {
         "discovered_labels": discovered_labels,
-        "receipt_word_labels": receipt_word_labels,
+        # Backward compatibility: keep prior key for adds
+        "receipt_word_labels": to_add,
+        # New detailed outputs
+        "receipt_word_labels_to_add": to_add,
+        "receipt_word_labels_to_update": to_update,
         "confidence_score": confidence_score,
     }
 
@@ -920,14 +1391,20 @@ async def analyze_receipt_simple(
     print(f"\n⚡ UNIFIED EXECUTION TIME: {processing_time:.2f}s")
 
     # Optionally save ReceiptWordLabels to DynamoDB
-    if save_labels and "receipt_word_labels" in result:
-        print(f"\n💾 SAVING RECEIPT WORD LABELS")
-        save_results = await save_receipt_word_labels(
-            client=client,
-            receipt_word_labels=result["receipt_word_labels"],
-            dry_run=dry_run,
+    if save_labels:
+        adds = result.get(
+            "receipt_word_labels_to_add", result.get("receipt_word_labels", [])
         )
-        print(f"   📊 Save Results: {save_results}")
+        updates = result.get("receipt_word_labels_to_update", [])
+        if adds or updates:
+            print(f"\n💾 SAVING RECEIPT WORD LABELS (adds + updates)")
+            save_results = await save_receipt_word_labels(
+                client=client,
+                receipt_word_labels_to_add=adds,
+                receipt_word_labels_to_update=updates,
+                dry_run=dry_run,
+            )
+            print(f"   📊 Save Results: {save_results}")
 
     # Cleanup: Remove API keys from environment for security
     try:
