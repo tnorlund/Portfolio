@@ -44,6 +44,10 @@ from chromadb_compaction import (
     create_chromadb_compaction_infrastructure,
 )
 
+from currency_validation_step_functions import (
+    create_currency_validation_state_machine,
+)
+
 # Using the optimized docker-build based base images with scoped contexts
 from base_images.base_images import BaseImages
 
@@ -62,6 +66,7 @@ try:
         label_count_cache_updater_lambda,
     )
     from routes.health_check.infra import health_check_lambda  # noqa: F401
+
     print("✓ Successfully imported label_count_cache_updater_lambda")
 except ImportError as e:
     # These may not be available in all environments
@@ -118,6 +123,11 @@ chromadb_infrastructure = create_chromadb_compaction_infrastructure(
     dynamodb_stream_arn=dynamodb_table.stream_arn,
     chromadb_buckets=shared_chromadb_buckets,
     base_images=base_images,
+)
+
+# Create currency validation state machine
+currency_validation_state_machine = create_currency_validation_state_machine(
+    notification_system
 )
 
 # Create embedding infrastructure using shared bucket and queues
@@ -740,8 +750,14 @@ try:
         label_count_cache_updater_lambda,
         cache_update_schedule,
     )
-    pulumi.export("label_cache_updater_lambda_arn", label_count_cache_updater_lambda.arn)
-    pulumi.export("label_cache_updater_lambda_name", label_count_cache_updater_lambda.name)
+
+    pulumi.export(
+        "label_cache_updater_lambda_arn", label_count_cache_updater_lambda.arn
+    )
+    pulumi.export(
+        "label_cache_updater_lambda_name",
+        label_count_cache_updater_lambda.name,
+    )
     pulumi.export("label_cache_update_schedule_arn", cache_update_schedule.arn)
 except ImportError:
     # Cache updater not available in this environment

@@ -28,3 +28,7 @@ config:
   portfolio:docker-buildkit: "true" # Enable Docker BuildKit for caching
   portfolio:aws-account-id: "681647709217"
   portfolio:aws-region: us-east-1
+  portfolio:OLLAMA_API_KEY:
+    secure: AAABANI698d7qNKtUwJyF0GZ/bFrhfeSIPr59m2d+91lkRq0NP8CyM3Xlcmg3GPG74dbr7/VOuE/RAIugIfvxIdc7s0yvhuahKjVN3L4A1a/D+opDgoQpvg=
+  portfolio:LANGCHAIN_API_KEY:
+    secure: AAABAC+PSTc8uajZqSWQTNyqcOPjK4cW+DP3snxJOYFRRA6LSBZq4/7mfZiY2bGuw0fOrpHuyXpwPKDHm5+Y+0cCcj02h1fiUb59JXnOPsM4Hvs=
