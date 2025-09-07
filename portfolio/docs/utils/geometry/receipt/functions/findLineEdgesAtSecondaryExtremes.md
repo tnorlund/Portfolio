@@ -8,7 +8,7 @@
 
 > **findLineEdgesAtSecondaryExtremes**(`lines`, `hull`, `centroid`, `avgAngle`): `object`
 
-Defined in: [utils/geometry/receipt.ts:173](https://github.com/tnorlund/Portfolio/blob/ed809a84b311878a5d5ab0478e10ed8cf2141530/portfolio/utils/geometry/receipt.ts#L173)
+Defined in: [utils/geometry/receipt.ts:173](https://github.com/tnorlund/Portfolio/blob/ca898a59e393128effd13e7124ea86b6d84ce087/portfolio/utils/geometry/receipt.ts#L173)
 
 Locate points along the top and bottom edges of the text lines at the
 extreme secondary-axis positions.
