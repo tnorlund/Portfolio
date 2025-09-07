@@ -12,32 +12,17 @@ Simplified version of n_parallel_analyzer.py that:
 
 import os
 import time
-from typing import List, TypedDict, Annotated, Sequence, Optional
+from typing import List, Optional
 from langgraph.graph import StateGraph, START, END
-from langgraph.types import Send
-from langchain_core.output_parsers import PydanticOutputParser
-from langchain_core.prompts import PromptTemplate
-from langchain_ollama import ChatOllama
 from langgraph.graph.state import CompiledStateGraph
-import operator
 
 
 # Core dependencies (same as current system)
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_label.langchain.models import (
-    CurrencyLabel,
-    LineItemLabel,
-    CurrencyLabelType,
-    LineItemLabelType,
-    ReceiptAnalysis,
-    SimpleReceiptResponse,
-    Phase1Response,
-    Phase2Response,
-)
-from receipt_dynamo.entities import ReceiptLine, ReceiptMetadata
-from receipt_dynamo.entities.receipt_word import ReceiptWord
+from receipt_label.langchain.models import ReceiptAnalysis
+
+
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
-from datetime import datetime
 from receipt_label.langchain.state.currency_validation import (
     save_json,
     CurrencyAnalysisState,
@@ -542,7 +527,8 @@ async def analyze_receipt_simple(
     dry_run: bool = False,
     save_dev_state: bool = False,
 ) -> ReceiptAnalysis:
-    """Analyze a receipt using the unified single-trace graph with secure API key handling.
+    """Analyze a receipt using the unified single-trace graph with secure API
+    key handling.
 
     Args:
         client: DynamoDB client for data access
@@ -636,7 +622,7 @@ async def analyze_receipt_simple(
         if langsmith_api_key:
             os.environ.pop("LANGCHAIN_API_KEY", None)
             os.environ.pop("LANGCHAIN_TRACING_V2", None)
-            print(f"🧹 Cleaned up LangSmith API key from environment")
+            print("🧹 Cleaned up LangSmith API key from environment")
     except Exception:
         pass  # Don't fail if cleanup fails
 

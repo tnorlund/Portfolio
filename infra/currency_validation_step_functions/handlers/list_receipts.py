@@ -22,11 +22,9 @@ def handler(event: Dict[str, Any], _):
         receipts, _ = client.list_receipts()
         items = [
             {"receipt_id": r.receipt_id, "image_id": r.image_id}
-            for r in receipts
+            for r in receipts[:2]
         ]
         return {"statusCode": 200, "receipts": items}
     except Exception as e:
         logger.exception("Failed to list receipts")
         return {"statusCode": 500, "error": str(e)}
-
-

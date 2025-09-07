@@ -6,10 +6,18 @@ import pulumi
 import pulumi_aws as aws
 from pulumi import AssetArchive, FileArchive, ResourceOptions
 
-from infra.dynamo_db import dynamodb_table
-from infra.lambda_layer import dynamo_layer, label_layer
-from infra.notifications import NotificationSystem
+# from dynamo_db import dynamodb_table
+# from lambda_layer import dynamo_layer, label_layer
+from notifications import NotificationSystem
 
+
+from .base import (
+    dynamo_layer,
+    dynamodb_table,
+    label_layer,
+    ollama_api_key,
+    langsmith_api_key,
+)
 
 # Handlers directory collocated with this file
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -63,7 +71,7 @@ dynamodb_policy = aws.iam.Policy(
                         ],
                         "Resource": [
                             arn,
-                            f"{arn}/index/GSITYPE",
+                            f"{arn}/index/*",
                         ],
                     }
                 ],
@@ -91,6 +99,7 @@ currency_validation_list_lambda = aws.lambda_.Function(
     memory_size=512,
     timeout=120,
     environment={"variables": {"DYNAMODB_TABLE_NAME": dynamodb_table.name}},
+    tags={"environment": pulumi.get_stack()},
 )
 
 
@@ -102,15 +111,18 @@ currency_validation_process_lambda = aws.lambda_.Function(
     role=lambda_role.arn,
     code=AssetArchive({".": FileArchive(HANDLER_DIR)}),
     handler="process_receipt.handler",
-    layers=[dynamo_layer.arn, label_layer.arn],
+    layers=[label_layer.arn],
     memory_size=1536,
     timeout=600,
     environment={
         "variables": {
             "DYNAMODB_TABLE_NAME": dynamodb_table.name,
             # LangChain/Ollama keys are provided at execution via input, not env
+            "OLLAMA_API_KEY": ollama_api_key,
+            "LANGCHAIN_API_KEY": langsmith_api_key,
         }
     },
+    tags={"environment": pulumi.get_stack()},
 )
 
 
@@ -152,7 +164,11 @@ def _build_state_machine_definition(
                 "HasReceipts?": {
                     "Type": "Choice",
                     "Choices": [
-                        {"Variable": "$.receipts[0]", "IsPresent": True, "Next": "ForEachReceipt"}
+                        {
+                            "Variable": "$.receipts[0]",
+                            "IsPresent": True,
+                            "Next": "ForEachReceipt",
+                        }
                     ],
                     "Default": "NoReceipts",
                 },
@@ -336,5 +352,3 @@ def create_currency_validation_state_machine(
     )
 
     return state_machine
-
-

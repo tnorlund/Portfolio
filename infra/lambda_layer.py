@@ -513,9 +513,8 @@ echo "🎉 Parallel function updates completed!"'''
                 "2>/dev/null || true",
                 "find build -type f -name '*.pyc' -o -name '*.pyo' -exec rm -f {} + "
                 "2>/dev/null || true",
-                "find build -type f \\( -name '*.md' -o -name '*.txt' -o -name '*.yml' "
-                "-o -name '*.yaml' -o -name '*.rst' \\) -not -path "
-                "'*/dist-info/top_level.txt' -exec rm -f {} + 2>/dev/null || true",
+                "find build -type f \\( -name '*.md' -o -name '*.yml' -o -name '*.yaml' -o -name '*.rst' \\) "
+                "-not -path '*/dist-info/*' -exec rm -f {} + 2>/dev/null || true",
                 "find build -type f -name '*.dist-info/RECORD' -exec sed -i "
                 "'/\\.pyc/d' {} + 2>/dev/null || true",
                 'echo "Copying native libraries"',
@@ -625,7 +624,7 @@ echo "🎉 Parallel function updates completed!"'''
                 "find build -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true",
                 "find build -type d -name 'tests' -o -name 'test' -exec rm -rf {} + 2>/dev/null || true",
                 "find build -type f -name '*.pyc' -o -name '*.pyo' -exec rm -f {} + 2>/dev/null || true",
-                "find build -type f \\( -name '*.md' -o -name '*.txt' -o -name '*.yml' -o -name '*.yaml' -o -name '*.rst' \\) -not -path '*/dist-info/top_level.txt' -exec rm -f {} + 2>/dev/null || true",
+                "find build -type f \\( -name '*.md' -o -name '*.yml' -o -name '*.yaml' -o -name '*.rst' \\) -not -path '*/dist-info/*' -exec rm -f {} + 2>/dev/null || true",
                 'echo "Copying native libraries"',
                 "mkdir -p build/lib && cp /usr/lib64/libjpeg*.so* /usr/lib64/libpng*.so* /usr/lib64/libtiff*.so* /usr/lib64/libwebp*.so* /usr/lib64/liblcms2*.so* /usr/lib64/libfreetype*.so* build/lib || true",
                 'echo "Flattening site-packages to root python directory"',

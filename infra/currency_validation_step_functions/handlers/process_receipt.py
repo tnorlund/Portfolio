@@ -10,6 +10,8 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 DYNAMODB_TABLE_NAME = os.environ["DYNAMODB_TABLE_NAME"]
+OLLAMA_API_KEY = os.environ["OLLAMA_API_KEY"]
+LANGCHAIN_API_KEY = os.environ["LANGCHAIN_API_KEY"]
 
 
 def _get_str(d: Dict[str, Any], key: str) -> Optional[str]:
@@ -29,7 +31,7 @@ def handler(event: Dict[str, Any], _):
     - dry_run (bool, default False)
     - save_dev_state (bool, default False)
     """
-    logger.info(f"Currency validation event: {json.dumps(event)}")
+    logger.info("Currency validation event: %s", json.dumps(event))
 
     try:
         image_id = _get_str(event, "image_id")
@@ -40,16 +42,6 @@ def handler(event: Dict[str, Any], _):
                 "error": "Missing image_id or receipt_id",
             }
         receipt_id = int(str(receipt_id_raw))
-
-        ollama_api_key = _get_str(event, "ollama_api_key") or os.environ.get(
-            "OLLAMA_API_KEY"
-        )
-        langsmith_api_key = _get_str(event, "langsmith_api_key") or os.environ.get(
-            "LANGCHAIN_API_KEY"
-        )
-
-        if not ollama_api_key:
-            return {"statusCode": 400, "error": "OLLAMA_API_KEY is required"}
 
         save_labels = bool(event.get("save_labels", False))
         dry_run = bool(event.get("dry_run", False))
@@ -65,8 +57,8 @@ def handler(event: Dict[str, Any], _):
                 client,
                 image_id,
                 receipt_id,
-                ollama_api_key=ollama_api_key,
-                langsmith_api_key=langsmith_api_key,
+                ollama_api_key=OLLAMA_API_KEY,
+                langsmith_api_key=LANGCHAIN_API_KEY,
                 save_labels=save_labels,
                 dry_run=dry_run,
                 save_dev_state=save_dev_state,
@@ -84,5 +76,3 @@ def handler(event: Dict[str, Any], _):
     except Exception as e:
         logger.exception("Currency validation failed")
         return {"statusCode": 500, "error": str(e)}
-
-

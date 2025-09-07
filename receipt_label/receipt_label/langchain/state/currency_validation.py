@@ -80,6 +80,9 @@ class CurrencyAnalysisState(BaseModel):
         }
 
     def to_serializable(self) -> Dict[str, Any]:
+        """
+        Convert the state to a serializable format.
+        """
         return {
             "receipt_id": self.receipt_id,
             "image_id": self.image_id,
@@ -132,6 +135,9 @@ def _dump_words(state: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 def to_serializable(state: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Convert the state to a serializable format.
+    """
     model = CurrencyAnalysisState.from_graph(state)
     return model.to_serializable()
 
@@ -142,6 +148,9 @@ def save_json(
     receipt_id: Optional[str] = None,
     output_dir: str = "./dev.states",
 ) -> Dict[str, str]:
+    """
+    Save the state to a JSON file.
+    """
     out_dir = Path(output_dir)
     out_dir.mkdir(exist_ok=True)
 
