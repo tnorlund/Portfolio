@@ -8,7 +8,7 @@
 
 > `const` **default**: `object`
 
-Defined in: node\_modules/next/types/global.d.ts:31
+Defined in: node\_modules/next/types/global.d.ts:28
 
 ## Index Signature
 
