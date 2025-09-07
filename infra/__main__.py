@@ -52,7 +52,6 @@ from currency_validation_step_functions import (
 from base_images.base_images import BaseImages
 from networking import PublicVpc
 from security import ChromaSecurity
-from snapshot_bucket import SnapshotBucket
 
 # from spot_interruption import SpotInterruptionHandler
 # from efs_storage import EFSStorage
@@ -77,6 +76,7 @@ except ImportError as e:
     pass
 import step_function
 from step_function_enhanced import create_enhanced_receipt_processor
+from chroma.service import ChromaEcsService
 
 # Foundation VPC (public subnets only, no NAT) per Task 350
 public_vpc = PublicVpc("foundation")
@@ -91,9 +91,7 @@ pulumi.export("ecs_task_role_arn", security.ecs_task_role_arn)
 pulumi.export("lambda_role_arn", security.lambda_role_arn)
 pulumi.export("step_functions_role_arn", security.step_functions_role_arn)
 
-# Task 3: Snapshot bucket (parallel to Task 1)
-# snapshot_bucket = SnapshotBucket("chromadb")
-# pulumi.export("chromadb_snapshot_bucket", snapshot_bucket.bucket_name)
+# Task 3 snapshot bucket not used; shared_chromadb_buckets provides storage
 
 # --- Removed Config reading for VPC resources ---
 
@@ -181,6 +179,24 @@ pulumi.export(
 
 # Export enhanced step function ARN
 pulumi.export("enhanced_receipt_processor_arn", enhanced_receipt_processor.arn)
+
+# Task 6: ECS Service (scale-to-zero) using our Chroma container
+chroma_service = ChromaEcsService(
+    name=f"chroma-{pulumi.get_stack()}",
+    vpc_id=public_vpc.vpc_id,
+    public_subnet_ids=public_vpc.public_subnet_ids,
+    security_group_id=security.sg_chroma_id,
+    task_role_arn=security.ecs_task_role_arn,
+    task_role_name=security.ecs_task_role_name,
+    chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
+    base_image_ref=base_images.label_base_image.tags[0],
+    collection="words",
+    desired_count=0,
+)
+
+pulumi.export("chroma_cluster_arn", chroma_service.cluster.arn)
+pulumi.export("chroma_service_arn", chroma_service.svc.arn)
+pulumi.export("chroma_service_dns", chroma_service.endpoint_dns)
 # ML Training Infrastructure
 # -------------------------
 

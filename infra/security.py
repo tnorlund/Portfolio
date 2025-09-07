@@ -161,13 +161,20 @@ class ChromaSecurity(pulumi.ComponentResource):
         self.ecs_task_role_arn = self.ecs_task_role.arn
         self.lambda_role_arn = self.lambda_execution_role.arn
         self.step_functions_role_arn = self.step_functions_role.arn
+        # Also expose names for resources that require role name (not ARN)
+        self.ecs_task_role_name = self.ecs_task_role.name
+        self.lambda_role_name = self.lambda_execution_role.name
+        self.step_functions_role_name = self.step_functions_role.name
 
         self.register_outputs(
             {
                 "sg_lambda_id": self.sg_lambda_id,
                 "sg_chroma_id": self.sg_chroma_id,
                 "ecs_task_role_arn": self.ecs_task_role_arn,
+                "ecs_task_role_name": self.ecs_task_role_name,
                 "lambda_role_arn": self.lambda_role_arn,
+                "lambda_role_name": self.lambda_role_name,
                 "step_functions_role_arn": self.step_functions_role_arn,
+                "step_functions_role_name": self.step_functions_role_name,
             }
         )
