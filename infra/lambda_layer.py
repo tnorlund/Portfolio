@@ -692,6 +692,7 @@ echo "🎉 Parallel function updates completed!"'''
             bucket=build_bucket.id,
             versioning_configuration=(
                 aws.s3.BucketVersioningVersioningConfigurationArgs(
+                aws.s3.BucketVersioningVersioningConfigurationArgs(
                     status="Enabled"
                 )
             ),
@@ -1199,7 +1200,9 @@ echo "🎉 Parallel function updates completed!"'''
                     ],
                 ),
             ],
-            opts=pulumi.ResourceOptions(parent=self),
+            opts=pulumi.ResourceOptions(
+                parent=self, depends_on=[bucket_versioning]
+            ),
         )
 
         # Trigger pipeline run when source is updated
@@ -1622,6 +1625,9 @@ layers_to_build = [
 
 # Create Lambda layers using the fast approach
 # TEMPORARILY SKIP LAYER BUILDING
+SKIP_LAYER_BUILDING = (
+    os.environ.get("PYTEST_RUNNING") == "1" or False
+)  # Skip building during tests
 SKIP_LAYER_BUILDING = (
     os.environ.get("PYTEST_RUNNING") == "1" or False
 )  # Skip building during tests
