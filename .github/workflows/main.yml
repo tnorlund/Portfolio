@@ -33,7 +33,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0  # Need full history for change detection
+          fetch-depth: 0 # Need full history for change detection
 
       - name: Detect changed files
         id: changes
@@ -65,8 +65,8 @@ jobs:
         if: ${{ runner.os != 'macOS' }}
         uses: actions/setup-python@v4
         with:
-          python-version: '3.12'
-      
+          python-version: "3.12"
+
       - name: Use system Python (self-hosted)
         if: ${{ runner.os == 'macOS' }}
         run: |
@@ -105,8 +105,8 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: 20
-          cache: 'npm'
-          cache-dependency-path: 'portfolio/package-lock.json'
+          cache: "npm"
+          cache-dependency-path: "portfolio/package-lock.json"
 
       - name: Check TypeScript/ESLint
         if: steps.changes.outputs.portfolio == 'true'
@@ -136,8 +136,8 @@ jobs:
         if: ${{ runner.os != 'macOS' }}
         uses: actions/setup-python@v4
         with:
-          python-version: '3.12'
-      
+          python-version: "3.12"
+
       - name: Use system Python (self-hosted)
         if: ${{ runner.os == 'macOS' }}
         run: |
@@ -175,20 +175,20 @@ jobs:
           # Create isolated virtual environment for this job to prevent collisions
           VENV_PATH=".venv-${{ matrix.package }}"
           echo "Creating virtual environment: $VENV_PATH"
-          
+
           # Always create fresh virtual environment to ensure we test against PR code
           if [ -d "$VENV_PATH" ]; then
             echo "Removing existing virtual environment to ensure fresh dependencies..."
             rm -rf "$VENV_PATH"
           fi
-          
+
           python3 -m venv "$VENV_PATH"
           source "$VENV_PATH/bin/activate"
-          
+
           # Add venv to PATH for subsequent steps
           echo "$PWD/$VENV_PATH/bin" >> $GITHUB_PATH
           echo "VIRTUAL_ENV=$PWD/$VENV_PATH" >> $GITHUB_ENV
-          
+
           # Upgrade pip for faster installs
           python3 -m pip install --upgrade pip wheel --disable-pip-version-check
 
@@ -231,7 +231,7 @@ jobs:
           python3 -m pip list | grep -E "(pinecone|openai|receipt|pytest|moto|boto)" | head -10 || true
           echo "Python location: $(which python3)"
           echo "Virtual environment: $VIRTUAL_ENV"
-          
+
           # Show we're using editable installs from current directory
           echo "=== Verifying editable installs ==="
           python3 -m pip show receipt_dynamo 2>/dev/null | grep -E "(Location|Editable)" || echo "receipt_dynamo not found"
@@ -249,10 +249,10 @@ jobs:
           SKIP_PERFORMANCE_TESTS: "true"
         run: |
           echo "🚀 Running unified test suite for ${{ matrix.package }} with -n auto parallelization"
-          
+
           # Run all tests together with optimal parallelization
           cd ${{ matrix.package }}
-          
+
           if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
             # receipt_label: Run unit tests first (fast feedback), then integration tests
             echo "🚀 Running receipt_label unit tests with optimized timeout..."
@@ -327,8 +327,8 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: 20
-          cache: 'npm'
-          cache-dependency-path: 'portfolio/package-lock.json'
+          cache: "npm"
+          cache-dependency-path: "portfolio/package-lock.json"
 
       - name: Install and test
         working-directory: portfolio
@@ -351,7 +351,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    continue-on-error: true  # Don't fail the whole workflow if docs fail
+    continue-on-error: true # Don't fail the whole workflow if docs fail
     steps:
       - uses: actions/checkout@v4
         with:
@@ -361,8 +361,8 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: 20
-          cache: 'npm'
-          cache-dependency-path: 'portfolio/package-lock.json'
+          cache: "npm"
+          cache-dependency-path: "portfolio/package-lock.json"
 
       - name: Generate docs
         working-directory: portfolio
@@ -374,8 +374,8 @@ jobs:
         continue-on-error: true
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: 'docs: update TypeDoc documentation [skip ci]'
-          file_pattern: 'portfolio/docs/**'
+          commit_message: "docs: update TypeDoc documentation [skip ci]"
+          file_pattern: "portfolio/docs/**"
           skip_dirty_check: false
           skip_checkout: true
 
@@ -397,8 +397,8 @@ jobs:
         if: ${{ runner.os != 'macOS' }}
         uses: actions/setup-python@v4
         with:
-          python-version: '3.12'
-      
+          python-version: "3.12"
+
       - name: Use system Python (self-hosted)
         if: ${{ runner.os == 'macOS' }}
         run: |
@@ -425,8 +425,8 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: 20
-          cache: 'npm'
-          cache-dependency-path: 'portfolio/package-lock.json'
+          cache: "npm"
+          cache-dependency-path: "portfolio/package-lock.json"
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -487,8 +487,8 @@ jobs:
         if: ${{ runner.os != 'macOS' }}
         uses: actions/setup-python@v4
         with:
-          python-version: '3.12'
-      
+          python-version: "3.12"
+
       - name: Use system Python (self-hosted)
         if: ${{ runner.os == 'macOS' }}
         run: |
@@ -552,10 +552,6 @@ jobs:
           echo "fast-checks: ${{ needs.fast-checks.result }}"
           echo "test-python: ${{ needs.test-python.result }}"
           echo "test-typescript: ${{ needs.test-typescript.result }}"
-          
+
           echo ""
-          echo "🤖 Claude Code Review available:"
-          echo "   - Automatic reviews for all PRs"
-          echo "   - Interactive help with @claude comments"
-          echo "   - Focus on performance and architecture patterns"
-          echo "   - See .github/CLAUDE.md for details"
+          echo "🤖 AI Review: Cursor bot findings will appear on this PR."
