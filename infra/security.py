@@ -119,6 +119,13 @@ class ChromaSecurity(pulumi.ComponentResource):
             opts=pulumi.ResourceOptions(parent=self),
         )
 
+        aws.iam.RolePolicyAttachment(
+            f"{name}-lambda-vpc-access",
+            role=self.lambda_execution_role.name,
+            policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole",
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+
         self.step_functions_role = aws.iam.Role(
             f"{name}-step-functions-role",
             assume_role_policy="""{
