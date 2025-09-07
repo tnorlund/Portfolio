@@ -50,6 +50,7 @@ from currency_validation_step_functions import (
 
 # Using the optimized docker-build based base images with scoped contexts
 from base_images.base_images import BaseImages
+from networking import PublicVpc
 
 # from spot_interruption import SpotInterruptionHandler
 # from efs_storage import EFSStorage
@@ -75,8 +76,10 @@ except ImportError as e:
 import step_function
 from step_function_enhanced import create_enhanced_receipt_processor
 
-# Create the dedicated VPC network infrastructure
-# network = VpcForCodeBuild("codebuild-network")
+# Foundation VPC (public subnets only, no NAT) per Task 350
+public_vpc = PublicVpc("foundation")
+pulumi.export("foundation_vpc_id", public_vpc.vpc_id)
+pulumi.export("foundation_public_subnet_ids", public_vpc.public_subnet_ids)
 
 # --- Removed Config reading for VPC resources ---
 
