@@ -686,15 +686,12 @@ echo "🎉 Parallel function updates completed!"'''
             opts=pulumi.ResourceOptions(parent=self),
         )
 
-        # Configure versioning as a separate resource
-        aws.s3.BucketVersioning(
+        # Configure versioning as a separate resource and keep a handle for dependency ordering
+        bucket_versioning = aws.s3.BucketVersioning(
             f"{self.name}-artifacts-versioning",
             bucket=build_bucket.id,
-            versioning_configuration=(
-                aws.s3.BucketVersioningVersioningConfigurationArgs(
-                aws.s3.BucketVersioningVersioningConfigurationArgs(
-                    status="Enabled"
-                )
+            versioning_configuration=aws.s3.BucketVersioningVersioningConfigurationArgs(
+                status="Enabled"
             ),
             opts=pulumi.ResourceOptions(parent=self),
         )
