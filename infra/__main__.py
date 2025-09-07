@@ -51,6 +51,8 @@ from currency_validation_step_functions import (
 # Using the optimized docker-build based base images with scoped contexts
 from base_images.base_images import BaseImages
 from networking import PublicVpc
+from security import ChromaSecurity
+from snapshot_bucket import SnapshotBucket
 
 # from spot_interruption import SpotInterruptionHandler
 # from efs_storage import EFSStorage
@@ -80,6 +82,18 @@ from step_function_enhanced import create_enhanced_receipt_processor
 public_vpc = PublicVpc("foundation")
 pulumi.export("foundation_vpc_id", public_vpc.vpc_id)
 pulumi.export("foundation_public_subnet_ids", public_vpc.public_subnet_ids)
+
+# Task 2: Security (depends on VPC)
+security = ChromaSecurity("chroma", vpc_id=public_vpc.vpc_id)
+pulumi.export("sg_lambda_id", security.sg_lambda_id)
+pulumi.export("sg_chroma_id", security.sg_chroma_id)
+pulumi.export("ecs_task_role_arn", security.ecs_task_role_arn)
+pulumi.export("lambda_role_arn", security.lambda_role_arn)
+pulumi.export("step_functions_role_arn", security.step_functions_role_arn)
+
+# Task 3: Snapshot bucket (parallel to Task 1)
+snapshot_bucket = SnapshotBucket("chromadb")
+pulumi.export("chromadb_snapshot_bucket", snapshot_bucket.bucket_name)
 
 # --- Removed Config reading for VPC resources ---
 
