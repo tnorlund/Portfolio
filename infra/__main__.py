@@ -46,6 +46,7 @@ from chromadb_compaction import (
 
 # Using the optimized docker-build based base images with scoped contexts
 from base_images.base_images import BaseImages
+from networking import PublicVpc
 
 # from spot_interruption import SpotInterruptionHandler
 # from efs_storage import EFSStorage
@@ -62,6 +63,7 @@ try:
         label_count_cache_updater_lambda,
     )
     from routes.health_check.infra import health_check_lambda  # noqa: F401
+
     print("✓ Successfully imported label_count_cache_updater_lambda")
 except ImportError as e:
     # These may not be available in all environments
@@ -70,8 +72,10 @@ except ImportError as e:
 import step_function
 from step_function_enhanced import create_enhanced_receipt_processor
 
-# Create the dedicated VPC network infrastructure
-# network = VpcForCodeBuild("codebuild-network")
+# Foundation VPC (public subnets only, no NAT) per Task 350
+public_vpc = PublicVpc("foundation")
+pulumi.export("foundation_vpc_id", public_vpc.vpc_id)
+pulumi.export("foundation_public_subnet_ids", public_vpc.public_subnet_ids)
 
 # --- Removed Config reading for VPC resources ---
 
@@ -740,8 +744,14 @@ try:
         label_count_cache_updater_lambda,
         cache_update_schedule,
     )
-    pulumi.export("label_cache_updater_lambda_arn", label_count_cache_updater_lambda.arn)
-    pulumi.export("label_cache_updater_lambda_name", label_count_cache_updater_lambda.name)
+
+    pulumi.export(
+        "label_cache_updater_lambda_arn", label_count_cache_updater_lambda.arn
+    )
+    pulumi.export(
+        "label_cache_updater_lambda_name",
+        label_count_cache_updater_lambda.name,
+    )
     pulumi.export("label_cache_update_schedule_arn", cache_update_schedule.arn)
 except ImportError:
     # Cache updater not available in this environment
