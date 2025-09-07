@@ -15,6 +15,7 @@ import time
 from typing import List, Optional
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
+from langchain_core.tracers.langchain import LangChainTracer
 
 
 # Core dependencies (same as current system)
@@ -587,6 +588,14 @@ async def analyze_receipt_simple(
     unified_graph = create_unified_analysis_graph(
         ollama_api_key, save_dev_state
     )  # ✅ Secure closure injection
+    # Attach explicit LangSmith tracer to ensure emission
+    tracer = LangChainTracer()
+    try:
+        tracer.project_name = os.environ.get(
+            "LANGCHAIN_PROJECT", f"receipt-analysis-unified-{image_id[:8]}"
+        )
+    except Exception:
+        pass
     result = await unified_graph.ainvoke(
         initial_state,
         config={
@@ -595,6 +604,7 @@ async def analyze_receipt_simple(
                 "workflow": "unified_parallel",
             },
             "tags": ["unified", "parallel", "receipt-analysis"],
+            "callbacks": [tracer],
         },
     )
 

@@ -48,11 +48,7 @@ dependencies = [
   "langchain-ollama>=0.2.0",  # Ollama integration
   "langsmith>=0.1.0",  # Observability and tracing
   "opentelemetry-api>=1.36.0",
-  "opentelemetry-exporter-otlp-proto-common>=1.36.0",
-  "opentelemetry-exporter-otlp-proto-grpc>=1.36.0",
-  "opentelemetry-proto>=1.36.0",
   "opentelemetry-sdk>=1.36.0",
-  "opentelemetry-semantic-conventions>=0.57b0",
   
   # HTTP and async support (for Ollama Turbo)
   "httpx>=0.25.0",  # For async HTTP requests to Ollama Turbo

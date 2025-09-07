@@ -120,6 +120,9 @@ currency_validation_process_lambda = aws.lambda_.Function(
             # LangChain/Ollama keys are provided at execution via input, not env
             "OLLAMA_API_KEY": ollama_api_key,
             "LANGCHAIN_API_KEY": langsmith_api_key,
+            "LANGCHAIN_TRACING_V2": "true",
+            "LANGCHAIN_ENDPOINT": "https://api.smith.langchain.com",
+            "LANGCHAIN_PROJECT": "currency-validation",
         }
     },
     tags={"environment": pulumi.get_stack()},
