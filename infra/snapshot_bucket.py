@@ -28,27 +28,11 @@ class SnapshotBucket(pulumi.ComponentResource):
         self.bucket = aws.s3.Bucket(
             f"{name}-snapshots",
             server_side_encryption_configuration=aws.s3.BucketServerSideEncryptionConfigurationArgs(
-                rules=[
-                    aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
-                        apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
-                            sse_algorithm="AES256"
-                        )
+                rule=aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
+                    apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
+                        sse_algorithm="AES256"
                     )
-                ]
-            ),
-            cors_configuration=(
-                aws.s3.BucketCorsConfigurationArgs(
-                    cors_rules=[
-                        aws.s3.BucketCorsConfigurationCorsRuleArgs(
-                            allowed_methods=["GET"],
-                            allowed_origins=["*"],
-                            allowed_headers=["*"],
-                            max_age_seconds=300,
-                        )
-                    ]
                 )
-                if enable_cors
-                else None
             ),
             tags={
                 "Name": f"{name}-snapshots",
@@ -57,6 +41,25 @@ class SnapshotBucket(pulumi.ComponentResource):
             },
             opts=pulumi.ResourceOptions(parent=self),
         )
+
+        # Expose common attributes for consumers
+        self.bucket_name = self.bucket.bucket
+        self.bucket_arn = self.bucket.arn
+
+        if enable_cors:
+            aws.s3.BucketCorsConfigurationV2(
+                f"{name}-cors",
+                bucket=self.bucket.id,
+                cors_rules=[
+                    aws.s3.BucketCorsConfigurationV2CorsRuleArgs(
+                        allowed_methods=["GET"],
+                        allowed_origins=["*"],
+                        allowed_headers=["*"],
+                        max_age_seconds=300,
+                    )
+                ],
+                opts=pulumi.ResourceOptions(parent=self),
+            )
 
         aws.s3.BucketVersioningV2(
             f"{name}-versioning",
@@ -122,4 +125,4 @@ class SnapshotBucket(pulumi.ComponentResource):
             opts=pulumi.ResourceOptions(parent=self),
         )
 
-        self.register_outputs({"bucket_name": self.bucket.bucket})
+        self.register_outputs({"bucket_name": self.bucket_name})

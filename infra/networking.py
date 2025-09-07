@@ -329,14 +329,20 @@ class PublicVpc(ComponentResource):
             )
             self.public_assocs.append(assoc)
 
+        # Expose attributes for easy consumption
+        self.vpc_id = self.vpc.id
+        self.public_subnet_ids = Output.all(
+            *[s.id for s in self.public_subnets]
+        )
+        self.internet_gateway_id = self.igw.id
+        self.public_route_table_id = self.public_rt.id
+
         # Outputs
         self.register_outputs(
             {
-                "vpc_id": self.vpc.id,
-                "public_subnet_ids": Output.all(
-                    *[s.id for s in self.public_subnets]
-                ),
-                "internet_gateway_id": self.igw.id,
-                "public_route_table_id": self.public_rt.id,
+                "vpc_id": self.vpc_id,
+                "public_subnet_ids": self.public_subnet_ids,
+                "internet_gateway_id": self.internet_gateway_id,
+                "public_route_table_id": self.public_route_table_id,
             }
         )
