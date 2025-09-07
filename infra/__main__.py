@@ -109,8 +109,8 @@ pulumi.export("lambda_role_arn", security.lambda_role_arn)
 pulumi.export("step_functions_role_arn", security.step_functions_role_arn)
 
 # Task 3: Snapshot bucket (parallel to Task 1)
-snapshot_bucket = SnapshotBucket("chromadb")
-pulumi.export("chromadb_snapshot_bucket", snapshot_bucket.bucket_name)
+# snapshot_bucket = SnapshotBucket("chromadb")
+# pulumi.export("chromadb_snapshot_bucket", snapshot_bucket.bucket_name)
 
 # --- Removed Config reading for VPC resources ---
 
