@@ -77,6 +77,7 @@ except ImportError as e:
 import step_function
 from step_function_enhanced import create_enhanced_receipt_processor
 from chroma.service import ChromaEcsService
+from chroma.workers import ChromaWorkers
 
 # Foundation VPC (public subnets only, no NAT) per Task 350
 public_vpc = PublicVpc("foundation")
@@ -197,6 +198,19 @@ chroma_service = ChromaEcsService(
 pulumi.export("chroma_cluster_arn", chroma_service.cluster.arn)
 pulumi.export("chroma_service_arn", chroma_service.svc.arn)
 pulumi.export("chroma_service_dns", chroma_service.endpoint_dns)
+
+# Task 7: Workers - Lambda functions that query Chroma via HTTP
+workers = ChromaWorkers(
+    name=f"chroma-workers-{pulumi.get_stack()}",
+    vpc_id=public_vpc.vpc_id,
+    subnets=public_vpc.public_subnet_ids,
+    security_group_id=security.sg_lambda_id,
+    dynamodb_table_name=dynamodb_table.name,
+    chroma_service_dns=chroma_service.endpoint_dns,
+    base_image_ref=base_images.label_base_image.tags[0],
+)
+
+pulumi.export("chroma_query_words_lambda_arn", workers.query_words.arn)
 # ML Training Infrastructure
 # -------------------------
 
