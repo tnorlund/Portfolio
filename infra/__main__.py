@@ -79,6 +79,7 @@ from step_function_enhanced import create_enhanced_receipt_processor
 from chroma.service import ChromaEcsService
 from chroma.workers import ChromaWorkers
 from chroma.orchestrator import ChromaOrchestrator
+from chroma.nat_egress import NatEgress
 
 # Foundation VPC (public subnets only, no NAT) per Task 350
 public_vpc = PublicVpc("foundation")
@@ -222,13 +223,35 @@ workers = ChromaWorkers(
 
 pulumi.export("chroma_query_words_lambda_arn", workers.query_words.arn)
 
+# NAT egress (public subnet) + private subnets for Lambda internet access
+nat = NatEgress(
+    name=f"nat-egress-{pulumi.get_stack()}",
+    vpc_id=public_vpc.vpc_id,
+    public_subnet_id=public_vpc.public_subnet_ids.apply(lambda ids: ids[0]),
+)
+pulumi.export("nat_instance_id", nat.nat_instance_id)
+pulumi.export("nat_private_subnet_ids", nat.private_subnet_ids)
+
+# Recreate workers to use NAT private subnets for egress
+workers_nat = ChromaWorkers(
+    name=f"chroma-workers-nat-{pulumi.get_stack()}",
+    vpc_id=public_vpc.vpc_id,
+    subnets=nat.private_subnet_ids,
+    security_group_id=security.sg_lambda_id,
+    dynamodb_table_name=dynamodb_table.name,
+    chroma_service_dns=chroma_service.endpoint_dns,
+    base_image_ref=base_images.label_base_image.tags[0],
+)
+pulumi.export("chroma_query_words_lambda_nat_arn", workers_nat.query_words.arn)
+
 # Task 8: Orchestration - Step Functions to scale up, wait, run, scale down
 orchestrator = ChromaOrchestrator(
     name=f"chroma-orchestrator-{pulumi.get_stack()}",
     cluster_arn=chroma_service.cluster.arn,
     service_arn=chroma_service.svc.arn,
     chroma_endpoint=chroma_service.endpoint_dns,
-    worker_lambda_arn=workers.query_words.arn,
+    worker_lambda_arn=workers_nat.query_words.arn,
+    nat_instance_id=nat.nat_instance_id,
     lambda_role_name=security.lambda_role_arn,
     subnets=public_vpc.public_subnet_ids,
     security_group_id=security.sg_lambda_id,

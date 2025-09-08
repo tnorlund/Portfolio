@@ -18,6 +18,9 @@ class ChromaOrchestrator(pulumi.ComponentResource):
         service_arn: pulumi.Input[str],
         chroma_endpoint: pulumi.Input[str],
         worker_lambda_arn: pulumi.Input[str],
+        # Optional non-VPC egress Lambda for external API calls
+        egress_lambda_arn: pulumi.Input[str] | None = None,
+        nat_instance_id: pulumi.Input[str] | None = None,
         lambda_role_name: pulumi.Input[str],
         subnets: pulumi.Input[list[str]] | None = None,
         security_group_id: pulumi.Input[str] | None = None,
@@ -113,7 +116,11 @@ class ChromaOrchestrator(pulumi.ComponentResource):
 
         # Allow update/describe ECS service and invoke Lambdas
         policy_doc = pulumi.Output.all(
-            cluster_arn, service_arn, self.wait_fn.arn, worker_lambda_arn
+            cluster_arn,
+            service_arn,
+            self.wait_fn.arn,
+            worker_lambda_arn,
+            nat_instance_id,
         ).apply(
             lambda args: json.dumps(
                 {
@@ -134,6 +141,17 @@ class ChromaOrchestrator(pulumi.ComponentResource):
                             ],
                             "Resource": [args[2], args[3]],
                         },
+                        # EC2 permissions for NAT instance start/stop/describe (resource must be "*")
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "ec2:StartInstances",
+                                "ec2:StopInstances",
+                                "ec2:DescribeInstanceStatus",
+                                "ec2:DescribeInstances",
+                            ],
+                            "Resource": "*",
+                        },
                     ],
                 }
             )
@@ -147,13 +165,71 @@ class ChromaOrchestrator(pulumi.ComponentResource):
 
         # State machine definition
         definition = pulumi.Output.all(
-            cluster_arn, service_arn, self.wait_fn.arn, worker_lambda_arn
+            cluster_arn,
+            service_arn,
+            self.wait_fn.arn,
+            worker_lambda_arn,
+            nat_instance_id,
         ).apply(
             lambda args: json.dumps(
                 {
-                    "Comment": "Scale ECS up, wait for running tasks, HTTP readiness, run worker, scale down",
-                    "StartAt": "ScaleUp",
+                    "Comment": "Scale ECS up, wait for running tasks, HTTP readiness, run worker, scale down (with optional NAT start/stop)",
+                    "StartAt": "StartNat",
                     "States": {
+                        "StartNat": {
+                            "Type": "Choice",
+                            "Choices": [
+                                {
+                                    "And": [
+                                        {
+                                            "Variable": "$.useNat",
+                                            "IsPresent": True,
+                                        },
+                                        {
+                                            "Variable": "$.useNat",
+                                            "BooleanEquals": True,
+                                        },
+                                    ],
+                                    "Next": "StartNatInstance",
+                                }
+                            ],
+                            "Default": "ScaleUp",
+                        },
+                        "StartNatInstance": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::aws-sdk:ec2:startInstances",
+                            "Parameters": {"InstanceIds": [args[4]]},
+                            "Next": "WaitNatRunning",
+                        },
+                        "WaitNatRunning": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::aws-sdk:ec2:describeInstanceStatus",
+                            "Parameters": {
+                                "InstanceIds": [args[4]],
+                                "IncludeAllInstances": True,
+                            },
+                            "ResultSelector": {
+                                "state.$": "$.InstanceStatuses[0].InstanceState.Name"
+                            },
+                            "ResultPath": "$.nat",
+                            "Next": "NatReady?",
+                        },
+                        "NatReady?": {
+                            "Type": "Choice",
+                            "Choices": [
+                                {
+                                    "Variable": "$.nat.state",
+                                    "StringEquals": "running",
+                                    "Next": "ScaleUp",
+                                }
+                            ],
+                            "Default": "WaitNatDelay",
+                        },
+                        "WaitNatDelay": {
+                            "Type": "Wait",
+                            "Seconds": 5,
+                            "Next": "WaitNatRunning",
+                        },
                         "ScaleUp": {
                             "Type": "Task",
                             "Resource": "arn:aws:states:::aws-sdk:ecs:updateService",
@@ -201,6 +277,7 @@ class ChromaOrchestrator(pulumi.ComponentResource):
                                 "FunctionName": args[2],
                                 "Payload": {},
                             },
+                            "ResultPath": "$.wait",
                             "Next": "RunWorker",
                         },
                         "RunWorker": {
@@ -210,6 +287,36 @@ class ChromaOrchestrator(pulumi.ComponentResource):
                                 "FunctionName": args[3],
                                 "Payload.$": "$",
                             },
+                            "ResultPath": "$.worker",
+                            "Next": "MaybeEgress",
+                        },
+                        "MaybeEgress": {
+                            "Type": "Choice",
+                            "Choices": [
+                                {
+                                    "And": [
+                                        {
+                                            "Variable": "$.egressEnabled",
+                                            "IsPresent": True,
+                                        },
+                                        {
+                                            "Variable": "$.egressEnabled",
+                                            "BooleanEquals": True,
+                                        },
+                                    ],
+                                    "Next": "CallEgress",
+                                }
+                            ],
+                            "Default": "ScaleDown",
+                        },
+                        "CallEgress": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::lambda:invoke",
+                            "Parameters": {
+                                "FunctionName": args[2],
+                                "Payload.$": "$",
+                            },
+                            "ResultPath": "$.egress",
                             "Next": "ScaleDown",
                         },
                         "ScaleDown": {
@@ -220,8 +327,63 @@ class ChromaOrchestrator(pulumi.ComponentResource):
                                 "Service": args[1],
                                 "DesiredCount": 0,
                             },
-                            "End": True,
+                            "Next": "MaybeStopNat",
                         },
+                        "MaybeStopNat": {
+                            "Type": "Choice",
+                            "Choices": [
+                                {
+                                    "And": [
+                                        {
+                                            "Variable": "$.useNat",
+                                            "IsPresent": True,
+                                        },
+                                        {
+                                            "Variable": "$.useNat",
+                                            "BooleanEquals": True,
+                                        },
+                                    ],
+                                    "Next": "StopNatInstance",
+                                }
+                            ],
+                            "Default": "Done",
+                        },
+                        "StopNatInstance": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::aws-sdk:ec2:stopInstances",
+                            "Parameters": {"InstanceIds": [args[4]]},
+                            "Next": "WaitNatStopped",
+                        },
+                        "WaitNatStopped": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::aws-sdk:ec2:describeInstanceStatus",
+                            "Parameters": {
+                                "InstanceIds": [args[4]],
+                                "IncludeAllInstances": True,
+                            },
+                            "ResultSelector": {
+                                "state.$": "$.InstanceStatuses[0].InstanceState.Name"
+                            },
+                            "ResultPath": "$.natStop",
+                            "Next": "NatStopped?",
+                        },
+                        "NatStopped?": {
+                            "Type": "Choice",
+                            "Choices": [
+                                {
+                                    "Variable": "$.natStop.state",
+                                    "StringEquals": "stopped",
+                                    "Next": "Done",
+                                }
+                            ],
+                            "Default": "WaitNatStopDelay",
+                        },
+                        "WaitNatStopDelay": {
+                            "Type": "Wait",
+                            "Seconds": 5,
+                            "Next": "WaitNatStopped",
+                        },
+                        "Done": {"Type": "Succeed"},
                     },
                 }
             )

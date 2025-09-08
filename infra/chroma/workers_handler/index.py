@@ -5,6 +5,8 @@ from typing import Any, Dict, List
 import boto3
 import chromadb
 from receipt_dynamo import DynamoClient
+import urllib.request
+import urllib.error
 
 
 def build_chromadb_id(word: Dict[str, Any]) -> str:
@@ -54,6 +56,27 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     print(f"[worker] CHROMA_HTTP_ENDPOINT={endpoint}")
     print(f"[worker] DYNAMO_TABLE_NAME={table_name}")
 
+    # External internet egress probe
+    try:
+        with urllib.request.urlopen(
+            "https://checkip.amazonaws.com", timeout=5
+        ) as r:
+            ip_txt = r.read().decode().strip()
+            print(f"[worker] Internet OK status={r.status} ip={ip_txt}")
+    except Exception as e:
+        print(f"[worker] Internet probe failed: {e}")
+
+    # Lightweight Google probe (ping-like): should return HTTP 204 immediately
+    try:
+        with urllib.request.urlopen(
+            "https://www.gstatic.com/generate_204", timeout=5
+        ) as r:
+            print(
+                f"[worker] Google generate_204 OK status={r.status} (expected 204)"
+            )
+    except Exception as e:
+        print(f"[worker] Google generate_204 probe failed: {e}")
+
     # List the first 50 words from DynamoDB
     dyn = DynamoClient(table_name)
     words, _ = dyn.list_receipt_words(limit=50)
@@ -74,6 +97,21 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     # Query Chroma HTTP server
     host, port = endpoint.split(":")
     print(f"[worker] Connecting to Chroma http://{host}:{port}")
+    # Chroma HTTP readiness probe (version endpoint)
+    try:
+        with urllib.request.urlopen(
+            f"http://{host}:{port}/api/v1/version", timeout=5
+        ) as r:
+            body = r.read().decode(errors="ignore")
+            print(
+                f"[worker] Chroma version probe OK status={r.status} body={body}"
+            )
+    except urllib.error.HTTPError as he:
+        print(
+            f"[worker] Chroma version probe HTTP error status={he.code} msg={he}"
+        )
+    except Exception as e:
+        print(f"[worker] Chroma version probe failed: {e}")
     client = chromadb.HttpClient(host=host, port=int(port))
     collection = client.get_collection("words")
 
@@ -104,7 +142,7 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
         result = collection.query(query_embeddings=normalized, n_results=10)
         returned = len(result.get("ids", [[]])[0]) if result.get("ids") else 0
         print(f"[worker] Query complete. Top-k (first): {returned}")
-        return {"statusCode": 200, "body": json.dumps(result)}
+        return {"statusCode": 200, "body": {"Name": "workers_handler"}}
     except Exception as e:
         print(f"[worker] Query error: {e}")
         return {"statusCode": 500, "body": json.dumps({"error": str(e)})}
