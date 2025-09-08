@@ -7,13 +7,15 @@ from typing import Optional
 
 import pulumi
 import pulumi_aws as aws
-from pulumi import ComponentResource, ResourceOptions, Output
-from pulumi_aws.ecr import (
-    Repository,
-    RepositoryImageScanningConfigurationArgs,
-    get_authorization_token_output,
+from pulumi import (
+    ComponentResource,
+    ResourceOptions,
+    Output,
+    AssetArchive,
+    FileArchive,
 )
-import pulumi_docker_build as docker_build
+
+from chroma.base import dynamo_layer, label_layer
 
 
 class ChromaWorkers(ComponentResource):
@@ -21,58 +23,24 @@ class ChromaWorkers(ComponentResource):
         self,
         name: str,
         *,
-        vpc_id: pulumi.Input[str],
+        vpc_id: pulumi.Input[str],  # unused, kept for signature parity
         subnets: pulumi.Input[list[str]],
         security_group_id: pulumi.Input[str],
         dynamodb_table_name: pulumi.Input[str],
         chroma_service_dns: pulumi.Input[str],
-        base_image_ref: Optional[pulumi.Input[str]] = None,
+        base_image_ref: Optional[
+            pulumi.Input[str]
+        ] = None,  # unused for zip mode
         opts: Optional[ResourceOptions] = None,
     ) -> None:
         super().__init__("custom:chroma:Workers", name, None, opts)
 
-        stack = pulumi.get_stack()
+        # Touch the param to avoid linter warning; zip mode ignores this
+        _ignore_base = base_image_ref
 
-        # ECR repo and image for worker Lambda
-        self.repo = Repository(
-            f"{name}-repo",
-            image_scanning_configuration=RepositoryImageScanningConfigurationArgs(
-                scan_on_push=True
-            ),
-            force_delete=True,
-            tags={"Environment": stack, "ManagedBy": "Pulumi"},
-            opts=ResourceOptions(parent=self),
-        )
-
-        ecr_auth = get_authorization_token_output()
-
+        # Zip-based worker Lambda: prepare handler directory
         repo_root = Path(__file__).resolve().parents[2]
-        lambdas_dir = repo_root / "infra" / "chroma" / "lambdas"
-
-        # Reuse the same minimal context and Dockerfile as the server, but override CMD via env
-        self.image = docker_build.Image(
-            f"{name}-image",
-            context=docker_build.BuildContextArgs(location=str(lambdas_dir)),
-            dockerfile=docker_build.DockerfileArgs(
-                location=str(lambdas_dir / "Dockerfile")
-            ),
-            platforms=["linux/arm64"],
-            build_args={
-                "BASE_IMAGE": base_image_ref or "chromadb/chroma:latest",
-            },
-            push=True,
-            registries=[
-                {
-                    "address": self.repo.repository_url.apply(
-                        lambda u: u.split("/")[0]
-                    ),
-                    "username": ecr_auth.user_name,
-                    "password": ecr_auth.password,
-                }
-            ],
-            tags=[self.repo.repository_url.apply(lambda u: f"{u}:workers")],
-            opts=ResourceOptions(parent=self, depends_on=[self.repo]),
-        )
+        handler_dir = repo_root / "infra" / "chroma" / "workers_handler"
 
         # IAM role
         self.role = aws.iam.Role(
@@ -111,17 +79,21 @@ class ChromaWorkers(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Lambda function that queries Chroma by IDs
+        # Lambda function that queries Chroma by IDs (zip-based)
         self.query_words = aws.lambda_.Function(
             f"{name}-query-words",
-            package_type="Image",
-            image_uri=Output.all(
-                self.repo.repository_url, self.image.digest
-            ).apply(lambda args: f"{args[0].split(':')[0]}@{args[1]}"),
+            runtime="python3.12",
+            architectures=["arm64"],
             role=self.role.arn,
+            code=AssetArchive(
+                {
+                    ".": FileArchive(str(handler_dir)),
+                }
+            ),
+            handler="index.lambda_handler",
+            layers=[dynamo_layer.arn, label_layer.arn],
             timeout=60,
             memory_size=512,
-            architectures=["arm64"],
             environment={
                 "variables": {
                     "CHROMA_HTTP_ENDPOINT": chroma_service_dns,
@@ -136,7 +108,6 @@ class ChromaWorkers(ComponentResource):
 
         self.register_outputs(
             {
-                "image_repo": self.repo.repository_url,
                 "query_words_arn": self.query_words.arn,
             }
         )
