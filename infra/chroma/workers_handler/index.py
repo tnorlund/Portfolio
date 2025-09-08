@@ -142,7 +142,7 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
         result = collection.query(query_embeddings=normalized, n_results=10)
         returned = len(result.get("ids", [[]])[0]) if result.get("ids") else 0
         print(f"[worker] Query complete. Top-k (first): {returned}")
-        return {"statusCode": 200, "body": {"Name": "workers_handler"}}
+        return {"statusCode": 200, "body": json.dumps(result)}
     except Exception as e:
         print(f"[worker] Query error: {e}")
         return {"statusCode": 500, "body": json.dumps({"error": str(e)})}

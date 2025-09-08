@@ -86,7 +86,6 @@ public_vpc = PublicVpc("foundation")
 pulumi.export("foundation_vpc_id", public_vpc.vpc_id)
 
 # (moved DynamoDB gateway endpoint below after NAT creation to reference both route tables)
-
 pulumi.export("foundation_public_subnet_ids", public_vpc.public_subnet_ids)
 # (moved S3 gateway endpoint below after NAT creation to reference its route table)
 
