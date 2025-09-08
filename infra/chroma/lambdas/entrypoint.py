@@ -1,12 +1,11 @@
 import os
 import sys
-import time
 import logging
+import subprocess
 from pathlib import Path
 
 import boto3
 from botocore.exceptions import ClientError
-import subprocess
 
 
 logging.basicConfig(

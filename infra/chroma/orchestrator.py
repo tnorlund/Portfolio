@@ -121,6 +121,7 @@ class ChromaOrchestrator(pulumi.ComponentResource):
             self.wait_fn.arn,
             worker_lambda_arn,
             nat_instance_id,
+            egress_lambda_arn,
         ).apply(
             lambda args: json.dumps(
                 {
@@ -139,7 +140,11 @@ class ChromaOrchestrator(pulumi.ComponentResource):
                             "Action": [
                                 "lambda:InvokeFunction",
                             ],
-                            "Resource": [args[2], args[3]],
+                            "Resource": [
+                                arn
+                                for arn in [args[2], args[3], args[5]]
+                                if arn
+                            ],
                         },
                         # EC2 permissions for NAT instance start/stop/describe (resource must be "*")
                         {
@@ -170,6 +175,7 @@ class ChromaOrchestrator(pulumi.ComponentResource):
             self.wait_fn.arn,
             worker_lambda_arn,
             nat_instance_id,
+            egress_lambda_arn,
         ).apply(
             lambda args: json.dumps(
                 {
@@ -309,16 +315,25 @@ class ChromaOrchestrator(pulumi.ComponentResource):
                             ],
                             "Default": "ScaleDown",
                         },
-                        "CallEgress": {
-                            "Type": "Task",
-                            "Resource": "arn:aws:states:::lambda:invoke",
-                            "Parameters": {
-                                "FunctionName": args[2],
-                                "Payload.$": "$",
-                            },
-                            "ResultPath": "$.egress",
-                            "Next": "ScaleDown",
-                        },
+                        "CallEgress": (
+                            {
+                                "Type": "Task",
+                                "Resource": "arn:aws:states:::lambda:invoke",
+                                "Parameters": {
+                                    "FunctionName": args[5],
+                                    "Payload.$": "$",
+                                },
+                                "ResultPath": "$.egress",
+                                "Next": "ScaleDown",
+                            }
+                            if args[5]
+                            else {
+                                "Type": "Pass",
+                                "Result": {"skipped": True},
+                                "ResultPath": "$.egress",
+                                "Next": "ScaleDown",
+                            }
+                        ),
                         "ScaleDown": {
                             "Type": "Task",
                             "Resource": "arn:aws:states:::aws-sdk:ecs:updateService",

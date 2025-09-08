@@ -200,6 +200,7 @@ chroma_service = ChromaEcsService(
     security_group_id=security.sg_chroma_id,
     task_role_arn=security.ecs_task_role_arn,
     task_role_name=security.ecs_task_role_name,
+    execution_role_arn=security.ecs_task_execution_role_arn,
     chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
     base_image_ref=base_images.label_base_image.tags[0],
     collection="words",

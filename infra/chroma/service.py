@@ -26,6 +26,7 @@ class ChromaEcsService(ComponentResource):
         security_group_id: pulumi.Input[str],
         task_role_arn: pulumi.Input[str],
         task_role_name: pulumi.Input[str],
+        execution_role_arn: pulumi.Input[str],
         chromadb_bucket_name: pulumi.Input[str],
         base_image_ref: Optional[pulumi.Input[str]] = None,
         collection: str = "words",
@@ -127,8 +128,8 @@ class ChromaEcsService(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Task execution role (reuse provided role for simplicity)
-        execution_role_arn = task_role_arn
+        # Task execution role provided by caller
+        exec_role_arn = execution_role_arn
 
         # Grant task S3 read
         aws.iam.RolePolicy(
@@ -193,7 +194,7 @@ class ChromaEcsService(ComponentResource):
             memory=str(memory),
             network_mode="awsvpc",
             requires_compatibilities=["FARGATE"],
-            execution_role_arn=execution_role_arn,
+            execution_role_arn=exec_role_arn,
             task_role_arn=task_role_arn,
             runtime_platform=aws.ecs.TaskDefinitionRuntimePlatformArgs(
                 cpu_architecture="ARM64",
