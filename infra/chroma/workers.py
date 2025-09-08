@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Optional
 
@@ -65,17 +66,32 @@ class ChromaWorkers(ComponentResource):
         )
 
         # DDB read policy
+        # Create IAM policy allowing DynamoDB read operations
         aws.iam.RolePolicy(
             f"{name}-ddb-read",
             role=self.role.name,
-            policy=Output.all(dynamodb_table_name).apply(
-                lambda args: (
-                    '{"Version":"2012-10-17","Statement":[{'
-                    '"Effect":"Allow","Action":["dynamodb:GetItem","dynamodb:BatchGetItem"],'
-                    f'"Resource":["arn:aws:dynamodb:{aws.config.region}:{aws.get_caller_identity().account_id}:table/{args[0]}","arn:aws:dynamodb:{aws.config.region}:{aws.get_caller_identity().account_id}:table/{args[0]}/index/*"]'  # noqa: E501
-                    "}]}"
-                )
-            ),
+            policy=Output.all(dynamodb_table_name)
+            .apply(
+                lambda args: {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "dynamodb:GetItem",
+                                "dynamodb:BatchGetItem",
+                                "dynamodb:DescribeTable",
+                                "dynamodb:Query",
+                            ],
+                            "Resource": [
+                                f"arn:aws:dynamodb:{aws.config.region}:{aws.get_caller_identity().account_id}:table/{args[0]}",
+                                f"arn:aws:dynamodb:{aws.config.region}:{aws.get_caller_identity().account_id}:table/{args[0]}/index/*",
+                            ],
+                        }
+                    ],
+                }
+            )
+            .apply(json.dumps),
             opts=ResourceOptions(parent=self),
         )
 

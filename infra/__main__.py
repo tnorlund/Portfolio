@@ -83,6 +83,15 @@ from chroma.orchestrator import ChromaOrchestrator
 # Foundation VPC (public subnets only, no NAT) per Task 350
 public_vpc = PublicVpc("foundation")
 pulumi.export("foundation_vpc_id", public_vpc.vpc_id)
+
+# Provide private access to DynamoDB from VPC Lambdas without a NAT
+dynamodb_gateway_endpoint = aws.ec2.VpcEndpoint(
+    f"dynamodb-gateway-{pulumi.get_stack()}",
+    vpc_id=public_vpc.vpc_id,
+    service_name=f"com.amazonaws.{aws.config.region}.dynamodb",
+    vpc_endpoint_type="Gateway",
+    route_table_ids=[public_vpc.public_route_table_id],
+)
 pulumi.export("foundation_public_subnet_ids", public_vpc.public_subnet_ids)
 
 # Task 2: Security (depends on VPC)
@@ -221,6 +230,8 @@ orchestrator = ChromaOrchestrator(
     chroma_endpoint=chroma_service.endpoint_dns,
     worker_lambda_arn=workers.query_words.arn,
     lambda_role_name=security.lambda_role_arn,
+    subnets=public_vpc.public_subnet_ids,
+    security_group_id=security.sg_lambda_id,
 )
 
 pulumi.export("chroma_orchestrator_sfn_arn", orchestrator.state_machine.arn)
