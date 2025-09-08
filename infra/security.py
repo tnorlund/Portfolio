@@ -90,10 +90,24 @@ class ChromaSecurity(pulumi.ComponentResource):
             opts=pulumi.ResourceOptions(parent=self),
         )
 
-        # Execution role for pulling from ECR, writing logs
+        # Dedicated execution role for pulling from ECR, writing logs
+        self.ecs_task_execution_role = aws.iam.Role(
+            f"{name}-ecs-task-execution-role",
+            assume_role_policy="""{
+                "Version": "2012-10-17",
+                "Statement": [{
+                    "Effect": "Allow",
+                    "Principal": {"Service": "ecs-tasks.amazonaws.com"},
+                    "Action": "sts:AssumeRole"
+                }]
+            }""",
+            tags={"ManagedBy": "Pulumi", "Environment": pulumi.get_stack()},
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+
         aws.iam.RolePolicyAttachment(
             f"{name}-ecs-exec-policy",
-            role=self.ecs_task_role.name,
+            role=self.ecs_task_execution_role.name,
             policy_arn="arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy",
             opts=pulumi.ResourceOptions(parent=self),
         )
@@ -159,10 +173,12 @@ class ChromaSecurity(pulumi.ComponentResource):
         self.sg_lambda_id = self.sg_lambda.id
         self.sg_chroma_id = self.sg_chroma.id
         self.ecs_task_role_arn = self.ecs_task_role.arn
+        self.ecs_task_execution_role_arn = self.ecs_task_execution_role.arn
         self.lambda_role_arn = self.lambda_execution_role.arn
         self.step_functions_role_arn = self.step_functions_role.arn
         # Also expose names for resources that require role name (not ARN)
         self.ecs_task_role_name = self.ecs_task_role.name
+        self.ecs_task_execution_role_name = self.ecs_task_execution_role.name
         self.lambda_role_name = self.lambda_execution_role.name
         self.step_functions_role_name = self.step_functions_role.name
 
@@ -171,7 +187,9 @@ class ChromaSecurity(pulumi.ComponentResource):
                 "sg_lambda_id": self.sg_lambda_id,
                 "sg_chroma_id": self.sg_chroma_id,
                 "ecs_task_role_arn": self.ecs_task_role_arn,
+                "ecs_task_execution_role_arn": self.ecs_task_execution_role_arn,
                 "ecs_task_role_name": self.ecs_task_role_name,
+                "ecs_task_execution_role_name": self.ecs_task_execution_role_name,
                 "lambda_role_arn": self.lambda_role_arn,
                 "lambda_role_name": self.lambda_role_name,
                 "step_functions_role_arn": self.step_functions_role_arn,
