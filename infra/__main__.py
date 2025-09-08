@@ -256,7 +256,6 @@ logs_interface_endpoint = aws.ec2.VpcEndpoint(
     security_group_ids=[security.sg_vpce_id],
     private_dns_enabled=True,
 )
-
 # Recreate workers to use NAT private subnets for egress
 workers_nat = ChromaWorkers(
     name=f"chroma-workers-nat-{pulumi.get_stack()}",

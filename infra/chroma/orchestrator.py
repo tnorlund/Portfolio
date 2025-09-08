@@ -157,6 +157,17 @@ class ChromaOrchestrator(pulumi.ComponentResource):
                             ],
                             "Resource": "*",
                         },
+                        # EC2 permissions for NAT instance start/stop/describe (resource must be "*")
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "ec2:StartInstances",
+                                "ec2:StopInstances",
+                                "ec2:DescribeInstanceStatus",
+                                "ec2:DescribeInstances",
+                            ],
+                            "Resource": "*",
+                        },
                     ],
                 }
             )
