@@ -78,6 +78,7 @@ import step_function
 from step_function_enhanced import create_enhanced_receipt_processor
 from chroma.service import ChromaEcsService
 from chroma.workers import ChromaWorkers
+from chroma.orchestrator import ChromaOrchestrator
 
 # Foundation VPC (public subnets only, no NAT) per Task 350
 public_vpc = PublicVpc("foundation")
@@ -211,6 +212,18 @@ workers = ChromaWorkers(
 )
 
 pulumi.export("chroma_query_words_lambda_arn", workers.query_words.arn)
+
+# Task 8: Orchestration - Step Functions to scale up, wait, run, scale down
+orchestrator = ChromaOrchestrator(
+    name=f"chroma-orchestrator-{pulumi.get_stack()}",
+    cluster_arn=chroma_service.cluster.arn,
+    service_arn=chroma_service.svc.arn,
+    chroma_endpoint=chroma_service.endpoint_dns,
+    worker_lambda_arn=workers.query_words.arn,
+    lambda_role_name=security.lambda_role_arn,
+)
+
+pulumi.export("chroma_orchestrator_sfn_arn", orchestrator.state_machine.arn)
 # ML Training Infrastructure
 # -------------------------
 
