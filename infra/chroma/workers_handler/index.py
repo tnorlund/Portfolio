@@ -4,6 +4,7 @@ from typing import Any, Dict, List
 
 import boto3
 import chromadb
+from receipt_dynamo import DynamoClient
 
 
 def build_chromadb_id(word: Dict[str, Any]) -> str:
@@ -18,6 +19,9 @@ def build_chromadb_id(word: Dict[str, Any]) -> str:
 def get_embeddings_for_words(
     dynamo_table: str, ids: List[str]
 ) -> List[List[float]]:
+    dynamo_client = DynamoClient(dynamo_table)
+    words, _ = dynamo_client.list_receipt_words(limit=50)
+
     keys = []
     for cid in ids:
         parts = cid.split("#")
@@ -47,21 +51,60 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     endpoint = os.environ["CHROMA_HTTP_ENDPOINT"]
     table_name = os.environ["DYNAMO_TABLE_NAME"]
 
-    body = event.get("body") if isinstance(event, dict) else None
-    payload = json.loads(body) if isinstance(body, str) else event
+    print(f"[worker] CHROMA_HTTP_ENDPOINT={endpoint}")
+    print(f"[worker] DYNAMO_TABLE_NAME={table_name}")
 
-    if isinstance(payload, dict) and "words" in payload:
-        ids = [build_chromadb_id(w) for w in payload["words"]]
-    elif isinstance(payload, dict) and "ids" in payload:
-        ids = list(payload["ids"])
-    else:
-        return {"statusCode": 400, "body": json.dumps({"error": "no ids"})}
+    # List the first 50 words from DynamoDB
+    dyn = DynamoClient(table_name)
+    words, _ = dyn.list_receipt_words(limit=50)
+    print(f"[worker] Listed {len(words)} words")
 
-    embeddings = get_embeddings_for_words(table_name, ids)
+    # Build Chroma IDs
+    ids: List[str] = []
+    for w in words:
+        cid = (
+            f"IMAGE#{w.image_id}#"
+            f"RECEIPT#{int(w.receipt_id):05d}#"
+            f"LINE#{int(w.line_id):05d}#"
+            f"WORD#{int(w.word_id):05d}"
+        )
+        ids.append(cid)
+    print(f"[worker] Built {len(ids)} Chroma IDs")
 
+    # Query Chroma HTTP server
     host, port = endpoint.split(":")
-    client = chromadb.HttpClient(host=f"http://{host}", port=int(port))
+    print(f"[worker] Connecting to Chroma http://{host}:{port}")
+    client = chromadb.HttpClient(host=host, port=int(port))
     collection = client.get_collection("words")
-    result = collection.query(query_embeddings=embeddings, n_results=10)
 
-    return {"statusCode": 200, "body": json.dumps(result)}
+    try:
+        # Fetch stored embeddings for these IDs, then query by embeddings
+        got = collection.get(ids=ids, include=["embeddings"])
+        embeddings = got.get("embeddings", [])
+
+        # Normalize and filter embeddings defensively (arrays vs lists)
+        normalized: List[List[float]] = []
+        for emb in embeddings:
+            if emb is None:
+                continue
+            vec = list(emb) if not isinstance(emb, list) else emb
+            if len(vec) == 0:
+                continue
+            normalized.append(vec)
+
+        print(
+            f"[worker] Retrieved embeddings from Chroma: {len(normalized)}/{len(ids)} present"
+        )
+        if not normalized:
+            return {
+                "statusCode": 400,
+                "body": json.dumps({"error": "no embeddings found for ids"}),
+            }
+
+        result = collection.query(query_embeddings=normalized, n_results=10)
+        returned = len(result.get("ids", [[]])[0]) if result.get("ids") else 0
+        print(f"[worker] Query complete. Top-k (first): {returned}")
+        return {"statusCode": 200, "body": json.dumps(result)}
+    except Exception as e:
+        print(f"[worker] Query error: {e}")
+        return {"statusCode": 500, "body": json.dumps({"error": str(e)})}
