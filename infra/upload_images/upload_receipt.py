@@ -50,7 +50,7 @@ def handler(event, _):
         job_type=OCRJobType.FIRST_PASS,
         receipt_id=None,
     )
-    dynamo.addOCRJob(job)
+    dynamo.add_ocr_job(job)
 
     # 3. push message onto the job queue
     send_message_to_sqs(

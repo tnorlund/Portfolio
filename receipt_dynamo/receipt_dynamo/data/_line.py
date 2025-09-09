@@ -67,15 +67,7 @@ class _Line(
             ValueError: When validation fails or lines cannot be added
         """
         self._validate_entity_list(lines, Line, "lines")
-
-        request_items = [
-            WriteRequestTypeDef(
-                PutRequest=PutRequestTypeDef(Item=line.to_item())
-            )
-            for line in lines
-        ]
-
-        self._batch_write_with_retry(request_items)
+        self._add_entities(lines, Line, "lines")
 
     @handle_dynamodb_errors("update_line")
     def update_line(self, line: Line):
