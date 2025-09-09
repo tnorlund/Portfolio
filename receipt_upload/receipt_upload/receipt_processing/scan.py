@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+import logging
 from PIL import Image as PIL_Image
 
 from receipt_dynamo.constants import ImageType, OCRJobType, OCRStatus
@@ -51,6 +52,7 @@ def process_scan(
         ocr_job: OCR job object
         image: PIL Image object
     """
+    logger = logging.getLogger(__name__)
     dynamo_client = DynamoClient(dynamo_table_name)
     image_id = ocr_job.image_id
 
@@ -60,10 +62,17 @@ def process_scan(
     ocr_json_path = download_file_from_s3(
         json_s3_bucket, json_s3_key, Path("/tmp")
     )
-    with open(ocr_json_path, "r") as f:
+    with open(ocr_json_path, "r", encoding="utf-8") as f:
         ocr_json = json.load(f)
     ocr_lines, ocr_words, ocr_letters = process_ocr_dict_as_image(
         ocr_json, image_id
+    )
+    logger.info(
+        "[scan] Parsed OCR: lines=%d, words=%d, letters=%d for image=%s",
+        len(ocr_lines),
+        len(ocr_words),
+        len(ocr_letters),
+        image_id,
     )
 
     # Download the raw image
@@ -76,10 +85,21 @@ def process_scan(
 
     # Upload the raw image to the raw and site buckets
     raw_image_s3_key = f"raw/{image_id}.png"
+    logger.info(
+        "[scan] Uploading raw image to s3://%s/%s (w=%d h=%d)",
+        raw_bucket,
+        raw_image_s3_key,
+        image.width,
+        image.height,
+    )
     upload_png_to_s3(image, raw_bucket, raw_image_s3_key)
 
     # Upload JPEG version to site bucket
     upload_jpeg_to_s3(image, site_bucket, f"assets/{image_id}.jpg")
+    logger.info(
+        "[scan] Wrote image metadata for %s and uploaded JPEG to site bucket",
+        image_id,
+    )
 
     ocr_image = Image(
         image_id=image_id,
@@ -94,10 +114,10 @@ def process_scan(
         image_type=ImageType.SCAN,
     )
     # Add the image and OCR data to the database
-    dynamo_client.addImage(ocr_image)
-    dynamo_client.addLines(ocr_lines)
-    dynamo_client.addWords(ocr_words)
-    dynamo_client.addLetters(ocr_letters)
+    dynamo_client.add_image(ocr_image)
+    dynamo_client.add_lines(ocr_lines)
+    dynamo_client.add_words(ocr_words)
+    dynamo_client.add_letters(ocr_letters)
 
     # Get the average diagonal length of the lines
     cluster_dict = dbscan_lines_x_axis(ocr_lines)
@@ -226,7 +246,7 @@ def process_scan(
             cdn_s3_bucket=site_bucket,
             cdn_s3_key=f"assets/{image_id}_RECEIPT_{cluster_id:05d}.jpg",
         )
-        dynamo_client.addReceipt(receipt)
+        dynamo_client.add_receipt(receipt)
 
         # 6) Submit a new OCR job for the receipt
         new_ocr_job = OCRJob(
@@ -240,7 +260,7 @@ def process_scan(
             job_type=OCRJobType.REFINEMENT,
             receipt_id=cluster_id,
         )
-        dynamo_client.addOCRJob(new_ocr_job)
+        dynamo_client.add_ocr_job(new_ocr_job)
 
         # 7) Send a message to the OCR job queue
         send_message_to_sqs(
@@ -256,4 +276,4 @@ def process_scan(
     ocr_routing_decision.status = OCRStatus.COMPLETED.value
     ocr_routing_decision.receipt_count = len(cluster_dict)
     ocr_routing_decision.updated_at = datetime.now(timezone.utc)
-    dynamo_client.updateOCRRoutingDecision(ocr_routing_decision)
+    dynamo_client.update_ocr_routing_decision(ocr_routing_decision)

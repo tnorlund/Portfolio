@@ -374,7 +374,7 @@ def get_ocr_job(dynamo_table_name: str, image_id: str, job_id: str) -> OCRJob:
     Get an OCR job from the DynamoDB table.
     """
     dynamo_client = DynamoClient(dynamo_table_name)
-    return dynamo_client.getOCRJob(image_id=image_id, job_id=job_id)
+    return dynamo_client.get_ocr_job(image_id=image_id, job_id=job_id)
 
 
 def get_ocr_routing_decision(
@@ -384,7 +384,7 @@ def get_ocr_routing_decision(
     Get an OCR routing decision from the DynamoDB table.
     """
     dynamo_client = DynamoClient(dynamo_table_name)
-    return dynamo_client.getOCRRoutingDecision(
+    return dynamo_client.get_ocr_routing_decision(
         image_id=image_id, job_id=job_id
     )
 
