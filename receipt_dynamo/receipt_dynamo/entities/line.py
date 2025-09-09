@@ -106,7 +106,6 @@ class Line(
             "SK": {"S": f"LINE#{self.line_id:05d}"},
         }
 
-    @property
     def gsi1_key(self) -> Dict[str, Any]:
         """Generates the GSI1 key for the line.
 
@@ -127,11 +126,9 @@ class Line(
         # Use mixin for common geometry fields
         custom_fields = self._get_geometry_fields()
 
-        # Add GSI1 key directly to custom fields since it's a property
-        custom_fields.update(self.gsi1_key)
-
         return self.build_dynamodb_item(
             entity_type="LINE",
+            gsi_methods=["gsi1_key"],
             custom_fields=custom_fields,
             exclude_fields={
                 "image_id",
@@ -145,6 +142,8 @@ class Line(
                 "angle_degrees",
                 "angle_radians",
                 "confidence",
+                # Prevent auto-serialization of helper property used for GSI injection
+                "gsi1_key",
             },
         )
 
@@ -160,7 +159,7 @@ class Line(
         )
 
     def _get_geometry_hash_fields(self) -> tuple:
-        """Override to include entity-specific ID fields in hash 
+        """Override to include entity-specific ID fields in hash
         computation."""
         geometry_fields = (
             self.text,

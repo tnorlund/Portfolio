@@ -152,7 +152,7 @@ class FlattenedStandardMixin:
     def _add_entities(
         self, entities: List[T], entity_type: Type[T], param_name: str
     ) -> None:
-        """Add multiple entities using transactional writes with existence 
+        """Add multiple entities using transactional writes with existence
         check."""
         self._validate_entity_list(entities, entity_type, param_name)
 
@@ -164,7 +164,10 @@ class FlattenedStandardMixin:
                     Put={
                         "TableName": self.table_name,
                         "Item": entity.to_item(),
-                        "ConditionExpression": "attribute_not_exists(PK)",
+                        # Guard on full composite key to allow multiple items under same PK
+                        "ConditionExpression": (
+                            "attribute_not_exists(PK) and attribute_not_exists(SK)"
+                        ),
                     }
                 )
             )
@@ -293,7 +296,10 @@ class FlattenedStandardMixin:
                     Put={
                         "TableName": self.table_name,
                         "Item": entity.to_item(),
-                        "ConditionExpression": "attribute_exists(PK)",
+                        # Require existing full composite key
+                        "ConditionExpression": (
+                            "attribute_exists(PK) and attribute_exists(SK)"
+                        ),
                     }
                 )
             )
