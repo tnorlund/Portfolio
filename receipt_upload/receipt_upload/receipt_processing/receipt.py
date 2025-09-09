@@ -24,13 +24,13 @@ def refine_receipt(
 ):
     dynamo_client = DynamoClient(dynamo_table_name)
 
-    # Add the receipt OCR data to the DynamoDB
-    dynamo_client.addReceiptLines(receipt_lines)
-    dynamo_client.addReceiptWords(receipt_words)
-    dynamo_client.addReceiptLetters(receipt_letters)
+    # Add the receipt OCR data to the DynamoD
+    dynamo_client.add_receipt_lines(receipt_lines)
+    dynamo_client.add_receipt_words(receipt_words)
+    dynamo_client.add_receipt_letters(receipt_letters)
 
     # Update the OCR routing decision
     ocr_routing_decision.status = OCRStatus.COMPLETED.value
     ocr_routing_decision.receipt_count = 1
     ocr_routing_decision.updated_at = datetime.now(timezone.utc)
-    dynamo_client.updateOCRRoutingDecision(ocr_routing_decision)
+    dynamo_client.update_ocr_routing_decision(ocr_routing_decision)
