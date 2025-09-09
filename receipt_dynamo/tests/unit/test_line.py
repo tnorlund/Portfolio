@@ -1,4 +1,5 @@
 """Unit tests for the Line entity."""
+
 # pylint: disable=redefined-outer-name,too-many-statements,too-many-arguments
 # pylint: disable=too-many-locals,unused-argument,line-too-long,too-many-lines
 # pylint: disable=pointless-statement,expression-not-assigned
@@ -502,7 +503,7 @@ def test_line_key(example_line):
 @pytest.mark.unit
 def test_line_gsi1_key(example_line):
     """Test the Line.gsi1_key property"""
-    assert example_line.gsi1_key == {
+    assert example_line.gsi1_key() == {
         "GSI1PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3"},
         "GSI1SK": {"S": "LINE#00001"},
     }

@@ -116,10 +116,10 @@ def process_photo(
         image_type=ImageType.PHOTO,
     )
     # Add the image and OCR data to the database
-    dynamo_client.addImage(ocr_image)
-    dynamo_client.addLines(ocr_lines)
-    dynamo_client.addWords(ocr_words)
-    dynamo_client.addLetters(ocr_letters)
+    dynamo_client.add_image(ocr_image)
+    dynamo_client.add_lines(ocr_lines)
+    dynamo_client.add_words(ocr_words)
+    dynamo_client.add_letters(ocr_letters)
 
     # Get the average diagonal length of the lines
     if not ocr_lines:
@@ -127,7 +127,7 @@ def process_photo(
         ocr_routing_decision.status = OCRStatus.COMPLETED.value
         ocr_routing_decision.receipt_count = 0
         ocr_routing_decision.updated_at = datetime.now(timezone.utc)
-        dynamo_client.updateOCRRoutingDecision(ocr_routing_decision)
+        dynamo_client.update_ocr_routing_decision(ocr_routing_decision)
         return
 
     avg_diagonal_length = sum(
@@ -146,7 +146,7 @@ def process_photo(
         ocr_routing_decision.status = OCRStatus.COMPLETED.value
         ocr_routing_decision.receipt_count = 0
         ocr_routing_decision.updated_at = datetime.now(timezone.utc)
-        dynamo_client.updateOCRRoutingDecision(ocr_routing_decision)
+        dynamo_client.update_ocr_routing_decision(ocr_routing_decision)
         return
 
     # Process each cluster (receipt) in the image
@@ -458,7 +458,7 @@ def process_photo(
             )
 
             # Add the receipt to DynamoDB
-            dynamo_client.addReceipt(receipt)
+            dynamo_client.add_receipt(receipt)
 
             # Submit a new OCR job for the receipt
             new_ocr_job = OCRJob(
@@ -472,7 +472,7 @@ def process_photo(
                 job_type=OCRJobType.REFINEMENT,
                 receipt_id=cluster_id,
             )
-            dynamo_client.addOCRJob(new_ocr_job)
+            dynamo_client.add_ocr_job(new_ocr_job)
 
             # Send a message to the OCR job queue
             send_message_to_sqs(
@@ -493,4 +493,4 @@ def process_photo(
     ocr_routing_decision.status = OCRStatus.COMPLETED.value
     ocr_routing_decision.receipt_count = successful_clusters
     ocr_routing_decision.updated_at = datetime.now(timezone.utc)
-    dynamo_client.updateOCRRoutingDecision(ocr_routing_decision)
+    dynamo_client.update_ocr_routing_decision(ocr_routing_decision)
