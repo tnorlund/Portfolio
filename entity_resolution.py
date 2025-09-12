@@ -847,117 +847,92 @@ urls_by_receipt: Dict[Tuple[str, int], Set[str]] = {}
 
 from collections import defaultdict as _dd
 
-address_lines_by_receipt = _dd(list)
-phones_by_receipt = _dd(set)
-urls_by_receipt = _dd(set)
+phones_by_receipt: Dict[Tuple[str, int], Set[str]] = _dd(set)
+address_lines_by_receipt: Dict[Tuple[str, int], List[Tuple[int, str]]] = _dd(
+    list
+)
+address_values_by_receipt: Dict[Tuple[str, int], List[str]] = _dd(list)
 
-for (img_id, rec_id, ln_id), types in line_types_by_key.items():
-    rk = (str(img_id), int(rec_id))
-    txt = line_text_by_key.get((img_id, rec_id, ln_id), "")
-    if "address" in types:
-        address_lines_by_receipt[rk].append((int(ln_id), str(txt)))
-    if "phone" in types:
-        ph = _normalize_phone(str(txt))
+for w in words_with_extracted_data:
+    rk = (str(w.image_id), int(w.receipt_id))
+    if w.extracted_data.get("type") == "phone":
+        ph = _normalize_phone(str(w.text))
         if len(ph) >= 10:
             phones_by_receipt[rk].add(ph)
-    if "url" in types:
-        urls_by_receipt[rk].add(_normalize_url(str(txt)))
+    if w.extracted_data.get("type") == "address":
+        val = str(w.extracted_data.get("value") or "").strip()
+        if val:
+            address_values_by_receipt[rk].append(val)
 
-# Prefer full address from extracted word values when present
-address_values_by_receipt: Dict[Tuple[str, int], List[str]] = _dd(list)
-for w in words_with_extracted_data:
-    try:
-        if w.extracted_data and w.extracted_data.get("type") == "address":
-            val = str(w.extracted_data.get("value") or "").strip()
-            if val:
-                address_values_by_receipt[
-                    (str(w.image_id), int(w.receipt_id))
-                ].append(val)
-    except Exception:
+for (img_id, rec_id, ln_id), types in line_types_by_key.items():
+    if "address" in types:
+        rk = (str(img_id), int(rec_id))
+        txt = line_text_by_key.get((img_id, rec_id, ln_id), "")
+        address_lines_by_receipt[rk].append((int(ln_id), str(txt)))
+
+
+def build_full_address(rk: Tuple[str, int]) -> str:
+    vals = address_values_by_receipt.get(rk, [])
+    if vals:
+        uniq = sorted(
+            set(v.strip() for v in vals if v.strip()), key=len, reverse=True
+        )
+        return _normalize_address(uniq[0])
+    parts = sorted(address_lines_by_receipt.get(rk, []), key=lambda t: t[0])
+    full_text = " ".join([t for _, t in parts]) if parts else ""
+    return _normalize_address(full_text)
+
+
+# ---------------- Build clusters: merge by full address (phones consolidated) ----------------
+address_to_receipts: Dict[str, Set[Tuple[str, int]]] = _dd(set)
+address_to_phones: Dict[str, List[str]] = _dd(list)
+
+for rk, phones in phones_by_receipt.items():
+    full_addr = build_full_address(rk)
+    if not full_addr or len(full_addr.split(" ")) < 3:
         continue
+    address_to_receipts[full_addr].add(rk)
+    for p in phones:
+        digits = _normalize_phone(p)
+        if digits:
+            address_to_phones[full_addr].append(digits)
 
-full_address_value_by_receipt: Dict[Tuple[str, int], str] = {}
-for rk, vals in address_values_by_receipt.items():
-    # choose the longest unique value as best candidate
-    uniq = sorted(
-        set(v.strip() for v in vals if v.strip()), key=len, reverse=True
-    )
-    if uniq:
-        full_address_value_by_receipt[rk] = _normalize_address(uniq[0])
 
-# Build combined clusters based on (phone, full_address)
-direct_combo_to_receipts: Dict[Tuple[str, str], Set[Tuple[str, int]]] = _dd(
-    set
-)
-for rk, phone_set in phones_by_receipt.items():
-    # Prefer value-derived full address; fallback to concatenated address lines
-    full_addr = full_address_value_by_receipt.get(
-        rk
-    ) or _build_full_address_for_receipt(rk, address_lines_by_receipt)
-    # require a plausible full address to reduce noise
-    if not _is_plausible_full_address(full_addr):
-        continue
-    for p in phone_set:
-        if not _is_plausible_phone(p):
-            continue
-        direct_combo_to_receipts[(p, full_addr)].add(rk)
+def _canonical_phone(phones: List[str]) -> Tuple[str, Dict[str, int]]:
+    counts: Dict[str, int] = {}
+    for ph in phones:
+        if len(ph) == 10 and not (ph.startswith("000") or ph == ph[0] * 10):
+            counts[ph] = counts.get(ph, 0) + 1
+    if not counts:
+        return "", {}
+    winner = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+    return winner, counts
 
-same_store_clusters_direct: List[Dict] = []
-for (p, addr), rset in direct_combo_to_receipts.items():
+
+same_store_clusters: List[Dict] = []
+for addr, rset in address_to_receipts.items():
     if len(rset) < 2:
         continue
-    # URL intersection evidence
-    url_sets = [urls_by_receipt.get(rk, set()) for rk in rset]
-    shared = set(url_sets[0]) if url_sets else set()
-    for s in url_sets[1:]:
-        shared &= s
-    same_store_clusters_direct.append(
+    phones = address_to_phones.get(addr, [])
+    canon, counts = _canonical_phone(phones)
+    aliases = sorted([p for p in set(phones) if p != canon])
+    same_store_clusters.append(
         {
-            "phone": p,
             "address": addr,
             "count": len(rset),
             "receipts": sorted(list(rset)),
-            "shared_urls": sorted(list(shared))[:5],
+            "phone_canonical": canon,
+            "phone_aliases": aliases,
         }
     )
 
-same_store_clusters_direct.sort(
-    key=lambda c: (-int(c["count"]), c["phone"], c["address"])
+same_store_clusters.sort(
+    key=lambda c: (
+        -int(c["count"]),
+        c.get("phone_canonical", ""),
+        c["address"],
+    )
 )
-
-# ---------------- Enrich clusters with merchant names from embedding metadatas ----------------
-merchant_names_by_receipt: Dict[Tuple[str, int], Set[str]] = {}
-from collections import defaultdict as _dd2
-
-merchant_names_by_receipt = _dd2(set)
-for occs in groups.values():
-    for o in occs:
-        img = o.get("image_id")
-        rid = o.get("receipt_id")
-        mname = (o.get("merchant_name") or "").strip()
-        if img is None or rid is None or not mname:
-            continue
-        merchant_names_by_receipt[(str(img), int(rid))].add(mname)
-
-
-def _consensus_merchant(receipts: list[Tuple[str, int]]) -> dict:
-    counts: Dict[str, int] = {}
-    for rk in receipts:
-        for name in merchant_names_by_receipt.get(tuple(rk), set()):
-            counts[name] = counts.get(name, 0) + 1
-    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
-    return {
-        "consensus": ranked[0][0] if ranked else "",
-        "support": ranked[0][1] if ranked else 0,
-        "candidates": [n for n, _ in ranked[:5]],
-    }
-
-
-for c in same_store_clusters_direct:
-    info = _consensus_merchant(c.get("receipts", []))
-    c["merchant_consensus"] = info.get("consensus")
-    c["merchant_support"] = info.get("support")
-    c["merchant_candidates"] = info.get("candidates")
 
 print(
     json.dumps(
