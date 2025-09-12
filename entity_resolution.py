@@ -317,8 +317,10 @@ except Exception as e:  # pylint: disable=broad-except
     print(f"CSV export failed: {e}")
 
 import json
-from typing import Union
+import re
+from typing import Dict, List, Set, Tuple, Union
 from pathlib import Path
+from urllib.parse import urlparse
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities.receipt_word import ReceiptWord
@@ -334,7 +336,7 @@ chroma_words_dir = (Path(__file__).parent / "dev.chroma_words").resolve()
 chroma_lines_dir = (Path(__file__).parent / "dev.chroma_lines").resolve()
 
 dynamo_client = DynamoClient(load_env().get("dynamodb_table_name"))
-chroma_bucket = load_env().get("chroma_bucket")
+chroma_bucket = load_env().get("chromadb_bucket_name")
 
 
 def to_line_chroma_id(item: Union[ReceiptWord, ReceiptLine]) -> str:
@@ -380,12 +382,12 @@ use_existing_lines = chroma_lines_dir.exists() and any(
 use_existing_words = chroma_words_dir.exists() and any(
     chroma_words_dir.rglob("*")
 )
-if not chroma_bucket:
-    raise ValueError(
-        "No VECTORS_BUCKET configured and no local lines or words snapshot found; cannot download."
-    )
 
 if not use_existing_lines or not use_existing_words:
+    if not chroma_bucket:
+        raise ValueError(
+            "No chromadb_bucket_name configured and no local lines or words snapshot found; cannot download."
+        )
     try:
         print(
             f"Downloading lines snapshot from s3://{chroma_bucket}/lines/snapshot/... to {local_lines_path}"
@@ -420,5 +422,362 @@ words_client = VectorClient.create_word_client(
 words_with_extracted_data = [
     w
     for w in words
-    if w.extracted_data and w.extracted_data["type"] in ["address", "phone"]
+    if w.extracted_data
+    and w.extracted_data["type"] in ["address", "phone", "url"]
 ]
+
+
+# ---------------- Normalization helpers ----------------
+def _normalize_phone(text: str) -> str:
+    digits = re.sub(r"\D+", "", text or "")
+    if not digits:
+        return ""
+    if len(digits) > 10 and digits.startswith("1"):
+        digits = digits[1:]
+    if len(digits) > 10:
+        digits = digits[-10:]
+    return digits
+
+
+_STREET_ABBR = {
+    "STREET": "ST",
+    "ST": "ST",
+    "ROAD": "RD",
+    "RD": "RD",
+    "AVENUE": "AVE",
+    "AVE": "AVE",
+    "BOULEVARD": "BLVD",
+    "BLVD": "BLVD",
+    "DRIVE": "DR",
+    "DR": "DR",
+    "LANE": "LN",
+    "LN": "LN",
+    "HIGHWAY": "HWY",
+    "HWY": "HWY",
+    "PARKWAY": "PKWY",
+    "PKWY": "PKWY",
+    "SUITE": "STE",
+    "STE": "STE",
+    "APARTMENT": "APT",
+    "APT": "APT",
+    "UNIT": "UNIT",
+}
+
+
+# Basic set of US state/territory abbreviations for light validation
+_STATE_ABBR = {
+    "AL",
+    "AK",
+    "AZ",
+    "AR",
+    "CA",
+    "CO",
+    "CT",
+    "DE",
+    "FL",
+    "GA",
+    "HI",
+    "ID",
+    "IL",
+    "IN",
+    "IA",
+    "KS",
+    "KY",
+    "LA",
+    "ME",
+    "MD",
+    "MA",
+    "MI",
+    "MN",
+    "MS",
+    "MO",
+    "MT",
+    "NE",
+    "NV",
+    "NH",
+    "NJ",
+    "NM",
+    "NY",
+    "NC",
+    "ND",
+    "OH",
+    "OK",
+    "OR",
+    "PA",
+    "RI",
+    "SC",
+    "SD",
+    "TN",
+    "TX",
+    "UT",
+    "VT",
+    "VA",
+    "WA",
+    "WV",
+    "WI",
+    "WY",
+    "DC",
+    "PR",
+    "GU",
+    "VI",
+    "AS",
+    "MP",
+}
+
+
+def _normalize_address(text: str) -> str:
+    if not text:
+        return ""
+    t = re.sub(
+        r"\s+", " ", re.sub(r"[^A-Za-z0-9 ]+", " ", str(text).upper())
+    ).strip()
+    tokens = [tok for tok in t.split(" ") if tok]
+    normalized_tokens: List[str] = []
+    for tok in tokens:
+        normalized_tokens.append(_STREET_ABBR.get(tok, tok))
+    return " ".join(normalized_tokens)
+
+
+def _normalize_url(text: str) -> str:
+    if not text:
+        return ""
+    t = text.strip()
+    if not re.match(r"^[a-zA-Z]+://", t):
+        t = "http://" + t
+    try:
+        parsed = urlparse(t)
+        host = (parsed.netloc or "").lower()
+        if host.startswith("www."):
+            host = host[4:]
+        path = (parsed.path or "").rstrip("/")
+        return host + path
+    except Exception:
+        return text.strip().lower()
+
+
+def _strip_phone_like(text: str) -> str:
+    if not text:
+        return ""
+    t = str(text)
+    # Remove common phone formats and long digit runs
+    t = re.sub(r"\+?\d?[\s\-.()]*\d{3}[\s\-.()]*\d{3}[\s\-.()]*\d{4}", " ", t)
+    t = re.sub(r"\d{10,}", " ", t)
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def _normalize_by_type(text: str, value_type: str) -> str:
+    if value_type == "phone":
+        return _normalize_phone(text)
+    if value_type == "address":
+        return _normalize_address(_strip_phone_like(text))
+    if value_type == "url":
+        return _normalize_url(text)
+    return (text or "").strip().upper()
+
+
+# ---------------- Value validation helpers ----------------
+def _is_valid_normalized(
+    value_type: str, normalized: str, original_text: str
+) -> bool:
+    if not normalized:
+        return False
+    if value_type == "phone":
+        # Require full US-length numbers to avoid noise
+        return len(normalized) >= 10
+    if value_type == "url":
+        # Exclude emails and require a path to reduce generic domain noise
+        if "@" in normalized:
+            return False
+        return "/" in normalized
+    if value_type == "address":
+        # Be permissive; rely on exact normalized line equality later
+        tokens = [tok for tok in normalized.split(" ") if tok]
+        return len(tokens) >= 2
+    return True
+
+
+# ---------------- Build line-type index ----------------
+LineKey = Tuple[str, int, int]
+line_types_by_key: Dict[LineKey, Set[str]] = {}
+for w in words_with_extracted_data:
+    key: LineKey = (str(w.image_id), int(w.receipt_id), int(w.line_id))
+    if key not in line_types_by_key:
+        line_types_by_key[key] = set()
+    try:
+        t = str(w.extracted_data.get("type", ""))
+        if t:
+            line_types_by_key[key].add(t)
+    except Exception:
+        pass
+
+
+# ---------------- Prepare unique line ids and fetch embeddings ----------------
+def _build_line_chroma_id(image_id: str, receipt_id: int, line_id: int) -> str:
+    return f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
+
+
+unique_line_keys: List[LineKey] = sorted(
+    {
+        (str(w.image_id), int(w.receipt_id), int(w.line_id))
+        for w in words_with_extracted_data
+    }
+)
+
+line_key_to_cid: Dict[LineKey, str] = {}
+for img_id, rec_id, ln_id in unique_line_keys:
+    line_key_to_cid[(img_id, rec_id, ln_id)] = _build_line_chroma_id(
+        img_id, rec_id, ln_id
+    )
+
+embeddings_by_cid: Dict[str, List[float]] = {}
+if line_key_to_cid:
+    try:
+        ids = [cid for cid in line_key_to_cid.values()]
+        got = line_client.get_by_ids(
+            collection_name="lines",
+            ids=ids,
+            include=["embeddings", "metadatas", "documents"],
+        )
+        for i, cid in enumerate(got.get("ids", [])):
+            emb = got.get("embeddings", [None])[i]
+            if emb is not None:
+                embeddings_by_cid[cid] = emb
+    except Exception as e:  # pylint: disable=broad-except
+        raise RuntimeError(f"Failed to load line embeddings: {e}")
+
+
+# Build a line text map from exports
+line_text_by_key: Dict[LineKey, str] = {}
+for ln in lines:
+    try:
+        k: LineKey = (str(ln.image_id), int(ln.receipt_id), int(ln.line_id))
+        line_text_by_key[k] = str(ln.text or "")
+    except Exception:
+        continue
+
+
+def _classify_line_type(key: LineKey) -> str:
+    preferred = line_types_by_key.get(key, set())
+    if "phone" in preferred:
+        return "phone"
+    if "address" in preferred:
+        return "address"
+    if "url" in preferred:
+        return "url"
+    return "other"
+
+
+# ---------------- Query similar lines and group by normalized identity ----------------
+GroupKey = Tuple[str, str]
+groups: Dict[GroupKey, List[Dict]] = {}
+
+
+def _add_occurrence(
+    value_type: str, normalized_value: str, occurrence: Dict
+) -> None:
+    if not normalized_value:
+        return
+    key: GroupKey = (value_type, normalized_value)
+    if key not in groups:
+        groups[key] = []
+    groups[key].append(occurrence)
+
+
+for key in unique_line_keys:
+    cid = line_key_to_cid.get(key)
+    emb = embeddings_by_cid.get(cid)
+    if emb is None:
+        continue
+    value_type = _classify_line_type(key)
+    if value_type not in {"phone", "address", "url"}:
+        continue
+    q_text = line_text_by_key.get(key, "")
+    normalized = _normalize_by_type(q_text, value_type)
+    if not _is_valid_normalized(value_type, normalized, q_text):
+        continue
+
+    try:
+        res = line_client.query(
+            collection_name="lines",
+            query_embeddings=[emb],
+            n_results=25,
+            include=["metadatas", "documents", "distances"],
+        )
+    except Exception:  # pylint: disable=broad-except
+        continue
+
+    metas = (res or {}).get("metadatas") or []
+    docs = (res or {}).get("documents") or []
+    dists = (res or {}).get("distances") or []
+    if not metas:
+        continue
+    mlist = metas[0]
+    dlist = docs[0] if docs else []
+    distlist = dists[0] if dists else []
+
+    for i in range(min(len(mlist), len(dlist))):
+        md = mlist[i] or {}
+        cand_text = str(dlist[i] or "")
+        cand_norm = _normalize_by_type(cand_text, value_type)
+        if cand_norm != normalized:
+            continue
+        occurrence = {
+            "type": value_type,
+            "normalized": normalized,
+            "image_id": md.get("image_id"),
+            "receipt_id": md.get("receipt_id"),
+            "merchant_name": md.get("merchant_name"),
+            "text": cand_text,
+            "distance": (
+                float(distlist[i])
+                if i < len(distlist) and distlist[i] is not None
+                else None
+            ),
+        }
+        _add_occurrence(value_type, normalized, occurrence)
+
+
+# ---------------- Emit clusters with >=2 unique receipts (dedup per receipt, keep best) ----------------
+clusters: List[Dict] = []
+for (vtype, norm), occs in groups.items():
+    best_by_receipt: Dict[Tuple[str, int], Dict] = {}
+    for o in occs:
+        img = o.get("image_id")
+        rid = o.get("receipt_id")
+        if img is None or rid is None:
+            continue
+        rkey = (str(img), int(rid))
+        prev = best_by_receipt.get(rkey)
+        if prev is None:
+            best_by_receipt[rkey] = o
+        else:
+            d_prev = prev.get("distance")
+            d_cur = o.get("distance")
+            if d_prev is None or (d_cur is not None and d_cur < d_prev):
+                best_by_receipt[rkey] = o
+
+    if len(best_by_receipt) < 2:
+        continue
+    deduped_samples = sorted(
+        best_by_receipt.values(),
+        key=lambda s: (
+            float("inf") if s.get("distance") is None else s.get("distance")
+        ),
+    )[:5]
+    clusters.append(
+        {
+            "type": vtype,
+            "normalized": norm,
+            "count": len(best_by_receipt),
+            "receipts": sorted(list(best_by_receipt.keys())),
+            "samples": deduped_samples,
+        }
+    )
+
+clusters.sort(key=lambda c: (-int(c["count"]), c["type"], c["normalized"]))
+
+print(
+    json.dumps(
+        {"cluster_count": len(clusters), "clusters": clusters}, indent=2
+    )
+)
