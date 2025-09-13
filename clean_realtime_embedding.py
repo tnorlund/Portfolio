@@ -16,6 +16,8 @@ import argparse
 import os
 import re
 from dataclasses import dataclass
+from contextlib import contextmanager
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
@@ -101,6 +103,34 @@ def _build_full_address_from_lines(lines: List) -> str:
         if not getattr(ln, "is_noise", False)
     ]
     return _normalize_address(" ".join(parts))
+
+
+@contextmanager
+def _timed(section: str, timings: Dict[str, float]) -> None:
+    t0 = time.perf_counter()
+    try:
+        yield
+    finally:
+        t1 = time.perf_counter()
+        timings[section] = timings.get(section, 0.0) + (t1 - t0)
+
+
+def _print_timings_header(image_id: str, receipt_id: int) -> None:
+    print(f"\nTIMING for {image_id}/{int(receipt_id)} (seconds):")
+
+
+def _print_timings_summary(
+    timings: Dict[str, float], counters: Dict[str, int]
+) -> None:
+    if timings:
+        for name, val in sorted(
+            timings.items(), key=lambda kv: kv[1], reverse=True
+        ):
+            print(f"  {name:32s} {val:8.3f}")
+    if counters:
+        print("  counters:")
+        for name, val in counters.items():
+            print(f"    {name:28s} {val}")
 
 
 def _classify_line_type(line_text: str, preferred: Set[str]) -> str:
@@ -397,28 +427,32 @@ def process_missing_receipt(
     )
 
     # Fetch words
-    try:
-        words = cm.dynamo.list_receipt_words_from_receipt(
-            image_id=str(image_id), receipt_id=int(receipt_id)
-        )
-    except Exception as e:
-        print(f"Failed to fetch words: {e}")
-        return
+    with _timed("fetch_target_words", timings):
+        try:
+            words = cm.dynamo.list_receipt_words_from_receipt(
+                image_id=str(image_id), receipt_id=int(receipt_id)
+            )
+        except Exception as e:
+            print(f"Failed to fetch words: {e}")
+            return
     if not words:
         print("No words found on the target receipt")
         return
 
     # Build phone/address for target
-    target_full_address = _build_full_address_from_words(words)
-    if not target_full_address:
-        try:
-            all_lines_tmp = cm.dynamo.list_receipt_lines_from_receipt(
-                image_id=str(image_id), receipt_id=int(receipt_id)
-            )
-            target_full_address = _build_full_address_from_lines(all_lines_tmp)
-        except Exception:
-            target_full_address = ""
-    target_phone = _get_target_phone(words)
+    with _timed("compute_target_phone_address", timings):
+        target_full_address = _build_full_address_from_words(words)
+        if not target_full_address:
+            try:
+                all_lines_tmp = cm.dynamo.list_receipt_lines_from_receipt(
+                    image_id=str(image_id), receipt_id=int(receipt_id)
+                )
+                target_full_address = _build_full_address_from_lines(
+                    all_lines_tmp
+                )
+            except Exception:
+                target_full_address = ""
+        target_phone = _get_target_phone(words)
 
     # Determine which lines to embed (only those with extracted address/phone)
     words_with_extracted_data = [
@@ -444,25 +478,28 @@ def process_missing_receipt(
     target_line_ids = sorted(
         {int(w.line_id) for w in words_with_extracted_data}
     )
-    try:
-        lines = cm.dynamo.get_receipt_lines_by_indices(
-            [
-                (str(image_id), int(receipt_id), int(lid))
-                for lid in target_line_ids
-            ]
-        )
-    except Exception as e:
-        print(f"Primary line fetch failed, falling back: {e}")
+    with _timed("fetch_target_lines", timings):
         try:
-            all_lines = cm.dynamo.list_receipt_lines_from_receipt(
-                image_id=str(image_id), receipt_id=int(receipt_id)
+            lines = cm.dynamo.get_receipt_lines_by_indices(
+                [
+                    (str(image_id), int(receipt_id), int(lid))
+                    for lid in target_line_ids
+                ]
             )
-            lines = [
-                ln for ln in all_lines if int(ln.line_id) in target_line_ids
-            ]
-        except Exception as e2:
-            print(f"Failed to load receipt lines: {e2}")
-            return
+        except Exception as e:
+            print(f"Primary line fetch failed, falling back: {e}")
+            try:
+                all_lines = cm.dynamo.list_receipt_lines_from_receipt(
+                    image_id=str(image_id), receipt_id=int(receipt_id)
+                )
+                lines = [
+                    ln
+                    for ln in all_lines
+                    if int(ln.line_id) in target_line_ids
+                ]
+            except Exception as e2:
+                print(f"Failed to load receipt lines: {e2}")
+                return
     if not lines:
         print("No lines found for target ids")
         return
@@ -470,13 +507,16 @@ def process_missing_receipt(
     # Optionally materialize: embed ALL lines and words for this receipt and upsert locally
     if materialize:
         try:
-            # Lines materialization
-            all_lines_for_receipt = cm.dynamo.list_receipt_lines_from_receipt(
-                image_id=str(image_id), receipt_id=int(receipt_id)
-            )
-            line_pairs_all = embed_lines_realtime(
-                all_lines_for_receipt, merchant_name=None
-            )
+            with _timed("materialize_lines_fetch+embed", timings):
+                # Lines materialization
+                all_lines_for_receipt = (
+                    cm.dynamo.list_receipt_lines_from_receipt(
+                        image_id=str(image_id), receipt_id=int(receipt_id)
+                    )
+                )
+                line_pairs_all = embed_lines_realtime(
+                    all_lines_for_receipt, merchant_name=None
+                )
 
             if line_pairs_all:
                 ids = []
@@ -497,15 +537,17 @@ def process_missing_receipt(
                             "embedding_type": "line",
                         }
                     )
-                VectorClient.create_line_client(
-                    persist_directory=str(env.local_lines_dir), mode="write"
-                ).upsert_vectors(
-                    collection_name="lines",
-                    ids=ids,
-                    embeddings=embeddings,
-                    documents=documents,
-                    metadatas=metadatas,
-                )
+                with _timed("materialize_lines_upsert", timings):
+                    VectorClient.create_line_client(
+                        persist_directory=str(env.local_lines_dir),
+                        mode="write",
+                    ).upsert_vectors(
+                        collection_name="lines",
+                        ids=ids,
+                        embeddings=embeddings,
+                        documents=documents,
+                        metadatas=metadatas,
+                    )
                 print(
                     f"Materialized {len(ids)} line vectors for {image_id}/{receipt_id}"
                 )
@@ -514,57 +556,64 @@ def process_missing_receipt(
 
         try:
             # Words materialization (context formatted)
-            all_words_for_receipt = cm.dynamo.list_receipt_words_from_receipt(
-                image_id=str(image_id), receipt_id=int(receipt_id)
-            )
+            with _timed("materialize_words_fetch", timings):
+                all_words_for_receipt = (
+                    cm.dynamo.list_receipt_words_from_receipt(
+                        image_id=str(image_id), receipt_id=int(receipt_id)
+                    )
+                )
             if all_words_for_receipt:
                 openai_client = cm.openai
-                inputs = [
-                    _format_word_context_embedding_input(
-                        w, all_words_for_receipt
-                    )
-                    for w in all_words_for_receipt
-                    if not getattr(w, "is_noise", False)
-                ]
+                with _timed("materialize_words_format_inputs", timings):
+                    inputs = [
+                        _format_word_context_embedding_input(
+                            w, all_words_for_receipt
+                        )
+                        for w in all_words_for_receipt
+                        if not getattr(w, "is_noise", False)
+                    ]
                 if inputs:
-                    resp = openai_client.embeddings.create(
-                        model="text-embedding-3-small", input=inputs
-                    )
+                    with _timed("materialize_words_embed_api", timings):
+                        resp = openai_client.embeddings.create(
+                            model="text-embedding-3-small", input=inputs
+                        )
                     ids = []
                     embeddings = []
                     documents = []
                     metadatas = []
                     idx = 0
-                    for w in all_words_for_receipt:
-                        if getattr(w, "is_noise", False):
-                            continue
-                        vec = resp.data[idx].embedding
-                        idx += 1
-                        vector_id = f"IMAGE#{w.image_id}#RECEIPT#{int(w.receipt_id):05d}#LINE#{int(w.line_id):05d}#WORD#{int(w.word_id):05d}"
-                        ids.append(vector_id)
-                        embeddings.append(vec)
-                        documents.append(w.text)
-                        metadatas.append(
-                            {
-                                "image_id": w.image_id,
-                                "receipt_id": int(w.receipt_id),
-                                "line_id": int(w.line_id),
-                                "word_id": int(w.word_id),
-                                "merchant_name": "UNKNOWN",
-                                "embedding_type": "word",
-                            }
-                        )
+                    with _timed("materialize_words_build_payload", timings):
+                        for w in all_words_for_receipt:
+                            if getattr(w, "is_noise", False):
+                                continue
+                            vec = resp.data[idx].embedding
+                            idx += 1
+                            vector_id = f"IMAGE#{w.image_id}#RECEIPT#{int(w.receipt_id):05d}#LINE#{int(w.line_id):05d}#WORD#{int(w.word_id):05d}"
+                            ids.append(vector_id)
+                            embeddings.append(vec)
+                            documents.append(w.text)
+                            metadatas.append(
+                                {
+                                    "image_id": w.image_id,
+                                    "receipt_id": int(w.receipt_id),
+                                    "line_id": int(w.line_id),
+                                    "word_id": int(w.word_id),
+                                    "merchant_name": "UNKNOWN",
+                                    "embedding_type": "word",
+                                }
+                            )
                     if ids:
-                        VectorClient.create_word_client(
-                            persist_directory=str(env.local_words_dir),
-                            mode="write",
-                        ).upsert_vectors(
-                            collection_name="words",
-                            ids=ids,
-                            embeddings=embeddings,
-                            documents=documents,
-                            metadatas=metadatas,
-                        )
+                        with _timed("materialize_words_upsert", timings):
+                            VectorClient.create_word_client(
+                                persist_directory=str(env.local_words_dir),
+                                mode="write",
+                            ).upsert_vectors(
+                                collection_name="words",
+                                ids=ids,
+                                embeddings=embeddings,
+                                documents=documents,
+                                metadatas=metadatas,
+                            )
                         print(
                             f"Materialized {len(ids)} word vectors for {image_id}/{receipt_id}"
                         )
@@ -595,11 +644,12 @@ def process_missing_receipt(
     ]
     new_pairs = []
     if to_embed:
-        try:
-            new_pairs = embed_lines_realtime(to_embed, merchant_name=None)
-        except Exception as e:
-            print(f"Line embedding failed: {e}")
-            return
+        with _timed("embed_target_lines_api", timings):
+            try:
+                new_pairs = embed_lines_realtime(to_embed, merchant_name=None)
+            except Exception as e:
+                print(f"Line embedding failed: {e}")
+                return
     else:
         print(
             "All target lines already cached; skipping line embedding API call"
@@ -610,21 +660,22 @@ def process_missing_receipt(
         print("No line embeddings available")
         return
 
-    try:
-        payload = {
-            "image_id": image_id,
-            "receipt_id": int(receipt_id),
-            "model": "text-embedding-3-small",
-            "vectors": [
-                {"line_id": lid, "embedding": emb}
-                for lid, emb in cached.items()
-            ],
-        }
-        with cache_file.open("w", encoding="utf-8") as f:
-            json.dump(payload, f)
-        print(f"Saved line embeddings cache to {str(cache_file)}")
-    except Exception as e:
-        print(f"Failed to write line cache: {e}")
+    with _timed("write_line_cache", timings):
+        try:
+            payload = {
+                "image_id": image_id,
+                "receipt_id": int(receipt_id),
+                "model": "text-embedding-3-small",
+                "vectors": [
+                    {"line_id": lid, "embedding": emb}
+                    for lid, emb in cached.items()
+                ],
+            }
+            with cache_file.open("w", encoding="utf-8") as f:
+                json.dump(payload, f)
+            print(f"Saved line embeddings cache to {str(cache_file)}")
+        except Exception as e:
+            print(f"Failed to write line cache: {e}")
 
     # Query and aggregate with exact phone/address per candidate receipt
     print("\nQuerying similar lines for target lines...")
@@ -643,12 +694,13 @@ def process_missing_receipt(
         if lid not in cached:
             continue
         try:
-            res = line_client.query(
-                collection_name="lines",
-                query_embeddings=[cached[lid]],
-                n_results=5,
-                include=["metadatas", "documents", "distances"],
-            )
+            with _timed("query_lines_api", timings):
+                res = line_client.query(
+                    collection_name="lines",
+                    query_embeddings=[cached[lid]],
+                    n_results=5,
+                    include=["metadatas", "documents", "distances"],
+                )
         except Exception as e:
             print(f"Line query failed for line_id={lid}: {e}")
             continue
@@ -702,9 +754,10 @@ def process_missing_receipt(
     cand_phone_cache: Dict[Tuple[str, int], str] = {}
     cand_addr_cache: Dict[Tuple[str, int], str] = {}
     if unique_candidates:
-        _prefetch_candidate_receipts(
-            cm, unique_candidates, cand_phone_cache, cand_addr_cache
-        )
+        with _timed("prefetch_candidates", timings):
+            _prefetch_candidate_receipts(
+                cm, unique_candidates, cand_phone_cache, cand_addr_cache
+            )
 
     # Score using prefetched caches
     for h in hits:
@@ -741,6 +794,8 @@ def process_missing_receipt(
 
     # Word path skipped to avoid extra HTTP calls; rely on line evidence + equality.
 
+    _print_timings_header(image_id, int(receipt_id))
+    _print_timings_summary(timings, counters)
     if merchant_scores:
         print(
             "\nAggregated merchant ranking (combined phone/address evidence):"
@@ -838,6 +893,12 @@ def main() -> None:
         action="store_true",
         help="Embed all words/lines of each target receipt to local Chroma first",
     )
+    parser.add_argument(
+        "--max-missing",
+        type=int,
+        default=0,
+        help="Process at most N missing receipts (0 means all)",
+    )
     args = parser.parse_args()
 
     # env and clients
@@ -895,6 +956,7 @@ def main() -> None:
         env.local_lines_dir.mkdir(parents=True, exist_ok=True)
         env.local_words_dir.mkdir(parents=True, exist_ok=True)
 
+    processed = 0
     for image_id, receipt_id in missing:
         process_missing_receipt(
             cm,
@@ -906,6 +968,9 @@ def main() -> None:
             apply_changes=args.apply,
             materialize=args.materialize,
         )
+        processed += 1
+        if args.max_missing and processed >= args.max_missing:
+            break
 
 
 if __name__ == "__main__":
