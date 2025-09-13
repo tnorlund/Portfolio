@@ -8,6 +8,7 @@ from boto3 import client
 from PIL import Image as PIL_Image
 from PIL.Image import Resampling
 
+from receipt_label.utils.noise_detection import is_noise_text
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import (
     Letter,
@@ -450,6 +451,8 @@ def image_ocr_to_receipt_ocr(
             angle_radians=word.angle_radians,
             confidence=word.confidence,
             receipt_id=receipt_id,
+            extracted_data=word.extracted_data,
+            is_noise=is_noise_text(word.text),
         )
         receipt_words.append(receipt_word)
 
