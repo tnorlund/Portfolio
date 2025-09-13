@@ -139,6 +139,7 @@ class ReceiptLine(
             "GSI1PK": {"S": f"EMBEDDING_STATUS#{self.embedding_status}"},
             "GSI1SK": {
                 "S": (
+                    f"LINE#"
                     f"IMAGE#{self.image_id}#"
                     f"RECEIPT#{self.receipt_id:05d}#"
                     f"LINE#{self.line_id:05d}"
@@ -206,7 +207,7 @@ class ReceiptLine(
         )
 
     def _get_geometry_hash_fields(self) -> tuple:
-        """Override to include entity-specific ID fields in hash 
+        """Override to include entity-specific ID fields in hash
         computation."""
         return self._get_base_geometry_hash_fields() + (
             self.receipt_id,
