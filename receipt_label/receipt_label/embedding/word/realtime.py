@@ -8,6 +8,11 @@ from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities import ReceiptWord
 
 from receipt_label.utils import get_client_manager
+from receipt_label.merchant_validation.normalize import (
+    normalize_phone,
+    build_full_address_from_words,
+    build_full_address_from_lines,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -289,6 +294,33 @@ def embed_receipt_words_realtime(
     documents = []
     word_embedding_pairs = []
 
+    # Compute receipt-level normalized fields once
+    normalized_phone_10 = ""
+    for w in words:
+        try:
+            ext = getattr(w, "extracted_data", None) or {}
+            if ext.get("type") == "phone":
+                candidate = ext.get("value") or getattr(w, "text", "")
+                ph = normalize_phone(candidate)
+                if ph:
+                    normalized_phone_10 = ph
+                    break
+        except Exception:
+            continue
+
+    normalized_full_address = build_full_address_from_words(words)
+    if not normalized_full_address:
+        # Fallback to lines if needed
+        try:
+            client_manager = get_client_manager()
+            lines = client_manager.dynamo.list_receipt_lines_by_receipt(
+                receipt_id
+            )
+        except Exception:
+            lines = []
+        if lines:
+            normalized_full_address = build_full_address_from_lines(lines)
+
     # Create a mapping for quick lookup of embeddings by word
     embedding_map = {(w.word_id, w.line_id): emb for w, emb in word_embeddings}
 
@@ -311,6 +343,10 @@ def embed_receipt_words_realtime(
                 merchant_name=merchant_name,
                 label_status="unvalidated",
             )
+
+            # Attach normalized receipt-level fields
+            metadata["normalized_phone_10"] = normalized_phone_10
+            metadata["normalized_full_address"] = normalized_full_address
 
             # Prepare data for ChromaDB
             ids.append(vector_id)
