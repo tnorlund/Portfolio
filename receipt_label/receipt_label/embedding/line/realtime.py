@@ -172,14 +172,19 @@ def embed_lines_realtime(
         logger.info("No lines to embed")
         return []
 
-    # Build list of (line, formatted_text) pairs
+    # Filter out noise lines to match batch behavior
+    meaningful_lines = [l for l in lines if not getattr(l, "is_noise", False)]
+    if not meaningful_lines:
+        logger.info("No meaningful lines to embed (all filtered as noise)")
+        return []
+
+    # Build list of (line, plain_text) pairs (no context) to match batch input
     line_text_pairs = []
-    for line in lines:
-        formatted_text = _format_line_context_embedding_input(line, lines)
-        line_text_pairs.append((line, formatted_text))
+    for line in meaningful_lines:
+        line_text_pairs.append((line, line.text))
 
     try:
-        # Get embeddings from OpenAI
+        # Get embeddings from OpenAI using plain line.text inputs
         response = openai_client.embeddings.create(
             model=model,
             input=[pair[1] for pair in line_text_pairs],
