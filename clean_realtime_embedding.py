@@ -330,10 +330,62 @@ def _get_cand_address(
         return ""
 
 
+def _prefetch_candidate_receipts(
+    cm,
+    candidates: Set[Tuple[str, int]],
+    phone_cache: Dict[Tuple[str, int], str],
+    addr_cache: Dict[Tuple[str, int], str],
+) -> None:
+    """Fetch words once per candidate receipt to populate phone and address caches.
+
+    This reduces duplicate DynamoDB calls compared to fetching phone and address separately.
+    """
+    for img_id, rec_id in candidates:
+        key = (str(img_id), int(rec_id))
+        # Skip if both already cached
+        if key in phone_cache and key in addr_cache:
+            continue
+        try:
+            words = cm.dynamo.list_receipt_words_from_receipt(
+                image_id=str(img_id), receipt_id=int(rec_id)
+            )
+        except Exception:
+            words = []
+        # Phone
+        if key not in phone_cache:
+            phone_val = ""
+            for w in words:
+                try:
+                    if (
+                        getattr(w, "extracted_data", None)
+                        and w.extracted_data.get("type") == "phone"
+                    ):
+                        v = w.extracted_data.get("value") or w.text
+                        ph = _normalize_phone(v)
+                        if len(ph) >= 10:
+                            phone_val = ph
+                            break
+                except Exception:
+                    pass
+            phone_cache[key] = phone_val
+        # Address
+        if key not in addr_cache:
+            addr_val = _build_full_address_from_words(words)
+            if not addr_val:
+                try:
+                    lines_tmp = cm.dynamo.list_receipt_lines_from_receipt(
+                        image_id=str(img_id), receipt_id=int(rec_id)
+                    )
+                    addr_val = _build_full_address_from_lines(lines_tmp)
+                except Exception:
+                    addr_val = ""
+            addr_cache[key] = addr_val
+
+
 def process_missing_receipt(
     cm,
     line_client,
-    word_client,
+    _word_client,
     env: Env,
     image_id: str,
     receipt_id: int,
@@ -582,8 +634,9 @@ def process_missing_receipt(
     merchant_best_phone: Dict[str, str] = {}
     merchant_best_address: Dict[str, str] = {}
 
-    cand_phone_cache: Dict[Tuple[str, int], str] = {}
-    cand_addr_cache: Dict[Tuple[str, int], str] = {}
+    # Collect hits and unique candidate receipts (skip self)
+    hits: List[dict] = []
+    unique_candidates: Set[Tuple[str, int]] = set()
 
     for ln in lines:
         lid = int(ln.line_id)
@@ -593,7 +646,7 @@ def process_missing_receipt(
             res = line_client.query(
                 collection_name="lines",
                 query_embeddings=[cached[lid]],
-                n_results=10,
+                n_results=5,
                 include=["metadatas", "documents", "distances"],
             )
         except Exception as e:
@@ -621,59 +674,70 @@ def process_missing_receipt(
 
         for i in range(len(metas)):
             md = metas[i] or {}
+            img_id = md.get("image_id")
+            rec_id = md.get("receipt_id")
+            if not img_id or rec_id is None:
+                continue
+            # Skip self-matches
+            if str(img_id) == str(image_id) and int(rec_id) == int(receipt_id):
+                continue
             doc_text = docs[i] if i < len(docs) else ""
             dist_val = dists[i] if i < len(dists) else None
             if dist_val is None:
                 continue
-            sd = 1.0 / (1.0 + float(dist_val))
+            hits.append(
+                {
+                    "q_type": q_type,
+                    "ln_text": str(ln.text),
+                    "doc_text": str(doc_text),
+                    "dist": float(dist_val),
+                    "merchant": md.get("merchant_name") or "UNKNOWN",
+                    "img_id": str(img_id),
+                    "rec_id": int(rec_id),
+                }
+            )
+            unique_candidates.add((str(img_id), int(rec_id)))
 
-            merchant = md.get("merchant_name") or "UNKNOWN"
-            base_weight = 3.0 if q_type == "phone" else 1.0
-            score = base_weight * sd
+    # Prefetch candidate phones/addresses once per receipt
+    cand_phone_cache: Dict[Tuple[str, int], str] = {}
+    cand_addr_cache: Dict[Tuple[str, int], str] = {}
+    if unique_candidates:
+        _prefetch_candidate_receipts(
+            cm, unique_candidates, cand_phone_cache, cand_addr_cache
+        )
 
-            img_id = md.get("image_id")
-            rec_id = md.get("receipt_id")
-            if q_type == "phone":
-                cand_phone = (
-                    _get_cand_phone(
-                        cm, str(img_id), int(rec_id), cand_phone_cache
-                    )
-                    if img_id and rec_id is not None
-                    else ""
-                )
-                if target_phone and cand_phone and cand_phone == target_phone:
-                    score += 3.0
-                    merchant_best_phone.setdefault(merchant, target_phone)
-                else:
-                    continue
+    # Score using prefetched caches
+    for h in hits:
+        sd = 1.0 / (1.0 + h["dist"])
+        merchant = h["merchant"]
+        base_weight = 3.0 if h["q_type"] == "phone" else 1.0
+        score = base_weight * sd
+        key = (h["img_id"], h["rec_id"])
+        if h["q_type"] == "phone":
+            cand_phone = cand_phone_cache.get(key, "")
+            if target_phone and cand_phone and cand_phone == target_phone:
+                score += 3.0
+                merchant_best_phone.setdefault(merchant, target_phone)
             else:
-                cand_addr_full = (
-                    _get_cand_address(
-                        cm, str(img_id), int(rec_id), cand_addr_cache
-                    )
-                    if img_id and rec_id is not None
-                    else ""
-                )
-                if (
-                    target_full_address
-                    and cand_addr_full
-                    and cand_addr_full == target_full_address
-                ):
-                    score += 2.0
-                    merchant_best_address.setdefault(merchant, cand_addr_full)
-                else:
-                    continue
+                continue
+        else:
+            cand_addr_full = cand_addr_cache.get(key, "")
+            if (
+                target_full_address
+                and cand_addr_full
+                and cand_addr_full == target_full_address
+            ):
+                score += 2.0
+                merchant_best_address.setdefault(merchant, cand_addr_full)
+            else:
+                continue
 
-            merchant_scores[merchant] = (
-                merchant_scores.get(merchant, 0.0) + score
-            )
-            ev = merchant_evidence.setdefault(
-                merchant, {"phone": 0, "address": 0}
-            )
-            ev[q_type] += 1
-            merchant_examples.setdefault(merchant, []).append(
-                f"{q_type}: '{str(ln.text)[:32]}' ↔ '{str(doc_text)[:32]}' (d={dist_val:.4g})"
-            )
+        merchant_scores[merchant] = merchant_scores.get(merchant, 0.0) + score
+        ev = merchant_evidence.setdefault(merchant, {"phone": 0, "address": 0})
+        ev[h["q_type"]] += 1
+        merchant_examples.setdefault(merchant, []).append(
+            f"{h['q_type']}: '{h['ln_text'][:32]}' ↔ '{h['doc_text'][:32]}' (d={h['dist']:.4g})"
+        )
 
     # Word path skipped to avoid extra HTTP calls; rely on line evidence + equality.
 
@@ -826,18 +890,10 @@ def main() -> None:
     word_client = VectorClient.create_word_client(
         persist_directory=str(env.words_dir), mode="read"
     )
-    # Write clients for materialization in separate local dirs
-    line_write_client = None
-    word_write_client = None
+    # Prepare local dirs for optional materialization (writers opened on demand)
     if args.materialize:
         env.local_lines_dir.mkdir(parents=True, exist_ok=True)
         env.local_words_dir.mkdir(parents=True, exist_ok=True)
-        line_write_client = VectorClient.create_line_client(
-            persist_directory=str(env.local_lines_dir), mode="write"
-        )
-        word_write_client = VectorClient.create_word_client(
-            persist_directory=str(env.local_words_dir), mode="write"
-        )
 
     for image_id, receipt_id in missing:
         process_missing_receipt(
