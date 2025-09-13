@@ -8,6 +8,11 @@ from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities import ReceiptLine
 
 from receipt_label.utils import get_client_manager
+from receipt_label.merchant_validation.normalize import (
+    normalize_phone,
+    build_full_address_from_words,
+    build_full_address_from_lines,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -172,14 +177,19 @@ def embed_lines_realtime(
         logger.info("No lines to embed")
         return []
 
-    # Build list of (line, formatted_text) pairs
+    # Filter out noise lines to match batch behavior
+    meaningful_lines = [l for l in lines if not getattr(l, "is_noise", False)]
+    if not meaningful_lines:
+        logger.info("No meaningful lines to embed (all filtered as noise)")
+        return []
+
+    # Build list of (line, plain_text) pairs (no context) to match batch input
     line_text_pairs = []
-    for line in lines:
-        formatted_text = _format_line_context_embedding_input(line, lines)
-        line_text_pairs.append((line, formatted_text))
+    for line in meaningful_lines:
+        line_text_pairs.append((line, line.text))
 
     try:
-        # Get embeddings from OpenAI
+        # Get embeddings from OpenAI using plain line.text inputs
         response = openai_client.embeddings.create(
             model=model,
             input=[pair[1] for pair in line_text_pairs],
@@ -235,6 +245,35 @@ def embed_receipt_lines_realtime(
     documents = []
     line_embedding_pairs = []
 
+    # Compute receipt-level normalized fields once
+    try:
+        words_for_receipt = dynamo_client.list_receipt_words_by_receipt(
+            receipt_id
+        )
+    except Exception:  # Safe fallback if unavailable
+        words_for_receipt = []
+
+    normalized_phone_10 = ""
+    for w in words_for_receipt:
+        try:
+            ext = getattr(w, "extracted_data", None) or {}
+            if ext.get("type") == "phone":
+                candidate = ext.get("value") or getattr(w, "text", "")
+                ph = normalize_phone(candidate)
+                if ph:
+                    normalized_phone_10 = ph
+                    break
+        except Exception:
+            continue
+
+    normalized_full_address = (
+        build_full_address_from_words(words_for_receipt)
+        if words_for_receipt
+        else ""
+    )
+    if not normalized_full_address:
+        normalized_full_address = build_full_address_from_lines(lines)
+
     # Create a mapping for quick lookup of embeddings by line
     embedding_map = {line.line_id: emb for line, emb in line_embeddings}
 
@@ -256,6 +295,10 @@ def embed_receipt_lines_realtime(
                 merchant_name=merchant_name,
                 section="UNLABELED",  # Default section
             )
+
+            # Attach normalized receipt-level fields
+            metadata["normalized_phone_10"] = normalized_phone_10
+            metadata["normalized_full_address"] = normalized_full_address
 
             # Prepare data for ChromaDB
             ids.append(vector_id)

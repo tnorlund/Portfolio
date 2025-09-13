@@ -72,6 +72,11 @@ from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.constants import ChromaDBCollection
 from receipt_label.utils.lock_manager import LockManager
 from receipt_label.utils.chroma_client import ChromaDBClient
+from receipt_label.merchant_validation.normalize import (
+    normalize_phone,
+    build_full_address_from_words,
+    build_full_address_from_lines,
+)
 from receipt_label.vector_store import upload_snapshot_with_hash
 from receipt_label.utils.chroma_s3_helpers import (
     download_snapshot_from_s3,
@@ -1671,6 +1676,51 @@ def update_receipt_metadata(
             elif field in updated_metadata:
                 # Remove field if new value is None
                 del updated_metadata[field]
+
+        # Opportunistically backfill normalized fields if missing
+        try:
+            if (
+                "normalized_phone_10" not in updated_metadata
+                or not updated_metadata.get("normalized_phone_10")
+            ):
+                # Compute from Dynamo words
+                words = dynamo_client.list_receipt_words_from_receipt(
+                    image_id, receipt_id
+                )
+                phone = ""
+                for w in words:
+                    ext = getattr(w, "extracted_data", None) or {}
+                    if ext.get("type") == "phone":
+                        candidate = ext.get("value") or getattr(w, "text", "")
+                        ph = normalize_phone(candidate)
+                        if ph:
+                            phone = ph
+                            break
+                if phone:
+                    updated_metadata["normalized_phone_10"] = phone
+
+            if (
+                "normalized_full_address" not in updated_metadata
+                or not updated_metadata.get("normalized_full_address")
+            ):
+                words = (
+                    words
+                    if "words" in locals() and isinstance(words, list)
+                    else dynamo_client.list_receipt_words_from_receipt(
+                        image_id, receipt_id
+                    )
+                )
+                addr = build_full_address_from_words(words)
+                if not addr:
+                    lines = dynamo_client.list_receipt_lines_from_receipt(
+                        image_id, receipt_id
+                    )
+                    addr = build_full_address_from_lines(lines)
+                if addr:
+                    updated_metadata["normalized_full_address"] = addr
+        except Exception:
+            # Best-effort enrichment; ignore failures
+            pass
 
         # Add update timestamp
         updated_metadata["last_metadata_update"] = datetime.now(
