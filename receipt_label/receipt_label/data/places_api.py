@@ -252,8 +252,8 @@ class PlacesAPI:
         if not clean_phone:
             logger.info("Empty phone—skipping Places API search and cache")
             return None
-        # Check cache first
-        cached_result = self._get_cached_place("PHONE", clean_phone)
+        # Check cache first (use digits-only as canonical cache key)
+        cached_result = self._get_cached_place("PHONE", digits_only)
         if cached_result:
             logger.info("Found cached result for phone: %s", clean_phone)
             return cached_result
@@ -279,8 +279,20 @@ class PlacesAPI:
         logger.info("No cache hit for phone: %s, making API call", clean_phone)
         url = f"{self.BASE_URL}/findplacefromtext/json"
 
-        # For API call, strip all non-numeric characters
-        api_phone = "".join(filter(str.isdigit, clean_phone))
+        # For API call, use E.164 format (+<country><number>) when possible
+        digits_only = "".join(filter(str.isdigit, clean_phone))
+        cache_key = digits_only
+        if clean_phone.strip().startswith("+") and digits_only:
+            api_phone = "+" + digits_only
+        else:
+            # Assume US by default; upgrade if you have country context
+            if len(digits_only) == 11 and digits_only.startswith("1"):
+                api_phone = "+" + digits_only
+            elif len(digits_only) == 10:
+                api_phone = "+1" + digits_only
+            else:
+                # Fallback: still prefix + if any digits exist
+                api_phone = "+" + digits_only if digits_only else ""
         params = {
             "input": api_phone,
             "inputtype": "phonenumber",
@@ -289,7 +301,7 @@ class PlacesAPI:
         }
 
         try:
-            response = requests.get(url, params=params)
+            response = requests.get(url, params=params, timeout=10)
             response.raise_for_status()
             data = response.json()
 
@@ -306,7 +318,7 @@ class PlacesAPI:
                         "Caching new result for phone: %s", clean_phone
                     )
                     self._cache_place(
-                        "PHONE", clean_phone, place_id, place_details
+                        "PHONE", cache_key, place_id, place_details
                     )
                     return place_details
 
@@ -316,28 +328,64 @@ class PlacesAPI:
                 )
                 text_res = self.search_by_text(clean_phone)
                 if text_res:
+                    # If text search returns a place_id, hydrate details for consistency
+                    tp = text_res.get("place_id")
+                    if tp:
+                        details = self.get_place_details(tp)
+                        if details:
+                            self._cache_place("PHONE", cache_key, tp, details)
+                            return details
+                    # Cache the text search result as-is
+                    self._cache_place(
+                        "PHONE",
+                        cache_key,
+                        text_res.get("place_id", "TEXT"),
+                        text_res,
+                    )
                     return text_res
 
                 # Cache the non-establishment result
                 logger.info(
-                    f"Caching non-establishment result for phone: {clean_phone}"
+                    "Caching non-establishment result for phone: %s",
+                    clean_phone,
                 )
-                self._cache_place(
-                    "PHONE", clean_phone, place_id, place_details or {}
-                )
+                if place_details is not None:
+                    self._cache_place(
+                        "PHONE", cache_key, place_id, place_details or {}
+                    )
                 return place_details
             else:
                 logger.info(
-                    f"No results found for phone: {clean_phone} (status: {data['status']})"
+                    "No direct results found for phone: %s (status: %s)",
+                    clean_phone,
+                    data.get("status"),
                 )
+                # Fallback to text search with the same phone text
+                text_res = self.search_by_text(clean_phone)
+                if text_res:
+                    # If text search returns a place_id, hydrate details for consistency
+                    tp = text_res.get("place_id")
+                    if tp:
+                        details = self.get_place_details(tp)
+                        if details:
+                            self._cache_place("PHONE", cache_key, tp, details)
+                            return details
+                    # Cache the text search result as-is
+                    self._cache_place(
+                        "PHONE",
+                        cache_key,
+                        text_res.get("place_id", "TEXT"),
+                        text_res,
+                    )
+                    return text_res
                 # Cache the no-results case to prevent repeated API calls
                 self._cache_place(
                     "PHONE",
-                    clean_phone,
+                    cache_key,
                     "NO_RESULTS",
                     {"status": "NO_RESULTS", "message": "No results found"},
                 )
-            return None
+                return None
 
         except requests.exceptions.RequestException as e:
             logger.error("Error searching by phone: %s", e)
