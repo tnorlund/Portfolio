@@ -311,18 +311,18 @@ def test_delete_lines_client_errors(
     lines = [sample_line]
 
     # pylint: disable=protected-access
-    mock_batch = mocker.patch.object(
+    mock_transact = mocker.patch.object(
         client._client,
-        "batch_write_item",
+        "transact_write_items",
         side_effect=ClientError(
-            {"Error": {"Code": error_code}}, "BatchWriteItem"
+            {"Error": {"Code": error_code}}, "TransactWriteItems"
         ),
     )
 
     with pytest.raises(expected_exception, match=error_match):
         client.delete_lines(lines)
 
-    mock_batch.assert_called_once()
+    mock_transact.assert_called_once()
 
 
 # -------------------------------------------------------------------
