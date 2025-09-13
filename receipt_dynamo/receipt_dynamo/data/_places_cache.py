@@ -171,44 +171,11 @@ class _PlacesCache(
         """
         Deletes a list of PlacesCache items from the database.
         """
-        if places_cache_items is None:
-            raise EntityValidationError("places_cache_items cannot be None")
-        if not isinstance(places_cache_items, list):
-            raise EntityValidationError("places_cache_items must be a list.")
-        if not all(
-            isinstance(item, PlacesCache) for item in places_cache_items
-        ):
-            raise EntityValidationError(
-                "All items in places_cache_items must be PlacesCache objects."
-            )
+        self._validate_entity_list(
+            places_cache_items, PlacesCache, "places_cache_items"
+        )
 
-        for i in range(0, len(places_cache_items), CHUNK_SIZE):
-            chunk = places_cache_items[i : i + CHUNK_SIZE]
-            transact_items = [
-                TransactWriteItemTypeDef(
-                    Delete=DeleteTypeDef(
-                        TableName=self.table_name,
-                        Key=item.key,
-                        # ConditionExpression="attribute_exists(PK)",
-                    )
-                )
-                for item in chunk
-            ]
-            # Deduplicate transact_items by PK and SK values
-            seen_keys = set()
-            deduped_items = []
-            for tx in transact_items:
-                # Type ignore needed because mypy has trouble with deeply
-                # nested TypedDicts
-                key = tx["Delete"]["Key"]  # type: ignore[index]
-                pk = key["PK"]["S"]  # type: ignore[index,call-overload]
-                sk = key["SK"]["S"]  # type: ignore[index,call-overload]
-                if (pk, sk) not in seen_keys:
-                    seen_keys.add((pk, sk))
-                    deduped_items.append(tx)
-            transact_items = deduped_items
-
-            self._transact_write_with_chunking(transact_items)
+        self._delete_entities(places_cache_items)
 
     @handle_dynamodb_errors("get_places_cache")
     def get_places_cache(
