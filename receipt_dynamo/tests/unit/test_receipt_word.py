@@ -517,8 +517,8 @@ def test_receipt_word_gsi1_key():
         "GSI1PK": {"S": "EMBEDDING_STATUS#PENDING"},
         "GSI1SK": {
             "S": (
-                "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001#"
-                "LINE#00003#WORD#00004"
+                "WORD#IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#"
+                "RECEIPT#00001#LINE#00003#WORD#00004"
             )
         },
     }
@@ -584,7 +584,9 @@ def test_receipt_word_gsi3_key():
         confidence=0.95,
     )
     assert word.gsi3_key() == {
-        "GSI3PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"},
+        "GSI3PK": {
+            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
+        },
         "GSI3SK": {"S": "WORD"},
     }
 

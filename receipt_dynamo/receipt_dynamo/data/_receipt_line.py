@@ -336,10 +336,16 @@ class _ReceiptLine(FlattenedStandardMixin):
 
         results, _ = self._query_entities(
             index_name="GSI1",
-            key_condition_expression="GSI1PK = :status",
-            expression_attribute_names=None,
+            key_condition_expression=(
+                "#gsi1pk = :status AND begins_with(#gsi1sk, :prefix)"
+            ),
+            expression_attribute_names={
+                "#gsi1pk": "GSI1PK",
+                "#gsi1sk": "GSI1SK",
+            },
             expression_attribute_values={
-                ":status": {"S": f"EMBEDDING_STATUS#{status_str}"}
+                ":status": {"S": f"EMBEDDING_STATUS#{status_str}"},
+                ":prefix": {"S": "LINE#"},
             },
             converter_func=item_to_receipt_line,
         )
