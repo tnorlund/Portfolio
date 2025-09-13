@@ -12,6 +12,7 @@ Clean realtime embedding matcher:
 from __future__ import annotations
 
 import json
+import argparse
 import os
 import re
 from dataclasses import dataclass
@@ -24,6 +25,10 @@ from receipt_label.utils import get_client_manager
 from receipt_label.utils.chroma_s3_helpers import download_snapshot_atomic
 from receipt_label.vector_store import VectorClient
 from receipt_label.embedding.line.realtime import embed_lines_realtime
+from receipt_dynamo.entities import ReceiptMetadata
+from receipt_label.merchant_validation.data_access import (
+    write_receipt_metadata_to_dynamo,
+)
 
 
 @dataclass
@@ -31,6 +36,9 @@ class Env:
     chroma_bucket: Optional[str]
     lines_dir: Path
     cache_dir: Path
+    words_dir: Path
+    local_lines_dir: Path
+    local_words_dir: Path
 
 
 def _normalize_phone(text: str) -> str:
@@ -128,6 +136,135 @@ def _ensure_lines_snapshot(env: Env) -> None:
     )
 
 
+def _ensure_words_snapshot(env: Env) -> None:
+    if any(env.words_dir.rglob("*")):
+        print(f"Using existing local words snapshot at: {str(env.words_dir)}")
+        return
+    if not env.chroma_bucket:
+        raise RuntimeError(
+            "No chromadb_bucket_name configured and no local words snapshot found"
+        )
+    print(
+        f"Downloading words snapshot from s3://{env.chroma_bucket}/words/snapshot/... to {str(env.words_dir)}"
+    )
+    download_snapshot_atomic(
+        bucket=env.chroma_bucket,
+        collection="words",
+        local_path=str(env.words_dir),
+    )
+
+
+def _get_line_neighbors(target_line, all_lines: List) -> Tuple[str, str]:
+    try:
+        # Sort lines by y centroid to find vertical neighbors
+        sorted_lines = sorted(
+            all_lines, key=lambda l: l.calculate_centroid()[1]
+        )
+        target_index = None
+        for i, line in enumerate(sorted_lines):
+            if int(line.line_id) == int(target_line.line_id):
+                target_index = i
+                break
+        prev_line = "<EDGE>"
+        next_line = "<EDGE>"
+        if target_index is not None:
+            if target_index > 0:
+                prev_line = sorted_lines[target_index - 1].text
+            if target_index < len(sorted_lines) - 1:
+                next_line = sorted_lines[target_index + 1].text
+        return prev_line, next_line
+    except Exception:
+        return "<EDGE>", "<EDGE>"
+
+
+def _create_line_metadata(line, prev_line: str, next_line: str) -> dict:
+    x_center, y_center = line.calculate_centroid()
+    return {
+        "image_id": line.image_id,
+        "receipt_id": str(line.receipt_id),
+        "line_id": int(line.line_id),
+        "source": "openai_line_embedding_realtime_local",
+        "text": line.text,
+        "x": x_center,
+        "y": y_center,
+        "width": line.bounding_box["width"],
+        "height": line.bounding_box["height"],
+        "confidence": line.confidence,
+        "avg_word_confidence": line.confidence,
+        "word_count": len((line.text or "").split()),
+        "prev_line": prev_line,
+        "next_line": next_line,
+        "angle_degrees": getattr(line, "angle_degrees", 0.0),
+        "section": "UNLABELED",
+        "embedding_type": "line",
+    }
+
+
+def _get_word_position(word) -> str:
+    x_center, y_center = word.calculate_centroid()
+    vertical = (
+        "top"
+        if y_center > 0.66
+        else ("middle" if y_center > 0.33 else "bottom")
+    )
+    horizontal = (
+        "left"
+        if x_center < 0.33
+        else ("center" if x_center < 0.66 else "right")
+    )
+    return f"{vertical}-{horizontal}"
+
+
+def _get_word_neighbors(target_word, all_words: List) -> Tuple[str, str]:
+    try:
+        target_bottom = target_word.bounding_box["y"]
+        target_top = (
+            target_word.bounding_box["y"] + target_word.bounding_box["height"]
+        )
+        sorted_all = sorted(all_words, key=lambda w: w.calculate_centroid()[0])
+        idx = next(
+            i
+            for i, w in enumerate(sorted_all)
+            if (w.image_id, w.receipt_id, w.line_id, w.word_id)
+            == (
+                target_word.image_id,
+                target_word.receipt_id,
+                target_word.line_id,
+                target_word.word_id,
+            )
+        )
+        candidates = []
+        for w in sorted_all:
+            if w is target_word:
+                continue
+            w_top = w.top_left["y"]
+            w_bottom = w.bottom_left["y"]
+            if w_bottom >= target_bottom and w_top <= target_top:
+                candidates.append(w)
+        left_text = "<EDGE>"
+        for w in reversed(sorted_all[:idx]):
+            if w in candidates:
+                left_text = w.text
+                break
+        right_text = "<EDGE>"
+        for w in sorted_all[idx + 1 :]:
+            if w in candidates:
+                right_text = w.text
+                break
+        return left_text, right_text
+    except Exception:
+        return "<EDGE>", "<EDGE>"
+
+
+def _format_word_context_embedding_input(target_word, all_words: List) -> str:
+    try:
+        left_text, right_text = _get_word_neighbors(target_word, all_words)
+        position = _get_word_position(target_word)
+        return f"<TARGET>{target_word.text}</TARGET> <POS>{position}</POS> <CONTEXT>{left_text} {right_text}</CONTEXT>"
+    except Exception:
+        return str(getattr(target_word, "text", ""))
+
+
 def _get_target_phone(words: List) -> str:
     for w in words:
         try:
@@ -196,9 +333,12 @@ def _get_cand_address(
 def process_missing_receipt(
     cm,
     line_client,
+    word_client,
     env: Env,
     image_id: str,
     receipt_id: int,
+    apply_changes: bool = False,
+    materialize: bool = False,
 ) -> None:
     print(
         f"\nProcessing missing receipt image_id={image_id} receipt_id={receipt_id}"
@@ -274,6 +414,110 @@ def process_missing_receipt(
     if not lines:
         print("No lines found for target ids")
         return
+
+    # Optionally materialize: embed ALL lines and words for this receipt and upsert locally
+    if materialize:
+        try:
+            # Lines materialization
+            all_lines_for_receipt = cm.dynamo.list_receipt_lines_from_receipt(
+                image_id=str(image_id), receipt_id=int(receipt_id)
+            )
+            line_pairs_all = embed_lines_realtime(
+                all_lines_for_receipt, merchant_name=None
+            )
+
+            if line_pairs_all:
+                ids = []
+                embeddings = []
+                documents = []
+                metadatas = []
+                for line_obj, emb_vec in line_pairs_all:
+                    vector_id = f"IMAGE#{line_obj.image_id}#RECEIPT#{int(line_obj.receipt_id):05d}#LINE#{int(line_obj.line_id):05d}"
+                    ids.append(vector_id)
+                    embeddings.append(emb_vec)
+                    documents.append(line_obj.text)
+                    metadatas.append(
+                        {
+                            "image_id": line_obj.image_id,
+                            "receipt_id": int(line_obj.receipt_id),
+                            "line_id": int(line_obj.line_id),
+                            "merchant_name": "UNKNOWN",
+                            "embedding_type": "line",
+                        }
+                    )
+                VectorClient.create_line_client(
+                    persist_directory=str(env.local_lines_dir), mode="write"
+                ).upsert_vectors(
+                    collection_name="lines",
+                    ids=ids,
+                    embeddings=embeddings,
+                    documents=documents,
+                    metadatas=metadatas,
+                )
+                print(
+                    f"Materialized {len(ids)} line vectors for {image_id}/{receipt_id}"
+                )
+        except Exception as e:
+            print(f"Materialize lines failed: {e}")
+
+        try:
+            # Words materialization (context formatted)
+            all_words_for_receipt = cm.dynamo.list_receipt_words_from_receipt(
+                image_id=str(image_id), receipt_id=int(receipt_id)
+            )
+            if all_words_for_receipt:
+                openai_client = cm.openai
+                inputs = [
+                    _format_word_context_embedding_input(
+                        w, all_words_for_receipt
+                    )
+                    for w in all_words_for_receipt
+                    if not getattr(w, "is_noise", False)
+                ]
+                if inputs:
+                    resp = openai_client.embeddings.create(
+                        model="text-embedding-3-small", input=inputs
+                    )
+                    ids = []
+                    embeddings = []
+                    documents = []
+                    metadatas = []
+                    idx = 0
+                    for w in all_words_for_receipt:
+                        if getattr(w, "is_noise", False):
+                            continue
+                        vec = resp.data[idx].embedding
+                        idx += 1
+                        vector_id = f"IMAGE#{w.image_id}#RECEIPT#{int(w.receipt_id):05d}#LINE#{int(w.line_id):05d}#WORD#{int(w.word_id):05d}"
+                        ids.append(vector_id)
+                        embeddings.append(vec)
+                        documents.append(w.text)
+                        metadatas.append(
+                            {
+                                "image_id": w.image_id,
+                                "receipt_id": int(w.receipt_id),
+                                "line_id": int(w.line_id),
+                                "word_id": int(w.word_id),
+                                "merchant_name": "UNKNOWN",
+                                "embedding_type": "word",
+                            }
+                        )
+                    if ids:
+                        VectorClient.create_word_client(
+                            persist_directory=str(env.local_words_dir),
+                            mode="write",
+                        ).upsert_vectors(
+                            collection_name="words",
+                            ids=ids,
+                            embeddings=embeddings,
+                            documents=documents,
+                            metadatas=metadatas,
+                        )
+                        print(
+                            f"Materialized {len(ids)} word vectors for {image_id}/{receipt_id}"
+                        )
+        except Exception as e:
+            print(f"Materialize words failed: {e}")
 
     # Cache-aware embeddings
     cache_dir = env.cache_dir / "line_embeddings"
@@ -431,6 +675,8 @@ def process_missing_receipt(
                 f"{q_type}: '{str(ln.text)[:32]}' ↔ '{str(doc_text)[:32]}' (d={dist_val:.4g})"
             )
 
+    # Word path skipped to avoid extra HTTP calls; rely on line evidence + equality.
+
     if merchant_scores:
         print(
             "\nAggregated merchant ranking (combined phone/address evidence):"
@@ -472,7 +718,7 @@ def process_missing_receipt(
                     ]
                     if c > 0
                 ],
-                "validated_by": "VECTOR_MATCH",
+                "validated_by": "INFERENCE",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "reasoning": (
                     f"Chosen via Chroma identity resolution. Top merchant='{top_merchant}' "
@@ -481,6 +727,33 @@ def process_missing_receipt(
             }
             print("\nSuggested ReceiptMetadata correction (dry-run):")
             print(json.dumps(suggestion, indent=2))
+            if apply_changes:
+                try:
+                    metadata = ReceiptMetadata(
+                        image_id=suggestion["image_id"],
+                        receipt_id=int(suggestion["receipt_id"]),
+                        place_id=suggestion.get("place_id", ""),
+                        merchant_name=suggestion["merchant_name"],
+                        merchant_category=suggestion.get(
+                            "merchant_category", ""
+                        ),
+                        address=suggestion.get("address", ""),
+                        phone_number=suggestion.get("phone_number", ""),
+                        matched_fields=list(
+                            dict.fromkeys(suggestion.get("matched_fields", []))
+                        ),
+                        validated_by=suggestion.get(
+                            "validated_by", "INFERENCE"
+                        ),
+                        timestamp=datetime.now(timezone.utc),
+                        reasoning=suggestion.get("reasoning", ""),
+                    )
+                    write_receipt_metadata_to_dynamo(metadata)
+                    print(
+                        f"Persisted ReceiptMetadata for {metadata.image_id}/{metadata.receipt_id}"
+                    )
+                except Exception as e:
+                    print(f"Failed to persist ReceiptMetadata: {e}")
         else:
             print(
                 "\nNo safe auto-correction suggested (requires at least one exact phone match)."
@@ -488,12 +761,34 @@ def process_missing_receipt(
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Clean realtime embedding matcher"
+    )
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Persist suggested ReceiptMetadata to Dynamo (default: dry-run)",
+    )
+    parser.add_argument(
+        "--materialize",
+        action="store_true",
+        help="Embed all words/lines of each target receipt to local Chroma first",
+    )
+    args = parser.parse_args()
+
     # env and clients
     pulumi_env = load_env("dev")
     env = Env(
         chroma_bucket=pulumi_env.get("chromadb_bucket_name"),
         lines_dir=(Path(__file__).parent / "dev.chroma_lines").resolve(),
         cache_dir=(Path(__file__).parent / "dev.cache").resolve(),
+        words_dir=(Path(__file__).parent / "dev.chroma_words").resolve(),
+        local_lines_dir=(
+            Path(__file__).parent / "dev.local_chroma_lines"
+        ).resolve(),
+        local_words_dir=(
+            Path(__file__).parent / "dev.local_chroma_words"
+        ).resolve(),
     )
 
     # Ensure required env vars for client manager
@@ -524,13 +819,36 @@ def main() -> None:
         return
 
     _ensure_lines_snapshot(env)
+    _ensure_words_snapshot(env)
     line_client = VectorClient.create_line_client(
         persist_directory=str(env.lines_dir), mode="read"
     )
+    word_client = VectorClient.create_word_client(
+        persist_directory=str(env.words_dir), mode="read"
+    )
+    # Write clients for materialization in separate local dirs
+    line_write_client = None
+    word_write_client = None
+    if args.materialize:
+        env.local_lines_dir.mkdir(parents=True, exist_ok=True)
+        env.local_words_dir.mkdir(parents=True, exist_ok=True)
+        line_write_client = VectorClient.create_line_client(
+            persist_directory=str(env.local_lines_dir), mode="write"
+        )
+        word_write_client = VectorClient.create_word_client(
+            persist_directory=str(env.local_words_dir), mode="write"
+        )
 
     for image_id, receipt_id in missing:
         process_missing_receipt(
-            cm, line_client, env, str(image_id), int(receipt_id)
+            cm,
+            line_client,
+            word_client,
+            env,
+            str(image_id),
+            int(receipt_id),
+            apply_changes=args.apply,
+            materialize=args.materialize,
         )
 
 
