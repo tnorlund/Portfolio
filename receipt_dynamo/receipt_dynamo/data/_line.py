@@ -133,14 +133,7 @@ class _Line(
         """
         self._validate_entity_list(lines, Line, "lines")
 
-        request_items = [
-            WriteRequestTypeDef(
-                DeleteRequest=DeleteRequestTypeDef(Key=line.key)
-            )
-            for line in lines
-        ]
-
-        self._batch_write_with_retry(request_items)
+        self._delete_entities(lines)
 
     @handle_dynamodb_errors("delete_lines_from_image")
     def delete_lines_from_image(self, image_id: str):

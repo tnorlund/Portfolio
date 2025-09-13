@@ -173,6 +173,7 @@ class ReceiptWord(
             "GSI1PK": {"S": f"EMBEDDING_STATUS#{self.embedding_status}"},
             "GSI1SK": {
                 "S": (
+                    f"WORD#"
                     f"IMAGE#{self.image_id}#"
                     f"RECEIPT#{self.receipt_id:05d}#"
                     f"LINE#{self.line_id:05d}#"
