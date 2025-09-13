@@ -34,6 +34,11 @@ from receipt_dynamo.entities import (
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
 from receipt_label.vector_store import produce_embedding_delta
+from receipt_label.merchant_validation.normalize import (
+    normalize_phone,
+    build_full_address_from_words,
+    build_full_address_from_lines,
+)
 
 
 def _parse_prev_next_from_formatted(fmt: str) -> tuple[str, str]:
@@ -488,6 +493,30 @@ def save_line_embeddings_as_delta(
             "merchant_name": merchant_name,
             "source": "openai_embedding_batch",
         }
+
+        # Compute normalized receipt-level fields
+        normalized_phone_10 = ""
+        for w in words:
+            try:
+                ext = getattr(w, "extracted_data", None) or {}
+                if ext.get("type") == "phone":
+                    candidate = ext.get("value") or getattr(w, "text", "")
+                    ph = normalize_phone(candidate)
+                    if ph:
+                        normalized_phone_10 = ph
+                        break
+            except Exception:  # best-effort
+                continue
+
+        normalized_full_address = build_full_address_from_words(words)
+        if not normalized_full_address:
+            try:
+                normalized_full_address = build_full_address_from_lines(lines)
+            except Exception:
+                normalized_full_address = ""
+
+        line_metadata["normalized_phone_10"] = normalized_phone_10
+        line_metadata["normalized_full_address"] = normalized_full_address
 
         # Add section label if available
         if hasattr(target_line, "section_label") and target_line.section_label:

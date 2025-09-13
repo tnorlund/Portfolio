@@ -7,8 +7,12 @@ from typing import List, Optional, Tuple, Dict, Any
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.entities import ReceiptWord
 
-from receipt_label.client_manager import get_client_manager
-from receipt_label.utils.noise_detection import is_noise_text
+from receipt_label.utils import get_client_manager
+from receipt_label.merchant_validation.normalize import (
+    normalize_phone,
+    build_full_address_from_words,
+    build_full_address_from_lines,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -25,48 +29,50 @@ def _format_word_context_embedding_input(
     # Calculate position using same logic as batch system
     position = _get_word_position(target_word)
 
-    # Find neighboring words on the same line (vertical span overlap)
-    target_top = target_word.top_left["y"]
-    target_bottom = target_word.bottom_left["y"]
-    target_center_x = target_word.calculate_centroid()[
-        0
-    ]  # x-coordinate from tuple
+    # Batch-equivalent neighbor selection (scan-based, not nearest-distance)
+    target_bottom = target_word.bounding_box["y"]
+    target_top = (
+        target_word.bounding_box["y"] + target_word.bounding_box["height"]
+    )
 
-    left_word = "<EDGE>"
-    right_word = "<EDGE>"
+    # Sort all words by x centroid
+    sorted_all = sorted(all_words, key=lambda w: w.calculate_centroid()[0])
+    # Find index of target
+    idx = next(
+        i
+        for i, w in enumerate(sorted_all)
+        if (w.image_id, w.receipt_id, w.line_id, w.word_id)
+        == (
+            target_word.image_id,
+            target_word.receipt_id,
+            target_word.line_id,
+            target_word.word_id,
+        )
+    )
 
-    # Find closest words to left and right with vertical overlap
-    left_candidates = []
-    right_candidates = []
-
-    for word in all_words:
-        if word.word_id == target_word.word_id:
+    # Candidates with vertical span overlap (same line)
+    candidates = []
+    for w in sorted_all:
+        if w is target_word:
             continue
+        w_top = w.top_left["y"]
+        w_bottom = w.bottom_left["y"]
+        if w_bottom >= target_bottom and w_top <= target_top:
+            candidates.append(w)
 
-        # Check vertical overlap (same logic as batch)
-        word_top = word.top_left["y"]
-        word_bottom = word.bottom_left["y"]
+    left_text = "<EDGE>"
+    for w in reversed(sorted_all[:idx]):
+        if w in candidates:
+            left_text = w.text
+            break
 
-        # Overlap condition: max(tops) < min(bottoms)
-        if max(target_top, word_top) < min(target_bottom, word_bottom):
-            word_center_x = word.calculate_centroid()[
-                0
-            ]  # x-coordinate from tuple
+    right_text = "<EDGE>"
+    for w in sorted_all[idx + 1 :]:
+        if w in candidates:
+            right_text = w.text
+            break
 
-            if word_center_x < target_center_x:
-                left_candidates.append((word, target_center_x - word_center_x))
-            elif word_center_x > target_center_x:
-                right_candidates.append(
-                    (word, word_center_x - target_center_x)
-                )
-
-    # Get closest neighbors
-    if left_candidates:
-        left_word = min(left_candidates, key=lambda x: x[1])[0].text
-    if right_candidates:
-        right_word = min(right_candidates, key=lambda x: x[1])[0].text
-
-    return f"<TARGET>{target_word.text}</TARGET> <POS>{position}</POS> <CONTEXT>{left_word} {right_word}</CONTEXT>"
+    return f"<TARGET>{target_word.text}</TARGET> <POS>{position}</POS> <CONTEXT>{left_text} {right_text}</CONTEXT>"
 
 
 def _get_word_neighbors(
@@ -81,48 +87,47 @@ def _get_word_neighbors(
     Returns:
         Tuple of (left_word, right_word)
     """
-    # Find neighboring words on the same line (vertical span overlap)
-    target_top = target_word.top_left["y"]
-    target_bottom = target_word.bottom_left["y"]
-    target_center_x = target_word.calculate_centroid()[
-        0
-    ]  # x-coordinate from tuple
+    # Batch-equivalent neighbor selection
+    target_bottom = target_word.bounding_box["y"]
+    target_top = (
+        target_word.bounding_box["y"] + target_word.bounding_box["height"]
+    )
 
-    left_word = "<EDGE>"
-    right_word = "<EDGE>"
+    sorted_all = sorted(all_words, key=lambda w: w.calculate_centroid()[0])
+    idx = next(
+        i
+        for i, w in enumerate(sorted_all)
+        if (w.image_id, w.receipt_id, w.line_id, w.word_id)
+        == (
+            target_word.image_id,
+            target_word.receipt_id,
+            target_word.line_id,
+            target_word.word_id,
+        )
+    )
 
-    # Find closest words to left and right with vertical overlap
-    left_candidates = []
-    right_candidates = []
-
-    for word in all_words:
-        if word.word_id == target_word.word_id:
+    candidates = []
+    for w in sorted_all:
+        if w is target_word:
             continue
+        w_top = w.top_left["y"]
+        w_bottom = w.bottom_left["y"]
+        if w_bottom >= target_bottom and w_top <= target_top:
+            candidates.append(w)
 
-        # Check vertical overlap (same logic as batch)
-        word_top = word.top_left["y"]
-        word_bottom = word.bottom_left["y"]
+    left_text = "<EDGE>"
+    for w in reversed(sorted_all[:idx]):
+        if w in candidates:
+            left_text = w.text
+            break
 
-        # Overlap condition: max(tops) < min(bottoms)
-        if max(target_top, word_top) < min(target_bottom, word_bottom):
-            word_center_x = word.calculate_centroid()[
-                0
-            ]  # x-coordinate from tuple
+    right_text = "<EDGE>"
+    for w in sorted_all[idx + 1 :]:
+        if w in candidates:
+            right_text = w.text
+            break
 
-            if word_center_x < target_center_x:
-                left_candidates.append((word, target_center_x - word_center_x))
-            elif word_center_x > target_center_x:
-                right_candidates.append(
-                    (word, word_center_x - target_center_x)
-                )
-
-    # Get closest neighbors
-    if left_candidates:
-        left_word = min(left_candidates, key=lambda x: x[1])[0].text
-    if right_candidates:
-        right_word = min(right_candidates, key=lambda x: x[1])[0].text
-
-    return left_word, right_word
+    return left_text, right_text
 
 
 def _get_word_position(word: ReceiptWord) -> str:
@@ -219,8 +224,8 @@ def embed_words_realtime(
     client_manager = get_client_manager()
     openai_client = client_manager.openai
 
-    # Filter out noise words
-    meaningful_words = [w for w in words if not is_noise_text(w.text)]
+    # Filter out noise words using stored flag like batch
+    meaningful_words = [w for w in words if not getattr(w, "is_noise", False)]
 
     if not meaningful_words:
         logger.info("No meaningful words to embed")
@@ -289,6 +294,33 @@ def embed_receipt_words_realtime(
     documents = []
     word_embedding_pairs = []
 
+    # Compute receipt-level normalized fields once
+    normalized_phone_10 = ""
+    for w in words:
+        try:
+            ext = getattr(w, "extracted_data", None) or {}
+            if ext.get("type") == "phone":
+                candidate = ext.get("value") or getattr(w, "text", "")
+                ph = normalize_phone(candidate)
+                if ph:
+                    normalized_phone_10 = ph
+                    break
+        except Exception:
+            continue
+
+    normalized_full_address = build_full_address_from_words(words)
+    if not normalized_full_address:
+        # Fallback to lines if needed
+        try:
+            client_manager = get_client_manager()
+            lines = client_manager.dynamo.list_receipt_lines_by_receipt(
+                receipt_id
+            )
+        except Exception:
+            lines = []
+        if lines:
+            normalized_full_address = build_full_address_from_lines(lines)
+
     # Create a mapping for quick lookup of embeddings by word
     embedding_map = {(w.word_id, w.line_id): emb for w, emb in word_embeddings}
 
@@ -311,6 +343,10 @@ def embed_receipt_words_realtime(
                 merchant_name=merchant_name,
                 label_status="unvalidated",
             )
+
+            # Attach normalized receipt-level fields
+            metadata["normalized_phone_10"] = normalized_phone_10
+            metadata["normalized_full_address"] = normalized_full_address
 
             # Prepare data for ChromaDB
             ids.append(vector_id)
