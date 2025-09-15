@@ -5,6 +5,7 @@ This module creates reusable base images that contain the installed packages,
 allowing Lambda containers to build faster by using these as base images.
 """
 
+import json
 import hashlib
 import os
 import subprocess
@@ -20,7 +21,6 @@ from pulumi_aws.ecr import (
     LifecyclePolicy,
 )
 import pulumi_docker_build as docker_build
-import json
 
 
 class BaseImages(ComponentResource):

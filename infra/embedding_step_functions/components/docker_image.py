@@ -1,5 +1,6 @@
 """Docker image building component for embedding Lambda functions."""
 
+import json
 import hashlib
 import subprocess
 from pathlib import Path
@@ -123,43 +124,37 @@ class DockerImageComponent(ComponentResource):
             p.strip() for p in ephemeral_prefixes_str.split(",") if p.strip()
         ] or ["git-", "sha-"]
 
-        lifecycle_policy_doc = pulumi.Output.secret(
-            pulumi.Output.from_input(
-                {
-                    "rules": [
-                        {
-                            "rulePriority": 1,
-                            "description": pulumi.Output.concat(
-                                "Keep only the ",
-                                str(max_images),
-                                " most recent ephemeral images",
-                            ),
-                            "selection": {
-                                "tagStatus": "tagged",
-                                "tagPrefixList": ephemeral_prefixes,
-                                "countType": "imageCountMoreThan",
-                                "countNumber": max_images,
-                            },
-                            "action": {"type": "expire"},
+        lifecycle_policy_doc = json.dumps(
+            {
+                "rules": [
+                    {
+                        "rulePriority": 1,
+                        "description": (
+                            f"Keep only the {max_images} most recent ephemeral images"
+                        ),
+                        "selection": {
+                            "tagStatus": "tagged",
+                            "tagPrefixList": ephemeral_prefixes,
+                            "countType": "imageCountMoreThan",
+                            "countNumber": max_images,
                         },
-                        {
-                            "rulePriority": 2,
-                            "description": pulumi.Output.concat(
-                                "Expire untagged images older than ",
-                                str(max_age_days),
-                                " days",
-                            ),
-                            "selection": {
-                                "tagStatus": "untagged",
-                                "countType": "sinceImagePushed",
-                                "countUnit": "days",
-                                "countNumber": max_age_days,
-                            },
-                            "action": {"type": "expire"},
+                        "action": {"type": "expire"},
+                    },
+                    {
+                        "rulePriority": 2,
+                        "description": (
+                            f"Expire untagged images older than {max_age_days} days"
+                        ),
+                        "selection": {
+                            "tagStatus": "untagged",
+                            "countType": "sinceImagePushed",
+                            "countUnit": "days",
+                            "countNumber": max_age_days,
                         },
-                    ]
-                }
-            ).apply(lambda d: __import__("json").dumps(d))
+                        "action": {"type": "expire"},
+                    },
+                ]
+            }
         )
 
         self.ecr_lifecycle = LifecyclePolicy(
