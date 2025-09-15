@@ -11,6 +11,7 @@ from pulumi_aws.ecr import (
     Repository,
     RepositoryImageScanningConfigurationArgs,
     get_authorization_token_output,
+    LifecyclePolicy,
 )
 
 # pylint: disable=import-error
@@ -102,6 +103,70 @@ class DockerImageComponent(ComponentResource):
             force_delete=True,
             tags={"environment": stack},
             opts=ResourceOptions(parent=self),
+        )
+
+        # Attach ECR lifecycle policy (retain N, expire untagged older than X)
+        portfolio_config = pulumi.Config("portfolio")
+        import os
+
+        max_images = portfolio_config.get_int("ecr-max-images") or int(
+            os.environ.get("ECR_MAX_IMAGES", "10")
+        )
+        max_age_days = portfolio_config.get_int("ecr-max-age-days") or int(
+            os.environ.get("ECR_MAX_AGE_DAYS", "30")
+        )
+        # Protect important tags by limiting pruning to ephemeral tag prefixes
+        ephemeral_prefixes_str = portfolio_config.get(
+            "ecr-ephemeral-tag-prefixes"
+        ) or os.environ.get("ECR_EPHEMERAL_TAG_PREFIXES", "git-,sha-")
+        ephemeral_prefixes = [
+            p.strip() for p in ephemeral_prefixes_str.split(",") if p.strip()
+        ] or ["git-", "sha-"]
+
+        lifecycle_policy_doc = pulumi.Output.secret(
+            pulumi.Output.from_input(
+                {
+                    "rules": [
+                        {
+                            "rulePriority": 1,
+                            "description": pulumi.Output.concat(
+                                "Keep only the ",
+                                str(max_images),
+                                " most recent ephemeral images",
+                            ),
+                            "selection": {
+                                "tagStatus": "tagged",
+                                "tagPrefixList": ephemeral_prefixes,
+                                "countType": "imageCountMoreThan",
+                                "countNumber": max_images,
+                            },
+                            "action": {"type": "expire"},
+                        },
+                        {
+                            "rulePriority": 2,
+                            "description": pulumi.Output.concat(
+                                "Expire untagged images older than ",
+                                str(max_age_days),
+                                " days",
+                            ),
+                            "selection": {
+                                "tagStatus": "untagged",
+                                "countType": "sinceImagePushed",
+                                "countUnit": "days",
+                                "countNumber": max_age_days,
+                            },
+                            "action": {"type": "expire"},
+                        },
+                    ]
+                }
+            ).apply(lambda d: __import__("json").dumps(d))
+        )
+
+        self.ecr_lifecycle = LifecyclePolicy(
+            f"{name}-repo-lifecycle",
+            repository=self.ecr_repo.name,
+            policy=lifecycle_policy_doc,
+            opts=ResourceOptions(parent=self, depends_on=[self.ecr_repo]),
         )
 
         # Get ECR auth token
