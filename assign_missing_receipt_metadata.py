@@ -23,7 +23,12 @@ from receipt_label.merchant_validation.normalize import (
     build_full_address_from_words,
     normalize_phone,
     normalize_url,
+    normalize_address,
 )
+from receipt_label.utils.text_reconstruction import ReceiptTextReconstructor
+from receipt_label.vector_store import VectorClient
+from receipt_label.utils import get_client_manager
+from openai import OpenAI
 
 
 # -----------------------------------------------------------------------------
@@ -248,6 +253,28 @@ def main() -> None:
         default=0,
         help="Optional cap on number of proposed records to write (0 means no cap).",
     )
+    parser.add_argument(
+        "--only",
+        action="append",
+        default=[],
+        help="Focus on specific receipts only. Format: IMAGE_ID:RECEIPT_ID. Can be repeated.",
+    )
+    parser.add_argument(
+        "--include-existing",
+        action="store_true",
+        help="With --only, include receipts that already have metadata for analysis/logs.",
+    )
+    parser.add_argument(
+        "--similarity-report",
+        action="store_true",
+        help="Run street-first and phone-line similarity over receipts lacking metadata and print a summary.",
+    )
+    parser.add_argument(
+        "--report-path",
+        type=str,
+        default=str((ROOT / "reports/similarity_report.json").resolve()),
+        help="File path to write full similarity report JSON.",
+    )
     args = parser.parse_args()
 
     if not DDB_TABLE:
@@ -256,6 +283,293 @@ def main() -> None:
     client = DynamoClient(DDB_TABLE)
 
     words, lines = _load_words_lines(client)
+
+    # Build quick indexes
+    words_by_receipt: Dict[ReceiptKey, List[ReceiptWord]] = defaultdict(list)
+    for w in words:
+        words_by_receipt[(str(w.image_id), int(w.receipt_id))].append(w)
+    line_text_by_key: Dict[Tuple[str, int, int], str] = {}
+    for ln in lines:
+        line_text_by_key[
+            (str(ln.image_id), int(ln.receipt_id), int(ln.line_id))
+        ] = str(ln.text or "")
+    # also build lines_by_key for quick text reconstruction
+    lines_by_key: Dict[ReceiptKey, List[ReceiptLine]] = defaultdict(list)
+    for ln in lines:
+        lines_by_key[(str(ln.image_id), int(ln.receipt_id))].append(ln)
+
+    # Text reconstruction helpers available to all paths
+    reconstructor = ReceiptTextReconstructor()
+
+    def _formatted_text(key: ReceiptKey) -> str:
+        ln_list = lines_by_key.get(key, [])
+        text, groups = reconstructor.reconstruct_receipt(ln_list)
+        # If focusing, log header anchors from top groups
+        if focus_keys and key in focus_keys:
+            header_groups = groups[:5]
+            header_text = " \n".join(g.text for g in header_groups)
+            header_phone = normalize_phone(header_text)
+            header_addr = normalize_address(header_text)
+            print(
+                "[debug][header]",
+                key,
+                {"header_phone": header_phone, "header_address": header_addr},
+            )
+        return text
+
+    # Chroma lines client (local snapshot)
+    local_lines_path = str((ROOT / "dev.chroma_lines").resolve())
+    try:
+        chroma_line_client = VectorClient.create_line_client(
+            persist_directory=local_lines_path, mode="read"
+        )
+        lines_collection = chroma_line_client.get_collection("lines")
+    except Exception:
+        lines_collection = None
+
+    # OpenAI client for query-time embeddings to match batch dims (1536)
+    try:
+        _cm = None  # avoid dependency on client_manager config
+        _openai = (
+            OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+            if os.environ.get("OPENAI_API_KEY")
+            else None
+        )
+    except Exception:
+        _openai = None
+
+    def _street_candidates_from_extracted(rk: ReceiptKey) -> List[str]:
+        cands: List[str] = []
+        for w in words_by_receipt.get(rk, []):
+            ext = getattr(w, "extracted_data", None) or {}
+            if ext.get("type") == "address":
+                # Use the full line text for the street candidate (street-first heuristic)
+                key = (str(w.image_id), int(w.receipt_id), int(w.line_id))
+                street_line = line_text_by_key.get(key, "")
+                if street_line:
+                    cands.append(street_line)
+        # Dedup, preserve order
+        seen: Set[str] = set()
+        out: List[str] = []
+        for t in cands:
+            if t not in seen:
+                seen.add(t)
+                out.append(t)
+        return out
+
+    def _phone_from_extracted(rk: ReceiptKey) -> str:
+        for w in words_by_receipt.get(rk, []):
+            ext = getattr(w, "extracted_data", None) or {}
+            if ext.get("type") == "phone":
+                v = ext.get("value") or getattr(w, "text", "")
+                ph = normalize_phone(str(v))
+                if ph:
+                    return ph
+        return ""
+
+    def _urls_by_receipt(
+        words: List[ReceiptWord],
+    ) -> Dict[ReceiptKey, Set[str]]:
+        results: Dict[ReceiptKey, Set[str]] = defaultdict(set)
+        for w in words:
+            if not w.extracted_data or w.extracted_data.get("type") != "url":
+                continue
+            rk = (str(w.image_id), int(w.receipt_id))
+            u = normalize_url(
+                str(w.extracted_data.get("value") or w.text or "")
+            )
+            if u:
+                results[rk].add(u)
+        return results
+
+    def _phone_line_candidates_from_extracted(rk: ReceiptKey) -> List[str]:
+        cands: List[str] = []
+        for w in words_by_receipt.get(rk, []):
+            ext = getattr(w, "extracted_data", None) or {}
+            if ext.get("type") == "phone":
+                key = (str(w.image_id), int(w.receipt_id), int(w.line_id))
+                phone_line = line_text_by_key.get(key, "")
+                if phone_line:
+                    cands.append(phone_line)
+        seen: Set[str] = set()
+        out: List[str] = []
+        for t in cands:
+            if t not in seen:
+                seen.add(t)
+                out.append(t)
+        return out
+
+    def _similarity_match_phone_first(rk: ReceiptKey) -> Dict:
+        result: Dict = {"receipt": rk, "matches": []}
+        if not lines_collection:
+            result["error"] = "no_lines_collection"
+            return result
+        if _openai is None:
+            result["error"] = "no_openai_client"
+            return result
+        phone_lines = _phone_line_candidates_from_extracted(rk)
+        # limit to top few phone lines
+        phone_lines = phone_lines[:2]
+        if not phone_lines:
+            result["error"] = "no_phone_on_receipt"
+            return result
+        for p in phone_lines:
+            try:
+                resp = _openai.embeddings.create(
+                    model="text-embedding-3-small", input=[p]
+                )
+                emb = resp.data[0].embedding
+                q = chroma_line_client.query(
+                    collection_name="lines",
+                    query_embeddings=[emb],
+                    n_results=8,
+                    include=["metadatas", "distances"],
+                )
+            except Exception as e:
+                result.setdefault("errors", []).append(
+                    {"phone_line": p, "error": str(e)}
+                )
+                continue
+            mds = (q or {}).get("metadatas") or []
+            dists = (q or {}).get("distances") or []
+            phone_norm_line = normalize_phone(p)
+            for md, dist in zip(
+                mds[0] if mds else [], dists[0] if dists else []
+            ):
+                try:
+                    n_phone = str(
+                        (md or {}).get("normalized_phone_10") or ""
+                    ).strip()
+                    n_addr = str(
+                        (md or {}).get("normalized_full_address") or ""
+                    ).strip()
+                    n_img = str((md or {}).get("image_id") or "")
+                    n_rec_str = (md or {}).get("receipt_id")
+                    try:
+                        n_rec = (
+                            int(n_rec_str) if n_rec_str is not None else None
+                        )
+                    except Exception:
+                        n_rec = None
+                    phone_ok = bool(n_phone) and (phone_norm_line == n_phone)
+                    why = {
+                        "phone_line": p,
+                        "phone_from_line": phone_norm_line,
+                        "neighbor_phone": n_phone,
+                        "neighbor_addr": n_addr,
+                        "distance": dist,
+                        "accepted": phone_ok,
+                        "neighbor_receipt": [n_img, n_rec],
+                    }
+                    result["matches"].append(why)
+                except Exception as e:
+                    result.setdefault("errors", []).append(
+                        {"md_error": str(e)}
+                    )
+        return result
+
+    def _similarity_match_street_first(rk: ReceiptKey) -> Dict:
+        result: Dict = {"receipt": rk, "matches": []}
+        if not lines_collection:
+            result["error"] = "no_lines_collection"
+            return result
+        street_lines = _street_candidates_from_extracted(rk)
+        # limit to top few street candidates to control cost
+        street_lines = street_lines[:3]
+        phone_norm = _phone_from_extracted(rk)
+        for s in street_lines:
+            try:
+                # Embed street text to match collection dims
+                if _openai is None:
+                    raise RuntimeError("no_openai_client")
+                resp = _openai.embeddings.create(
+                    model="text-embedding-3-small", input=[s]
+                )
+                emb = resp.data[0].embedding
+                q = chroma_line_client.query(
+                    collection_name="lines",
+                    query_embeddings=[emb],
+                    n_results=8,
+                    include=["metadatas", "distances"],
+                )
+            except Exception as e:
+                result.setdefault("errors", []).append(
+                    {"street": s, "error": str(e)}
+                )
+                continue
+            mds = (q or {}).get("metadatas") or []
+            dists = (q or {}).get("distances") or []
+            for md, dist in zip(
+                mds[0] if mds else [], dists[0] if dists else []
+            ):
+                try:
+                    n_addr = str(
+                        (md or {}).get("normalized_full_address") or ""
+                    ).strip()
+                    n_phone_inline = str(
+                        (md or {}).get("normalized_phone_10") or ""
+                    ).strip()
+                    street_norm = normalize_address(s)
+                    addr_ok = bool(n_addr) and (
+                        street_norm and street_norm.split()[0] in n_addr
+                    )
+
+                    # Chroma-side receipt-anchor fallback via local words index
+                    neighbor_img = str((md or {}).get("image_id") or "")
+                    neighbor_rec_str = (md or {}).get("receipt_id")
+                    try:
+                        neighbor_rec = (
+                            int(neighbor_rec_str)
+                            if neighbor_rec_str is not None
+                            else None
+                        )
+                    except Exception:
+                        neighbor_rec = None
+                    fallback_phone = ""
+                    if neighbor_img and neighbor_rec is not None:
+                        for w in words_by_receipt.get(
+                            (neighbor_img, neighbor_rec), []
+                        ):
+                            ext = getattr(w, "extracted_data", None) or {}
+                            if ext.get("type") == "phone":
+                                v = ext.get("value") or getattr(w, "text", "")
+                                fp = normalize_phone(str(v))
+                                if fp:
+                                    fallback_phone = fp
+                                    break
+
+                    # Phone gating: only enforce equality when both sides have phones
+                    if not phone_norm:
+                        phone_ok = True
+                    elif n_phone_inline:
+                        phone_ok = phone_norm == n_phone_inline
+                    elif fallback_phone:
+                        phone_ok = phone_norm == fallback_phone
+                    else:
+                        phone_ok = (
+                            True  # neighbor has no phone anchors; don't block
+                        )
+
+                    accepted = bool(addr_ok and phone_ok)
+                    why = {
+                        "street": s,
+                        "street_norm": street_norm,
+                        "neighbor_addr": n_addr,
+                        "neighbor_phone_inline": n_phone_inline,
+                        "neighbor_phone_fallback": fallback_phone,
+                        "receipt_phone": phone_norm,
+                        "addr_ok": addr_ok,
+                        "phone_ok": phone_ok,
+                        "distance": dist,
+                        "accepted": accepted,
+                        "neighbor_receipt": [neighbor_img, neighbor_rec],
+                    }
+                    result["matches"].append(why)
+                except Exception as e:
+                    result.setdefault("errors", []).append(
+                        {"md_error": str(e)}
+                    )
+        return result
 
     # Compute normalized anchors
     addr_by_receipt = _addresses_by_receipt(words, lines)
@@ -276,90 +590,240 @@ def main() -> None:
 
     # Identify receipts missing metadata
     all_receipts: Set[ReceiptKey] = set(addr_by_receipt.keys())
+
+    # Apply focus filter if provided
+    focus_keys: Set[ReceiptKey] = set()
+    for only in args.only:
+        try:
+            img, rec = only.split(":", 1)
+            focus_keys.add((img, int(rec)))
+        except Exception:
+            print(
+                f"[warn] Invalid --only value, expected IMAGE_ID:RECEIPT_ID, got: {only}"
+            )
+    if focus_keys:
+        all_receipts = {rk for rk in all_receipts if rk in focus_keys}
+        if not all_receipts:
+            print("[]")
+            return
     existing_map = _fetch_existing_metadata_map(client, all_receipts)
+
+    # If focusing and include-existing, augment all_receipts to ensure we analyze even those with metadata
+    if focus_keys and args.include_existing:
+        all_receipts = focus_keys
 
     proposed: List[ReceiptMetadata] = []
     selection_log: List[Dict] = []
 
-    # Address-based propagation
-    for addr, rks in address_clusters.items():
-        cluster_list = sorted(list(rks))
-        have = [existing_map[rk] for rk in cluster_list if rk in existing_map]
-        missing = [rk for rk in cluster_list if rk not in existing_map]
-        if not have or not missing:
-            continue
-        canonical = _choose_canonical_metadata(have)
-        if not canonical:
-            continue
-        for rk in missing:
-            reasons = ["address"]
-            if any(
-                p in (phones_by_receipt.get(rk) or set())
-                for p in (
-                    canonical.phone_number,
-                    canonical.canonical_phone_number,
+    if not args.similarity_report:
+        # Address-based propagation
+        for addr, rks in address_clusters.items():
+            # Skip clusters that don't intersect focus when focus is set
+            if focus_keys and not (rks & focus_keys):
+                continue
+            cluster_list = sorted(list(rks))
+            have = [
+                existing_map.get(rk)
+                for rk in cluster_list
+                if rk in existing_map
+            ]
+            have = [m for m in have if m is not None]
+            # Determine missing set; if include-existing and focusing, treat focus receipts as "missing" for analysis output
+            if focus_keys and args.include_existing:
+                missing = [rk for rk in (rks & focus_keys)]
+            else:
+                missing = [rk for rk in cluster_list if rk not in existing_map]
+            if not have or not missing:
+                continue
+            canonical = _choose_canonical_metadata(have)
+            if not canonical:
+                continue
+            # Debug: log cluster decision
+            if focus_keys:
+                print("[debug][address-cluster] key=", addr)
+                print("[debug] receipts=", cluster_list)
+                print(
+                    "[debug] have_merchants=",
+                    [
+                        (
+                            m.image_id,
+                            int(m.receipt_id),
+                            m.merchant_name,
+                            m.address,
+                            m.phone_number,
+                        )
+                        for m in have
+                    ],
                 )
-            ):
-                reasons.append("phone")
-            proposed.append(
-                _build_proposed_from_canonical(canonical, rk, reasons)
+                print(
+                    "[debug] picked_canonical=",
+                    (
+                        canonical.image_id,
+                        int(canonical.receipt_id),
+                        canonical.merchant_name,
+                    ),
+                )
+            for rk in missing:
+                # Header-derived anchors for comparison
+                header_text = _formatted_text(rk)
+                header_phone = normalize_phone(header_text)
+                header_addr = normalize_address(header_text)
+
+                # Basic city/zip token overlap diagnostics
+                def _zip_of(addr_str: str) -> str:
+                    import re as _re
+
+                    m = _re.search(r"\b(\d{5})(?:-\d{4})?\b", addr_str)
+                    return m.group(1) if m else ""
+
+                def _city_of(addr_str: str) -> str:
+                    # crude: take token before state if present
+                    tokens = addr_str.split()
+                    try:
+                        idx = tokens.index("CA")
+                        return " ".join(tokens[max(0, idx - 2) : idx])
+                    except ValueError:
+                        return ""
+
+                cz_header = (_city_of(header_addr), _zip_of(header_addr))
+                cz_canon = (
+                    _city_of(
+                        normalize_address(
+                            canonical.address
+                            or canonical.canonical_address
+                            or ""
+                        )
+                    ),
+                    _zip_of(
+                        canonical.address or canonical.canonical_address or ""
+                    ),
+                )
+                phones_match = bool(header_phone) and (
+                    header_phone
+                    == normalize_phone(
+                        canonical.phone_number
+                        or canonical.canonical_phone_number
+                        or ""
+                    )
+                )
+                print(
+                    "[debug][compare]",
+                    rk,
+                    {
+                        "header_phone": header_phone,
+                        "canonical_phone": canonical.phone_number
+                        or canonical.canonical_phone_number,
+                        "phones_match": phones_match,
+                        "header_address": header_addr,
+                        "canonical_address": canonical.address
+                        or canonical.canonical_address,
+                        "city_zip_header": cz_header,
+                        "city_zip_canonical": cz_canon,
+                    },
+                )
+                reasons = ["address"]
+                if phones_match:
+                    reasons.append("phone")
+                proposed.append(
+                    _build_proposed_from_canonical(canonical, rk, reasons)
+                )
+            selection_log.append(
+                {
+                    "cluster_type": "address",
+                    "key": addr,
+                    "receipts": cluster_list,
+                    "canonical_source": {
+                        "image_id": canonical.image_id,
+                        "receipt_id": int(canonical.receipt_id),
+                        "merchant_name": canonical.merchant_name,
+                    },
+                    "proposed_count": len(missing),
+                }
             )
-        selection_log.append(
-            {
-                "cluster_type": "address",
-                "key": addr,
-                "receipts": cluster_list,
-                "canonical_source": {
-                    "image_id": canonical.image_id,
-                    "receipt_id": int(canonical.receipt_id),
-                    "merchant_name": canonical.merchant_name,
-                },
-                "proposed_count": len(missing),
-            }
+
+        # URL-based propagation (only for those still missing)
+        existing_after_addr = _fetch_existing_metadata_map(
+            client, [rk for rk in all_receipts]
         )
-
-    # URL-based propagation (only for those still missing)
-    existing_after_addr = _fetch_existing_metadata_map(
-        client, [rk for rk in all_receipts]
-    )
-    missing_now = [
-        rk
-        for rk in all_receipts
-        if rk not in existing_after_addr
-        and rk not in {(p.image_id, int(p.receipt_id)) for p in proposed}
-    ]
-
-    for url, rks in url_clusters.items():
-        cluster_list = sorted(list(rks))
-        have = [
-            existing_after_addr[rk]
-            for rk in cluster_list
-            if rk in existing_after_addr
+        missing_now = [
+            rk
+            for rk in all_receipts
+            if rk not in existing_after_addr
+            and rk not in {(p.image_id, int(p.receipt_id)) for p in proposed}
         ]
-        # exclude those already proposed
-        missing = [rk for rk in cluster_list if rk in missing_now]
-        if not have or not missing:
-            continue
-        canonical = _choose_canonical_metadata(have)
-        if not canonical:
-            continue
-        for rk in missing:
-            proposed.append(
-                _build_proposed_from_canonical(canonical, rk, ["url"])
+
+        for url, rks in url_clusters.items():
+            if focus_keys and not (rks & focus_keys):
+                continue
+            cluster_list = sorted(list(rks))
+            have = [
+                existing_after_addr.get(rk)
+                for rk in cluster_list
+                if rk in existing_after_addr
+            ]
+            have = [m for m in have if m is not None]
+            if focus_keys and args.include_existing:
+                missing = [rk for rk in (rks & focus_keys)]
+            else:
+                # exclude those already proposed
+                missing = [rk for rk in cluster_list if rk in missing_now]
+            if not have or not missing:
+                continue
+            canonical = _choose_canonical_metadata(have)
+            if not canonical:
+                continue
+            if focus_keys:
+                print("[debug][url-cluster] key=", url)
+                print("[debug] receipts=", cluster_list)
+                print(
+                    "[debug] have_merchants=",
+                    [
+                        (
+                            m.image_id,
+                            int(m.receipt_id),
+                            m.merchant_name,
+                            m.address,
+                            m.phone_number,
+                        )
+                        for m in have
+                    ],
+                )
+                print(
+                    "[debug] picked_canonical=",
+                    (
+                        canonical.image_id,
+                        int(canonical.receipt_id),
+                        canonical.merchant_name,
+                    ),
+                )
+            for rk in missing:
+                header_text = _formatted_text(rk)
+                header_phone = normalize_phone(header_text)
+                print(
+                    "[debug][compare-url]",
+                    rk,
+                    {
+                        "header_phone": header_phone,
+                        "canonical_phone": canonical.phone_number
+                        or canonical.canonical_phone_number,
+                    },
+                )
+                proposed.append(
+                    _build_proposed_from_canonical(canonical, rk, ["url"])
+                )
+            selection_log.append(
+                {
+                    "cluster_type": "url",
+                    "key": url,
+                    "receipts": cluster_list,
+                    "canonical_source": {
+                        "image_id": canonical.image_id,
+                        "receipt_id": int(canonical.receipt_id),
+                        "merchant_name": canonical.merchant_name,
+                    },
+                    "proposed_count": len(missing),
+                }
             )
-        selection_log.append(
-            {
-                "cluster_type": "url",
-                "key": url,
-                "receipts": cluster_list,
-                "canonical_source": {
-                    "image_id": canonical.image_id,
-                    "receipt_id": int(canonical.receipt_id),
-                    "merchant_name": canonical.merchant_name,
-                },
-                "proposed_count": len(missing),
-            }
-        )
 
     # Deduplicate proposed by (image_id, receipt_id)
     deduped: Dict[ReceiptKey, ReceiptMetadata] = {}
@@ -407,7 +871,177 @@ def main() -> None:
         }
 
     proposed_items = [_serialize_entity(v) for v in deduped.values()]
-    print(json.dumps(proposed_items, indent=2))
+
+    output: List[Dict] = []
+    for key, m in deduped.items():
+        output.append(
+            {
+                "receipt_metadata": _serialize_entity(m),
+                "formatted_text": _formatted_text(key),
+            }
+        )
+
+    # Apply focus filter to output
+    if focus_keys:
+        # If include-existing, also run similarity and attach diagnostics
+        if args.include_existing:
+            sim_logs = []
+            phone_sim_logs = []
+            for rk in focus_keys:
+                sim_logs.append(_similarity_match_street_first(rk))
+                phone_sim_logs.append(_similarity_match_phone_first(rk))
+            print(
+                json.dumps(
+                    {
+                        "similarity": sim_logs,
+                        "phone_similarity": phone_sim_logs,
+                        "results": output,
+                    },
+                    indent=2,
+                )
+            )
+            return
+        output = [
+            o
+            for o in output
+            if (
+                o["receipt_metadata"]["image_id"],
+                int(o["receipt_metadata"]["receipt_id"]),
+            )
+            in focus_keys
+        ]
+
+    # Optional similarity report across receipts lacking metadata
+    if args.similarity_report:
+        # Build set of receipts missing metadata
+        existing_all = _fetch_existing_metadata_map(
+            client, addr_by_receipt.keys()
+        )
+        missing_receipts = [
+            rk for rk in addr_by_receipt.keys() if rk not in existing_all
+        ]
+        matched = []
+        unmatched = []
+        reconstructor = ReceiptTextReconstructor()
+
+        # helper to get full text for a receipt
+        def _receipt_text(rk: ReceiptKey) -> str:
+            ln_list = lines_by_key.get(rk, [])
+            text, _ = reconstructor.reconstruct_receipt(ln_list)
+            return text or ""
+
+        for rk in missing_receipts:
+            street = _similarity_match_street_first(rk)
+            phone = _similarity_match_phone_first(rk)
+            accepted_street = [
+                m for m in street.get("matches", []) if m.get("accepted")
+            ]
+            accepted_phone = [
+                m for m in phone.get("matches", []) if m.get("accepted")
+            ]
+            if accepted_street or accepted_phone:
+                reasons = []
+                text = _receipt_text(rk).lower()
+                # gather reasons and merchant checks
+                for m in accepted_street:
+                    neighbor_key = tuple(
+                        m.get("neighbor_receipt") or ["", None]
+                    )
+                    merchant_name = ""
+                    if (
+                        neighbor_key
+                        and neighbor_key[0]
+                        and neighbor_key[1] is not None
+                    ):
+                        nm = existing_all.get(
+                            (neighbor_key[0], int(neighbor_key[1]))
+                        )
+                        if nm:
+                            merchant_name = (
+                                nm.canonical_merchant_name
+                                or nm.merchant_name
+                                or ""
+                            )
+                    reasons.append(
+                        {
+                            "via": "street",
+                            "street": m.get("street"),
+                            "neighbor_receipt": m.get("neighbor_receipt"),
+                            "addr_ok": m.get("addr_ok"),
+                            "phone_ok": m.get("phone_ok"),
+                            "distance": m.get("distance"),
+                            "merchant_name": merchant_name,
+                            "merchant_in_text": bool(
+                                merchant_name and merchant_name.lower() in text
+                            ),
+                        }
+                    )
+                for m in accepted_phone:
+                    neighbor_key = tuple(
+                        m.get("neighbor_receipt") or ["", None]
+                    )
+                    merchant_name = ""
+                    if (
+                        neighbor_key
+                        and neighbor_key[0]
+                        and neighbor_key[1] is not None
+                    ):
+                        nm = existing_all.get(
+                            (neighbor_key[0], int(neighbor_key[1]))
+                        )
+                        if nm:
+                            merchant_name = (
+                                nm.canonical_merchant_name
+                                or nm.merchant_name
+                                or ""
+                            )
+                    reasons.append(
+                        {
+                            "via": "phone",
+                            "phone_line": m.get("phone_line"),
+                            "neighbor_phone": m.get("neighbor_phone"),
+                            "neighbor_receipt": m.get("neighbor_receipt"),
+                            "distance": m.get("distance"),
+                            "merchant_name": merchant_name,
+                            "merchant_in_text": bool(
+                                merchant_name and merchant_name.lower() in text
+                            ),
+                        }
+                    )
+                matched.append({"receipt": rk, "reasons": reasons})
+            else:
+                why = {
+                    "street_errors": street.get("errors"),
+                    "phone_errors": phone.get("errors"),
+                    "street_candidates": len(street.get("matches", [])),
+                    "phone_candidates": len(phone.get("matches", [])),
+                }
+                unmatched.append({"receipt": rk, "why": why})
+        report = {
+            "total_missing": len(missing_receipts),
+            "matched_count": len(matched),
+            "unmatched_count": len(unmatched),
+            "matched": matched,
+            "unmatched": unmatched,
+        }
+        # ensure directory exists
+        rp = Path(args.report_path)
+        rp.parent.mkdir(parents=True, exist_ok=True)
+        with rp.open("w", encoding="utf-8") as f:
+            f.write(json.dumps(report, indent=2))
+        print(
+            json.dumps(
+                {
+                    "report_path": str(rp),
+                    "total_missing": report["total_missing"],
+                    "matched_count": report["matched_count"],
+                    "unmatched_count": report["unmatched_count"],
+                }
+            )
+        )
+        return
+
+    print(json.dumps(output, indent=2))
 
     # Optional write (use deduped list)
     if args.write and deduped:
