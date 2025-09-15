@@ -1,5 +1,6 @@
 """Docker image building component for ChromaDB compaction Lambda functions."""
 
+import json
 import hashlib
 import subprocess
 from pathlib import Path
@@ -11,6 +12,7 @@ from pulumi_aws.ecr import (
     Repository,
     RepositoryImageScanningConfigurationArgs,
     get_authorization_token_output,
+    LifecyclePolicy,
 )
 
 try:
@@ -18,6 +20,7 @@ try:
 except ImportError:
     # For testing environments, create a mock
     from unittest.mock import MagicMock
+
     docker_build = MagicMock()
 
 
@@ -118,29 +121,88 @@ class DockerImageComponent(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
+        # Attach ECR lifecycle policy (retain N, expire untagged older than X)
+        portfolio_config = pulumi.Config("portfolio")
+        import os
+
+        max_images = portfolio_config.get_int("ecr-max-images") or int(
+            os.environ.get("ECR_MAX_IMAGES", "10")
+        )
+        max_age_days = portfolio_config.get_int("ecr-max-age-days") or int(
+            os.environ.get("ECR_MAX_AGE_DAYS", "30")
+        )
+        # Protect important tags (e.g., latest, stable) by scoping pruning to
+        # ephemeral tag prefixes like git-/sha- (configurable).
+        ephemeral_prefixes_str = portfolio_config.get(
+            "ecr-ephemeral-tag-prefixes"
+        ) or os.environ.get("ECR_EPHEMERAL_TAG_PREFIXES", "git-,sha-")
+        ephemeral_prefixes = [
+            p.strip() for p in ephemeral_prefixes_str.split(",") if p.strip()
+        ] or ["git-", "sha-"]
+
+        lifecycle_policy_doc = json.dumps(
+            {
+                "rules": [
+                    {
+                        "rulePriority": 1,
+                        "description": (
+                            f"Keep only the {max_images} most recent ephemeral images"
+                        ),
+                        "selection": {
+                            "tagStatus": "tagged",
+                            "tagPrefixList": ephemeral_prefixes,
+                            "countType": "imageCountMoreThan",
+                            "countNumber": max_images,
+                        },
+                        "action": {"type": "expire"},
+                    },
+                    {
+                        "rulePriority": 2,
+                        "description": (
+                            f"Expire untagged images older than {max_age_days} days"
+                        ),
+                        "selection": {
+                            "tagStatus": "untagged",
+                            "countType": "sinceImagePushed",
+                            "countUnit": "days",
+                            "countNumber": max_age_days,
+                        },
+                        "action": {"type": "expire"},
+                    },
+                ]
+            }
+        )
+
+        self.ecr_lifecycle = LifecyclePolicy(
+            f"{name}-repo-lifecycle",
+            repository=self.ecr_repo.name,
+            policy=lifecycle_policy_doc,
+            opts=ResourceOptions(parent=self, depends_on=[self.ecr_repo]),
+        )
+
         # Add ECR repository policy to allow Lambda to pull images
         from pulumi_aws.ecr import RepositoryPolicy
         import json
-        
+
         RepositoryPolicy(
             f"{name}-repo-policy",
             repository=self.ecr_repo.name,
-            policy=json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Sid": "LambdaECRImageRetrievalPolicy",
-                        "Effect": "Allow",
-                        "Principal": {
-                            "Service": "lambda.amazonaws.com"
-                        },
-                        "Action": [
-                            "ecr:BatchGetImage",
-                            "ecr:GetDownloadUrlForLayer"
-                        ]
-                    }
-                ]
-            }),
+            policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Sid": "LambdaECRImageRetrievalPolicy",
+                            "Effect": "Allow",
+                            "Principal": {"Service": "lambda.amazonaws.com"},
+                            "Action": [
+                                "ecr:BatchGetImage",
+                                "ecr:GetDownloadUrlForLayer",
+                            ],
+                        }
+                    ],
+                }
+            ),
             opts=ResourceOptions(parent=self, depends_on=[self.ecr_repo]),
         )
 
@@ -185,7 +247,8 @@ class DockerImageComponent(ComponentResource):
             ],
             opts=ResourceOptions(
                 parent=self,
-                depends_on=[self.ecr_repo] + ([base_images] if base_images else []),
+                depends_on=[self.ecr_repo]
+                + ([base_images] if base_images else []),
                 replace_on_changes=["build_args", "dockerfile"],
             ),
         )

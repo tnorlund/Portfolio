@@ -31,3 +31,5 @@ config:
     secure: AAABAGduWcFkT1+/496Ni1IoINBIEsDmtQvuV9BQPpHXZJ+VW3sz1VgbUX0Fhdhkr4W5zgAIOybOqWHr5VR1YiWiLuX0BxnzDu4XmDqnFH3XUpJ9Yy1oSSk=
   portfolio:LANGCHAIN_API_KEY:
     secure: AAABAE4K3AaVrtBdO8r3+ooYvm3vIBvWIkXebe3gIY3SqhFlUfHP+6GOIp8+Bb8YG82KuGLhpNS9s8GTIldJQ4azObv9qXN1p1INBhHL3cBbmBw=
+  portfolio:ecr-max-images: "4"
+  portfolio:ecr-max-age-days: "7"
