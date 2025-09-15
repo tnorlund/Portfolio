@@ -5,6 +5,7 @@ This module creates reusable base images that contain the installed packages,
 allowing Lambda containers to build faster by using these as base images.
 """
 
+import json
 import hashlib
 import os
 import subprocess
@@ -17,6 +18,7 @@ from pulumi_aws.ecr import (
     Repository,
     RepositoryImageScanningConfigurationArgs,
     get_authorization_token_output,  # Use output version for docker-build
+    LifecyclePolicy,
 )
 import pulumi_docker_build as docker_build
 
@@ -230,6 +232,76 @@ class BaseImages(ComponentResource):
             ),
             force_delete=True,
             opts=ResourceOptions(parent=self),
+        )
+
+        # Lifecycle policy configuration (retain N, expire untagged older than X)
+        portfolio_config = pulumi.Config("portfolio")
+        max_images = portfolio_config.get_int("ecr-max-images") or int(
+            os.environ.get("ECR_MAX_IMAGES", "10")
+        )
+        max_age_days = portfolio_config.get_int("ecr-max-age-days") or int(
+            os.environ.get("ECR_MAX_AGE_DAYS", "30")
+        )
+
+        # Only expire images with ephemeral tags (e.g., content-hash tags),
+        # preserving important tags like "latest" and "stable" by default.
+        ephemeral_prefixes_str = portfolio_config.get(
+            "ecr-ephemeral-tag-prefixes"
+        ) or os.environ.get("ECR_EPHEMERAL_TAG_PREFIXES", "git-,sha-")
+        ephemeral_prefixes = [
+            p.strip() for p in ephemeral_prefixes_str.split(",") if p.strip()
+        ] or ["git-", "sha-"]
+
+        lifecycle_policy_doc = json.dumps(
+            {
+                "rules": [
+                    {
+                        "rulePriority": 1,
+                        "description": (
+                            f"Keep only the {max_images} most recent ephemeral images"
+                        ),
+                        "selection": {
+                            "tagStatus": "tagged",
+                            "tagPrefixList": ephemeral_prefixes,
+                            "countType": "imageCountMoreThan",
+                            "countNumber": max_images,
+                        },
+                        "action": {"type": "expire"},
+                    },
+                    {
+                        "rulePriority": 2,
+                        "description": (
+                            f"Expire untagged images older than {max_age_days} days"
+                        ),
+                        "selection": {
+                            "tagStatus": "untagged",
+                            "countType": "sinceImagePushed",
+                            "countUnit": "days",
+                            "countNumber": max_age_days,
+                        },
+                        "action": {"type": "expire"},
+                    },
+                ]
+            }
+        )
+
+        # Attach lifecycle policies to both base repositories
+        self.dynamo_lifecycle = LifecyclePolicy(
+            f"base-receipt-dynamo-lifecycle-{stack}",
+            repository=self.dynamo_base_repo.name,
+            policy=lifecycle_policy_doc,
+            opts=ResourceOptions(
+                parent=self, depends_on=[self.dynamo_base_repo]
+            ),
+        )
+
+        self.label_lifecycle = LifecyclePolicy(
+            f"base-receipt-label-lifecycle-{stack}",
+            repository=self.label_base_repo.name,
+            policy=lifecycle_policy_doc,
+            opts=ResourceOptions(
+                parent=self, depends_on=[self.label_base_repo]
+            ),
         )
 
         # Get ECR authorization token (using output version for docker-build)
