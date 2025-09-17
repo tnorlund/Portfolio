@@ -222,53 +222,38 @@ def _find_business_name_near_address(
     # Sort by line_id to maintain order
     search_lines.sort(key=lambda x: getattr(x, "line_id", 0))
 
-    # Look for business name in these lines
+    # Collect non-noise text from lines around the address (without pattern detection)
+    text_parts = []
     for line in search_lines:
         line_text = getattr(line, "text", "").strip()
-        if not line_text:
+        is_noise = getattr(line, "is_noise", False)
+
+        # Skip empty lines and noise lines
+        if not line_text or is_noise:
             continue
 
-        # Skip lines that are mostly address components
-        if any(
-            addr_word in line_text.upper()
-            for addr_word in [
-                "STREET",
-                "ST",
-                "AVENUE",
-                "AVE",
-                "ROAD",
-                "RD",
-                "BLVD",
-                "BOULEVARD",
-                "DRIVE",
-                "DR",
-                "LANE",
-                "LN",
-                "WAY",
-                "PLAZA",
-                "PLACE",
-                "PL",
-                "COURT",
-                "CT",
-                "CIRCLE",
-                "CIR",
-                "SUITE",
-                "STE",
-                "UNIT",
-                "APT",
-                "APARTMENT",
-            ]
-        ):
-            continue
+        text_parts.append(line_text)
 
-        # Look for lines that look like business names (all caps, reasonable length)
-        if (
-            line_text.isupper()
-            and not any(c.isdigit() for c in line_text)
-            and 3 <= len(line_text) <= 50
-            and len(line_text.split()) <= 5
-        ):  # Not too many words
-            return line_text
+    # Join the text parts and check query length limit
+    if text_parts:
+        combined_text = " ".join(text_parts)
+        # Google Places API has a query length limit of ~2000 characters
+        # Let's be conservative and limit to 1000 characters
+        if len(combined_text) <= 1000:
+            return combined_text
+        else:
+            # If too long, try to truncate intelligently
+            # Take the first few parts that fit within limit
+            truncated_parts = []
+            current_length = 0
+            for part in text_parts:
+                if current_length + len(part) + 1 <= 1000:  # +1 for space
+                    truncated_parts.append(part)
+                    current_length += len(part) + 1
+                else:
+                    break
+            if truncated_parts:
+                return " ".join(truncated_parts)
 
     return None
 
@@ -879,6 +864,10 @@ def main() -> None:
             )
         )
 
+        print(
+            f"Strategy 3 decision: should_run={should_run_strategy_3}, has_metadata={bool(result['metadata'])}, has_places_results={bool(result['places_results'])}, has_receipt_words={bool(receipt_words)}"
+        )
+
         if should_run_strategy_3 and receipt_words:
             business_name = None
 
@@ -891,6 +880,9 @@ def main() -> None:
                 try:
                     # Try searching with business name + address
                     combined_query = f"{business_name} {address}"
+                    print(
+                        f"Strategy 3 query: '{combined_query}' (length: {len(combined_query)})"
+                    )
                     _places_api_call_count += 1
                     places_result = _places_api.search_by_address(
                         combined_query, receipt_words
