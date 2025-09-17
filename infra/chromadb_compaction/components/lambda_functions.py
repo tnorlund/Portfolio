@@ -246,7 +246,9 @@ class HybridLambdaDeployment(ComponentResource):
             role=self.lambda_role.arn,
             timeout=900,  # 15 minutes for compaction operations
             memory_size=2048,  # Increased memory for ChromaDB label operations (was failing with 1024MB)
-            ephemeral_storage={"size": 5120},  # 5GB for ChromaDB snapshots and temp files
+            ephemeral_storage={
+                "size": 5120
+            },  # 5GB for ChromaDB snapshots and temp files
             reserved_concurrent_executions=10,  # Prevent throttling with batch processing
             architectures=["arm64"],
             environment={
@@ -436,7 +438,7 @@ class HybridLambdaDeployment(ComponentResource):
                             "Action": [
                                 "cloudwatch:PutMetricData",
                                 "logs:CreateLogGroup",
-                                "logs:CreateLogStream", 
+                                "logs:CreateLogStream",
                                 "logs:PutLogEvents",
                             ],
                             "Resource": "*",
@@ -475,8 +477,7 @@ class HybridLambdaDeployment(ComponentResource):
             f"{name}-lines-event-source-mapping",
             event_source_arn=chromadb_queues.lines_queue_arn,
             function_name=self.enhanced_compaction_function.arn,
-            batch_size=25,  # Increased from 10 for better throughput
-            maximum_batching_window_in_seconds=10,  # Reduced from 30 for lower latency
+            batch_size=10,  # FIFO queues support batch size up to 10
             function_response_types=["ReportBatchItemFailures"],
             opts=ResourceOptions(parent=self),
         )
@@ -485,8 +486,7 @@ class HybridLambdaDeployment(ComponentResource):
             f"{name}-words-event-source-mapping",
             event_source_arn=chromadb_queues.words_queue_arn,
             function_name=self.enhanced_compaction_function.arn,
-            batch_size=25,  # Increased from 10 for better throughput
-            maximum_batching_window_in_seconds=10,  # Reduced from 30 for lower latency
+            batch_size=10,  # FIFO queues support batch size up to 10
             function_response_types=["ReportBatchItemFailures"],
             opts=ResourceOptions(parent=self),
         )
