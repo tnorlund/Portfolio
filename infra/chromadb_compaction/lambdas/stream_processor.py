@@ -35,25 +35,27 @@ try:
         with_compaction_timeout_protection,
         format_response,
     )
+
     OBSERVABILITY_AVAILABLE = True
 except ImportError as e:
     # Log the specific import error for debugging
-    import logging
     logging.error(f"Failed to import utils: {e}")
     # Fallback for development/testing - provide no-op decorators
     OBSERVABILITY_AVAILABLE = False
-    
+
     # No-op decorator functions for fallback
     def trace_function(operation_name=None, collection=None):
         def decorator(func):
             return func
+
         return decorator
-    
+
     def with_compaction_timeout_protection(max_duration=None):
         def decorator(func):
             return func
+
         return decorator
-    
+
     # Placeholder functions
     get_operation_logger = None
     metrics = None
@@ -119,6 +121,9 @@ class StreamMessage:  # pylint: disable=too-many-instance-attributes
     changes: Dict[str, Any]
     event_name: str
     collections: List[ChromaDBCollection]  # Which collections this affects
+    record_snapshot: Optional[Dict[str, Any]] = (
+        None  # Full new/old entity as dict
+    )
     source: str = "dynamodb_stream"
     timestamp: Optional[str] = None
     stream_record_id: Optional[str] = None
@@ -137,13 +142,45 @@ class FieldChange:
 if OBSERVABILITY_AVAILABLE:
     logger = get_operation_logger(__name__)
 else:
-    # Import logging utilities directly for fallback
-    from utils.logging import get_operation_logger as fallback_get_operation_logger
-    logger = fallback_get_operation_logger(__name__)
+    # Lightweight fallback logger that accepts structured kwargs
+    class _BasicStructuredLogger:
+        def __init__(self, name: str):
+            self.logger = logging.getLogger(name)
+            if not self.logger.handlers:
+                handler = logging.StreamHandler()
+                formatter = logging.Formatter(
+                    "[%(levelname)s] %(asctime)s %(message)s",
+                    datefmt="%Y-%m-%d %H:%M:%S",
+                )
+                handler.setFormatter(formatter)
+                self.logger.addHandler(handler)
+                self.logger.setLevel(logging.INFO)
+
+        def _format(self, msg: str, **kwargs):
+            if kwargs:
+                kv = " ".join(f"{k}={v}" for k, v in kwargs.items())
+                return f"{msg} | {kv}"
+            return msg
+
+        def info(self, msg: str, **kwargs):
+            self.logger.info(self._format(msg, **kwargs))
+
+        def warning(self, msg: str, **kwargs):
+            self.logger.warning(self._format(msg, **kwargs))
+
+        def error(self, msg: str, **kwargs):
+            self.logger.error(self._format(msg, **kwargs))
+
+        def debug(self, msg: str, **kwargs):
+            self.logger.debug(self._format(msg, **kwargs))
+
+    logger = _BasicStructuredLogger(__name__)
 
 
 @trace_function(operation_name="stream_processor")
-@with_compaction_timeout_protection(max_duration=60)  # Stream processing should be fast
+@with_compaction_timeout_protection(
+    max_duration=60
+)  # Stream processing should be fast
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     Process DynamoDB stream events for ChromaDB metadata synchronization.
@@ -163,40 +200,47 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         Response with processing statistics
     """
     correlation_id = None
-    
+
     # Start monitoring if available
     if OBSERVABILITY_AVAILABLE:
         start_compaction_lambda_monitoring(context)
-        correlation_id = getattr(logger, 'correlation_id', None)
-        logger.info("Starting stream processing", 
-                   event_records=len(event.get("Records", [])),
-                   correlation_id=correlation_id)
-    
+        correlation_id = getattr(logger, "correlation_id", None)
+        logger.info(
+            "Starting stream processing",
+            event_records=len(event.get("Records", [])),
+            correlation_id=correlation_id,
+        )
+
     try:
         # Handle different event types (test events vs real stream events)
         if "Records" not in event:
             logger.info(
-                "Received non-stream event (likely test)", event_keys=list(event.keys())
+                "Received non-stream event (likely test)",
+                event_keys=list(event.keys()),
             )
             response = {
                 "statusCode": 200,
                 "processed_records": 0,
                 "queued_messages": 0,
             }
-            
+
             if OBSERVABILITY_AVAILABLE:
                 metrics.count("StreamProcessorTestEvents", 1)
-                return format_response(response, event, correlation_id=correlation_id)
+                return format_response(
+                    response, event, correlation_id=correlation_id
+                )
             return response
 
         if OBSERVABILITY_AVAILABLE:
             metrics.gauge("StreamRecordsReceived", len(event["Records"]))
-            
-        logger.info("Processing DynamoDB stream records", 
-                   record_count=len(event["Records"]))
+
+        logger.info(
+            "Processing DynamoDB stream records",
+            record_count=len(event["Records"]),
+        )
 
         # Avoid logging entire event to prevent PII exposure
-        if hasattr(logger, 'logger') and logger.logger.level <= logging.DEBUG:
+        if hasattr(logger, "logger") and logger.logger.level <= logging.DEBUG:
             logger.debug("Stream event structure present")
 
         messages_to_send = []
@@ -206,37 +250,51 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             try:
                 event_id = record.get("eventID", "unknown")
                 event_name = record.get("eventName", "unknown")
-                
+
                 logger.info(
-                    "Processing stream record", 
+                    "Processing stream record",
                     record_id=event_id,
-                    event_name=event_name
+                    event_name=event_name,
                 )
-                
+
                 if OBSERVABILITY_AVAILABLE:
-                    metrics.count("StreamRecordProcessed", 1, 
-                                {"event_name": event_name})
+                    metrics.count(
+                        "StreamRecordProcessed", 1, {"event_name": event_name}
+                    )
                 # Parse stream record using entity parsers
                 parsed_record = parse_stream_record(record)
 
                 if not parsed_record:
                     if OBSERVABILITY_AVAILABLE:
-                        metrics.count("StreamRecordSkipped", 1, 
-                                    {"reason": "not_relevant_entity"})
-                    logger.debug("Skipped record - not relevant entity", 
-                               record_id=event_id,
-                               pk=record.get("dynamodb", {}).get("Keys", {}).get("PK", {}).get("S", "unknown"),
-                               sk=record.get("dynamodb", {}).get("Keys", {}).get("SK", {}).get("S", "unknown"))
+                        metrics.count(
+                            "StreamRecordSkipped",
+                            1,
+                            {"reason": "not_relevant_entity"},
+                        )
+                    logger.debug(
+                        "Skipped record - not relevant entity",
+                        record_id=event_id,
+                        pk=record.get("dynamodb", {})
+                        .get("Keys", {})
+                        .get("PK", {})
+                        .get("S", "unknown"),
+                        sk=record.get("dynamodb", {})
+                        .get("Keys", {})
+                        .get("SK", {})
+                        .get("S", "unknown"),
+                    )
                     continue  # Not a receipt entity we care about
-                
+
                 # Log successful entity detection
-                logger.info("Successfully parsed stream record",
-                           record_id=event_id,
-                           entity_type=parsed_record.entity_type,
-                           has_old_entity=parsed_record.old_entity is not None,
-                           has_new_entity=parsed_record.new_entity is not None,
-                           pk=parsed_record.pk,
-                           sk=parsed_record.sk)
+                logger.info(
+                    "Successfully parsed stream record",
+                    record_id=event_id,
+                    entity_type=parsed_record.entity_type,
+                    has_old_entity=parsed_record.old_entity is not None,
+                    has_new_entity=parsed_record.new_entity is not None,
+                    pk=parsed_record.pk,
+                    sk=parsed_record.sk,
+                )
 
                 # Process MODIFY and REMOVE events
                 if record["eventName"] in ["MODIFY", "REMOVE"]:
@@ -248,14 +306,19 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     changes = get_chromadb_relevant_changes(
                         entity_type, old_entity, new_entity
                     )
-                    logger.info("Found relevant changes", 
-                               change_count=len(changes),
-                               changed_fields=list(changes.keys()),
-                               entity_type=entity_type)
-                    
+                    logger.info(
+                        "Found relevant changes",
+                        change_count=len(changes),
+                        changed_fields=list(changes.keys()),
+                        entity_type=entity_type,
+                    )
+
                     if OBSERVABILITY_AVAILABLE:
-                        metrics.count("ChromaDBRelevantChanges", len(changes),
-                                    {"entity_type": entity_type})
+                        metrics.count(
+                            "ChromaDBRelevantChanges",
+                            len(changes),
+                            {"entity_type": entity_type},
+                        )
 
                     # Always process REMOVE events, even without specific field
                     # changes
@@ -289,6 +352,18 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                             target_collections = [ChromaDBCollection.WORDS]
 
                         if entity_data and target_collections:
+                            # Build record snapshot from the most up-to-date image
+                            entity_for_snapshot = (
+                                new_entity
+                                if new_entity is not None
+                                else old_entity
+                            )
+                            record_snapshot = (
+                                dict(entity_for_snapshot)
+                                if entity_for_snapshot
+                                else None
+                            )
+
                             # Create enhanced stream message
                             stream_msg = StreamMessage(
                                 entity_type=entity_type,
@@ -296,43 +371,61 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                                 changes=changes,
                                 event_name=record["eventName"],
                                 collections=target_collections,
+                                record_snapshot=record_snapshot,
                                 source="dynamodb_stream",
-                                timestamp=datetime.now(timezone.utc).isoformat(),
-                                stream_record_id=record.get("eventID", "unknown"),
+                                timestamp=datetime.now(
+                                    timezone.utc
+                                ).isoformat(),
+                                stream_record_id=record.get(
+                                    "eventID", "unknown"
+                                ),
                                 aws_region=record.get("awsRegion", "unknown"),
                             )
                             messages_to_send.append(stream_msg)
                             processed_records += 1
-                            
-                            logger.info("Created stream message",
-                                       entity_type=entity_type,
-                                       target_collections=[c.value for c in target_collections])
-                            
+
+                            logger.info(
+                                "Created stream message",
+                                entity_type=entity_type,
+                                target_collections=[
+                                    c.value for c in target_collections
+                                ],
+                            )
+
                             if OBSERVABILITY_AVAILABLE:
                                 for collection in target_collections:
-                                    metrics.count("StreamMessageCreated", 1,
-                                                 {"entity_type": entity_type,
-                                                  "collection": collection.value})
+                                    metrics.count(
+                                        "StreamMessageCreated",
+                                        1,
+                                        {
+                                            "entity_type": entity_type,
+                                            "collection": collection.value,
+                                        },
+                                    )
 
             except (ValueError, KeyError, TypeError) as e:
                 event_id = record.get("eventID", "unknown")
                 logger.error(
                     "Error processing stream record",
                     record_id=event_id,
-                    error=str(e)
+                    error=str(e),
                 )
-                
+
                 if OBSERVABILITY_AVAILABLE:
-                    metrics.count("StreamRecordProcessingError", 1,
-                                {"error_type": type(e).__name__})
+                    metrics.count(
+                        "StreamRecordProcessingError",
+                        1,
+                        {"error_type": type(e).__name__},
+                    )
                 # Continue processing other records
 
         # Send all messages to appropriate SQS queues
         if messages_to_send:
             sent_count = send_messages_to_queues(messages_to_send)
-            logger.info("Sent messages to compaction queues", 
-                       message_count=sent_count)
-            
+            logger.info(
+                "Sent messages to compaction queues", message_count=sent_count
+            )
+
             if OBSERVABILITY_AVAILABLE:
                 metrics.count("MessagesQueuedForCompaction", sent_count)
         else:
@@ -343,39 +436,54 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             processed_records=processed_records,
             queued_messages=sent_count,
         )
-        
-        logger.info("Stream processing completed",
-                   processed_records=processed_records,
-                   queued_messages=sent_count)
-        
+
+        logger.info(
+            "Stream processing completed",
+            processed_records=processed_records,
+            queued_messages=sent_count,
+        )
+
         if OBSERVABILITY_AVAILABLE:
             metrics.gauge("StreamProcessorProcessedRecords", processed_records)
             metrics.gauge("StreamProcessorQueuedMessages", sent_count)
-            
+
         # Convert dataclass to dict for AWS Lambda JSON serialization
         result = response.to_dict()
-        
+
         if OBSERVABILITY_AVAILABLE:
-            return format_response(result, event, correlation_id=correlation_id)
+            return format_response(
+                result, event, correlation_id=correlation_id
+            )
         return result
-        
+
     except Exception as e:
-        logger.error("Stream processor failed", error=str(e), error_type=type(e).__name__)
-        
+        logger.error(
+            "Stream processor failed",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+
         if OBSERVABILITY_AVAILABLE:
-            metrics.count("StreamProcessorError", 1, {"error_type": type(e).__name__})
-            
+            metrics.count(
+                "StreamProcessorError", 1, {"error_type": type(e).__name__}
+            )
+
         error_response = {
             "statusCode": 500,
             "processed_records": 0,
             "queued_messages": 0,
-            "error": str(e)
+            "error": str(e),
         }
-        
+
         if OBSERVABILITY_AVAILABLE:
-            return format_response(error_response, event, is_error=True, correlation_id=correlation_id)
+            return format_response(
+                error_response,
+                event,
+                is_error=True,
+                correlation_id=correlation_id,
+            )
         return error_response
-        
+
     finally:
         # Stop monitoring if available
         if OBSERVABILITY_AVAILABLE:
@@ -400,7 +508,11 @@ def _detect_entity_type(sk: str) -> Optional[str]:
 
 
 def _parse_entity(
-    image: Optional[Dict[str, Any]], entity_type: str, image_type: str, pk: str, sk: str
+    image: Optional[Dict[str, Any]],
+    entity_type: str,
+    image_type: str,
+    pk: str,
+    sk: str,
 ) -> Optional[Union[ReceiptMetadata, ReceiptWordLabel]]:
     """
     Parse DynamoDB image into typed entity.
@@ -424,50 +536,68 @@ def _parse_entity(
         complete_item = dict(image)  # Copy the image
         complete_item["PK"] = {"S": pk}
         complete_item["SK"] = {"S": sk}
-        
+
         # Log detailed field information for RECEIPT_WORD_LABEL parsing diagnostics
         if entity_type == "RECEIPT_WORD_LABEL":
-            logger.info("Attempting to parse RECEIPT_WORD_LABEL",
-                       image_type=image_type,
-                       available_fields=list(complete_item.keys()),
-                       pk=pk,
-                       sk=sk,
-                       has_timestamp_added="timestamp_added" in complete_item,
-                       has_reasoning="reasoning" in complete_item,
-                       has_validation_status="validation_status" in complete_item,
-                       raw_image_fields=list(image.keys()) if image else "None")
+            logger.info(
+                "Attempting to parse RECEIPT_WORD_LABEL",
+                image_type=image_type,
+                available_fields=list(complete_item.keys()),
+                pk=pk,
+                sk=sk,
+                has_timestamp_added="timestamp_added" in complete_item,
+                has_reasoning="reasoning" in complete_item,
+                has_validation_status="validation_status" in complete_item,
+                raw_image_fields=list(image.keys()) if image else "None",
+            )
 
         if entity_type == "RECEIPT_METADATA":
             return item_to_receipt_metadata(complete_item)
         if entity_type == "RECEIPT_WORD_LABEL":
             return item_to_receipt_word_label(complete_item)
     except ValueError as e:
-        logger.error("Failed to parse entity - DIAGNOSTIC DETAILS",
-                    image_type=image_type,
-                    entity_type=entity_type, 
-                    error=str(e),
-                    available_fields=list(image.keys()) if image else "None",
-                    complete_item_fields=list(complete_item.keys()) if 'complete_item' in locals() else "Not created",
-                    pk=pk,
-                    sk=sk,
-                    raw_complete_item=complete_item if 'complete_item' in locals() else "Not created")
-        
+        logger.error(
+            "Failed to parse entity - DIAGNOSTIC DETAILS",
+            image_type=image_type,
+            entity_type=entity_type,
+            error=str(e),
+            available_fields=list(image.keys()) if image else "None",
+            complete_item_fields=(
+                list(complete_item.keys())
+                if "complete_item" in locals()
+                else "Not created"
+            ),
+            pk=pk,
+            sk=sk,
+            raw_complete_item=(
+                complete_item if "complete_item" in locals() else "Not created"
+            ),
+        )
+
         if OBSERVABILITY_AVAILABLE:
-            metrics.count("EntityParsingError", 1,
-                        {"entity_type": entity_type, "image_type": image_type})
-                        
+            metrics.count(
+                "EntityParsingError",
+                1,
+                {"entity_type": entity_type, "image_type": image_type},
+            )
+
     except Exception as e:
-        logger.error("Unexpected error parsing entity",
-                    image_type=image_type,
-                    entity_type=entity_type,
-                    error=str(e),
-                    error_type=type(e).__name__,
-                    pk=pk,
-                    sk=sk)
-        
+        logger.error(
+            "Unexpected error parsing entity",
+            image_type=image_type,
+            entity_type=entity_type,
+            error=str(e),
+            error_type=type(e).__name__,
+            pk=pk,
+            sk=sk,
+        )
+
         if OBSERVABILITY_AVAILABLE:
-            metrics.count("EntityParsingUnexpectedError", 1,
-                        {"entity_type": entity_type, "error_type": type(e).__name__})
+            metrics.count(
+                "EntityParsingUnexpectedError",
+                1,
+                {"entity_type": entity_type, "error_type": type(e).__name__},
+            )
 
     return None
 
@@ -520,16 +650,24 @@ def parse_stream_record(
                 available_keys=list(old_image.keys()) if old_image else "None",
                 pk=pk,
                 sk=sk,
-                full_old_image=old_image if entity_type == "RECEIPT_WORD_LABEL" else "Not a label entity"
+                full_old_image=(
+                    old_image
+                    if entity_type == "RECEIPT_WORD_LABEL"
+                    else "Not a label entity"
+                ),
             )
         if new_image and not new_entity:
             logger.error(
                 "CRITICAL: Failed to parse new entity - FULL DIAGNOSTIC",
                 entity_type=entity_type,
-                available_keys=list(new_image.keys()) if new_image else "None", 
+                available_keys=list(new_image.keys()) if new_image else "None",
                 pk=pk,
                 sk=sk,
-                full_new_image=new_image if entity_type == "RECEIPT_WORD_LABEL" else "Not a label entity"
+                full_new_image=(
+                    new_image
+                    if entity_type == "RECEIPT_WORD_LABEL"
+                    else "Not a label entity"
+                ),
             )
 
         # Return parsed entity information
@@ -543,7 +681,7 @@ def parse_stream_record(
 
     except (KeyError, ValueError) as e:
         logger.warning("Failed to parse stream record", error=str(e))
-        
+
         if OBSERVABILITY_AVAILABLE:
             metrics.count("StreamRecordParsingError", 1)
         return None
@@ -641,6 +779,7 @@ def send_messages_to_queues(messages: List[StreamMessage]) -> int:
             "timestamp": msg.timestamp,
             "stream_record_id": msg.stream_record_id,
             "aws_region": msg.aws_region,
+            "record_snapshot": msg.record_snapshot,
         }
 
         if ChromaDBCollection.LINES in msg.collections:
@@ -694,10 +833,39 @@ def _send_batch_to_queue(
 
         entries = []
         for j, (message_dict, _) in enumerate(batch):
+            # Compute FIFO grouping and deduplication keys
+            entity = message_dict.get("entity_data", {})
+            image_id = entity.get("image_id")
+            receipt_id = entity.get("receipt_id")
+            line_id = entity.get("line_id")
+            word_id = entity.get("word_id")
+
+            if collection == ChromaDBCollection.LINES:
+                message_group_id = f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
+            else:
+                # WORDS collection groups by exact word
+                message_group_id = (
+                    f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}"
+                    if all(
+                        v is not None
+                        for v in [image_id, receipt_id, line_id, word_id]
+                    )
+                    else f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
+                )
+
+            # Prefer a deterministic deduplication id based on stream record
+            dedup_id = (
+                message_dict.get("stream_record_id")
+                or f"{message_group_id}:{message_dict.get('event_name','')}:{j}"
+            )
+
             entries.append(
                 {
                     "Id": str(i + j),
                     "MessageBody": json.dumps(message_dict),
+                    # FIFO controls
+                    "MessageGroupId": message_group_id,
+                    "MessageDeduplicationId": dedup_id,
                     "MessageAttributes": {
                         "source": {
                             "StringValue": "dynamodb_stream",
@@ -720,11 +888,13 @@ def _send_batch_to_queue(
             )
 
         try:
-            logger.info("Sending message batch to queue", 
-                       queue_url=queue_url,
-                       collection=collection.value,
-                       batch_size=len(entries))
-            
+            logger.info(
+                "Sending message batch to queue",
+                queue_url=queue_url,
+                collection=collection.value,
+                batch_size=len(entries),
+            )
+
             response = sqs.send_message_batch(
                 QueueUrl=queue_url, Entries=entries
             )
@@ -734,42 +904,55 @@ def _send_batch_to_queue(
             sent_count += successful
 
             logger.info(
-                "Sent messages to queue", 
+                "Sent messages to queue",
                 successful_count=successful,
-                collection=collection.value
+                collection=collection.value,
             )
-            
+
             if OBSERVABILITY_AVAILABLE:
-                metrics.count("SQSMessagesSuccessful", successful,
-                            {"collection": collection.value})
+                metrics.count(
+                    "SQSMessagesSuccessful",
+                    successful,
+                    {"collection": collection.value},
+                )
 
             # Log any failures
             if "Failed" in response and response["Failed"]:
                 failed_count = len(response["Failed"])
-                
+
                 if OBSERVABILITY_AVAILABLE:
-                    metrics.count("SQSMessagesFailed", failed_count,
-                                {"collection": collection.value})
-                
+                    metrics.count(
+                        "SQSMessagesFailed",
+                        failed_count,
+                        {"collection": collection.value},
+                    )
+
                 for failed in response["Failed"]:
                     logger.error(
                         "Failed to send message to queue",
                         message_id=failed["Id"],
                         collection=collection.value,
                         error_code=failed.get("Code", "UnknownError"),
-                        error_message=failed.get("Message", "No error details")
+                        error_message=failed.get(
+                            "Message", "No error details"
+                        ),
                     )
 
         except (ValueError, KeyError, TypeError) as e:
             logger.error(
                 "Error sending SQS batch to queue",
                 collection=collection.value,
-                error=str(e)
+                error=str(e),
             )
-            
+
             if OBSERVABILITY_AVAILABLE:
-                metrics.count("SQSBatchError", 1,
-                            {"collection": collection.value,
-                             "error_type": type(e).__name__})
+                metrics.count(
+                    "SQSBatchError",
+                    1,
+                    {
+                        "collection": collection.value,
+                        "error_type": type(e).__name__,
+                    },
+                )
 
     return sent_count
