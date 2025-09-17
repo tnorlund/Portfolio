@@ -18,7 +18,7 @@ Focuses on:
 import json
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Union
 
@@ -226,9 +226,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
             if OBSERVABILITY_AVAILABLE:
                 metrics.count("StreamProcessorTestEvents", 1)
-                return format_response(
-                    response, event, correlation_id=correlation_id
-                )
+                return format_response(response, event)
             return response
 
         if OBSERVABILITY_AVAILABLE:
@@ -359,9 +357,16 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                                 else old_entity
                             )
                             record_snapshot = (
-                                dict(entity_for_snapshot)
-                                if entity_for_snapshot
-                                else None
+                                asdict(entity_for_snapshot)
+                                if (
+                                    entity_for_snapshot
+                                    and is_dataclass(entity_for_snapshot)
+                                )
+                                else (
+                                    entity_for_snapshot.__dict__
+                                    if entity_for_snapshot
+                                    else None
+                                )
                             )
 
                             # Create enhanced stream message
@@ -451,9 +456,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         result = response.to_dict()
 
         if OBSERVABILITY_AVAILABLE:
-            return format_response(
-                result, event, correlation_id=correlation_id
-            )
+            return format_response(result, event)
         return result
 
     except Exception as e:
@@ -480,7 +483,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 error_response,
                 event,
                 is_error=True,
-                correlation_id=correlation_id,
             )
         return error_response
 
@@ -557,22 +559,30 @@ def _parse_entity(
             return item_to_receipt_word_label(complete_item)
     except ValueError as e:
         logger.error(
-            "Failed to parse entity - DIAGNOSTIC DETAILS",
+            "Failed to parse entity",
             image_type=image_type,
             entity_type=entity_type,
             error=str(e),
             available_fields=list(image.keys()) if image else "None",
-            complete_item_fields=(
-                list(complete_item.keys())
-                if "complete_item" in locals()
-                else "Not created"
-            ),
             pk=pk,
             sk=sk,
-            raw_complete_item=(
-                complete_item if "complete_item" in locals() else "Not created"
-            ),
         )
+
+        # Only log detailed diagnostics in DEBUG mode to avoid PII exposure
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "Entity parsing diagnostic details",
+                complete_item_fields=(
+                    list(complete_item.keys())
+                    if "complete_item" in locals()
+                    else "Not created"
+                ),
+                raw_complete_item=(
+                    complete_item
+                    if "complete_item" in locals()
+                    else "Not created"
+                ),
+            )
 
         if OBSERVABILITY_AVAILABLE:
             metrics.count(
@@ -645,29 +655,19 @@ def parse_stream_record(
         # Enhanced diagnostic logging for parsing failures
         if old_image and not old_entity:
             logger.error(
-                "CRITICAL: Failed to parse old entity - FULL DIAGNOSTIC",
+                "Failed to parse old entity",
                 entity_type=entity_type,
                 available_keys=list(old_image.keys()) if old_image else "None",
                 pk=pk,
                 sk=sk,
-                full_old_image=(
-                    old_image
-                    if entity_type == "RECEIPT_WORD_LABEL"
-                    else "Not a label entity"
-                ),
             )
         if new_image and not new_entity:
             logger.error(
-                "CRITICAL: Failed to parse new entity - FULL DIAGNOSTIC",
+                "Failed to parse new entity",
                 entity_type=entity_type,
                 available_keys=list(new_image.keys()) if new_image else "None",
                 pk=pk,
                 sk=sk,
-                full_new_image=(
-                    new_image
-                    if entity_type == "RECEIPT_WORD_LABEL"
-                    else "Not a label entity"
-                ),
             )
 
         # Return parsed entity information
