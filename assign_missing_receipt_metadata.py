@@ -186,6 +186,93 @@ def _choose_canonical_metadata(
     return sorted(metas, key=score, reverse=True)[0]
 
 
+def _find_business_name_near_address(
+    rk: ReceiptKey, receipt_words: List, lines: List
+) -> Optional[str]:
+    """Find business name using spatial context around the address.
+
+    Args:
+        rk: Receipt key (image_id, receipt_id)
+        receipt_words: List of receipt words
+        lines: List of receipt lines
+
+    Returns:
+        Business name if found, None otherwise
+    """
+    # Find the address line by looking for words with extracted_data type "address"
+    address_line_id = None
+    for word in receipt_words:
+        extracted_data = getattr(word, "extracted_data", None)
+        if extracted_data and extracted_data.get("type") == "address":
+            address_line_id = getattr(word, "line_id", None)
+            break
+
+    if address_line_id is None:
+        return None
+
+    # Look at lines around the address (typically business name is above the address)
+    search_lines = []
+    for line in lines:
+        line_id = getattr(line, "line_id", None)
+        if (
+            line_id is not None and abs(line_id - address_line_id) <= 2
+        ):  # ±2 lines
+            search_lines.append(line)
+
+    # Sort by line_id to maintain order
+    search_lines.sort(key=lambda x: getattr(x, "line_id", 0))
+
+    # Look for business name in these lines
+    for line in search_lines:
+        line_text = getattr(line, "text", "").strip()
+        if not line_text:
+            continue
+
+        # Skip lines that are mostly address components
+        if any(
+            addr_word in line_text.upper()
+            for addr_word in [
+                "STREET",
+                "ST",
+                "AVENUE",
+                "AVE",
+                "ROAD",
+                "RD",
+                "BLVD",
+                "BOULEVARD",
+                "DRIVE",
+                "DR",
+                "LANE",
+                "LN",
+                "WAY",
+                "PLAZA",
+                "PLACE",
+                "PL",
+                "COURT",
+                "CT",
+                "CIRCLE",
+                "CIR",
+                "SUITE",
+                "STE",
+                "UNIT",
+                "APT",
+                "APARTMENT",
+            ]
+        ):
+            continue
+
+        # Look for lines that look like business names (all caps, reasonable length)
+        if (
+            line_text.isupper()
+            and not any(c.isdigit() for c in line_text)
+            and 3 <= len(line_text) <= 50
+            and len(line_text.split()) <= 5
+        ):  # Not too many words
+            return line_text
+
+    return None
+
+
 def _build_receipt_metadata_from_places_api(
     places_result: Dict, target: ReceiptKey, search_type: str, query: str
 ) -> ReceiptMetadata:
@@ -780,20 +867,25 @@ def main() -> None:
                 except Exception as e:
                     result["errors"].append({"phone_search": str(e)})
 
-        # Strategy 3: Try business name + address combination if we have business name
-        if not result["metadata"] and receipt_words:
+        # Strategy 3: Try business name + address combination using spatial context
+        # Run if Strategy 1 and 2 failed, OR if Strategy 1 found only address (not business name)
+        should_run_strategy_3 = (
+            not result["metadata"] and not result["places_results"]
+        ) or (
+            result["places_results"]
+            and any(
+                place.get("name", "").upper() in address.upper()
+                for place in result["places_results"]
+            )
+        )
+
+        if should_run_strategy_3 and receipt_words:
             business_name = None
-            for word in receipt_words[:10]:  # Check first 10 words
-                if hasattr(word, "text") and word.text:
-                    text = word.text.strip()
-                    # Look for business name (all caps, no numbers, reasonable length)
-                    if (
-                        text.isupper()
-                        and not any(c.isdigit() for c in text)
-                        and 3 <= len(text) <= 50
-                    ):
-                        business_name = text
-                        break
+
+            # Find business name using spatial context around the address
+            business_name = _find_business_name_near_address(
+                rk, receipt_words, lines
+            )
 
             if business_name and address:
                 try:
@@ -818,6 +910,7 @@ def main() -> None:
                                 "business_status"
                             ),
                             "confidence": "high",  # Business name + address is very reliable
+                            "merchant_in_text": True,  # We found the merchant name in the text
                         }
                         result["places_results"].append(places_info)
 
@@ -1212,7 +1305,23 @@ def main() -> None:
             accepted_phone = [
                 m for m in phone.get("matches", []) if m.get("accepted")
             ]
-            if accepted_street or accepted_phone:
+            # Check if we have meaningful matches (not just empty merchant names)
+            has_meaningful_match = False
+            for m in accepted_street + accepted_phone:
+                neighbor_key = tuple(m.get("neighbor_receipt") or ["", None])
+                if (
+                    neighbor_key
+                    and neighbor_key[0]
+                    and neighbor_key[1] is not None
+                ):
+                    nm = existing_all.get(
+                        (neighbor_key[0], int(neighbor_key[1]))
+                    )
+                    if nm and (nm.canonical_merchant_name or nm.merchant_name):
+                        has_meaningful_match = True
+                        break
+
+            if has_meaningful_match:
                 reasons = []
                 text = _receipt_text(rk).lower()
                 # gather reasons and merchant checks
@@ -1400,12 +1509,16 @@ def main() -> None:
                 print(
                     f"Error writing Google Places API metadata to database: {e}"
                 )
+        elif places_api_metadata:
+            print(
+                f"Created {len(places_api_metadata)} ReceiptMetadata records from Google Places API (not written to database)."
+            )
 
         # Report Google Places API usage and costs
         if args.use_places_api:
             estimated_cost = (
-                _places_api_call_count * 0.03
-            )  # Rough estimate: $0.03 per call
+                _places_api_call_count * 0.017
+            )  # Google Places API FindPlaceFromText: $0.017 per call
             print(f"\n=== GOOGLE PLACES API USAGE ===")
             print(f"Total API calls made: {_places_api_call_count}")
             print(f"Estimated cost: ${estimated_cost:.2f}")
