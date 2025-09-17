@@ -166,6 +166,21 @@ pulumi.export(
 pulumi.export("enhanced_receipt_processor_arn", enhanced_receipt_processor.arn)
 # ML Training Infrastructure
 # -------------------------
+# Minimal LayoutLM training infra (toggle via config)
+from layoutlm_training.component import LayoutLMTrainingInfra
+
+ml_cfg = pulumi.Config("ml-training")
+enable_minimal = ml_cfg.get_bool("enable-minimal") or False
+
+if enable_minimal:
+    training = LayoutLMTrainingInfra(
+        "layoutlm",
+        dynamodb_table_name=dynamodb_table.name,
+    )
+    pulumi.export("layoutlm_training_bucket", training.bucket.bucket)
+    pulumi.export("layoutlm_training_queue_url", training.queue.url)
+    pulumi.export("layoutlm_training_asg_name", training.asg.name)
+
 
 # Use stack-specific existing key pair from AWS console
 stack = pulumi.get_stack()
