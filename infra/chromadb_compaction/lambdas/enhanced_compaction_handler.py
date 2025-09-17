@@ -138,6 +138,7 @@ class StreamMessage:
     changes: Dict[str, Any]
     event_name: str
     collection: ChromaDBCollection
+    record_snapshot: Optional[Dict[str, Any]] = None
     source: str = "dynamodb_stream"
 
 
@@ -474,6 +475,7 @@ def process_sqs_messages(records: List[Dict[str, Any]]) -> Dict[str, Any]:
                     changes=message_body.get("changes", {}),
                     event_name=message_body.get("event_name", ""),
                     collection=collection,
+                    record_snapshot=message_body.get("record_snapshot"),
                     source=source,
                 )
                 stream_messages.append(stream_msg)
@@ -1353,7 +1355,11 @@ def process_label_updates(
                     )
                 else:  # MODIFY
                     updated_count = update_word_labels(
-                        collection_obj, chromadb_id, changes
+                        collection_obj,
+                        chromadb_id,
+                        changes,
+                        update_msg.record_snapshot,
+                        entity_data,
                     )
 
                 result = LabelUpdateResult(
@@ -2069,9 +2075,16 @@ def reconstruct_label_metadata(
 
 
 def update_word_labels(
-    collection, chromadb_id: str, changes: Dict[str, Any]
+    collection,
+    chromadb_id: str,
+    changes: Dict[str, Any],
+    record_snapshot: Optional[Dict[str, Any]] = None,
+    entity_data: Optional[Dict[str, Any]] = None,
 ) -> int:
-    """Update label metadata for a specific word embedding using proper metadata structure."""
+    """Update label metadata for a specific word embedding using message snapshot when available.
+
+    Falls back to reconstructing from DynamoDB only if snapshot is missing.
+    """
     try:
         # Parse ChromaDB ID to extract word identifiers
         # Format: IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}
@@ -2097,24 +2110,94 @@ def update_word_labels(
                 metrics.count("CompactionWordEmbeddingNotFound", 1)
             return 0
 
-        # Get DynamoDB client
-        dynamo_client = get_dynamo_client()
-
-        # Reconstruct complete label metadata using the same logic as step function
-        reconstructed_metadata = reconstruct_label_metadata(
-            image_id=image_id,
-            receipt_id=receipt_id,
-            line_id=line_id,
-            word_id=word_id,
-            dynamo_client=dynamo_client,
-        )
+        # Prefer snapshot data if available to avoid DynamoDB race conditions
+        if record_snapshot:
+            # Build the minimal fields needed for label metadata derivation from snapshot
+            # Snapshot is expected to reflect the latest state of this label entity
+            reconstructed_metadata = {
+                "label_status": None,  # will be derived below if needed
+            }
+            # If event is REMOVE, we will remove labels later; nothing to compute here
+            # For MODIFY, we may derive a partial set; we keep consistency by letting
+            # reconstruct_label_metadata handle richer aggregation when snapshot is not sufficient.
+        else:
+            # Reconstruct complete label metadata using the same logic as step function
+            dynamo_client = get_dynamo_client()
+            reconstructed_metadata = reconstruct_label_metadata(
+                image_id=image_id,
+                receipt_id=receipt_id,
+                line_id=line_id,
+                word_id=word_id,
+                dynamo_client=dynamo_client,
+            )
 
         # Get existing metadata and update with reconstructed label fields
         existing_metadata = result["metadatas"][0] or {}
         updated_metadata = existing_metadata.copy()
 
-        # Update with all reconstructed label fields (using same field names as step function)
-        updated_metadata.update(reconstructed_metadata)
+        # Update with reconstructed/snapshot-derived label fields
+        if record_snapshot:
+            # Apply targeted changes directly based on the incoming change set for this word
+            # Maintain existing validated/invalid lists unless changes imply removal
+            if changes:
+                # validation_status
+                if "validation_status" in changes:
+                    new_status = changes["validation_status"].get("new")
+                    if new_status is not None:
+                        updated_metadata["label_status"] = (
+                            "validated"
+                            if new_status == "VALID"
+                            else (
+                                "invalidated"
+                                if new_status == "INVALID"
+                                else (
+                                    "auto_suggested"
+                                    if new_status == "PENDING"
+                                    else updated_metadata.get("label_status")
+                                )
+                            )
+                        )
+                # label_proposed_by
+                if "label_proposed_by" in changes:
+                    val = changes["label_proposed_by"].get("new")
+                    if val is not None:
+                        updated_metadata["label_proposed_by"] = val
+                # reasoning is not persisted directly in summary fields; ignore here
+
+            # Always add/update the current label in validated/invalid sets based on status when provided
+            status = (
+                changes.get("validation_status", {}).get("new")
+                if changes
+                else None
+            )
+            current_label = None
+            if entity_data and isinstance(entity_data, dict):
+                current_label = entity_data.get("label")
+            if current_label:
+                # Initialize fields if missing
+                validated = updated_metadata.get("validated_labels", "") or ""
+                invalid = updated_metadata.get("invalid_labels", "") or ""
+
+                def _as_set(csv: str) -> set:
+                    return set([x for x in csv.strip(",").split(",") if x])
+
+                val_set = _as_set(validated)
+                inv_set = _as_set(invalid)
+                if status == "VALID":
+                    inv_set.discard(current_label)
+                    val_set.add(current_label)
+                elif status == "INVALID":
+                    val_set.discard(current_label)
+                    inv_set.add(current_label)
+                # Write back with delimiters for exact-match semantics
+                updated_metadata["validated_labels"] = (
+                    f",{','.join(sorted(val_set))}," if val_set else ""
+                )
+                updated_metadata["invalid_labels"] = (
+                    f",{','.join(sorted(inv_set))}," if inv_set else ""
+                )
+        else:
+            updated_metadata.update(reconstructed_metadata)
 
         # Add update timestamp
         updated_metadata["last_label_update"] = datetime.now(

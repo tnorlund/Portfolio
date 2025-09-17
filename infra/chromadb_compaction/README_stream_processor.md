@@ -17,17 +17,19 @@ The DynamoDB Stream Processor enables real-time synchronization of metadata chan
 ## Supported Entities
 
 ### 1. `RECEIPT_METADATA` - Merchant Information
+
 - **Key Pattern**: `PK: IMAGE#{uuid}`, `SK: RECEIPT#{id:05d}#METADATA`
 - **ChromaDB Impact**: Updates merchant info across ALL embeddings for that receipt
 - **Monitored Fields**:
   - `canonical_merchant_name`
-  - `merchant_name` 
+  - `merchant_name`
   - `merchant_category`
   - `address`
   - `phone_number`
   - `place_id`
 
 ### 2. `RECEIPT_WORD_LABEL` - Word Classifications
+
 - **Key Pattern**: `PK: IMAGE#{uuid}`, `SK: RECEIPT#{id:05d}#LINE#{id:05d}#WORD#{id:05d}#LABEL#{label}`
 - **ChromaDB Impact**: Updates label metadata for SPECIFIC word embeddings
 - **Monitored Fields**:
@@ -40,16 +42,19 @@ The DynamoDB Stream Processor enables real-time synchronization of metadata chan
 ## Supported Operations
 
 ### MODIFY Events
+
 - **Metadata Changes**: Merchant name corrections, address updates
 - **Label Changes**: Label updates, validation status changes, reasoning updates
 
-### REMOVE Events  
+### REMOVE Events
+
 - **Metadata Removal**: When receipt metadata is deleted → update all related embeddings
 - **Label Removal**: When labels are deleted → remove label metadata from word embeddings
 
 ## Components
 
 ### 1. Stream Processor Lambda (`stream_processor.py`)
+
 - **Runtime**: Python 3.12
 - **Memory**: 256 MB
 - **Timeout**: 5 minutes
@@ -57,16 +62,19 @@ The DynamoDB Stream Processor enables real-time synchronization of metadata chan
 - **Output**: SQS messages to existing compaction queue
 
 **Key Functions**:
+
 - `parse_receipt_entity_key()` - Extracts entity type and IDs from DynamoDB keys
 - `get_chromadb_relevant_changes()` - Identifies fields that affect ChromaDB metadata
-- `send_messages_to_sqs()` - Batches and sends messages to compaction queue
+- `send_messages_to_sqs()` - Batches and sends messages to compaction queue (FIFO)
 
 ### 2. Infrastructure Components (`stream_processor_infra.py`)
+
 - **StreamProcessorLambda** - Lambda function with IAM roles and policies
 - **DynamoDBStreamEventSourceMapping** - Connects stream to Lambda
 - **Factory function** - `create_stream_processor()` for easy setup
 
 ### 3. Unit Tests (`test_stream_processor.py`)
+
 - 26 comprehensive test cases
 - 100% test coverage
 - Mocked AWS services for isolated testing
@@ -82,9 +90,9 @@ Messages sent to the SQS queue have this structure:
   "entity_data": {
     "image_id": "550e8400-e29b-41d4-a716-446655440000",
     "receipt_id": 1,
-    "line_id": 2,      // Only for RECEIPT_WORD_LABEL
-    "word_id": 3,      // Only for RECEIPT_WORD_LABEL  
-    "label": "TOTAL"   // Only for RECEIPT_WORD_LABEL
+    "line_id": 2, // Only for RECEIPT_WORD_LABEL
+    "word_id": 3, // Only for RECEIPT_WORD_LABEL
+    "label": "TOTAL" // Only for RECEIPT_WORD_LABEL
   },
   "changes": {
     "canonical_merchant_name": {
@@ -95,9 +103,20 @@ Messages sent to the SQS queue have this structure:
   "event_name": "MODIFY|REMOVE",
   "timestamp": "2025-01-15T10:30:00.000Z",
   "stream_record_id": "dynamodb-event-id",
-  "aws_region": "us-east-1"
+  "aws_region": "us-east-1",
+  "record_snapshot": {
+    "...": "Full entity at this event, produced via dict()"
+  }
 }
 ```
+
+### FIFO Ordering and Idempotency
+
+- SQS queues are FIFO with content-based deduplication.
+- MessageGroupId derives from entity identifiers for ordering:
+  - Lines: `IMAGE#{image_id}#RECEIPT#{receipt_id}`
+  - Words: `IMAGE#{image_id}#RECEIPT#{receipt_id}#LINE#{line_id}#WORD#{word_id}`
+- MessageDeduplicationId uses the stream record id when available.
 
 ## Integration Example
 
@@ -135,11 +154,13 @@ pulumi.export("event_mapping_uuid", event_mapping.mapping_uuid)
 ## Deployment Steps
 
 ### 1. Prerequisites
+
 - Existing DynamoDB table with streams enabled
 - Existing ChromaDB compaction SQS queue
 - Existing compaction Lambda function
 
 ### 2. Enable DynamoDB Streams
+
 ```bash
 # Via AWS CLI (replace with your table name)
 aws dynamodb update-table \
@@ -148,12 +169,14 @@ aws dynamodb update-table \
 ```
 
 ### 3. Deploy Infrastructure
+
 ```bash
 cd infra/
 pulumi up
 ```
 
 ### 4. Verify Deployment
+
 - Check Lambda function is created
 - Verify event source mapping is active
 - Monitor CloudWatch logs for stream events
@@ -161,17 +184,20 @@ pulumi up
 ## Monitoring
 
 ### CloudWatch Metrics
+
 - **Lambda Invocations**: Monitor processing frequency
 - **Lambda Errors**: Track processing failures
 - **Lambda Duration**: Ensure under timeout limits
 - **SQS Messages Sent**: Verify downstream messaging
 
 ### CloudWatch Logs
+
 - **Log Group**: `/aws/lambda/chromadb-stream-processor-{stack}`
 - **Retention**: 14 days
 - **Log Level**: INFO (configurable via `LOG_LEVEL` env var)
 
 ### Key Log Messages
+
 ```
 INFO: Processing 5 DynamoDB stream records
 INFO: Sent 3 messages to compaction queue
@@ -181,16 +207,19 @@ ERROR: Error processing stream record abc123: Invalid format
 ## Error Handling
 
 ### Stream Processing Errors
+
 - Individual record failures don't stop batch processing
 - Failed records are logged with details
 - Lambda continues processing remaining records
 
 ### SQS Send Failures
+
 - Failed messages are logged with error details
 - Partial batch successes are counted correctly
 - Dead letter queue captures persistently failed messages
 
 ### DynamoDB Stream Resilience
+
 - **Retry Logic**: 3 automatic retries for failed batches
 - **Batch Splitting**: Splits batches on function errors
 - **Age Limit**: Discards records older than 1 hour
@@ -199,12 +228,14 @@ ERROR: Error processing stream record abc123: Invalid format
 ## Performance Characteristics
 
 ### Throughput
+
 - **Batch Size**: Up to 100 records per invocation
 - **Batching Window**: Max 5 seconds
 - **Parallelization**: Single shard (can be increased)
 - **Processing Time**: ~50ms per batch (lightweight processing)
 
 ### Costs (Estimated)
+
 - **Lambda Invocations**: $0.02/month (100K invocations)
 - **Lambda Compute**: $0.03/month (256MB, 50ms avg)
 - **CloudWatch Logs**: $0.01/month (14 day retention)
@@ -213,18 +244,21 @@ ERROR: Error processing stream record abc123: Invalid format
 ## Testing
 
 ### Unit Tests
+
 ```bash
 cd infra/chromadb_compaction/
 python -m pytest test_stream_processor.py -v
 ```
 
 ### Integration Testing
+
 1. Deploy to test environment
 2. Make changes to receipt metadata or labels
 3. Verify SQS messages are created
 4. Check CloudWatch logs for processing
 
 ### Load Testing
+
 - Stream processor handles ~1000 records/second
 - SQS batching reduces downstream load
 - Auto-scaling through Lambda concurrency
@@ -234,22 +268,26 @@ python -m pytest test_stream_processor.py -v
 ### Common Issues
 
 #### No messages in SQS queue
+
 - Check DynamoDB streams are enabled
 - Verify event source mapping is active
 - Ensure changes are to monitored entity types
 - Check Lambda function logs for errors
 
 #### Lambda timeout errors
+
 - Reduce batch size in event source mapping
 - Check for network issues with SQS
 - Monitor Lambda duration metrics
 
 #### Permission errors
+
 - Verify Lambda role has DynamoDB streams permissions
 - Check SQS queue access policies
 - Ensure event source mapping permissions
 
 ### Debug Commands
+
 ```bash
 # Check event source mapping status
 aws lambda get-event-source-mapping --uuid {mapping-uuid}
@@ -268,16 +306,19 @@ aws sqs get-queue-attributes \
 ## Future Enhancements
 
 ### Performance Optimizations
+
 - Increase parallelization factor for high-volume streams
 - Implement message deduplication for exactly-once processing
 - Add custom retry logic with exponential backoff
 
 ### Monitoring Improvements
+
 - Custom CloudWatch metrics for business logic
 - SNS notifications for critical errors
 - Detailed tracing with AWS X-Ray
 
 ### Feature Extensions
+
 - Support for additional entity types (RECEIPT, RECEIPT_LINE, RECEIPT_WORD)
 - Configurable field monitoring via environment variables
 - Batch processing optimizations for bulk updates
