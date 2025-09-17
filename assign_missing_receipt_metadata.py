@@ -3,15 +3,13 @@ import argparse
 import json
 import os
 from collections import defaultdict
-from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 import sys
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
-from receipt_dynamo.data._pulumi import load_env
+from receipt_dynamo.data._pulumi import load_env, load_secrets
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities.receipt_line import ReceiptLine
 from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
 from receipt_dynamo.entities.receipt_word import ReceiptWord
@@ -27,7 +25,7 @@ from receipt_label.merchant_validation.normalize import (
 )
 from receipt_label.utils.text_reconstruction import ReceiptTextReconstructor
 from receipt_label.vector_store import VectorClient
-from receipt_label.utils import get_client_manager
+from receipt_label.data.places_api import PlacesAPI
 from openai import OpenAI
 
 
@@ -40,8 +38,7 @@ sys.path.insert(0, str(ROOT / "receipt_label"))
 WORDS_EXPORT = ROOT / "dev.words.ndjson"
 LINES_EXPORT = ROOT / "dev.lines.ndjson"
 
-env = load_env()
-DDB_TABLE = env.get("dynamodb_table_name")
+# Load environment and secrets will be done in main() after parsing args
 
 
 # -----------------------------------------------------------------------------
@@ -189,6 +186,42 @@ def _choose_canonical_metadata(
     return sorted(metas, key=score, reverse=True)[0]
 
 
+def _build_receipt_metadata_from_places_api(
+    places_result: Dict, target: ReceiptKey, search_type: str, query: str
+) -> ReceiptMetadata:
+    """Create ReceiptMetadata from Google Places API result.
+
+    Args:
+        places_result: Google Places API response
+        target: Receipt key (image_id, receipt_id)
+        search_type: Type of search ("address" or "phone")
+        query: The original query used for the search
+
+    Returns:
+        ReceiptMetadata object populated from Places API data
+    """
+    image_id, receipt_id = target
+
+    return ReceiptMetadata(
+        image_id=str(image_id),
+        receipt_id=int(receipt_id),
+        place_id=places_result.get("place_id", ""),
+        merchant_name=places_result.get("name", ""),
+        matched_fields=[f"google_places_{search_type}"],
+        timestamp=datetime.now(timezone.utc),
+        merchant_category="",  # Not available in basic Places API response
+        address=places_result.get("formatted_address", ""),
+        phone_number="",  # Would need additional Places Details API call
+        validated_by=ValidationMethod.INFERENCE.value,
+        reasoning=f"Google Places API match via {search_type} search: {query}",
+        canonical_place_id=places_result.get("place_id", ""),
+        canonical_merchant_name=places_result.get("name", ""),
+        canonical_address=places_result.get("formatted_address", ""),
+        canonical_phone_number="",  # Would need additional Places Details API call
+        validation_status="",
+    )
+
+
 def _build_proposed_from_canonical(
     canonical: ReceiptMetadata, target: ReceiptKey, matched_reasons: List[str]
 ) -> ReceiptMetadata:
@@ -275,10 +308,53 @@ def main() -> None:
         default=str((ROOT / "reports/similarity_report.json").resolve()),
         help="File path to write full similarity report JSON.",
     )
+    parser.add_argument(
+        "--use-places-api",
+        action="store_true",
+        help="Enable Google Places API fallback for receipts that don't match via vector similarity.",
+    )
+    parser.add_argument(
+        "--env",
+        type=str,
+        default="dev",
+        choices=["dev", "prod"],
+        help="Pulumi environment to use for API keys (default: dev).",
+    )
+    parser.add_argument(
+        "--write-places-api",
+        action="store_true",
+        help="Write ReceiptMetadata created from Google Places API results to DynamoDB.",
+    )
+    parser.add_argument(
+        "--max-places-api-calls",
+        type=int,
+        default=0,
+        help="Maximum number of Google Places API calls to make (0 = no limit). Use to control costs.",
+    )
     args = parser.parse_args()
 
+    # Load environment and secrets based on specified environment
+    # Change to infra directory for Pulumi commands
+    original_cwd = os.getcwd()
+    infra_dir = ROOT / "infra"
+    if infra_dir.exists():
+        os.chdir(infra_dir)
+
+    try:
+        env = load_env(args.env)
+        secrets = load_secrets(args.env)
+    finally:
+        os.chdir(original_cwd)
+
+    DDB_TABLE = env.get("dynamodb_table_name")
+
     if not DDB_TABLE:
-        raise ValueError("No dynamodb_table_name configured in environment")
+        raise ValueError(
+            f"No dynamodb_table_name configured in environment '{args.env}'"
+        )
+
+    # Set environment variable for PlacesAPI client
+    os.environ["DYNAMODB_TABLE_NAME"] = DDB_TABLE
 
     client = DynamoClient(DDB_TABLE)
 
@@ -337,6 +413,24 @@ def main() -> None:
         )
     except Exception:
         _openai = None
+
+    # Google Places API client
+    try:
+        # Try Pulumi secrets first, then environment variable as fallback
+        google_places_config = secrets.get("portfolio:GOOGLE_PLACES_API_KEY")
+        google_places_key = (
+            google_places_config.get("value") if google_places_config else None
+        ) or os.environ.get("GOOGLE_PLACES_API_KEY")
+
+        _places_api = (
+            PlacesAPI(api_key=google_places_key) if google_places_key else None
+        )
+    except Exception:
+        _places_api = None
+
+    # Cost control for Google Places API
+    _places_api_call_count = 0
+    _places_api_max_calls = args.max_places_api_calls
 
     def _street_candidates_from_extracted(rk: ReceiptKey) -> List[str]:
         cands: List[str] = []
@@ -569,6 +663,179 @@ def main() -> None:
                     result.setdefault("errors", []).append(
                         {"md_error": str(e)}
                     )
+        return result
+
+    def _google_places_fallback(rk: ReceiptKey) -> Dict:
+        """Enhanced fallback to Google Places API when vector similarity doesn't find good matches.
+
+        This function leverages extracted_data more effectively and creates ReceiptMetadata
+        from successful Google Places API matches.
+
+        Args:
+            rk: Receipt key (image_id, receipt_id)
+
+        Returns:
+            Dict with Google Places API results, ReceiptMetadata, and error information
+        """
+        nonlocal _places_api_call_count
+
+        result: Dict = {
+            "receipt": rk,
+            "places_results": [],
+            "errors": [],
+            "metadata": None,
+        }
+
+        if not _places_api:
+            result["error"] = "no_places_api_client"
+            return result
+
+        # Check cost control limits
+        if (
+            _places_api_max_calls > 0
+            and _places_api_call_count >= _places_api_max_calls
+        ):
+            result["error"] = "max_api_calls_exceeded"
+            result["call_count"] = _places_api_call_count
+            return result
+
+        # Get address and phone from the receipt
+        address = addr_by_receipt.get(rk, "")
+        phones = phones_by_receipt.get(rk, set())
+
+        if not address and not phones:
+            result["error"] = "no_address_or_phone"
+            return result
+
+        # Get receipt words for business name detection
+        receipt_words = words_by_receipt.get(rk, [])
+
+        # Strategy 1: Try address search first (most reliable)
+        if address:
+            try:
+                _places_api_call_count += 1
+                places_result = _places_api.search_by_address(
+                    address, receipt_words
+                )
+
+                if places_result:
+                    places_info = {
+                        "type": "address",
+                        "query": address,
+                        "place_id": places_result.get("place_id"),
+                        "name": places_result.get("name"),
+                        "formatted_address": places_result.get(
+                            "formatted_address"
+                        ),
+                        "types": places_result.get("types", []),
+                        "business_status": places_result.get(
+                            "business_status"
+                        ),
+                        "confidence": "high",  # Address matches are generally reliable
+                    }
+                    result["places_results"].append(places_info)
+
+                    # Create ReceiptMetadata from the successful match
+                    result["metadata"] = (
+                        _build_receipt_metadata_from_places_api(
+                            places_result, rk, "address", address
+                        )
+                    )
+
+            except Exception as e:
+                result["errors"].append({"address_search": str(e)})
+
+        # Strategy 2: Try phone search if no good address result
+        if phones and not result["metadata"]:
+            for phone in list(phones)[:2]:  # Limit to first 2 phone numbers
+                try:
+                    _places_api_call_count += 1
+                    places_result = _places_api.search_by_phone(phone)
+
+                    if places_result:
+                        places_info = {
+                            "type": "phone",
+                            "query": phone,
+                            "place_id": places_result.get("place_id"),
+                            "name": places_result.get("name"),
+                            "formatted_address": places_result.get(
+                                "formatted_address"
+                            ),
+                            "types": places_result.get("types", []),
+                            "business_status": places_result.get(
+                                "business_status"
+                            ),
+                            "confidence": "medium",  # Phone matches are less reliable than address
+                        }
+                        result["places_results"].append(places_info)
+
+                        # Create ReceiptMetadata from the successful match
+                        result["metadata"] = (
+                            _build_receipt_metadata_from_places_api(
+                                places_result, rk, "phone", phone
+                            )
+                        )
+                        break  # Use first successful phone match
+
+                except Exception as e:
+                    result["errors"].append({"phone_search": str(e)})
+
+        # Strategy 3: Try business name + address combination if we have business name
+        if not result["metadata"] and receipt_words:
+            business_name = None
+            for word in receipt_words[:10]:  # Check first 10 words
+                if hasattr(word, "text") and word.text:
+                    text = word.text.strip()
+                    # Look for business name (all caps, no numbers, reasonable length)
+                    if (
+                        text.isupper()
+                        and not any(c.isdigit() for c in text)
+                        and 3 <= len(text) <= 50
+                    ):
+                        business_name = text
+                        break
+
+            if business_name and address:
+                try:
+                    # Try searching with business name + address
+                    combined_query = f"{business_name} {address}"
+                    _places_api_call_count += 1
+                    places_result = _places_api.search_by_address(
+                        combined_query, receipt_words
+                    )
+
+                    if places_result:
+                        places_info = {
+                            "type": "business_address",
+                            "query": combined_query,
+                            "place_id": places_result.get("place_id"),
+                            "name": places_result.get("name"),
+                            "formatted_address": places_result.get(
+                                "formatted_address"
+                            ),
+                            "types": places_result.get("types", []),
+                            "business_status": places_result.get(
+                                "business_status"
+                            ),
+                            "confidence": "high",  # Business name + address is very reliable
+                        }
+                        result["places_results"].append(places_info)
+
+                        # Create ReceiptMetadata from the successful match
+                        result["metadata"] = (
+                            _build_receipt_metadata_from_places_api(
+                                places_result,
+                                rk,
+                                "business_address",
+                                combined_query,
+                            )
+                        )
+
+                except Exception as e:
+                    result["errors"].append(
+                        {"business_address_search": str(e)}
+                    )
+
         return result
 
     # Compute normalized anchors
@@ -870,8 +1137,6 @@ def main() -> None:
             "validation_status": m.validation_status,
         }
 
-    proposed_items = [_serialize_entity(v) for v in deduped.values()]
-
     output: List[Dict] = []
     for key, m in deduped.items():
         output.append(
@@ -887,19 +1152,23 @@ def main() -> None:
         if args.include_existing:
             sim_logs = []
             phone_sim_logs = []
+            places_logs = []
             for rk in focus_keys:
                 sim_logs.append(_similarity_match_street_first(rk))
                 phone_sim_logs.append(_similarity_match_phone_first(rk))
-            print(
-                json.dumps(
-                    {
-                        "similarity": sim_logs,
-                        "phone_similarity": phone_sim_logs,
-                        "results": output,
-                    },
-                    indent=2,
-                )
-            )
+                if args.use_places_api:
+                    places_logs.append(_google_places_fallback(rk))
+
+            result_data = {
+                "similarity": sim_logs,
+                "phone_similarity": phone_sim_logs,
+                "results": output,
+            }
+
+            if args.use_places_api:
+                result_data["google_places"] = places_logs
+
+            print(json.dumps(result_data, indent=2))
             return
         output = [
             o
@@ -922,6 +1191,10 @@ def main() -> None:
         ]
         matched = []
         unmatched = []
+        places_api_matched = []
+        places_api_metadata = (
+            []
+        )  # Store ReceiptMetadata from Google Places API
         reconstructor = ReceiptTextReconstructor()
 
         # helper to get full text for a receipt
@@ -1010,13 +1283,74 @@ def main() -> None:
                     )
                 matched.append({"receipt": rk, "reasons": reasons})
             else:
-                why = {
-                    "street_errors": street.get("errors"),
-                    "phone_errors": phone.get("errors"),
-                    "street_candidates": len(street.get("matches", [])),
-                    "phone_candidates": len(phone.get("matches", [])),
-                }
-                unmatched.append({"receipt": rk, "why": why})
+                # Try Google Places API fallback if enabled
+                if args.use_places_api:
+                    places_result = _google_places_fallback(rk)
+                    if places_result.get("places_results"):
+                        text = _receipt_text(rk).lower()
+                        places_reasons = []
+                        for place in places_result["places_results"]:
+                            merchant_name = place.get("name", "")
+                            places_reasons.append(
+                                {
+                                    "via": "google_places",
+                                    "type": place.get("type"),
+                                    "query": place.get("query"),
+                                    "place_id": place.get("place_id"),
+                                    "name": merchant_name,
+                                    "formatted_address": place.get(
+                                        "formatted_address"
+                                    ),
+                                    "types": place.get("types", []),
+                                    "business_status": place.get(
+                                        "business_status"
+                                    ),
+                                    "confidence": place.get(
+                                        "confidence", "unknown"
+                                    ),
+                                    "merchant_in_text": bool(
+                                        merchant_name
+                                        and merchant_name.lower() in text
+                                    ),
+                                }
+                            )
+                        places_api_matched.append(
+                            {
+                                "receipt": rk,
+                                "reasons": places_reasons,
+                                "places_api_errors": places_result.get(
+                                    "errors", []
+                                ),
+                            }
+                        )
+
+                        # Collect ReceiptMetadata if available
+                        if places_result.get("metadata"):
+                            places_api_metadata.append(
+                                places_result["metadata"]
+                            )
+                    else:
+                        why = {
+                            "street_errors": street.get("errors"),
+                            "phone_errors": phone.get("errors"),
+                            "street_candidates": len(
+                                street.get("matches", [])
+                            ),
+                            "phone_candidates": len(phone.get("matches", [])),
+                            "places_api_error": places_result.get("error"),
+                            "places_api_errors": places_result.get(
+                                "errors", []
+                            ),
+                        }
+                        unmatched.append({"receipt": rk, "why": why})
+                else:
+                    why = {
+                        "street_errors": street.get("errors"),
+                        "phone_errors": phone.get("errors"),
+                        "street_candidates": len(street.get("matches", [])),
+                        "phone_candidates": len(phone.get("matches", [])),
+                    }
+                    unmatched.append({"receipt": rk, "why": why})
         report = {
             "total_missing": len(missing_receipts),
             "matched_count": len(matched),
@@ -1024,21 +1358,63 @@ def main() -> None:
             "matched": matched,
             "unmatched": unmatched,
         }
+
+        # Add Google Places API results if enabled
+        if args.use_places_api:
+            report["places_api_matched_count"] = len(places_api_matched)
+            report["places_api_matched"] = places_api_matched
+            report["total_matched_with_places_api"] = len(matched) + len(
+                places_api_matched
+            )
         # ensure directory exists
         rp = Path(args.report_path)
         rp.parent.mkdir(parents=True, exist_ok=True)
         with rp.open("w", encoding="utf-8") as f:
             f.write(json.dumps(report, indent=2))
-        print(
-            json.dumps(
-                {
-                    "report_path": str(rp),
-                    "total_missing": report["total_missing"],
-                    "matched_count": report["matched_count"],
-                    "unmatched_count": report["unmatched_count"],
-                }
+        summary = {
+            "report_path": str(rp),
+            "total_missing": report["total_missing"],
+            "matched_count": report["matched_count"],
+            "unmatched_count": report["unmatched_count"],
+        }
+
+        # Add Google Places API summary if enabled
+        if args.use_places_api:
+            summary["places_api_matched_count"] = report.get(
+                "places_api_matched_count", 0
             )
-        )
+            summary["total_matched_with_places_api"] = report.get(
+                "total_matched_with_places_api", report["matched_count"]
+            )
+
+        print(json.dumps(summary))
+
+        # Write Google Places API metadata to database if requested
+        if args.write_places_api and places_api_metadata:
+            try:
+                client.add_receipt_metadatas(places_api_metadata)
+                print(
+                    f"Wrote {len(places_api_metadata)} ReceiptMetadata records from Google Places API to DynamoDB table {DDB_TABLE}."
+                )
+            except Exception as e:
+                print(
+                    f"Error writing Google Places API metadata to database: {e}"
+                )
+
+        # Report Google Places API usage and costs
+        if args.use_places_api:
+            estimated_cost = (
+                _places_api_call_count * 0.03
+            )  # Rough estimate: $0.03 per call
+            print(f"\n=== GOOGLE PLACES API USAGE ===")
+            print(f"Total API calls made: {_places_api_call_count}")
+            print(f"Estimated cost: ${estimated_cost:.2f}")
+            if _places_api_max_calls > 0:
+                print(f"Call limit: {_places_api_max_calls}")
+                print(
+                    f"Remaining calls: {max(0, _places_api_max_calls - _places_api_call_count)}"
+                )
+
         return
 
     print(json.dumps(output, indent=2))
