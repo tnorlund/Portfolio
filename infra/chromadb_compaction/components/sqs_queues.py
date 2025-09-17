@@ -46,9 +46,11 @@ class ChromaDBQueues(ComponentResource):
         if stack is None:
             stack = pulumi.get_stack()
 
-        # Create dead letter queues for each collection
+        # Create dead letter queues for each collection (FIFO)
         self.lines_dlq = aws.sqs.Queue(
             f"{name}-lines-dlq",
+            fifo_queue=True,
+            content_based_deduplication=True,
             message_retention_seconds=1209600,  # 14 days
             visibility_timeout_seconds=300,  # 5 minutes
             receive_wait_time_seconds=0,  # Short polling
@@ -63,6 +65,8 @@ class ChromaDBQueues(ComponentResource):
 
         self.words_dlq = aws.sqs.Queue(
             f"{name}-words-dlq",
+            fifo_queue=True,
+            content_based_deduplication=True,
             message_retention_seconds=1209600,  # 14 days
             visibility_timeout_seconds=300,  # 5 minutes
             receive_wait_time_seconds=0,  # Short polling
@@ -75,9 +79,11 @@ class ChromaDBQueues(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Create lines queue with redrive policy
+        # Create lines queue with redrive policy (FIFO)
         self.lines_queue = aws.sqs.Queue(
             f"{name}-lines-queue",
+            fifo_queue=True,
+            content_based_deduplication=True,
             message_retention_seconds=345600,
             visibility_timeout_seconds=900,
             receive_wait_time_seconds=20,
@@ -98,9 +104,11 @@ class ChromaDBQueues(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Create words queue with redrive policy
+        # Create words queue with redrive policy (FIFO)
         self.words_queue = aws.sqs.Queue(
             f"{name}-words-queue",
+            fifo_queue=True,
+            content_based_deduplication=True,
             message_retention_seconds=345600,
             visibility_timeout_seconds=900,
             receive_wait_time_seconds=20,
@@ -207,7 +215,6 @@ class ChromaDBQueues(ComponentResource):
         self.words_queue_arn = self.words_queue.arn
         self.lines_dlq_arn = self.lines_dlq.arn
         self.words_dlq_arn = self.words_dlq.arn
-
 
         # Register outputs
         self.register_outputs(
