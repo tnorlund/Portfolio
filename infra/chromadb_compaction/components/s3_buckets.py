@@ -106,20 +106,30 @@ class ChromaDBBuckets(ComponentResource):
                         days=7,
                     ),
                 ),
-                # Delete old timestamped snapshots after 14 days
-                # Only targets snapshot/timestamped/* prefix,
-                # preserving snapshot/latest/
+                # Clean up old deltas for database-scoped prefixes after 7 days
                 aws.s3.BucketLifecycleConfigurationRuleArgs(
-                    id="delete-old-timestamped-snapshots",
+                    id="delete-old-deltas-words",
                     status="Enabled",
                     filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(
-                        prefix="snapshot/timestamped/",
+                        prefix="words/delta/",
                     ),
-                    # pylint: disable=line-too-long
                     expiration=aws.s3.BucketLifecycleConfigurationRuleExpirationArgs(
-                        days=14,
+                        days=7,
                     ),
                 ),
+                aws.s3.BucketLifecycleConfigurationRuleArgs(
+                    id="delete-old-deltas-lines",
+                    status="Enabled",
+                    filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(
+                        prefix="lines/delta/",
+                    ),
+                    expiration=aws.s3.BucketLifecycleConfigurationRuleExpirationArgs(
+                        days=7,
+                    ),
+                ),
+                # Note: We do NOT expire timestamped snapshots via lifecycle.
+                # Retention is enforced in application logic to always keep
+                # at least N finalized versions even during idle periods.
                 # Clean up intermediate chunks after 1 day
                 # These are temporary files created during chunked compaction
                 aws.s3.BucketLifecycleConfigurationRuleArgs(

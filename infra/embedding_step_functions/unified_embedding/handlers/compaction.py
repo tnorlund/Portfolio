@@ -977,7 +977,7 @@ def perform_final_merge(
                     "merge_operation": "final_merge",
                     "database": database_name or "unknown",
                 },
-                keep_versions=2,
+                keep_versions=4,
             )
             logger.info(
                 "Uploaded snapshot using atomic pattern",
@@ -1047,6 +1047,63 @@ def perform_final_merge(
                 snapshot_key=snapshot_key,
                 hash=latest_result.get("hash", "not_calculated"),
             )
+
+            # Legacy retention: keep only the latest 4 timestamped versions
+            try:
+                base_prefix = (
+                    f"{database_name}/snapshot/timestamped/"
+                    if database_name
+                    else "snapshot/timestamped/"
+                )
+
+                # List all version directories
+                paginator = s3_client.get_paginator("list_objects_v2")
+                pages = paginator.paginate(
+                    Bucket=bucket, Prefix=base_prefix, Delimiter="/"
+                )
+                version_dirs = []
+                for page in pages:
+                    for cp in page.get("CommonPrefixes", []):
+                        prefix = cp.get("Prefix")
+                        if prefix and prefix.startswith(base_prefix):
+                            # Extract version id from .../timestamped/<version>/
+                            parts = prefix.rstrip("/").split("/")
+                            if parts:
+                                version_id = parts[-1]
+                                version_dirs.append((version_id, prefix))
+
+                # Sort by version_id (timestamps sort lexicographically)
+                version_dirs.sort(key=lambda x: x[0], reverse=True)
+                for _, old_prefix in version_dirs[4:]:
+                    # Delete all objects under old_prefix
+                    try:
+                        del_pages = paginator.paginate(
+                            Bucket=bucket, Prefix=old_prefix
+                        )
+                        to_delete = []
+                        for del_page in del_pages:
+                            for obj in del_page.get("Contents", []):
+                                to_delete.append({"Key": obj["Key"]})
+                            if to_delete:
+                                s3_client.delete_objects(
+                                    Bucket=bucket,
+                                    Delete={"Objects": to_delete},
+                                )
+                                to_delete = []
+                        logger.info(
+                            "Deleted old timestamped snapshot",
+                            prefix=old_prefix,
+                        )
+                    except Exception as cleanup_err:  # pylint: disable=broad-exception-caught
+                        logger.warning(
+                            "Failed to delete old timestamped snapshot",
+                            prefix=old_prefix,
+                            error=str(cleanup_err),
+                        )
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                logger.warning(
+                    "Legacy retention cleanup failed", error=str(e)
+                )
 
             processing_time = time.time() - start_time
             logger.info(
