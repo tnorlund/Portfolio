@@ -34,3 +34,4 @@ config:
     secure: AAABAC+PSTc8uajZqSWQTNyqcOPjK4cW+DP3snxJOYFRRA6LSBZq4/7mfZiY2bGuw0fOrpHuyXpwPKDHm5+Y+0cCcj02h1fiUb59JXnOPsM4Hvs=
   portfolio:ecr-max-images: "4"
   portfolio:ecr-max-age-days: "7"
+  ml-training:enable-minimal: "true"

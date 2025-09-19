@@ -20,4 +20,5 @@ class TrainingConfig:
     warmup_ratio: float = 0.1
     epochs: int = 10
     mixed_precision: bool = True
+    max_grad_norm: float = 1.0
     output_s3_path: Optional[str] = None

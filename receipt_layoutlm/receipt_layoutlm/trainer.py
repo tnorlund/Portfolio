@@ -4,6 +4,7 @@ import inspect
 from functools import partial
 
 import importlib
+from glob import glob
 
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.entities.job import Job
@@ -121,6 +122,8 @@ class ReceiptLayoutLMTrainer:
             learning_rate=self.training_config.learning_rate,
             weight_decay=self.training_config.weight_decay,
             num_train_epochs=self.training_config.epochs,
+            warmup_ratio=self.training_config.warmup_ratio,
+            max_grad_norm=self.training_config.max_grad_norm,
             logging_steps=50,
             fp16=self.training_config.mixed_precision
             and self._torch.cuda.is_available(),
@@ -133,6 +136,23 @@ class ReceiptLayoutLMTrainer:
             args_kwargs["eval_strategy"] = "epoch"
         if "save_strategy" in ta_params:
             args_kwargs["save_strategy"] = "epoch"
+        if "load_best_model_at_end" in ta_params:
+            args_kwargs["load_best_model_at_end"] = True
+        if "metric_for_best_model" in ta_params:
+            args_kwargs["metric_for_best_model"] = "f1"
+        if "save_total_limit" in ta_params:
+            args_kwargs["save_total_limit"] = 1
+        if "save_safetensors" in ta_params:
+            args_kwargs["save_safetensors"] = True
+        # Early stopping if available
+        if "load_best_model_at_end" in ta_params:
+            args_kwargs["load_best_model_at_end"] = True
+        callbacks = []
+        try:
+            es_cls = getattr(self._transformers, "EarlyStoppingCallback")
+            callbacks.append(es_cls(early_stopping_patience=2))
+        except AttributeError:
+            pass
         if "remove_unused_columns" in ta_params:
             args_kwargs["remove_unused_columns"] = False
 
@@ -160,28 +180,60 @@ class ReceiptLayoutLMTrainer:
         self.dynamo.add_job(job)
 
         def compute_metrics(eval_pred):
-            # Placeholder: report token-level accuracy by exact match
+            # seqeval F1 at entity-level (BIO tags)
+            try:
+                seqeval = importlib.import_module("seqeval.metrics")
+                f1_fn = getattr(seqeval, "f1_score")
+                precision_fn = getattr(seqeval, "precision_score")
+                recall_fn = getattr(seqeval, "recall_score")
+            except ModuleNotFoundError:
+                # Fallback to token accuracy if seqeval unavailable
+                seqeval = None
+
             logits, labels = eval_pred
             preds = logits.argmax(-1)
-            correct = (preds == labels).astype(float)
-            acc = (
-                correct.mean().item()
-                if hasattr(correct, "mean")
-                else float(correct.mean())
-            )
-            # Report to DynamoDB
-            try:
-                metric = JobMetric(
-                    job_id=job.job_id,
-                    metric_name="val_token_acc",
-                    value=float(acc),
-                    timestamp=datetime.now().isoformat(),
-                    unit="ratio",
-                )
-                self.dynamo.add_job_metric(metric)
-            except Exception:
-                pass
-            return {"accuracy": acc}
+
+            # Convert ids to tag strings, ignoring -100
+            id2label_local = id2label
+            y_true: List[List[str]] = []
+            y_pred: List[List[str]] = []
+            for true_row, pred_row in zip(labels, preds):
+                t_tags: List[str] = []
+                p_tags: List[str] = []
+                for t, p in zip(true_row, pred_row):
+                    if int(t) == -100:
+                        continue
+                    t_tags.append(id2label_local.get(int(t), "O"))
+                    p_tags.append(id2label_local.get(int(p), "O"))
+                y_true.append(t_tags)
+                y_pred.append(p_tags)
+
+            metrics = {}
+            if seqeval:
+                f1 = float(f1_fn(y_true, y_pred))
+                prec = float(precision_fn(y_true, y_pred))
+                rec = float(recall_fn(y_true, y_pred))
+                metrics = {"f1": f1, "precision": prec, "recall": rec}
+                # Report to DynamoDB (F1)
+                try:
+                    metric = JobMetric(
+                        job_id=job.job_id,
+                        metric_name="val_f1",
+                        value=f1,
+                        timestamp=datetime.now().isoformat(),
+                        unit="ratio",
+                    )
+                    self.dynamo.add_job_metric(metric)
+                except Exception:
+                    pass
+            else:
+                # Token accuracy fallback
+                import numpy as _np
+
+                correct = (preds == labels).astype(float)
+                acc = float(_np.mean(correct))
+                metrics = {"accuracy": acc}
+            return metrics
 
         trainer = self._transformers.Trainer(
             model=model,
@@ -191,12 +243,16 @@ class ReceiptLayoutLMTrainer:
             tokenizer=self.tokenizer,
             data_collator=collator,
             compute_metrics=compute_metrics,
+            callbacks=callbacks or None,
         )
 
-        try:
+        # Resume only if a checkpoint exists in output_dir; otherwise start fresh
+        output_dir = args_kwargs["output_dir"]
+        checkpoints = sorted(glob(f"{output_dir}/checkpoint-*/"))
+        if checkpoints:
+            trainer.train(resume_from_checkpoint=checkpoints[-1])
+        else:
             trainer.train()
-            # Optionally, add a completion status when JobStatus write path is stable
-        except Exception as e:
-            raise
+        # Optionally, add a completion status when JobStatus write path is stable
 
         return job.job_id

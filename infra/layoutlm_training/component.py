@@ -1,8 +1,8 @@
 import json
 import textwrap
 import string
+import base64
 
-import pulumi
 import pulumi_aws as aws
 from pulumi import ComponentResource, Output, ResourceOptions
 
@@ -86,26 +86,91 @@ class LayoutLMTrainingInfra(ComponentResource):
 
         # Discover default VPC subnets
         default_vpc = aws.ec2.get_vpc(default=True)
-        subnets = aws.ec2.get_subnets(vpc_id=default_vpc.id)
+        subnets = aws.ec2.get_subnets(
+            filters=[
+                aws.ec2.GetSubnetsFilterArgs(
+                    name="vpc-id", values=[default_vpc.id]
+                )
+            ]
+        )
+
+        # Security Group for SSH access (open; simplify for connectivity)
+        ssh_cidr = "0.0.0.0/0"
+
+        self.ssh_sg = aws.ec2.SecurityGroup(
+            f"{name}-ssh-sg",
+            description="Allow SSH",
+            vpc_id=default_vpc.id,
+            ingress=[
+                aws.ec2.SecurityGroupIngressArgs(
+                    protocol="tcp",
+                    from_port=22,
+                    to_port=22,
+                    cidr_blocks=[ssh_cidr],
+                    description="SSH access",
+                )
+            ],
+            egress=[
+                aws.ec2.SecurityGroupEgressArgs(
+                    protocol="-1",
+                    from_port=0,
+                    to_port=0,
+                    cidr_blocks=["0.0.0.0/0"],
+                )
+            ],
+            tags={"Component": name},
+            opts=ResourceOptions(parent=self),
+        )
 
         # User data worker (placeholder that can install wheel if uploaded)
-        def _user_data(vars: dict[str, str]) -> str:
+        def _user_data(variables: dict[str, str]) -> str:
             tmpl = textwrap.dedent(
                 """#!/bin/bash
                 set -euxo pipefail
-                exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
+                # Log all output to cloud-init output and our own log file
+                exec > /var/log/user-data.log 2>&1
                 yum update -y || true
-                yum install -y python3 python3-pip awscli || true
-                python3 -m venv /opt/venv
-                source /opt/venv/bin/activate
-                pip install --upgrade pip
-                # Try to install the wheel if present in S3
-                aws s3 cp s3://$bucket/wheels/receipt_layoutlm.whl /tmp/receipt_layoutlm.whl || true
-                if [ -f /tmp/receipt_layoutlm.whl ]; then
-                  pip install /tmp/receipt_layoutlm.whl
-                fi
-                # Install runtime deps just in case
-                pip install boto3
+                yum install -y awscli curl tar gzip || true
+
+                # Set region for AWS CLI from instance metadata
+                REGION=$$(curl -s http://169.254.169.254/latest/meta-data/placement/region || echo "us-east-1")
+                export AWS_DEFAULT_REGION=$$REGION
+
+                # Use DLAMI's preinstalled Conda environment (Python 3.10 + Torch)
+                # Conda activation scripts reference LD_LIBRARY_PATH; ensure it's defined under 'set -u'
+                export LD_LIBRARY_PATH="$${LD_LIBRARY_PATH:-}"
+                # Temporarily disable 'nounset' while sourcing conda
+                set +u
+                source /opt/conda/bin/activate pytorch
+                set -u
+                python -m pip install --upgrade pip setuptools wheel
+
+                # Prefer prebuilt wheels to avoid compiling heavy deps
+                export PIP_ONLY_BINARY=:all:
+                python -m pip install -U pyarrow==16.1.0 sentencepiece==0.1.99
+
+                # Runtime dependencies for training and CLI
+                python -m pip install -U \
+                  'transformers>=4.40.0' \
+                  'datasets>=2.19.0' \
+                  'boto3>=1.34.0' \
+                  pillow tqdm filelock 'pydantic>=2.10.6' \
+                  'accelerate>=0.21.0' \
+                  seqeval
+
+                # Download any published wheels and install (dynamo first)
+                install -d -m 0775 -o ec2-user -g ec2-user /opt/wheels
+                /usr/bin/aws s3 cp s3://${bucket}/wheels/ /opt/wheels/ --recursive || true
+                chown -R ec2-user:ec2-user /opt/wheels || true
+                chmod -R a+r /opt/wheels || true
+                DYNAMO_WHEEL=$$(ls -t /opt/wheels/receipt_dynamo-*.whl 2>/dev/null | head -n1 || true)
+                LAYOUTLM_WHEEL=$$(ls -t /opt/wheels/receipt_layoutlm-*.whl 2>/dev/null | head -n1 || true)
+                if [ -n "$$DYNAMO_WHEEL" ]; then pip install "$$DYNAMO_WHEEL"; fi
+                if [ -n "$$LAYOUTLM_WHEEL" ]; then pip install "$$LAYOUTLM_WHEEL"; fi
+
+                # Runtime knobs for small CPU instances
+                export HF_DATASETS_DISABLE_MULTIPROCESSING=1
+                export TOKENIZERS_PARALLELISM=false
                 # Minimal worker loop to prove SQS access
                 cat >/opt/worker.py <<'PY'
 import json, os, time
@@ -125,16 +190,17 @@ while True:
     body = json.loads(m['Body']) if m.get('Body') else {}
     print('Received job:', body)
     # Placeholder: run layoutlm-cli if installed
-    os.system(f"layoutlm-cli train --job-name trial-{int(time.time())} --dynamo-table {table} || true")
+    os.system(f"layoutlm-cli train --job-name trial-{int(time.time())} --dynamo-table {table} --epochs 1 --batch-size 2 || true")
     sqs.delete_message(QueueUrl=queue_url, ReceiptHandle=m['ReceiptHandle'])
 PY
-                DYNAMO_TABLE_NAME=$table
-                TRAINING_QUEUE_URL=$queue
+                DYNAMO_TABLE_NAME="${table}"
+                TRAINING_QUEUE_URL="${queue}"
                 export DYNAMO_TABLE_NAME TRAINING_QUEUE_URL
-                python3 /opt/worker.py
+                # Run worker in background to avoid blocking cloud-init
+                nohup python3 /opt/worker.py >/var/log/worker.log 2>&1 &
                 """
             )
-            return string.Template(tmpl).substitute(vars)
+            return string.Template(tmpl).substitute(variables)
 
         user_data = Output.all(
             bucket=self.bucket.bucket,
@@ -142,8 +208,17 @@ PY
             queue=self.queue.url,
         ).apply(
             lambda args: _user_data(
-                {"bucket": args[0], "table": args[1], "queue": args[2]}
+                {
+                    "bucket": args["bucket"],
+                    "table": args["table"],
+                    "queue": args["queue"],
+                }
             )
+        )
+
+        # Base64-encode user data for Launch Template
+        user_data_b64 = user_data.apply(
+            lambda s: base64.b64encode(s.encode("utf-8")).decode("utf-8")
         )
 
         # Launch template
@@ -153,14 +228,24 @@ PY
                 most_recent=True,
                 owners=["amazon"],
                 filters=[
-                    {"name": "name", "values": ["amzn2-ami-hvm-*-x86_64-gp2"]},
+                    {
+                        "name": "name",
+                        "values": ["Deep Learning AMI GPU PyTorch*"],
+                    },
                 ],
             ).id,
             instance_type="g4dn.xlarge",
+            key_name="training_key",
             iam_instance_profile=aws.ec2.LaunchTemplateIamInstanceProfileArgs(
                 name=self.instance_profile.name
             ),
-            user_data=user_data,
+            network_interfaces=[
+                aws.ec2.LaunchTemplateNetworkInterfaceArgs(
+                    associate_public_ip_address=True,
+                    security_groups=[self.ssh_sg.id],
+                )
+            ],
+            user_data=user_data_b64,
             # Enable spot by setting instance market options via ASG
             opts=ResourceOptions(parent=self),
         )
@@ -184,7 +269,9 @@ PY
                     propagate_at_launch=True,
                 )
             ],
-            opts=ResourceOptions(parent=self),
+            opts=ResourceOptions(
+                parent=self, ignore_changes=["desired_capacity"]
+            ),
         )
 
         # Simple output handles
