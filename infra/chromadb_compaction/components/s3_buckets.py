@@ -127,41 +127,9 @@ class ChromaDBBuckets(ComponentResource):
                         days=7,
                     ),
                 ),
-                # Delete old timestamped snapshots after 14 days
-                # Only targets snapshot/timestamped/* prefix,
-                # preserving snapshot/latest/
-                aws.s3.BucketLifecycleConfigurationRuleArgs(
-                    id="delete-old-timestamped-snapshots",
-                    status="Enabled",
-                    filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(
-                        prefix="snapshot/timestamped/",
-                    ),
-                    # pylint: disable=line-too-long
-                    expiration=aws.s3.BucketLifecycleConfigurationRuleExpirationArgs(
-                        days=14,
-                    ),
-                ),
-                # Delete old timestamped snapshots for database-scoped prefixes after 14 days
-                aws.s3.BucketLifecycleConfigurationRuleArgs(
-                    id="delete-old-timestamped-snapshots-words",
-                    status="Enabled",
-                    filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(
-                        prefix="words/snapshot/timestamped/",
-                    ),
-                    expiration=aws.s3.BucketLifecycleConfigurationRuleExpirationArgs(
-                        days=14,
-                    ),
-                ),
-                aws.s3.BucketLifecycleConfigurationRuleArgs(
-                    id="delete-old-timestamped-snapshots-lines",
-                    status="Enabled",
-                    filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(
-                        prefix="lines/snapshot/timestamped/",
-                    ),
-                    expiration=aws.s3.BucketLifecycleConfigurationRuleExpirationArgs(
-                        days=14,
-                    ),
-                ),
+                # Note: We do NOT expire timestamped snapshots via lifecycle.
+                # Retention is enforced in application logic to always keep
+                # at least N finalized versions even during idle periods.
                 # Clean up intermediate chunks after 1 day
                 # These are temporary files created during chunked compaction
                 aws.s3.BucketLifecycleConfigurationRuleArgs(

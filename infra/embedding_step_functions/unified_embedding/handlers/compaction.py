@@ -977,7 +977,7 @@ def perform_final_merge(
                     "merge_operation": "final_merge",
                     "database": database_name or "unknown",
                 },
-                keep_versions=2,
+                keep_versions=4,
             )
             logger.info(
                 "Uploaded snapshot using atomic pattern",
