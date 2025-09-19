@@ -21,6 +21,7 @@ from receipt_upload.utils import (
     download_file_from_s3,
     download_image_from_s3,
     send_message_to_sqs,
+    upload_all_cdn_formats,
     upload_jpeg_to_s3,
     upload_png_to_s3,
 )
@@ -94,12 +95,11 @@ def process_scan(
     )
     upload_png_to_s3(image, raw_bucket, raw_image_s3_key)
 
-    # Upload JPEG version to site bucket
-    upload_jpeg_to_s3(image, site_bucket, f"assets/{image_id}.jpg")
-    logger.info(
-        "[scan] Wrote image metadata for %s and uploaded JPEG to site bucket",
-        image_id,
+    # Generate and upload all CDN variants (jpeg/webp/avif) with size variants
+    ocr_image_cdn_keys = upload_all_cdn_formats(
+        image, site_bucket, f"assets/{image_id}", generate_thumbnails=True
     )
+    logger.info("[scan] Uploaded CDN variants for image %s", image_id)
 
     ocr_image = Image(
         image_id=image_id,
@@ -109,7 +109,21 @@ def process_scan(
         raw_s3_bucket=raw_bucket,
         raw_s3_key=f"raw/{image_id}.png",
         cdn_s3_bucket=site_bucket,
-        cdn_s3_key=f"assets/{image_id}.jpg",
+        cdn_s3_key=ocr_image_cdn_keys.get("jpeg"),
+        cdn_webp_s3_key=ocr_image_cdn_keys.get("webp"),
+        cdn_avif_s3_key=ocr_image_cdn_keys.get("avif"),
+        # Add thumbnail versions
+        cdn_thumbnail_s3_key=ocr_image_cdn_keys.get("jpeg_thumbnail"),
+        cdn_thumbnail_webp_s3_key=ocr_image_cdn_keys.get("webp_thumbnail"),
+        cdn_thumbnail_avif_s3_key=ocr_image_cdn_keys.get("avif_thumbnail"),
+        # Add small versions
+        cdn_small_s3_key=ocr_image_cdn_keys.get("jpeg_small"),
+        cdn_small_webp_s3_key=ocr_image_cdn_keys.get("webp_small"),
+        cdn_small_avif_s3_key=ocr_image_cdn_keys.get("avif_small"),
+        # Add medium versions
+        cdn_medium_s3_key=ocr_image_cdn_keys.get("jpeg_medium"),
+        cdn_medium_webp_s3_key=ocr_image_cdn_keys.get("webp_medium"),
+        cdn_medium_avif_s3_key=ocr_image_cdn_keys.get("avif_medium"),
         sha256=calculate_sha256_from_bytes(image.tobytes()),
         image_type=ImageType.SCAN,
     )
@@ -209,11 +223,12 @@ def process_scan(
             f"raw/{image_id}_RECEIPT_{cluster_id:05d}.png",
         )
 
-        # Upload the JPEG version to the site bucket
-        upload_jpeg_to_s3(
+        # Generate and upload all CDN variants for this receipt
+        receipt_cdn_keys = upload_all_cdn_formats(
             affine_img,
             site_bucket,
-            f"assets/{image_id}_RECEIPT_{cluster_id:05d}.jpg",
+            f"assets/{image_id}_RECEIPT_{cluster_id:05d}",
+            generate_thumbnails=True,
         )
 
         # 5) Create the Receipt for DynamoDB
@@ -244,7 +259,21 @@ def process_scan(
             },
             sha256=calculate_sha256_from_bytes(affine_img.tobytes()),
             cdn_s3_bucket=site_bucket,
-            cdn_s3_key=f"assets/{image_id}_RECEIPT_{cluster_id:05d}.jpg",
+            cdn_s3_key=receipt_cdn_keys.get("jpeg"),
+            cdn_webp_s3_key=receipt_cdn_keys.get("webp"),
+            cdn_avif_s3_key=receipt_cdn_keys.get("avif"),
+            # Add thumbnail versions
+            cdn_thumbnail_s3_key=receipt_cdn_keys.get("jpeg_thumbnail"),
+            cdn_thumbnail_webp_s3_key=receipt_cdn_keys.get("webp_thumbnail"),
+            cdn_thumbnail_avif_s3_key=receipt_cdn_keys.get("avif_thumbnail"),
+            # Add small versions
+            cdn_small_s3_key=receipt_cdn_keys.get("jpeg_small"),
+            cdn_small_webp_s3_key=receipt_cdn_keys.get("webp_small"),
+            cdn_small_avif_s3_key=receipt_cdn_keys.get("avif_small"),
+            # Add medium versions
+            cdn_medium_s3_key=receipt_cdn_keys.get("jpeg_medium"),
+            cdn_medium_webp_s3_key=receipt_cdn_keys.get("webp_medium"),
+            cdn_medium_avif_s3_key=receipt_cdn_keys.get("avif_medium"),
         )
         dynamo_client.add_receipt(receipt)
 
