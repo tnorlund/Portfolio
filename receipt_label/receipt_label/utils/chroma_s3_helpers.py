@@ -1402,7 +1402,7 @@ def upload_snapshot_atomic(
     collection: str,  # "lines" or "words"
     lock_manager: Optional[object] = None,
     metadata: Optional[Dict[str, str]] = None,
-    keep_versions: int = 2,
+    keep_versions: int = 4,
 ) -> Dict[str, Any]:
     """
     Upload ChromaDB snapshot using blue-green atomic deployment pattern.
