@@ -106,6 +106,27 @@ class ChromaDBBuckets(ComponentResource):
                         days=7,
                     ),
                 ),
+                # Clean up old deltas for database-scoped prefixes after 7 days
+                aws.s3.BucketLifecycleConfigurationRuleArgs(
+                    id="delete-old-deltas-words",
+                    status="Enabled",
+                    filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(
+                        prefix="words/delta/",
+                    ),
+                    expiration=aws.s3.BucketLifecycleConfigurationRuleExpirationArgs(
+                        days=7,
+                    ),
+                ),
+                aws.s3.BucketLifecycleConfigurationRuleArgs(
+                    id="delete-old-deltas-lines",
+                    status="Enabled",
+                    filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(
+                        prefix="lines/delta/",
+                    ),
+                    expiration=aws.s3.BucketLifecycleConfigurationRuleExpirationArgs(
+                        days=7,
+                    ),
+                ),
                 # Delete old timestamped snapshots after 14 days
                 # Only targets snapshot/timestamped/* prefix,
                 # preserving snapshot/latest/
@@ -116,6 +137,27 @@ class ChromaDBBuckets(ComponentResource):
                         prefix="snapshot/timestamped/",
                     ),
                     # pylint: disable=line-too-long
+                    expiration=aws.s3.BucketLifecycleConfigurationRuleExpirationArgs(
+                        days=14,
+                    ),
+                ),
+                # Delete old timestamped snapshots for database-scoped prefixes after 14 days
+                aws.s3.BucketLifecycleConfigurationRuleArgs(
+                    id="delete-old-timestamped-snapshots-words",
+                    status="Enabled",
+                    filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(
+                        prefix="words/snapshot/timestamped/",
+                    ),
+                    expiration=aws.s3.BucketLifecycleConfigurationRuleExpirationArgs(
+                        days=14,
+                    ),
+                ),
+                aws.s3.BucketLifecycleConfigurationRuleArgs(
+                    id="delete-old-timestamped-snapshots-lines",
+                    status="Enabled",
+                    filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(
+                        prefix="lines/snapshot/timestamped/",
+                    ),
                     expiration=aws.s3.BucketLifecycleConfigurationRuleExpirationArgs(
                         days=14,
                     ),
