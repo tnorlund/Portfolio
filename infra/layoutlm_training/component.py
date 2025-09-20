@@ -156,7 +156,14 @@ class LayoutLMTrainingInfra(ComponentResource):
                   'boto3>=1.34.0' \
                   pillow tqdm filelock 'pydantic>=2.10.6' \
                   'accelerate>=0.21.0' \
-                  seqeval
+                  seqeval backports.tarfile
+
+                # Performance env defaults
+                echo 'export TORCH_ALLOW_TF32=1' >> /etc/profile.d/layoutlm.sh
+                echo 'export TOKENIZERS_PARALLELISM=false' >> /etc/profile.d/layoutlm.sh
+                echo 'export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True' >> /etc/profile.d/layoutlm.sh
+                echo 'export CUDA_DEVICE_MAX_CONNECTIONS=1' >> /etc/profile.d/layoutlm.sh
+                chmod 0755 /etc/profile.d/layoutlm.sh
 
                 # Download any published wheels and install (dynamo first)
                 install -d -m 0775 -o ec2-user -g ec2-user /opt/wheels
@@ -234,7 +241,7 @@ PY
                     },
                 ],
             ).id,
-            instance_type="g4dn.xlarge",
+            instance_type="g5.xlarge",
             key_name="training_key",
             iam_instance_profile=aws.ec2.LaunchTemplateIamInstanceProfileArgs(
                 name=self.instance_profile.name

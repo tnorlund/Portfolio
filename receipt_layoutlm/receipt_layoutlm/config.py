@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, List
 
 
 @dataclass
@@ -9,6 +9,10 @@ class DataConfig:
     max_seq_length: int = 512
     doc_stride: int = 128
     validation_status: Optional[str] = "VALID"
+    allowed_labels: Optional[List[str]] = None
+    merge_amounts: bool = False
+    dataset_snapshot_load: Optional[str] = None
+    dataset_snapshot_save: Optional[str] = None
 
 
 @dataclass
@@ -21,4 +25,7 @@ class TrainingConfig:
     epochs: int = 10
     mixed_precision: bool = True
     max_grad_norm: float = 1.0
+    gradient_accumulation_steps: int = 1
+    label_smoothing: float = 0.0
+    early_stopping_patience: int = 2
     output_s3_path: Optional[str] = None

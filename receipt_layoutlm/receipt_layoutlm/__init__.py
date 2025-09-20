@@ -13,4 +13,8 @@ def __getattr__(name):
         from .trainer import ReceiptLayoutLMTrainer  # type: ignore
 
         return ReceiptLayoutLMTrainer
+    if name == "LayoutLMInference":
+        from .inference import LayoutLMInference  # type: ignore
+
+        return LayoutLMInference
     raise AttributeError(name)
