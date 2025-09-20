@@ -17,6 +17,7 @@ class LinePrediction:
     tokens: List[str]
     boxes: List[List[int]]
     labels: List[str]
+    confidences: List[float]
 
 
 @dataclass
@@ -60,6 +61,9 @@ class LayoutLMInference:
 
         if model_s3_uri:
             self._sync_from_s3(model_s3_uri, resolved_dir)
+        # record where model came from
+        self._model_dir = resolved_dir
+        self._s3_uri_used = model_s3_uri
 
         # Load tokenizer and model from directory
         self._tokenizer = (
@@ -111,7 +115,9 @@ class LayoutLMInference:
         # Prefer best/ if present
         try:
             from botocore.exceptions import ClientError as _S3ClientError  # type: ignore
-        except Exception:  # pragma: no cover - when botocore not installed
+        except (
+            ModuleNotFoundError
+        ):  # pragma: no cover - when botocore not installed
             _S3ClientError = None  # type: ignore
 
         try:
@@ -216,17 +222,38 @@ class LayoutLMInference:
                 "bbox": self._torch.tensor([bbox_aligned], device=device),
             }
             with self._torch.no_grad():
-                logits = model(**inputs).logits
-            pred_ids = logits.argmax(-1)[0].tolist()
+                logits = model(**inputs).logits  # [1, seq_len, num_labels]
             id2label = model.config.id2label
 
-            labels_per_word: List[str] = []
-            seen: set[int] = set()
+            # Aggregate logits per word (average over subtokens), compute softmax
+            seq_logits = logits[0]  # [seq_len, num_labels]
+            num_labels = seq_logits.shape[-1]
+
+            # Collect token indices per word id
+            word_to_token_indices: Dict[int, List[int]] = {}
             for i, wid in enumerate(wids):
-                if wid is None or wid in seen:
+                if wid is None:
                     continue
-                seen.add(wid)
-                labels_per_word.append(id2label.get(int(pred_ids[i]), "O"))
+                word_to_token_indices.setdefault(int(wid), []).append(i)
+
+            labels_per_word: List[str] = []
+            confidences_per_word: List[float] = []
+            for wid in range(len(word_boxes)):
+                token_idxs = word_to_token_indices.get(wid, [])
+                if not token_idxs:
+                    # If tokenizer dropped the word (rare), fallback to zeros
+                    labels_per_word.append("O")
+                    confidences_per_word.append(0.0)
+                    continue
+                # Average logits across subtokens of this word
+                stacked = self._torch.stack(
+                    [seq_logits[i] for i in token_idxs]
+                )
+                avg_logits = stacked.mean(dim=0)
+                probs = self._torch.nn.functional.softmax(avg_logits, dim=-1)
+                conf, pred_id = self._torch.max(probs, dim=-1)
+                labels_per_word.append(id2label.get(int(pred_id.item()), "O"))
+                confidences_per_word.append(float(conf.item()))
 
             results.append(
                 LinePrediction(
@@ -234,6 +261,7 @@ class LayoutLMInference:
                     tokens=tokens,
                     boxes=word_boxes,
                     labels=labels_per_word,
+                    confidences=confidences_per_word,
                 )
             )
 
@@ -291,5 +319,14 @@ class LayoutLMInference:
             image_id=image_id,
             receipt_id=receipt_id,
             lines=line_preds,
-            meta={"num_lines": len(line_preds)},
+            meta={
+                "num_lines": len(line_preds),
+                "num_words": sum(len(lp.tokens) for lp in line_preds),
+                "device": self._device,
+                "model_name": getattr(
+                    self._model.config, "_name_or_path", None
+                ),
+                "s3_uri_used": self._s3_uri_used,
+                "model_dir": self._model_dir,
+            },
         )
