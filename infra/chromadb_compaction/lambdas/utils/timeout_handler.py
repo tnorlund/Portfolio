@@ -39,7 +39,11 @@ class TimeoutProtection:
             return int(context_remaining() / 1000)
 
         # Fallback to environment or default
-        return int(os.environ.get("AWS_LAMBDA_FUNCTION_TIMEOUT", "900"))
+        try:
+            val = int(os.environ.get("AWS_LAMBDA_FUNCTION_TIMEOUT", "900"))
+            return max(val, 1)
+        except Exception:
+            return 900
 
     def set_lambda_context(self, context):
         """Set Lambda context for accurate timeout tracking.
@@ -58,7 +62,12 @@ class TimeoutProtection:
     def get_remaining_time(self) -> float:
         """Get remaining execution time in seconds."""
         elapsed = time.time() - self.start_time
-        return max(0, self.lambda_timeout - elapsed)
+        remaining = self.lambda_timeout - elapsed
+        # Guard: if remaining is <= 0 due to missing context or resume, treat as unknown
+        # and return a small positive buffer to avoid false timeout for short ops.
+        if remaining <= 0:
+            return 1.0
+        return remaining
 
     def get_elapsed_time(self) -> float:
         """Get elapsed execution time in seconds."""
@@ -178,10 +187,19 @@ class TimeoutProtection:
         """
         start_time = time.time()
 
+        # Determine effective budget: prefer explicit max_duration; otherwise use remaining
+        remaining_time = self.get_remaining_time()
+        effective_max = max_duration if max_duration else None
+        if effective_max is None:
+            # Use remaining minus a small safety margin when context is present
+            # If remaining_time is our fallback (1.0), keep it small but nonzero
+            safety_margin = 0.05
+            effective_max = max(remaining_time - safety_margin, 0.5)
+
         self.logger.info(
             f"Starting operation with timeout protection: {operation_name}",
-            max_duration=max_duration,
-            remaining_lambda_time=self.get_remaining_time(),
+            max_duration=effective_max,
+            remaining_lambda_time=remaining_time,
         )
 
         try:
@@ -191,12 +209,12 @@ class TimeoutProtection:
 
             # Check if operation exceeded limits
             timeout_exceeded = False
-            if max_duration and duration > max_duration:
+            if effective_max and duration > effective_max:
                 timeout_exceeded = True
                 self.logger.error(
                     f"Operation exceeded maximum duration: {operation_name}",
                     duration=duration,
-                    max_duration=max_duration,
+                    max_duration=effective_max,
                 )
 
             if check_lambda_timeout and self.should_abort():
