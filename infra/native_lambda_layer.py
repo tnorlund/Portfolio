@@ -182,10 +182,28 @@ class NativeLambdaLayerWithCodeBuild(NativeLambdaLayer):
         """Get or create S3 bucket for layer artifacts."""
         # This would typically reference an existing bucket
         # For example purposes, creating a new one
-        return aws.s3.Bucket(
+        bucket = aws.s3.Bucket(
             f"{self.name}-layer-bucket",
+            bucket=f"{self.name}-layer-bucket-{pulumi.get_stack()}",
+            tags={
+                "Name": f"{self.name}-layer-bucket-{pulumi.get_stack()}",
+                "Service": self.name,
+                "Environment": pulumi.get_stack(),
+                "ManagedBy": "Pulumi",
+            },
             opts=pulumi.ResourceOptions(protect=True),
         )
+
+        # Ensure versioning is enabled explicitly
+        aws.s3.BucketVersioning(
+            f"{self.name}-layer-bucket-versioning",
+            bucket=bucket.id,
+            versioning_configuration=aws.s3.BucketVersioningVersioningConfigurationArgs(
+                status="Enabled"
+            ),
+        )
+
+        return bucket
 
     def _upload_source_to_s3(
         self, bucket: aws.s3.Bucket

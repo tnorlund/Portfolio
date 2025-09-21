@@ -117,16 +117,28 @@ class MLPackageBuilder(pulumi.ComponentResource):
             os.path.dirname(os.path.abspath(__file__))
         )
 
-        # Create an S3 bucket for package artifacts and build state
+        # Create an S3 bucket for package artifacts and build state with stable name
         # Note: No ACL needed - S3 buckets are private by default in newer AWS accounts
         self.artifact_bucket = aws.s3.Bucket(
             f"{name}-artifacts",
+            bucket=f"{name}-artifacts-{self.stack}",
             force_destroy=True,
             tags={
-                "Name": f"{name}-artifacts",
+                "Name": f"{name}-artifacts-{self.stack}",
                 "Environment": self.stack,
                 "ManagedBy": "Pulumi",
+                "Service": name,
             },
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+
+        # Enforce bucket versioning explicitly
+        self.artifact_bucket_versioning = aws.s3.BucketVersioning(
+            f"{name}-artifacts-versioning",
+            bucket=self.artifact_bucket.id,
+            versioning_configuration=aws.s3.BucketVersioningVersioningConfigurationArgs(
+                status="Enabled"
+            ),
             opts=pulumi.ResourceOptions(parent=self),
         )
 

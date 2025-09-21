@@ -679,10 +679,17 @@ echo "🎉 Parallel function updates completed!"'''
     def _setup_fast_build(self, package_hash: str, package_path: str) -> None:
         """Set up the fast build process with CodePipeline and per-version CodeBuild projects."""
 
-        # Create S3 bucket for artifacts - let Pulumi auto-generate unique name
+        # Create S3 bucket for artifacts with a stable physical name per stack
         build_bucket = aws.s3.Bucket(
             f"{self.name}-artifacts",
+            bucket=f"{self.name}-artifacts-{pulumi.get_stack()}",
             force_destroy=True,
+            tags={
+                "Name": f"{self.name}-artifacts-{pulumi.get_stack()}",
+                "Service": self.name,
+                "Environment": pulumi.get_stack(),
+                "ManagedBy": "Pulumi",
+            },
             opts=pulumi.ResourceOptions(parent=self),
         )
 
@@ -1199,6 +1206,22 @@ echo "🎉 Parallel function updates completed!"'''
             ],
             opts=pulumi.ResourceOptions(
                 parent=self, depends_on=[bucket_versioning]
+            ),
+        )
+
+        # As a defensive guardrail, enforce bucket versioning to remain Enabled post-deploy
+        # This mitigates any transient provider toggles to Suspended during updates
+        pulumi_command = command.local.Command(
+            f"{self.name}-enforce-versioning",
+            create=build_bucket.bucket.apply(
+                lambda b: f"aws s3api put-bucket-versioning --bucket {b} --versioning-configuration Status=Enabled"
+            ),
+            update=build_bucket.bucket.apply(
+                lambda b: f"aws s3api put-bucket-versioning --bucket {b} --versioning-configuration Status=Enabled"
+            ),
+            opts=pulumi.ResourceOptions(
+                parent=self,
+                depends_on=[bucket_versioning, pipeline],
             ),
         )
 

@@ -153,11 +153,27 @@ class SimpleLambdaLayer(ComponentResource):
     def _setup_simple_build(self):
         """Set up the simplified build process using local commands."""
 
-        # Create S3 bucket for artifacts
+        # Create S3 bucket for artifacts with stable name and tags
         build_bucket = aws.s3.Bucket(
             resource_name=f"simple-lambda-layer-{self.name}-artifacts-{pulumi.get_stack()}",
             bucket=f"simple-lambda-layer-{self.name}-artifacts-{pulumi.get_stack()}",
             force_destroy=True,
+            tags={
+                "Name": f"simple-lambda-layer-{self.name}-artifacts-{pulumi.get_stack()}",
+                "Service": self.name,
+                "Environment": pulumi.get_stack(),
+                "ManagedBy": "Pulumi",
+            },
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+
+        # Explicitly enable versioning as a separate resource and depend on it where needed
+        bucket_versioning = aws.s3.BucketVersioning(
+            f"simple-lambda-layer-{self.name}-artifacts-versioning",
+            bucket=build_bucket.id,
+            versioning_configuration=aws.s3.BucketVersioningVersioningConfigurationArgs(
+                status="Enabled"
+            ),
             opts=pulumi.ResourceOptions(parent=self),
         )
 
