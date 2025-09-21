@@ -14,6 +14,10 @@ from receipt_dynamo.entities.compaction_lock import (  # noqa: F401
     CompactionLock,
     item_to_compaction_lock,
 )
+from receipt_dynamo.entities.compaction_run import (  # noqa: F401
+    CompactionRun,
+    item_to_compaction_run,
+)
 from receipt_dynamo.entities.completion_batch_result import (  # noqa: F401
     CompletionBatchResult,
     item_to_completion_batch_result,
@@ -144,6 +148,7 @@ __all__ = [
     "AIUsageMetric",
     "BatchSummary",
     "CompactionLock",
+    "CompactionRun",
     "CompletionBatchResult",
     "EmbeddingBatchResult",
     "Image",
@@ -191,6 +196,7 @@ __all__ = [
     "item_to_ai_usage_metric",
     "item_to_batch_summary",
     "item_to_compaction_lock",
+    "item_to_compaction_run",
     "item_to_completion_batch_result",
     "item_to_embedding_batch_result",
     "item_to_image",
