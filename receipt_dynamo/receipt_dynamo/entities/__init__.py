@@ -196,6 +196,7 @@ __all__ = [
     "item_to_ai_usage_metric",
     "item_to_batch_summary",
     "item_to_compaction_lock",
+    "item_to_compaction_run",
     "item_to_completion_batch_result",
     "item_to_compaction_run",
     "item_to_embedding_batch_result",
