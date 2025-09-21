@@ -2364,6 +2364,22 @@ def download_s3_prefix(bucket: str, prefix: str, dest_dir: str) -> int:
     s3 = boto3.client("s3")
     paginator = s3.get_paginator("list_objects_v2")
     downloaded = 0
+    # Fast path: if bundled tarball exists, download and extract
+    try:
+        tar_key = f"{prefix.rstrip('/')}/delta.tar.gz"
+        s3.head_object(Bucket=bucket, Key=tar_key)
+        local_tar = os.path.join(dest_dir, "delta.tar.gz")
+        os.makedirs(dest_dir, exist_ok=True)
+        s3.download_file(bucket, tar_key, local_tar)
+        import tarfile
+
+        with tarfile.open(local_tar, "r:gz") as tar:
+            tar.extractall(dest_dir)
+        downloaded = 1
+        return downloaded
+    except Exception:
+        # Fallback to listing all files
+        pass
     for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
         for obj in page.get("Contents", []):
             key = obj["Key"]

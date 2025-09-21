@@ -252,6 +252,8 @@ class PlacesAPI:
         if not clean_phone:
             logger.info("Empty phone—skipping Places API search and cache")
             return None
+        # Normalize to digits-only (canonical cache key)
+        digits_only = "".join(filter(str.isdigit, clean_phone))
         # Check cache first (use digits-only as canonical cache key)
         cached_result = self._get_cached_place("PHONE", digits_only)
         if cached_result:
@@ -259,7 +261,6 @@ class PlacesAPI:
             return cached_result
 
         # Validate phone number format
-        digits_only = "".join(filter(str.isdigit, clean_phone))
         if len(digits_only) < 10 or len(digits_only) > 15:
             logger.info(
                 f"Invalid phone number format (length {len(digits_only)}): {clean_phone}"
@@ -267,7 +268,7 @@ class PlacesAPI:
             # Cache the invalid result to prevent repeated API calls
             self._cache_place(
                 "PHONE",
-                clean_phone,
+                digits_only,
                 "INVALID",
                 {
                     "status": "INVALID",
@@ -280,7 +281,6 @@ class PlacesAPI:
         url = f"{self.BASE_URL}/findplacefromtext/json"
 
         # For API call, use E.164 format (+<country><number>) when possible
-        digits_only = "".join(filter(str.isdigit, clean_phone))
         cache_key = digits_only
         if clean_phone.strip().startswith("+") and digits_only:
             api_phone = "+" + digits_only
@@ -299,6 +299,12 @@ class PlacesAPI:
             "fields": "formatted_address,name,place_id,types,business_status",
             "key": self.api_key,
         }
+
+        logger.debug(
+            "Places API phone lookup E.164 input: %s (cache_key=%s)",
+            api_phone,
+            cache_key,
+        )
 
         try:
             response = requests.get(url, params=params, timeout=10)
@@ -438,6 +444,7 @@ class PlacesAPI:
         if not address or not address.strip():
             logger.info("Empty address—skipping Places API search and cache")
             return None
+        logger.info("Searching by address: %s", address)
         try:
             # If we have a business name from the receipt, try a text-based business search first
             business_name = None

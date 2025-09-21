@@ -200,9 +200,7 @@ def embed_lines_realtime(
         for i, (line, _) in enumerate(line_text_pairs):
             line_embeddings.append((line, response.data[i].embedding))
 
-        logger.info(
-            f"Successfully embedded {len(line_embeddings)} lines with vertical context"
-        )
+        logger.info(f"Successfully embedded {len(line_embeddings)} lines")
         return line_embeddings
 
     except Exception as e:
