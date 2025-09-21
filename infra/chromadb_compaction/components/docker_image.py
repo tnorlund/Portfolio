@@ -182,7 +182,6 @@ class DockerImageComponent(ComponentResource):
 
         # Add ECR repository policy to allow Lambda to pull images
         from pulumi_aws.ecr import RepositoryPolicy
-        import json
 
         RepositoryPolicy(
             f"{name}-repo-policy",
