@@ -1,7 +1,7 @@
 from typing import Callable, Dict, Any, List, Tuple, Optional
 import logging
 
-from receipt_label.vector_store import VectorClient
+from receipt_label.vector_store import VectorStoreInterface
 from receipt_label.merchant_validation.normalize import (
     normalize_phone,
     normalize_address,
@@ -16,7 +16,8 @@ logger = logging.getLogger(__name__)
 def _street_queries(ctx: Dict[str, Any]) -> List[str]:
     """Street-first queries built from the full line text containing address anchors.
 
-    Prefer the exact line text (like original script); fallback to ctx["address"].
+    Prefer the exact line text (like original script)
+    fallback to ctx["address"].
     Limit to 3.
     """
     queries: List[str] = []
@@ -79,7 +80,7 @@ def _phone_line_queries(ctx: Dict[str, Any]) -> List[str]:
 
 
 def chroma_find_candidates(
-    line_client: VectorClient,
+    line_client: VectorStoreInterface,
     embed_fn: EmbedFn,
     ctx: Dict[str, Any],
     get_neighbor_phones: Optional[

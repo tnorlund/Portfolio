@@ -3,7 +3,7 @@ import logging
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_label.data.places_api import PlacesAPI
-from receipt_label.vector_store import VectorClient
+from receipt_label.vector_store import VectorStoreInterface
 
 from receipt_label.merchant_resolution.contexts import load_receipt_context
 from receipt_label.merchant_resolution.places import places_find_candidates
@@ -20,7 +20,7 @@ def resolve_receipt(
     key: Tuple[str, int],
     dynamo: DynamoClient,
     places_api: PlacesAPI,
-    chroma_line_client: VectorClient,
+    chroma_line_client: VectorStoreInterface,
     embed_fn,
     write_metadata: bool = False,
 ) -> Dict[str, Any]:

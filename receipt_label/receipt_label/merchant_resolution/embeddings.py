@@ -1,11 +1,11 @@
 from typing import Callable, Dict, Any, Optional
 
-from receipt_label.vector_store import VectorClient
+from receipt_label.vector_store import VectorStoreInterface
 
 
 def upsert_embeddings(
-    line_client: VectorClient,
-    word_client: VectorClient,
+    line_client: VectorStoreInterface,
+    word_client: VectorStoreInterface,
     line_embed_fn: Callable,
     word_embed_fn: Callable,
     ctx: Dict[str, Any],
