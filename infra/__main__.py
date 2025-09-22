@@ -50,6 +50,8 @@ from currency_validation_step_functions import (
 
 # Using the optimized docker-build based base images with scoped contexts
 from base_images.base_images import BaseImages
+from networking import PublicVpc
+from security import ChromaSecurity
 
 # from spot_interruption import SpotInterruptionHandler
 # from efs_storage import EFSStorage
@@ -74,9 +76,34 @@ except ImportError as e:
     pass
 import step_function
 from step_function_enhanced import create_enhanced_receipt_processor
+from chroma.service import ChromaEcsService
+from chroma.workers import ChromaWorkers
+from chroma.orchestrator import ChromaOrchestrator
+from chroma.nat_egress import NatEgress
 
-# Create the dedicated VPC network infrastructure
-# network = VpcForCodeBuild("codebuild-network")
+# Foundation VPC (public subnets only, no NAT) per Task 350
+public_vpc = PublicVpc("foundation")
+pulumi.export("foundation_vpc_id", public_vpc.vpc_id)
+
+# Provide private access to DynamoDB from VPC Lambdas without a NAT
+dynamodb_gateway_endpoint = aws.ec2.VpcEndpoint(
+    f"dynamodb-gateway-{pulumi.get_stack()}",
+    vpc_id=public_vpc.vpc_id,
+    service_name=f"com.amazonaws.{aws.config.region}.dynamodb",
+    vpc_endpoint_type="Gateway",
+    route_table_ids=[public_vpc.public_route_table_id],
+)
+pulumi.export("foundation_public_subnet_ids", public_vpc.public_subnet_ids)
+
+# Task 2: Security (depends on VPC)
+security = ChromaSecurity("chroma", vpc_id=public_vpc.vpc_id)
+pulumi.export("sg_lambda_id", security.sg_lambda_id)
+pulumi.export("sg_chroma_id", security.sg_chroma_id)
+pulumi.export("ecs_task_role_arn", security.ecs_task_role_arn)
+pulumi.export("lambda_role_arn", security.lambda_role_arn)
+pulumi.export("step_functions_role_arn", security.step_functions_role_arn)
+
+# Task 3 snapshot bucket not used; shared_chromadb_buckets provides storage
 
 # --- Removed Config reading for VPC resources ---
 
@@ -164,6 +191,74 @@ pulumi.export(
 
 # Export enhanced step function ARN
 pulumi.export("enhanced_receipt_processor_arn", enhanced_receipt_processor.arn)
+
+# Task 6: ECS Service (scale-to-zero) using our Chroma container
+chroma_service = ChromaEcsService(
+    name=f"chroma-{pulumi.get_stack()}",
+    vpc_id=public_vpc.vpc_id,
+    public_subnet_ids=public_vpc.public_subnet_ids,
+    security_group_id=security.sg_chroma_id,
+    task_role_arn=security.ecs_task_role_arn,
+    task_role_name=security.ecs_task_role_name,
+    execution_role_arn=security.ecs_task_execution_role_arn,
+    chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
+    base_image_ref=base_images.label_base_image.tags[0],
+    collection="words",
+    desired_count=0,
+)
+
+pulumi.export("chroma_cluster_arn", chroma_service.cluster.arn)
+pulumi.export("chroma_service_arn", chroma_service.svc.arn)
+pulumi.export("chroma_service_dns", chroma_service.endpoint_dns)
+
+# Task 7: Workers - Lambda functions that query Chroma via HTTP
+workers = ChromaWorkers(
+    name=f"chroma-workers-{pulumi.get_stack()}",
+    vpc_id=public_vpc.vpc_id,
+    subnets=public_vpc.public_subnet_ids,
+    security_group_id=security.sg_lambda_id,
+    dynamodb_table_name=dynamodb_table.name,
+    chroma_service_dns=chroma_service.endpoint_dns,
+    base_image_ref=base_images.label_base_image.tags[0],
+)
+
+pulumi.export("chroma_query_words_lambda_arn", workers.query_words.arn)
+
+# NAT egress (public subnet) + private subnets for Lambda internet access
+nat = NatEgress(
+    name=f"nat-egress-{pulumi.get_stack()}",
+    vpc_id=public_vpc.vpc_id,
+    public_subnet_id=public_vpc.public_subnet_ids.apply(lambda ids: ids[0]),
+)
+pulumi.export("nat_instance_id", nat.nat_instance_id)
+pulumi.export("nat_private_subnet_ids", nat.private_subnet_ids)
+
+# Recreate workers to use NAT private subnets for egress
+workers_nat = ChromaWorkers(
+    name=f"chroma-workers-nat-{pulumi.get_stack()}",
+    vpc_id=public_vpc.vpc_id,
+    subnets=nat.private_subnet_ids,
+    security_group_id=security.sg_lambda_id,
+    dynamodb_table_name=dynamodb_table.name,
+    chroma_service_dns=chroma_service.endpoint_dns,
+    base_image_ref=base_images.label_base_image.tags[0],
+)
+pulumi.export("chroma_query_words_lambda_nat_arn", workers_nat.query_words.arn)
+
+# Task 8: Orchestration - Step Functions to scale up, wait, run, scale down
+orchestrator = ChromaOrchestrator(
+    name=f"chroma-orchestrator-{pulumi.get_stack()}",
+    cluster_arn=chroma_service.cluster.arn,
+    service_arn=chroma_service.svc.arn,
+    chroma_endpoint=chroma_service.endpoint_dns,
+    worker_lambda_arn=workers_nat.query_words.arn,
+    nat_instance_id=nat.nat_instance_id,
+    lambda_role_name=security.lambda_role_arn,
+    subnets=public_vpc.public_subnet_ids,
+    security_group_id=security.sg_lambda_id,
+)
+
+pulumi.export("chroma_orchestrator_sfn_arn", orchestrator.state_machine.arn)
 # ML Training Infrastructure
 # -------------------------
 

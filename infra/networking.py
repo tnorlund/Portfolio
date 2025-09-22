@@ -234,3 +234,115 @@ class VpcForCodeBuild(ComponentResource):
                 "security_group_id": self.security_group_id,
             }
         )
+
+
+class PublicVpc(ComponentResource):
+    """Minimal public-only VPC (no NAT) per foundation task.
+
+    - VPC 10.0.0.0/16 with DNS support and hostnames
+    - 2 public subnets across different AZs
+    - Internet Gateway
+    - Public route table with 0.0.0.0/0 via IGW
+    """
+
+    def __init__(
+        self, name: str, opts: Optional[pulumi.ResourceOptions] = None
+    ):
+        super().__init__("custom:network:PublicVpc", name, {}, opts)
+
+        # Create VPC
+        self.vpc = aws.ec2.Vpc(
+            f"{name}-vpc",
+            cidr_block="10.0.0.0/16",
+            enable_dns_hostnames=True,
+            enable_dns_support=True,
+            tags={
+                "Name": f"{name}-vpc",
+                "Environment": pulumi.get_stack(),
+                "ManagedBy": "Pulumi",
+            },
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+
+        # Internet Gateway
+        self.igw = aws.ec2.InternetGateway(
+            f"{name}-igw",
+            vpc_id=self.vpc.id,
+            tags={
+                "Name": f"{name}-igw",
+                "Environment": pulumi.get_stack(),
+                "ManagedBy": "Pulumi",
+            },
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+
+        # Determine two AZs
+        azs = aws.get_availability_zones(state="available").names[:2]
+
+        # Two public subnets across different AZs
+        self.public_subnets = []
+        for i, az in enumerate(azs):
+            subnet = aws.ec2.Subnet(
+                f"{name}-public-{i+1}",
+                vpc_id=self.vpc.id,
+                cidr_block=f"10.0.{i}.0/24",
+                availability_zone=az,
+                map_public_ip_on_launch=True,
+                tags={
+                    "Name": f"{name}-public-{i+1}",
+                    "Environment": pulumi.get_stack(),
+                    "ManagedBy": "Pulumi",
+                },
+                opts=pulumi.ResourceOptions(parent=self),
+            )
+            self.public_subnets.append(subnet)
+
+        # Public route table
+        self.public_rt = aws.ec2.RouteTable(
+            f"{name}-public-rt",
+            vpc_id=self.vpc.id,
+            tags={
+                "Name": f"{name}-public-rt",
+                "Environment": pulumi.get_stack(),
+                "ManagedBy": "Pulumi",
+            },
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+
+        # Default route to IGW
+        self.public_route = aws.ec2.Route(
+            f"{name}-public-0-0-0-0",
+            route_table_id=self.public_rt.id,
+            destination_cidr_block="0.0.0.0/0",
+            gateway_id=self.igw.id,
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+
+        # Associate subnets with public RT
+        self.public_assocs = []
+        for i, subnet in enumerate(self.public_subnets):
+            assoc = aws.ec2.RouteTableAssociation(
+                f"{name}-public-rt-assoc-{i+1}",
+                subnet_id=subnet.id,
+                route_table_id=self.public_rt.id,
+                opts=pulumi.ResourceOptions(parent=self),
+            )
+            self.public_assocs.append(assoc)
+
+        # Expose attributes for easy consumption
+        self.vpc_id = self.vpc.id
+        self.public_subnet_ids = Output.all(
+            *[s.id for s in self.public_subnets]
+        )
+        self.internet_gateway_id = self.igw.id
+        self.public_route_table_id = self.public_rt.id
+
+        # Outputs
+        self.register_outputs(
+            {
+                "vpc_id": self.vpc_id,
+                "public_subnet_ids": self.public_subnet_ids,
+                "internet_gateway_id": self.internet_gateway_id,
+                "public_route_table_id": self.public_route_table_id,
+            }
+        )
