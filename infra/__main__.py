@@ -63,7 +63,7 @@ from security import ChromaSecurity
 # Import other necessary components
 try:
     # import lambda_layer  # noqa: F401
-    import fast_lambda_layer  # noqa: F401
+    import lambda_layer  # noqa: F401
     from lambda_functions.label_count_cache_updater.infra import (  # noqa: F401
         label_count_cache_updater_lambda,
     )
@@ -85,15 +85,10 @@ from chroma.nat_egress import NatEgress
 public_vpc = PublicVpc("foundation")
 pulumi.export("foundation_vpc_id", public_vpc.vpc_id)
 
-# Provide private access to DynamoDB from VPC Lambdas without a NAT
-dynamodb_gateway_endpoint = aws.ec2.VpcEndpoint(
-    f"dynamodb-gateway-{pulumi.get_stack()}",
-    vpc_id=public_vpc.vpc_id,
-    service_name=f"com.amazonaws.{aws.config.region}.dynamodb",
-    vpc_endpoint_type="Gateway",
-    route_table_ids=[public_vpc.public_route_table_id],
-)
+# (moved DynamoDB gateway endpoint below after NAT creation to reference both route tables)
+
 pulumi.export("foundation_public_subnet_ids", public_vpc.public_subnet_ids)
+# (moved S3 gateway endpoint below after NAT creation to reference its route table)
 
 # Task 2: Security (depends on VPC)
 security = ChromaSecurity("chroma", vpc_id=public_vpc.vpc_id)
@@ -133,9 +128,6 @@ notification_system = NotificationSystem(
 # Create base images first - they're used by multiple components
 base_images = BaseImages("base-images", stack=pulumi.get_stack())
 
-validate_merchant_step_functions = ValidateMerchantStepFunctions(
-    "validate-merchant"
-)
 validation_pipeline = ValidationPipeline("validation-pipeline")
 
 # Create shared ChromaDB bucket (used by both compaction and embedding)
@@ -203,7 +195,7 @@ chroma_service = ChromaEcsService(
     execution_role_arn=security.ecs_task_execution_role_arn,
     chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
     base_image_ref=base_images.label_base_image.tags[0],
-    collection="words",
+    collection="lines",
     desired_count=0,
 )
 
@@ -233,6 +225,35 @@ nat = NatEgress(
 pulumi.export("nat_instance_id", nat.nat_instance_id)
 pulumi.export("nat_private_subnet_ids", nat.private_subnet_ids)
 
+# Add S3 Gateway Endpoint for faster S3 access from both public and private subnets
+s3_gateway_endpoint = aws.ec2.VpcEndpoint(
+    f"s3-gateway-{pulumi.get_stack()}",
+    vpc_id=public_vpc.vpc_id,
+    service_name=f"com.amazonaws.{aws.config.region}.s3",
+    vpc_endpoint_type="Gateway",
+    route_table_ids=[public_vpc.public_route_table_id, nat.private_rt.id],
+)
+
+# Provide private access to DynamoDB from both public and private subnets (no NAT required)
+dynamodb_gateway_endpoint = aws.ec2.VpcEndpoint(
+    f"dynamodb-gateway-{pulumi.get_stack()}",
+    vpc_id=public_vpc.vpc_id,
+    service_name=f"com.amazonaws.{aws.config.region}.dynamodb",
+    vpc_endpoint_type="Gateway",
+    route_table_ids=[public_vpc.public_route_table_id, nat.private_rt.id],
+)
+
+# CloudWatch Logs Interface Endpoint for faster logging from VPC Lambdas
+logs_interface_endpoint = aws.ec2.VpcEndpoint(
+    f"logs-interface-{pulumi.get_stack()}",
+    vpc_id=public_vpc.vpc_id,
+    service_name=f"com.amazonaws.{aws.config.region}.logs",
+    vpc_endpoint_type="Interface",
+    subnet_ids=public_vpc.public_subnet_ids,  # One subnet per AZ for the endpoint
+    security_group_ids=[security.sg_vpce_id],
+    private_dns_enabled=True,
+)
+
 # Recreate workers to use NAT private subnets for egress
 workers_nat = ChromaWorkers(
     name=f"chroma-workers-nat-{pulumi.get_stack()}",
@@ -259,6 +280,19 @@ orchestrator = ChromaOrchestrator(
 )
 
 pulumi.export("chroma_orchestrator_sfn_arn", orchestrator.state_machine.arn)
+
+# Now that Chroma service exists, wire merchant validation with warm-up and HTTP endpoint
+validate_merchant_step_functions = ValidateMerchantStepFunctions(
+    "validate-merchant",
+    vpc_subnet_ids=nat.private_subnet_ids,
+    security_group_id=security.sg_lambda_id,
+    chroma_http_endpoint=chroma_service.endpoint_dns,
+    ecs_cluster_arn=chroma_service.cluster.arn,
+    ecs_service_arn=chroma_service.svc.arn,
+    nat_instance_id=nat.nat_instance_id,
+    base_image_ref=base_images.label_base_image.tags[0],
+    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
+)
 # ML Training Infrastructure
 # -------------------------
 

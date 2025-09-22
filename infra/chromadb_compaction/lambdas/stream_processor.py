@@ -145,12 +145,18 @@ class FieldChange:
 if OBSERVABILITY_AVAILABLE:
     logger = get_operation_logger(__name__)
 else:
-    # Import logging utilities directly for fallback
-    from utils.logging import (
-        get_operation_logger as fallback_get_operation_logger,
-    )
-
-    logger = fallback_get_operation_logger(__name__)
+    # Pure stdlib fallback logger (avoid any utils dependency)
+    logger = logging.getLogger(__name__)
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(
+            logging.Formatter(
+                "[%(levelname)s] %(asctime)s.%(msecs)03dZ %(name)s - %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+        )
+        logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
 
 
 @trace_function(operation_name="stream_processor")

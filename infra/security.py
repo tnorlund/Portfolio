@@ -75,6 +75,37 @@ class ChromaSecurity(pulumi.ComponentResource):
             opts=pulumi.ResourceOptions(parent=self),
         )
 
+        # Security Group for VPC Interface Endpoints (e.g., CloudWatch Logs)
+        # Allows inbound TLS from Lambda and Chroma task SGs
+        self.sg_vpce = aws.ec2.SecurityGroup(
+            f"{name}-sg-vpce",
+            vpc_id=vpc_id,
+            description="Interface endpoint SG: allow 443 from Lambda and Chroma",
+            ingress=[
+                aws.ec2.SecurityGroupIngressArgs(
+                    protocol="tcp",
+                    from_port=443,
+                    to_port=443,
+                    description="Allow HTTPS from Lambda SG",
+                    security_groups=[self.sg_lambda.id],
+                ),
+                aws.ec2.SecurityGroupIngressArgs(
+                    protocol="tcp",
+                    from_port=443,
+                    to_port=443,
+                    description="Allow HTTPS from Chroma ECS SG",
+                    security_groups=[self.sg_chroma.id],
+                ),
+            ],
+            egress=[],
+            tags={
+                "Name": f"{name}-sg-vpce",
+                "Environment": pulumi.get_stack(),
+                "ManagedBy": "Pulumi",
+            },
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+
         # IAM Roles
         self.ecs_task_role = aws.iam.Role(
             f"{name}-ecs-task-role",
@@ -181,11 +212,13 @@ class ChromaSecurity(pulumi.ComponentResource):
         self.ecs_task_execution_role_name = self.ecs_task_execution_role.name
         self.lambda_role_name = self.lambda_execution_role.name
         self.step_functions_role_name = self.step_functions_role.name
+        self.sg_vpce_id = self.sg_vpce.id
 
         self.register_outputs(
             {
                 "sg_lambda_id": self.sg_lambda_id,
                 "sg_chroma_id": self.sg_chroma_id,
+                "sg_vpce_id": self.sg_vpce_id,
                 "ecs_task_role_arn": self.ecs_task_role_arn,
                 "ecs_task_execution_role_arn": self.ecs_task_execution_role_arn,
                 "ecs_task_role_name": self.ecs_task_role_name,
