@@ -105,9 +105,33 @@ class NatEgress(pulumi.ComponentResource):
             vpc_security_group_ids=[self.nat_sg.id],
             associate_public_ip_address=True,
             source_dest_check=False,
+            user_data_replace_on_change=True,
             user_data="""#!/bin/bash
+set -euxo pipefail
+
+# Enable IPv4 forwarding now and persist across reboots
+if ! grep -q '^net.ipv4.ip_forward' /etc/sysctl.conf; then
+  echo 'net.ipv4.ip_forward = 1' >> /etc/sysctl.conf
+fi
 sysctl -w net.ipv4.ip_forward=1
-iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+
+# Determine egress interface (default to eth0)
+IFACE=$(ip route show default | awk '/default/ {print $5}' || echo eth0)
+
+# Ensure iptables is available and rules persist
+if command -v yum >/dev/null 2>&1; then
+  yum install -y -q iptables-services || true
+fi
+
+# Configure NAT (idempotent)
+iptables -t nat -C POSTROUTING -o "$IFACE" -j MASQUERADE || iptables -t nat -A POSTROUTING -o "$IFACE" -j MASQUERADE
+iptables -C FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT || iptables -A FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT
+iptables -C FORWARD -j ACCEPT || iptables -A FORWARD -j ACCEPT
+
+# Persist iptables rules (best-effort across distros)
+(command -v service >/dev/null 2>&1 && service iptables save) || iptables-save > /etc/sysconfig/iptables || true
+# Ensure iptables service enabled on boot if available
+(command -v systemctl >/dev/null 2>&1 && systemctl enable --now iptables) || true
 """,
             opts=ResourceOptions(parent=self),
         )

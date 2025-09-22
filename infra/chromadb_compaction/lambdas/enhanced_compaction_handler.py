@@ -2448,9 +2448,11 @@ def process_compaction_runs(
         shutil.rmtree(temp_root, ignore_errors=True)
         shutil.rmtree(snapshot_dir, ignore_errors=True)
 
+    # Include run_id of the last processed message for easier log correlation.
     logger.info(
         "Completed COMPACTION_RUN processing",
         collection=collection.value,
         merged_total=merged_total,
+        run_id=run_id,
     )
     return merged_total
