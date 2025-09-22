@@ -85,6 +85,16 @@ def _download_and_verify(
     client = ChromaDBClient(
         persist_directory=local_path, mode="read", metadata_only=True
     )
+    # List available collections in this snapshot (helps debug naming)
+    available_collections: list[str] = []
+    if client.client is not None:
+        try:
+            available_collections = [
+                c.name for c in client.client.list_collections()
+            ]
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            # Best-effort only; ignore errors here
+            available_collections = []
     coll = client.get_collection(collection)
     # Prefer count() if available; otherwise infer via a small page
     count = None
@@ -97,14 +107,26 @@ def _download_and_verify(
     # Optionally count just this receipt
     receipt_count = None
     if image_id and receipt_id is not None:
-        where = {
+        # Try string match first (some snapshots store receipt_id as string)
+        where_str = {
             "$and": [
                 {"image_id": {"$eq": image_id}},
                 {"receipt_id": {"$eq": str(receipt_id)}},
             ]
         }
-        filtered = coll.get(where=where, limit=100000)
+        filtered = coll.get(where=where_str, limit=100000)
         receipt_count = len(filtered.get("ids", []))
+
+        # Fallback: try numeric match (some snapshots store receipt_id as number)
+        if receipt_count == 0:
+            where_int = {
+                "$and": [
+                    {"image_id": {"$eq": image_id}},
+                    {"receipt_id": {"$eq": receipt_id}},
+                ]
+            }
+            filtered_int = coll.get(where=where_int, limit=100000)
+            receipt_count = len(filtered_int.get("ids", []))
 
     return {
         "collection": collection,
@@ -113,6 +135,7 @@ def _download_and_verify(
         "path": local_path,
         "count": count,
         "receipt_count": receipt_count,
+        "available_collections": available_collections,
     }
 
 
@@ -188,6 +211,9 @@ def main() -> int:
                 f"OK {r['collection']}: version={r.get('version')} count~{r.get('count')}"
                 f" path={r.get('path')}"
             )
+            ac = r.get("available_collections") or []
+            if ac:
+                base_line += f" collections={ac}"
             if r.get("receipt_count") is not None:
                 base_line += f" receipt_count={r.get('receipt_count')}"
             print(base_line)
