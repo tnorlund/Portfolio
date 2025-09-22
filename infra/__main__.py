@@ -60,8 +60,8 @@ from base_images.base_images import BaseImages
 
 # Import other necessary components
 try:
-    # import lambda_layer  # noqa: F401
-    import fast_lambda_layer  # noqa: F401
+    import lambda_layer  # noqa: F401
+    # import fast_lambda_layer  # noqa: F401
     from lambda_functions.label_count_cache_updater.infra import (  # noqa: F401
         label_count_cache_updater_lambda,
     )
