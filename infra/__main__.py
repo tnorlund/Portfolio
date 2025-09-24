@@ -160,17 +160,11 @@ embedding_infrastructure = EmbeddingInfrastructure(
 validation_by_merchant_step_functions = ValidationByMerchantStepFunction(
     "validation-by-merchant"
 )
-upload_images = UploadImages(
-    "upload-images", raw_bucket=raw_bucket, site_bucket=site_bucket
-)
 
 # Create the enhanced receipt processor with error handling
 enhanced_receipt_processor = create_enhanced_receipt_processor(
     notification_system
 )
-
-pulumi.export("ocr_job_queue_url", upload_images.ocr_queue.url)
-pulumi.export("ocr_results_queue_url", upload_images.ocr_results_queue.url)
 
 # Export notification topics
 pulumi.export(
@@ -293,6 +287,24 @@ validate_merchant_step_functions = ValidateMerchantStepFunctions(
     base_image_ref=base_images.label_base_image.tags[0],
     chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
 )
+
+# Wire upload-images after NAT and Chroma are available so it can reach OpenAI and Chroma
+upload_images = UploadImages(
+    "upload-images",
+    raw_bucket=raw_bucket,
+    site_bucket=site_bucket,
+    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
+    vpc_subnet_ids=nat.private_subnet_ids,
+    security_group_id=security.sg_lambda_id,
+    chroma_http_endpoint=chroma_service.endpoint_dns,
+    ecs_cluster_arn=chroma_service.cluster.arn,
+    ecs_service_arn=chroma_service.svc.arn,
+    nat_instance_id=nat.nat_instance_id,
+    base_image_ref=base_images.label_base_image.tags[0],
+)
+
+pulumi.export("ocr_job_queue_url", upload_images.ocr_queue.url)
+pulumi.export("ocr_results_queue_url", upload_images.ocr_results_queue.url)
 # ML Training Infrastructure
 # -------------------------
 
