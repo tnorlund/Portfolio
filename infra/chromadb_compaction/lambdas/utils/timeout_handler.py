@@ -28,6 +28,8 @@ class TimeoutProtection:
         self._heartbeat_thread = None
         self._should_stop_heartbeat = threading.Event()
         self.shutdown_callbacks = []
+        # Track whether real Lambda context was provided
+        self._has_context = False
 
     def _get_lambda_timeout(self) -> int:
         """Get Lambda timeout from context or environment."""
@@ -58,15 +60,17 @@ class TimeoutProtection:
             self.lambda_timeout = int(
                 context.get_remaining_time_in_millis() / 1000
             )
+            self._has_context = True
 
     def get_remaining_time(self) -> float:
         """Get remaining execution time in seconds."""
         elapsed = time.time() - self.start_time
+        # If no real context, return a generous default (prevents false timeouts)
+        if not self._has_context:
+            return float(os.environ.get("DEFAULT_REMAINING_SECONDS", "300"))
         remaining = self.lambda_timeout - elapsed
-        # Guard: if remaining is <= 0 due to missing context or resume, treat as unknown
-        # and return a small positive buffer to avoid false timeout for short ops.
         if remaining <= 0:
-            return 1.0
+            return 0.0
         return remaining
 
     def get_elapsed_time(self) -> float:
@@ -81,6 +85,9 @@ class TimeoutProtection:
 
     def should_abort(self) -> bool:
         """Check if execution should abort to prevent timeout."""
+        # Never abort based on synthetic timing when no real context is present
+        if not self._has_context:
+            return False
         remaining = self.get_remaining_time()
         abort_time = self.lambda_timeout * (1 - self.abort_threshold)
         return remaining <= abort_time
@@ -192,9 +199,12 @@ class TimeoutProtection:
         effective_max = max_duration if max_duration else None
         if effective_max is None:
             # Use remaining minus a small safety margin when context is present
-            # If remaining_time is our fallback (1.0), keep it small but nonzero
-            safety_margin = 0.05
-            effective_max = max(remaining_time - safety_margin, 0.5)
+            safety_margin = 2.0  # seconds
+            effective_max = (
+                max(remaining_time - safety_margin, 0.5)
+                if self._has_context
+                else remaining_time  # use generous default when no context
+            )
 
         self.logger.info(
             f"Starting operation with timeout protection: {operation_name}",
@@ -217,10 +227,10 @@ class TimeoutProtection:
                     max_duration=effective_max,
                 )
 
+            # Only warn (do not fail) if close to Lambda timeout at the end
             if check_lambda_timeout and self.should_abort():
-                timeout_exceeded = True
-                self.logger.error(
-                    f"Operation exceeded Lambda timeout threshold: {operation_name}",
+                self.logger.warning(
+                    f"Operation near Lambda timeout threshold at completion: {operation_name}",
                     duration=duration,
                     remaining_lambda_time=self.get_remaining_time(),
                 )
