@@ -883,10 +883,22 @@ def _send_batch_to_queue(
 
         entries = []
         for j, (message_dict, _) in enumerate(batch):
+            entity_type = message_dict.get("entity_type", "UNKNOWN")
+            entity_data = message_dict.get("entity_data", {})
+            # Prefer run_id for compaction runs; fall back to receipt_id, then image_id
+            group_key = (
+                entity_data.get("run_id")
+                or entity_data.get("receipt_id")
+                or entity_data.get("image_id")
+                or "default"
+            )
+            message_group_id = f"{entity_type}:{group_key}:{collection.value}"
+
             entries.append(
                 {
                     "Id": str(i + j),
                     "MessageBody": json.dumps(message_dict),
+                    "MessageGroupId": message_group_id,
                     "MessageAttributes": {
                         "source": {
                             "StringValue": "dynamodb_stream",
