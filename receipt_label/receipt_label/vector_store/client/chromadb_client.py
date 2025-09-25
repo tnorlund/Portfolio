@@ -37,10 +37,13 @@ try:
     from chromadb.config import Settings
     from chromadb.utils import embedding_functions
     from chromadb.errors import NotFoundError
+
     CHROMADB_AVAILABLE = True
 except (ImportError, StopIteration) as e:
     # ChromaDB not available or telemetry initialization failed (common in Lambda)
-    logger.warning("ChromaDB import failed: %s. ChromaDB features will be disabled.", e)
+    logger.warning(
+        "ChromaDB import failed: %s. ChromaDB features will be disabled.", e
+    )
     if not TYPE_CHECKING:
         chromadb = None
         Collection = None
@@ -53,10 +56,10 @@ except (ImportError, StopIteration) as e:
 class ChromaDBClient(VectorStoreInterface):
     """
     ChromaDB implementation of the vector store interface.
-    
+
     This class consolidates functionality from multiple old ChromaDB files
     and provides a clean, consistent interface for vector operations.
-    
+
     Supports multiple operation modes:
     - "read": Read-only operations (no embedding function needed)
     - "write": Full read-write operations with embedding support
@@ -70,6 +73,7 @@ class ChromaDBClient(VectorStoreInterface):
         mode: str = "read",
         embedding_function: Optional[Any] = None,
         metadata_only: bool = False,
+        http_url: Optional[str] = None,
     ):
         """
         Initialize the ChromaDB client.
@@ -91,6 +95,7 @@ class ChromaDBClient(VectorStoreInterface):
         self.use_persistent_client = persist_directory is not None
         self._client: Optional[Any] = None
         self._collections: Dict[str, Any] = {}
+        self._http_url: Optional[str] = (http_url or "").strip() or None
 
         # Configure embedding function based on mode and settings
         if embedding_function:
@@ -101,20 +106,24 @@ class ChromaDBClient(VectorStoreInterface):
         elif metadata_only:
             # For metadata-only operations, use default embedding function
             if embedding_functions:
-                self._embedding_function = embedding_functions.DefaultEmbeddingFunction()
+                self._embedding_function = (
+                    embedding_functions.DefaultEmbeddingFunction()
+                )
             else:
                 self._embedding_function = None
         else:
             # Use OpenAI for write operations by default
             if embedding_functions:
                 api_key = (
-                    os.environ.get("OPENAI_API_KEY") 
-                    or os.environ.get("CHROMA_OPENAI_API_KEY") 
+                    os.environ.get("OPENAI_API_KEY")
+                    or os.environ.get("CHROMA_OPENAI_API_KEY")
                     or "placeholder"
                 )
-                self._embedding_function = embedding_functions.OpenAIEmbeddingFunction(
-                    api_key=api_key,
-                    model_name="text-embedding-3-small",
+                self._embedding_function = (
+                    embedding_functions.OpenAIEmbeddingFunction(
+                        api_key=api_key,
+                        model_name="text-embedding-3-small",
+                    )
                 )
             else:
                 self._embedding_function = None
@@ -123,7 +132,30 @@ class ChromaDBClient(VectorStoreInterface):
     def client(self) -> Any:
         """Get or create ChromaDB client."""
         if self._client is None:
-            if self.use_persistent_client and self.persist_directory:
+            # Prefer remote HTTP client when http_url is provided
+            if self._http_url:
+                # Parse host and optional port from a url or host:port
+                host = self._http_url
+                port: Optional[int] = None
+                if "://" in host:
+                    host = host.split("://", 1)[1]
+                if ":" in host:
+                    host, port_str = host.rsplit(":", 1)
+                    try:
+                        port = int(port_str)
+                    except Exception:
+                        port = None
+
+                http_kwargs: Dict[str, Any] = {"host": host}
+                if port is not None:
+                    http_kwargs["port"] = port
+
+                self._client = chromadb.HttpClient(**http_kwargs)  # type: ignore
+                logger.debug(
+                    "Created HTTP ChromaDB client for %s", self._http_url
+                )
+
+            elif self.use_persistent_client and self.persist_directory:
                 # Ensure directory exists
                 Path(self.persist_directory).mkdir(parents=True, exist_ok=True)
 
@@ -135,7 +167,10 @@ class ChromaDBClient(VectorStoreInterface):
                 self._client = chromadb.PersistentClient(
                     path=self.persist_directory, settings=settings
                 )
-                logger.debug("Created persistent ChromaDB client at: %s", self.persist_directory)
+                logger.debug(
+                    "Created persistent ChromaDB client at: %s",
+                    self.persist_directory,
+                )
             else:
                 # In-memory client for testing
                 self._client = chromadb.Client(
@@ -145,10 +180,10 @@ class ChromaDBClient(VectorStoreInterface):
         return self._client
 
     def get_collection(
-        self, 
-        name: str, 
+        self,
+        name: str,
         create_if_missing: bool = False,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> Any:
         """Get or create a ChromaDB collection."""
         logger.debug("Getting/creating collection: '%s'", name)
@@ -158,30 +193,47 @@ class ChromaDBClient(VectorStoreInterface):
                 # Try to get existing collection
                 if self.mode == "read":
                     # For read mode, don't specify embedding function
-                    self._collections[name] = self.client.get_collection(name=name)
+                    self._collections[name] = self.client.get_collection(
+                        name=name
+                    )
                 else:
                     # For write modes, include embedding function if available
                     get_args = {"name": name}
                     if self._embedding_function:
-                        get_args["embedding_function"] = self._embedding_function
-                    self._collections[name] = self.client.get_collection(**get_args)
-                
-                logger.debug("Successfully retrieved existing collection: %s", name)
-                
+                        get_args["embedding_function"] = (
+                            self._embedding_function
+                        )
+                    self._collections[name] = self.client.get_collection(
+                        **get_args
+                    )
+
+                logger.debug(
+                    "Successfully retrieved existing collection: %s", name
+                )
+
             except (NotFoundError, ValueError, Exception) as e:
                 if create_if_missing and self.mode != "read":
                     # Create new collection
                     create_args = {
                         "name": name,
-                        "metadata": metadata or {"description": f"Collection: {name}"},
+                        "metadata": metadata
+                        or {"description": f"Collection: {name}"},
                     }
                     if self._embedding_function:
-                        create_args["embedding_function"] = self._embedding_function
-                        
-                    self._collections[name] = self.client.create_collection(**create_args)
-                    logger.info("Successfully created new collection: %s", name)
+                        create_args["embedding_function"] = (
+                            self._embedding_function
+                        )
+
+                    self._collections[name] = self.client.create_collection(
+                        **create_args
+                    )
+                    logger.info(
+                        "Successfully created new collection: %s", name
+                    )
                 else:
-                    raise ValueError(f"Collection '{name}' not found and create_if_missing=False. Error: {e}")
+                    raise ValueError(
+                        f"Collection '{name}' not found and create_if_missing=False. Error: {e}"
+                    )
 
         return self._collections[name]
 
@@ -200,7 +252,9 @@ class ChromaDBClient(VectorStoreInterface):
     ) -> None:
         """Upsert vectors into a collection."""
         self._assert_writeable()
-        collection = self.get_collection(collection_name, create_if_missing=True)
+        collection = self.get_collection(
+            collection_name, create_if_missing=True
+        )
 
         # ChromaDB upsert with duplicate-safe handling
         try:
@@ -213,7 +267,7 @@ class ChromaDBClient(VectorStoreInterface):
                 upsert_args["metadatas"] = metadatas
 
             collection.upsert(**upsert_args)
-            
+
         except ValueError as e:
             if "ids already exist" in str(e):
                 # Handle duplicate IDs by deleting and retrying
@@ -234,24 +288,34 @@ class ChromaDBClient(VectorStoreInterface):
         include: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Query vectors from a collection."""
+        # Ensure client is initialized; if HTTP URL is configured but the SDK
+        # is unavailable, gracefully return an empty result to mirror legacy behavior.
+        _ = self.client
+        if self._client is None and self._http_url:
+            return {"metadatas": [[]], "documents": [[]], "distances": [[]]}
+
         collection = self.get_collection(collection_name)
 
         if include is None:
             include = ["metadatas", "documents", "distances"]
 
         query_args = {"n_results": n_results, "include": include}
-        
+
         if where:
             query_args["where"] = where
-            
+
         if query_embeddings is not None:
             query_args["query_embeddings"] = query_embeddings
         elif query_texts is not None:
             if self.mode == "read":
-                raise ValueError("Text queries require write mode with embedding function")
+                raise ValueError(
+                    "Text queries require write mode with embedding function"
+                )
             query_args["query_texts"] = query_texts
         else:
-            raise ValueError("Either query_embeddings or query_texts must be provided")
+            raise ValueError(
+                "Either query_embeddings or query_texts must be provided"
+            )
 
         return collection.query(**query_args)
 
@@ -281,7 +345,9 @@ class ChromaDBClient(VectorStoreInterface):
 
         if ids is not None:
             collection.delete(ids=ids)
-            logger.debug("Deleted %d items from %s by IDs", len(ids), collection_name)
+            logger.debug(
+                "Deleted %d items from %s by IDs", len(ids), collection_name
+            )
         elif where is not None:
             collection.delete(where=where)
             logger.debug("Deleted items from %s by filter", collection_name)
@@ -311,7 +377,7 @@ class ChromaDBClient(VectorStoreInterface):
             logger.debug("Reset ChromaDB client")
 
     # Additional ChromaDB-specific methods for backward compatibility
-    
+
     def persist_and_upload_delta(
         self,
         bucket: str,
@@ -320,15 +386,15 @@ class ChromaDBClient(VectorStoreInterface):
     ) -> str:
         """
         Flush the local DB to disk, upload to S3, and return the key prefix.
-        
+
         This method is used by producer lambdas to create delta files that
         will be processed by the compactor.
-        
+
         Args:
             bucket: S3 bucket name
             s3_prefix: S3 prefix for delta files
             s3_client: Optional boto3 S3 client (creates one if not provided)
-            
+
         Returns:
             S3 prefix where the delta was uploaded
         """
@@ -345,9 +411,9 @@ class ChromaDBClient(VectorStoreInterface):
 
         # Force ChromaDB to persist data to disk
         logger.info("Persisting ChromaDB data to %s", self.persist_directory)
-        
+
         # Try to explicitly persist if the method exists
-        if hasattr(self._client, 'persist'):
+        if hasattr(self._client, "persist"):
             try:
                 self._client.persist()
                 logger.info("Explicitly called client.persist()")
@@ -360,8 +426,13 @@ class ChromaDBClient(VectorStoreInterface):
         files_to_upload = [f for f in files_to_upload if f.is_file()]
 
         if not files_to_upload:
-            logger.error("No files found in persist directory: %s", self.persist_directory)
-            raise RuntimeError(f"No ChromaDB files found to upload in {self.persist_directory}")
+            logger.error(
+                "No files found in persist directory: %s",
+                self.persist_directory,
+            )
+            raise RuntimeError(
+                f"No ChromaDB files found to upload in {self.persist_directory}"
+            )
 
         logger.info("Found %d files to upload to S3", len(files_to_upload))
 
@@ -375,12 +446,18 @@ class ChromaDBClient(VectorStoreInterface):
             try:
                 relative_path = file_path.relative_to(persist_path)
                 s3_key = f"{prefix}{relative_path}"
-                logger.debug("Uploading %s to s3://%s/%s", file_path, bucket, s3_key)
+                logger.debug(
+                    "Uploading %s to s3://%s/%s", file_path, bucket, s3_key
+                )
                 s3_client.upload_file(str(file_path), bucket, s3_key)
                 uploaded_count += 1
             except Exception as e:
                 logger.error("Failed to upload %s to S3: %s", file_path, e)
                 raise RuntimeError(f"S3 upload failed for {file_path}: {e}")
 
-        logger.info("Successfully uploaded %d files to S3 at %s", uploaded_count, prefix)
+        logger.info(
+            "Successfully uploaded %d files to S3 at %s",
+            uploaded_count,
+            prefix,
+        )
         return prefix
