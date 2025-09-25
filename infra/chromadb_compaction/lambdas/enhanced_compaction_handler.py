@@ -2397,10 +2397,10 @@ def merge_chroma_delta_into_snapshot(
     delta_dir: str, collection_name: str, snapshot_dir: str
 ) -> int:
     delta_client = ChromaDBClient(
-        persist_directory=delta_dir, mode="read", metadata_only=False
+        persist_directory=delta_dir, mode="read", metadata_only=True
     )
     snapshot_client = ChromaDBClient(
-        persist_directory=snapshot_dir, mode="write", metadata_only=False
+        persist_directory=snapshot_dir, mode="write", metadata_only=True
     )
 
     delta_collection = delta_client.get_collection(collection_name)
