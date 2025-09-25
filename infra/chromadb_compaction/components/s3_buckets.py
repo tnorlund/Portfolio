@@ -154,6 +154,17 @@ class ChromaDBBuckets(ComponentResource):
                         days=1,
                     ),
                 ),
+                # Permanently delete noncurrent object versions after 1 day
+                aws.s3.BucketLifecycleConfigurationRuleArgs(
+                    id="expire-noncurrent-versions",
+                    status="Enabled",
+                    filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(
+                        prefix="",
+                    ),
+                    noncurrent_version_expiration=aws.s3.BucketLifecycleConfigurationRuleNoncurrentVersionExpirationArgs(
+                        noncurrent_days=1,
+                    ),
+                ),
             ],
             opts=ResourceOptions(parent=self),
         )
