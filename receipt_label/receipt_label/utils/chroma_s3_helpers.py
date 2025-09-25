@@ -11,11 +11,17 @@ import logging
 import tempfile
 import time
 import uuid
-from datetime import datetime
 from pathlib import Path
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
+import tarfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import shutil
+
 
 import boto3
+from boto3.s3.transfer import TransferConfig
+from botocore.exceptions import ClientError
 
 from openai import OpenAI
 
@@ -236,8 +242,6 @@ def produce_embedding_delta(
     finally:
         # Cleanup temp directory if we created it
         if cleanup_temp and os.path.exists(temp_dir):
-            import shutil
-
             shutil.rmtree(temp_dir, ignore_errors=True)
 
 
@@ -373,8 +377,6 @@ def download_snapshot_locally(
         bucket_name = os.environ["VECTORS_BUCKET"]
 
     try:
-
-        import boto3
 
         s3 = boto3.client("s3")
 
@@ -573,6 +575,7 @@ def upload_delta_to_s3(
     delta_key: str,
     metadata: Optional[Dict[str, Any]] = None,
     region: Optional[str] = None,
+    max_workers: int = 8,
 ) -> Dict[str, Any]:
     """
     Upload a ChromaDB delta directory to S3.
@@ -594,8 +597,6 @@ def upload_delta_to_s3(
         delta_key,
     )
     try:
-        import boto3
-        from pathlib import Path
 
         # Create S3 client
         client_kwargs = {"service_name": "s3"}
@@ -616,43 +617,128 @@ def upload_delta_to_s3(
                 "error": f"Delta path does not exist: {local_delta_path}",
             }
 
-        file_count = 0
-        total_size = 0
+        # Collect files first to enable parallel transfer
+        files: List[Path] = [p for p in delta_path.rglob("*") if p.is_file()]
+        total_size = sum(p.stat().st_size for p in files)
 
-        # Upload all files in the delta directory
-        for file_path in delta_path.rglob("*"):
-            if file_path.is_file():
-                # Calculate relative path from delta directory
-                relative_path = file_path.relative_to(delta_path)
-                s3_key = f"{delta_key.rstrip('/')}/{relative_path}"
+        # Tune multipart threshold low to better parallelize medium files; adjust as needed
+        transfer_config = TransferConfig(
+            multipart_threshold=8 * 1024 * 1024,  # 8MB
+            max_concurrency=max(4, max_workers),
+            multipart_chunksize=8 * 1024 * 1024,
+            use_threads=True,
+        )
 
-                # Prepare S3 metadata
-                s3_metadata = {"delta_key": delta_key}
-                if metadata:
-                    s3_metadata.update(
-                        {k: str(v) for k, v in metadata.items()}
-                    )
+        def _upload_one(file_path: Path) -> str:
+            relative_path = file_path.relative_to(delta_path)
+            s3_key = f"{delta_key.rstrip('/')}/{relative_path}"
+            s3_metadata = {"delta_key": delta_key}
+            if metadata:
+                s3_metadata.update({k: str(v) for k, v in metadata.items()})
+            s3.upload_file(
+                str(file_path),
+                bucket,
+                s3_key,
+                ExtraArgs={"Metadata": s3_metadata},
+                Config=transfer_config,
+            )
+            return s3_key
 
-                # Upload file
-                s3.upload_file(
-                    str(file_path),
-                    bucket,
-                    s3_key,
-                    ExtraArgs={"Metadata": s3_metadata},
-                )
-
-                file_count += 1
-                total_size += file_path.stat().st_size
+        start = time.time()
+        completed = 0
+        if files:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = [executor.submit(_upload_one, f) for f in files]
+                for _ in as_completed(futures):
+                    completed += 1
+                    # Optional: could log progress every N files
+        duration_ms = int((time.time() - start) * 1000)
+        logger.info(
+            "Parallel S3 upload complete: files=%d size_bytes=%d duration_ms=%d workers=%d",
+            completed,
+            total_size,
+            duration_ms,
+            max_workers,
+        )
 
         return {
             "status": "uploaded",
             "delta_key": delta_key,
-            "file_count": file_count,
+            "file_count": completed,
             "total_size_bytes": total_size,
         }
 
     except Exception as e:
         logger.error("Error uploading delta to S3: %s", e)
+        return {"status": "failed", "error": str(e)}
+
+
+def bundle_directory_to_tar_gz(src_dir: str, out_tar_path: str) -> int:
+    """Create a gzip-compressed tarball from a directory. Returns size in bytes."""
+    src = Path(src_dir)
+    if not src.exists() or not src.is_dir():
+        raise ValueError(
+            f"Source directory does not exist or is not a dir: {src_dir}"
+        )
+    with tarfile.open(out_tar_path, "w:gz") as tar:
+        tar.add(src_dir, arcname=".")
+    return os.path.getsize(out_tar_path)
+
+
+def upload_bundled_delta_to_s3(
+    local_delta_dir: str,
+    bucket: str,
+    delta_prefix: str,
+    metadata: Optional[Dict[str, Any]] = None,
+    region: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Tar/gzip a delta directory and upload as a single object delta.tar.gz under delta_prefix."""
+    logger.info(
+        "Bundling and uploading delta tarball: dir=%s bucket=%s prefix=%s",
+        local_delta_dir,
+        bucket,
+        delta_prefix,
+    )
+    try:
+        client_kwargs = {"service_name": "s3"}
+        if region:
+            client_kwargs["region_name"] = region
+        s3 = boto3.client(**client_kwargs)
+
+        # Create tar.gz in temp
+        tmp_dir = tempfile.mkdtemp()
+        tar_path = os.path.join(tmp_dir, "delta.tar.gz")
+        size_bytes = bundle_directory_to_tar_gz(local_delta_dir, tar_path)
+
+        s3_key = f"{delta_prefix.rstrip('/')}/delta.tar.gz"
+
+        # Prepare metadata
+        s3_metadata = {"delta_key": delta_prefix}
+        if metadata:
+            s3_metadata.update({k: str(v) for k, v in metadata.items()})
+
+        extra_args = {
+            "Metadata": s3_metadata,
+            "ContentType": "application/gzip",
+            "ContentEncoding": "gzip",
+        }
+
+        s3.upload_file(tar_path, bucket, s3_key, ExtraArgs=extra_args)
+
+        # Cleanup temp
+        try:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+        except Exception:  # noqa: BLE001
+            pass
+
+        return {
+            "status": "uploaded",
+            "delta_key": delta_prefix,
+            "object_key": s3_key,
+            "tar_size_bytes": size_bytes,
+        }
+    except Exception as e:  # noqa: BLE001
+        logger.error("Error uploading bundled delta to S3: %s", e)
         return {"status": "failed", "error": str(e)}
 
 
@@ -683,8 +769,6 @@ def download_snapshot_from_s3(
         local_snapshot_path,
     )
     try:
-        import boto3
-        from pathlib import Path
 
         # Create S3 client
         client_kwargs = {"service_name": "s3"}
@@ -771,7 +855,6 @@ def clear_s3_directory(
     )
 
     try:
-        import boto3
 
         # Create S3 client
         client_kwargs = {"service_name": "s3"}
@@ -867,8 +950,6 @@ def upload_snapshot_with_hash(
         calculate_hash = False
 
     try:
-        import boto3
-        from pathlib import Path
 
         # Create S3 client
         client_kwargs = {"service_name": "s3"}
@@ -1091,7 +1172,6 @@ def download_snapshot_with_verification(
         return result
 
     try:
-        import boto3
 
         # Create S3 client
         client_kwargs = {"service_name": "s3"}
@@ -1240,7 +1320,6 @@ def verify_chromadb_sync(
         }
 
     try:
-        import boto3
 
         # Create S3 client
         client_kwargs = {"service_name": "s3"}
@@ -1314,7 +1393,6 @@ def verify_chromadb_sync(
             if download_for_comparison:
                 logger.info("Downloading S3 snapshot for comparison...")
                 # Download snapshot to temporary directory
-                import tempfile
 
                 temp_dir = tempfile.mkdtemp()
 
@@ -1342,7 +1420,6 @@ def verify_chromadb_sync(
                         }
                 finally:
                     # Clean up temp directory
-                    import shutil
 
                     shutil.rmtree(temp_dir, ignore_errors=True)
             else:
@@ -1422,9 +1499,6 @@ def upload_snapshot_atomic(
     Returns:
         Dict with status, version_id, versioned_key, and pointer_key
     """
-    import boto3
-    from datetime import datetime, timezone
-
     s3_client = boto3.client("s3")
 
     try:
@@ -1587,8 +1661,6 @@ def download_snapshot_atomic(
     Returns:
         Dict with status, version_id, and download information
     """
-    import boto3
-    from botocore.exceptions import ClientError
 
     s3_client = boto3.client("s3")
     pointer_key = f"{collection}/snapshot/latest-pointer.txt"
