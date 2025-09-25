@@ -99,16 +99,6 @@ pulumi.export("step_functions_role_arn", security.step_functions_role_arn)
 
 # Task 3 snapshot bucket not used; shared_chromadb_buckets provides storage
 
-# Task 2: Security (depends on VPC)
-security = ChromaSecurity("chroma", vpc_id=public_vpc.vpc_id)
-pulumi.export("sg_lambda_id", security.sg_lambda_id)
-pulumi.export("sg_chroma_id", security.sg_chroma_id)
-pulumi.export("ecs_task_role_arn", security.ecs_task_role_arn)
-pulumi.export("lambda_role_arn", security.lambda_role_arn)
-pulumi.export("step_functions_role_arn", security.step_functions_role_arn)
-
-# Task 3 snapshot bucket not used; shared_chromadb_buckets provides storage
-
 # --- Removed Config reading for VPC resources ---
 
 pulumi.export("region", aws.config.region)
@@ -256,6 +246,7 @@ logs_interface_endpoint = aws.ec2.VpcEndpoint(
     security_group_ids=[security.sg_vpce_id],
     private_dns_enabled=True,
 )
+
 # Recreate workers to use NAT private subnets for egress
 workers_nat = ChromaWorkers(
     name=f"chroma-workers-nat-{pulumi.get_stack()}",
@@ -313,6 +304,7 @@ upload_images = UploadImages(
 
 pulumi.export("ocr_job_queue_url", upload_images.ocr_queue.url)
 pulumi.export("ocr_results_queue_url", upload_images.ocr_results_queue.url)
+
 # ML Training Infrastructure
 # -------------------------
 
