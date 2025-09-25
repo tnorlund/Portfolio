@@ -373,19 +373,6 @@ def update_line_embedding_status_to_success(
                 client_manager.dynamo.update_receipt_lines(lines)
 
 
-def mark_batch_complete(batch_id: str, client_manager: ClientManager = None):
-    """
-    Mark the line embedding batch as complete in the system.
-    Args:
-        batch_id (str): The identifier of the batch.
-    """
-    if client_manager is None:
-        client_manager = get_client_manager()
-    batch_summary = client_manager.dynamo.get_batch_summary(batch_id)
-    batch_summary.status = "COMPLETED"
-    client_manager.dynamo.update_batch_summary(batch_summary)
-
-
 def save_line_embeddings_as_delta(
     results: List[dict],
     descriptions: dict[str, dict[int, dict]],
