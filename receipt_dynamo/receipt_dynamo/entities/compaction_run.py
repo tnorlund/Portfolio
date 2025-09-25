@@ -268,6 +268,6 @@ def item_to_compaction_run(item: Dict[str, Any]) -> CompactionRun:
         words_error=_get_s("words_error"),
         lines_merged_vectors=_get_n("lines_merged_vectors", 0),
         words_merged_vectors=_get_n("words_merged_vectors", 0),
-        created_at=_get_s("created_at") or datetime.utcnow().isoformat(),
+        created_at=_get_s("created_at"),
         updated_at=_get_s("updated_at") or None,
     )
