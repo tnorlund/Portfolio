@@ -128,3 +128,12 @@ class ChromaDBCollection(str, Enum):
 
     LINES = "lines"
     WORDS = "words"
+
+
+class CompactionState(str, Enum):
+    """States for ChromaDB compaction runs/delta merges."""
+
+    PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
