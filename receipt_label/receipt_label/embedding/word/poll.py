@@ -32,6 +32,11 @@ from receipt_label.utils.client_manager import ClientManager
 from receipt_label.vector_store import produce_embedding_delta
 from receipt_label.merchant_validation.normalize import (
     normalize_phone,
+    normalize_address,
+    normalize_url,
+)
+from receipt_label.merchant_validation.normalize import (
+    normalize_phone,
     build_full_address_from_words,
     build_full_address_from_lines,
 )
@@ -490,31 +495,25 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
             "label_status": label_status,
         }
 
-        # Compute normalized receipt-level fields
-        normalized_phone_10 = ""
-        for w in words:
-            try:
-                ext = getattr(w, "extracted_data", None) or {}
-                if ext.get("type") == "phone":
-                    candidate = ext.get("value") or getattr(w, "text", "")
-                    ph = normalize_phone(candidate)
-                    if ph:
-                        normalized_phone_10 = ph
-                        break
-            except Exception:  # best-effort
-                continue
-
-        normalized_full_address = build_full_address_from_words(words)
-        if not normalized_full_address:
-            try:
-                normalized_full_address = build_full_address_from_lines(
-                    receipt_details["lines"]
-                )
-            except Exception:
-                normalized_full_address = ""
-
-        word_metadata["normalized_phone_10"] = normalized_phone_10
-        word_metadata["normalized_full_address"] = normalized_full_address
+        # Anchor-only enrichment based on this target word's extracted_data
+        try:
+            ext = getattr(target_word, "extracted_data", None) or {}
+            etype = str(ext.get("type", "")).lower() if ext else ""
+            val = ext.get("value") if ext else None
+            if etype == "phone":
+                ph = normalize_phone(val or text)
+                if ph:
+                    word_metadata["normalized_phone_10"] = ph
+            elif etype == "address":
+                addr = normalize_address(val or text)
+                if addr:
+                    word_metadata["normalized_full_address"] = addr
+            elif etype == "url":
+                url_norm = normalize_url(val or text)
+                if url_norm:
+                    word_metadata["normalized_url"] = url_norm
+        except Exception:
+            pass
 
         # Add optional fields
         if label_confidence is not None:
