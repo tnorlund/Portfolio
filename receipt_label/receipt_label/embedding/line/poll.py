@@ -38,6 +38,7 @@ from receipt_label.merchant_validation.normalize import (
     normalize_phone,
     build_full_address_from_words,
     build_full_address_from_lines,
+    normalize_url,
 )
 
 
@@ -372,19 +373,6 @@ def update_line_embedding_status_to_success(
                 client_manager.dynamo.update_receipt_lines(lines)
 
 
-def mark_batch_complete(batch_id: str, client_manager: ClientManager = None):
-    """
-    Mark the line embedding batch as complete in the system.
-    Args:
-        batch_id (str): The identifier of the batch.
-    """
-    if client_manager is None:
-        client_manager = get_client_manager()
-    batch_summary = client_manager.dynamo.get_batch_summary(batch_id)
-    batch_summary.status = "COMPLETED"
-    client_manager.dynamo.update_batch_summary(batch_summary)
-
-
 def save_line_embeddings_as_delta(
     results: List[dict],
     descriptions: dict[str, dict[int, dict]],
@@ -494,29 +482,38 @@ def save_line_embeddings_as_delta(
             "source": "openai_embedding_batch",
         }
 
-        # Compute normalized receipt-level fields
-        normalized_phone_10 = ""
-        for w in words:
-            try:
+        # Anchor-only enrichment for lines: attach fields only if this line has anchor words
+        try:
+            anchor_phone = ""
+            anchor_address = ""
+            anchor_url = ""
+            for w in line_words:
                 ext = getattr(w, "extracted_data", None) or {}
-                if ext.get("type") == "phone":
-                    candidate = ext.get("value") or getattr(w, "text", "")
-                    ph = normalize_phone(candidate)
+                etype = str(ext.get("type", "")).lower() if ext else ""
+                val = ext.get("value") if ext else None
+                if etype == "phone" and not anchor_phone:
+                    ph = normalize_phone(val or getattr(w, "text", ""))
                     if ph:
-                        normalized_phone_10 = ph
-                        break
-            except Exception:  # best-effort
-                continue
-
-        normalized_full_address = build_full_address_from_words(words)
-        if not normalized_full_address:
-            try:
-                normalized_full_address = build_full_address_from_lines(lines)
-            except Exception:
-                normalized_full_address = ""
-
-        line_metadata["normalized_phone_10"] = normalized_phone_10
-        line_metadata["normalized_full_address"] = normalized_full_address
+                        anchor_phone = ph
+                elif etype == "address" and not anchor_address:
+                    # Build from this single word; function will normalize
+                    addr = build_full_address_from_words([w])
+                    if addr:
+                        anchor_address = addr
+                elif etype == "url" and not anchor_url:
+                    u = normalize_url(val or getattr(w, "text", ""))
+                    if u:
+                        anchor_url = u
+                if anchor_phone and anchor_address and anchor_url:
+                    break
+            if anchor_phone:
+                line_metadata["normalized_phone_10"] = anchor_phone
+            if anchor_address:
+                line_metadata["normalized_full_address"] = anchor_address
+            if anchor_url:
+                line_metadata["normalized_url"] = anchor_url
+        except Exception:
+            pass
 
         # Add section label if available
         if hasattr(target_line, "section_label") and target_line.section_label:
