@@ -17,7 +17,9 @@ from receipt_dynamo.entities import (
     ReceiptWord,
     Word,
 )
-from receipt_label.utils.noise_detection import is_noise_text
+
+# from receipt_label.utils.noise_detection import is_noise_text
+from receipt_upload.utils import is_noise_text
 
 
 def process_ocr_dict_as_receipt(
