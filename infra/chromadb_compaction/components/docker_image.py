@@ -1,7 +1,6 @@
 """Docker image building component for ChromaDB compaction Lambda functions."""
 
 import json
-import os
 import hashlib
 import subprocess
 from pathlib import Path
@@ -14,7 +13,6 @@ from pulumi_aws.ecr import (
     RepositoryImageScanningConfigurationArgs,
     get_authorization_token_output,
     LifecyclePolicy,
-    RepositoryPolicy,
 )
 
 try:
@@ -125,6 +123,7 @@ class DockerImageComponent(ComponentResource):
 
         # Attach ECR lifecycle policy (retain N, expire untagged older than X)
         portfolio_config = pulumi.Config("portfolio")
+        import os
 
         max_images = portfolio_config.get_int("ecr-max-images") or int(
             os.environ.get("ECR_MAX_IMAGES", "10")
@@ -182,6 +181,7 @@ class DockerImageComponent(ComponentResource):
         )
 
         # Add ECR repository policy to allow Lambda to pull images
+        from pulumi_aws.ecr import RepositoryPolicy
 
         RepositoryPolicy(
             f"{name}-repo-policy",

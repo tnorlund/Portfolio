@@ -260,6 +260,8 @@ class StreamProcessorLambda(ComponentResource):
                 "Component": "StreamProcessor",
                 "Environment": stack,
                 "ManagedBy": "Pulumi",
+                # Required for layer updater to match this function
+                "environment": stack,
             },
             opts=ResourceOptions(
                 parent=self,

@@ -156,12 +156,21 @@ class HybridLambdaDeployment(ComponentResource):
                             / "stream_processor.py"
                         )
                     ),
+                    # Ensure utils are packaged
                     "utils/__init__.py": pulumi.FileAsset(
                         str(
                             Path(__file__).parent.parent
                             / "lambdas"
                             / "utils"
                             / "__init__.py"
+                        )
+                    ),
+                    "utils/aws_clients.py": pulumi.FileAsset(
+                        str(
+                            Path(__file__).parent.parent
+                            / "lambdas"
+                            / "utils"
+                            / "aws_clients.py"
                         )
                     ),
                     "utils/logging.py": pulumi.FileAsset(
@@ -226,6 +235,8 @@ class HybridLambdaDeployment(ComponentResource):
                 "Component": "StreamProcessor",
                 "Environment": stack,
                 "ManagedBy": "Pulumi",
+                # Required for the layer updater to auto-attach new versions
+                "environment": stack,
             },
             layers=[dynamo_layer.arn],
             opts=ResourceOptions(

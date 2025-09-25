@@ -18,7 +18,7 @@ Focuses on:
 import json
 import logging
 import os
-from dataclasses import asdict, dataclass, is_dataclass
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Union
 
@@ -39,6 +39,8 @@ try:
     OBSERVABILITY_AVAILABLE = True
 except ImportError as e:
     # Log the specific import error for debugging
+    import logging
+
     logging.error(f"Failed to import utils: {e}")
     # Fallback for development/testing - provide no-op decorators
     OBSERVABILITY_AVAILABLE = False
@@ -71,6 +73,10 @@ from receipt_dynamo.entities.receipt_metadata import (
 from receipt_dynamo.entities.receipt_word_label import (
     ReceiptWordLabel,
     item_to_receipt_word_label,
+)
+from receipt_dynamo.entities.compaction_run import (
+    CompactionRun,
+    item_to_compaction_run,
 )
 
 # Define ChromaDBCollection enum locally since it might not be in the layer
@@ -121,9 +127,6 @@ class StreamMessage:  # pylint: disable=too-many-instance-attributes
     changes: Dict[str, Any]
     event_name: str
     collections: List[ChromaDBCollection]  # Which collections this affects
-    record_snapshot: Optional[Dict[str, Any]] = (
-        None  # Full new/old entity as dict
-    )
     source: str = "dynamodb_stream"
     timestamp: Optional[str] = None
     stream_record_id: Optional[str] = None
@@ -142,39 +145,18 @@ class FieldChange:
 if OBSERVABILITY_AVAILABLE:
     logger = get_operation_logger(__name__)
 else:
-    # Lightweight fallback logger that accepts structured kwargs
-    class _BasicStructuredLogger:
-        def __init__(self, name: str):
-            self.logger = logging.getLogger(name)
-            if not self.logger.handlers:
-                handler = logging.StreamHandler()
-                formatter = logging.Formatter(
-                    "[%(levelname)s] %(asctime)s %(message)s",
-                    datefmt="%Y-%m-%d %H:%M:%S",
-                )
-                handler.setFormatter(formatter)
-                self.logger.addHandler(handler)
-                self.logger.setLevel(logging.INFO)
-
-        def _format(self, msg: str, **kwargs):
-            if kwargs:
-                kv = " ".join(f"{k}={v}" for k, v in kwargs.items())
-                return f"{msg} | {kv}"
-            return msg
-
-        def info(self, msg: str, **kwargs):
-            self.logger.info(self._format(msg, **kwargs))
-
-        def warning(self, msg: str, **kwargs):
-            self.logger.warning(self._format(msg, **kwargs))
-
-        def error(self, msg: str, **kwargs):
-            self.logger.error(self._format(msg, **kwargs))
-
-        def debug(self, msg: str, **kwargs):
-            self.logger.debug(self._format(msg, **kwargs))
-
-    logger = _BasicStructuredLogger(__name__)
+    # Pure stdlib fallback logger (avoid any utils dependency)
+    logger = logging.getLogger(__name__)
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(
+            logging.Formatter(
+                "[%(levelname)s] %(asctime)s.%(msecs)03dZ %(name)s - %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+        )
+        logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
 
 
 @trace_function(operation_name="stream_processor")
@@ -226,7 +208,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
             if OBSERVABILITY_AVAILABLE:
                 metrics.count("StreamProcessorTestEvents", 1)
-                return format_response(response, event)
+                return format_response(
+                    response, event, correlation_id=correlation_id
+                )
             return response
 
         if OBSERVABILITY_AVAILABLE:
@@ -259,6 +243,68 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     metrics.count(
                         "StreamRecordProcessed", 1, {"event_name": event_name}
                     )
+                # Fast-path: enqueue compaction jobs on COMPACTION_RUN inserts
+                if event_name == "INSERT":
+                    new_image = record.get("dynamodb", {}).get("NewImage")
+                    keys = record.get("dynamodb", {}).get("Keys", {})
+                    pk = keys.get("PK", {}).get("S", "")
+                    sk = keys.get("SK", {}).get("S", "")
+                    if new_image and _is_compaction_run(pk, sk):
+                        try:
+                            compaction_run = _parse_compaction_run(
+                                new_image, pk, sk
+                            )
+                        except (
+                            Exception
+                        ) as e:  # pylint: disable=broad-exception-caught
+                            logger.error(
+                                "Failed to parse COMPACTION_RUN",
+                                record_id=event_id,
+                                error=str(e),
+                            )
+                            continue
+
+                        # Build two messages: one for lines, one for words
+                        cr_entity = {
+                            "run_id": compaction_run.run_id,
+                            "image_id": compaction_run.image_id,
+                            "receipt_id": compaction_run.receipt_id,
+                            "lines_delta_prefix": compaction_run.lines_delta_prefix,
+                            "words_delta_prefix": compaction_run.words_delta_prefix,
+                        }
+
+                        for collection, prefix_key in (
+                            (ChromaDBCollection.LINES, "lines_delta_prefix"),
+                            (ChromaDBCollection.WORDS, "words_delta_prefix"),
+                        ):
+                            stream_msg = StreamMessage(
+                                entity_type="COMPACTION_RUN",
+                                entity_data={
+                                    **cr_entity,
+                                    "delta_s3_prefix": cr_entity[prefix_key],
+                                },
+                                changes={},
+                                event_name=event_name,
+                                collections=[collection],
+                                source="dynamodb_stream",
+                                timestamp=datetime.now(
+                                    timezone.utc
+                                ).isoformat(),
+                                stream_record_id=event_id,
+                                aws_region=record.get("awsRegion", "unknown"),
+                            )
+                            messages_to_send.append(stream_msg)
+
+                        processed_records += 1
+                        logger.info(
+                            "Enqueued compaction run messages",
+                            run_id=compaction_run.run_id,
+                            image_id=compaction_run.image_id,
+                            receipt_id=compaction_run.receipt_id,
+                        )
+                        # Skip normal entity parsing for this record
+                        continue
+
                 # Parse stream record using entity parsers
                 parsed_record = parse_stream_record(record)
 
@@ -350,25 +396,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                             target_collections = [ChromaDBCollection.WORDS]
 
                         if entity_data and target_collections:
-                            # Build record snapshot from the most up-to-date image
-                            entity_for_snapshot = (
-                                new_entity
-                                if new_entity is not None
-                                else old_entity
-                            )
-                            record_snapshot = (
-                                asdict(entity_for_snapshot)
-                                if (
-                                    entity_for_snapshot
-                                    and is_dataclass(entity_for_snapshot)
-                                )
-                                else (
-                                    entity_for_snapshot.__dict__
-                                    if entity_for_snapshot
-                                    else None
-                                )
-                            )
-
                             # Create enhanced stream message
                             stream_msg = StreamMessage(
                                 entity_type=entity_type,
@@ -376,7 +403,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                                 changes=changes,
                                 event_name=record["eventName"],
                                 collections=target_collections,
-                                record_snapshot=record_snapshot,
                                 source="dynamodb_stream",
                                 timestamp=datetime.now(
                                     timezone.utc
@@ -456,7 +482,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         result = response.to_dict()
 
         if OBSERVABILITY_AVAILABLE:
-            return format_response(result, event)
+            return format_response(
+                result, event, correlation_id=correlation_id
+            )
         return result
 
     except Exception as e:
@@ -483,6 +511,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 error_response,
                 event,
                 is_error=True,
+                correlation_id=correlation_id,
             )
         return error_response
 
@@ -506,7 +535,27 @@ def _detect_entity_type(sk: str) -> Optional[str]:
         return "RECEIPT_METADATA"
     if "#LABEL#" in sk:
         return "RECEIPT_WORD_LABEL"
+    if "#COMPACTION_RUN#" in sk:
+        return "COMPACTION_RUN"
     return None
+
+
+def _is_compaction_run(pk: str, sk: str) -> bool:
+    """Detect if PK/SK correspond to a CompactionRun item."""
+    return pk.startswith("IMAGE#") and "#COMPACTION_RUN#" in sk
+
+
+def _parse_compaction_run(
+    new_image: Dict[str, Any], pk: str, sk: str
+) -> CompactionRun:
+    """Parse NewImage into a CompactionRun using shared parser."""
+    complete_item = dict(new_image)
+    complete_item["PK"] = {"S": pk}
+    complete_item["SK"] = {"S": sk}
+    # TYPE provided in item
+    if "TYPE" not in complete_item:
+        complete_item["TYPE"] = {"S": "COMPACTION_RUN"}
+    return item_to_compaction_run(complete_item)
 
 
 def _parse_entity(
@@ -559,30 +608,22 @@ def _parse_entity(
             return item_to_receipt_word_label(complete_item)
     except ValueError as e:
         logger.error(
-            "Failed to parse entity",
+            "Failed to parse entity - DIAGNOSTIC DETAILS",
             image_type=image_type,
             entity_type=entity_type,
             error=str(e),
             available_fields=list(image.keys()) if image else "None",
+            complete_item_fields=(
+                list(complete_item.keys())
+                if "complete_item" in locals()
+                else "Not created"
+            ),
             pk=pk,
             sk=sk,
+            raw_complete_item=(
+                complete_item if "complete_item" in locals() else "Not created"
+            ),
         )
-
-        # Only log detailed diagnostics in DEBUG mode to avoid PII exposure
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                "Entity parsing diagnostic details",
-                complete_item_fields=(
-                    list(complete_item.keys())
-                    if "complete_item" in locals()
-                    else "Not created"
-                ),
-                raw_complete_item=(
-                    complete_item
-                    if "complete_item" in locals()
-                    else "Not created"
-                ),
-            )
 
         if OBSERVABILITY_AVAILABLE:
             metrics.count(
@@ -655,19 +696,29 @@ def parse_stream_record(
         # Enhanced diagnostic logging for parsing failures
         if old_image and not old_entity:
             logger.error(
-                "Failed to parse old entity",
+                "CRITICAL: Failed to parse old entity - FULL DIAGNOSTIC",
                 entity_type=entity_type,
                 available_keys=list(old_image.keys()) if old_image else "None",
                 pk=pk,
                 sk=sk,
+                full_old_image=(
+                    old_image
+                    if entity_type == "RECEIPT_WORD_LABEL"
+                    else "Not a label entity"
+                ),
             )
         if new_image and not new_entity:
             logger.error(
-                "Failed to parse new entity",
+                "CRITICAL: Failed to parse new entity - FULL DIAGNOSTIC",
                 entity_type=entity_type,
                 available_keys=list(new_image.keys()) if new_image else "None",
                 pk=pk,
                 sk=sk,
+                full_new_image=(
+                    new_image
+                    if entity_type == "RECEIPT_WORD_LABEL"
+                    else "Not a label entity"
+                ),
             )
 
         # Return parsed entity information
@@ -779,7 +830,6 @@ def send_messages_to_queues(messages: List[StreamMessage]) -> int:
             "timestamp": msg.timestamp,
             "stream_record_id": msg.stream_record_id,
             "aws_region": msg.aws_region,
-            "record_snapshot": msg.record_snapshot,
         }
 
         if ChromaDBCollection.LINES in msg.collections:
@@ -833,39 +883,10 @@ def _send_batch_to_queue(
 
         entries = []
         for j, (message_dict, _) in enumerate(batch):
-            # Compute FIFO grouping and deduplication keys
-            entity = message_dict.get("entity_data", {})
-            image_id = entity.get("image_id")
-            receipt_id = entity.get("receipt_id")
-            line_id = entity.get("line_id")
-            word_id = entity.get("word_id")
-
-            if collection == ChromaDBCollection.LINES:
-                message_group_id = f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
-            else:
-                # WORDS collection groups by exact word
-                message_group_id = (
-                    f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}"
-                    if all(
-                        v is not None
-                        for v in [image_id, receipt_id, line_id, word_id]
-                    )
-                    else f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
-                )
-
-            # Prefer a deterministic deduplication id based on stream record
-            dedup_id = (
-                message_dict.get("stream_record_id")
-                or f"{message_group_id}:{message_dict.get('event_name','')}:{j}"
-            )
-
             entries.append(
                 {
                     "Id": str(i + j),
                     "MessageBody": json.dumps(message_dict),
-                    # FIFO controls
-                    "MessageGroupId": message_group_id,
-                    "MessageDeduplicationId": dedup_id,
                     "MessageAttributes": {
                         "source": {
                             "StringValue": "dynamodb_stream",

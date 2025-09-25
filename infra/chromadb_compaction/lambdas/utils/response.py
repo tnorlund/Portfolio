@@ -40,6 +40,7 @@ def format_response(
     event: Dict[str, Any],
     is_error: bool = False,
     status_code: int | None = None,
+    correlation_id: str | None = None,
 ) -> Any:
     """Format response based on invocation source.
 
@@ -65,7 +66,7 @@ def format_response(
     if status_code is None:
         status_code = 500 if is_error else 200
 
-    return {
+    response = {
         "statusCode": status_code,
         "body": (
             json.dumps(data, default=str)
@@ -74,3 +75,11 @@ def format_response(
         ),
         "headers": {"Content-Type": "application/json"},
     }
+    if correlation_id:
+        # Surface correlation id for easier tracing in API Gateway responses
+        try:
+            response["headers"]["X-Correlation-Id"] = correlation_id
+        except Exception:
+            # Do not fail response formatting if headers manipulation fails
+            pass
+    return response
