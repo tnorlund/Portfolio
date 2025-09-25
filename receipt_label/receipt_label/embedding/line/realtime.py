@@ -10,8 +10,8 @@ from receipt_dynamo.entities import ReceiptLine
 from receipt_label.utils import get_client_manager
 from receipt_label.merchant_validation.normalize import (
     normalize_phone,
-    build_full_address_from_words,
-    build_full_address_from_lines,
+    normalize_address,
+    normalize_url,
 )
 
 logger = logging.getLogger(__name__)
@@ -200,9 +200,7 @@ def embed_lines_realtime(
         for i, (line, _) in enumerate(line_text_pairs):
             line_embeddings.append((line, response.data[i].embedding))
 
-        logger.info(
-            f"Successfully embedded {len(line_embeddings)} lines with vertical context"
-        )
+        logger.info(f"Successfully embedded {len(line_embeddings)} lines")
         return line_embeddings
 
     except Exception as e:
@@ -245,34 +243,38 @@ def embed_receipt_lines_realtime(
     documents = []
     line_embedding_pairs = []
 
-    # Compute receipt-level normalized fields once
+    # Build anchor map: line_id -> set of fields from words on that line
     try:
-        words_for_receipt = dynamo_client.list_receipt_words_by_receipt(
-            receipt_id
+        words_for_receipt = (
+            client_manager.dynamo.list_receipt_words_by_receipt(receipt_id)
         )
-    except Exception:  # Safe fallback if unavailable
+    except Exception:
         words_for_receipt = []
 
-    normalized_phone_10 = ""
+    anchors_by_line: Dict[int, Dict[str, str]] = {}
     for w in words_for_receipt:
         try:
+            if int(getattr(w, "line_id")) not in anchors_by_line:
+                anchors_by_line[int(getattr(w, "line_id"))] = {}
             ext = getattr(w, "extracted_data", None) or {}
-            if ext.get("type") == "phone":
-                candidate = ext.get("value") or getattr(w, "text", "")
-                ph = normalize_phone(candidate)
+            etype = str(ext.get("type", "")).lower() if ext else ""
+            val = ext.get("value") if ext else None
+            if etype == "phone":
+                ph = normalize_phone(val or getattr(w, "text", ""))
                 if ph:
-                    normalized_phone_10 = ph
-                    break
+                    anchors_by_line[int(w.line_id)]["normalized_phone_10"] = ph
+            elif etype == "address":
+                addr = normalize_address(val or getattr(w, "text", ""))
+                if addr:
+                    anchors_by_line[int(w.line_id)][
+                        "normalized_full_address"
+                    ] = addr
+            elif etype == "url":
+                u = normalize_url(val or getattr(w, "text", ""))
+                if u:
+                    anchors_by_line[int(w.line_id)]["normalized_url"] = u
         except Exception:
             continue
-
-    normalized_full_address = (
-        build_full_address_from_words(words_for_receipt)
-        if words_for_receipt
-        else ""
-    )
-    if not normalized_full_address:
-        normalized_full_address = build_full_address_from_lines(lines)
 
     # Create a mapping for quick lookup of embeddings by line
     embedding_map = {line.line_id: emb for line, emb in line_embeddings}
@@ -296,9 +298,11 @@ def embed_receipt_lines_realtime(
                 section="UNLABELED",  # Default section
             )
 
-            # Attach normalized receipt-level fields
-            metadata["normalized_phone_10"] = normalized_phone_10
-            metadata["normalized_full_address"] = normalized_full_address
+            # Anchor-only enrichment on lines: add only if this line has anchors
+            anchor_fields = anchors_by_line.get(int(line.line_id)) or {}
+            for k, v in anchor_fields.items():
+                if v:
+                    metadata[k] = v
 
             # Prepare data for ChromaDB
             ids.append(vector_id)
