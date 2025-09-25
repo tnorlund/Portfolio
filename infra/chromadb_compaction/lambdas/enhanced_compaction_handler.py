@@ -692,12 +692,15 @@ def _process_collection_messages(
     # Parse and group messages by entity type for efficient processing
     metadata_updates = []
     label_updates = []
+    compaction_runs: List[StreamMessage] = []
 
     for message in messages:
         if message.entity_type == "RECEIPT_METADATA":
             metadata_updates.append(message)
         elif message.entity_type == "RECEIPT_WORD_LABEL":
             label_updates.append(message)
+        elif message.entity_type == "COMPACTION_RUN":
+            compaction_runs.append(message)
         else:
             logger.warning(
                 "Unknown entity type", entity_type=message.entity_type
@@ -806,6 +809,43 @@ def _process_collection_messages(
                 metadata_updates, collection, lock_manager
             )
 
+        # Process COMPACTION_RUN delta merges with lock validation
+        total_merged_vectors = 0
+        if compaction_runs:
+            if not lock_manager.validate_ownership():
+                if OBSERVABILITY_AVAILABLE:
+                    logger.error(
+                        "Lock ownership validation failed before delta merge",
+                        collection=collection.value,
+                        operation="compaction_run",
+                    )
+                    metrics.count(
+                        "CompactionLockValidationFailed",
+                        1,
+                        {
+                            "collection": collection.value,
+                            "operation": "delta_merge",
+                        },
+                    )
+                else:
+                    logger.error(
+                        "Lock validation failed before delta merge for %s",
+                        collection.value,
+                    )
+                return {
+                    "error": f"Lock validation failed for {collection.value} collection (delta merge)",
+                    "metadata_updates": (
+                        len(metadata_results) if metadata_results else 0
+                    ),
+                    "label_updates": 0,
+                    "metadata_results": metadata_results,
+                    "label_results": [],
+                }
+
+            total_merged_vectors = process_compaction_runs(
+                compaction_runs, collection, lock_manager
+            )
+
         # Process label updates with lock validation
         label_results = []
         if label_updates:
@@ -898,6 +938,7 @@ def _process_collection_messages(
                 result.to_dict() for result in metadata_results
             ],
             "label_results": [result.to_dict() for result in label_results],
+            "merged_vectors": total_merged_vectors,
         }
 
     except Exception as e:  # pylint: disable=broad-exception-caught
@@ -1683,50 +1724,7 @@ def update_receipt_metadata(
                 # Remove field if new value is None
                 del updated_metadata[field]
 
-        # Opportunistically backfill normalized fields if missing
-        try:
-            if (
-                "normalized_phone_10" not in updated_metadata
-                or not updated_metadata.get("normalized_phone_10")
-            ):
-                # Compute from Dynamo words
-                words = dynamo_client.list_receipt_words_from_receipt(
-                    image_id, receipt_id
-                )
-                phone = ""
-                for w in words:
-                    ext = getattr(w, "extracted_data", None) or {}
-                    if ext.get("type") == "phone":
-                        candidate = ext.get("value") or getattr(w, "text", "")
-                        ph = normalize_phone(candidate)
-                        if ph:
-                            phone = ph
-                            break
-                if phone:
-                    updated_metadata["normalized_phone_10"] = phone
-
-            if (
-                "normalized_full_address" not in updated_metadata
-                or not updated_metadata.get("normalized_full_address")
-            ):
-                words = (
-                    words
-                    if "words" in locals() and isinstance(words, list)
-                    else dynamo_client.list_receipt_words_from_receipt(
-                        image_id, receipt_id
-                    )
-                )
-                addr = build_full_address_from_words(words)
-                if not addr:
-                    lines = dynamo_client.list_receipt_lines_from_receipt(
-                        image_id, receipt_id
-                    )
-                    addr = build_full_address_from_lines(lines)
-                if addr:
-                    updated_metadata["normalized_full_address"] = addr
-        except Exception:
-            # Best-effort enrichment; ignore failures
-            pass
+        # Anchor-only policy: do not inject receipt-level normalized fields on non-anchor records.
 
         # Add update timestamp
         updated_metadata["last_metadata_update"] = datetime.now(
@@ -2360,3 +2358,184 @@ def process_delta_messages(
 
 # Alias for consistent naming with other handlers
 handle = lambda_handler
+
+
+def download_s3_prefix(bucket: str, prefix: str, dest_dir: str) -> int:
+    s3 = boto3.client("s3")
+    paginator = s3.get_paginator("list_objects_v2")
+    downloaded = 0
+    # Fast path: if bundled tarball exists, download and extract
+    try:
+        tar_key = f"{prefix.rstrip('/')}/delta.tar.gz"
+        s3.head_object(Bucket=bucket, Key=tar_key)
+        local_tar = os.path.join(dest_dir, "delta.tar.gz")
+        os.makedirs(dest_dir, exist_ok=True)
+        s3.download_file(bucket, tar_key, local_tar)
+        import tarfile
+
+        with tarfile.open(local_tar, "r:gz") as tar:
+            tar.extractall(dest_dir)
+        downloaded = 1
+        return downloaded
+    except Exception:
+        # Fallback to listing all files
+        pass
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+        for obj in page.get("Contents", []):
+            key = obj["Key"]
+            rel_path = key[len(prefix) :].lstrip("/")
+            if not rel_path:
+                continue
+            local_path = os.path.join(dest_dir, rel_path)
+            os.makedirs(os.path.dirname(local_path), exist_ok=True)
+            s3.download_file(bucket, key, local_path)
+            downloaded += 1
+    return downloaded
+
+
+def merge_chroma_delta_into_snapshot(
+    delta_dir: str, collection_name: str, snapshot_dir: str
+) -> int:
+    delta_client = ChromaDBClient(
+        persist_directory=delta_dir, mode="read", metadata_only=False
+    )
+    snapshot_client = ChromaDBClient(
+        persist_directory=snapshot_dir, mode="write", metadata_only=False
+    )
+
+    delta_collection = delta_client.get_collection(collection_name)
+    target_collection = snapshot_client.get_collection(collection_name)
+
+    total_merged = 0
+    batch_size = 1000
+    offset = 0
+
+    while True:
+        res = delta_collection.get(
+            include=["embeddings", "metadatas", "documents"],
+            limit=batch_size,
+            offset=offset,
+        )
+        ids = res.get("ids", [])
+        if not ids:
+            break
+        embeddings = res.get("embeddings", None)
+        metadatas = res.get("metadatas", None)
+        documents = res.get("documents", None)
+
+        target_collection.upsert(
+            ids=ids,
+            embeddings=embeddings,
+            metadatas=metadatas,
+            documents=documents,
+        )
+
+        total_merged += len(ids)
+        offset += len(ids)
+
+    return total_merged
+
+
+def process_compaction_runs(
+    compaction_runs: List[StreamMessage],
+    collection: ChromaDBCollection,
+    lock_manager: Optional["LockManager"] = None,
+) -> int:
+    bucket = os.environ["CHROMADB_BUCKET"]
+    dynamo = get_dynamo_client()
+    merged_total = 0
+
+    for msg in compaction_runs:
+        data = msg.entity_data
+        run_id = data.get("run_id")
+        image_id = data.get("image_id")
+        receipt_id = int(data.get("receipt_id", 0))
+        delta_prefix = data.get("delta_s3_prefix")
+
+        logger.info(
+            "Processing COMPACTION_RUN",
+            run_id=run_id,
+            image_id=image_id,
+            receipt_id=receipt_id,
+            collection=collection.value,
+            delta_prefix=delta_prefix,
+        )
+
+        try:
+            dynamo.mark_compaction_run_started(
+                image_id, receipt_id, run_id, collection.value
+            )
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.warning("Failed to mark run started", error=str(e))
+
+        temp_root = tempfile.mkdtemp()
+        delta_dir = os.path.join(temp_root, "delta")
+        os.makedirs(delta_dir, exist_ok=True)
+
+        downloaded = download_s3_prefix(bucket, delta_prefix, delta_dir)
+        logger.info(
+            "Downloaded delta",
+            files=downloaded,
+            prefix=delta_prefix,
+            local_dir=delta_dir,
+        )
+
+        # Download current snapshot
+        snapshot_dir = tempfile.mkdtemp()
+        snap_result = download_snapshot_atomic(
+            bucket=bucket,
+            collection=collection.value,
+            local_path=snapshot_dir,
+            verify_integrity=True,
+        )
+        if snap_result.get("status") != "downloaded":
+            logger.error("Failed to download snapshot", result=snap_result)
+            raise RuntimeError("Snapshot download failed")
+
+        merged = merge_chroma_delta_into_snapshot(
+            delta_dir, collection.value, snapshot_dir
+        )
+
+        if lock_manager and not lock_manager.validate_ownership():
+            raise RuntimeError("Lock validation failed before snapshot upload")
+
+        upload_result = upload_snapshot_atomic(
+            local_path=snapshot_dir,
+            bucket=bucket,
+            collection=collection.value,
+            lock_manager=lock_manager,
+            metadata={
+                "update_type": "delta_merge",
+                "run_id": run_id,
+                "merged_vectors": str(merged),
+            },
+        )
+
+        if upload_result.get("status") != "uploaded":
+            logger.error("Snapshot upload failed", result=upload_result)
+            raise RuntimeError("Snapshot upload failed")
+
+        try:
+            dynamo.mark_compaction_run_completed(
+                image_id,
+                receipt_id,
+                run_id,
+                collection.value,
+                merged_vectors=merged,
+            )
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.warning("Failed to mark run completed", error=str(e))
+
+        merged_total += merged
+
+        shutil.rmtree(temp_root, ignore_errors=True)
+        shutil.rmtree(snapshot_dir, ignore_errors=True)
+
+    # Include run_id of the last processed message for easier log correlation.
+    logger.info(
+        "Completed COMPACTION_RUN processing",
+        collection=collection.value,
+        merged_total=merged_total,
+        run_id=run_id,
+    )
+    return merged_total

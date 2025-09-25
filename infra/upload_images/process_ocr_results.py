@@ -7,6 +7,7 @@ from logging import Formatter, StreamHandler
 from pathlib import Path
 
 import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 from PIL import Image as PIL_Image
 from receipt_upload.ocr import process_ocr_dict_as_image
 from receipt_upload.receipt_processing.native import process_native
@@ -42,9 +43,62 @@ SITE_BUCKET = os.environ["SITE_BUCKET"]
 if SITE_BUCKET is None:
     raise ValueError("SITE_BUCKET is not set")
 
+ARTIFACTS_BUCKET = os.environ.get("ARTIFACTS_BUCKET", SITE_BUCKET)
+
 sqs = boto3.client("sqs")
 ocr_job_queue_url = os.environ["OCR_JOB_QUEUE_URL"]
 ocr_results_queue_url = os.environ["OCR_RESULTS_QUEUE_URL"]
+embed_ndjson_queue_url = os.environ.get("EMBED_NDJSON_QUEUE_URL", "")
+_sqs_embed = boto3.client("sqs")
+
+
+def _s3_put_ndjson(bucket: str, key: str, rows: list[dict]):
+    body = "\n".join(json.dumps(r) for r in rows)
+    s3 = boto3.client("s3")
+    s3.put_object(
+        Bucket=bucket,
+        Key=key,
+        Body=body.encode("utf-8"),
+        ContentType="application/x-ndjson",
+    )
+
+
+def _export_receipt_ndjson_and_queue(image_id: str, receipt_id: int):
+    if not embed_ndjson_queue_url:
+        logger.info("EMBED_NDJSON_QUEUE_URL not set; skipping embedding queue")
+        return
+    dynamo = DynamoClient(TABLE_NAME)
+    # Fetch authoritative words/lines from DynamoDB
+    receipt_words = dynamo.list_receipt_words_from_receipt(
+        image_id, int(receipt_id)
+    )
+    receipt_lines = dynamo.list_receipt_lines_from_receipt(
+        image_id, int(receipt_id)
+    )
+
+    prefix = f"receipts/{image_id}/receipt-{int(receipt_id):05d}/"
+    lines_key = prefix + "lines.ndjson"
+    words_key = prefix + "words.ndjson"
+
+    # Serialize full dataclass objects so the consumer can rehydrate with
+    # ReceiptLine(**d)/ReceiptWord(**d) preserving geometry and methods
+    line_rows = [dict(l) for l in (receipt_lines or [])]
+    word_rows = [dict(w) for w in (receipt_words or [])]
+
+    _s3_put_ndjson(ARTIFACTS_BUCKET, lines_key, line_rows)
+    _s3_put_ndjson(ARTIFACTS_BUCKET, words_key, word_rows)
+
+    # Enqueue for batched embedding from NDJSON via SQS
+    payload = {
+        "image_id": image_id,
+        "receipt_id": int(receipt_id),
+        "artifacts_bucket": ARTIFACTS_BUCKET,
+        "lines_key": lines_key,
+        "words_key": words_key,
+    }
+    _sqs_embed.send_message(
+        QueueUrl=embed_ndjson_queue_url, MessageBody=json.dumps(payload)
+    )
 
 
 logger = logging.getLogger()
@@ -108,7 +162,16 @@ def _process_record(record):
     image = PIL_Image.open(raw_image_path)
 
     if ocr_job.job_type == OCRJobType.REFINEMENT.value:
-        return _process_refinement_job(ocr_job, ocr_data, ocr_routing_decision)
+        ok = _process_refinement_job(ocr_job, ocr_data, ocr_routing_decision)
+        # For refinement jobs, receipt_id is expected on job
+        if ok and ocr_job.receipt_id is not None:
+            try:
+                _export_receipt_ndjson_and_queue(
+                    ocr_job.image_id, int(ocr_job.receipt_id)
+                )
+            except Exception as e:  # Best-effort: do not fail main processing
+                logger.error("Failed to enqueue embed for refinement: %s", e)
+        return ok
 
     return _process_first_pass_job(
         image, ocr_data, ocr_job, ocr_routing_decision
@@ -170,6 +233,11 @@ def _process_first_pass_job(image, ocr_data, ocr_job, ocr_routing_decision):
                 ocr_routing_decision=ocr_routing_decision,
                 ocr_job=ocr_job,
             )
+            # NATIVE produces a single receipt with id 1
+            try:
+                _export_receipt_ndjson_and_queue(ocr_job.image_id, 1)
+            except Exception as e:
+                logger.error("Failed to enqueue embed for native: %s", e)
         except ValueError as e:
             logger.error(
                 "Geometry error in process_native for image %s: %s",
