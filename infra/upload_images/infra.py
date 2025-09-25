@@ -114,6 +114,7 @@ class UploadImages(ComponentResource):
         # Create SQS queue for OCR results
         self.ocr_queue = Queue(
             f"{name}-ocr-queue",
+            name=f"{name}-{stack}-ocr-queue",
             visibility_timeout_seconds=3600,
             message_retention_seconds=1209600,  # 14 days
             receive_wait_time_seconds=0,  # Short polling
@@ -129,6 +130,7 @@ class UploadImages(ComponentResource):
         # Create a second SQS queue for OCR JSON results (for Lambda trigger)
         self.ocr_results_queue = Queue(
             f"{name}-ocr-results-queue",
+            name=f"{name}-{stack}-ocr-results-queue",
             visibility_timeout_seconds=300,
             message_retention_seconds=345600,  # 4 days
             receive_wait_time_seconds=0,  # Short polling
@@ -224,6 +226,7 @@ class UploadImages(ComponentResource):
 
         upload_receipt_lambda = Function(
             f"{name}-upload-receipt-lambda",
+            name=f"{name}-{stack}-upload-receipt",
             role=upload_receipt_role.arn,
             runtime="python3.12",
             handler="upload_receipt.handler",
@@ -566,6 +569,7 @@ class UploadImages(ComponentResource):
 
         embed_from_ndjson_lambda = Function(
             f"{name}-embed-from-ndjson",
+            name=f"{name}-{stack}-embed-from-ndjson",
             role=embed_role.arn,
             package_type="Image",
             image_uri=pulumi.Output.all(
@@ -599,6 +603,7 @@ class UploadImages(ComponentResource):
         # Queue to batch NDJSON embedding tasks
         self.embed_ndjson_queue = Queue(
             f"{name}-embed-ndjson-queue",
+            name=f"{name}-{stack}-embed-ndjson-queue",
             visibility_timeout_seconds=1200,
             message_retention_seconds=1209600,
             receive_wait_time_seconds=0,
@@ -669,6 +674,7 @@ class UploadImages(ComponentResource):
             )
             wait_lambda = aws.lambda_.Function(
                 f"{name}-chroma-wait",
+                name=f"{name}-{stack}-chroma-wait",
                 role=embed_role.arn,
                 runtime="python3.12",
                 architectures=["arm64"],
@@ -915,6 +921,7 @@ class UploadImages(ComponentResource):
 
         embed_batch_launcher = Function(
             f"{name}-embed-batch-launcher",
+            name=f"{name}-{stack}-embed-batch-launcher",
             role=launcher_role.arn,
             runtime="python3.12",
             handler="embed_batch_launcher.handler",
@@ -971,6 +978,7 @@ class UploadImages(ComponentResource):
         # Create process_ocr Lambda with full environment (unique logical name)
         process_ocr_lambda = Function(
             f"{name}-process-ocr-results-lambda",
+            name=f"{name}-{stack}-process-ocr-results",
             role=process_ocr_role.arn,
             runtime="python3.12",
             handler="process_ocr_results.handler",
