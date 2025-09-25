@@ -150,12 +150,16 @@ def _process_single(payload: Dict[str, Any]):
             if not texts:
                 return []
             if not os.environ.get("OPENAI_API_KEY"):
-                return [[0.0] * 1536 for _ in texts]
+                raise RuntimeError("OPENAI_API_KEY is not set")
             from receipt_label.utils import get_client_manager
 
             openai_client = get_client_manager().openai
             resp = openai_client.embeddings.create(
                 model="text-embedding-3-small", input=list(texts)
+            )
+            logger.info(
+                "OpenAI embeddings created",
+                extra={"num_embeddings": len(resp.data)},
             )
             return [d.embedding for d in resp.data]
 
