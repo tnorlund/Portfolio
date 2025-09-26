@@ -182,9 +182,15 @@ def produce_embedding_delta(
                 if batch_id:
                     message_body["batch_id"] = batch_id
 
+                # FIFO compatibility: provide stable group and deduplication IDs
+                message_group_id = f"{collection_name}:{batch_id or 'default'}"
+                message_dedup_id = f"{collection_name}:{(batch_id or uuid.uuid4().hex)}:{s3_key}"
+
                 sqs.send_message(
                     QueueUrl=sqs_queue_url,
                     MessageBody=json.dumps(message_body),
+                    MessageGroupId=message_group_id,
+                    MessageDeduplicationId=message_dedup_id,
                     MessageAttributes={
                         "collection": {
                             "StringValue": collection_name,
