@@ -140,6 +140,9 @@ class StreamMessage:
     collection: ChromaDBCollection
     record_snapshot: Optional[Dict[str, Any]] = None
     source: str = "dynamodb_stream"
+    message_id: Optional[str] = None
+    receipt_handle: Optional[str] = None
+    queue_url: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -334,6 +337,12 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
             result = process_sqs_messages(event["Records"])
 
+            # IMPORTANT: For SQS partial-batch failure, return the raw shape
+            # {"batchItemFailures": [...]} without any wrapping so the
+            # Lambda service honors per-record retries.
+            if isinstance(result, dict) and "batchItemFailures" in result:
+                return result
+
             # Track successful execution with metrics if available
             execution_time = time.time() - start_time
             if OBSERVABILITY_AVAILABLE:
@@ -477,6 +486,13 @@ def process_sqs_messages(records: List[Dict[str, Any]]) -> Dict[str, Any]:
                     collection=collection,
                     record_snapshot=message_body.get("record_snapshot"),
                     source=source,
+                    message_id=record.get("messageId"),
+                    receipt_handle=record.get("receiptHandle"),
+                    queue_url=os.environ.get(
+                        "LINES_QUEUE_URL"
+                        if collection.value == "lines"
+                        else "WORDS_QUEUE_URL"
+                    ),
                 )
                 stream_messages.append(stream_msg)
 
@@ -515,6 +531,10 @@ def process_sqs_messages(records: List[Dict[str, Any]]) -> Dict[str, Any]:
     # Process stream messages if any
     if stream_messages:
         result = process_stream_messages(stream_messages)
+        # If a collection returned partial-batch failures (due to lock),
+        # propagate immediately so the Lambda runtime retries only those.
+        if isinstance(result, dict) and "batchItemFailures" in result:
+            return result
         logger.info("Processed stream messages", count=len(stream_messages))
 
     # Process delta messages if any - collect failed message IDs
@@ -650,6 +670,18 @@ def process_stream_messages(
             )
 
         result = _process_collection_messages(collection, messages)
+
+        # If the collection couldn't be processed due to lock contention, and
+        # we have SQS message IDs captured, return partial batch failure so the
+        # event source will retry only those messages.
+        if result.get("error", "").startswith("Could not acquire lock"):
+            failed_ids = [m.message_id for m in messages if m.message_id]
+            if failed_ids:
+                return {
+                    "batchItemFailures": [
+                        {"itemIdentifier": mid} for mid in failed_ids
+                    ]
+                }
         # Aggregate results
         all_metadata_results.extend(result.get("metadata_results", []))
         all_label_results.extend(result.get("label_results", []))
@@ -724,7 +756,7 @@ def _process_collection_messages(
 
     try:
         # Create collection-specific lock ID
-        lock_id = f"chroma-{collection.value}-update-{int(time.time())}"
+        lock_id = f"chroma-{collection.value}-update"
         lock_acquired = lock_manager.acquire(lock_id)
 
         if not lock_acquired:
@@ -2397,10 +2429,10 @@ def merge_chroma_delta_into_snapshot(
     delta_dir: str, collection_name: str, snapshot_dir: str
 ) -> int:
     delta_client = ChromaDBClient(
-        persist_directory=delta_dir, mode="read", metadata_only=True
+        persist_directory=delta_dir, mode="read", metadata_only=False
     )
     snapshot_client = ChromaDBClient(
-        persist_directory=snapshot_dir, mode="write", metadata_only=True
+        persist_directory=snapshot_dir, mode="write", metadata_only=False
     )
 
     delta_collection = delta_client.get_collection(collection_name)
