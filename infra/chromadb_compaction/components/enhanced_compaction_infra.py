@@ -305,9 +305,10 @@ class EnhancedCompactionLambda(ComponentResource):
             event_source_arn=chromadb_queues.lines_queue_arn,
             function_name=self.function.arn,
             batch_size=10,
-            maximum_batching_window_in_seconds=30,
+            maximum_batching_window_in_seconds=0,
             maximum_retry_attempts=3,
             maximum_record_age_in_seconds=3600,
+            function_response_types=["ReportBatchItemFailures"],
             opts=ResourceOptions(parent=self),
         )
 
@@ -316,9 +317,10 @@ class EnhancedCompactionLambda(ComponentResource):
             event_source_arn=chromadb_queues.words_queue_arn,
             function_name=self.function.arn,
             batch_size=10,
-            maximum_batching_window_in_seconds=30,
+            maximum_batching_window_in_seconds=0,
             maximum_retry_attempts=3,
             maximum_record_age_in_seconds=3600,
+            function_response_types=["ReportBatchItemFailures"],
             opts=ResourceOptions(parent=self),
         )
 
