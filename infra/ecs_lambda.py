@@ -304,6 +304,7 @@ done
     def _generate_upload_script(self, bucket: str, package_hash: str) -> str:
         safe_bucket = shlex.quote(bucket)
         safe_src = shlex.quote(self.package_path)
+        safe_project_root = shlex.quote(PROJECT_DIR)
         local_deps = self._get_local_dependencies()
         return f"""#!/usr/bin/env bash
 set -e
@@ -314,6 +315,7 @@ HASH="{package_hash}"
 NAME="{self.name}"
 FORCE_REBUILD="{self.force_rebuild}"
 LOCAL_DEPS="{' '.join(local_deps)}"
+BASE_DIR={safe_project_root}
 
 echo "📦 Checking if source upload needed for function '$NAME'..."
 STORED_HASH=$(aws s3 cp "s3://$BUCKET/$NAME/hash.txt" - 2>/dev/null || echo '')
@@ -331,7 +333,7 @@ if [ -n "$LOCAL_DEPS" ]; then
   echo "Including local dependencies: $LOCAL_DEPS"
   mkdir -p "$TMP/dependencies"
   for dep in $LOCAL_DEPS; do
-    DEP_PATH="$(dirname "$SRC")/$dep"
+    DEP_PATH="$BASE_DIR/$dep"
     if [ -d "$DEP_PATH" ]; then
       mkdir -p "$TMP/dependencies/$dep"
       cp -r "$DEP_PATH"/* "$TMP/dependencies/$dep/"
@@ -394,11 +396,13 @@ echo "✅ Uploaded source.zip"
                     'if [ -f "source/pyproject.toml" ]; then '
                     'echo "Building source wheel"; '
                     'cd source && python3 -m build --wheel --outdir ../dist/ && cd ..; '
-                    f"python{v} -m pip install --no-cache-dir --find-links dep_wheels dist/*.whl -t build/package"
-                    ' || echo "Wheel install failed or not needed"; '
+                    # Install built wheel with optional extras and local wheels first
+                    f"WHEEL=$(ls dist/*.whl | head -1); "
+                    f"python{v} -m pip install --no-cache-dir --find-links dep_wheels \"$WHEEL{f'[{self.package_extras}]' if self.package_extras else ''}\" -t build/package || "
+                    f"python{v} -m pip install --no-cache-dir --find-links dep_wheels dist/*.whl -t build/package; "
                     'elif [ -f "source/requirements.txt" ]; then '
-                    'echo "Installing from requirements.txt"; '
-                    f"python{v} -m pip install --no-cache-dir -r source/requirements.txt -t build/package; "
+                    'echo "Installing from requirements.txt (using local wheels if present)"; '
+                    f"python{v} -m pip install --no-cache-dir --find-links dep_wheels -r source/requirements.txt -t build/package; "
                     'fi'
                 ),
                 # Copy source files last to ensure they override site-packages collisions if any
