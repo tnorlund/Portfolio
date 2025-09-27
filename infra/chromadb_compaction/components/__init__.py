@@ -16,6 +16,7 @@ from .lambda_functions import (
     HybridLambdaDeployment,
     create_hybrid_lambda_deployment,
 )
+from .efs import ChromaEfs
 
 # pylint: disable=duplicate-code
 # Export lists are expected to be similar between package __init__ files
@@ -27,4 +28,5 @@ __all__ = [
     "DockerImageComponent",
     "HybridLambdaDeployment",
     "create_hybrid_lambda_deployment",
+    "ChromaEfs",
 ]

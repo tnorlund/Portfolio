@@ -13,6 +13,7 @@ from pulumi import ComponentResource, ResourceOptions
 from .components.lambda_functions import create_hybrid_lambda_deployment
 from .components.s3_buckets import create_chromadb_buckets
 from .components.sqs_queues import create_chromadb_queues
+from .components.efs import ChromaEfs
 
 
 class ChromaDBCompactionInfrastructure(ComponentResource):
@@ -31,6 +32,10 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
         dynamodb_table_arn: str,
         dynamodb_stream_arn: str,
         chromadb_buckets=None,
+        base_images=None,
+        vpc_id: str | None = None,
+        subnet_ids=None,
+        lambda_security_group_id: str | None = None,
         opts: Optional[ResourceOptions] = None,
     ):
         """
@@ -63,13 +68,30 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
                 opts=ResourceOptions(parent=self),
             )
 
-        # Create hybrid Lambda deployment (creates both stream processor and enhanced compaction)
+        # Optionally create EFS for Chroma if networking details provided
+        self.efs = None
+        if vpc_id and subnet_ids and lambda_security_group_id:
+            self.efs = ChromaEfs(
+                f"{name}-efs",
+                vpc_id=vpc_id,
+                subnet_ids=subnet_ids,
+                lambda_security_group_id=lambda_security_group_id,
+                opts=ResourceOptions(parent=self),
+            )
+
+        # Create hybrid Lambda deployment
         self.hybrid_deployment = create_hybrid_lambda_deployment(
             name=f"{name}",
             chromadb_queues=self.chromadb_queues,
             chromadb_buckets=self.chromadb_buckets,
             dynamodb_table_arn=dynamodb_table_arn,
             dynamodb_stream_arn=dynamodb_stream_arn,
+            base_images=base_images,
+            vpc_subnet_ids=subnet_ids,
+            lambda_security_group_id=lambda_security_group_id,
+            efs_access_point_arn=(
+                self.efs.access_point_arn if self.efs else None
+            ),
             opts=ResourceOptions(parent=self),
         )
 
@@ -88,6 +110,9 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
                 "bucket_name": self.bucket_name,
                 "stream_processor_arn": self.stream_processor_arn,
                 "enhanced_compaction_arn": self.enhanced_compaction_arn,
+                "efs_access_point_arn": (
+                    self.efs.access_point_arn if self.efs else None
+                ),
             }
         )
 
@@ -97,6 +122,10 @@ def create_chromadb_compaction_infrastructure(
     dynamodb_table_arn: str = None,
     dynamodb_stream_arn: str = None,
     chromadb_buckets=None,
+    base_images=None,
+    vpc_id: str | None = None,
+    subnet_ids=None,
+    lambda_security_group_id: str | None = None,
     opts: Optional[ResourceOptions] = None,
 ) -> ChromaDBCompactionInfrastructure:
     """
@@ -122,5 +151,9 @@ def create_chromadb_compaction_infrastructure(
         dynamodb_table_arn=dynamodb_table_arn,
         dynamodb_stream_arn=dynamodb_stream_arn,
         chromadb_buckets=chromadb_buckets,
+        base_images=base_images,
+        vpc_id=vpc_id,
+        subnet_ids=subnet_ids,
+        lambda_security_group_id=lambda_security_group_id,
         opts=opts,
     )
