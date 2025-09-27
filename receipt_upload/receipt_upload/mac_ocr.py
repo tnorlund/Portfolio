@@ -62,9 +62,15 @@ def main():
             image_s3_key = ocr_job.s3_key
             image_s3_bucket = ocr_job.s3_bucket
 
-            # Download the image from the S3 bucket
+            # Download the image from the S3 bucket with a unique name per job
+            # to avoid filename collisions when multiple receipts for the same
+            # image are processed concurrently.
             image_path = download_image_from_s3(
-                image_s3_bucket, image_s3_key, image_id
+                image_s3_bucket,
+                image_s3_key,
+                image_id,
+                dest_dir=Path(temp_dir),
+                unique_suffix=job_id,
             )
             image_details.append((image_id, image_path))
 
