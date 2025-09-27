@@ -205,21 +205,45 @@ def download_file_from_s3(s3_bucket: str, s3_key: str, temp_dir: Path) -> Path:
     return file_path
 
 
-def download_image_from_s3(s3_bucket: str, s3_key: str, image_id: str) -> Path:
+def download_image_from_s3(
+    s3_bucket: str,
+    s3_key: str,
+    image_id: str,
+    dest_dir: Path | None = None,
+    unique_suffix: str | None = None,
+) -> Path:
     """
-    Download an image from S3 and save it to a temporary directory.
+    Download an image from S3 and save it to a directory.
+
+    Args:
+        s3_bucket: Source S3 bucket
+        s3_key: Source S3 key
+        image_id: Logical image identifier used for filename base
+        dest_dir: Optional destination directory (defaults to /tmp)
+        unique_suffix: Optional unique suffix to avoid filename collisions
+
+    Returns:
+        Path to the downloaded image file
     """
     s3_client = client("s3")
     # Get the object data from S3
     response = s3_client.get_object(Bucket=s3_bucket, Key=s3_key)
     image_data = response["Body"].read()
 
-    # Save to a temporary file
-    image_path = join("/tmp", f"{image_id}.png")
+    # Determine destination directory
+    base_dir = dest_dir if dest_dir is not None else Path("/tmp")
+    base_dir.mkdir(parents=True, exist_ok=True)
+
+    # Build filename with optional unique suffix
+    filename = (
+        f"{image_id}-{unique_suffix}.png" if unique_suffix else f"{image_id}.png"
+    )
+    image_path = base_dir / filename
+
     with open(image_path, "wb") as f:
         f.write(image_data)
 
-    return Path(image_path)
+    return image_path
 
 
 def upload_jpeg_to_s3(
