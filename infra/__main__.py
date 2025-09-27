@@ -43,6 +43,7 @@ from chromadb_compaction import (
     ChromaDBBuckets,
     create_chromadb_compaction_infrastructure,
 )
+from base_images import BaseImages
 
 from currency_validation_step_functions import (
     create_currency_validation_state_machine,
@@ -131,11 +132,18 @@ shared_chromadb_buckets = ChromaDBBuckets(
 )
 
 # Create ChromaDB compaction infrastructure using shared bucket
+# Build base images (optional optimization)
+base_images = BaseImages(f"base-images-{pulumi.get_stack()}")
+
 chromadb_infrastructure = create_chromadb_compaction_infrastructure(
     name=f"chromadb-{pulumi.get_stack()}",
     dynamodb_table_arn=dynamodb_table.arn,
     dynamodb_stream_arn=dynamodb_table.stream_arn,
     chromadb_buckets=shared_chromadb_buckets,
+    base_images=base_images,
+    vpc_id=public_vpc.vpc_id,
+    subnet_ids=public_vpc.public_subnet_ids,
+    lambda_security_group_id=security.sg_lambda_id,
 )
 
 # Create currency validation state machine
