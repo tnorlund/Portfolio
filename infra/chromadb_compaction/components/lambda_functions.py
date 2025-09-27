@@ -49,6 +49,10 @@ class HybridLambdaDeployment(ComponentResource):
         chromadb_buckets: ChromaDBBuckets,
         dynamodb_table_arn: str,
         dynamodb_stream_arn: str,
+        base_images=None,
+        vpc_subnet_ids=None,
+        lambda_security_group_id: str | None = None,
+        efs_access_point_arn: str | None = None,
         stack: Optional[str] = None,
         opts: Optional[ResourceOptions] = None,
     ):
@@ -106,6 +110,15 @@ class HybridLambdaDeployment(ComponentResource):
             policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
             opts=ResourceOptions(parent=self),
         )
+
+        # Attach VPC access policy if we will attach VPC config later
+        if vpc_subnet_ids and lambda_security_group_id:
+            aws.iam.RolePolicyAttachment(
+                f"{name}-lambda-vpc-access",
+                role=self.lambda_role.name,
+                policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole",
+                opts=ResourceOptions(parent=self),
+            )
 
         # Create shared policies
         self._create_shared_policies(
@@ -170,6 +183,16 @@ class HybridLambdaDeployment(ComponentResource):
                 "ManagedBy": "Pulumi",
             },
             opts=ResourceOptions(parent=self),
+        )
+
+        # Optional VPC configuration
+        vpc_cfg = (
+            aws.lambda_.FunctionVpcConfigArgs(
+                subnet_ids=vpc_subnet_ids,
+                security_group_ids=[lambda_security_group_id],
+            )
+            if vpc_subnet_ids and lambda_security_group_id
+            else None
         )
 
         # Create zip-based Lambda for stream processing
@@ -306,6 +329,7 @@ class HybridLambdaDeployment(ComponentResource):
             role=self.lambda_role.arn,
             timeout=300,  # 5 minutes timeout
             memory_size=256,  # Lightweight processing
+            vpc_config=vpc_cfg,
             environment={
                 "variables": {
                     "LINES_QUEUE_URL": chromadb_queues.lines_queue_url,
@@ -336,8 +360,76 @@ class HybridLambdaDeployment(ComponentResource):
             ),
         )
 
+<<<<<<< HEAD
         # Use the Lambda function created by CodeBuildDockerImage
         self.enhanced_compaction_function = self.docker_image.docker_image.lambda_function
+=======
+        # Create container-based Lambda for enhanced compaction
+        self.enhanced_compaction_function = aws.lambda_.Function(
+            f"{name}-enhanced-compaction",
+            package_type="Image",
+            image_uri=self.docker_image.image_uri,
+            role=self.lambda_role.arn,
+            timeout=900,  # 15 minutes for compaction operations
+            memory_size=2048,  # Increased memory for ChromaDB label operations (was failing with 1024MB)
+            ephemeral_storage={
+                "size": 5120
+            },  # 5GB for ChromaDB snapshots and temp files
+            reserved_concurrent_executions=10,  # Prevent throttling with batch processing
+            architectures=["arm64"],
+            vpc_config=vpc_cfg,
+            file_system_config=(
+                aws.lambda_.FunctionFileSystemConfigArgs(
+                    arn=efs_access_point_arn,
+                    local_mount_path="/mnt/chroma",
+                )
+                if efs_access_point_arn
+                else None
+            ),
+            environment={
+                "variables": {
+                    "DYNAMODB_TABLE_NAME": Output.all(
+                        dynamodb_table_arn
+                    ).apply(lambda args: args[0].split("/")[-1]),
+                    "CHROMADB_BUCKET": chromadb_buckets.bucket_name,
+                    "LINES_QUEUE_URL": chromadb_queues.lines_queue_url,
+                    "WORDS_QUEUE_URL": chromadb_queues.words_queue_url,
+                    "HEARTBEAT_INTERVAL_SECONDS": "30",
+                    "LOCK_DURATION_MINUTES": "3",
+                    "MAX_HEARTBEAT_FAILURES": "3",
+                    "LOG_LEVEL": "INFO",
+                    "CHROMA_ROOT": "/mnt/chroma",
+                }
+            },
+            description=(
+                "Enhanced ChromaDB compaction handler for stream and "
+                "delta message processing"
+            ),
+            tags={
+                "Project": "ChromaDB",
+                "Component": "EnhancedCompaction",
+                "Environment": stack,
+                "ManagedBy": "Pulumi",
+            },
+            opts=ResourceOptions(
+                parent=self,
+                depends_on=[
+                    self.lambda_role,
+                    self.docker_image,
+                    self.compaction_log_group,
+                ],
+            ),
+        )
+>>>>>>> 2d8850aa (Add EFS support for ChromaDB compaction Lambdas)
+
+        # Optional VPC config and EFS mount for both functions
+        if vpc_subnet_ids and lambda_security_group_id:
+            vpc_cfg = aws.lambda_.FunctionVpcConfigArgs(
+                subnet_ids=vpc_subnet_ids,
+                security_group_ids=[lambda_security_group_id],
+            )
+
+        # Note: file_system_config is passed during creation above; avoid post-creation mutation
 
         # Create event source mappings
         self._create_event_source_mappings(
@@ -554,6 +646,10 @@ def create_hybrid_lambda_deployment(
     chromadb_buckets: ChromaDBBuckets = None,
     dynamodb_table_arn: str = None,
     dynamodb_stream_arn: str = None,
+    base_images=None,
+    vpc_subnet_ids=None,
+    lambda_security_group_id: str | None = None,
+    efs_access_point_arn: str | None = None,
     opts: Optional[ResourceOptions] = None,
 ) -> HybridLambdaDeployment:
     """
@@ -585,5 +681,9 @@ def create_hybrid_lambda_deployment(
         chromadb_buckets=chromadb_buckets,
         dynamodb_table_arn=dynamodb_table_arn,
         dynamodb_stream_arn=dynamodb_stream_arn,
+        base_images=base_images,
+        vpc_subnet_ids=vpc_subnet_ids,
+        lambda_security_group_id=lambda_security_group_id,
+        efs_access_point_arn=efs_access_point_arn,
         opts=opts,
     )
