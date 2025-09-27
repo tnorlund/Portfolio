@@ -141,6 +141,9 @@ chromadb_infrastructure = create_chromadb_compaction_infrastructure(
     dynamodb_stream_arn=dynamodb_table.stream_arn,
     chromadb_buckets=shared_chromadb_buckets,
     base_images=base_images,
+    vpc_id=public_vpc.vpc_id,
+    subnet_ids=public_vpc.public_subnet_ids,
+    lambda_security_group_id=security.sg_lambda_id,
 )
 
 # Create currency validation state machine

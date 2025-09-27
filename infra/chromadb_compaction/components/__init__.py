@@ -23,6 +23,7 @@ from .enhanced_compaction_infra import (
     create_enhanced_compaction_lambda,
 )
 from .stream_processor_infra import create_stream_processor
+from .efs import ChromaEfs
 
 # pylint: disable=duplicate-code
 # Export lists are expected to be similar between package __init__ files
@@ -37,4 +38,5 @@ __all__ = [
     "EnhancedCompactionLambda",
     "create_enhanced_compaction_lambda",
     "create_stream_processor",
+    "ChromaEfs",
 ]

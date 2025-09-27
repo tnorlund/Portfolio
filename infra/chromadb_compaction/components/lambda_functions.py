@@ -50,6 +50,9 @@ class HybridLambdaDeployment(ComponentResource):
         dynamodb_table_arn: str,
         dynamodb_stream_arn: str,
         base_images=None,
+        vpc_subnet_ids=None,
+        lambda_security_group_id: str | None = None,
+        efs_access_point_arn: str | None = None,
         stack: Optional[str] = None,
         opts: Optional[ResourceOptions] = None,
     ):
@@ -112,6 +115,15 @@ class HybridLambdaDeployment(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
+        # Attach VPC access policy if we will attach VPC config later
+        if vpc_subnet_ids and lambda_security_group_id:
+            aws.iam.RolePolicyAttachment(
+                f"{name}-lambda-vpc-access",
+                role=self.lambda_role.name,
+                policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole",
+                opts=ResourceOptions(parent=self),
+            )
+
         # Create shared policies
         self._create_shared_policies(
             name, dynamodb_table_arn, chromadb_queues, chromadb_buckets
@@ -140,6 +152,16 @@ class HybridLambdaDeployment(ComponentResource):
                 "ManagedBy": "Pulumi",
             },
             opts=ResourceOptions(parent=self),
+        )
+
+        # Optional VPC configuration
+        vpc_cfg = (
+            aws.lambda_.FunctionVpcConfigArgs(
+                subnet_ids=vpc_subnet_ids,
+                security_group_ids=[lambda_security_group_id],
+            )
+            if vpc_subnet_ids and lambda_security_group_id
+            else None
         )
 
         # Create zip-based Lambda for stream processing
@@ -219,6 +241,7 @@ class HybridLambdaDeployment(ComponentResource):
             role=self.lambda_role.arn,
             timeout=300,  # 5 minutes timeout
             memory_size=256,  # Lightweight processing
+            vpc_config=vpc_cfg,
             environment={
                 "variables": {
                     "LINES_QUEUE_URL": chromadb_queues.lines_queue_url,
@@ -262,6 +285,15 @@ class HybridLambdaDeployment(ComponentResource):
             },  # 5GB for ChromaDB snapshots and temp files
             reserved_concurrent_executions=10,  # Prevent throttling with batch processing
             architectures=["arm64"],
+            vpc_config=vpc_cfg,
+            file_system_config=(
+                aws.lambda_.FunctionFileSystemConfigArgs(
+                    arn=efs_access_point_arn,
+                    local_mount_path="/mnt/chroma",
+                )
+                if efs_access_point_arn
+                else None
+            ),
             environment={
                 "variables": {
                     "DYNAMODB_TABLE_NAME": Output.all(
@@ -274,6 +306,7 @@ class HybridLambdaDeployment(ComponentResource):
                     "LOCK_DURATION_MINUTES": "3",
                     "MAX_HEARTBEAT_FAILURES": "3",
                     "LOG_LEVEL": "INFO",
+                    "CHROMA_ROOT": "/mnt/chroma",
                 }
             },
             description=(
@@ -295,6 +328,15 @@ class HybridLambdaDeployment(ComponentResource):
                 ],
             ),
         )
+
+        # Optional VPC config and EFS mount for both functions
+        if vpc_subnet_ids and lambda_security_group_id:
+            vpc_cfg = aws.lambda_.FunctionVpcConfigArgs(
+                subnet_ids=vpc_subnet_ids,
+                security_group_ids=[lambda_security_group_id],
+            )
+
+        # Note: file_system_config is passed during creation above; avoid post-creation mutation
 
         # Create event source mappings
         self._create_event_source_mappings(
@@ -512,6 +554,9 @@ def create_hybrid_lambda_deployment(
     dynamodb_table_arn: str = None,
     dynamodb_stream_arn: str = None,
     base_images=None,
+    vpc_subnet_ids=None,
+    lambda_security_group_id: str | None = None,
+    efs_access_point_arn: str | None = None,
     opts: Optional[ResourceOptions] = None,
 ) -> HybridLambdaDeployment:
     """
@@ -545,5 +590,8 @@ def create_hybrid_lambda_deployment(
         dynamodb_table_arn=dynamodb_table_arn,
         dynamodb_stream_arn=dynamodb_stream_arn,
         base_images=base_images,
+        vpc_subnet_ids=vpc_subnet_ids,
+        lambda_security_group_id=lambda_security_group_id,
+        efs_access_point_arn=efs_access_point_arn,
         opts=opts,
     )
