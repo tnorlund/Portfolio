@@ -77,7 +77,15 @@ certificate_validation = pulumi.Output.all(
 ########################
 site_bucket = aws.s3.Bucket(
     "siteBucket",
-    # Remove inline configuration - using separate resources
+    # Keep minimal bucket config and ignore ACL/grant changes to avoid PutBucketAcl on ACL-disabled buckets
+    opts=pulumi.ResourceOptions(ignore_changes=["acl", "grants"]),
+)
+
+# Enforce bucket owner ownership controls (disables ACLs)
+site_bucket_ownership = aws.s3.BucketOwnershipControls(
+    "siteBucket-ownership",
+    bucket=site_bucket.id,
+    rule={"objectOwnership": "BucketOwnerEnforced"},
 )
 
 # Configure CORS as a separate resource
