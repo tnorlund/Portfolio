@@ -14,6 +14,7 @@ from .components.lambda_functions import create_hybrid_lambda_deployment
 from .components.s3_buckets import create_chromadb_buckets
 from .components.sqs_queues import create_chromadb_queues
 from .components.efs import ChromaEfs
+from .components.exporter import EfsExporter
 
 
 class ChromaDBCompactionInfrastructure(ComponentResource):
@@ -104,6 +105,17 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
         self.enhanced_compaction_arn = (
             self.lambda_deployment.enhanced_compaction_arn
         )
+
+        # Optional scheduled exporter to mirror EFS snapshots to S3
+        if self.efs is not None:
+            self.exporter = EfsExporter(
+                f"{name}-exporter",
+                bucket_name=self.chromadb_buckets.bucket_name,
+                vpc_subnet_ids=subnet_ids,
+                lambda_security_group_id=lambda_security_group_id,
+                efs_access_point_arn=self.efs.access_point_arn,
+                opts=ResourceOptions(parent=self),
+            )
 
         # Register outputs
         self.register_outputs(
