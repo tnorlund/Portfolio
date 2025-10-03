@@ -38,6 +38,10 @@ class EnhancedCompactionLambda(ComponentResource):
         chromadb_buckets: ChromaDBBuckets,
         dynamodb_table_arn: str,
         stack: Optional[str] = None,
+        vpc_subnet_ids: Optional[list[str]] = None,
+        lambda_security_group_id: Optional[str] = None,
+        efs_access_point_arn: Optional[str] = None,
+        efs_mount_dependencies=None,
         opts: Optional[ResourceOptions] = None,
     ):
         """
@@ -202,6 +206,16 @@ class EnhancedCompactionLambda(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
+        # Optional VPC configuration for EFS access
+        vpc_cfg = (
+            aws.lambda_.FunctionVpcConfigArgs(
+                subnet_ids=vpc_subnet_ids,
+                security_group_ids=[lambda_security_group_id],
+            )
+            if vpc_subnet_ids and lambda_security_group_id
+            else None
+        )
+
         # Create the Lambda function
         self.function = aws.lambda_.Function(
             f"{name}-function",
@@ -259,10 +273,19 @@ class EnhancedCompactionLambda(ComponentResource):
                     ),
                 }
             ),
-            handler="enhanced_compaction_handler.handle",
+            handler="enhanced_compaction_handler.lambda_handler",
             role=self.lambda_role.arn,
             timeout=900,  # 15 minutes for compaction operations
             memory_size=512,  # More memory for ChromaDB operations
+            vpc_config=vpc_cfg,
+            file_system_config=(
+                aws.lambda_.FunctionFileSystemConfigArgs(
+                    arn=efs_access_point_arn,
+                    local_mount_path="/mnt/chroma",
+                )
+                if efs_access_point_arn
+                else None
+            ),
             environment={
                 "variables": {
                     "DYNAMODB_TABLE_NAME": dynamodb_table_arn.apply(
@@ -271,6 +294,7 @@ class EnhancedCompactionLambda(ComponentResource):
                     "CHROMADB_BUCKET": chromadb_buckets.bucket_name,
                     "LINES_QUEUE_URL": chromadb_queues.lines_queue_url,
                     "WORDS_QUEUE_URL": chromadb_queues.words_queue_url,
+                    "CHROMA_ROOT": "/mnt/chroma",
                     "HEARTBEAT_INTERVAL_SECONDS": "30",
                     "LOCK_DURATION_MINUTES": "3",
                     "MAX_HEARTBEAT_FAILURES": "3",
@@ -295,7 +319,8 @@ class EnhancedCompactionLambda(ComponentResource):
                     self.s3_policy,
                     self.sqs_policy,
                     self.log_group,
-                ],
+                ]
+                + ([efs_mount_dependencies] if efs_mount_dependencies else []),
             ),
         )
 

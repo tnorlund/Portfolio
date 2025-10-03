@@ -12,3 +12,4 @@
 !infra/embedding_step_functions/unified_embedding/
 !infra/validate_merchant_step_functions/container/
 !infra/upload_images/container/
+!infra/chromadb_compaction/worker/

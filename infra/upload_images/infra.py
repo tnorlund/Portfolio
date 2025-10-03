@@ -1,5 +1,6 @@
 import json
 import os
+from typing import Any
 
 import pulumi
 import pulumi_aws as aws
@@ -66,6 +67,10 @@ class UploadImages(ComponentResource):
         ecs_service_arn: pulumi.Input[str] | None = None,
         nat_instance_id: pulumi.Input[str] | None = None,
         base_image_ref: pulumi.Input[str] | None = None,
+        # EFS and worker image for embed_from_ndjson_lambda
+        worker_image_uri: pulumi.Input[str] | None = None,
+        chromadb_efs_access_point_arn: pulumi.Input[str] | None = None,
+        chromadb_efs_mount_target: pulumi.Input[Any] | None = None,
         opts: ResourceOptions = None,
     ):
         super().__init__(
@@ -90,6 +95,8 @@ class UploadImages(ComponentResource):
             tags={"environment": stack, "purpose": "ndjson-artifacts"},
             opts=ResourceOptions(parent=self),
         )
+        # Expose for other components (e.g., ECS worker needing read access)
+        self.artifacts_bucket = artifacts_bucket
 
         # Configure CORS as a separate resource
         image_bucket_cors = aws.s3.BucketCorsConfiguration(
@@ -484,6 +491,26 @@ class UploadImages(ComponentResource):
                                     else "*"
                                 ),
                             },
+                            # Allow listing objects in the ChromaDB bucket for snapshot restore
+                            {
+                                "Effect": "Allow",
+                                "Action": ["s3:ListBucket"],
+                                "Resource": (
+                                    f"arn:aws:s3:::{args[1]}"
+                                    if args[1]
+                                    else "*"
+                                ),
+                            },
+                            # Allow reading snapshot objects from the ChromaDB bucket
+                            {
+                                "Effect": "Allow",
+                                "Action": ["s3:GetObject", "s3:HeadObject"],
+                                "Resource": (
+                                    [f"arn:aws:s3:::{args[1]}/*"]
+                                    if args[1]
+                                    else "*"
+                                ),
+                            },
                         ],
                     }
                 )
@@ -567,24 +594,33 @@ class UploadImages(ComponentResource):
             opts=ResourceOptions(parent=self, depends_on=[embed_ecr_repo]),
         )
 
+        # Use worker.py Docker image from chromadb_compaction instead of local handler
+        # This allows the Lambda to use EFS for ChromaDB access
         embed_from_ndjson_lambda = Function(
             f"{name}-embed-from-ndjson",
             name=f"{name}-{stack}-embed-from-ndjson",
             role=embed_role.arn,
             package_type="Image",
-            image_uri=pulumi.Output.all(
-                embed_ecr_repo.repository_url, embed_image.digest
-            ).apply(lambda args: f"{args[0].split(':')[0]}@{args[1]}"),
+            # Use the chromadb worker image which has worker.py with lambda_handler
+            image_uri=(
+                worker_image_uri
+                if worker_image_uri
+                else pulumi.Output.all(
+                    embed_ecr_repo.repository_url, embed_image.digest
+                ).apply(lambda args: f"{args[0].split(':')[0]}@{args[1]}")
+            ),
             architectures=["arm64"],
             timeout=900,
-            memory_size=1024,
+            memory_size=2048,  # Increased for EFS + ChromaDB operations
+            ephemeral_storage={"size": 5120},  # 5GB for delta file operations
             environment=FunctionEnvironmentArgs(
                 variables={
-                    "DYNAMO_TABLE_NAME": dynamodb_table.name,
+                    "DYNAMODB_TABLE_NAME": dynamodb_table.name,
                     "CHROMADB_BUCKET": chromadb_bucket_name or "",
                     "OPENAI_API_KEY": openai_api_key,
                     "GOOGLE_PLACES_API_KEY": google_places_api_key,
-                    "CHROMA_HTTP_ENDPOINT": chroma_http_endpoint or "",
+                    "CHROMA_ROOT": "/mnt/chroma",  # EFS mount point
+                    "LOG_LEVEL": "INFO",
                 }
             ),
             vpc_config=(
@@ -597,6 +633,30 @@ class UploadImages(ComponentResource):
                 if vpc_subnet_ids and security_group_id
                 else None
             ),
+            # Add EFS mount for ChromaDB access
+            file_system_config=(
+                aws.lambda_.FunctionFileSystemConfigArgs(
+                    arn=chromadb_efs_access_point_arn,
+                    local_mount_path="/mnt/chroma",
+                )
+                if chromadb_efs_access_point_arn
+                else None
+            ),
+            opts=ResourceOptions(
+                parent=self,
+                depends_on=(
+                    [chromadb_efs_mount_target]
+                    if chromadb_efs_mount_target
+                    else []
+                ),
+            ),
+        )
+
+        # Allow the embed lambda to be triggered by SQS directly
+        RolePolicyAttachment(
+            f"{name}-embed-sqs-exec",
+            role=embed_role.name,
+            policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole",
             opts=ResourceOptions(parent=self),
         )
 
@@ -612,6 +672,19 @@ class UploadImages(ComponentResource):
                 "Component": name,
                 "Environment": pulumi.get_stack(),
             },
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Map NDJSON queue directly to embed_from_ndjson lambda
+        # This is the ACTIVE consumer for EMBED_NDJSON_QUEUE
+        # The ECS worker (ChromaCompactionWorker) is DISABLED (desired_count=0)
+        aws.lambda_.EventSourceMapping(
+            f"{name}-embed-ndjson-direct-mapping",
+            event_source_arn=self.embed_ndjson_queue.arn,
+            function_name=embed_from_ndjson_lambda.name,
+            batch_size=10,
+            maximum_batching_window_in_seconds=5,
+            enabled=True,  # ← ACTIVE: Lambda consumes the queue
             opts=ResourceOptions(parent=self),
         )
 
@@ -944,15 +1017,19 @@ class UploadImages(ComponentResource):
             policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole",
             opts=ResourceOptions(parent=self),
         )
-        aws.lambda_.EventSourceMapping(
-            f"{name}-embed-ndjson-launcher-mapping",
-            event_source_arn=self.embed_ndjson_queue.arn,
-            function_name=embed_batch_launcher.name,
-            batch_size=10,
-            maximum_batching_window_in_seconds=10,
-            enabled=True,
-            opts=ResourceOptions(parent=self),
-        )
+        # DISABLED: embed_batch_launcher EventSourceMapping
+        # Using direct Lambda (embed_from_ndjson_lambda) instead of Step Functions
+        # The batch launcher is no longer needed - keeping Lambda definition for
+        # backwards compatibility but not connecting it to the queue
+        # aws.lambda_.EventSourceMapping(
+        #     f"{name}-embed-ndjson-launcher-mapping",
+        #     event_source_arn=self.embed_ndjson_queue.arn,
+        #     function_name=embed_batch_launcher.name,
+        #     batch_size=10,
+        #     maximum_batching_window_in_seconds=10,
+        #     enabled=True,
+        #     opts=ResourceOptions(parent=self),
+        # )
 
         # Allow process_ocr Lambda to enqueue embedding jobs
         RolePolicy(

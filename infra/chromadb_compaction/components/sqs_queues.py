@@ -85,7 +85,8 @@ class ChromaDBQueues(ComponentResource):
             fifo_queue=True,
             content_based_deduplication=True,
             message_retention_seconds=345600,
-            visibility_timeout_seconds=180,
+            # Must exceed Lambda timeout (900s)
+            visibility_timeout_seconds=1200,
             receive_wait_time_seconds=20,
             redrive_policy=Output.all(self.lines_dlq.arn).apply(
                 lambda args: json.dumps(
@@ -110,7 +111,8 @@ class ChromaDBQueues(ComponentResource):
             fifo_queue=True,
             content_based_deduplication=True,
             message_retention_seconds=345600,
-            visibility_timeout_seconds=180,
+            # Must exceed Lambda timeout (900s)
+            visibility_timeout_seconds=1200,
             receive_wait_time_seconds=20,
             redrive_policy=Output.all(self.words_dlq.arn).apply(
                 lambda args: json.dumps(

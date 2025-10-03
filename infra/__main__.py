@@ -80,6 +80,11 @@ from chroma.service import ChromaEcsService
 from chroma.workers import ChromaWorkers
 from chroma.orchestrator import ChromaOrchestrator
 from chroma.nat_egress import NatEgress
+from chromadb_compaction.components.ecs_compaction_worker import (
+    ChromaCompactionWorker,
+)
+import pulumi_docker_build as docker_build
+from pulumi_aws import ecr as aws_ecr
 
 # Foundation VPC (public subnets only, no NAT) per Task 350
 public_vpc = PublicVpc("foundation")
@@ -124,6 +129,15 @@ notification_system = NotificationSystem(
     },
 )
 
+## NAT egress (create before any references)
+nat = NatEgress(
+    name=f"nat-egress-{pulumi.get_stack()}",
+    vpc_id=public_vpc.vpc_id,
+    public_subnet_id=public_vpc.public_subnet_ids.apply(lambda ids: ids[0]),
+)
+pulumi.export("nat_instance_id", nat.nat_instance_id)
+pulumi.export("nat_private_subnet_ids", nat.private_subnet_ids)
+
 # Create base images first - they're used by multiple components
 base_images = BaseImages("base-images", stack=pulumi.get_stack())
 
@@ -142,7 +156,7 @@ chromadb_infrastructure = create_chromadb_compaction_infrastructure(
     chromadb_buckets=shared_chromadb_buckets,
     base_images=base_images,
     vpc_id=public_vpc.vpc_id,
-    subnet_ids=public_vpc.public_subnet_ids,
+    subnet_ids=nat.private_subnet_ids.apply(lambda ids: [ids[0]]),
     lambda_security_group_id=security.sg_lambda_id,
 )
 
@@ -199,6 +213,7 @@ pulumi.export("chroma_cluster_arn", chroma_service.cluster.arn)
 pulumi.export("chroma_service_arn", chroma_service.svc.arn)
 pulumi.export("chroma_service_dns", chroma_service.endpoint_dns)
 
+
 # Task 7: Workers - Lambda functions that query Chroma via HTTP
 workers = ChromaWorkers(
     name=f"chroma-workers-{pulumi.get_stack()}",
@@ -212,14 +227,7 @@ workers = ChromaWorkers(
 
 pulumi.export("chroma_query_words_lambda_arn", workers.query_words.arn)
 
-# NAT egress (public subnet) + private subnets for Lambda internet access
-nat = NatEgress(
-    name=f"nat-egress-{pulumi.get_stack()}",
-    vpc_id=public_vpc.vpc_id,
-    public_subnet_id=public_vpc.public_subnet_ids.apply(lambda ids: ids[0]),
-)
-pulumi.export("nat_instance_id", nat.nat_instance_id)
-pulumi.export("nat_private_subnet_ids", nat.private_subnet_ids)
+## duplicate removed (defined earlier)
 
 # Add S3 Gateway Endpoint for faster S3 access from both public and private subnets
 s3_gateway_endpoint = aws.ec2.VpcEndpoint(
@@ -272,6 +280,46 @@ monitoring_interface_endpoint = aws.ec2.VpcEndpoint(
     private_dns_enabled=True,
 )
 
+
+# ECS compaction worker (Fargate) mounting the same EFS access point
+# (instantiated after upload_images so artifacts bucket is available)
+def _create_compaction_worker():
+    """
+    Create ECS worker that COULD consume EMBED_NDJSON_QUEUE to create embeddings.
+
+    CURRENTLY DISABLED (desired_count=0) in favor of Lambda (embed_from_ndjson_lambda)
+    which is connected to EMBED_NDJSON_QUEUE via EventSourceMapping.
+
+    If you want to switch to ECS worker:
+    1. Set desired_count=1 here
+    2. Disable the Lambda EventSourceMapping in upload_images/infra.py (line 637)
+
+    This worker does NOT consume LINES_QUEUE or WORDS_QUEUE - those are
+    handled by enhanced_compaction_handler Lambda.
+    """
+    return ChromaCompactionWorker(
+        name=f"chroma-compaction-worker-{pulumi.get_stack()}-v2",
+        private_subnet_ids=nat.private_subnet_ids.apply(lambda ids: [ids[0]]),
+        security_group_id=security.sg_lambda_id,
+        task_role_arn=security.ecs_task_role_arn,
+        task_role_name=security.ecs_task_role_name,
+        execution_role_arn=security.ecs_task_execution_role_arn,
+        efs_file_system_id=chromadb_infrastructure.efs.file_system_id,
+        efs_access_point_id=chromadb_infrastructure.efs.access_point_id,
+        dynamodb_table_name=dynamodb_table.name,
+        chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
+        chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
+        artifacts_bucket_arn=upload_images.artifacts_bucket.arn,
+        # Worker ONLY needs EMBED_NDJSON_QUEUE (required parameters)
+        embed_ndjson_queue_url=upload_images.embed_ndjson_queue.url,
+        embed_ndjson_queue_arn=upload_images.embed_ndjson_queue.arn,
+        base_image_ref=base_images.label_base_image.tags[0],
+        desired_count=0,  # DISABLED: Using Lambda instead (see upload_images/infra.py)
+    )
+
+
+# (moved below UploadImages instantiation)
+
 # Recreate workers to use NAT private subnets for egress
 workers_nat = ChromaWorkers(
     name=f"chroma-workers-nat-{pulumi.get_stack()}",
@@ -313,6 +361,44 @@ validate_merchant_step_functions = ValidateMerchantStepFunctions(
 )
 
 # Wire upload-images after NAT and Chroma are available so it can reach OpenAI and Chroma
+# Build worker image BEFORE UploadImages so we can pass it for embed_from_ndjson_lambda
+# Container-based Lambda worker (build from worker/ Dockerfile)
+worker_repo = aws_ecr.Repository(
+    f"chroma-worker-lambda-{pulumi.get_stack()}-repo",
+    force_delete=True,
+)
+
+ecr_auth_for_worker = aws_ecr.get_authorization_token_output()
+repo_root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+worker_dockerfile_path = os.path.join(
+    os.path.dirname(__file__), "chromadb_compaction", "worker", "Dockerfile"
+)
+
+worker_image = docker_build.Image(
+    f"chroma-worker-lambda-{pulumi.get_stack()}-image",
+    context={"location": repo_root_dir},
+    dockerfile={"location": worker_dockerfile_path},
+    platforms=["linux/arm64"],
+    push=True,
+    registries=[
+        {
+            "address": worker_repo.repository_url.apply(
+                lambda u: u.split("/")[0]
+            ),
+            "username": ecr_auth_for_worker.user_name,
+            "password": ecr_auth_for_worker.password,
+        }
+    ],
+    build_args={
+        "BASE_IMAGE": base_images.label_base_image.tags[0],
+    },
+    tags=[worker_repo.repository_url.apply(lambda u: f"{u}:latest")],
+)
+
+worker_lambda_image_uri = pulumi.Output.all(
+    worker_repo.repository_url, worker_image.digest
+).apply(lambda xs: f"{xs[0].split(':')[0]}@{xs[1]}")
+
 upload_images = UploadImages(
     "upload-images",
     raw_bucket=raw_bucket,
@@ -325,10 +411,18 @@ upload_images = UploadImages(
     ecs_service_arn=chroma_service.svc.arn,
     nat_instance_id=nat.nat_instance_id,
     base_image_ref=base_images.label_base_image.tags[0],
+    # Pass worker image and EFS for embed_from_ndjson_lambda
+    worker_image_uri=worker_lambda_image_uri,
+    chromadb_efs_access_point_arn=chromadb_infrastructure.efs.access_point_arn,
+    chromadb_efs_mount_target=chromadb_infrastructure.efs.primary_mount_target,
 )
 
 pulumi.export("ocr_job_queue_url", upload_images.ocr_queue.url)
 pulumi.export("ocr_results_queue_url", upload_images.ocr_results_queue.url)
+
+# Now that upload_images exists, create the compaction worker
+compaction_worker = _create_compaction_worker()
+
 
 # ML Training Infrastructure
 # -------------------------

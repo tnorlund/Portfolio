@@ -78,6 +78,9 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
                 vpc_id=vpc_id,
                 subnet_ids=subnet_ids,
                 lambda_security_group_id=lambda_security_group_id,
+                additional_client_security_group_ids=None,
+                # Single mount target matching the single Lambda subnet
+                secondary_subnet_id=None,
                 opts=ResourceOptions(parent=self),
             )
 
@@ -94,7 +97,26 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
             efs_access_point_arn=(
                 self.efs.access_point_arn if self.efs else None
             ),
-            opts=ResourceOptions(parent=self),
+            efs_mount_dependencies=(
+                self.efs.primary_mount_target if self.efs else None
+            ),
+            # Ensure EFS mount target is created/available before Lambda updates
+            opts=ResourceOptions(
+                parent=self,
+                depends_on=(
+                    [
+                        m
+                        for m in [
+                            self.efs.primary_mount_target,
+                            self.efs.secondary_mount_target,
+                        ]
+                        if m is not None
+                    ]
+                    if self.efs
+                    else None
+                ),
+            ),
+            enable_enhanced_sqs_mappings=True,  # Enable to use enhanced_compaction_handler
         )
 
         # Export useful properties
@@ -128,6 +150,12 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
                 "docker_image_uri": self.lambda_deployment.docker_image.image_uri,
                 "efs_access_point_arn": (
                     self.efs.access_point_arn if self.efs else None
+                ),
+                "efs_access_point_id": (
+                    self.efs.access_point_id if self.efs else None
+                ),
+                "efs_file_system_id": (
+                    self.efs.file_system_id if self.efs else None
                 ),
             }
         )

@@ -53,8 +53,10 @@ class HybridLambdaDeployment(ComponentResource):
         vpc_subnet_ids=None,
         lambda_security_group_id: str | None = None,
         efs_access_point_arn: str | None = None,
+        efs_mount_dependencies=None,
         stack: Optional[str] = None,
         opts: Optional[ResourceOptions] = None,
+        enable_enhanced_sqs_mappings: bool = True,
     ):
         """
         Initialize the Hybrid Lambda Deployment.
@@ -267,7 +269,8 @@ class HybridLambdaDeployment(ComponentResource):
                 depends_on=[
                     self.lambda_role,
                     self.stream_log_group,
-                ],
+                ]
+                + ([efs_mount_dependencies] if efs_mount_dependencies else []),
                 ignore_changes=["layers"],
             ),
         )
@@ -307,6 +310,14 @@ class HybridLambdaDeployment(ComponentResource):
                     "MAX_HEARTBEAT_FAILURES": "3",
                     "LOG_LEVEL": "INFO",
                     "CHROMA_ROOT": "/mnt/chroma",
+                    # Force function configuration update when subnet selection changes
+                    "VPC_CONFIG_VERSION": Output.all(vpc_subnet_ids).apply(
+                        lambda xs: (
+                            f"{len(xs[0])}-{xs[0][0]}"
+                            if isinstance(xs[0], list) and len(xs[0]) > 0
+                            else "0-none"
+                        )
+                    ),
                 }
             },
             description=(
@@ -325,7 +336,8 @@ class HybridLambdaDeployment(ComponentResource):
                     self.lambda_role,
                     self.docker_image,
                     self.compaction_log_group,
-                ],
+                ]
+                + ([efs_mount_dependencies] if efs_mount_dependencies else []),
             ),
         )
 
@@ -340,7 +352,10 @@ class HybridLambdaDeployment(ComponentResource):
 
         # Create event source mappings
         self._create_event_source_mappings(
-            name, dynamodb_stream_arn, chromadb_queues
+            name,
+            dynamodb_stream_arn,
+            chromadb_queues,
+            enable_enhanced_sqs_mappings=enable_enhanced_sqs_mappings,
         )
 
         # Export useful properties
@@ -507,6 +522,8 @@ class HybridLambdaDeployment(ComponentResource):
         name: str,
         dynamodb_stream_arn: str,
         chromadb_queues: ChromaDBQueues,
+        *,
+        enable_enhanced_sqs_mappings: bool = True,
     ):
         """Create event source mappings for both Lambda functions."""
 
@@ -525,24 +542,25 @@ class HybridLambdaDeployment(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # SQS queues to enhanced compaction handler
-        self.lines_event_source_mapping = aws.lambda_.EventSourceMapping(
-            f"{name}-lines-event-source-mapping",
-            event_source_arn=chromadb_queues.lines_queue_arn,
-            function_name=self.enhanced_compaction_function.arn,
-            batch_size=10,  # FIFO queues support batch size up to 10
-            function_response_types=["ReportBatchItemFailures"],
-            opts=ResourceOptions(parent=self),
-        )
+        # SQS queues to enhanced compaction handler (optional)
+        if enable_enhanced_sqs_mappings:
+            self.lines_event_source_mapping = aws.lambda_.EventSourceMapping(
+                f"{name}-lines-event-source-mapping",
+                event_source_arn=chromadb_queues.lines_queue_arn,
+                function_name=self.enhanced_compaction_function.arn,
+                batch_size=10,  # FIFO queues support batch size up to 10
+                function_response_types=["ReportBatchItemFailures"],
+                opts=ResourceOptions(parent=self),
+            )
 
-        self.words_event_source_mapping = aws.lambda_.EventSourceMapping(
-            f"{name}-words-event-source-mapping",
-            event_source_arn=chromadb_queues.words_queue_arn,
-            function_name=self.enhanced_compaction_function.arn,
-            batch_size=10,  # FIFO queues support batch size up to 10
-            function_response_types=["ReportBatchItemFailures"],
-            opts=ResourceOptions(parent=self),
-        )
+            self.words_event_source_mapping = aws.lambda_.EventSourceMapping(
+                f"{name}-words-event-source-mapping",
+                event_source_arn=chromadb_queues.words_queue_arn,
+                function_name=self.enhanced_compaction_function.arn,
+                batch_size=10,  # FIFO queues support batch size up to 10
+                function_response_types=["ReportBatchItemFailures"],
+                opts=ResourceOptions(parent=self),
+            )
 
 
 # pylint: disable=too-many-positional-arguments
@@ -557,7 +575,9 @@ def create_hybrid_lambda_deployment(
     vpc_subnet_ids=None,
     lambda_security_group_id: str | None = None,
     efs_access_point_arn: str | None = None,
+    enable_enhanced_sqs_mappings: bool = True,
     opts: Optional[ResourceOptions] = None,
+    efs_mount_dependencies=None,
 ) -> HybridLambdaDeployment:
     """
     Factory function to create the hybrid Lambda deployment.
@@ -593,5 +613,7 @@ def create_hybrid_lambda_deployment(
         vpc_subnet_ids=vpc_subnet_ids,
         lambda_security_group_id=lambda_security_group_id,
         efs_access_point_arn=efs_access_point_arn,
+        efs_mount_dependencies=efs_mount_dependencies,
+        enable_enhanced_sqs_mappings=enable_enhanced_sqs_mappings,
         opts=opts,
     )

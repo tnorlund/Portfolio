@@ -72,18 +72,55 @@ from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.constants import ChromaDBCollection
 from receipt_label.utils.lock_manager import LockManager
 from receipt_label.utils.chroma_client import ChromaDBClient
-from receipt_label.merchant_validation.normalize import (
-    normalize_phone,
-    build_full_address_from_words,
-    build_full_address_from_lines,
-)
-from receipt_label.vector_store import upload_snapshot_with_hash
-from receipt_label.utils.chroma_s3_helpers import (
-    download_snapshot_from_s3,
-    upload_delta_to_s3,
-    upload_snapshot_atomic,
-    download_snapshot_atomic,
-)
+from receipt_label.utils.chroma_s3_helpers import upload_snapshot_atomic
+
+# EFS root mount for Chroma (mounted via Lambda file_system_config)
+CHROMA_ROOT = os.environ.get("CHROMA_ROOT", "/mnt/chroma")
+
+
+def _dir_has_content(path: str) -> bool:
+    try:
+        return os.path.isdir(path) and any(True for _ in os.scandir(path))
+    except FileNotFoundError:
+        return False
+
+
+def _ensure_dir(path: str) -> None:
+    os.makedirs(path, exist_ok=True)
+
+
+def _copy_tree(src: str, dst: str) -> None:
+    # shutil.copytree requires dst not to exist
+    if os.path.exists(dst):
+        raise FileExistsError(f"Destination already exists: {dst}")
+    shutil.copytree(src, dst)
+
+
+def _atomic_swap_dirs(live_dir: str, new_dir: str) -> None:
+    """Atomically promote new_dir to live_dir on the same filesystem.
+
+    Steps:
+    - If live_dir exists, rename it to a unique backup name
+    - Rename new_dir to live_dir
+    - Best-effort cleanup of backup
+    """
+    parent = os.path.dirname(live_dir) or "."
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S%f")
+    backup_dir = f"{live_dir}.backup_{timestamp}"
+
+    # Ensure parent exists
+    _ensure_dir(parent)
+
+    if os.path.exists(live_dir):
+        os.rename(live_dir, backup_dir)
+
+    os.rename(new_dir, live_dir)
+
+    # Best-effort cleanup of backup
+    try:
+        shutil.rmtree(backup_dir, ignore_errors=True)
+    except Exception:  # pragma: no cover - non-fatal cleanup
+        pass
 
 
 @dataclass(frozen=True)
@@ -257,8 +294,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     # CRITICAL FIX: Add handler to receipt_label loggers so they can output to CloudWatch
     if not receipt_label_logger.handlers:
-        # Create a handler that outputs to stdout (CloudWatch captures this)
-        handler = logging.StreamHandler()
+        # Create a stream_handler that outputs to stdout (CloudWatch captures this)
+        stream_handler = logging.StreamHandler()
 
         # Use the same JSON formatter as ChromaDB if available, otherwise simple format
         if OBSERVABILITY_AVAILABLE:
@@ -280,8 +317,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 datefmt="%Y-%m-%d %H:%M:%S",
             )
 
-        handler.setFormatter(formatter)
-        receipt_label_logger.addHandler(handler)
+        stream_handler.setFormatter(formatter)
+        receipt_label_logger.addHandler(stream_handler)
 
         # Prevent propagation to avoid duplicate logs
         receipt_label_logger.propagate = False
@@ -321,11 +358,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         )
 
     start_time = time.time()
-    function_name = (
-        context.function_name
-        if context and hasattr(context, "function_name")
-        else "enhanced_compaction_handler"
-    )
 
     try:
         # Check if this is an SQS trigger
@@ -354,7 +386,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 )
             else:
                 logger.info(
-                    f"Enhanced compaction handler completed in {execution_time:.2f}s"
+                    "Enhanced compaction handler completed in %.2fs",
+                    execution_time,
                 )
 
             # Format response with observability
@@ -404,7 +437,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "CompactionLambdaError", 1, {"error_type": error_type}
             )
         else:
-            logger.error(f"Handler failed: {str(e)}", exc_info=True)
+            logger.error("Handler failed: %s", str(e), exc_info=True)
 
         error_response = LambdaResponse(
             status_code=500,
@@ -437,11 +470,16 @@ def process_sqs_messages(records: List[Dict[str, Any]]) -> Dict[str, Any]:
     logger.info("Processing SQS messages", message_count=len(records))
 
     stream_messages = []
+    efs_sync_records: List[Dict[str, Any]] = []
     delta_message_records = []  # Store full records for delta messages
     processed_count = 0
     failed_message_ids = (
         []
     )  # Track failed message IDs for partial batch failure
+
+    # Track whether any stream messages actually contain actionable changes
+    total_stream_records = 0
+    stream_records_with_changes = 0
 
     # Categorize messages by type
     for record in records:
@@ -496,6 +534,20 @@ def process_sqs_messages(records: List[Dict[str, Any]]) -> Dict[str, Any]:
                 )
                 stream_messages.append(stream_msg)
 
+                # Update change tracking metrics
+                total_stream_records += 1
+                try:
+                    msg_changes = message_body.get("changes", {}) or {}
+                    # Consider it actionable if there's at least one field with any difference marker
+                    if msg_changes and any(
+                        (chg.get("old") != chg.get("new"))
+                        for chg in msg_changes.values()
+                    ):
+                        stream_records_with_changes += 1
+                except Exception:
+                    # Be resilient to unexpected shapes; treat as actionable to avoid false no-op
+                    stream_records_with_changes += 1
+
                 if OBSERVABILITY_AVAILABLE:
                     metrics.count(
                         "CompactionStreamMessage",
@@ -505,6 +557,31 @@ def process_sqs_messages(records: List[Dict[str, Any]]) -> Dict[str, Any]:
                             "collection": collection.value,
                         },
                     )
+            elif source == "efs_snapshot_sync":
+                # EFS snapshot sync request; collect per collection
+                collection_value = attributes.get("collection", {}).get(
+                    "stringValue"
+                )
+                if not collection_value:
+                    logger.warning(
+                        "EFS sync message missing collection attribute"
+                    )
+                    continue
+                try:
+                    collection = ChromaDBCollection(collection_value)
+                except ValueError:
+                    logger.warning(
+                        "Invalid collection value for EFS sync",
+                        collection_value=collection_value,
+                    )
+                    continue
+                efs_sync_records.append(
+                    {
+                        "collection": collection,
+                        "messageId": record.get("messageId"),
+                        "receiptHandle": record.get("receiptHandle"),
+                    }
+                )
             else:
                 # Traditional delta message or unknown - treat as delta
                 # Store the full record to get messageId for partial batch failure
@@ -528,19 +605,58 @@ def process_sqs_messages(records: List[Dict[str, Any]]) -> Dict[str, Any]:
                 )
             continue
 
+    # If we received only stream messages with no actionable changes, surface that explicitly
+    if total_stream_records > 0 and stream_records_with_changes == 0:
+        logger.info(
+            "No-op batch: all stream messages contained no actionable changes",
+            total_stream_records=total_stream_records,
+        )
+
     # Process stream messages if any
     if stream_messages:
-        result = process_stream_messages(stream_messages)
+        stream_result = process_stream_messages(stream_messages)
         # If a collection returned partial-batch failures (due to lock),
         # propagate immediately so the Lambda runtime retries only those.
-        if isinstance(result, dict) and "batchItemFailures" in result:
-            return result
-        logger.info("Processed stream messages", count=len(stream_messages))
+        if (
+            isinstance(stream_result, dict)
+            and "batchItemFailures" in stream_result
+        ):
+            return stream_result
+    # Process EFS snapshot sync requests (deduplicate by collection)
+    if efs_sync_records:
+        by_collection: Dict[ChromaDBCollection, List[str]] = {}
+        for rec in efs_sync_records:
+            col = rec["collection"]
+            if col not in by_collection:
+                by_collection[col] = []
+            rh = rec.get("receiptHandle")
+            if rh:
+                by_collection[col].append(rh)
+
+        for col, rh_list in by_collection.items():
+            try:
+                ok = process_efs_snapshot_sync(col)
+                if not ok:
+                    failed_message_ids.extend(rh_list)
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                logger.error(
+                    "EFS snapshot sync failed",
+                    collection=col.value,
+                    error=str(e),
+                )
+                failed_message_ids.extend(rh_list)
+
+        # After EFS sync processing, continue; no special partial-batch shape here
+        logger.info(
+            "Processed stream and EFS sync messages",
+            stream_count=len(stream_messages),
+            efs_sync_count=len(efs_sync_records),
+        )
 
     # Process delta messages if any - collect failed message IDs
     if delta_message_records:
         delta_bodies = [msg["body"] for msg in delta_message_records]
-        delta_result = process_delta_messages(delta_bodies)
+        process_delta_messages(delta_bodies)
 
         # Since delta processing is not implemented, mark all delta messages as failed
         # to prevent data loss by forcing SQS to retry them
@@ -582,8 +698,9 @@ def process_sqs_messages(records: List[Dict[str, Any]]) -> Dict[str, Any]:
             metrics.gauge("CompactionFailedMessages", len(failed_message_ids))
         else:
             logger.info(
-                f"Partial batch failure: {len(failed_message_ids)} failed, "
-                f"{len(stream_messages)} stream messages processed"
+                "Partial batch failure: %d failed, %d stream messages processed",
+                len(failed_message_ids),
+                len(stream_messages),
             )
 
         return response
@@ -1033,8 +1150,6 @@ def process_metadata_updates(
     logger.info("Processing metadata updates", count=len(metadata_updates))
     results = []
 
-    bucket = os.environ["CHROMADB_BUCKET"]
-
     for update_msg in metadata_updates:
         try:
             entity_data = update_msg.entity_data
@@ -1060,9 +1175,9 @@ def process_metadata_updates(
                     receipt_id,
                 )
 
-            # Update metadata for the specified collection
+            # Update metadata directly in EFS-backed Chroma directory
             database = collection.value
-            snapshot_key = f"{database}/snapshot/latest/"
+            efs_dir = os.path.join(CHROMA_ROOT, database)
 
             try:
                 # Validate lock ownership before S3 operations
@@ -1097,33 +1212,19 @@ def process_metadata_updates(
                     )
                     continue
 
-                # Download current snapshot using atomic helper
-                temp_dir = tempfile.mkdtemp()
-                download_result = download_snapshot_atomic(
-                    bucket=bucket,
-                    collection=collection.value,  # "lines" or "words"
-                    local_path=temp_dir,
-                    verify_integrity=True,
-                )
+                # Ensure EFS directory exists
+                _ensure_dir(efs_dir)
 
-                if download_result["status"] != "downloaded":
-                    logger.error(
-                        "Failed to download snapshot", result=download_result
-                    )
-
-                    if OBSERVABILITY_AVAILABLE:
-                        metrics.count(
-                            "CompactionSnapshotDownloadError",
-                            1,
-                            {"collection": collection.value},
-                        )
-                    continue
-
-                # Load ChromaDB using helper in metadata-only mode
+                # Open ChromaDB collection in write mode (metadata-only)
                 chroma_client = ChromaDBClient(
-                    persist_directory=temp_dir,
-                    mode="read",
-                    metadata_only=True,  # No embeddings needed for metadata updates
+                    persist_directory=efs_dir,
+                    mode="write",
+                    metadata_only=True,
+                )
+                logger.info(
+                    "EFS metadata update path enabled",
+                    collection=collection.value,
+                    efs_dir=efs_dir,
                 )
 
                 # Get appropriate collection
@@ -1169,87 +1270,11 @@ def process_metadata_updates(
                         collection_obj, image_id, receipt_id, changes
                     )
 
-                if updated_count > 0:
-                    # Validate lock ownership before S3 upload
-                    if lock_manager and not lock_manager.validate_ownership():
-                        error_msg = f"Lock validation failed before snapshot upload for {collection.value}"
-                        if OBSERVABILITY_AVAILABLE:
-                            logger.error(
-                                "Lock ownership lost before snapshot upload",
-                                collection=collection.value,
-                                receipt_id=receipt_id,
-                            )
-                            metrics.count(
-                                "CompactionLockValidationFailed",
-                                1,
-                                {
-                                    "collection": collection.value,
-                                    "operation": "s3_upload",
-                                },
-                            )
-                        else:
-                            logger.error(error_msg)
-
-                        results.append(
-                            MetadataUpdateResult(
-                                database=database,
-                                collection=database,
-                                image_id=image_id,
-                                receipt_id=receipt_id,
-                                error=error_msg,
-                                updated_count=0,
-                            )
-                        )
-                        shutil.rmtree(temp_dir, ignore_errors=True)
-                        continue
-
-                    # Upload updated snapshot atomically with lock validation
-                    upload_result = upload_snapshot_atomic(
-                        local_path=temp_dir,
-                        bucket=bucket,
-                        collection=collection.value,  # "lines" or "words"
-                        lock_manager=lock_manager,
-                        metadata={
-                            "update_type": "metadata_update",
-                            "image_id": image_id,
-                            "receipt_id": str(receipt_id),
-                            "updated_count": str(updated_count),
-                        },
+                # For EFS path we write in-place under collection lock; no S3 upload
+                if updated_count > 0 and OBSERVABILITY_AVAILABLE:
+                    metrics.count(
+                        "CompactionEFSMetadataUpdatedRecords", updated_count
                     )
-
-                    if upload_result["status"] == "uploaded":
-                        if OBSERVABILITY_AVAILABLE:
-                            logger.info(
-                                "Updated ChromaDB metadata",
-                                updated_count=updated_count,
-                                database=database,
-                                hash=upload_result.get(
-                                    "hash", "not_calculated"
-                                ),
-                            )
-                            metrics.count(
-                                "CompactionSnapshotUploaded",
-                                1,
-                                {"collection": database},
-                            )
-                        else:
-                            logger.info(
-                                "Updated %d records in receipt_%s, hash: %s",
-                                updated_count,
-                                database,
-                                upload_result.get("hash", "not_calculated"),
-                            )
-                    else:
-                        logger.error(
-                            "Failed to upload snapshot", result=upload_result
-                        )
-
-                        if OBSERVABILITY_AVAILABLE:
-                            metrics.count(
-                                "CompactionSnapshotUploadError",
-                                1,
-                                {"collection": database},
-                            )
 
                 result = MetadataUpdateResult(
                     database=database,
@@ -1285,8 +1310,7 @@ def process_metadata_updates(
                 )
                 results.append(result)
             finally:
-                if "temp_dir" in locals():
-                    shutil.rmtree(temp_dir, ignore_errors=True)
+                pass
 
         except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error("Error processing metadata update", error=str(e))
@@ -1325,53 +1349,22 @@ def process_label_updates(
     logger.info("Processing label updates", count=len(label_updates))
     results = []
 
-    bucket = os.environ["CHROMADB_BUCKET"]
-    # Use the specific collection instead of hardcoded "words"
+    # EFS-backed path
     database = collection.value
-    snapshot_key = f"{database}/snapshot/latest/"
+    efs_dir = os.path.join(CHROMA_ROOT, database)
 
     try:
-        # Download current snapshot using atomic helper
-        logger.info(
-            "Starting atomic snapshot download for label updates",
-            collection=collection.value,
-            bucket=bucket,
-        )
-        temp_dir = tempfile.mkdtemp()
-        download_start_time = time.time()
-
-        download_result = download_snapshot_atomic(
-            bucket=bucket,
-            collection=collection.value,  # "lines" or "words"
-            local_path=temp_dir,
-            verify_integrity=True,
-        )
-
-        download_time = time.time() - download_start_time
-        logger.info(
-            "Atomic snapshot download completed",
-            collection=collection.value,
-            status=download_result.get("status"),
-            download_time_ms=download_time * 1000,
-            version_id=download_result.get("version_id"),
-        )
-
-        if download_result["status"] != "downloaded":
-            logger.error("Failed to download snapshot", result=download_result)
-
-            if OBSERVABILITY_AVAILABLE:
-                metrics.count(
-                    "CompactionLabelSnapshotDownloadError",
-                    1,
-                    {"collection": collection.value},
-                )
-            return results
-
-        # Load ChromaDB using helper in metadata-only mode
+        # Ensure EFS directory exists and open in write mode (metadata-only)
+        _ensure_dir(efs_dir)
         chroma_client = ChromaDBClient(
-            persist_directory=temp_dir,
-            mode="read",
-            metadata_only=True,  # No embeddings needed for metadata updates
+            persist_directory=efs_dir,
+            mode="write",
+            metadata_only=True,
+        )
+        logger.info(
+            "EFS label update path enabled",
+            collection=collection.value,
+            efs_dir=efs_dir,
         )
 
         # Get words collection
@@ -1462,7 +1455,7 @@ def process_label_updates(
                 )
                 results.append(result)
 
-        # Upload updated snapshot with hash if any updates occurred
+        # For EFS path we update in-place; emit metrics only
         total_updates = sum(
             r.updated_count for r in results if r.error is None
         )
@@ -1471,105 +1464,8 @@ def process_label_updates(
             total_updates=total_updates,
             results_count=len(results),
         )
-        if total_updates > 0:
-            logger.info(
-                "DEBUG: Total updates > 0, proceeding with atomic S3 upload"
-            )
-            # Validate lock ownership before final S3 upload
-            if lock_manager and not lock_manager.validate_ownership():
-                error_msg = f"Lock validation failed before label snapshot upload for {collection.value}"
-                if OBSERVABILITY_AVAILABLE:
-                    logger.error(
-                        "Lock ownership lost before label snapshot upload",
-                        collection=collection.value,
-                    )
-                    metrics.count(
-                        "CompactionLockValidationFailed",
-                        1,
-                        {
-                            "collection": collection.value,
-                            "operation": "label_upload",
-                        },
-                    )
-                else:
-                    logger.error(error_msg)
-
-                # Replace successful results with error results
-                results = [
-                    LabelUpdateResult(
-                        chromadb_id=result.chromadb_id,
-                        updated_count=0,
-                        event_name=result.event_name,
-                        changes=result.changes,
-                        error=(
-                            error_msg if result.error is None else result.error
-                        ),
-                    )
-                    for result in results
-                ]
-
-                shutil.rmtree(temp_dir, ignore_errors=True)
-                return results
-
-            logger.info(
-                "DEBUG: Starting atomic snapshot upload for label updates",
-                collection=collection.value,
-                bucket=bucket,
-                total_updates=total_updates,
-                temp_dir=temp_dir,
-            )
-            upload_start_time = time.time()
-
-            upload_result = upload_snapshot_atomic(
-                local_path=temp_dir,
-                bucket=bucket,
-                collection=collection.value,  # "lines" or "words"
-                lock_manager=lock_manager,
-                metadata={
-                    "update_type": "label_update",
-                    "total_updates": str(total_updates),
-                },
-            )
-
-            upload_time = time.time() - upload_start_time
-            logger.info(
-                "DEBUG: Atomic snapshot upload completed",
-                collection=collection.value,
-                status=upload_result.get("status"),
-                upload_time_ms=upload_time * 1000,
-                version_id=upload_result.get("version_id"),
-                versioned_key=upload_result.get("versioned_key"),
-                pointer_key=upload_result.get("pointer_key"),
-                hash=upload_result.get("hash"),
-            )
-
-            if upload_result["status"] == "uploaded":
-                if OBSERVABILITY_AVAILABLE:
-                    logger.info(
-                        "Updated ChromaDB labels",
-                        total_updates=total_updates,
-                        hash=upload_result.get("hash", "not_calculated"),
-                    )
-                    metrics.count(
-                        "CompactionLabelSnapshotUploaded",
-                        1,
-                        {"collection": database},
-                    )
-                else:
-                    logger.info(
-                        "Updated %d word labels in ChromaDB, hash: %s",
-                        total_updates,
-                        upload_result.get("hash", "not_calculated"),
-                    )
-            else:
-                logger.error("Failed to upload snapshot", result=upload_result)
-
-                if OBSERVABILITY_AVAILABLE:
-                    metrics.count(
-                        "CompactionLabelSnapshotUploadError",
-                        1,
-                        {"collection": database},
-                    )
+        if total_updates > 0 and OBSERVABILITY_AVAILABLE:
+            metrics.count("CompactionEFSLabelUpdatedRecords", total_updates)
 
     except Exception as e:  # pylint: disable=broad-exception-caught
         logger.error("Error processing label updates", error=str(e))
@@ -1590,8 +1486,7 @@ def process_label_updates(
         )
         results.append(result)
     finally:
-        if "temp_dir" in locals():
-            shutil.rmtree(temp_dir, ignore_errors=True)
+        pass
 
     return results
 
@@ -1741,15 +1636,14 @@ def update_receipt_metadata(
     matching_ids = results.get("ids", [])
     matching_metadatas = []
 
-    for i, record_id in enumerate(matching_ids):
+    for i, _ in enumerate(matching_ids):
         # Get existing metadata and apply changes
         existing_metadata = results["metadatas"][i] or {}
         updated_metadata = existing_metadata.copy()
 
         # Apply field changes
         for field, change in changes.items():
-            old_value = change.get("old")
-            new_value = change["new"]
+            new_value = change.get("new")
             if new_value is not None:
                 updated_metadata[field] = new_value
             elif field in updated_metadata:
@@ -1922,7 +1816,7 @@ def remove_receipt_metadata(collection, image_id: str, receipt_id: int) -> int:
     matching_ids = results.get("ids", [])
     matching_metadatas = []
 
-    for i, record_id in enumerate(matching_ids):
+    for i, _ in enumerate(matching_ids):
         # Remove merchant fields from metadata
         existing_metadata = results["metadatas"][i] or {}
         updated_metadata = existing_metadata.copy()
@@ -2512,40 +2406,40 @@ def process_compaction_runs(
             local_dir=delta_dir,
         )
 
-        # Download current snapshot
-        snapshot_dir = tempfile.mkdtemp()
-        snap_result = download_snapshot_atomic(
-            bucket=bucket,
-            collection=collection.value,
-            local_path=snapshot_dir,
-            verify_integrity=True,
+        # EFS-backed snapshot merge with atomic directory promotion
+        live_dir = os.path.join(CHROMA_ROOT, collection.value)
+        staging_dir = os.path.join(
+            CHROMA_ROOT, f".{collection.value}_staging_{run_id}"
         )
-        if snap_result.get("status") != "downloaded":
-            logger.error("Failed to download snapshot", result=snap_result)
-            raise RuntimeError("Snapshot download failed")
+        logger.info(
+            "EFS compaction run staging setup",
+            collection=collection.value,
+            live_dir=live_dir,
+            staging_dir=staging_dir,
+        )
 
+        # Prepare staging: copy current live (if exists) to staging
+        if _dir_has_content(live_dir):
+            _copy_tree(live_dir, staging_dir)
+        else:
+            _ensure_dir(staging_dir)
+
+        # Merge delta into staging directory
         merged = merge_chroma_delta_into_snapshot(
-            delta_dir, collection.value, snapshot_dir
+            delta_dir, collection.value, staging_dir
         )
 
+        # Validate lock ownership before promotion
         if lock_manager and not lock_manager.validate_ownership():
-            raise RuntimeError("Lock validation failed before snapshot upload")
+            raise RuntimeError("Lock validation failed before EFS promotion")
 
-        upload_result = upload_snapshot_atomic(
-            local_path=snapshot_dir,
-            bucket=bucket,
+        # Atomically promote staging to live
+        _atomic_swap_dirs(live_dir, staging_dir)
+        logger.info(
+            "EFS promotion complete",
             collection=collection.value,
-            lock_manager=lock_manager,
-            metadata={
-                "update_type": "delta_merge",
-                "run_id": run_id,
-                "merged_vectors": str(merged),
-            },
+            live_dir=live_dir,
         )
-
-        if upload_result.get("status") != "uploaded":
-            logger.error("Snapshot upload failed", result=upload_result)
-            raise RuntimeError("Snapshot upload failed")
 
         try:
             dynamo.mark_compaction_run_completed(
@@ -2561,7 +2455,6 @@ def process_compaction_runs(
         merged_total += merged
 
         shutil.rmtree(temp_root, ignore_errors=True)
-        shutil.rmtree(snapshot_dir, ignore_errors=True)
 
     # Include run_id of the last processed message for easier log correlation.
     logger.info(
@@ -2571,3 +2464,72 @@ def process_compaction_runs(
         run_id=run_id,
     )
     return merged_total
+
+
+def process_efs_snapshot_sync(collection: ChromaDBCollection) -> bool:
+    """Snapshot current EFS collection directory to S3 using atomic helper.
+
+    Returns True if uploaded, False otherwise.
+    """
+    try:
+        bucket = os.environ["CHROMADB_BUCKET"]
+        efs_dir = os.path.join(CHROMA_ROOT, collection.value)
+        if not _dir_has_content(efs_dir):
+            logger.warning(
+                "EFS directory empty for sync; skipping",
+                collection=collection.value,
+            )
+            return False
+
+        if OBSERVABILITY_AVAILABLE:
+            metrics.count(
+                "EFSSnapshotSyncRequested", 1, {"collection": collection.value}
+            )
+
+        # Validate lock ownership if we can acquire a lock quickly (best-effort)
+        lock_manager = LockManager(
+            get_dynamo_client(),
+            collection=collection,
+            heartbeat_interval=heartbeat_interval,
+            lock_duration_minutes=lock_duration_minutes,
+            max_heartbeat_failures=max_heartbeat_failures,
+        )
+        lock_id = f"chroma-{collection.value}-update"
+        acquired = lock_manager.acquire(lock_id)
+        if not acquired:
+            logger.warning(
+                "Could not acquire lock for EFS sync; will retry via SQS",
+                collection=collection.value,
+            )
+            return False
+
+        try:
+            lock_manager.start_heartbeat()
+            # Upload current EFS directory atomically to S3
+            upload_result = upload_snapshot_atomic(
+                local_path=efs_dir,
+                bucket=bucket,
+                collection=collection.value,
+                lock_manager=lock_manager,
+                metadata={"update_type": "efs_snapshot_sync"},
+            )
+            ok = upload_result.get("status") == "uploaded"
+            if ok and OBSERVABILITY_AVAILABLE:
+                metrics.count(
+                    "EFSSnapshotSynced", 1, {"collection": collection.value}
+                )
+            if not ok:
+                logger.error(
+                    "EFS snapshot sync upload failed", result=upload_result
+                )
+            return ok
+        finally:
+            lock_manager.stop_heartbeat()
+            lock_manager.release()
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        logger.error(
+            "Error during EFS snapshot sync",
+            collection=collection.value,
+            error=str(e),
+        )
+        return False
