@@ -17,6 +17,8 @@ from receipt_upload.utils import download_image_from_s3, upload_file_to_s3
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--env", type=str, default="dev")
+    parser.add_argument("--max-messages", type=int, default=10)
+    parser.add_argument("--visibility-timeout", type=int, default=60)
     args = parser.parse_args()
     env = args.env
     pulumi_outputs = load_env(env)
@@ -32,12 +34,11 @@ def main():
     sqs_client = boto3.client("sqs")
     response = sqs_client.receive_message(
         QueueUrl=sqs_queue_url,
-        MaxNumberOfMessages=10,
-        VisibilityTimeout=60,
+        MaxNumberOfMessages=args.max_messages,
+        VisibilityTimeout=args.visibility_timeout,
     )
     if "Messages" not in response:
-        print("No messages in the queue")
-        return
+        raise ValueError("No messages in the queue")
 
     # image_details is a list of tuples, where each tuple contains the image_id
     # and the path to the image
@@ -46,6 +47,8 @@ def main():
     message_contexts = []
 
     print(f"Received {len(response['Messages'])} messages")
+    print(f"Visibility timeout: {args.visibility_timeout}")
+    print(f"Max messages: {args.max_messages}")
     with TemporaryDirectory() as temp_dir:
         for message in response["Messages"]:
             # Get the job_id and image_id from the message
