@@ -22,7 +22,7 @@ jobs:
             - name: Setup Swift
               uses: swift-actions/setup-swift@v1
               with:
-                  swift-version: "5.9"
+                  swift-version: "6.0"
 
             - name: Resolve Swift dependencies
               run: |
@@ -108,7 +108,7 @@ jobs:
             - name: Setup Swift
               uses: swift-actions/setup-swift@v1
               with:
-                  swift-version: "5.9"
+                  swift-version: "6.0"
 
             - name: Build release binary
               run: |

@@ -12,7 +12,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
-        .package(url: "https://github.com/soto-project/soto", from: "6.6.0"),
+            .package(url: "https://github.com/soto-project/soto", from: "6.7.0"),
         .package(url: "https://github.com/apple/swift-log", from: "1.5.3")
     ],
     targets: [
