@@ -1,0 +1,16 @@
+version: "3.8"
+services:
+  localstack:
+    image: localstack/localstack:3
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=s3,sqs,dynamodb
+      - EDGE_PORT=4566
+      - AWS_DEFAULT_REGION=us-west-2
+      - DEBUG=1
+    volumes:
+      - localstack-data:/var/lib/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+volumes:
+  localstack-data:
