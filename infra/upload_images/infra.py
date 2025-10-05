@@ -683,7 +683,10 @@ class UploadImages(ComponentResource):
             event_source_arn=self.embed_ndjson_queue.arn,
             function_name=embed_from_ndjson_lambda.name,
             batch_size=10,
-            maximum_batching_window_in_seconds=5,
+            maximum_batching_window_in_seconds=1,
+            scaling_config=aws.lambda_.EventSourceMappingScalingConfigArgs(
+                maximum_concurrency=10
+            ),
             enabled=True,  # ← ACTIVE: Lambda consumes the queue
             opts=ResourceOptions(parent=self),
         )

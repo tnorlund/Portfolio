@@ -305,6 +305,69 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         # Skip normal entity parsing for this record
                         continue
 
+                # Handle COMPACTION_RUN updates without noisy parsing
+                if event_name in ("MODIFY", "REMOVE"):
+                    keys = record.get("dynamodb", {}).get("Keys", {})
+                    pk = keys.get("PK", {}).get("S", "")
+                    sk = keys.get("SK", {}).get("S", "")
+                    if _is_compaction_run(pk, sk):
+                        # Short-circuit REMOVE without parsing
+                        if event_name == "REMOVE":
+                            continue
+
+                        new_image = record.get("dynamodb", {}).get("NewImage")
+
+                        # Detect completion by image contents only; parse for ids best-effort
+                        def _run_embeddings_completed(
+                            img: Optional[dict],
+                        ) -> bool:
+                            if not img:
+                                return False
+                            # States follow CompactionState: PENDING/PROCESSING/COMPLETED/FAILED
+                            ls = img.get("lines_state", {}).get("S")
+                            ws = img.get("words_state", {}).get("S")
+                            # Timestamps are DynamoDB attribute maps; detect presence of 'S'
+                            lf = bool(
+                                img.get("lines_finished_at")
+                                and "S" in img.get("lines_finished_at", {})
+                            )
+                            wf = bool(
+                                img.get("words_finished_at")
+                                and "S" in img.get("words_finished_at", {})
+                            )
+                            return (
+                                (ls == "COMPLETED" and ws == "COMPLETED")
+                            ) or (lf and wf)
+
+                        if _run_embeddings_completed(new_image):
+                            compaction_run = None
+                            try:
+                                compaction_run = (
+                                    _parse_compaction_run(new_image, pk, sk)
+                                    if new_image
+                                    else None
+                                )
+                            except Exception:  # noqa: BLE001 - best-effort ids
+                                compaction_run = None
+
+                            logger.info(
+                                "CompactionRun embeddings complete",
+                                run_id=getattr(compaction_run, "run_id", None),
+                                image_id=getattr(
+                                    compaction_run, "image_id", None
+                                ),
+                                receipt_id=getattr(
+                                    compaction_run, "receipt_id", None
+                                ),
+                            )
+                            if OBSERVABILITY_AVAILABLE:
+                                metrics.count(
+                                    "CompactionRunEmbeddingsComplete", 1
+                                )
+
+                        # Do not attempt generic parsing for COMPACTION_RUN
+                        continue
+
                 # Parse stream record using entity parsers
                 parsed_record = parse_stream_record(record)
 
@@ -684,6 +747,9 @@ def parse_stream_record(
         entity_type = _detect_entity_type(sk)
         if not entity_type:
             return None  # Not a relevant entity type
+        # Skip COMPACTION_RUN here; handled explicitly in lambda_handler
+        if entity_type == "COMPACTION_RUN":
+            return None
 
         # Get appropriate DynamoDB item for parsing
         old_image = record["dynamodb"].get("OldImage")

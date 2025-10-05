@@ -96,7 +96,9 @@ def _copy_tree(src: str, dst: str) -> None:
     shutil.copytree(src, dst)
 
 
-def _atomic_swap_dirs(live_dir: str, new_dir: str) -> None:
+def _atomic_swap_dirs(
+    live_dir: str, new_dir: str, keep_backup: bool = False
+) -> Optional[str]:
     """Atomically promote new_dir to live_dir on the same filesystem.
 
     Steps:
@@ -113,14 +115,19 @@ def _atomic_swap_dirs(live_dir: str, new_dir: str) -> None:
 
     if os.path.exists(live_dir):
         os.rename(live_dir, backup_dir)
+    else:
+        backup_dir = None
 
     os.rename(new_dir, live_dir)
 
-    # Best-effort cleanup of backup
-    try:
-        shutil.rmtree(backup_dir, ignore_errors=True)
-    except Exception:  # pragma: no cover - non-fatal cleanup
-        pass
+    # Optionally keep backup for external snapshot; otherwise best-effort cleanup
+    if not keep_backup and backup_dir:
+        try:
+            shutil.rmtree(backup_dir, ignore_errors=True)
+        except Exception:  # pragma: no cover - non-fatal cleanup
+            pass
+
+    return backup_dir
 
 
 @dataclass(frozen=True)
@@ -487,6 +494,43 @@ def process_sqs_messages(records: List[Dict[str, Any]]) -> Dict[str, Any]:
             # Parse message body
             message_body = json.loads(record["body"])
 
+            # Compute SQS queue latency if attributes are present
+            try:
+                sqs_attrs = record.get("attributes", {}) or {}
+                sent_ms = (
+                    int(sqs_attrs.get("SentTimestamp"))
+                    if sqs_attrs.get("SentTimestamp")
+                    else None
+                )
+                first_recv_ms = (
+                    int(sqs_attrs.get("ApproximateFirstReceiveTimestamp"))
+                    if sqs_attrs.get("ApproximateFirstReceiveTimestamp")
+                    else None
+                )
+                msg_attrs = record.get("messageAttributes", {}) or {}
+                collection_attr = msg_attrs.get("collection", {})
+                collection_str = (
+                    collection_attr.get("stringValue")
+                    if isinstance(collection_attr, dict)
+                    else None
+                )
+                if sent_ms and first_recv_ms and OBSERVABILITY_AVAILABLE:
+                    queue_latency_seconds = max(
+                        0.0, (first_recv_ms - sent_ms) / 1000.0
+                    )
+                    metrics.timer(
+                        "QueueLatencySeconds",
+                        queue_latency_seconds,
+                        {"collection": collection_str or "unknown"},
+                    )
+                    logger.info(
+                        "Computed queue latency",
+                        collection=collection_str or "unknown",
+                        queue_latency_seconds=queue_latency_seconds,
+                    )
+            except Exception:  # noqa: BLE001 - best-effort only
+                pass
+
             # Check message attributes for source
             attributes = record.get("messageAttributes", {})
             source = attributes.get("source", {}).get("stringValue", "unknown")
@@ -624,18 +668,39 @@ def process_sqs_messages(records: List[Dict[str, Any]]) -> Dict[str, Any]:
             return stream_result
     # Process EFS snapshot sync requests (deduplicate by collection)
     if efs_sync_records:
-        by_collection: Dict[ChromaDBCollection, List[str]] = {}
+        # Collect by collection and carry forward an optional backup_dir hint
+        by_collection: Dict[ChromaDBCollection, Dict[str, Any]] = {}
         for rec in efs_sync_records:
             col = rec["collection"]
             if col not in by_collection:
-                by_collection[col] = []
+                by_collection[col] = {"receiptHandles": [], "backup_dir": None}
             rh = rec.get("receiptHandle")
             if rh:
-                by_collection[col].append(rh)
-
-        for col, rh_list in by_collection.items():
+                by_collection[col]["receiptHandles"].append(rh)
+            # Inspect message attributes for backup_dir hint if available
             try:
-                ok = process_efs_snapshot_sync(col)
+                # Rehydrate from original record still in scope
+                # efs_sync_records only keeps a subset; look up the original attributes
+                # by using the receipt handle match
+                for original in records:
+                    if original.get("receiptHandle") == rh:
+                        attrs = original.get("messageAttributes", {}) or {}
+                        bdir = (
+                            attrs.get("efs_backup_dir", {}).get("stringValue")
+                            if isinstance(attrs.get("efs_backup_dir"), dict)
+                            else None
+                        )
+                        if bdir and os.path.isdir(bdir):
+                            by_collection[col]["backup_dir"] = bdir
+                        break
+            except Exception:
+                pass
+
+        for col, data in by_collection.items():
+            rh_list = data.get("receiptHandles", [])
+            backup_dir = data.get("backup_dir")
+            try:
+                ok = process_efs_snapshot_sync(col, backup_dir=backup_dir)
                 if not ok:
                     failed_message_ids.extend(rh_list)
             except Exception as e:  # pylint: disable=broad-exception-caught
@@ -862,7 +927,7 @@ def _process_collection_messages(
                     {"entity_type": message.entity_type},
                 )
 
-    # Acquire collection-specific lock for metadata updates
+    # Initialize a collection-scoped lock manager (used for short critical sections)
     lock_manager = LockManager(
         get_dynamo_client(),
         collection=collection,
@@ -874,7 +939,24 @@ def _process_collection_messages(
     try:
         # Create collection-specific lock ID
         lock_id = f"chroma-{collection.value}-update"
-        lock_acquired = lock_manager.acquire(lock_id)
+        # Short retry-with-jitter to reduce immediate contention failures
+        import random, time as _time
+
+        lock_acquired = False
+        lock_attempts = 0
+        lock_start = _time.time()
+        max_wait_seconds = 20.0
+        while (
+            not lock_acquired
+            and (_time.time() - lock_start) < max_wait_seconds
+        ):
+            lock_attempts += 1
+            lock_acquired = lock_manager.acquire(lock_id)
+            if lock_acquired:
+                break
+            # jittered backoff: 100–300ms * attempts (cap ~1.5s)
+            backoff = min(1.5, random.uniform(0.1, 0.3) * lock_attempts)
+            _time.sleep(backoff)
 
         if not lock_acquired:
             if OBSERVABILITY_AVAILABLE:
@@ -918,7 +1000,7 @@ def _process_collection_messages(
                 lock_id,
             )
 
-        # Start heartbeat
+        # Start heartbeat for the duration of collection batch
         lock_manager.start_heartbeat()
 
         # Process metadata updates with lock validation
@@ -958,39 +1040,11 @@ def _process_collection_messages(
                 metadata_updates, collection, lock_manager
             )
 
-        # Process COMPACTION_RUN delta merges with lock validation
+        # Process COMPACTION_RUN delta merges with lock only for promotion
         total_merged_vectors = 0
         if compaction_runs:
-            if not lock_manager.validate_ownership():
-                if OBSERVABILITY_AVAILABLE:
-                    logger.error(
-                        "Lock ownership validation failed before delta merge",
-                        collection=collection.value,
-                        operation="compaction_run",
-                    )
-                    metrics.count(
-                        "CompactionLockValidationFailed",
-                        1,
-                        {
-                            "collection": collection.value,
-                            "operation": "delta_merge",
-                        },
-                    )
-                else:
-                    logger.error(
-                        "Lock validation failed before delta merge for %s",
-                        collection.value,
-                    )
-                return {
-                    "error": f"Lock validation failed for {collection.value} collection (delta merge)",
-                    "metadata_updates": (
-                        len(metadata_results) if metadata_results else 0
-                    ),
-                    "label_updates": 0,
-                    "metadata_results": metadata_results,
-                    "label_results": [],
-                }
-
+            # Perform download and merge to staging WITHOUT holding the lock.
+            # The promotion inside process_compaction_runs will validate and require lock.
             total_merged_vectors = process_compaction_runs(
                 compaction_runs, collection, lock_manager
             )
@@ -2433,13 +2487,23 @@ def process_compaction_runs(
         if lock_manager and not lock_manager.validate_ownership():
             raise RuntimeError("Lock validation failed before EFS promotion")
 
-        # Atomically promote staging to live
-        _atomic_swap_dirs(live_dir, staging_dir)
+        # Atomically promote staging to live; keep backup for async snapshot
+        promotion_start = time.time()
+        backup_dir = _atomic_swap_dirs(live_dir, staging_dir, keep_backup=True)
+        promotion_elapsed = time.time() - promotion_start
         logger.info(
             "EFS promotion complete",
             collection=collection.value,
             live_dir=live_dir,
+            backup_dir=backup_dir,
+            promotion_time_ms=int(promotion_elapsed * 1000),
         )
+        if OBSERVABILITY_AVAILABLE:
+            metrics.timer(
+                "EFSPromotionTimeSeconds",
+                promotion_elapsed,
+                {"collection": collection.value},
+            )
 
         try:
             dynamo.mark_compaction_run_completed(
@@ -2456,6 +2520,62 @@ def process_compaction_runs(
 
         shutil.rmtree(temp_root, ignore_errors=True)
 
+        # Enqueue an EFS snapshot sync for this collection after successful promotion
+        try:
+            queue_url = os.environ.get(
+                "LINES_QUEUE_URL"
+                if collection.value == "lines"
+                else "WORDS_QUEUE_URL"
+            )
+            if queue_url:
+                sqs_client.send_message(
+                    QueueUrl=queue_url,
+                    MessageBody=json.dumps({}),
+                    MessageGroupId=f"efs_sync:{collection.value}",
+                    MessageAttributes={
+                        "source": {
+                            "DataType": "String",
+                            "StringValue": "efs_snapshot_sync",
+                        },
+                        "collection": {
+                            "DataType": "String",
+                            "StringValue": collection.value,
+                        },
+                        # If backup_dir exists, pass it so sync can upload without lock/copy
+                        "efs_backup_dir": {
+                            "DataType": "String",
+                            "StringValue": backup_dir or "",
+                        },
+                        "reason": {
+                            "DataType": "String",
+                            "StringValue": "post_promotion",
+                        },
+                    },
+                )
+                if OBSERVABILITY_AVAILABLE:
+                    metrics.count(
+                        "EFSSnapshotSyncEnqueued",
+                        1,
+                        {"collection": collection.value},
+                    )
+                logger.info(
+                    "Enqueued EFS snapshot sync",
+                    collection=collection.value,
+                    queue_url=queue_url,
+                    run_id=run_id,
+                )
+            else:
+                logger.warning(
+                    "Queue URL not set for EFS snapshot sync",
+                    collection=collection.value,
+                )
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.warning(
+                "Failed to enqueue EFS snapshot sync",
+                collection=collection.value,
+                error=str(e),
+            )
+
     # Include run_id of the last processed message for easier log correlation.
     logger.info(
         "Completed COMPACTION_RUN processing",
@@ -2466,7 +2586,9 @@ def process_compaction_runs(
     return merged_total
 
 
-def process_efs_snapshot_sync(collection: ChromaDBCollection) -> bool:
+def process_efs_snapshot_sync(
+    collection: ChromaDBCollection, backup_dir: Optional[str] = None
+) -> bool:
     """Snapshot current EFS collection directory to S3 using atomic helper.
 
     Returns True if uploaded, False otherwise.
@@ -2486,46 +2608,96 @@ def process_efs_snapshot_sync(collection: ChromaDBCollection) -> bool:
                 "EFSSnapshotSyncRequested", 1, {"collection": collection.value}
             )
 
-        # Validate lock ownership if we can acquire a lock quickly (best-effort)
-        lock_manager = LockManager(
-            get_dynamo_client(),
-            collection=collection,
-            heartbeat_interval=heartbeat_interval,
-            lock_duration_minutes=lock_duration_minutes,
-            max_heartbeat_failures=max_heartbeat_failures,
-        )
-        lock_id = f"chroma-{collection.value}-update"
-        acquired = lock_manager.acquire(lock_id)
-        if not acquired:
-            logger.warning(
-                "Could not acquire lock for EFS sync; will retry via SQS",
-                collection=collection.value,
-            )
-            return False
+        # If caller provided a promotion backup dir, prefer it as snapshot source (no lock/copy)
+        snapshot_dir = None
+        cleanup_backup = False
+        if backup_dir and os.path.isdir(backup_dir):
+            snapshot_dir = backup_dir
+            cleanup_backup = True
+        else:
+            # The process_sqs_messages groups receiptHandles by collection; to pass backup_dir,
+            # an explicit env override can also be used for manual runs.
+            backup_override = os.environ.get("EFS_BACKUP_DIR_OVERRIDE")
+            if backup_override and os.path.isdir(backup_override):
+                snapshot_dir = backup_override
 
-        try:
-            lock_manager.start_heartbeat()
-            # Upload current EFS directory atomically to S3
-            upload_result = upload_snapshot_atomic(
-                local_path=efs_dir,
-                bucket=bucket,
-                collection=collection.value,
-                lock_manager=lock_manager,
-                metadata={"update_type": "efs_snapshot_sync"},
+        # If no override, fall back to fast copy under very short lock to a temp dir
+        temp_root = None
+        if not snapshot_dir:
+            temp_root = tempfile.mkdtemp()
+            snapshot_dir = os.path.join(
+                temp_root, f"{collection.value}_snapshot"
             )
-            ok = upload_result.get("status") == "uploaded"
-            if ok and OBSERVABILITY_AVAILABLE:
-                metrics.count(
-                    "EFSSnapshotSynced", 1, {"collection": collection.value}
+
+            lock_manager = LockManager(
+                get_dynamo_client(),
+                collection=collection,
+                heartbeat_interval=heartbeat_interval,
+                lock_duration_minutes=lock_duration_minutes,
+                max_heartbeat_failures=max_heartbeat_failures,
+            )
+            lock_id = f"chroma-{collection.value}-update"
+            if not lock_manager.acquire(lock_id):
+                logger.warning(
+                    "Could not acquire lock for EFS sync copy; will retry via SQS",
+                    collection=collection.value,
                 )
-            if not ok:
-                logger.error(
-                    "EFS snapshot sync upload failed", result=upload_result
+                if temp_root:
+                    shutil.rmtree(temp_root, ignore_errors=True)
+                return False
+            try:
+                lock_manager.start_heartbeat()
+                logger.info(
+                    "Starting EFS snapshot copy",
+                    collection=collection.value,
+                    src_dir=efs_dir,
+                    dst_dir=snapshot_dir,
                 )
-            return ok
-        finally:
-            lock_manager.stop_heartbeat()
-            lock_manager.release()
+                _copy_tree(efs_dir, snapshot_dir)
+                logger.info(
+                    "Completed EFS snapshot copy",
+                    collection=collection.value,
+                    files_copied=True,
+                )
+                if OBSERVABILITY_AVAILABLE:
+                    metrics.count(
+                        "EFSSnapshotCopied",
+                        1,
+                        {"collection": collection.value},
+                    )
+            finally:
+                lock_manager.stop_heartbeat()
+                lock_manager.release()
+
+        # Step 2: Upload the copied snapshot to S3 atomically (no lock held)
+        upload_result = upload_snapshot_atomic(
+            local_path=snapshot_dir,
+            bucket=bucket,
+            collection=collection.value,
+            lock_manager=None,
+            metadata={"update_type": "efs_snapshot_sync"},
+        )
+        ok = upload_result.get("status") == "uploaded"
+        if ok and OBSERVABILITY_AVAILABLE:
+            metrics.count(
+                "EFSSnapshotSynced", 1, {"collection": collection.value}
+            )
+        if not ok:
+            logger.error(
+                "EFS snapshot sync upload failed", result=upload_result
+            )
+        # Only delete the backup if upload succeeded
+        if ok and cleanup_backup:
+            try:
+                shutil.rmtree(snapshot_dir, ignore_errors=True)
+                logger.info(
+                    "Cleaned up promotion backup after successful sync",
+                    collection=collection.value,
+                    backup_dir=snapshot_dir,
+                )
+            except Exception:
+                pass
+        return ok
     except Exception as e:  # pylint: disable=broad-exception-caught
         logger.error(
             "Error during EFS snapshot sync",
@@ -2533,3 +2705,10 @@ def process_efs_snapshot_sync(collection: ChromaDBCollection) -> bool:
             error=str(e),
         )
         return False
+    finally:
+        # Cleanup temp copy if it exists and is not a backup override
+        try:
+            if "temp_root" in locals() and temp_root:
+                shutil.rmtree(temp_root, ignore_errors=True)
+        except Exception:
+            pass

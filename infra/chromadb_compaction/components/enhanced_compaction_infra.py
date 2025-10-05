@@ -276,7 +276,9 @@ class EnhancedCompactionLambda(ComponentResource):
             handler="enhanced_compaction_handler.lambda_handler",
             role=self.lambda_role.arn,
             timeout=900,  # 15 minutes for compaction operations
-            memory_size=512,  # More memory for ChromaDB operations
+            memory_size=2048,  # Further increase memory for faster merges
+            reserved_concurrent_executions=20,  # Higher parallelism across runs
+            ephemeral_storage={"size": 4096},  # 4GB for larger deltas
             vpc_config=vpc_cfg,
             file_system_config=(
                 aws.lambda_.FunctionFileSystemConfigArgs(
@@ -331,6 +333,9 @@ class EnhancedCompactionLambda(ComponentResource):
             function_name=self.function.arn,
             batch_size=10,
             maximum_batching_window_in_seconds=0,
+            scaling_config=aws.lambda_.EventSourceMappingScalingConfigArgs(
+                maximum_concurrency=10
+            ),
             maximum_retry_attempts=3,
             maximum_record_age_in_seconds=3600,
             function_response_types=["ReportBatchItemFailures"],
@@ -343,6 +348,9 @@ class EnhancedCompactionLambda(ComponentResource):
             function_name=self.function.arn,
             batch_size=10,
             maximum_batching_window_in_seconds=0,
+            scaling_config=aws.lambda_.EventSourceMappingScalingConfigArgs(
+                maximum_concurrency=10
+            ),
             maximum_retry_attempts=3,
             maximum_record_age_in_seconds=3600,
             function_response_types=["ReportBatchItemFailures"],

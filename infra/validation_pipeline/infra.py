@@ -106,7 +106,9 @@ class ValidationPipeline(ComponentResource):
             f"{name}-completion-batch-bucket",
             force_destroy=True,
             tags={"environment": stack},
-            opts=ResourceOptions(parent=self),
+            opts=ResourceOptions(
+                parent=self, ignore_changes=["acl", "grants"]
+            ),
         )
 
         # Define the environment variables for the lambda

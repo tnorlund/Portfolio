@@ -1,10 +1,18 @@
 ARG PYTHON_VERSION=3.12
 FROM public.ecr.aws/lambda/python:${PYTHON_VERSION}
 
-# Install system dependencies required for both packages
-RUN dnf install -y gcc gcc-c++ python3-devel && \
-    dnf clean all && \
-    rm -rf /var/cache/dnf
+# Try installing only python3-devel first, then gcc separately with more aggressive cleanup
+RUN microdnf clean all && \
+    rm -rf /var/cache/yum/* /tmp/* /var/tmp/* && \
+    microdnf install -y --nobest --nodocs python3-devel && \
+    microdnf clean all && \
+    rm -rf /var/cache/yum/* /tmp/* /var/tmp/* && \
+    microdnf install -y --nobest --nodocs gcc && \
+    microdnf clean all && \
+    rm -rf /var/cache/yum/* /tmp/* /var/tmp/* && \
+    microdnf install -y --nobest --nodocs gcc-c++ && \
+    microdnf clean all && \
+    rm -rf /var/cache/yum/* /tmp/* /var/tmp/*
 
 # Copy BOTH packages into the build for self-contained installation
 COPY receipt_dynamo /tmp/receipt_dynamo

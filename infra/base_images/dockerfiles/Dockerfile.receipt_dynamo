@@ -1,10 +1,10 @@
 ARG PYTHON_VERSION=3.12
 FROM public.ecr.aws/lambda/python:${PYTHON_VERSION}
 
-# Install system dependencies
-RUN dnf install -y gcc python3-devel && \
-    dnf clean all && \
-    rm -rf /var/cache/dnf
+# Skip system dependencies - receipt_dynamo only needs pure Python packages
+# RUN microdnf clean all && \
+#     microdnf install -y --nobest --nodocs python3-devel && \
+#     microdnf clean all
 
 # Copy and install receipt_dynamo package
 COPY receipt_dynamo /tmp/receipt_dynamo

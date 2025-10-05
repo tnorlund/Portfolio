@@ -56,7 +56,9 @@ class ChromaDBBuckets(ComponentResource):
                 "Environment": stack,
                 "ManagedBy": "Pulumi",
             },
-            opts=ResourceOptions(parent=self),
+            opts=ResourceOptions(
+                parent=self, ignore_changes=["acl", "grants"]
+            ),
         )
 
         # Configure versioning as a separate resource

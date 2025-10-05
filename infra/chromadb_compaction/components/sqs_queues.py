@@ -87,7 +87,7 @@ class ChromaDBQueues(ComponentResource):
             message_retention_seconds=345600,
             # Must exceed Lambda timeout (900s)
             visibility_timeout_seconds=1200,
-            receive_wait_time_seconds=20,
+            receive_wait_time_seconds=10,
             redrive_policy=Output.all(self.lines_dlq.arn).apply(
                 lambda args: json.dumps(
                     {
@@ -113,7 +113,7 @@ class ChromaDBQueues(ComponentResource):
             message_retention_seconds=345600,
             # Must exceed Lambda timeout (900s)
             visibility_timeout_seconds=1200,
-            receive_wait_time_seconds=20,
+            receive_wait_time_seconds=10,
             redrive_policy=Output.all(self.words_dlq.arn).apply(
                 lambda args: json.dumps(
                     {

@@ -552,7 +552,7 @@ def main() -> None:
         except Exception:  # noqa: BLE001 - best-effort enrichment
             return []
 
-    # When scanning multiple latest images, query per-image to avoid AND filter semantics
+    # When scanning multiple latest images, query per-image (and per-receipt) to avoid AND filter semantics
     if image_ids and len(image_ids) > 1:
         print(
             f"Scanning {len(image_ids)} images individually to avoid AND filter semantics",
@@ -560,12 +560,20 @@ def main() -> None:
         )
         for iid in image_ids:
             print(f"-- Image {iid} --", file=sys.stderr)
-            iid_terms = [f"image_id={iid}", iid]
             if args.include_receipt_terms:
                 rids = _receipt_ids_for_image(iid)
-                for rid in rids:
-                    iid_terms.extend([f"receipt_id={rid}", rid])
-            rows.extend(_process_all_groups(iid_terms))
+                if rids:
+                    for rid in rids:
+                        terms_for_receipt = [
+                            f"image_id={iid}",
+                            iid,
+                            f"receipt_id={rid}",
+                            str(rid),
+                        ]
+                        rows.extend(_process_all_groups(terms_for_receipt))
+                    continue
+            # Fallback: just image terms
+            rows.extend(_process_all_groups([f"image_id={iid}", iid]))
     else:
         rows.extend(_process_all_groups(terms))
 
