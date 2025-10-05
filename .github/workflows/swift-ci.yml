@@ -1,16 +1,31 @@
 name: Swift CI
 
+# DISABLED: Waiting for GitHub runners to support Swift 6.0+ compatibility
+#
+# Issue: Swift 6.0+ has compatibility issues with GitHub runners' macOS 15.6.1 + Xcode 16.4
+# Local development works fine with macOS 25.0.0 + Swift 6.2
+#
+# To re-enable:
+# 1. Uncomment the 'on:' section below
+# 2. Remove the 'workflow_dispatch:' section
+# 3. Test that GitHub runners support the Swift version
+#
+# Re-enable when GitHub runners support newer Swift versions
+# on:
+#     push:
+#         branches: [main, develop]
+#         paths:
+#             - "receipt_ocr_swift/**"
+#             - ".github/workflows/swift-ci.yml"
+#     pull_request:
+#         branches: [main, develop]
+#         paths:
+#             - "receipt_ocr_swift/**"
+#             - ".github/workflows/swift-ci.yml"
+
+# Manual trigger only for now
 on:
-    push:
-        branches: [main, develop]
-        paths:
-            - "receipt_ocr_swift/**"
-            - ".github/workflows/swift-ci.yml"
-    pull_request:
-        branches: [main, develop]
-        paths:
-            - "receipt_ocr_swift/**"
-            - ".github/workflows/swift-ci.yml"
+    workflow_dispatch:
 
 jobs:
     test:
