@@ -1,123 +1,123 @@
 name: Swift CI
 
 on:
-  push:
-    branches: [ main, develop ]
-    paths:
-      - 'receipt_ocr_swift/**'
-      - '.github/workflows/swift-ci.yml'
-  pull_request:
-    branches: [ main, develop ]
-    paths:
-      - 'receipt_ocr_swift/**'
-      - '.github/workflows/swift-ci.yml'
+    push:
+        branches: [main, develop]
+        paths:
+            - "receipt_ocr_swift/**"
+            - ".github/workflows/swift-ci.yml"
+    pull_request:
+        branches: [main, develop]
+        paths:
+            - "receipt_ocr_swift/**"
+            - ".github/workflows/swift-ci.yml"
 
 jobs:
-  test:
-    runs-on: macos-latest
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Setup Swift
-      uses: swift-actions/setup-swift@v1
-      with:
-        swift-version: "5.9"
-    
-    - name: Resolve Swift dependencies
-      run: |
-        cd receipt_ocr_swift
-        swift package resolve
-    
-    - name: Cache Swift packages
-      uses: actions/cache@v3
-      with:
-        path: receipt_ocr_swift/.build
-        key: ${{ runner.os }}-spm-${{ hashFiles('receipt_ocr_swift/Package.resolved') }}
-        restore-keys: |
-          ${{ runner.os }}-spm-
-    
-    - name: Build Swift package
-      run: |
-        cd receipt_ocr_swift
-        swift build --product receipt-ocr
-    
-    - name: Run unit tests
-      run: |
-        cd receipt_ocr_swift
-        swift test --filter ReceiptOCRCoreTests
-    
-    - name: Run integration tests (with LocalStack)
-      run: |
-        cd receipt_ocr_swift
-        
-        # Start LocalStack
-        docker compose -f Tests/IntegrationTests/docker-compose.yml up -d
-        
-        # Wait for LocalStack to be ready (macOS doesn't have timeout command)
-        for i in {1..30}; do
-          if curl -f http://localhost:4566/_localstack/health >/dev/null 2>&1; then
-            break
-          fi
-          sleep 2
-        done
-        
-        # Bootstrap LocalStack with test data
-        ./Tests/IntegrationTests/bootstrap_localstack.sh
-        
-        # Run integration tests with proper environment variables
-        E2E_LOCALSTACK=1 AWS_REGION=us-west-2 LOCALSTACK_ENDPOINT=http://localhost:4566 OCR_JOB_QUEUE_URL=http://sqs.us-west-2.localhost.localstack.cloud:4566/000000000000/ocr-job-queue OCR_RESULTS_QUEUE_URL=http://sqs.us-west-2.localhost.localstack.cloud:4566/000000000000/ocr-results-queue DYNAMO_TABLE_NAME=receipt-ocr-dev swift test --filter IntegrationTests
-        
-        # Cleanup
-        docker compose -f Tests/IntegrationTests/docker-compose.yml down
-    
-    - name: Test CLI help
-      run: |
-        cd receipt_ocr_swift
-        swift run -c release receipt-ocr --help
-    
-    - name: Test local image processing
-      run: |
-        cd receipt_ocr_swift
-        mkdir -p test_output
-        
-        # Create a test image if it doesn't exist
-        if [ ! -f "../img 1.png" ]; then
-          echo "Creating test image..."
-          # Create a simple 1x1 PNG image using base64
-          echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==" | base64 -d > "../img 1.png"
-        fi
-        
-        swift run -c release receipt-ocr --process-local-image "../img 1.png" --output-dir test_output --stub-ocr
-        ls -la test_output/
-        rm -rf test_output
-    
-    - name: Test Python wrapper
-      run: |
-        cd receipt_upload
-        python -m receipt_upload.mac_ocr --help
-        python -m receipt_upload.mac_ocr --env dev --stub-ocr --log-level debug || true  # May fail due to missing AWS credentials, which is expected
+    test:
+        runs-on: macos-latest
 
-  build-release:
-    runs-on: macos-latest
-    needs: test
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Setup Swift
-      uses: swift-actions/setup-swift@v1
-      with:
-        swift-version: "5.9"
-    
-    - name: Build release binary
-      run: |
-        cd receipt_ocr_swift
-        swift build -c release --product receipt-ocr
-    
-    - name: Upload release artifact
-      uses: actions/upload-artifact@v3
-      with:
-        name: receipt-ocr-binary
-        path: receipt_ocr_swift/.build/release/receipt-ocr
-        retention-days: 30
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Setup Swift
+              uses: swift-actions/setup-swift@v1
+              with:
+                  swift-version: "5.9"
+
+            - name: Resolve Swift dependencies
+              run: |
+                  cd receipt_ocr_swift
+                  swift package resolve
+
+            - name: Cache Swift packages
+              uses: actions/cache@v3
+              with:
+                  path: receipt_ocr_swift/.build
+                  key: ${{ runner.os }}-spm-${{ hashFiles('receipt_ocr_swift/Package.resolved') }}
+                  restore-keys: |
+                      ${{ runner.os }}-spm-
+
+            - name: Build Swift package
+              run: |
+                  cd receipt_ocr_swift
+                  swift build --product receipt-ocr
+
+            - name: Run unit tests
+              run: |
+                  cd receipt_ocr_swift
+                  swift test --filter ReceiptOCRCoreTests
+
+            - name: Run integration tests (with LocalStack)
+              run: |
+                  cd receipt_ocr_swift
+
+                  # Start LocalStack
+                  docker compose -f Tests/IntegrationTests/docker-compose.yml up -d
+
+                  # Wait for LocalStack to be ready (macOS doesn't have timeout command)
+                  for i in {1..30}; do
+                    if curl -f http://localhost:4566/_localstack/health >/dev/null 2>&1; then
+                      break
+                    fi
+                    sleep 2
+                  done
+
+                  # Bootstrap LocalStack with test data
+                  ./Tests/IntegrationTests/bootstrap_localstack.sh
+
+                  # Run integration tests with proper environment variables
+                  E2E_LOCALSTACK=1 AWS_REGION=us-west-2 LOCALSTACK_ENDPOINT=http://localhost:4566 OCR_JOB_QUEUE_URL=http://sqs.us-west-2.localhost.localstack.cloud:4566/000000000000/ocr-job-queue OCR_RESULTS_QUEUE_URL=http://sqs.us-west-2.localhost.localstack.cloud:4566/000000000000/ocr-results-queue DYNAMO_TABLE_NAME=receipt-ocr-dev swift test --filter IntegrationTests
+
+                  # Cleanup
+                  docker compose -f Tests/IntegrationTests/docker-compose.yml down
+
+            - name: Test CLI help
+              run: |
+                  cd receipt_ocr_swift
+                  swift run -c release receipt-ocr --help
+
+            - name: Test local image processing
+              run: |
+                  cd receipt_ocr_swift
+                  mkdir -p test_output
+
+                  # Create a test image if it doesn't exist
+                  if [ ! -f "../img 1.png" ]; then
+                    echo "Creating test image..."
+                    # Create a simple 1x1 PNG image using base64
+                    echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==" | base64 -d > "../img 1.png"
+                  fi
+
+                  swift run -c release receipt-ocr --process-local-image "../img 1.png" --output-dir test_output --stub-ocr
+                  ls -la test_output/
+                  rm -rf test_output
+
+            - name: Test Python wrapper
+              run: |
+                  cd receipt_upload
+                  python -m receipt_upload.mac_ocr --help
+                  python -m receipt_upload.mac_ocr --env dev --stub-ocr --log-level debug || true  # May fail due to missing AWS credentials, which is expected
+
+    build-release:
+        runs-on: macos-latest
+        needs: test
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Setup Swift
+              uses: swift-actions/setup-swift@v1
+              with:
+                  swift-version: "5.9"
+
+            - name: Build release binary
+              run: |
+                  cd receipt_ocr_swift
+                  swift build -c release --product receipt-ocr
+
+            - name: Upload release artifact
+              uses: actions/upload-artifact@v3
+              with:
+                  name: receipt-ocr-binary
+                  path: receipt_ocr_swift/.build/release/receipt-ocr
+                  retention-days: 30
