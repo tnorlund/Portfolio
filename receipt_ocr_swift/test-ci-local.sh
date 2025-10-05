@@ -7,7 +7,6 @@ echo "🧪 Testing CI/CD workflow locally..."
 
 # Test 1: Build Swift package
 echo "📦 Testing Swift package build..."
-cd receipt_ocr_swift
 swift build --product receipt-ocr
 echo "✅ Swift package build successful"
 
