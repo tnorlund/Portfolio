@@ -140,7 +140,6 @@ chromadb_infrastructure = create_chromadb_compaction_infrastructure(
     dynamodb_table_arn=dynamodb_table.arn,
     dynamodb_stream_arn=dynamodb_table.stream_arn,
     chromadb_buckets=shared_chromadb_buckets,
-    base_images=base_images,
 )
 
 # Create currency validation state machine

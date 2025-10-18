@@ -154,7 +154,7 @@ class EcsLambda(ComponentResource):
         # Create function with placeholder code; ignore code updates from Pulumi afterwards
         self.function = aws.lambda_.Function(
             f"{self.name}-function",
-            function_name=self.function_name,
+            name=self.function_name,
             runtime=f"python{self.python_version}",
             role=self.role_arn,
             handler=self.handler,
@@ -180,7 +180,8 @@ class EcsLambda(ComponentResource):
 set -e
 echo "🔄 Changes detected, starting CodePipeline execution for {self.name}"
 EXEC_ID=$(aws codepipeline start-pipeline-execution --name {pn} --query pipelineExecutionId --output text)
-echo "Triggered pipeline: $EXEC_ID"""
+echo "Triggered pipeline: $EXEC_ID"
+"""
             )
             command.local.Command(
                 f"{self.name}-trigger-pipeline",
@@ -304,7 +305,7 @@ done
     def _generate_upload_script(self, bucket: str, package_hash: str) -> str:
         safe_bucket = shlex.quote(bucket)
         safe_src = shlex.quote(self.package_path)
-        safe_project_root = shlex.quote(PROJECT_DIR)
+        safe_project_root = shlex.quote(str(PROJECT_DIR))
         local_deps = self._get_local_dependencies()
         return f"""#!/usr/bin/env bash
 set -e
@@ -368,7 +369,7 @@ echo "✅ Uploaded source.zip"
         content = (
             "import json\n"
             "def {}(event, context):\n"
-            "    return {{'statusCode': 200, 'body': json.dumps({'message': 'placeholder'})}}\n".format(
+            "    return {{'statusCode': 200, 'body': json.dumps({{'message': 'placeholder'}})}}\n".format(
                 func_name
             )
         )

@@ -9,10 +9,14 @@ description = "Enhanced ChromaDB compaction Lambda"
 requires-python = ">=3.12"
 dependencies = []
 
+# Explicitly specify which modules to include to avoid conflicts
+[tool.setuptools]
+py-modules = ["enhanced_compaction_handler"]
+
 [project.optional-dependencies]
-# Use this extra so infra.EcsLambda can detect local monorepo deps and include them.
-lambda = [
-  "receipt-label[lambda]",
+# Use full dependencies for container-based Lambda
+full = [
+  "receipt-label[full]",
   "receipt-dynamo",
 ]
 

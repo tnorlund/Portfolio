@@ -31,7 +31,6 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
         dynamodb_table_arn: str,
         dynamodb_stream_arn: str,
         chromadb_buckets=None,
-        base_images=None,
         opts: Optional[ResourceOptions] = None,
     ):
         """
@@ -42,7 +41,6 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
             dynamodb_table_arn: ARN of the DynamoDB table
             dynamodb_stream_arn: ARN of the DynamoDB stream
             chromadb_buckets: Shared ChromaDB S3 buckets component
-            base_images: Base images for container builds
             opts: Optional resource options
         """
         super().__init__(
@@ -65,14 +63,25 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
                 opts=ResourceOptions(parent=self),
             )
 
-        # Create hybrid Lambda deployment
-        self.lambda_deployment = create_hybrid_lambda_deployment(
-            name=f"{name}-lambdas",
+        # Create enhanced compaction Lambda using container-based approach (needs receipt-label[full])
+        self.enhanced_compaction = create_hybrid_lambda_deployment(
+            name=f"{name}-enhanced-compaction",
             chromadb_queues=self.chromadb_queues,
             chromadb_buckets=self.chromadb_buckets,
             dynamodb_table_arn=dynamodb_table_arn,
             dynamodb_stream_arn=dynamodb_stream_arn,
-            base_images=base_images,
+            base_images=None,  # Dependencies built directly in Docker multi-stage build
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Create stream processor Lambda (zip-based, lightweight)
+        self.stream_processor = create_hybrid_lambda_deployment(
+            name=f"{name}-stream-processor",
+            chromadb_queues=self.chromadb_queues,
+            chromadb_buckets=self.chromadb_buckets,
+            dynamodb_table_arn=dynamodb_table_arn,
+            dynamodb_stream_arn=dynamodb_stream_arn,
+            base_images=None,  # No base images needed for zip-based Lambda
             opts=ResourceOptions(parent=self),
         )
 
@@ -80,10 +89,8 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
         self.lines_queue_url = self.chromadb_queues.lines_queue_url
         self.words_queue_url = self.chromadb_queues.words_queue_url
         self.bucket_name = self.chromadb_buckets.bucket_name
-        self.stream_processor_arn = self.lambda_deployment.stream_processor_arn
-        self.enhanced_compaction_arn = (
-            self.lambda_deployment.enhanced_compaction_arn
-        )
+        self.stream_processor_arn = self.stream_processor.stream_processor_arn
+        self.enhanced_compaction_arn = self.enhanced_compaction.enhanced_compaction_arn
 
         # Register outputs
         self.register_outputs(
@@ -93,7 +100,6 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
                 "bucket_name": self.bucket_name,
                 "stream_processor_arn": self.stream_processor_arn,
                 "enhanced_compaction_arn": self.enhanced_compaction_arn,
-                "docker_image_uri": self.lambda_deployment.docker_image.image_uri,
             }
         )
 
@@ -103,7 +109,6 @@ def create_chromadb_compaction_infrastructure(
     dynamodb_table_arn: str = None,
     dynamodb_stream_arn: str = None,
     chromadb_buckets=None,
-    base_images=None,
     opts: Optional[ResourceOptions] = None,
 ) -> ChromaDBCompactionInfrastructure:
     """
@@ -114,7 +119,6 @@ def create_chromadb_compaction_infrastructure(
         dynamodb_table_arn: ARN of the DynamoDB table
         dynamodb_stream_arn: ARN of the DynamoDB stream
         chromadb_buckets: Shared ChromaDB S3 buckets component
-        base_images: Base images for container builds
         opts: Optional resource options
 
     Returns:
@@ -130,6 +134,5 @@ def create_chromadb_compaction_infrastructure(
         dynamodb_table_arn=dynamodb_table_arn,
         dynamodb_stream_arn=dynamodb_stream_arn,
         chromadb_buckets=chromadb_buckets,
-        base_images=base_images,
         opts=opts,
     )

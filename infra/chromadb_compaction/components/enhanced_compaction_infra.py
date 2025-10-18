@@ -15,7 +15,7 @@ from typing import Optional
 import pulumi
 import pulumi_aws as aws
 from pulumi import ComponentResource, Output, ResourceOptions
-from infra.ecs_lambda import EcsLambda
+from ecs_lambda import EcsLambda
 
 from .sqs_queues import ChromaDBQueues
 from .s3_buckets import ChromaDBBuckets
@@ -248,9 +248,6 @@ class EnhancedCompactionLambda(ComponentResource):
             event_source_arn=chromadb_queues.lines_queue_arn,
             function_name=ecs_lambda.arn,
             batch_size=10,
-            maximum_batching_window_in_seconds=30,
-            maximum_retry_attempts=3,
-            maximum_record_age_in_seconds=3600,
             opts=ResourceOptions(parent=self),
         )
 
@@ -259,9 +256,6 @@ class EnhancedCompactionLambda(ComponentResource):
             event_source_arn=chromadb_queues.words_queue_arn,
             function_name=ecs_lambda.arn,
             batch_size=10,
-            maximum_batching_window_in_seconds=30,
-            maximum_retry_attempts=3,
-            maximum_record_age_in_seconds=3600,
             opts=ResourceOptions(parent=self),
         )
 

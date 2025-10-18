@@ -213,18 +213,12 @@ class DockerImageComponent(ComponentResource):
         self.docker_image = docker_build.Image(
             f"{name}-image",
             context=docker_build.BuildContextArgs(
-                location=str(handler_dir),  # Use lambdas dir as build context
+                location=str(handler_dir.parent.parent.parent),  # Use project root as build context
             ),
             dockerfile=docker_build.DockerfileArgs(
                 location=str(handler_dir / "Dockerfile"),
             ),
-            build_args={
-                "BASE_IMAGE": (
-                    base_images.label_base_image.tags[0]
-                    if base_images
-                    else "public.ecr.aws/lambda/python:3.12"
-                )
-            },
+            build_args={},
             tags=[
                 self.ecr_repo.repository_url.apply(
                     lambda url: f"{url}:latest"
