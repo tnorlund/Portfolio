@@ -78,14 +78,12 @@ class DockerImageComponent(ComponentResource):
     def __init__(
         self,
         name: str,
-        base_images=None,
         opts: Optional[ResourceOptions] = None,
     ):
         """Initialize Docker image component.
 
         Args:
             name: Component name
-            base_images: Optional base images dependency
             opts: Pulumi resource options
         """
         super().__init__(
@@ -94,8 +92,6 @@ class DockerImageComponent(ComponentResource):
             None,
             opts,
         )
-
-        self.base_images = base_images
 
         # Get stack for naming
         stack = pulumi.get_stack()
@@ -240,8 +236,7 @@ class DockerImageComponent(ComponentResource):
             ],
             opts=ResourceOptions(
                 parent=self,
-                depends_on=[self.ecr_repo]
-                + ([base_images] if base_images else []),
+                depends_on=[self.ecr_repo],
                 replace_on_changes=["build_args", "dockerfile"],
             ),
         )

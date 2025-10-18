@@ -49,7 +49,6 @@ class HybridLambdaDeployment(ComponentResource):
         chromadb_buckets: ChromaDBBuckets,
         dynamodb_table_arn: str,
         dynamodb_stream_arn: str,
-        base_images=None,
         stack: Optional[str] = None,
         opts: Optional[ResourceOptions] = None,
     ):
@@ -62,7 +61,6 @@ class HybridLambdaDeployment(ComponentResource):
             chromadb_buckets: The ChromaDB S3 buckets component
             dynamodb_table_arn: ARN of the DynamoDB table
             dynamodb_stream_arn: ARN of the DynamoDB stream
-            base_images: Base images for container builds
             stack: The Pulumi stack name (defaults to current stack)
             opts: Optional resource options
         """
@@ -75,7 +73,6 @@ class HybridLambdaDeployment(ComponentResource):
         # Create Docker image component for container-based Lambda
         self.docker_image = DockerImageComponent(
             f"{name}-docker",
-            base_images=base_images,
             opts=ResourceOptions(parent=self),
         )
 
@@ -511,7 +508,6 @@ def create_hybrid_lambda_deployment(
     chromadb_buckets: ChromaDBBuckets = None,
     dynamodb_table_arn: str = None,
     dynamodb_stream_arn: str = None,
-    base_images=None,
     opts: Optional[ResourceOptions] = None,
 ) -> HybridLambdaDeployment:
     """
@@ -523,7 +519,6 @@ def create_hybrid_lambda_deployment(
         chromadb_buckets: The ChromaDB S3 buckets component
         dynamodb_table_arn: ARN of the DynamoDB table
         dynamodb_stream_arn: ARN of the DynamoDB stream
-        base_images: Base images for container builds
         opts: Optional resource options
 
     Returns:
@@ -544,6 +539,5 @@ def create_hybrid_lambda_deployment(
         chromadb_buckets=chromadb_buckets,
         dynamodb_table_arn=dynamodb_table_arn,
         dynamodb_stream_arn=dynamodb_stream_arn,
-        base_images=base_images,
         opts=opts,
     )
