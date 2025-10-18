@@ -70,7 +70,6 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
             chromadb_buckets=self.chromadb_buckets,
             dynamodb_table_arn=dynamodb_table_arn,
             dynamodb_stream_arn=dynamodb_stream_arn,
-            base_images=None,  # Dependencies built directly in Docker multi-stage build
             opts=ResourceOptions(parent=self),
         )
 
@@ -81,7 +80,6 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
             chromadb_buckets=self.chromadb_buckets,
             dynamodb_table_arn=dynamodb_table_arn,
             dynamodb_stream_arn=dynamodb_stream_arn,
-            base_images=None,  # No base images needed for zip-based Lambda
             opts=ResourceOptions(parent=self),
         )
 
