@@ -152,7 +152,6 @@ embedding_infrastructure = EmbeddingInfrastructure(
     f"embedding-infra-{pulumi.get_stack()}",
     chromadb_queues=chromadb_infrastructure.chromadb_queues,
     chromadb_buckets=shared_chromadb_buckets,
-    base_images=base_images,
 )
 
 validation_by_merchant_step_functions = ValidationByMerchantStepFunction(
@@ -203,7 +202,6 @@ workers = ChromaWorkers(
     security_group_id=security.sg_lambda_id,
     dynamodb_table_name=dynamodb_table.name,
     chroma_service_dns=chroma_service.endpoint_dns,
-    base_image_ref=base_images.label_base_image.tags[0],
 )
 
 pulumi.export("chroma_query_words_lambda_arn", workers.query_words.arn)
@@ -254,7 +252,6 @@ workers_nat = ChromaWorkers(
     security_group_id=security.sg_lambda_id,
     dynamodb_table_name=dynamodb_table.name,
     chroma_service_dns=chroma_service.endpoint_dns,
-    base_image_ref=base_images.label_base_image.tags[0],
 )
 pulumi.export("chroma_query_words_lambda_nat_arn", workers_nat.query_words.arn)
 
