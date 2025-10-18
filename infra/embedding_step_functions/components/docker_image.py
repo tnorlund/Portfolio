@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 import pulumi
-from pulumi import ComponentResource, ResourceOptions
+from pulumi import ComponentResource, ResourceOptions, Output
 from pulumi_aws.ecr import (
     Repository,
     RepositoryImageScanningConfigurationArgs,
@@ -74,14 +74,12 @@ class DockerImageComponent(ComponentResource):
     def __init__(
         self,
         name: str,
-        base_images=None,
         opts: Optional[ResourceOptions] = None,
     ):
         """Initialize Docker image component.
 
         Args:
             name: Component name
-            base_images: Optional base images dependency
             opts: Pulumi resource options
         """
         super().__init__(
@@ -91,7 +89,6 @@ class DockerImageComponent(ComponentResource):
             opts,
         )
 
-        self.base_images = base_images
 
         # Create ECR repository
         self.ecr_repo = Repository(
@@ -178,20 +175,6 @@ class DockerImageComponent(ComponentResource):
             f"Using content-based tag for embedding image: {image_tag}"
         )
 
-        # Get base image URI if available
-        base_image_uri = None
-        if base_images and hasattr(base_images, "label_base_image"):
-            # Use the base image tag from the base images component
-            base_image_uri = base_images.label_base_image.tags[0]
-            pulumi.log.info(
-                "Using base-receipt-label image for embedding container"
-            )
-        else:
-            # Fallback to public image if base images not available
-            base_image_uri = "public.ecr.aws/lambda/python:3.12"
-            pulumi.log.warn(
-                "Base images not available, using public Lambda image"
-            )
 
         # Build Docker image
         self.docker_image = docker_build.Image(
@@ -209,9 +192,7 @@ class DockerImageComponent(ComponentResource):
                 ),
             },
             platforms=["linux/arm64"],
-            build_args={
-                "BASE_IMAGE": base_image_uri,
-            },
+            build_args={},
             push=True,
             registries=[
                 {
@@ -232,15 +213,21 @@ class DockerImageComponent(ComponentResource):
             ],
             opts=ResourceOptions(
                 parent=self,
-                depends_on=[self.ecr_repo]
-                + ([base_images] if base_images else []),
+                depends_on=[self.ecr_repo],
             ),
         )
+
+        # Export image URI for Lambda function (match ChromaDB compaction pattern)
+        self.image_uri = Output.all(
+            self.ecr_repo.repository_url,
+            self.docker_image.digest,
+        ).apply(lambda args: f"{args[0].split(':')[0]}@{args[1]}")
 
         # Register outputs
         self.register_outputs(
             {
                 "ecr_repo_url": self.ecr_repo.repository_url,
                 "docker_image_digest": self.docker_image.digest,
+                "image_uri": self.image_uri,
             }
         )

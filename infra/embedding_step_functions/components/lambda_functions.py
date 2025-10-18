@@ -361,10 +361,7 @@ class LambdaFunctionsComponent(ComponentResource):
         return Function(
             f"{name}-lambda-{stack}",
             package_type="Image",
-            image_uri=Output.all(
-                self.docker_image.ecr_repo.repository_url,
-                self.docker_image.docker_image.digest,
-            ).apply(lambda args: f"{args[0].split(':')[0]}@{args[1]}"),
+            image_uri=self.docker_image.image_uri,
             role=self.lambda_role.arn,
             architectures=["arm64"],
             memory_size=config["memory"],
