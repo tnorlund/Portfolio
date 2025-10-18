@@ -65,7 +65,6 @@ class UploadImages(ComponentResource):
         ecs_cluster_arn: pulumi.Input[str] | None = None,
         ecs_service_arn: pulumi.Input[str] | None = None,
         nat_instance_id: pulumi.Input[str] | None = None,
-        base_image_ref: pulumi.Input[str] | None = None,
         opts: ResourceOptions = None,
     ):
         super().__init__(
@@ -535,11 +534,6 @@ class UploadImages(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
         ecr_auth = ecr_get_auth_token()
-        resolved_base_image = (
-            base_image_ref
-            or os.environ.get("LABEL_BASE_IMAGE")
-            or "public.ecr.aws/lambda/python:3.12"
-        )
 
         embed_image = docker_build.Image(
             f"{name}-embed-image",
@@ -558,9 +552,7 @@ class UploadImages(ComponentResource):
                     "password": ecr_auth.password,
                 }
             ],
-            build_args={
-                "BASE_IMAGE": resolved_base_image,
-            },
+            build_args={},
             tags=[
                 embed_ecr_repo.repository_url.apply(lambda u: f"{u}:latest")
             ],
