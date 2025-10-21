@@ -389,14 +389,14 @@ echo "✅ Uploaded source.zip"
                     'if [ -d "dependencies" ]; then '
                     'echo "Building local dependency wheels..."; '
                     "mkdir -p dep_wheels; "
-                    "for d in dependencies/*; do if [ -d \"$d\" ]; then cd \"$d\"; python3 -m build --wheel --outdir ../../dep_wheels/; cd - >/dev/null; fi; done; "
+                    f"for d in dependencies/*; do if [ -d \"$d\" ]; then cd \"$d\"; python{v} -m build --wheel --outdir ../../dep_wheels/; cd - >/dev/null; fi; done; "
                     "fi"
                 ),
                 # Main install strategy: pyproject wheel if exists, else requirements.txt
                 (
                     'if [ -f "source/pyproject.toml" ]; then '
                     'echo "Building source wheel"; '
-                    'cd source && python3 -m build --wheel --outdir ../dist/ && cd ..; '
+                    f'cd source && python{v} -m build --wheel --outdir ../dist/ && cd ..; '
                     # Install built wheel with optional extras and local wheels first
                     f"WHEEL=$(ls dist/*.whl | head -1); "
                     f"python{v} -m pip install --no-cache-dir --find-links dep_wheels \"$WHEEL{f'[{self.package_extras}]' if self.package_extras else ''}\" -t build/package || "
@@ -427,7 +427,7 @@ echo "✅ Uploaded source.zip"
                 "install": {
                     "runtime-versions": {"python": v},
                     "commands": [
-                        "pip install build",
+                        f"python{v} -m pip install --upgrade pip build",
                         "set -e",
                     ],
                 },

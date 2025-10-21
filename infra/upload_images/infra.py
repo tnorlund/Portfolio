@@ -534,6 +534,9 @@ class UploadImages(ComponentResource):
             "role_arn": embed_role.arn,
             "timeout": 900,
             "memory_size": 1024,
+            # Security note: API keys are encrypted in Pulumi config (require_secret) and
+            # Lambda environment variables are encrypted at rest by AWS KMS. Secrets Manager
+            # would add runtime rotation but isn't required for this use case.
             "environment": {
                 "DYNAMO_TABLE_NAME": dynamodb_table.name,
                 "CHROMADB_BUCKET": chromadb_bucket_name or "",
