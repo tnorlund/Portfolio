@@ -49,7 +49,6 @@ from currency_validation_step_functions import (
 )
 
 # Using the optimized docker-build based base images with scoped contexts
-from base_images.base_images import BaseImages
 from networking import PublicVpc
 from security import ChromaSecurity
 
@@ -124,9 +123,6 @@ notification_system = NotificationSystem(
     },
 )
 
-# Create base images first - they're used by multiple components
-base_images = BaseImages("base-images", stack=pulumi.get_stack())
-
 validation_pipeline = ValidationPipeline("validation-pipeline")
 
 # Create shared ChromaDB bucket (used by both compaction and embedding)
@@ -185,7 +181,6 @@ chroma_service = ChromaEcsService(
     task_role_name=security.ecs_task_role_name,
     execution_role_arn=security.ecs_task_execution_role_arn,
     chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
-    base_image_ref=base_images.label_base_image.tags[0],
     collection="lines",
     desired_count=0,
 )
@@ -279,7 +274,6 @@ validate_merchant_step_functions = ValidateMerchantStepFunctions(
     ecs_cluster_arn=chroma_service.cluster.arn,
     ecs_service_arn=chroma_service.svc.arn,
     nat_instance_id=nat.nat_instance_id,
-    base_image_ref=base_images.label_base_image.tags[0],
     chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
 )
 
