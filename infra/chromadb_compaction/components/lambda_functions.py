@@ -71,10 +71,8 @@ class HybridLambdaDeployment(ComponentResource):
             stack = pulumi.get_stack()
 
         # Create Docker image component for container-based Lambda
-        self.docker_image = DockerImageComponent(
-            f"{name}-docker",
-            opts=ResourceOptions(parent=self),
-        )
+        # Note: Lambda config will be passed after we create the role
+        self.docker_image = None  # Will be created after role is set up
 
         # Create shared IAM role for both Lambda functions
         self.lambda_role = aws.iam.Role(
@@ -112,6 +110,41 @@ class HybridLambdaDeployment(ComponentResource):
         # Create shared policies
         self._create_shared_policies(
             name, dynamodb_table_arn, chromadb_queues, chromadb_buckets
+        )
+
+        # Now create Docker image component with Lambda config
+        self.docker_image = DockerImageComponent(
+            f"{name}-docker",
+            lambda_config={
+                "role_arn": self.lambda_role.arn,
+                "timeout": 900,
+                "memory_size": 2048,
+                "ephemeral_storage": 5120,  # 5GB for ChromaDB snapshots
+                "reserved_concurrent_executions": 10,  # Prevent throttling
+                "description": (
+                    "Enhanced ChromaDB compaction handler for stream and "
+                    "delta message processing"
+                ),
+                "tags": {
+                    "Project": "ChromaDB",
+                    "Component": "EnhancedCompaction",
+                    "Environment": stack,
+                    "ManagedBy": "Pulumi",
+                },
+                "environment": {
+                    "DYNAMODB_TABLE_NAME": Output.all(
+                        dynamodb_table_arn
+                    ).apply(lambda args: args[0].split("/")[-1]),
+                    "CHROMADB_BUCKET": chromadb_buckets.bucket_name,
+                    "LINES_QUEUE_URL": chromadb_queues.lines_queue_url,
+                    "WORDS_QUEUE_URL": chromadb_queues.words_queue_url,
+                    "HEARTBEAT_INTERVAL_SECONDS": "30",
+                    "LOCK_DURATION_MINUTES": "3",
+                    "MAX_HEARTBEAT_FAILURES": "3",
+                    "LOG_LEVEL": "INFO",
+                }
+            },
+            opts=ResourceOptions(parent=self, depends_on=[self.lambda_role]),
         )
 
         # Create CloudWatch log groups (auto-generated names)
@@ -246,52 +279,8 @@ class HybridLambdaDeployment(ComponentResource):
             ),
         )
 
-        # Create container-based Lambda for enhanced compaction
-        self.enhanced_compaction_function = aws.lambda_.Function(
-            f"{name}-enhanced-compaction",
-            package_type="Image",
-            image_uri=self.docker_image.image_uri,
-            role=self.lambda_role.arn,
-            timeout=900,  # 15 minutes for compaction operations
-            memory_size=2048,  # Increased memory for ChromaDB label operations (was failing with 1024MB)
-            ephemeral_storage={
-                "size": 5120
-            },  # 5GB for ChromaDB snapshots and temp files
-            reserved_concurrent_executions=10,  # Prevent throttling with batch processing
-            architectures=["arm64"],
-            environment={
-                "variables": {
-                    "DYNAMODB_TABLE_NAME": Output.all(
-                        dynamodb_table_arn
-                    ).apply(lambda args: args[0].split("/")[-1]),
-                    "CHROMADB_BUCKET": chromadb_buckets.bucket_name,
-                    "LINES_QUEUE_URL": chromadb_queues.lines_queue_url,
-                    "WORDS_QUEUE_URL": chromadb_queues.words_queue_url,
-                    "HEARTBEAT_INTERVAL_SECONDS": "30",
-                    "LOCK_DURATION_MINUTES": "3",
-                    "MAX_HEARTBEAT_FAILURES": "3",
-                    "LOG_LEVEL": "INFO",
-                }
-            },
-            description=(
-                "Enhanced ChromaDB compaction handler for stream and "
-                "delta message processing"
-            ),
-            tags={
-                "Project": "ChromaDB",
-                "Component": "EnhancedCompaction",
-                "Environment": stack,
-                "ManagedBy": "Pulumi",
-            },
-            opts=ResourceOptions(
-                parent=self,
-                depends_on=[
-                    self.lambda_role,
-                    self.docker_image,
-                    self.compaction_log_group,
-                ],
-            ),
-        )
+        # Use the Lambda function created by CodeBuildDockerImage
+        self.enhanced_compaction_function = self.docker_image.docker_image.lambda_function
 
         # Create event source mappings
         self._create_event_source_mappings(

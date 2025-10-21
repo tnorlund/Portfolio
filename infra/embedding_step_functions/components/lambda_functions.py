@@ -380,5 +380,6 @@ class LambdaFunctionsComponent(ComponentResource):
             opts=ResourceOptions(
                 parent=self,
                 depends_on=[self.docker_image.docker_image],
+                ignore_changes=["image_uri", "image_config"],  # CodeBuild updates these
             ),
         )

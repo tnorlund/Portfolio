@@ -4,21 +4,18 @@ import json
 import hashlib
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any
 
 import pulumi
 from pulumi import ComponentResource, ResourceOptions, Output
 from pulumi_aws.ecr import (
     Repository,
     RepositoryImageScanningConfigurationArgs,
-    get_authorization_token_output,
     LifecyclePolicy,
 )
 
-# pylint: disable=import-error
-import pulumi_docker_build as docker_build  # type: ignore[import-not-found]
-
-# pylint: enable=import-error
+# Import the CodeBuildDockerImage component
+from codebuild_docker_image import CodeBuildDockerImage
 
 from .base import stack
 
@@ -89,19 +86,30 @@ class DockerImageComponent(ComponentResource):
             opts,
         )
 
+        # Get content hash for versioning
+        handler_dir = Path(__file__).parent.parent / "unified_embedding"
+        image_tag = self.get_handler_content_hash(handler_dir)
+        pulumi.log.info(
+            f"Using content-based tag for embedding image: {image_tag}"
+        )
 
-        # Create ECR repository
-        self.ecr_repo = Repository(
-            f"{name}-repo",
-            image_scanning_configuration=(
-                RepositoryImageScanningConfigurationArgs(
-                    scan_on_push=True,
-                )
-            ),
-            force_delete=True,
-            tags={"environment": stack},
+        # Use CodeBuildDockerImage for AWS-based builds
+        # Note: Lambda functions will be created separately by LambdaFunctionsComponent
+        self.docker_image = CodeBuildDockerImage(
+            f"{name}-image",
+            dockerfile_path="infra/embedding_step_functions/unified_embedding/Dockerfile",
+            build_context_path=".",  # Project root for monorepo access
+            source_paths=None,  # Use default rsync with exclusions
+            lambda_function_name=None,  # Lambdas created separately
+            lambda_config=None,
+            platform="linux/arm64",
             opts=ResourceOptions(parent=self),
         )
+
+        # Export ECR repository and image URI
+        self.ecr_repo = self.docker_image.ecr_repo
+        self.repository_url = self.docker_image.repository_url
+        self.image_uri = self.docker_image.image_uri
 
         # Attach ECR lifecycle policy (retain N, expire untagged older than X)
         portfolio_config = pulumi.Config("portfolio")
@@ -161,73 +169,10 @@ class DockerImageComponent(ComponentResource):
             opts=ResourceOptions(parent=self, depends_on=[self.ecr_repo]),
         )
 
-        # Get ECR auth token
-        ecr_auth_token = get_authorization_token_output()
-
-        # Build context path (repository root)
-        # Go up 4 levels from components/docker_image.py
-        build_context_path = Path(__file__).parent.parent.parent.parent
-        handler_dir = Path(__file__).parent.parent / "unified_embedding"
-
-        # Get content-based tag for the image
-        image_tag = self.get_handler_content_hash(handler_dir)
-        pulumi.log.info(
-            f"Using content-based tag for embedding image: {image_tag}"
-        )
-
-
-        # Build Docker image
-        self.docker_image = docker_build.Image(
-            f"{name}-image",
-            context={
-                "location": str(build_context_path.resolve()),
-            },
-            dockerfile={
-                "location": str(
-                    (
-                        Path(__file__).parent.parent
-                        / "unified_embedding"
-                        / "Dockerfile"
-                    ).resolve()
-                ),
-            },
-            platforms=["linux/arm64"],
-            build_args={},
-            push=True,
-            registries=[
-                {
-                    "address": self.ecr_repo.repository_url.apply(
-                        lambda url: url.split("/")[0]
-                    ),
-                    "password": ecr_auth_token.password,
-                    "username": ecr_auth_token.user_name,
-                }
-            ],
-            tags=[
-                self.ecr_repo.repository_url.apply(
-                    lambda url: f"{url}:{image_tag}"
-                ),
-                self.ecr_repo.repository_url.apply(
-                    lambda url: f"{url}:latest"
-                ),
-            ],
-            opts=ResourceOptions(
-                parent=self,
-                depends_on=[self.ecr_repo],
-            ),
-        )
-
-        # Export image URI for Lambda function (match ChromaDB compaction pattern)
-        self.image_uri = Output.all(
-            self.ecr_repo.repository_url,
-            self.docker_image.digest,
-        ).apply(lambda args: f"{args[0].split(':')[0]}@{args[1]}")
-
         # Register outputs
         self.register_outputs(
             {
-                "ecr_repo_url": self.ecr_repo.repository_url,
-                "docker_image_digest": self.docker_image.digest,
+                "ecr_repo_url": self.repository_url,
                 "image_uri": self.image_uri,
             }
         )
