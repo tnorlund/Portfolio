@@ -11,9 +11,10 @@ from pulumi import ComponentResource, ResourceOptions, Output
 from pulumi_aws.ecr import (
     Repository,
     RepositoryImageScanningConfigurationArgs,
-    get_authorization_token_output,
 )
-import pulumi_docker_build as docker_build
+
+# Import the CodeBuildDockerImage component
+from codebuild_docker_image import CodeBuildDockerImage
 
 
 class ChromaEcsService(ComponentResource):
@@ -28,7 +29,6 @@ class ChromaEcsService(ComponentResource):
         task_role_name: pulumi.Input[str],
         execution_role_arn: pulumi.Input[str],
         chromadb_bucket_name: pulumi.Input[str],
-        base_image_ref: Optional[pulumi.Input[str]] = None,
         collection: str = "words",
         cpu: int = 1024,
         memory: int = 2048,
@@ -40,53 +40,22 @@ class ChromaEcsService(ComponentResource):
 
         stack = pulumi.get_stack()
 
-        # ECR repository
-        self.repo = Repository(
-            f"{name}-repo",
-            image_scanning_configuration=RepositoryImageScanningConfigurationArgs(
-                scan_on_push=True
-            ),
-            force_delete=True,
-            tags={"Environment": stack, "ManagedBy": "Pulumi"},
+        # Use CodeBuildDockerImage for AWS-based builds
+        # Note: ECS doesn't need Lambda config
+        self.docker_image = CodeBuildDockerImage(
+            f"{name}-image",
+            dockerfile_path="infra/chroma/lambdas/Dockerfile",
+            build_context_path="infra/chroma/lambdas",  # Use local context for Chroma
+            source_paths=None,  # Use default rsync with exclusions
+            lambda_function_name=None,  # Not a Lambda function
+            lambda_config=None,
+            platform="linux/arm64",
             opts=ResourceOptions(parent=self),
         )
 
-        # Build and push image using infra/chroma/Dockerfile
-        ecr_auth = get_authorization_token_output()
-        # Build from localized lambdas directory to keep context minimal
-        repo_root = Path(__file__).resolve().parents[2]
-        dockerfile_path = (
-            repo_root / "infra" / "chroma" / "lambdas" / "Dockerfile"
-        )
-
-        self.image = docker_build.Image(
-            f"{name}-image",
-            context=docker_build.BuildContextArgs(
-                location=str(dockerfile_path.parent)
-            ),
-            dockerfile=docker_build.DockerfileArgs(
-                location=str(dockerfile_path)
-            ),
-            platforms=["linux/arm64"],
-            build_args={
-                # Pin to provided base image (ECR receipt_label base) or default
-                "BASE_IMAGE": base_image_ref
-            },
-            push=True,
-            registries=[
-                {
-                    "address": self.repo.repository_url.apply(
-                        lambda u: u.split("/")[0]
-                    ),
-                    "username": ecr_auth.user_name,
-                    "password": ecr_auth.password,
-                }
-            ],
-            tags=[
-                self.repo.repository_url.apply(lambda u: f"{u}:latest"),
-            ],
-            opts=ResourceOptions(parent=self, depends_on=[self.repo]),
-        )
+        # Export ECR repository and image
+        self.repo = self.docker_image.ecr_repo
+        self.image = self.docker_image.docker_image
 
         # ECS cluster
         self.cluster = aws.ecs.Cluster(
@@ -155,7 +124,7 @@ class ChromaEcsService(ComponentResource):
 
         # Task definition
         container_def = Output.all(
-            self.repo.repository_url, self.image.tags[0], chromadb_bucket_name
+            self.repo.repository_url, chromadb_bucket_name
         ).apply(
             lambda args: [
                 {
@@ -165,7 +134,7 @@ class ChromaEcsService(ComponentResource):
                         {"containerPort": port, "hostPort": port}
                     ],
                     "environment": [
-                        {"name": "CHROMADB_BUCKET", "value": args[2]},
+                        {"name": "CHROMADB_BUCKET", "value": args[1]},
                         {"name": "CHROMA_COLLECTION", "value": collection},
                         {"name": "CHROMA_SERVER_HOST", "value": "0.0.0.0"},
                         {
@@ -203,7 +172,10 @@ class ChromaEcsService(ComponentResource):
             container_definitions=container_def.apply(
                 lambda d: pulumi.Output.secret(pulumi.Output.json_dumps(d))
             ),
-            opts=ResourceOptions(parent=self),
+            opts=ResourceOptions(
+                parent=self,
+                ignore_changes=["container_definitions"],  # CodeBuild updates image
+            ),
         )
 
         # ECS Service with Cloud Map registry

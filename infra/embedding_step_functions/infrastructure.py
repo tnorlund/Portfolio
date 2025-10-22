@@ -40,7 +40,6 @@ class EmbeddingInfrastructure(ComponentResource):
         name: str,
         chromadb_queues,
         chromadb_buckets=None,
-        base_images=None,
         opts: Optional[ResourceOptions] = None,
     ):
         """Initialize embedding infrastructure.
@@ -49,7 +48,6 @@ class EmbeddingInfrastructure(ComponentResource):
             name: Component name
             chromadb_queues: ChromaDB SQS queues component (from chromadb_compaction)
             chromadb_buckets: Shared ChromaDB S3 buckets component
-            base_images: Optional base images for Docker builds
             opts: Pulumi resource options
         """
         super().__init__(
@@ -59,7 +57,6 @@ class EmbeddingInfrastructure(ComponentResource):
             opts,
         )
 
-        self.base_images = base_images
 
         # Use provided ChromaDB queues instead of creating our own
         self.chromadb_queues = chromadb_queues
@@ -77,7 +74,6 @@ class EmbeddingInfrastructure(ComponentResource):
         # Create Docker image component
         self.docker = DockerImageComponent(
             f"{name}-docker",
-            base_images=base_images,
             opts=ResourceOptions(parent=self),
         )
 

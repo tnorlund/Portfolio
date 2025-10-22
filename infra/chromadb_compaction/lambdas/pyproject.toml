@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=65", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chromadb-enhanced-compaction"
+version = "0.0.1"
+description = "Enhanced ChromaDB compaction Lambda"
+requires-python = ">=3.12"
+dependencies = []
+
+# Explicitly specify which modules to include to avoid conflicts
+[tool.setuptools]
+py-modules = ["enhanced_compaction_handler"]
+
+[project.optional-dependencies]
+# Use full dependencies for container-based Lambda
+full = [
+  "receipt-label[full]",
+  "receipt-dynamo",
+]
+

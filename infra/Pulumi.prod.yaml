@@ -33,3 +33,6 @@ config:
     secure: AAABAE4K3AaVrtBdO8r3+ooYvm3vIBvWIkXebe3gIY3SqhFlUfHP+6GOIp8+Bb8YG82KuGLhpNS9s8GTIldJQ4azObv9qXN1p1INBhHL3cBbmBw=
   portfolio:ecr-max-images: "4"
   portfolio:ecr-max-age-days: "7"
+  docker-build:sync-mode: "true"  # Wait for builds in prod
+  docker-build:force-rebuild: "false"
+  docker-build:debug-mode: "false"

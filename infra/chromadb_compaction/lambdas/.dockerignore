@@ -1,15 +1,30 @@
-# Exclude the zip-based Lambda function (only include enhanced_compaction_handler.py)
-stream_processor.py
-__init__.py
+# Exclude everything except what we need
+**/*
 
-# Exclude development files
-*.pyc
-__pycache__/
-.pytest_cache/
-.coverage
-*.egg-info/
+# Include only necessary directories
+!receipt_dynamo/
+!receipt_label/
+!infra/chromadb_compaction/lambdas/
 
-# Exclude other non-runtime files
-*.md
+# Exclude Python cache and build artifacts
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.egg-info/
+**/dist/
+**/build/
+**/.pytest_cache/
+**/.venv/
+**/venv/
+
+# Exclude tests and docs
+**/tests/
+**/test/
+**/docs/
+**/*.md
+
+# Exclude git and IDE files
 .git/
 .gitignore
+.vscode/
+.idea/
