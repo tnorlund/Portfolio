@@ -15,6 +15,7 @@ from typing import Optional
 import pulumi
 import pulumi_aws as aws
 from pulumi import ComponentResource, Output, ResourceOptions
+from ecs_lambda import EcsLambda
 
 from .sqs_queues import ChromaDBQueues
 from .s3_buckets import ChromaDBBuckets
@@ -202,91 +203,33 @@ class EnhancedCompactionLambda(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Create the Lambda function
-        self.function = aws.lambda_.Function(
-            f"{name}-function",
-            runtime="python3.12",
-            code=pulumi.AssetArchive(
-                {
-                    "enhanced_compaction_handler.py": pulumi.FileAsset(
-                        str(
-                            Path(__file__).parent.parent
-                            / "lambdas"
-                            / "enhanced_compaction_handler.py"
-                        )
-                    ),
-                    "utils/__init__.py": pulumi.FileAsset(
-                        str(
-                            Path(__file__).parent.parent
-                            / "utils"
-                            / "__init__.py"
-                        )
-                    ),
-                    "utils/logging.py": pulumi.FileAsset(
-                        str(
-                            Path(__file__).parent.parent
-                            / "utils"
-                            / "logging.py"
-                        )
-                    ),
-                    "utils/metrics.py": pulumi.FileAsset(
-                        str(
-                            Path(__file__).parent.parent
-                            / "utils"
-                            / "metrics.py"
-                        )
-                    ),
-                    "utils/response.py": pulumi.FileAsset(
-                        str(
-                            Path(__file__).parent.parent
-                            / "utils"
-                            / "response.py"
-                        )
-                    ),
-                    "utils/timeout_handler.py": pulumi.FileAsset(
-                        str(
-                            Path(__file__).parent.parent
-                            / "utils"
-                            / "timeout_handler.py"
-                        )
-                    ),
-                    "utils/tracing.py": pulumi.FileAsset(
-                        str(
-                            Path(__file__).parent.parent
-                            / "utils"
-                            / "tracing.py"
-                        )
-                    ),
-                }
-            ),
+        # Create the Lambda function via AWS-offloaded build using EcsLambda.
+        # This packages dependencies (receipt-label[lambda], receipt-dynamo) in CodeBuild.
+        ecs_lambda = EcsLambda(
+            name=f"{name}",
+            package_dir="infra/chromadb_compaction/lambdas",
             handler="enhanced_compaction_handler.handle",
-            role=self.lambda_role.arn,
-            timeout=900,  # 15 minutes for compaction operations
-            memory_size=512,  # More memory for ChromaDB operations
-            environment={
-                "variables": {
-                    "DYNAMODB_TABLE_NAME": dynamodb_table_arn.apply(
-                        lambda arn: arn.split("/")[-1]
-                    ),
-                    "CHROMADB_BUCKET": chromadb_buckets.bucket_name,
-                    "LINES_QUEUE_URL": chromadb_queues.lines_queue_url,
-                    "WORDS_QUEUE_URL": chromadb_queues.words_queue_url,
-                    "HEARTBEAT_INTERVAL_SECONDS": "30",
-                    "LOCK_DURATION_MINUTES": "3",
-                    "MAX_HEARTBEAT_FAILURES": "3",
-                    "LOG_LEVEL": "INFO",
-                }
-            },
+            python_version="3.12",
             description=(
-                "Enhanced ChromaDB compaction handler for stream and "
-                "delta message processing"
+                "Enhanced ChromaDB compaction handler for stream and delta message processing"
             ),
-            tags={
-                "Project": "ChromaDB",
-                "Component": "EnhancedCompaction",
-                "Environment": stack,
-                "ManagedBy": "Pulumi",
+            role_arn=self.lambda_role.arn,
+            timeout=900,
+            memory_size=512,
+            environment={
+                "DYNAMODB_TABLE_NAME": dynamodb_table_arn.apply(
+                    lambda arn: arn.split("/")[-1]
+                ),
+                "CHROMADB_BUCKET": chromadb_buckets.bucket_name,
+                "LINES_QUEUE_URL": chromadb_queues.lines_queue_url,
+                "WORDS_QUEUE_URL": chromadb_queues.words_queue_url,
+                "HEARTBEAT_INTERVAL_SECONDS": "30",
+                "LOCK_DURATION_MINUTES": "3",
+                "MAX_HEARTBEAT_FAILURES": "3",
+                "LOG_LEVEL": "INFO",
             },
+            # Ensure we install lightweight extras for receipt-label when available
+            package_extras="lambda",
             opts=ResourceOptions(
                 parent=self,
                 depends_on=[
@@ -303,7 +246,7 @@ class EnhancedCompactionLambda(ComponentResource):
         self.lines_event_source_mapping = aws.lambda_.EventSourceMapping(
             f"{name}-lines-event-source-mapping",
             event_source_arn=chromadb_queues.lines_queue_arn,
-            function_name=self.function.arn,
+            function_name=ecs_lambda.arn,
             batch_size=10,
             maximum_batching_window_in_seconds=0,
             maximum_retry_attempts=3,
@@ -315,7 +258,7 @@ class EnhancedCompactionLambda(ComponentResource):
         self.words_event_source_mapping = aws.lambda_.EventSourceMapping(
             f"{name}-words-event-source-mapping",
             event_source_arn=chromadb_queues.words_queue_arn,
-            function_name=self.function.arn,
+            function_name=ecs_lambda.arn,
             batch_size=10,
             maximum_batching_window_in_seconds=0,
             maximum_retry_attempts=3,
@@ -325,8 +268,8 @@ class EnhancedCompactionLambda(ComponentResource):
         )
 
         # Export useful properties
-        self.function_arn = self.function.arn
-        self.function_name = self.function.name
+        self.function_arn = ecs_lambda.arn
+        self.function_name = ecs_lambda.function.name
         self.role_arn = self.lambda_role.arn
 
         # Register outputs
