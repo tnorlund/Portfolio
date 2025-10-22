@@ -28,10 +28,11 @@ from pulumi_aws.lambda_ import (
 from pulumi_aws.ecr import (
     Repository,
     RepositoryImageScanningConfigurationArgs,
-    get_authorization_token_output,
 )
-import pulumi_docker_build as docker_build
 from pulumi_aws.sfn import StateMachine
+
+# Import the CodeBuildDockerImage component
+from codebuild_docker_image import CodeBuildDockerImage
 
 config = Config("portfolio")
 openai_api_key = config.require_secret("OPENAI_API_KEY")
@@ -100,14 +101,11 @@ class ValidateMerchantStepFunctions(ComponentResource):
         ecs_cluster_arn: pulumi.Input[str] | None = None,
         ecs_service_arn: pulumi.Input[str] | None = None,
         nat_instance_id: pulumi.Input[str] | None = None,
-        base_image_ref: pulumi.Input[str] | None = None,
         chromadb_bucket_name: pulumi.Input[str] | None = None,
         opts: Optional[ResourceOptions] = None,
     ):
         super().__init__(f"{__name__}-{name}", name, None, opts)
         stack = pulumi.get_stack()
-        # Touch the parameter to avoid unused-arg warnings; Dockerfile pins its own base now
-        _ignore_base = base_image_ref
 
         # Define IAM role for Step Function
         sfn_role = Role(
@@ -332,99 +330,56 @@ def lambda_handler(event, _ctx):
             / "validate_merchant_step_functions"
             / "container"
         )
-        ecr_repo = Repository(
-            f"{name}-{stack}-validate-repo",
-            image_scanning_configuration=RepositoryImageScanningConfigurationArgs(
-                scan_on_push=True
-            ),
-            force_delete=True,
-            opts=ResourceOptions(parent=self),
-        )
-        ecr_auth = get_authorization_token_output()
-        # Provide BASE_IMAGE from config/env or fallback to public Lambda base
-        resolved_base_image = (
-            base_image_ref
-            or os.environ.get("LABEL_BASE_IMAGE")
-            or "public.ecr.aws/lambda/python:3.12"
-        )
-
-        _docker_image = docker_build.Image(
-            f"{name}-{stack}-validate-image",
-            # Use repo root as build context so we can COPY receipt_dynamo/ and receipt_label/
-            context={"location": str(repo_root)},
-            dockerfile={"location": str(container_dir / "Dockerfile")},
-            platforms=["linux/arm64"],
-            push=True,
-            registries=[
-                {
-                    "address": ecr_repo.repository_url.apply(
-                        lambda u: u.split("/")[0]
-                    ),
-                    "username": ecr_auth.user_name,
-                    "password": ecr_auth.password,
-                }
-            ],
-            build_args={
-                "BASE_IMAGE": resolved_base_image,
-            },
-            tags=[
-                ecr_repo.repository_url.apply(lambda u: f"{u}:latest"),
-            ],
-            opts=ResourceOptions(parent=self, depends_on=[ecr_repo]),
-        )
-
-        # Define container Lambda: validate_receipt (uses ECR image)
-        validate_receipt_lambda = Function(
-            f"{name}-{stack}-validate-receipt",
-            name=f"{name}-{stack}-validate-receipt",
-            role=lambda_exec_role.arn,
-            package_type="Image",
-            image_uri=pulumi.Output.all(
-                ecr_repo.repository_url, _docker_image.digest
-            ).apply(lambda args: f"{args[0].split(':')[0]}@{args[1]}"),
-            architectures=["arm64"],
-            timeout=900,
-            memory_size=512,
-            environment=FunctionEnvironmentArgs(
-                variables={
-                    "DYNAMO_TABLE_NAME": dynamodb_table.name,
-                    "GOOGLE_PLACES_API_KEY": google_places_api_key,
-                    "OPENAI_API_KEY": openai_api_key,
-                    "PINECONE_API_KEY": pinecone_api_key,
-                    "PINECONE_INDEX_NAME": pinecone_index_name,
-                    "PINECONE_HOST": pinecone_host,
-                    # Optional remote Chroma endpoint for HTTP queries
-                    "CHROMA_HTTP_ENDPOINT": chroma_http_endpoint or "",
-                    # Bucket for delta uploads
-                    "CHROMADB_BUCKET": (
-                        chromadb_bucket_name
-                        if chromadb_bucket_name is not None
-                        else pulumi.Output.secret(
-                            pulumi.Config("portfolio").get(
-                                "chromadb_bucket_name"
-                            )
-                            or ""
+        # Build Lambda config
+        validate_lambda_config = {
+            "role_arn": lambda_exec_role.arn,
+            "timeout": 900,
+            "memory_size": 512,
+            "tags": {"environment": stack},
+            "environment": {
+                "DYNAMO_TABLE_NAME": dynamodb_table.name,
+                "GOOGLE_PLACES_API_KEY": google_places_api_key,
+                "OPENAI_API_KEY": openai_api_key,
+                "PINECONE_API_KEY": pinecone_api_key,
+                "PINECONE_INDEX_NAME": pinecone_index_name,
+                "PINECONE_HOST": pinecone_host,
+                # Optional remote Chroma endpoint for HTTP queries
+                "CHROMA_HTTP_ENDPOINT": chroma_http_endpoint or "",
+                # Bucket for delta uploads
+                "CHROMADB_BUCKET": (
+                    chromadb_bucket_name
+                    if chromadb_bucket_name is not None
+                    else pulumi.Output.secret(
+                        pulumi.Config("portfolio").get(
+                            "chromadb_bucket_name"
                         )
-                    ),
-                }
-            ),
-            tags={"environment": stack},
-            opts=ResourceOptions(
-                parent=self,
-                ignore_changes=["layers"],
-                depends_on=[_docker_image],
-            ),
-            vpc_config=(
-                FunctionVpcConfigArgs(
-                    subnet_ids=vpc_subnet_ids,
-                    security_group_ids=(
-                        [security_group_id] if security_group_id else None
-                    ),
-                )
-                if vpc_subnet_ids and security_group_id
-                else None
-            ),
+                        or ""
+                    )
+                ),
+            },
+        }
+        
+        # Add VPC config if provided
+        if vpc_subnet_ids and security_group_id:
+            validate_lambda_config["vpc_config"] = {
+                "subnet_ids": vpc_subnet_ids,
+                "security_group_ids": [security_group_id],
+            }
+        
+        # Use CodeBuildDockerImage for AWS-based builds
+        validate_docker_image = CodeBuildDockerImage(
+            f"{name}-{stack}-validate-image",
+            dockerfile_path="infra/validate_merchant_step_functions/container/Dockerfile",
+            build_context_path=".",  # Project root for monorepo access
+            source_paths=None,  # Use default rsync with exclusions
+            lambda_function_name=f"{name}-{stack}-validate-receipt",
+            lambda_config=validate_lambda_config,
+            platform="linux/arm64",
+            opts=ResourceOptions(parent=self, depends_on=[lambda_exec_role]),
         )
+
+        # Use the Lambda function created by CodeBuildDockerImage
+        validate_receipt_lambda = validate_docker_image.lambda_function
 
         # Allow Lambda to write deltas to the Chroma bucket (put/list)
         if chromadb_bucket_name is not None:

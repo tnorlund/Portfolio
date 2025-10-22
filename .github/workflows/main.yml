@@ -105,7 +105,8 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: 20
-          cache: "npm"
+          # Skip npm caching on self-hosted runners - disk persists between runs
+          cache: ${{ runner.os != 'macOS' && 'npm' || '' }}
           cache-dependency-path: "portfolio/package-lock.json"
 
       - name: Check TypeScript/ESLint
@@ -161,6 +162,8 @@ jobs:
           which python3
 
       - name: Cache pip packages only
+        # Skip caching on self-hosted runners - they persist between runs
+        if: ${{ runner.os != 'macOS' }}
         uses: actions/cache@v4
         with:
           path: |
@@ -327,7 +330,8 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: 20
-          cache: "npm"
+          # Skip npm caching on self-hosted runners - disk persists between runs
+          cache: ${{ runner.os != 'macOS' && 'npm' || '' }}
           cache-dependency-path: "portfolio/package-lock.json"
 
       - name: Install and test
@@ -361,6 +365,7 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: 20
+          # Docs job runs on GitHub-hosted ubuntu, caching helps
           cache: "npm"
           cache-dependency-path: "portfolio/package-lock.json"
 
@@ -425,6 +430,7 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: 20
+          # Deploy job runs on GitHub-hosted ubuntu, caching helps
           cache: "npm"
           cache-dependency-path: "portfolio/package-lock.json"
 

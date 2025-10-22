@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import Path
 
 import pulumi
 import pulumi_aws as aws
@@ -20,10 +21,11 @@ from pulumi_aws.sfn import StateMachine
 from pulumi_aws.ecr import (
     Repository as EcrRepository,
     RepositoryImageScanningConfigurationArgs as EcrRepoScanArgs,
-    get_authorization_token_output as ecr_get_auth_token,
 )
-import pulumi_docker_build as docker_build
 from pulumi_aws.sqs import Queue
+
+# Import the CodeBuildDockerImage component
+from codebuild_docker_image import CodeBuildDockerImage
 
 config = Config("portfolio")
 openai_api_key = config.require_secret("OPENAI_API_KEY")
@@ -65,7 +67,6 @@ class UploadImages(ComponentResource):
         ecs_cluster_arn: pulumi.Input[str] | None = None,
         ecs_service_arn: pulumi.Input[str] | None = None,
         nat_instance_id: pulumi.Input[str] | None = None,
-        base_image_ref: pulumi.Input[str] | None = None,
         opts: ResourceOptions = None,
     ):
         super().__init__(
@@ -528,77 +529,44 @@ class UploadImages(ComponentResource):
             os.path.dirname(__file__), "container"
         )
 
-        embed_ecr_repo = EcrRepository(
-            f"{name}-embed-repo",
-            image_scanning_configuration=EcrRepoScanArgs(scan_on_push=True),
-            force_delete=True,
-            opts=ResourceOptions(parent=self),
-        )
-        ecr_auth = ecr_get_auth_token()
-        resolved_base_image = (
-            base_image_ref
-            or os.environ.get("LABEL_BASE_IMAGE")
-            or "public.ecr.aws/lambda/python:3.12"
-        )
-
-        embed_image = docker_build.Image(
+        # Build Lambda config
+        embed_lambda_config = {
+            "role_arn": embed_role.arn,
+            "timeout": 900,
+            "memory_size": 1024,
+            # Security note: API keys are encrypted in Pulumi config (require_secret) and
+            # Lambda environment variables are encrypted at rest by AWS KMS. Secrets Manager
+            # would add runtime rotation but isn't required for this use case.
+            "environment": {
+                "DYNAMO_TABLE_NAME": dynamodb_table.name,
+                "CHROMADB_BUCKET": chromadb_bucket_name or "",
+                "OPENAI_API_KEY": openai_api_key,
+                "GOOGLE_PLACES_API_KEY": google_places_api_key,
+                "CHROMA_HTTP_ENDPOINT": chroma_http_endpoint or "",
+            },
+        }
+        
+        # Add VPC config if provided
+        if vpc_subnet_ids and security_group_id:
+            embed_lambda_config["vpc_config"] = {
+                "subnet_ids": vpc_subnet_ids,
+                "security_group_ids": [security_group_id],
+            }
+        
+        # Use CodeBuildDockerImage for AWS-based builds
+        embed_docker_image = CodeBuildDockerImage(
             f"{name}-embed-image",
-            context={"location": repo_root},
-            dockerfile={
-                "location": os.path.join(embed_container_dir, "Dockerfile")
-            },
-            platforms=["linux/arm64"],
-            push=True,
-            registries=[
-                {
-                    "address": embed_ecr_repo.repository_url.apply(
-                        lambda u: u.split("/")[0]
-                    ),
-                    "username": ecr_auth.user_name,
-                    "password": ecr_auth.password,
-                }
-            ],
-            build_args={
-                "BASE_IMAGE": resolved_base_image,
-            },
-            tags=[
-                embed_ecr_repo.repository_url.apply(lambda u: f"{u}:latest")
-            ],
-            opts=ResourceOptions(parent=self, depends_on=[embed_ecr_repo]),
+            dockerfile_path="infra/upload_images/container/Dockerfile",
+            build_context_path=".",  # Project root for monorepo access
+            source_paths=None,  # Use default rsync with exclusions
+            lambda_function_name=f"{name}-{stack}-embed-from-ndjson",
+            lambda_config=embed_lambda_config,
+            platform="linux/arm64",
+            opts=ResourceOptions(parent=self, depends_on=[embed_role]),
         )
 
-        embed_from_ndjson_lambda = Function(
-            f"{name}-embed-from-ndjson",
-            name=f"{name}-{stack}-embed-from-ndjson",
-            role=embed_role.arn,
-            package_type="Image",
-            image_uri=pulumi.Output.all(
-                embed_ecr_repo.repository_url, embed_image.digest
-            ).apply(lambda args: f"{args[0].split(':')[0]}@{args[1]}"),
-            architectures=["arm64"],
-            timeout=900,
-            memory_size=1024,
-            environment=FunctionEnvironmentArgs(
-                variables={
-                    "DYNAMO_TABLE_NAME": dynamodb_table.name,
-                    "CHROMADB_BUCKET": chromadb_bucket_name or "",
-                    "OPENAI_API_KEY": openai_api_key,
-                    "GOOGLE_PLACES_API_KEY": google_places_api_key,
-                    "CHROMA_HTTP_ENDPOINT": chroma_http_endpoint or "",
-                }
-            ),
-            vpc_config=(
-                aws.lambda_.FunctionVpcConfigArgs(
-                    subnet_ids=vpc_subnet_ids,
-                    security_group_ids=(
-                        [security_group_id] if security_group_id else None
-                    ),
-                )
-                if vpc_subnet_ids and security_group_id
-                else None
-            ),
-            opts=ResourceOptions(parent=self),
-        )
+        # Use the Lambda function created by CodeBuildDockerImage
+        embed_from_ndjson_lambda = embed_docker_image.lambda_function
 
         # Queue to batch NDJSON embedding tasks
         self.embed_ndjson_queue = Queue(
