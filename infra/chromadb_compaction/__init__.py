@@ -14,39 +14,46 @@ Architecture:
 See README.md for detailed documentation and operational procedures.
 """
 
-from .components import (
-    ChromaDBBuckets,
-    create_chromadb_buckets,
-    ChromaDBQueues,
-    create_chromadb_queues,
-    DockerImageComponent,
-    HybridLambdaDeployment,
-    create_hybrid_lambda_deployment,
-    EnhancedCompactionLambda,
-    create_enhanced_compaction_lambda,
-    create_stream_processor,
-)
+import os
 
-from .infrastructure import (
-    ChromaDBCompactionInfrastructure,
-    create_chromadb_compaction_infrastructure,
-)
+# Skip infrastructure imports when running tests
+# This allows Lambda function tests to run without Pulumi dependencies
+if os.getenv("PYTEST_RUNNING") == "1":
+    __all__ = []
+else:
+    from .components import (
+        ChromaDBBuckets,
+        create_chromadb_buckets,
+        ChromaDBQueues,
+        create_chromadb_queues,
+        DockerImageComponent,
+        HybridLambdaDeployment,
+        create_hybrid_lambda_deployment,
+        EnhancedCompactionLambda,
+        create_enhanced_compaction_lambda,
+        create_stream_processor,
+    )
 
-# pylint: disable=duplicate-code
-# Export lists are expected to be similar between package __init__ files
-__all__ = [
-    # Infrastructure
-    "ChromaDBCompactionInfrastructure",
-    "create_chromadb_compaction_infrastructure",
-    # Components
-    "ChromaDBBuckets",
-    "create_chromadb_buckets",
-    "ChromaDBQueues",
-    "create_chromadb_queues",
-    "DockerImageComponent",
-    "HybridLambdaDeployment",
-    "create_hybrid_lambda_deployment",
-    "EnhancedCompactionLambda",
-    "create_enhanced_compaction_lambda",
-    "create_stream_processor",
-]
+    from .infrastructure import (
+        ChromaDBCompactionInfrastructure,
+        create_chromadb_compaction_infrastructure,
+    )
+
+    # pylint: disable=duplicate-code
+    # Export lists are expected to be similar between package __init__ files
+    __all__ = [
+        # Infrastructure
+        "ChromaDBCompactionInfrastructure",
+        "create_chromadb_compaction_infrastructure",
+        # Components
+        "ChromaDBBuckets",
+        "create_chromadb_buckets",
+        "ChromaDBQueues",
+        "create_chromadb_queues",
+        "DockerImageComponent",
+        "HybridLambdaDeployment",
+        "create_hybrid_lambda_deployment",
+        "EnhancedCompactionLambda",
+        "create_enhanced_compaction_lambda",
+        "create_stream_processor",
+    ]

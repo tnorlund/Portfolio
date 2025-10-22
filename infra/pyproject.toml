@@ -120,3 +120,14 @@ logging-modules = ["logging"]
 [tool.pylint.imports]
 # Allow imports at any level for these modules
 allow-any-import-level = ["receipt_label", "boto3", "botocore", "chromadb", "openai"]
+
+[tool.pytest.ini_options]
+# Configure pytest to not import packages when collecting tests
+# This prevents loading infrastructure code during Lambda function testing
+pythonpath = ["."]
+testpaths = ["chromadb_compaction/tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+# Don't add parent directories to sys.path
+addopts = "--import-mode=importlib"
