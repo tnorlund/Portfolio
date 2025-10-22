@@ -507,10 +507,18 @@ echo "✅ Uploaded context.zip (hash: ${{HASH:0:12}}...)"
                             "lambda:UpdateFunctionCode",
                             "lambda:GetFunctionConfiguration",
                         ],
-                        "Resource": f"arn:aws:lambda:{aws.config.region}:{aws.get_caller_identity().account_id}:function:*",
+                        "Resource": f"arn:aws:lambda:{aws.config.region}:{aws.get_caller_identity().account_id}:function:{self.lambda_function_name}" if self.lambda_config else "*",
                     },
                 ],
             })),
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Create CloudWatch log group with retention to control costs
+        log_group = aws.cloudwatch.LogGroup(
+            f"{self.name}-builder-logs",
+            name=f"/aws/codebuild/{self.name}-builder",
+            retention_in_days=14,
             opts=ResourceOptions(parent=self),
         )
 
@@ -561,7 +569,7 @@ echo "✅ Uploaded context.zip (hash: ${{HASH:0:12}}...)"
                     status="ENABLED",
                 ),
             ),
-            opts=ResourceOptions(parent=self),
+            opts=ResourceOptions(parent=self, depends_on=[log_group]),
         )
 
         # Pipeline role

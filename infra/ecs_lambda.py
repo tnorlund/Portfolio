@@ -536,7 +536,7 @@ echo "✅ Uploaded source.zip"
                                     "lambda:GetFunctionConfiguration",
                                     "lambda:ListTags",
                                 ],
-                                "Resource": "*",
+                                "Resource": f"arn:aws:lambda:{aws.config.region}:{aws.get_caller_identity().account_id}:function:{self.function_name}",
                             },
                             {
                                 "Effect": "Allow",
@@ -626,6 +626,14 @@ echo "✅ Uploaded source.zip"
             opts=pulumi.ResourceOptions(parent=self),
         )
 
+        # Create CloudWatch log group with retention to control costs
+        log_group = aws.cloudwatch.LogGroup(
+            f"{self.name}-fn-publish-logs",
+            name=f"/aws/codebuild/{self.name}-fn-publish-{pulumi.get_stack()}",
+            retention_in_days=14,
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+
         # Single CodeBuild project does both build and update
         publish_project = aws.codebuild.Project(
             f"{self.name}-fn-publish-{pulumi.get_stack()}",
@@ -659,7 +667,7 @@ echo "✅ Uploaded source.zip"
                     status="ENABLED",
                 ),
             ),
-            opts=pulumi.ResourceOptions(parent=self),
+            opts=pulumi.ResourceOptions(parent=self, depends_on=[log_group]),
         )
 
         # CodePipeline
