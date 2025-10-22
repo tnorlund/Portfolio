@@ -258,27 +258,9 @@ logs_interface_endpoint = aws.ec2.VpcEndpoint(
     private_dns_enabled=True,
 )
 
-# SQS Interface Endpoint for VPC Lambdas to access SQS without NAT
-sqs_interface_endpoint = aws.ec2.VpcEndpoint(
-    f"sqs-interface-{pulumi.get_stack()}",
-    vpc_id=public_vpc.vpc_id,
-    service_name=f"com.amazonaws.{aws.config.region}.sqs",
-    vpc_endpoint_type="Interface",
-    subnet_ids=public_vpc.public_subnet_ids,
-    security_group_ids=[security.sg_vpce_id],
-    private_dns_enabled=True,
-)
-
-# CloudWatch Metrics (Monitoring) Interface Endpoint for metrics publishing
-monitoring_interface_endpoint = aws.ec2.VpcEndpoint(
-    f"monitoring-interface-{pulumi.get_stack()}",
-    vpc_id=public_vpc.vpc_id,
-    service_name=f"com.amazonaws.{aws.config.region}.monitoring",
-    vpc_endpoint_type="Interface",
-    subnet_ids=public_vpc.public_subnet_ids,
-    security_group_ids=[security.sg_vpce_id],
-    private_dns_enabled=True,
-)
+# VPC Endpoints removed to save costs ($0.96/day)
+# SQS and CloudWatch Metrics will use NAT instance instead
+# Cost trade-off: NAT data transfer (~$0.01/day) << Endpoint fees ($0.96/day)
 
 
 # ECS compaction worker (Fargate) mounting the same EFS access point
