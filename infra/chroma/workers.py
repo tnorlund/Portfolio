@@ -29,15 +29,9 @@ class ChromaWorkers(ComponentResource):
         security_group_id: pulumi.Input[str],
         dynamodb_table_name: pulumi.Input[str],
         chroma_service_dns: pulumi.Input[str],
-        base_image_ref: Optional[
-            pulumi.Input[str]
-        ] = None,  # unused for zip mode
         opts: Optional[ResourceOptions] = None,
     ) -> None:
         super().__init__("custom:chroma:Workers", name, None, opts)
-
-        # Touch the param to avoid linter warning; zip mode ignores this
-        _ignore_base = base_image_ref
 
         # Zip-based worker Lambda: prepare handler directory
         repo_root = Path(__file__).resolve().parents[2]

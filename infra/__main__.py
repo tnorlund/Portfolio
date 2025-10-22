@@ -49,7 +49,6 @@ from currency_validation_step_functions import (
 )
 
 # Using the optimized docker-build based base images with scoped contexts
-from base_images.base_images import BaseImages
 from networking import PublicVpc
 from security import ChromaSecurity
 
@@ -124,9 +123,6 @@ notification_system = NotificationSystem(
     },
 )
 
-# Create base images first - they're used by multiple components
-base_images = BaseImages("base-images", stack=pulumi.get_stack())
-
 validation_pipeline = ValidationPipeline("validation-pipeline")
 
 # Create shared ChromaDB bucket (used by both compaction and embedding)
@@ -140,7 +136,6 @@ chromadb_infrastructure = create_chromadb_compaction_infrastructure(
     dynamodb_table_arn=dynamodb_table.arn,
     dynamodb_stream_arn=dynamodb_table.stream_arn,
     chromadb_buckets=shared_chromadb_buckets,
-    base_images=base_images,
 )
 
 # Create currency validation state machine
@@ -153,7 +148,6 @@ embedding_infrastructure = EmbeddingInfrastructure(
     f"embedding-infra-{pulumi.get_stack()}",
     chromadb_queues=chromadb_infrastructure.chromadb_queues,
     chromadb_buckets=shared_chromadb_buckets,
-    base_images=base_images,
 )
 
 validation_by_merchant_step_functions = ValidationByMerchantStepFunction(
@@ -187,7 +181,6 @@ chroma_service = ChromaEcsService(
     task_role_name=security.ecs_task_role_name,
     execution_role_arn=security.ecs_task_execution_role_arn,
     chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
-    base_image_ref=base_images.label_base_image.tags[0],
     collection="lines",
     desired_count=0,
 )
@@ -204,7 +197,6 @@ workers = ChromaWorkers(
     security_group_id=security.sg_lambda_id,
     dynamodb_table_name=dynamodb_table.name,
     chroma_service_dns=chroma_service.endpoint_dns,
-    base_image_ref=base_images.label_base_image.tags[0],
 )
 
 pulumi.export("chroma_query_words_lambda_arn", workers.query_words.arn)
@@ -255,7 +247,6 @@ workers_nat = ChromaWorkers(
     security_group_id=security.sg_lambda_id,
     dynamodb_table_name=dynamodb_table.name,
     chroma_service_dns=chroma_service.endpoint_dns,
-    base_image_ref=base_images.label_base_image.tags[0],
 )
 pulumi.export("chroma_query_words_lambda_nat_arn", workers_nat.query_words.arn)
 
@@ -283,7 +274,6 @@ validate_merchant_step_functions = ValidateMerchantStepFunctions(
     ecs_cluster_arn=chroma_service.cluster.arn,
     ecs_service_arn=chroma_service.svc.arn,
     nat_instance_id=nat.nat_instance_id,
-    base_image_ref=base_images.label_base_image.tags[0],
     chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
 )
 
@@ -299,7 +289,6 @@ upload_images = UploadImages(
     ecs_cluster_arn=chroma_service.cluster.arn,
     ecs_service_arn=chroma_service.svc.arn,
     nat_instance_id=nat.nat_instance_id,
-    base_image_ref=base_images.label_base_image.tags[0],
 )
 
 pulumi.export("ocr_job_queue_url", upload_images.ocr_queue.url)
