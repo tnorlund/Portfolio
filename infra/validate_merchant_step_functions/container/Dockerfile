@@ -1,19 +1,27 @@
 # syntax=docker/dockerfile:1
-ARG BASE_IMAGE
-FROM ${BASE_IMAGE}
+# Multi-stage build for Merchant Validation Lambda
 
-# Copy and install local packages from the repository root
-# COPY receipt_dynamo /tmp/receipt_dynamo
-# COPY receipt_label /tmp/receipt_label
-# RUN --mount=type=cache,target=/root/.cache/pip \
-#     PIP_DISABLE_PIP_VERSION_CHECK=1 python -m pip install --no-cache-dir -t ${LAMBDA_TASK_ROOT} \
-#       /tmp/receipt_dynamo \
-#       "/tmp/receipt_label[full]" && \
-#     rm -rf /tmp/receipt_dynamo /tmp/receipt_label
+# Stage 1: Build and install dependencies (cached layer)
+FROM public.ecr.aws/lambda/python:3.12 AS dependencies
 
-# Copy the merchant validation container handler from repo root context (changes here won't bust pip cache)
+# Set environment variable to avoid compilation issues
+ENV HNSWLIB_NO_NATIVE=1
+
+# Copy only the dependency packages (triggers rebuild only when these change)
+COPY receipt_dynamo/ /tmp/receipt_dynamo/
+COPY receipt_label/ /tmp/receipt_label/
+
+# Install dependencies with full ChromaDB support
+RUN pip install --no-cache-dir /tmp/receipt_dynamo && \
+    pip install --no-cache-dir "/tmp/receipt_label[full]" && \
+    rm -rf /tmp/receipt_dynamo /tmp/receipt_label
+
+# Stage 2: Copy Lambda-specific code (changes frequently, but doesn't invalidate deps cache)
+FROM dependencies
+
+# Copy the merchant validation container handler module
 COPY infra/validate_merchant_step_functions/container/ ${LAMBDA_TASK_ROOT}/
 
-# Default handler
+# Set the handler
 CMD ["handler.lambda_handler"]
 

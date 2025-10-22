@@ -49,7 +49,6 @@ class HybridLambdaDeployment(ComponentResource):
         chromadb_buckets: ChromaDBBuckets,
         dynamodb_table_arn: str,
         dynamodb_stream_arn: str,
-        base_images=None,
         stack: Optional[str] = None,
         opts: Optional[ResourceOptions] = None,
     ):
@@ -62,7 +61,6 @@ class HybridLambdaDeployment(ComponentResource):
             chromadb_buckets: The ChromaDB S3 buckets component
             dynamodb_table_arn: ARN of the DynamoDB table
             dynamodb_stream_arn: ARN of the DynamoDB stream
-            base_images: Base images for container builds
             stack: The Pulumi stack name (defaults to current stack)
             opts: Optional resource options
         """
@@ -73,11 +71,8 @@ class HybridLambdaDeployment(ComponentResource):
             stack = pulumi.get_stack()
 
         # Create Docker image component for container-based Lambda
-        self.docker_image = DockerImageComponent(
-            f"{name}-docker",
-            base_images=base_images,
-            opts=ResourceOptions(parent=self),
-        )
+        # Note: Lambda config will be passed after we create the role
+        self.docker_image = None  # Will be created after role is set up
 
         # Create shared IAM role for both Lambda functions
         self.lambda_role = aws.iam.Role(
@@ -115,6 +110,41 @@ class HybridLambdaDeployment(ComponentResource):
         # Create shared policies
         self._create_shared_policies(
             name, dynamodb_table_arn, chromadb_queues, chromadb_buckets
+        )
+
+        # Now create Docker image component with Lambda config
+        self.docker_image = DockerImageComponent(
+            f"{name}-docker",
+            lambda_config={
+                "role_arn": self.lambda_role.arn,
+                "timeout": 900,
+                "memory_size": 2048,
+                "ephemeral_storage": 5120,  # 5GB for ChromaDB snapshots
+                "reserved_concurrent_executions": 10,  # Prevent throttling
+                "description": (
+                    "Enhanced ChromaDB compaction handler for stream and "
+                    "delta message processing"
+                ),
+                "tags": {
+                    "Project": "ChromaDB",
+                    "Component": "EnhancedCompaction",
+                    "Environment": stack,
+                    "ManagedBy": "Pulumi",
+                },
+                "environment": {
+                    "DYNAMODB_TABLE_NAME": Output.all(
+                        dynamodb_table_arn
+                    ).apply(lambda args: args[0].split("/")[-1]),
+                    "CHROMADB_BUCKET": chromadb_buckets.bucket_name,
+                    "LINES_QUEUE_URL": chromadb_queues.lines_queue_url,
+                    "WORDS_QUEUE_URL": chromadb_queues.words_queue_url,
+                    "HEARTBEAT_INTERVAL_SECONDS": "30",
+                    "LOCK_DURATION_MINUTES": "3",
+                    "MAX_HEARTBEAT_FAILURES": "3",
+                    "LOG_LEVEL": "INFO",
+                }
+            },
+            opts=ResourceOptions(parent=self, depends_on=[self.lambda_role]),
         )
 
         # Create CloudWatch log groups (auto-generated names)
@@ -249,52 +279,8 @@ class HybridLambdaDeployment(ComponentResource):
             ),
         )
 
-        # Create container-based Lambda for enhanced compaction
-        self.enhanced_compaction_function = aws.lambda_.Function(
-            f"{name}-enhanced-compaction",
-            package_type="Image",
-            image_uri=self.docker_image.image_uri,
-            role=self.lambda_role.arn,
-            timeout=900,  # 15 minutes for compaction operations
-            memory_size=2048,  # Increased memory for ChromaDB label operations (was failing with 1024MB)
-            ephemeral_storage={
-                "size": 5120
-            },  # 5GB for ChromaDB snapshots and temp files
-            reserved_concurrent_executions=10,  # Prevent throttling with batch processing
-            architectures=["arm64"],
-            environment={
-                "variables": {
-                    "DYNAMODB_TABLE_NAME": Output.all(
-                        dynamodb_table_arn
-                    ).apply(lambda args: args[0].split("/")[-1]),
-                    "CHROMADB_BUCKET": chromadb_buckets.bucket_name,
-                    "LINES_QUEUE_URL": chromadb_queues.lines_queue_url,
-                    "WORDS_QUEUE_URL": chromadb_queues.words_queue_url,
-                    "HEARTBEAT_INTERVAL_SECONDS": "30",
-                    "LOCK_DURATION_MINUTES": "3",
-                    "MAX_HEARTBEAT_FAILURES": "3",
-                    "LOG_LEVEL": "INFO",
-                }
-            },
-            description=(
-                "Enhanced ChromaDB compaction handler for stream and "
-                "delta message processing"
-            ),
-            tags={
-                "Project": "ChromaDB",
-                "Component": "EnhancedCompaction",
-                "Environment": stack,
-                "ManagedBy": "Pulumi",
-            },
-            opts=ResourceOptions(
-                parent=self,
-                depends_on=[
-                    self.lambda_role,
-                    self.docker_image,
-                    self.compaction_log_group,
-                ],
-            ),
-        )
+        # Use the Lambda function created by CodeBuildDockerImage
+        self.enhanced_compaction_function = self.docker_image.docker_image.lambda_function
 
         # Create event source mappings
         self._create_event_source_mappings(
@@ -511,7 +497,6 @@ def create_hybrid_lambda_deployment(
     chromadb_buckets: ChromaDBBuckets = None,
     dynamodb_table_arn: str = None,
     dynamodb_stream_arn: str = None,
-    base_images=None,
     opts: Optional[ResourceOptions] = None,
 ) -> HybridLambdaDeployment:
     """
@@ -523,7 +508,6 @@ def create_hybrid_lambda_deployment(
         chromadb_buckets: The ChromaDB S3 buckets component
         dynamodb_table_arn: ARN of the DynamoDB table
         dynamodb_stream_arn: ARN of the DynamoDB stream
-        base_images: Base images for container builds
         opts: Optional resource options
 
     Returns:
@@ -544,6 +528,5 @@ def create_hybrid_lambda_deployment(
         chromadb_buckets=chromadb_buckets,
         dynamodb_table_arn=dynamodb_table_arn,
         dynamodb_stream_arn=dynamodb_stream_arn,
-        base_images=base_images,
         opts=opts,
     )
