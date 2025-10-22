@@ -63,19 +63,9 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
                 opts=ResourceOptions(parent=self),
             )
 
-        # Create enhanced compaction Lambda using container-based approach (needs receipt-label[full])
-        self.enhanced_compaction = create_hybrid_lambda_deployment(
-            name=f"{name}-enhanced-compaction",
-            chromadb_queues=self.chromadb_queues,
-            chromadb_buckets=self.chromadb_buckets,
-            dynamodb_table_arn=dynamodb_table_arn,
-            dynamodb_stream_arn=dynamodb_stream_arn,
-            opts=ResourceOptions(parent=self),
-        )
-
-        # Create stream processor Lambda (zip-based, lightweight)
-        self.stream_processor = create_hybrid_lambda_deployment(
-            name=f"{name}-stream-processor",
+        # Create hybrid Lambda deployment (creates both stream processor and enhanced compaction)
+        self.hybrid_deployment = create_hybrid_lambda_deployment(
+            name=f"{name}",
             chromadb_queues=self.chromadb_queues,
             chromadb_buckets=self.chromadb_buckets,
             dynamodb_table_arn=dynamodb_table_arn,
@@ -87,8 +77,8 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
         self.lines_queue_url = self.chromadb_queues.lines_queue_url
         self.words_queue_url = self.chromadb_queues.words_queue_url
         self.bucket_name = self.chromadb_buckets.bucket_name
-        self.stream_processor_arn = self.stream_processor.stream_processor_arn
-        self.enhanced_compaction_arn = self.enhanced_compaction.enhanced_compaction_arn
+        self.stream_processor_arn = self.hybrid_deployment.stream_processor_arn
+        self.enhanced_compaction_arn = self.hybrid_deployment.enhanced_compaction_arn
 
         # Register outputs
         self.register_outputs(
