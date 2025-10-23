@@ -87,6 +87,7 @@ dynamodb_table = aws.dynamodb.Table(
         "Pulumi_Project": pulumi.get_project(),
         "Environment": "dev",
         "Name": "ReceiptsTable",
+        "StreamRecreated": "2025-10-23",  # Force recreation
     },
 )
 
