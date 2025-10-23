@@ -20,18 +20,18 @@ from .chromadb_operations import update_word_labels, remove_word_labels
 def process_label_updates(
     label_updates: List[Any],  # StreamMessage type
     collection: ChromaDBCollection,
-    logger,
-    metrics=None,
-    OBSERVABILITY_AVAILABLE=False,
+    logger: Any,
+    metrics: Any = None,
+    OBSERVABILITY_AVAILABLE: bool = False,
     lock_manager: Optional[Any] = None,
-    get_dynamo_client_func=None
+    get_dynamo_client_func: Any = None
 ) -> List[LabelUpdateResult]:
     """Process RECEIPT_WORD_LABEL updates for a specific collection.
 
     Updates label metadata for specific word embeddings in the collection.
     """
     logger.info("Processing label updates", count=len(label_updates))
-    results = []
+    results: List[LabelUpdateResult] = []
 
     bucket = os.environ["CHROMADB_BUCKET"]
     # Use the specific collection instead of hardcoded "words"

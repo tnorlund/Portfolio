@@ -11,11 +11,11 @@ from .models import LambdaResponse, StreamMessage
 
 def process_sqs_messages(
     records: List[Dict[str, Any]], 
-    logger, 
-    metrics=None, 
-    OBSERVABILITY_AVAILABLE=False,
-    process_stream_messages_func=None,
-    process_delta_messages_func=None
+    logger: Any, 
+    metrics: Any = None, 
+    OBSERVABILITY_AVAILABLE: bool = False,
+    process_stream_messages_func: Any = None,
+    process_delta_messages_func: Any = None
 ) -> Dict[str, Any]:
     """Process SQS messages from the compaction queue.
 
@@ -131,7 +131,7 @@ def process_sqs_messages(
     # Process delta messages if any - collect failed message IDs
     if delta_message_records and process_delta_messages_func:
         delta_bodies = [msg["body"] for msg in delta_message_records]
-        delta_result = process_delta_messages_func(delta_bodies)
+        process_delta_messages_func(delta_bodies)
 
         # Since delta processing is not implemented, mark all delta messages as failed
         # to prevent data loss by forcing SQS to retry them
@@ -180,7 +180,7 @@ def process_sqs_messages(
         return response
 
     # All messages processed successfully
-    response = LambdaResponse(
+    success_response = LambdaResponse(
         status_code=200,
         processed_messages=processed_count,
         stream_messages=len(stream_messages),
@@ -195,7 +195,7 @@ def process_sqs_messages(
         metrics.gauge("CompactionBatchProcessedSuccessfully", len(records))
         metrics.count("CompactionBatchProcessingSuccess", 1)
 
-    return response.to_dict()
+    return success_response.to_dict()
 
 
 def categorize_stream_messages(
@@ -225,7 +225,7 @@ def group_messages_by_collection(
     stream_messages: List[StreamMessage]
 ) -> Dict[ChromaDBCollection, List[StreamMessage]]:
     """Group stream messages by collection for batch processing."""
-    messages_by_collection = {}
+    messages_by_collection: Dict[ChromaDBCollection, List[StreamMessage]] = {}
     for msg in stream_messages:
         collection = msg.collection
         if collection not in messages_by_collection:

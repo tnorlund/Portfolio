@@ -110,11 +110,11 @@ def merge_chroma_delta_into_snapshot(
 def process_compaction_runs(
     compaction_runs: List[Any],  # StreamMessage type
     collection: Any,  # ChromaDBCollection type
-    logger,
-    metrics=None,
-    OBSERVABILITY_AVAILABLE=False,
-    get_dynamo_client_func=None,
-    lock_manager=None
+    logger: Any,
+    metrics: Any = None,
+    OBSERVABILITY_AVAILABLE: bool = False,
+    get_dynamo_client_func: Any = None,
+    lock_manager: Any = None
 ) -> int:
     """Process COMPACTION_RUN messages by downloading deltas and merging them into snapshots.
     

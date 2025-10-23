@@ -16,13 +16,13 @@ from .compaction_handler import process_compaction_run_messages
 
 def process_stream_messages(
     stream_messages: List[Any],  # StreamMessage type
-    logger,
-    metrics=None,
-    OBSERVABILITY_AVAILABLE=False,
-    get_dynamo_client_func=None,
-    heartbeat_interval=30,
-    lock_duration_minutes=3,
-    max_heartbeat_failures=3
+    logger: Any,
+    metrics: Any = None,
+    OBSERVABILITY_AVAILABLE: bool = False,
+    get_dynamo_client_func: Any = None,
+    heartbeat_interval: int = 30,
+    lock_duration_minutes: int = 3,
+    max_heartbeat_failures: int = 3
 ) -> Dict[str, Any]:
     """Process DynamoDB stream messages for metadata updates.
 
@@ -38,7 +38,7 @@ def process_stream_messages(
         metrics.gauge("CompactionBatchSize", len(stream_messages))
 
     # Group messages by collection
-    messages_by_collection = {}
+    messages_by_collection: Dict[ChromaDBCollection, List[Any]] = {}
     for msg in stream_messages:
         collection = msg.collection
         if collection not in messages_by_collection:
@@ -134,13 +134,13 @@ def process_stream_messages(
 def process_collection_messages(
     collection: ChromaDBCollection, 
     messages: List[Any],  # StreamMessage type
-    logger,
-    metrics=None,
-    OBSERVABILITY_AVAILABLE=False,
-    get_dynamo_client_func=None,
-    heartbeat_interval=30,
-    lock_duration_minutes=3,
-    max_heartbeat_failures=3
+    logger: Any,
+    metrics: Any = None,
+    OBSERVABILITY_AVAILABLE: bool = False,
+    get_dynamo_client_func: Any = None,
+    heartbeat_interval: int = 30,
+    lock_duration_minutes: int = 3,
+    max_heartbeat_failures: int = 3
 ) -> Dict[str, Any]:
     """Process messages for a specific collection with collection-specific lock.
     

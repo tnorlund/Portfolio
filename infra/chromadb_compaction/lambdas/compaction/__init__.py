@@ -41,7 +41,7 @@ from .s3_operations import (
 __all__ = [
     # Models
     "LambdaResponse",
-    "StreamMessage", 
+    "StreamMessage",
     "MetadataUpdateResult",
     "LabelUpdateResult",
     
@@ -49,7 +49,6 @@ __all__ = [
     "process_sqs_messages",
     "categorize_stream_messages",
     "group_messages_by_collection",
-    
     # Collection processing
     "process_stream_messages",
     "process_collection_messages",
@@ -58,7 +57,6 @@ __all__ = [
     "process_metadata_updates",
     "process_label_updates", 
     "process_compaction_run_messages",
-    
     # ChromaDB operations
     "update_receipt_metadata",
     "remove_receipt_metadata",

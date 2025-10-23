@@ -19,11 +19,11 @@ from .chromadb_operations import update_receipt_metadata, remove_receipt_metadat
 def process_metadata_updates(
     metadata_updates: List[Any],  # StreamMessage type
     collection: ChromaDBCollection,
-    logger,
-    metrics=None,
-    OBSERVABILITY_AVAILABLE=False,
+    logger: Any,
+    metrics: Any = None,
+    OBSERVABILITY_AVAILABLE: bool = False,
     lock_manager: Optional[Any] = None,
-    get_dynamo_client_func=None
+    get_dynamo_client_func: Any = None
 ) -> List[MetadataUpdateResult]:
     """Process RECEIPT_METADATA updates for a specific collection.
 

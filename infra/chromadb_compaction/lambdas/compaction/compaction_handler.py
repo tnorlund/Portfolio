@@ -10,11 +10,11 @@ from .s3_operations import process_compaction_runs
 def process_compaction_run_messages(
     compaction_runs: List[Any],  # StreamMessage type
     collection: ChromaDBCollection,
-    logger,
-    metrics=None,
-    OBSERVABILITY_AVAILABLE=False,
+    logger: Any,
+    metrics: Any = None,
+    OBSERVABILITY_AVAILABLE: bool = False,
     lock_manager: Optional[Any] = None,
-    get_dynamo_client_func=None
+    get_dynamo_client_func: Any = None
 ) -> int:
     """Process COMPACTION_RUN messages for delta merging.
     

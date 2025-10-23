@@ -1,21 +1,23 @@
 """ChromaDB operations for metadata and label updates."""
 
+import os
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.constants import ValidationStatus
 
 
 def update_receipt_metadata(
-    collection,
+    collection: Any,
     image_id: str, 
     receipt_id: int, 
     changes: Dict[str, Any],
-    logger,
-    metrics=None,
-    OBSERVABILITY_AVAILABLE=False,
-    get_dynamo_client_func=None
+    logger: Any,
+    metrics: Any = None,
+    OBSERVABILITY_AVAILABLE: bool = False,
+    get_dynamo_client_func: Any = None
 ) -> int:
     """Update metadata for all embeddings of a specific receipt.
 
@@ -163,14 +165,14 @@ def update_receipt_metadata(
     matching_ids = results.get("ids", [])
     matching_metadatas = []
 
-    for i, record_id in enumerate(matching_ids):
+    for i, _ in enumerate(matching_ids):
         # Get existing metadata and apply changes
         existing_metadata = results["metadatas"][i] or {}
         updated_metadata = existing_metadata.copy()
 
         # Apply field changes
         for field, change in changes.items():
-            old_value = change.get("old")
+            _ = change.get("old")  # old_value not used
             new_value = change["new"]
             if new_value is not None:
                 updated_metadata[field] = new_value
@@ -247,13 +249,13 @@ def update_receipt_metadata(
 
 
 def remove_receipt_metadata(
-    collection, 
+    collection: Any, 
     image_id: str, 
     receipt_id: int,
-    logger,
-    metrics=None,
-    OBSERVABILITY_AVAILABLE=False,
-    get_dynamo_client_func=None
+    logger: Any,
+    metrics: Any = None,
+    OBSERVABILITY_AVAILABLE: bool = False,
+    get_dynamo_client_func: Any = None
 ) -> int:
     """Remove merchant metadata fields from all embeddings of a specific receipt.
 
@@ -354,7 +356,7 @@ def remove_receipt_metadata(
     matching_ids = results.get("ids", [])
     matching_metadatas = []
 
-    for i, record_id in enumerate(matching_ids):
+    for i, _ in enumerate(matching_ids):
         # Remove merchant fields from metadata
         existing_metadata = results["metadatas"][i] or {}
         updated_metadata = existing_metadata.copy()
@@ -418,15 +420,15 @@ def remove_receipt_metadata(
 
 
 def update_word_labels(
-    collection,
+    collection: Any,
     chromadb_id: str,
     changes: Dict[str, Any],
     record_snapshot: Optional[Dict[str, Any]] = None,
     entity_data: Optional[Dict[str, Any]] = None,
-    logger=None,
-    metrics=None,
-    OBSERVABILITY_AVAILABLE=False,
-    get_dynamo_client_func=None
+    logger: Any = None,
+    metrics: Any = None,
+    OBSERVABILITY_AVAILABLE: bool = False,
+    get_dynamo_client_func: Any = None
 ) -> int:
     """Update label metadata for a specific word embedding using message snapshot when available.
 
@@ -526,7 +528,7 @@ def update_word_labels(
                 invalid = updated_metadata.get("invalid_labels", "") or ""
 
                 def _as_set(csv: str) -> set:
-                    return set([x for x in csv.strip(",").split(",") if x])
+                    return {x for x in csv.strip(",").split(",") if x}
 
                 val_set = _as_set(validated)
                 inv_set = _as_set(invalid)
@@ -605,11 +607,11 @@ def update_word_labels(
 
 
 def remove_word_labels(
-    collection, 
+    collection: Any, 
     chromadb_id: str,
-    logger=None,
-    metrics=None,
-    OBSERVABILITY_AVAILABLE=False
+    logger: Any = None,
+    metrics: Any = None,
+    OBSERVABILITY_AVAILABLE: bool = False
 ) -> int:
     """Remove label metadata from a specific word embedding."""
     try:
@@ -680,7 +682,7 @@ def remove_word_labels(
 
 
 def reconstruct_label_metadata(
-    image_id: str, receipt_id: int, line_id: int, word_id: int, dynamo_client
+    image_id: str, receipt_id: int, line_id: int, word_id: int, dynamo_client: Any
 ) -> Dict[str, Any]:
     """
     Reconstruct all label-related metadata fields exactly as the step function does.
@@ -701,8 +703,6 @@ def reconstruct_label_metadata(
         - label_proposed_by: proposer of latest pending label
         - label_validated_at: timestamp of most recent validation
     """
-    from receipt_dynamo.constants import ValidationStatus
-
     # Get all labels for this specific word directly
     word_labels, _ = dynamo_client.list_receipt_word_labels_for_word(
         image_id=image_id,
