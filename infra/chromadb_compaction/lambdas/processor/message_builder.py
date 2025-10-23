@@ -6,7 +6,9 @@ Constructs StreamMessage objects from parsed entities and changes.
 
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
+from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
+from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 from receipt_dynamo.entities.compaction_run import CompactionRun
 
@@ -63,7 +65,7 @@ def build_compaction_run_messages(
     """
     from .compaction_run import is_compaction_run, parse_compaction_run
 
-    messages = []
+    messages: List[StreamMessage] = []
 
     try:
         new_image = record.get("dynamodb", {}).get("NewImage")
@@ -210,7 +212,10 @@ def build_entity_change_message(
         return None
 
 
-def _extract_entity_data(entity_type: str, entity) -> tuple[dict, list]:
+def _extract_entity_data(
+    entity_type: str,
+    entity: ReceiptMetadata | ReceiptWordLabel,
+) -> Tuple[Dict[str, Any], List[ChromaDBCollection]]:
     """
     Extract entity data and determine target collections.
 

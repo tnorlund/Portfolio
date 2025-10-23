@@ -185,10 +185,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         return format_response(result, event, correlation_id=correlation_id)
 
     except Exception as e:
-        logger.error(
+        logger.exception(
             "Stream processor failed",
-            error=str(e),
-            error_type=type(e).__name__,
         )
 
         metrics.count(

@@ -26,9 +26,16 @@ from .message_builder import build_messages_from_records
 from .sqs_publisher import publish_messages
 
 __all__ = [
+    # Message building
+    "build_messages_from_records",
+    # Change detection
+    "get_chromadb_relevant_changes",
+    # Compaction run
+    "is_compaction_run",
+    "parse_compaction_run",
     # Models
     "ChromaDBCollection",
-    "FieldChange", 
+    "FieldChange",
     "LambdaResponse",
     "ParsedStreamRecord",
     "StreamMessage",
@@ -36,13 +43,6 @@ __all__ = [
     "detect_entity_type",
     "parse_entity",
     "parse_stream_record",
-    # Change detection
-    "get_chromadb_relevant_changes",
-    # Compaction run
-    "is_compaction_run",
-    "parse_compaction_run",
-    # Message building
-    "build_messages_from_records",
     # SQS publishing
     "publish_messages",
 ]
