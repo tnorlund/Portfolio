@@ -13,7 +13,7 @@ from receipt_label.utils.chroma_s3_helpers import (
 )
 
 from .models import MetadataUpdateResult
-from .chromadb_operations import update_receipt_metadata, remove_receipt_metadata
+from .operations import update_receipt_metadata, remove_receipt_metadata
 
 
 def process_metadata_updates(

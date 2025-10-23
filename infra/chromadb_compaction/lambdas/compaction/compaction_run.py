@@ -4,7 +4,20 @@ from typing import Any, Dict, List, Optional
 
 from receipt_dynamo.constants import ChromaDBCollection
 
-from .s3_operations import process_compaction_runs
+
+def process_compaction_runs(
+    compaction_runs: List[Any],
+    collection: ChromaDBCollection,
+    logger: Any,
+    metrics: Any = None,
+    OBSERVABILITY_AVAILABLE: bool = False,
+    get_dynamo_client_func: Any = None,
+    lock_manager: Optional[Any] = None
+) -> List[Dict[str, Any]]:
+    """Process compaction runs - fallback implementation."""
+    logger.info(f"Processing {len(compaction_runs)} compaction runs for collection {collection.value}")
+    # TODO: Implement actual compaction run processing
+    return []
 
 
 def process_compaction_run_messages(

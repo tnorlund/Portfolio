@@ -1,22 +1,21 @@
+#!/usr/bin/env python3
 """
-Pytest configuration for ChromaDB Compaction tests.
+Simple test runner for ChromaDB Compaction tests.
 
-This module sets up proper mocking and import paths to allow tests
-to run without modifying the Lambda code files.
+This runner uses mocking to test the Lambda functions without modifying
+the original code files.
 """
 
 import sys
 import os
-from unittest.mock import MagicMock, patch
-import pytest
+from unittest.mock import MagicMock
 
-@pytest.fixture(scope="session", autouse=True)
-def setup_test_environment():
-    """Setup the test environment with proper imports and mocking."""
+def setup_mocks():
+    """Setup mocks for testing."""
     
     # Add the lambdas directory to Python path
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    lambdas_path = os.path.join(current_dir, '..', 'lambdas')
+    lambdas_path = os.path.join(current_dir, 'infra', 'chromadb_compaction', 'lambdas')
     if os.path.exists(lambdas_path):
         sys.path.insert(0, lambdas_path)
     
@@ -27,9 +26,6 @@ def setup_test_environment():
     logger_mock.error = MagicMock()
     logger_mock.debug = MagicMock()
     logger_mock.exception = MagicMock()
-    logger_mock.warning = MagicMock()
-    logger_mock.critical = MagicMock()
-    
     utils_mock.get_operation_logger = MagicMock(return_value=logger_mock)
     utils_mock.metrics = MagicMock()
     utils_mock.trace_function = MagicMock(side_effect=lambda *args, **kwargs: lambda func: func)
@@ -38,8 +34,6 @@ def setup_test_environment():
     utils_mock.stop_compaction_lambda_monitoring = MagicMock()
     utils_mock.with_compaction_timeout_protection = MagicMock(side_effect=lambda *args, **kwargs: lambda func: func)
     utils_mock.format_response = MagicMock(side_effect=lambda response, *args, **kwargs: response)
-    
-    # Inject the mock into sys.modules
     sys.modules['utils'] = utils_mock
     
     # Mock the processor module
@@ -49,7 +43,6 @@ def setup_test_environment():
     processor_mock.ParsedStreamRecord = MagicMock
     processor_mock.ChromaDBCollection = MagicMock
     processor_mock.StreamMessage = MagicMock
-    
     processor_mock.build_messages_from_records = MagicMock(return_value=[])
     processor_mock.publish_messages = MagicMock(return_value=0)
     processor_mock.parse_stream_record = MagicMock()
@@ -58,8 +51,6 @@ def setup_test_environment():
     processor_mock.parse_entity = MagicMock()
     processor_mock.is_compaction_run = MagicMock(return_value=False)
     processor_mock.parse_compaction_run = MagicMock()
-    
-    # Inject the mock into sys.modules
     sys.modules['processor'] = processor_mock
     
     # Mock the compaction module and its submodules
@@ -97,25 +88,100 @@ def setup_test_environment():
     compaction_operations_mock.reconstruct_label_metadata = MagicMock()
     sys.modules['compaction.operations'] = compaction_operations_mock
 
-# Mock AWS services to avoid infrastructure import issues
-@pytest.fixture(autouse=True)
-def mock_aws_services():
-    """Mock AWS services to avoid infrastructure import issues."""
-    with patch('boto3.client') as mock_client, \
-         patch('boto3.resource') as mock_resource:
+def test_stream_processor():
+    """Test the stream processor Lambda."""
+    print("🧪 Testing stream processor...")
+    
+    try:
+        from stream_processor import lambda_handler
         
-        # Mock SQS client
-        mock_sqs = MagicMock()
-        mock_sqs.send_message.return_value = {'MessageId': 'test-message-id'}
-        mock_sqs.send_message_batch.return_value = {'Successful': [], 'Failed': []}
-        mock_client.return_value = mock_sqs
+        # Test with empty event
+        test_event = {'Records': []}
+        test_context = MagicMock()
         
-        # Mock DynamoDB client
-        mock_dynamo = MagicMock()
-        mock_dynamo.get_item.return_value = {'Item': {}}
-        mock_dynamo.put_item.return_value = {}
-        mock_dynamo.update_item.return_value = {}
-        mock_dynamo.delete_item.return_value = {}
-        mock_resource.return_value = mock_dynamo
+        result = lambda_handler(test_event, test_context)
+        print("✅ Stream processor test passed")
+        return True
         
-        yield mock_client, mock_resource
+    except Exception as e:
+        print(f"❌ Stream processor test failed: {e}")
+        return False
+
+def test_enhanced_compaction_handler():
+    """Test the enhanced compaction handler Lambda."""
+    print("🧪 Testing enhanced compaction handler...")
+    
+    try:
+        from enhanced_compaction_handler import lambda_handler
+        
+        # Test with empty event
+        test_event = {'Records': []}
+        test_context = MagicMock()
+        
+        result = lambda_handler(test_event, test_context)
+        print("✅ Enhanced compaction handler test passed")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Enhanced compaction handler test failed: {e}")
+        return False
+
+def test_imports():
+    """Test that all imports work correctly."""
+    print("🧪 Testing imports...")
+    
+    try:
+        # Test stream processor imports
+        from stream_processor import LambdaResponse, FieldChange, ParsedStreamRecord
+        print("✅ Stream processor imports successful")
+        
+        # Test compaction imports
+        from compaction.models import LambdaResponse as CompactionLambdaResponse, StreamMessage
+        from compaction.operations import update_receipt_metadata, update_word_labels
+        print("✅ Compaction imports successful")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Import test failed: {e}")
+        return False
+
+def main():
+    """Run all tests."""
+    print("🚀 Running ChromaDB Compaction Tests with Mocking")
+    print("=" * 50)
+    
+    # Setup mocks
+    setup_mocks()
+    print("✅ Mocks setup complete")
+    
+    # Run tests
+    tests = [
+        test_imports,
+        test_stream_processor,
+        test_enhanced_compaction_handler,
+    ]
+    
+    passed = 0
+    failed = 0
+    
+    for test in tests:
+        if test():
+            passed += 1
+        else:
+            failed += 1
+    
+    print("\n📊 Test Results:")
+    print(f"  Passed: {passed}")
+    print(f"  Failed: {failed}")
+    
+    if failed == 0:
+        print("🎉 All tests passed!")
+        return True
+    else:
+        print("❌ Some tests failed")
+        return False
+
+if __name__ == "__main__":
+    success = main()
+    sys.exit(0 if success else 1)

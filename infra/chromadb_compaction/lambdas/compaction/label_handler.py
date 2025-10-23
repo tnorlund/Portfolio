@@ -14,7 +14,7 @@ from receipt_label.utils.chroma_s3_helpers import (
 )
 
 from .models import LabelUpdateResult
-from .chromadb_operations import update_word_labels, remove_word_labels
+from .operations import update_word_labels, remove_word_labels
 
 
 def process_label_updates(

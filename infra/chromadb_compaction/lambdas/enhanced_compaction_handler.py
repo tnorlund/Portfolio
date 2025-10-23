@@ -19,58 +19,26 @@ from typing import Any, Dict, List, Optional
 
 import boto3
 
-# Enhanced observability imports (with fallback)
-try:
-    from utils import (
-        get_operation_logger,
-        metrics,
-        trace_function,
-        trace_compaction_operation,
-        start_compaction_lambda_monitoring,
-        stop_compaction_lambda_monitoring,
-        with_compaction_timeout_protection,
-        format_response,
-    )
-
-    OBSERVABILITY_AVAILABLE = True
-except ImportError:
-    # Fallback for development/testing - provide no-op decorators
-    OBSERVABILITY_AVAILABLE = False
-
-    # No-op decorator functions for fallback
-    def trace_function(operation_name=None, collection=None):
-        def decorator(func):
-            return func
-
-        return decorator
-
-    def trace_compaction_operation(operation_name=None):
-        def decorator(func):
-            return func
-
-        return decorator
-
-    def with_compaction_timeout_protection(max_duration=None):
-        def decorator(func):
-            return func
-
-        return decorator
-
-    # Placeholder functions
-    get_operation_logger = None
-    metrics = None
-    start_compaction_lambda_monitoring = None
-    stop_compaction_lambda_monitoring = None
-    format_response = None
+# Enhanced observability imports
+from utils import (
+    get_operation_logger,
+    metrics,
+    trace_function,
+    trace_compaction_operation,
+    start_compaction_lambda_monitoring,
+    stop_compaction_lambda_monitoring,
+    with_compaction_timeout_protection,
+    format_response,
+)
 
 # Import receipt_dynamo for proper DynamoDB operations
 from receipt_dynamo.data.dynamo_client import DynamoClient
 
-# Import modular components
+# Import modular components - flexible for both Lambda and test environments
 try:
+    # Try absolute import first (Lambda environment)
     from compaction import (
         process_sqs_messages,
-        process_stream_messages,
         LambdaResponse,
         StreamMessage,
         MetadataUpdateResult,
@@ -79,8 +47,20 @@ try:
     MODULAR_MODE = True
     print("✅ Modular mode: Using compaction package")
 except ImportError as e:
-    print(f"⚠️  Fallback mode: {e}")
-    MODULAR_MODE = False
+    try:
+        # Try relative import (test environment)
+        from .compaction import (
+            process_sqs_messages,
+            LambdaResponse,
+            StreamMessage,
+            MetadataUpdateResult,
+            LabelUpdateResult,
+        )
+        MODULAR_MODE = True
+        print("✅ Modular mode: Using compaction package (relative import)")
+    except ImportError as e2:
+        print(f"⚠️  Fallback mode: {e2}")
+        MODULAR_MODE = False
     
     # Fallback implementations
     class LambdaResponse:
@@ -118,7 +98,7 @@ except ImportError as e:
         def to_dict(self):
             return {k: v for k, v in self.__dict__.items() if v is not None}
     
-    def process_sqs_messages(records, logger, metrics=None, OBSERVABILITY_AVAILABLE=False, **kwargs):
+    def process_sqs_messages(records, logger, metrics=None, **kwargs):
         """Fallback implementation that logs messages instead of processing."""
         logger.info(f"Fallback mode: Would process {len(records)} SQS messages")
         return LambdaResponse(
@@ -127,7 +107,7 @@ except ImportError as e:
             processed_messages=len(records)
         ).to_dict()
     
-    def process_stream_messages(stream_messages, logger, metrics=None, OBSERVABILITY_AVAILABLE=False, **kwargs):
+    def process_stream_messages(stream_messages, logger, metrics=None, **kwargs):
         """Fallback implementation that logs messages instead of processing."""
         logger.info(f"Fallback mode: Would process {len(stream_messages)} stream messages")
         return LambdaResponse(
@@ -137,23 +117,8 @@ except ImportError as e:
         ).to_dict()
 
 
-# Enhanced structured logging with fallback
-if OBSERVABILITY_AVAILABLE:
-    logger = get_operation_logger(__name__)
-else:
-    # Fallback to basic logging
-    logger = getLogger()
-    logger.setLevel(INFO)
-
-    if len(logger.handlers) == 0:
-        handler = StreamHandler()
-        handler.setFormatter(
-            Formatter(
-                "[%(levelname)s] %(asctime)s.%(msecs)dZ %(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S",
-            )
-        )
-        logger.addHandler(handler)
+# Configure logging with observability
+logger = get_operation_logger(__name__)
 
 # Initialize clients
 sqs_client = boto3.client("sqs")
@@ -205,20 +170,11 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         handler = logging.StreamHandler()
 
         # Use the same JSON formatter as ChromaDB if available, otherwise simple format
-        if OBSERVABILITY_AVAILABLE:
-            # Try to use the same structured formatter as ChromaDB
-            try:
-                from utils.logging import StructuredFormatter
-
-                formatter = StructuredFormatter()
-            except ImportError:
-                # Fallback to simple format
-                formatter = logging.Formatter(
-                    "[%(levelname)s] %(asctime)s.%(msecs)03dZ %(name)s - %(message)s",
-                    datefmt="%Y-%m-%d %H:%M:%S",
-                )
-        else:
-            # Simple format for fallback logging
+        try:
+            from utils.logging import StructuredFormatter
+            formatter = StructuredFormatter()
+        except ImportError:
+            # Fallback to simple format
             formatter = logging.Formatter(
                 "[%(levelname)s] %(asctime)s.%(msecs)03dZ %(name)s - %(message)s",
                 datefmt="%Y-%m-%d %H:%M:%S",
@@ -248,21 +204,14 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     correlation_id = None
 
-    # Start enhanced monitoring if available
-    if OBSERVABILITY_AVAILABLE:
-        start_compaction_lambda_monitoring(context)
-        correlation_id = getattr(logger, "correlation_id", None)
-        logger.info(
-            "Enhanced compaction handler started",
-            event_keys=list(event.keys()),
-            correlation_id=correlation_id,
-        )
-    else:
-        logger.info("Enhanced compaction handler started")
-        logger.info(
-            "Event structure present with size: %s",
-            len(json.dumps(event, default=str)),
-        )
+    # Start monitoring
+    start_compaction_lambda_monitoring(context)
+    correlation_id = getattr(logger, "correlation_id", None)
+    logger.info(
+        "Enhanced compaction handler started",
+        event_keys=list(event.keys()),
+        correlation_id=correlation_id,
+    )
 
     start_time = time.time()
     function_name = (
@@ -274,16 +223,14 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     try:
         # Check if this is an SQS trigger
         if "Records" in event:
-            if OBSERVABILITY_AVAILABLE:
-                metrics.gauge(
-                    "CompactionRecordsReceived", len(event["Records"])
-                )
+            metrics.gauge(
+                "CompactionRecordsReceived", len(event["Records"])
+            )
 
             result = process_sqs_messages(
                 records=event["Records"],
                 logger=logger,
                 metrics=metrics,
-                OBSERVABILITY_AVAILABLE=OBSERVABILITY_AVAILABLE,
                 process_stream_messages_func=process_stream_messages,
                 process_delta_messages_func=process_delta_messages,
                 get_dynamo_client_func=get_dynamo_client,
@@ -298,36 +245,23 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if isinstance(result, dict) and "batchItemFailures" in result:
                 return result
 
-            # Track successful execution with metrics if available
+            # Track successful execution with metrics
             execution_time = time.time() - start_time
-            if OBSERVABILITY_AVAILABLE:
-                metrics.timer("CompactionLambdaExecutionTime", execution_time)
-                metrics.count("CompactionLambdaSuccess", 1)
-                logger.info(
-                    "Enhanced compaction handler completed successfully",
-                    execution_time_seconds=execution_time,
-                )
-            else:
-                logger.info(
-                    f"Enhanced compaction handler completed in {execution_time:.2f}s"
-                )
+            metrics.timer("CompactionLambdaExecutionTime", execution_time)
+            metrics.count("CompactionLambdaSuccess", 1)
+            logger.info(
+                "Enhanced compaction handler completed successfully",
+                execution_time_seconds=execution_time,
+            )
 
             # Format response with observability
-            if OBSERVABILITY_AVAILABLE:
-                return format_response(result, event)
-            return result
+            return format_response(result, event)
 
         # Direct invocation not supported - Lambda is for SQS triggers only
-        if OBSERVABILITY_AVAILABLE:
-            logger.warning(
-                "Direct invocation not supported", invocation_type="direct"
-            )
-            metrics.count("CompactionDirectInvocationAttempt", 1)
-        else:
-            logger.warning(
-                "Direct invocation not supported. "
-                "This Lambda processes SQS messages only."
-            )
+        logger.warning(
+            "Direct invocation not supported", invocation_type="direct"
+        )
+        metrics.count("CompactionDirectInvocationAttempt", 1)
 
         response = LambdaResponse(
             status_code=400,
@@ -338,28 +272,23 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             ),
         )
 
-        if OBSERVABILITY_AVAILABLE:
-            return format_response(response.to_dict(), event, is_error=True)
-        return response.to_dict()
+        return format_response(response.to_dict(), event, is_error=True)
 
     except Exception as e:
         execution_time = time.time() - start_time
         error_type = type(e).__name__
 
-        # Enhanced error logging if available
-        if OBSERVABILITY_AVAILABLE:
-            logger.error(
-                "Enhanced compaction handler failed",
-                error=str(e),
-                error_type=error_type,
-                execution_time_seconds=execution_time,
-                exc_info=True,
-            )
-            metrics.count(
-                "CompactionLambdaError", 1, {"error_type": error_type}
-            )
-        else:
-            logger.error(f"Handler failed: {str(e)}", exc_info=True)
+        # Enhanced error logging
+        logger.error(
+            "Enhanced compaction handler failed",
+            error=str(e),
+            error_type=error_type,
+            execution_time_seconds=execution_time,
+            exc_info=True,
+        )
+        metrics.count(
+            "CompactionLambdaError", 1, {"error_type": error_type}
+        )
 
         error_response = LambdaResponse(
             status_code=500,
@@ -367,16 +296,13 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             error=str(e),
         )
 
-        if OBSERVABILITY_AVAILABLE:
-            return format_response(
-                error_response.to_dict(), event, is_error=True
-            )
-        return error_response.to_dict()
+        return format_response(
+            error_response.to_dict(), event, is_error=True
+        )
 
     finally:
-        # Stop monitoring if available
-        if OBSERVABILITY_AVAILABLE:
-            stop_compaction_lambda_monitoring()
+        # Stop monitoring
+        stop_compaction_lambda_monitoring()
 
 
 def process_delta_messages(
@@ -388,20 +314,12 @@ def process_delta_messages(
     stream messages. Traditional delta processing would be handled
     by a separate compaction system.
     """
-    if OBSERVABILITY_AVAILABLE:
-        logger.info(
-            "Received delta messages (not processed)",
-            count=len(delta_messages),
-        )
-        logger.warning("Delta message processing not implemented")
-        metrics.count("CompactionDeltaMessagesSkipped", len(delta_messages))
-    else:
-        logger.info(
-            "Received %d delta messages (not processed)", len(delta_messages)
-        )
-        logger.warning(
-            "Delta message processing not implemented in this handler"
-        )
+    logger.info(
+        "Received delta messages (not processed)",
+        count=len(delta_messages),
+    )
+    logger.warning("Delta message processing not implemented")
+    metrics.count("CompactionDeltaMessagesSkipped", len(delta_messages))
 
     response = LambdaResponse(
         status_code=200,
