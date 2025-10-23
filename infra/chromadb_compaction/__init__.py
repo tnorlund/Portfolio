@@ -29,9 +29,6 @@ else:
         DockerImageComponent,
         HybridLambdaDeployment,
         create_hybrid_lambda_deployment,
-        EnhancedCompactionLambda,
-        create_enhanced_compaction_lambda,
-        create_stream_processor,
     )
 
     from .infrastructure import (
@@ -53,7 +50,4 @@ else:
         "DockerImageComponent",
         "HybridLambdaDeployment",
         "create_hybrid_lambda_deployment",
-        "EnhancedCompactionLambda",
-        "create_enhanced_compaction_lambda",
-        "create_stream_processor",
     ]
