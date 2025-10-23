@@ -133,7 +133,7 @@ shared_chromadb_buckets = ChromaDBBuckets(
 
 # Create ChromaDB compaction infrastructure using shared bucket
 # Build base images (optional optimization)
-base_images = BaseImages(f"base-images-{pulumi.get_stack()}")
+base_images = BaseImages(f"base-images-{pulumi.get_stack()}", pulumi.get_stack())
 
 chromadb_infrastructure = create_chromadb_compaction_infrastructure(
     name=f"chromadb-{pulumi.get_stack()}",
