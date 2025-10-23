@@ -8,7 +8,7 @@
 
 > **withPerformanceTracking**\<`T`, `R`\>(`fn`, `endpoint`): [`APIFunction`](../type-aliases/APIFunction.md)\<`T`, `R`\>
 
-Defined in: [utils/performance/api-wrapper.ts:8](https://github.com/tnorlund/Portfolio/blob/b4366f5a15261d503e5b39efd28c6307c6f883f6/portfolio/utils/performance/api-wrapper.ts#L8)
+Defined in: [utils/performance/api-wrapper.ts:8](https://github.com/tnorlund/Portfolio/blob/7ccb227b66e3c899f8924dbd1c5d3a95e68f2900/portfolio/utils/performance/api-wrapper.ts#L8)
 
 Wraps an API function to automatically track its performance
 
