@@ -360,10 +360,20 @@ class HybridLambdaDeployment(ComponentResource):
             ),
         )
 
-<<<<<<< HEAD
-        # Use the Lambda function created by CodeBuildDockerImage
-        self.enhanced_compaction_function = self.docker_image.docker_image.lambda_function
-=======
+        # Optional VPC config and EFS mount for both functions
+        vpc_cfg = None
+        file_system_cfg = None
+        if vpc_subnet_ids and lambda_security_group_id:
+            vpc_cfg = aws.lambda_.FunctionVpcConfigArgs(
+                subnet_ids=vpc_subnet_ids,
+                security_group_ids=[lambda_security_group_id],
+            )
+            if efs_access_point_arn:
+                file_system_cfg = aws.lambda_.FunctionFileSystemConfigArgs(
+                    arn=efs_access_point_arn,
+                    local_mount_path="/mnt/chroma",
+                )
+
         # Create container-based Lambda for enhanced compaction
         self.enhanced_compaction_function = aws.lambda_.Function(
             f"{name}-enhanced-compaction",
@@ -378,14 +388,7 @@ class HybridLambdaDeployment(ComponentResource):
             reserved_concurrent_executions=10,  # Prevent throttling with batch processing
             architectures=["arm64"],
             vpc_config=vpc_cfg,
-            file_system_config=(
-                aws.lambda_.FunctionFileSystemConfigArgs(
-                    arn=efs_access_point_arn,
-                    local_mount_path="/mnt/chroma",
-                )
-                if efs_access_point_arn
-                else None
-            ),
+            file_system_config=file_system_cfg,
             environment={
                 "variables": {
                     "DYNAMODB_TABLE_NAME": Output.all(
@@ -398,7 +401,7 @@ class HybridLambdaDeployment(ComponentResource):
                     "LOCK_DURATION_MINUTES": "3",
                     "MAX_HEARTBEAT_FAILURES": "3",
                     "LOG_LEVEL": "INFO",
-                    "CHROMA_ROOT": "/mnt/chroma",
+                    "CHROMA_ROOT": "/mnt/chroma" if efs_access_point_arn else "/tmp/chroma",
                 }
             },
             description=(
@@ -418,18 +421,11 @@ class HybridLambdaDeployment(ComponentResource):
                     self.docker_image,
                     self.compaction_log_group,
                 ],
+                ignore_changes=["layers"],
             ),
         )
->>>>>>> 2d8850aa (Add EFS support for ChromaDB compaction Lambdas)
 
-        # Optional VPC config and EFS mount for both functions
-        if vpc_subnet_ids and lambda_security_group_id:
-            vpc_cfg = aws.lambda_.FunctionVpcConfigArgs(
-                subnet_ids=vpc_subnet_ids,
-                security_group_ids=[lambda_security_group_id],
-            )
-
-        # Note: file_system_config is passed during creation above; avoid post-creation mutation
+        # Note: VPC and EFS config is passed during creation above; avoid post-creation mutation
 
         # Create event source mappings
         self._create_event_source_mappings(
