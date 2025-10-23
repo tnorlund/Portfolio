@@ -243,6 +243,63 @@ class HybridLambdaDeployment(ComponentResource):
                             / "tracing.py"
                         )
                     ),
+                    # Add processor directory
+                    "processor/__init__.py": pulumi.FileAsset(
+                        str(
+                            Path(__file__).parent.parent
+                            / "lambdas"
+                            / "processor"
+                            / "__init__.py"
+                        )
+                    ),
+                    "processor/models.py": pulumi.FileAsset(
+                        str(
+                            Path(__file__).parent.parent
+                            / "lambdas"
+                            / "processor"
+                            / "models.py"
+                        )
+                    ),
+                    "processor/parsers.py": pulumi.FileAsset(
+                        str(
+                            Path(__file__).parent.parent
+                            / "lambdas"
+                            / "processor"
+                            / "parsers.py"
+                        )
+                    ),
+                    "processor/change_detector.py": pulumi.FileAsset(
+                        str(
+                            Path(__file__).parent.parent
+                            / "lambdas"
+                            / "processor"
+                            / "change_detector.py"
+                        )
+                    ),
+                    "processor/compaction_run.py": pulumi.FileAsset(
+                        str(
+                            Path(__file__).parent.parent
+                            / "lambdas"
+                            / "processor"
+                            / "compaction_run.py"
+                        )
+                    ),
+                    "processor/message_builder.py": pulumi.FileAsset(
+                        str(
+                            Path(__file__).parent.parent
+                            / "lambdas"
+                            / "processor"
+                            / "message_builder.py"
+                        )
+                    ),
+                    "processor/sqs_publisher.py": pulumi.FileAsset(
+                        str(
+                            Path(__file__).parent.parent
+                            / "lambdas"
+                            / "processor"
+                            / "sqs_publisher.py"
+                        )
+                    ),
                 }
             ),
             handler="stream_processor.lambda_handler",
