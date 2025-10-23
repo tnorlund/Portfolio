@@ -13,9 +13,11 @@ import os
 from unittest.mock import MagicMock, patch
 
 from receipt_dynamo.constants import ChromaDBCollection
-from ..lambdas.enhanced_compaction_handler import (
+from ..lambdas.compaction.models import (
     LambdaResponse,
     StreamMessage,
+)
+from ..lambdas.compaction.operations import (
     update_receipt_metadata,
     update_word_labels,
 )
