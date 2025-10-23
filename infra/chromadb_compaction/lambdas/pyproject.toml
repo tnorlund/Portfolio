@@ -12,7 +12,6 @@ dependencies = []
 # Explicitly specify which modules to include to avoid conflicts
 [tool.setuptools]
 py-modules = ["enhanced_compaction_handler"]
-packages = ["compaction"]
 
 [project.optional-dependencies]
 # Use full dependencies for container-based Lambda

@@ -19,10 +19,9 @@ RUN pip install --no-cache-dir /tmp/receipt_dynamo && \
 # Stage 2: Copy Lambda-specific code (changes frequently, but doesn't invalidate deps cache)
 FROM dependencies
 
-# Copy the enhanced compaction handler, utils, and modular components
+# Copy the enhanced compaction handler and utils
 COPY infra/chromadb_compaction/lambdas/enhanced_compaction_handler.py ${LAMBDA_TASK_ROOT}/handler.py
 COPY infra/chromadb_compaction/lambdas/utils/ ${LAMBDA_TASK_ROOT}/utils/
-COPY infra/chromadb_compaction/lambdas/compaction/ ${LAMBDA_TASK_ROOT}/compaction/
 
 # Set the handler
 CMD ["handler.lambda_handler"]
