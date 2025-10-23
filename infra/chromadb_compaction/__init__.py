@@ -29,9 +29,6 @@ else:
         DockerImageComponent,
         HybridLambdaDeployment,
         create_hybrid_lambda_deployment,
-        EnhancedCompactionLambda,
-        create_enhanced_compaction_lambda,
-        create_stream_processor,
     )
 
     from .infrastructure import (
@@ -42,18 +39,15 @@ else:
     # pylint: disable=duplicate-code
     # Export lists are expected to be similar between package __init__ files
     __all__ = [
+        # Components
+        "ChromaDBBuckets",
+        "ChromaDBQueues",
+        "DockerImageComponent",
+        "HybridLambdaDeployment",
+        "create_chromadb_buckets",
+        "create_chromadb_queues",
+        "create_hybrid_lambda_deployment",
         # Infrastructure
         "ChromaDBCompactionInfrastructure",
         "create_chromadb_compaction_infrastructure",
-        # Components
-        "ChromaDBBuckets",
-        "create_chromadb_buckets",
-        "ChromaDBQueues",
-        "create_chromadb_queues",
-        "DockerImageComponent",
-        "HybridLambdaDeployment",
-        "create_hybrid_lambda_deployment",
-        "EnhancedCompactionLambda",
-        "create_enhanced_compaction_lambda",
-        "create_stream_processor",
     ]
