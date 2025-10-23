@@ -97,25 +97,28 @@ def setup_test_environment():
     compaction_operations_mock.reconstruct_label_metadata = MagicMock()
     sys.modules['compaction.operations'] = compaction_operations_mock
 
-# Mock AWS services to avoid infrastructure import issues
-@pytest.fixture(autouse=True)
-def mock_aws_services():
-    """Mock AWS services to avoid infrastructure import issues."""
-    with patch('boto3.client') as mock_client, \
-         patch('boto3.resource') as mock_resource:
-        
-        # Mock SQS client
-        mock_sqs = MagicMock()
-        mock_sqs.send_message.return_value = {'MessageId': 'test-message-id'}
-        mock_sqs.send_message_batch.return_value = {'Successful': [], 'Failed': []}
-        mock_client.return_value = mock_sqs
-        
-        # Mock DynamoDB client
-        mock_dynamo = MagicMock()
-        mock_dynamo.get_item.return_value = {'Item': {}}
-        mock_dynamo.put_item.return_value = {}
-        mock_dynamo.update_item.return_value = {}
-        mock_dynamo.delete_item.return_value = {}
-        mock_resource.return_value = mock_dynamo
-        
-        yield mock_client, mock_resource
+# Import AWS service fixtures
+from .fixtures.aws_services import (
+    mock_sqs_queues,
+    mock_dynamodb_table,
+    mock_s3_bucket,
+    mock_chromadb_collections,
+    mock_s3_operations,
+    mock_dynamo_client,
+    aws_test_environment,
+    integration_test_environment,
+)
+
+# Import stream event fixtures
+from .fixtures.stream_events import (
+    TARGET_METADATA_UPDATE_EVENT as target_metadata_event,
+    WORD_LABEL_UPDATE_EVENT as word_label_update_event,
+    WORD_LABEL_REMOVE_EVENT as word_label_remove_event,
+    COMPACTION_RUN_INSERT_EVENT as compaction_run_insert_event,
+    target_event_factory,
+    word_label_event_factory,
+    compaction_run_event_factory,
+)
+
+# Make fixtures available to all tests
+pytest_plugins = ["fixtures.aws_services"]

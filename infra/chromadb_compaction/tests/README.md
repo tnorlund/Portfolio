@@ -88,6 +88,44 @@ This approach:
 - ✅ Validates imports and basic execution
 - ✅ Uses the same mocking pattern for both functions
 
+### 🚀 NEW: Comprehensive AWS Service Testing
+
+**Test AWS services with moto (SQS, DynamoDB, S3):**
+```bash
+cd /path/to/example/infra/chromadb_compaction
+python -m pytest tests/integration/test_aws_service_integration.py -v
+```
+
+**Available AWS service fixtures:**
+- `mock_sqs_queues`: Real SQS queues with moto
+- `mock_dynamodb_table`: Real DynamoDB table with moto  
+- `mock_s3_bucket`: Real S3 bucket with moto
+- `mock_chromadb_collections`: Mock ChromaDB collections
+- `mock_s3_operations`: Mock S3 snapshot operations
+- `integration_test_environment`: Complete test environment
+
+**Example usage in tests:**
+```python
+def test_sqs_integration(mock_sqs_queues):
+    """Test SQS message flow with real queues."""
+    sqs = mock_sqs_queues["sqs_client"]
+    lines_queue_url = mock_sqs_queues["lines_queue_url"]
+    
+    # Send and receive real messages
+    sqs.send_message(QueueUrl=lines_queue_url, MessageBody='{"test": "data"}')
+    response = sqs.receive_message(QueueUrl=lines_queue_url)
+    assert len(response.get("Messages", [])) == 1
+
+def test_dynamodb_integration(mock_dynamodb_table):
+    """Test DynamoDB operations with real table."""
+    from receipt_dynamo.data.dynamo_client import DynamoClient
+    
+    client = DynamoClient(table_name=mock_dynamodb_table)
+    # Test real DynamoDB queries
+    lines = client.list_receipt_lines_from_receipt("test-image", 1)
+    assert isinstance(lines, list)
+```
+
 ### 📊 Coverage Analysis
 
 **Run comprehensive coverage analysis:**
@@ -322,7 +360,9 @@ ls -la test_lambdas_direct.py coverage_analysis.py
 
 - ✅ **Stream Processor**: Working with mocking
 - ✅ **Enhanced Compaction Handler**: Working with mocking
+- ✅ **AWS Services**: SQS, DynamoDB, S3 fully mocked with moto
 - ✅ **Test Coverage**: ~75% stream processor, ~53% compaction handler
-- ⚠️ **Pytest**: Has Pulumi import conflicts
+- ✅ **Integration Tests**: Real AWS service testing available
+- ⚠️ **Pytest**: Has Pulumi import conflicts (use specific test files)
 - ✅ **Direct Runner**: Reliable and working
 
