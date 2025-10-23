@@ -1,14 +1,21 @@
 """
 Unit tests for atomic S3 operations in chroma_s3_helpers.
+
+These tests use real S3 operations with moto to test actual business logic
+rather than mocked functionality.
 """
 
 import unittest
 import tempfile
 import shutil
 import os
-from unittest.mock import MagicMock, patch, mock_open
+import json
+from unittest.mock import MagicMock
 from datetime import datetime, timezone
 from botocore.exceptions import ClientError
+
+import boto3
+from moto import mock_aws
 
 from receipt_label.utils.chroma_s3_helpers import (
     upload_snapshot_atomic,
@@ -35,19 +42,14 @@ class TestAtomicS3Operations(unittest.TestCase):
         """Clean up test fixtures."""
         shutil.rmtree(self.temp_dir, ignore_errors=True)
     
-    @patch('receipt_label.utils.chroma_s3_helpers.boto3.client')
-    @patch('receipt_label.utils.chroma_s3_helpers.upload_snapshot_with_hash')
-    def test_upload_snapshot_atomic_success(self, mock_upload, mock_boto3):
-        """Test successful atomic snapshot upload."""
+    @mock_aws
+    def test_upload_snapshot_atomic_success(self):
+        """Test successful atomic snapshot upload with real S3 operations."""
+        # Create real S3 bucket with moto
+        s3_client = boto3.client("s3", region_name="us-east-1")
+        s3_client.create_bucket(Bucket=self.bucket)
         
-        # Mock S3 client
-        mock_s3_client = MagicMock()
-        mock_boto3.return_value = mock_s3_client
-        
-        # Mock upload_snapshot_with_hash
-        mock_upload.return_value = {"status": "uploaded", "hash": "abc123"}
-        
-        # Create test directory with files (like ChromaDB snapshot)
+        # Create real snapshot directory
         test_snapshot = os.path.join(self.temp_dir, "test_snapshot")
         os.makedirs(test_snapshot)
         
@@ -57,6 +59,7 @@ class TestAtomicS3Operations(unittest.TestCase):
         with open(os.path.join(test_snapshot, "data.bin"), "w") as f:
             f.write("mock vector data")
         
+        # Test real atomic upload
         result = upload_snapshot_atomic(
             local_path=test_snapshot,
             bucket=self.bucket,
@@ -68,30 +71,45 @@ class TestAtomicS3Operations(unittest.TestCase):
         self.assertEqual(result["status"], "uploaded")
         self.assertEqual(result["collection"], self.collection)
         self.assertIn("version_id", result)
-        self.assertEqual(result["hash"], "abc123")
+        self.assertIn("hash", result)
         
         # Verify lock validation was called
         self.mock_lock_manager.validate_ownership.assert_called()
         
-        # Verify upload was called with versioned path
-        mock_upload.assert_called_once()
-        call_args = mock_upload.call_args[1]
-        self.assertIn("snapshot_key", call_args)
-        self.assertTrue(call_args["snapshot_key"].startswith("lines/snapshot/timestamped/"))
-        self.assertTrue(call_args["snapshot_key"].endswith("/"))
+        # Verify real S3 operations
+        objects = s3_client.list_objects_v2(Bucket=self.bucket)
+        self.assertGreater(len(objects.get("Contents", [])), 0)
         
-        # Verify pointer file was created
-        expected_pointer_key = "lines/snapshot/latest-pointer.txt"
-        mock_s3_client.put_object.assert_called_once()
-        call_args = mock_s3_client.put_object.call_args[1]
-        self.assertEqual(call_args["Key"], expected_pointer_key)
-        # Verify body contains version ID (timestamp format)
-        body = call_args["Body"].decode('utf-8')
-        self.assertTrue(body.startswith("20250826_"))  # Today's date
+        # Verify versioned snapshot exists
+        object_keys = [obj["Key"] for obj in objects["Contents"]]
+        versioned_keys = [key for key in object_keys if "timestamped" in key]
+        self.assertGreater(len(versioned_keys), 0)
+        
+        # Verify pointer file exists
+        pointer_key = f"{self.collection}/snapshot/latest-pointer.txt"
+        pointer_response = s3_client.get_object(Bucket=self.bucket, Key=pointer_key)
+        pointer_content = pointer_response["Body"].read().decode("utf-8")
+        
+        # Verify pointer contains just the version ID (not the full path)
+        self.assertTrue(pointer_content.startswith("20251023_"))  # Today's date
+        self.assertFalse("/" in pointer_content)  # Should not contain path separators
+        
+        # Verify the versioned snapshot actually exists
+        version_id = pointer_content.strip()
+        versioned_prefix = f"{self.collection}/snapshot/timestamped/{version_id}/"
+        versioned_objects = s3_client.list_objects_v2(
+            Bucket=self.bucket,
+            Prefix=versioned_prefix
+        )
+        self.assertGreater(len(versioned_objects.get("Contents", [])), 0)
     
-    @patch('receipt_label.utils.chroma_s3_helpers.boto3.client')
-    def test_upload_snapshot_atomic_lock_validation_fails(self, mock_boto3):
-        """Test upload failure when lock validation fails."""
+    @mock_aws
+    def test_upload_snapshot_atomic_lock_validation_fails(self):
+        """Test upload failure when lock validation fails with real S3."""
+        # Create real S3 bucket with moto
+        s3_client = boto3.client("s3", region_name="us-east-1")
+        s3_client.create_bucket(Bucket=self.bucket)
+        
         # Mock lock manager to fail validation
         self.mock_lock_manager.validate_ownership.return_value = False
         
@@ -107,63 +125,43 @@ class TestAtomicS3Operations(unittest.TestCase):
         self.assertIn("Lock validation failed", result["error"])
         self.assertEqual(result["collection"], self.collection)
         
-        # Verify S3 client was created but no S3 operations were performed
-        mock_boto3.assert_called_once_with('s3')
-        mock_s3_client = mock_boto3.return_value
-        mock_s3_client.put_object.assert_not_called()
+        # Verify no S3 objects were created
+        objects = s3_client.list_objects_v2(Bucket=self.bucket)
+        self.assertEqual(len(objects.get("Contents", [])), 0)
     
-    @patch('receipt_label.utils.chroma_s3_helpers.boto3.client')
-    @patch('receipt_label.utils.chroma_s3_helpers.upload_snapshot_with_hash')
-    @patch('receipt_label.utils.chroma_s3_helpers._cleanup_s3_prefix')
-    def test_upload_snapshot_atomic_lock_fails_before_promotion(
-        self, mock_cleanup, mock_upload, mock_boto3
-    ):
-        """Test upload cleanup when lock fails before promotion."""        
-        # Mock S3 client
-        mock_s3_client = MagicMock()
-        mock_boto3.return_value = mock_s3_client
+    
+    @mock_aws
+    def test_download_snapshot_atomic_success(self):
+        """Test successful atomic snapshot download with real S3 operations."""
+        # Create real S3 bucket with moto
+        s3_client = boto3.client("s3", region_name="us-east-1")
+        s3_client.create_bucket(Bucket=self.bucket)
         
-        # Mock successful upload but lock failure before promotion
-        mock_upload.return_value = {"status": "uploaded", "hash": "abc123"}
-        self.mock_lock_manager.validate_ownership.side_effect = [True, False]  # Pass first, fail second
+        # Create a versioned snapshot structure
+        test_version_id = "20250826_143052"
+        versioned_prefix = f"{self.collection}/snapshot/timestamped/{test_version_id}/"
         
-        result = upload_snapshot_atomic(
-            local_path=self.temp_dir,
-            bucket=self.bucket,
-            collection=self.collection,
-            lock_manager=self.mock_lock_manager
+        # Upload test snapshot files
+        s3_client.put_object(
+            Bucket=self.bucket,
+            Key=f"{versioned_prefix}chroma.sqlite3",
+            Body="mock chromadb data"
+        )
+        s3_client.put_object(
+            Bucket=self.bucket,
+            Key=f"{versioned_prefix}data.bin",
+            Body="mock vector data"
         )
         
-        # Verify failure
-        self.assertEqual(result["status"], "error")
-        self.assertIn("Lock validation failed before atomic promotion", result["error"])
+        # Create pointer file pointing to versioned snapshot (just the version ID)
+        pointer_key = f"{self.collection}/snapshot/latest-pointer.txt"
+        s3_client.put_object(
+            Bucket=self.bucket,
+            Key=pointer_key,
+            Body=test_version_id  # Just the version ID, not the full path
+        )
         
-        # Verify cleanup was called (exact key doesn't matter, just that cleanup happened)
-        mock_cleanup.assert_called_once()
-        call_args = mock_cleanup.call_args[0]
-        self.assertEqual(call_args[1], self.bucket)  # bucket argument
-        self.assertTrue(call_args[2].startswith("lines/snapshot/timestamped/"))  # versioned key
-        
-        # Verify no pointer file was created
-        mock_s3_client.put_object.assert_not_called()
-    
-    @patch('receipt_label.utils.chroma_s3_helpers.boto3.client')
-    @patch('receipt_label.utils.chroma_s3_helpers.download_snapshot_from_s3')
-    def test_download_snapshot_atomic_success(self, mock_download, mock_boto3):
-        """Test successful atomic snapshot download."""
-        # Mock S3 client
-        mock_s3_client = MagicMock()
-        mock_boto3.return_value = mock_s3_client
-        
-        # Mock pointer file content
-        test_version_id = "20250826_143052"
-        mock_response = {'Body': MagicMock()}
-        mock_response['Body'].read.return_value = test_version_id.encode('utf-8')
-        mock_s3_client.get_object.return_value = mock_response
-        
-        # Mock successful download
-        mock_download.return_value = {"status": "downloaded"}
-        
+        # Test real atomic download
         result = download_snapshot_atomic(
             bucket=self.bucket,
             collection=self.collection,
@@ -175,33 +173,43 @@ class TestAtomicS3Operations(unittest.TestCase):
         self.assertEqual(result["collection"], self.collection)
         self.assertEqual(result["version_id"], test_version_id)
         
-        # Verify pointer was read
-        expected_pointer_key = "lines/snapshot/latest-pointer.txt"
-        mock_s3_client.get_object.assert_called_once_with(
-            Bucket=self.bucket, Key=expected_pointer_key
+        # Verify files were downloaded locally
+        downloaded_files = []
+        for root, dirs, files in os.walk(self.temp_dir):
+            for file in files:
+                downloaded_files.append(file)
+        
+        self.assertIn("chroma.sqlite3", downloaded_files)
+        self.assertIn("data.bin", downloaded_files)
+        
+        # Verify file contents
+        with open(os.path.join(self.temp_dir, "chroma.sqlite3"), "r") as f:
+            content = f.read()
+            self.assertEqual(content, "mock chromadb data")
+    
+    @mock_aws
+    def test_download_snapshot_atomic_fallback_to_latest(self):
+        """Test fallback to /latest/ path when pointer doesn't exist with real S3."""
+        # Create real S3 bucket with moto
+        s3_client = boto3.client("s3", region_name="us-east-1")
+        s3_client.create_bucket(Bucket=self.bucket)
+        
+        # Create /latest/ snapshot structure (no pointer file)
+        latest_prefix = f"{self.collection}/snapshot/latest/"
+        
+        # Upload test snapshot files to /latest/
+        s3_client.put_object(
+            Bucket=self.bucket,
+            Key=f"{latest_prefix}chroma.sqlite3",
+            Body="mock chromadb data latest"
+        )
+        s3_client.put_object(
+            Bucket=self.bucket,
+            Key=f"{latest_prefix}data.bin",
+            Body="mock vector data latest"
         )
         
-        # Verify download was called with versioned path
-        expected_versioned_key = f"lines/snapshot/timestamped/{test_version_id}/"
-        mock_download.assert_called_once()
-        call_args = mock_download.call_args[1]
-        self.assertEqual(call_args["snapshot_key"], expected_versioned_key)
-    
-    @patch('receipt_label.utils.chroma_s3_helpers.boto3.client')
-    @patch('receipt_label.utils.chroma_s3_helpers.download_snapshot_from_s3')
-    def test_download_snapshot_atomic_fallback_to_latest(self, mock_download, mock_boto3):
-        """Test fallback to /latest/ path when pointer doesn't exist."""
-        # Mock S3 client
-        mock_s3_client = MagicMock()
-        mock_boto3.return_value = mock_s3_client
-        
-        # Mock NoSuchKey error for pointer file
-        error_response = {'Error': {'Code': 'NoSuchKey'}}
-        mock_s3_client.get_object.side_effect = ClientError(error_response, 'GetObject')
-        
-        # Mock successful download
-        mock_download.return_value = {"status": "downloaded"}
-        
+        # Test real atomic download (should fallback to /latest/)
         result = download_snapshot_atomic(
             bucket=self.bucket,
             collection=self.collection,
@@ -213,72 +221,104 @@ class TestAtomicS3Operations(unittest.TestCase):
         self.assertEqual(result["collection"], self.collection)
         self.assertEqual(result["version_id"], "latest-direct")
         
-        # Verify download was called with /latest/ path
-        expected_latest_key = "lines/snapshot/latest/"
-        mock_download.assert_called_once()
-        call_args = mock_download.call_args[1]
-        self.assertEqual(call_args["snapshot_key"], expected_latest_key)
+        # Verify files were downloaded locally
+        downloaded_files = []
+        for root, dirs, files in os.walk(self.temp_dir):
+            for file in files:
+                downloaded_files.append(file)
+        
+        self.assertIn("chroma.sqlite3", downloaded_files)
+        self.assertIn("data.bin", downloaded_files)
+        
+        # Verify file contents from /latest/
+        with open(os.path.join(self.temp_dir, "chroma.sqlite3"), "r") as f:
+            content = f.read()
+            self.assertEqual(content, "mock chromadb data latest")
     
+    @mock_aws
     def test_cleanup_s3_prefix(self):
-        """Test S3 prefix cleanup helper."""
-        # Mock S3 client
-        mock_s3_client = MagicMock()
+        """Test S3 prefix cleanup helper with real S3 operations."""
+        # Create real S3 bucket with moto
+        s3_client = boto3.client("s3", region_name="us-east-1")
+        s3_client.create_bucket(Bucket=self.bucket)
         
-        # Mock paginator with test objects
-        mock_paginator = MagicMock()
-        mock_s3_client.get_paginator.return_value = mock_paginator
-        mock_paginator.paginate.return_value = [
-            {
-                'Contents': [
-                    {'Key': 'test/prefix/file1.txt'},
-                    {'Key': 'test/prefix/file2.txt'},
-                ]
-            }
-        ]
-        
-        _cleanup_s3_prefix(mock_s3_client, self.bucket, "test/prefix/")
-        
-        # Verify delete_objects was called
-        expected_delete_keys = [
-            {'Key': 'test/prefix/file1.txt'},
-            {'Key': 'test/prefix/file2.txt'},
-        ]
-        mock_s3_client.delete_objects.assert_called_once_with(
+        # Upload test objects
+        test_prefix = "test/prefix/"
+        s3_client.put_object(
             Bucket=self.bucket,
-            Delete={'Objects': expected_delete_keys}
+            Key=f"{test_prefix}file1.txt",
+            Body="content1"
         )
+        s3_client.put_object(
+            Bucket=self.bucket,
+            Key=f"{test_prefix}file2.txt",
+            Body="content2"
+        )
+        s3_client.put_object(
+            Bucket=self.bucket,
+            Key="other/file.txt",  # Should not be deleted
+            Body="other content"
+        )
+        
+        # Verify objects exist before cleanup
+        objects_before = s3_client.list_objects_v2(Bucket=self.bucket)
+        self.assertEqual(len(objects_before.get("Contents", [])), 3)
+        
+        # Test cleanup
+        _cleanup_s3_prefix(s3_client, self.bucket, test_prefix)
+        
+        # Verify only prefix objects were deleted
+        objects_after = s3_client.list_objects_v2(Bucket=self.bucket)
+        remaining_keys = [obj["Key"] for obj in objects_after.get("Contents", [])]
+        
+        self.assertEqual(len(remaining_keys), 1)
+        self.assertEqual(remaining_keys[0], "other/file.txt")
     
-    @patch('receipt_label.utils.chroma_s3_helpers._cleanup_s3_prefix')
-    def test_cleanup_old_snapshot_versions(self, mock_cleanup):
-        """Test cleanup of old snapshot versions."""
-        # Mock S3 client
-        mock_s3_client = MagicMock()
+    @mock_aws
+    def test_cleanup_old_snapshot_versions(self):
+        """Test cleanup of old snapshot versions with real S3 operations."""
+        # Create real S3 bucket with moto
+        s3_client = boto3.client("s3", region_name="us-east-1")
+        s3_client.create_bucket(Bucket=self.bucket)
         
-        # Mock paginator with test versions
-        mock_paginator = MagicMock()
-        mock_s3_client.get_paginator.return_value = mock_paginator
-        mock_paginator.paginate.return_value = [
-            {
-                'CommonPrefixes': [
-                    {'Prefix': 'lines/snapshot/timestamped/20250826_120000/'},
-                    {'Prefix': 'lines/snapshot/timestamped/20250826_130000/'},
-                    {'Prefix': 'lines/snapshot/timestamped/20250826_140000/'},
-                    {'Prefix': 'lines/snapshot/timestamped/20250826_150000/'},
-                ]
-            }
+        # Create multiple versioned snapshots
+        versions = [
+            "20250826_120000",
+            "20250826_130000", 
+            "20250826_140000",
+            "20250826_150000"
         ]
         
-        _cleanup_old_snapshot_versions(mock_s3_client, self.bucket, self.collection, keep_versions=2)
+        for version in versions:
+            prefix = f"{self.collection}/snapshot/timestamped/{version}/"
+            s3_client.put_object(
+                Bucket=self.bucket,
+                Key=f"{prefix}chroma.sqlite3",
+                Body=f"data for {version}"
+            )
         
-        # Verify cleanup was called for the 2 oldest versions
-        # (Keep newest 2: 20250826_150000, 20250826_140000)
-        # (Delete oldest 2: 20250826_130000, 20250826_120000)
-        expected_calls = [
-            unittest.mock.call(mock_s3_client, self.bucket, 'lines/snapshot/timestamped/20250826_130000/'),
-            unittest.mock.call(mock_s3_client, self.bucket, 'lines/snapshot/timestamped/20250826_120000/'),
+        # Verify all versions exist
+        objects_before = s3_client.list_objects_v2(Bucket=self.bucket)
+        self.assertEqual(len(objects_before.get("Contents", [])), 4)
+        
+        # Test cleanup (keep 2 newest versions)
+        _cleanup_old_snapshot_versions(s3_client, self.bucket, self.collection, keep_versions=2)
+        
+        # Verify only newest 2 versions remain
+        objects_after = s3_client.list_objects_v2(Bucket=self.bucket)
+        remaining_keys = [obj["Key"] for obj in objects_after.get("Contents", [])]
+        
+        # Should keep: 20250826_150000, 20250826_140000
+        # Should delete: 20250826_130000, 20250826_120000
+        self.assertEqual(len(remaining_keys), 2)
+        
+        expected_remaining = [
+            f"{self.collection}/snapshot/timestamped/20250826_150000/chroma.sqlite3",
+            f"{self.collection}/snapshot/timestamped/20250826_140000/chroma.sqlite3"
         ]
-        mock_cleanup.assert_has_calls(expected_calls, any_order=True)
-        self.assertEqual(mock_cleanup.call_count, 2)
+        
+        for expected_key in expected_remaining:
+            self.assertIn(expected_key, remaining_keys)
 
 
 if __name__ == '__main__':

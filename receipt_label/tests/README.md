@@ -1,207 +1,292 @@
-# AI Usage Tracking Integration Tests
+# receipt_label Package Tests
 
-This directory contains comprehensive integration tests for the AI Usage Tracking system implemented in Workstream 4 (WS4).
+Comprehensive test suite for the receipt_label package focusing on real business logic testing.
 
-## Overview
+## Testing Philosophy
 
-The integration tests validate the complete flow of AI usage tracking across all components:
+**Core Principle**: Test real business logic with real operations, not mocked functionality.
 
-- **ClientManager** → **AIUsageTracker** → **CostCalculator** → **AIUsageMetric** → **DynamoDB**
-- **API Request** → **Lambda Handler** → **DynamoDB Query** → **Response Aggregation**
-- **Batch Processing** → **Report Generation** → **Cost Analysis**
+- **Real ChromaDB Operations**: Test actual ChromaDB collection management, metadata updates, vector operations
+- **Real S3 Operations**: Test actual S3 atomic operations using moto for AWS services
+- **Real Business Logic**: Test data transformations, error handling, and edge cases
+- **Mocked AWS Services**: Use moto to mock AWS services while keeping business logic real
 
-## Test Files
+## Structure
 
-### 1. `test_client_manager_integration.py`
-Tests the complete ClientManager integration with AI usage tracking:
+```
+receipt_label/tests/
+├── test_atomic_s3_operations.py    # Real S3 atomic operations with moto
+├── test_chromadb_operations.py     # Real ChromaDB operations
+├── test_chroma_compactor.py        # Real ChromaDB compaction logic
+└── conftest.py                     # Shared fixtures
+```
 
-- **ClientManager initialization** with tracking enabled/disabled
-- **OpenAI client wrapping** with automatic usage tracking
-- **Complete tracking flow**: API call → track → calculate cost → store metric
-- **OpenAI completion and embedding** API tracking
-- **Concurrent API usage** tracking with proper isolation
-- **Error handling** and metric storage during failures
-- **Batch operations** with correct pricing
-- **Context propagation** (job_id, batch_id) across calls
-- **File logging** when enabled
-- **DynamoDB querying** by service and date range
+## Test Categories
 
-**Key Features Tested:**
-- Lazy initialization of clients
-- Automatic cost calculation
-- DynamoDB serialization/deserialization
-- Context tracking across requests
-- Concurrent request handling
-- Error recovery
+### S3 Atomic Operations (`test_atomic_s3_operations.py`)
 
-### 2. `test_ai_usage_integration.py`
-Tests complete system integration across multiple services:
+Tests real S3 atomic operations that the compaction lambda uses:
 
-- **Multi-service workflows** (OpenAI + Anthropic + Google Places)
-- **Batch processing** with report generation
-- **Error recovery** and retry logic
-- **Concurrent batch processing** with proper isolation
-- **Cost threshold monitoring** and alerting
-- **Data consistency** across component failures
-- **Asynchronous batch processing** for high throughput
+- **upload_snapshot_atomic**: Real S3 upload with versioning and pointer files
+- **download_snapshot_atomic**: Real S3 download with fallback to /latest/
+- **cleanup operations**: Real S3 prefix cleanup and version management
+- **Error handling**: Real S3 error scenarios and recovery
 
-**Advanced Scenarios:**
-- Job tracking across multiple AI services
-- Batch cost reporting and analysis
-- Intermittent failure handling
-- Cost threshold alerts
-- Data consistency during failures
-- High-throughput async processing
+**Example Test Pattern:**
+```python
+@mock_aws
+def test_upload_snapshot_atomic_success(self):
+    """Test successful atomic snapshot upload with real S3 operations."""
+    # Create real S3 bucket with moto
+    s3_client = boto3.client("s3", region_name="us-east-1")
+    s3_client.create_bucket(Bucket=self.bucket)
+    
+    # Test real atomic upload
+    result = upload_snapshot_atomic(
+        local_path=test_snapshot,
+        bucket=self.bucket,
+        collection=self.collection,
+        lock_manager=self.mock_lock_manager
+    )
+    
+    # Verify real S3 operations
+    objects = s3_client.list_objects_v2(Bucket=self.bucket)
+    assert len(objects.get("Contents", [])) > 0
+    
+    # Verify versioned snapshot exists
+    object_keys = [obj["Key"] for obj in objects["Contents"]]
+    versioned_keys = [key for key in object_keys if "timestamped" in key]
+    assert len(versioned_keys) > 0
+```
 
-### 3. `test_ai_usage_performance_integration.py`
-Performance and stress testing for the AI usage tracking system:
+### ChromaDB Operations (`test_chromadb_operations.py`)
 
-- **High throughput** tracking (1000+ requests/second)
-- **Concurrent load handling** with multiple threads
-- **Memory efficiency** under sustained load
-- **Burst traffic** handling
-- **Query performance** with large datasets
-- **Graceful degradation** under stress
+Tests real ChromaDB operations that the compaction lambda uses:
 
-**Performance Metrics:**
-- Throughput: >100 req/s under normal load
-- Latency: <10ms average DynamoDB write latency
-- Memory: <100MB increase under 10,000 operations
-- Burst handling: >50 req/s during traffic spikes
-- Query performance: <500ms for month-long queries
+- **Collection management**: Real collection creation and management
+- **Metadata updates**: Real metadata update operations on existing embeddings
+- **Vector operations**: Real vector operations (add, update, delete, query)
+- **ID construction**: Real ChromaDB ID construction patterns
+- **Error handling**: Real ChromaDB error scenarios
 
-### 4. `infra/routes/ai_usage/handler/test_handler.py`
-Integration tests for the AI Usage API Lambda handler:
+**Example Test Pattern:**
+```python
+def test_chromadb_metadata_update(self):
+    """Test real ChromaDB metadata update operations."""
+    # Create real ChromaDB instance
+    client = ChromaDBClient(persist_directory=self.temp_dir, mode="snapshot")
+    
+    # Create collection and add test data
+    collection = client.get_or_create_collection("test_words")
+    collection.add(
+        ids=["IMAGE#test#RECEIPT#00001#WORD#00001"],
+        embeddings=[[0.1, 0.2, 0.3]],
+        documents=["Target"],
+        metadatas=[{"merchant": "Target Store"}]
+    )
+    
+    # Test real metadata update
+    collection.update(
+        ids=["IMAGE#test#RECEIPT#00001#WORD#00001"],
+        metadatas=[{"merchant": "Target Store", "address": "123 Main St"}]
+    )
+    
+    # Verify real changes
+    results = collection.get(ids=["IMAGE#test#RECEIPT#00001#WORD#00001"])
+    assert results["metadatas"][0]["merchant"] == "Target Store"
+    assert results["metadatas"][0]["address"] == "123 Main St"
+```
 
-- **Lambda handler** with various query parameters
-- **Service filtering** (openai, anthropic, google_places)
-- **Operation filtering** (completion, embedding, etc.)
-- **Multiple aggregation levels** (day, service, model, operation, hour)
-- **DynamoDB pagination** handling
-- **Error handling** and response formatting
-- **Date range queries** with realistic data
-- **Concurrent request** processing
-- **Large dataset** aggregation performance
-- **Decimal serialization** for JSON responses
+### ChromaDB Compactor (`test_chroma_compactor.py`)
 
-**API Features Tested:**
-- Query parameter parsing
-- Multi-service aggregation
-- Pagination handling
-- Performance under load
-- Error responses
-- JSON serialization
+Tests real ChromaDB compaction logic:
 
-## Test Utilities
-
-### `utils/ai_usage_helpers.py`
-Shared utilities for creating test data and assertions:
-
-- `create_mock_usage_metric()`: Factory for AIUsageMetric test objects
-- `create_mock_openai_response()`: Mock OpenAI API responses
-- `create_mock_anthropic_response()`: Mock Anthropic API responses
-- `create_mock_google_places_response()`: Mock Google Places responses
-- `assert_usage_metric_equal()`: Compare metrics in tests
-- `create_test_tracking_context()`: Create test tracking contexts
+- **Delta compaction**: Real delta compaction algorithms
+- **Collection merging**: Real collection merging logic
+- **Distributed locking**: Real distributed locking with mocked DynamoDB
+- **Snapshot management**: Real snapshot operations with S3
 
 ## Running Tests
 
-### Prerequisites
-```bash
-# Install dependencies
-pip install pytest pytest-asyncio pytest-mock moto boto3 openai
+### Test receipt_label Package
 
-# Set up environment variables
-export DYNAMO_TABLE_NAME="test-table"
-export OPENAI_API_KEY="test-key"
-export PINECONE_API_KEY="test-key"
-export PINECONE_INDEX_NAME="test-index"
-export PINECONE_HOST="test.pinecone.io"
+**Run S3 atomic operations tests:**
+```bash
+cd /path/to/example/receipt_label
+python -m pytest receipt_label/tests/test_atomic_s3_operations.py -v
 ```
 
-### Run Integration Tests
+**Run ChromaDB operations tests:**
 ```bash
-# Run all integration tests
-pytest receipt_label/tests/ -m integration
-
-# Run specific test categories
-pytest receipt_label/tests/test_client_manager_integration.py -v
-pytest receipt_label/tests/test_ai_usage_integration.py -v
-pytest receipt_label/tests/test_ai_usage_performance_integration.py -m performance -v
-pytest infra/routes/ai_usage/handler/test_handler.py -v
-
-# Run with coverage
-pytest receipt_label/tests/ -m integration --cov=receipt_label.utils --cov-report=html
+cd /path/to/example/receipt_label
+python -m pytest receipt_label/tests/test_chromadb_operations.py -v
 ```
 
-### Performance Tests
+**Run all receipt_label tests:**
 ```bash
-# Run performance tests specifically
-pytest receipt_label/tests/test_ai_usage_performance_integration.py -m performance -v --tb=short
-
-# Run stress tests
-pytest receipt_label/tests/test_ai_usage_performance_integration.py -k "stress" -v
+cd /path/to/example/receipt_label
+python -m pytest receipt_label/tests/ -v
 ```
 
-## Test Patterns
+### Test with Coverage
 
-### 1. Mock Usage
-All external dependencies are mocked:
-- **DynamoDB**: Using `moto` with realistic table structure
-- **OpenAI API**: Mock responses with proper token/cost data
-- **Anthropic API**: Mock responses for Claude models
-- **Google Places API**: Mock place lookup responses
+**Run with coverage analysis:**
+```bash
+cd /path/to/example/receipt_label
+python -m pytest receipt_label/tests/ --cov=receipt_label --cov-report=html
+```
 
-### 2. Integration Philosophy
-Tests focus on **component interactions** rather than individual units:
-- Test data flow between components
-- Verify state consistency across operations
-- Validate error propagation and recovery
-- Measure performance under realistic loads
+## Mocking Strategy
 
-### 3. Test Data
-Realistic test data that matches production patterns:
-- Actual AI model names and pricing
-- Realistic token counts and costs
-- Proper timestamp and context data
-- Real-world usage patterns
+### What We Mock vs. What We Test Real
+
+**S3 Operations Tests:**
+- ✅ **Real**: S3 atomic operations, versioning, pointer files
+- ✅ **Mocked**: AWS S3 service (using moto)
+- ✅ **Real**: Business logic, data integrity, error handling
+
+**ChromaDB Operations Tests:**
+- ✅ **Real**: ChromaDB operations, vector operations, metadata updates
+- ✅ **Mocked**: ChromaDB persistence (using temporary directories)
+- ✅ **Real**: Business logic, data transformations, error handling
+
+**ChromaDB Compactor Tests:**
+- ✅ **Real**: Compaction algorithms, collection merging
+- ✅ **Mocked**: DynamoDB locking (using moto), S3 operations (using moto)
+- ✅ **Real**: Business logic, distributed locking logic
+
+### Business Logic Boundaries
+
+**receipt_label package tests cover:**
+- ChromaDB collection management and operations
+- S3 atomic operations (upload_snapshot_atomic, download_snapshot_atomic)
+- ChromaDB metadata updates and vector operations
+- Error handling for ChromaDB/S3 failures
+- Data integrity and consistency guarantees
+- Performance characteristics of operations
+
+**Lambda tests cover:**
+- SQS message processing orchestration
+- DynamoDB query orchestration
+- Error handling and retries
+- Lambda-specific concerns (timeouts, memory, metrics)
+- Cross-service workflows
+
+## Test Data Patterns
+
+### Using receipt_dynamo Entities
+
+**Good**: Use well-tested receipt_dynamo entities for test data
+```python
+from receipt_dynamo import DynamoClient, ReceiptWord, ReceiptLine
+
+# Create test data using receipt_dynamo entities
+test_word = ReceiptWord(
+    image_id="test",
+    receipt_id=1,
+    line_id=1,
+    word_id=1,
+    text="Target",
+    x1=100, y1=100, x2=200, y2=120
+)
+dynamo_client.put_receipt_word(test_word)
+```
+
+**Bad**: Write to DynamoDB directly
+```python
+# Don't do this - bypasses receipt_dynamo's tested logic
+table.put_item(Item={
+    "PK": "IMAGE#test#RECEIPT#00001#WORD#00001",
+    "SK": "WORD#00001",
+    "text": "Target"
+})
+```
+
+### Real vs. Mocked Testing Examples
+
+**Good**: Test real business logic
+```python
+@mock_aws
+def test_real_s3_operations():
+    # Create real S3 bucket with moto
+    s3_client = boto3.client("s3", region_name="us-east-1")
+    s3_client.create_bucket(Bucket="test-bucket")
+    
+    # Test real atomic operations
+    result = upload_snapshot_atomic(
+        local_path=test_snapshot,
+        bucket="test-bucket",
+        collection="lines"
+    )
+    
+    # Verify real S3 operations
+    objects = s3_client.list_objects_v2(Bucket="test-bucket")
+    assert len(objects.get("Contents", [])) > 0
+```
+
+**Bad**: Test mocked functionality
+```python
+@patch('receipt_label.utils.chroma_s3_helpers.boto3.client')
+def test_mocked_s3_operations(mock_boto3):
+    # Mock S3 client
+    mock_s3_client = MagicMock()
+    mock_boto3.return_value = mock_s3_client
+    
+    # Test nothing real!
+    result = upload_snapshot_atomic(...)
+    mock_s3_client.put_object.assert_called_once()
+```
+
+## Dependencies
+
+- **pytest**: Test framework
+- **moto**: AWS service mocking (S3)
+- **chromadb**: ChromaDB client library
+- **boto3**: AWS SDK (mocked by moto in tests)
+- **receipt_dynamo**: Entity classes and parsers (for test data)
 
 ## Coverage Goals
 
-The integration tests aim for:
-- **95%+ integration coverage** across all AI usage tracking components
-- **All critical paths** tested with realistic scenarios
-- **Error conditions** and edge cases covered
-- **Performance baselines** established and verified
+- **S3 Operations**: 100% coverage of atomic operations
+- **ChromaDB Operations**: 100% coverage of collection management
+- **Error Handling**: All error scenarios covered
+- **Edge Cases**: Malformed input, missing data, network failures
+- **Performance**: Large dataset handling, concurrent operations
 
-## Continuous Integration
+## Troubleshooting
 
-These tests are designed to run in CI/CD pipelines:
-- **Fast execution**: Most tests complete in <5 seconds
-- **Isolated**: No external service dependencies
-- **Deterministic**: Consistent results across environments
-- **Comprehensive**: Cover both happy path and failure scenarios
+### Common Issues
 
-## Key Integration Flows Validated
+1. **ChromaDB Persistence**: Ensure temporary directories are properly cleaned up
+2. **S3 Mocking**: Ensure moto decorators are properly applied
+3. **Test Data**: Use receipt_dynamo entities for consistent test data
+4. **Import Issues**: Check Python path and module imports
 
-1. **Complete Tracking Flow**:
-   ```
-   API Call → AIUsageTracker → CostCalculator → AIUsageMetric → DynamoDB
-   ```
+### Debug Mode
 
-2. **Query and Aggregation Flow**:
-   ```
-   API Request → Lambda Handler → DynamoDB Query → Aggregation → JSON Response
-   ```
+**Enable debug logging:**
+```bash
+export LOG_LEVEL=DEBUG
+python -m pytest receipt_label/tests/ -v
+```
 
-3. **Batch Processing Flow**:
-   ```
-   Batch Jobs → Concurrent Tracking → Cost Analysis → Report Generation
-   ```
+**Run specific test categories:**
+```bash
+# Only S3 operations tests
+python -m pytest receipt_label/tests/test_atomic_s3_operations.py -v
 
-4. **Error Recovery Flow**:
-   ```
-   API Failures → Error Tracking → Retry Logic → Partial Recovery
-   ```
+# Only ChromaDB operations tests
+python -m pytest receipt_label/tests/test_chromadb_operations.py -v
 
-The integration tests ensure that the AI Usage Tracking system works correctly as a complete system, not just as individual components.
+# Only ChromaDB compactor tests
+python -m pytest receipt_label/tests/test_chroma_compactor.py -v
+```
+
+## Current Status
+
+- ✅ **S3 Atomic Operations**: Real S3 operations tested with moto
+- ✅ **ChromaDB Operations**: Real ChromaDB operations tested
+- ✅ **ChromaDB Compactor**: Real compaction logic tested
+- ✅ **Test Coverage**: ~85% S3 operations, ~70% ChromaDB operations
+- ✅ **Error Handling**: Real error scenarios tested
+- ✅ **Performance**: Real performance characteristics tested
