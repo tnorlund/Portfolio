@@ -81,7 +81,7 @@ class TestBasicFunctionality:
 
     def test_lambda_response_dataclass(self):
         """Test LambdaResponse dataclass basic functionality."""
-        from ..lambdas.enhanced_compaction_handler import LambdaResponse
+        from ..lambdas.compaction.models import LambdaResponse
 
         # Test creation and serialization
         response = LambdaResponse(
