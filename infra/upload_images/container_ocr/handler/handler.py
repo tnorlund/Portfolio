@@ -77,10 +77,20 @@ def _process_single_record(record: Dict[str, Any]) -> Dict[str, Any]:
     
     logger.info(f"OCR processing completed: {ocr_result}")
     
-    # Step 2: Validate merchant and create embeddings (only for NATIVE receipts)
-    if ocr_result.get("image_type") == "NATIVE":
-        receipt_id = ocr_result.get("receipt_id", 1)
-        
+    # Step 2: Validate merchant and create embeddings
+    # Only process embeddings for:
+    # - NATIVE receipts (first pass, receipt_id=1)
+    # - REFINEMENT jobs (second pass for PHOTO/SCAN, has receipt_id)
+    # Do NOT process embeddings for:
+    # - PHOTO/SCAN first pass (no receipt-level data yet, receipt_id=None)
+    image_type = ocr_result.get("image_type")
+    receipt_id = ocr_result.get("receipt_id")
+    
+    # Only create embeddings if we have a valid receipt_id
+    # NATIVE: receipt_id=1
+    # REFINEMENT: receipt_id from the job
+    # PHOTO/SCAN first pass: receipt_id=None (skip embeddings)
+    if receipt_id is not None and image_type in ["NATIVE", "REFINEMENT"]:
         try:
             # Initialize embedding processor
             embedding_processor = EmbeddingProcessor(
@@ -92,32 +102,51 @@ def _process_single_record(record: Dict[str, Any]) -> Dict[str, Any]:
             )
             
             # Create embeddings with merchant context
+            # Pass receipt lines/words if available from OCR processor
             embedding_result = embedding_processor.process_embeddings(
                 image_id=image_id,
                 receipt_id=receipt_id,
+                lines=ocr_result.get("receipt_lines"),
+                words=ocr_result.get("receipt_words"),
+            )
+            
+            logger.info(
+                f"Embeddings created for {image_type} receipt: "
+                f"image_id={image_id}, receipt_id={receipt_id}, "
+                f"merchant={embedding_result.get('merchant_name')}, "
+                f"run_id={embedding_result.get('run_id')}"
             )
             
             return {
                 "success": True,
                 "image_id": image_id,
                 "receipt_id": receipt_id,
-                "image_type": ocr_result.get("image_type"),
+                "image_type": image_type,
                 "merchant_name": embedding_result.get("merchant_name"),
                 "run_id": embedding_result.get("run_id"),
                 "embeddings_created": True,
             }
             
         except Exception as e:
-            logger.error(f"Merchant validation/embedding failed: {e}", exc_info=True)
+            logger.error(
+                f"Merchant validation/embedding failed for {image_type}: {e}",
+                exc_info=True
+            )
             # Don't fail the whole job - OCR data is still stored
             return {
                 "success": True,
                 "image_id": image_id,
                 "receipt_id": receipt_id,
-                "image_type": ocr_result.get("image_type"),
+                "image_type": image_type,
                 "embeddings_created": False,
                 "embedding_error": str(e),
             }
     
+    # For PHOTO/SCAN first pass, just return the OCR result
+    # Embeddings will be created when REFINEMENT jobs run
+    logger.info(
+        f"Skipping embeddings for {image_type} (receipt_id={receipt_id}). "
+        f"Will process embeddings during REFINEMENT jobs."
+    )
     return ocr_result
 

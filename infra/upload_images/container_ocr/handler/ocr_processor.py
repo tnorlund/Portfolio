@@ -168,6 +168,8 @@ class OCRProcessor:
             "image_id": ocr_job.image_id,
             "receipt_id": ocr_job.receipt_id,
             "image_type": "REFINEMENT",
+            "receipt_lines": receipt_lines,
+            "receipt_words": receipt_words,
         }
     
     def _process_first_pass_job(
@@ -189,6 +191,16 @@ class OCRProcessor:
         try:
             if image_type == ImageType.NATIVE:
                 logger.info(f"Processing native receipt {ocr_job.image_id}")
+                
+                # Convert image OCR to receipt OCR
+                from receipt_upload.utils import image_ocr_to_receipt_ocr
+                receipt_lines, receipt_words, _ = image_ocr_to_receipt_ocr(
+                    lines=ocr_data.lines,
+                    words=ocr_data.words,
+                    letters=ocr_data.letters,
+                    receipt_id=1,
+                )
+                
                 process_native(
                     raw_bucket=self.raw_bucket,
                     site_bucket=self.site_bucket,
@@ -206,6 +218,8 @@ class OCRProcessor:
                     "image_id": ocr_job.image_id,
                     "image_type": "NATIVE",
                     "receipt_id": 1,  # NATIVE always produces receipt_id=1
+                    "receipt_lines": receipt_lines,
+                    "receipt_words": receipt_words,
                 }
             
             elif image_type == ImageType.PHOTO:
