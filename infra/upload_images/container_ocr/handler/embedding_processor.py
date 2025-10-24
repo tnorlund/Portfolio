@@ -374,17 +374,22 @@ class EmbeddingProcessor:
         )
         
         # Create COMPACTION_RUN record
-        self.dynamo.add_compaction_run(
-            CompactionRun(
-                run_id=run_id,
-                image_id=image_id,
-                receipt_id=receipt_id,
-                lines_delta_prefix=lines_prefix,
-                words_delta_prefix=words_prefix,
+        try:
+            _log(f"About to create COMPACTION_RUN with run_id={run_id}")
+            self.dynamo.add_compaction_run(
+                CompactionRun(
+                    run_id=run_id,
+                    image_id=image_id,
+                    receipt_id=receipt_id,
+                    lines_delta_prefix=lines_prefix,
+                    words_delta_prefix=words_prefix,
+                )
             )
-        )
-        
-        _log(f"COMPACTION_RUN created: run_id={run_id}")
+            _log(f"COMPACTION_RUN created: run_id={run_id}")
+        except Exception as e:
+            _log(f"ERROR creating COMPACTION_RUN: {e}")
+            logger.error(f"Failed to create COMPACTION_RUN: {e}", exc_info=True)
+            raise
         
         return run_id
 
