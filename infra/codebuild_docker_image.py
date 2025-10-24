@@ -176,6 +176,8 @@ class CodeBuildDockerImage(ComponentResource):
                     "receipt_dynamo/pyproject.toml",
                     "receipt_label/receipt_label",
                     "receipt_label/pyproject.toml",
+                    "receipt_upload/receipt_upload",
+                    "receipt_upload/pyproject.toml",
                 ]
                 
                 for package_path in packages_to_hash:
@@ -281,7 +283,7 @@ echo "📦 Copying minimal context with include patterns..."
 
 if [ "$CONTEXT_PATH" = "." ]; then
   # Lambda images - need packages from monorepo root
-  echo "  → Including receipt_dynamo and receipt_label packages..."
+  echo "  → Including receipt_dynamo, receipt_label, and receipt_upload packages..."
   rsync -a \
     --include='receipt_dynamo/' \
     --include='receipt_dynamo/pyproject.toml' \
@@ -295,6 +297,10 @@ if [ "$CONTEXT_PATH" = "." ]; then
     --include='receipt_label/receipt_label/**' \
     --include='receipt_label/README.md' \
     --include='receipt_label/LICENSE' \
+    --include='receipt_upload/' \
+    --include='receipt_upload/pyproject.toml' \
+    --include='receipt_upload/receipt_upload/' \
+    --include='receipt_upload/receipt_upload/**' \
     --exclude='*' \
     "$CONTEXT_PATH/" "$TMP/context/"
   
