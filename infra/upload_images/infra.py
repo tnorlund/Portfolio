@@ -959,24 +959,16 @@ class UploadImages(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Create process_ocr Lambda with full environment (unique logical name)
-        process_ocr_lambda = Function(
-            f"{name}-process-ocr-results-lambda",
-            name=f"{name}-{stack}-process-ocr-results",
-            role=process_ocr_role.arn,
-            runtime="python3.12",
-            handler="process_ocr_results.handler",
-            code=AssetArchive(
-                {
-                    "process_ocr_results.py": FileAsset(
-                        os.path.join(
-                            os.path.dirname(__file__), "process_ocr_results.py"
-                        )
-                    )
-                }
-            ),
-            environment=FunctionEnvironmentArgs(
-                variables={
+        # Create container-based process_ocr Lambda with merchant validation
+        # This replaces the old zip-based Lambda and integrates merchant validation + embedding
+        process_ocr_lambda_config = {
+            "function_name": f"{name}-{stack}-process-ocr-results",
+            "role": process_ocr_role.arn,
+            "timeout": 600,  # 10 minutes (longer for merchant validation + embedding)
+            "memory_size": 2048,  # More memory for ChromaDB operations
+            "architectures": ["arm64"],
+            "environment": {
+                "variables": {
                     "DYNAMO_TABLE_NAME": dynamodb_table.name,
                     "S3_BUCKET": image_bucket.bucket,
                     "RAW_BUCKET": raw_bucket.bucket,
@@ -984,20 +976,28 @@ class UploadImages(ComponentResource):
                     "ARTIFACTS_BUCKET": artifacts_bucket.bucket,
                     "OCR_JOB_QUEUE_URL": self.ocr_queue.url,
                     "OCR_RESULTS_QUEUE_URL": self.ocr_results_queue.url,
-                    "EMBED_NDJSON_QUEUE_URL": (
-                        self._external_embed_ndjson_queue_url 
-                        if self._external_embed_ndjson_queue_url 
-                        else self.embed_ndjson_queue.url
-                    ),
+                    "CHROMADB_BUCKET": chromadb_bucket_name,
+                    "CHROMA_HTTP_ENDPOINT": chroma_http_endpoint,
+                    "GOOGLE_PLACES_API_KEY": google_places_api_key,
+                    "OPENAI_API_KEY": openai_api_key,
                 }
-            ),
-            tags={"environment": stack},
-            timeout=300,
-            memory_size=1024,
-            architectures=["arm64"],
-            layers=[label_layer.arn, upload_layer.arn],
-            opts=ResourceOptions(parent=self, ignore_changes=["layers"]),
+            },
+        }
+        
+        # Use CodeBuildDockerImage for AWS-based builds
+        process_ocr_docker_image = CodeBuildDockerImage(
+            f"{name}-process-ocr-image",
+            dockerfile_path="infra/upload_images/container_ocr/Dockerfile",
+            build_context_path=".",  # Project root for monorepo access
+            source_paths=None,  # Use default rsync with exclusions
+            lambda_function_name=f"{name}-{stack}-process-ocr-results",
+            lambda_config=process_ocr_lambda_config,
+            platform="linux/arm64",
+            opts=ResourceOptions(parent=self, depends_on=[process_ocr_role]),
         )
+        
+        # Use the Lambda function created by CodeBuildDockerImage
+        process_ocr_lambda = process_ocr_docker_image.lambda_function
 
         # Adopt existing mapping if already present to avoid ResourceConflict
         existing_mapping_uuid = pulumi.Config("portfolio").get(
