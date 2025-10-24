@@ -985,7 +985,7 @@ class UploadImages(ComponentResource):
             f"{name}-process-ocr-image",
             dockerfile_path="infra/upload_images/container_ocr/Dockerfile",
             build_context_path=".",  # Project root for monorepo access
-            source_paths=None,  # Use default rsync with exclusions
+            source_paths=["receipt_upload"],  # Include receipt_upload package (only needed for this Lambda)
             lambda_function_name=f"{name}-{stack}-process-ocr-results",
             lambda_config=process_ocr_lambda_config,
             platform="linux/arm64",
