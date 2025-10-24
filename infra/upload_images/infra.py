@@ -962,25 +962,21 @@ class UploadImages(ComponentResource):
         # Create container-based process_ocr Lambda with merchant validation
         # This replaces the old zip-based Lambda and integrates merchant validation + embedding
         process_ocr_lambda_config = {
-            "function_name": f"{name}-{stack}-process-ocr-results",
             "role": process_ocr_role.arn,
             "timeout": 600,  # 10 minutes (longer for merchant validation + embedding)
             "memory_size": 2048,  # More memory for ChromaDB operations
-            "architectures": ["arm64"],
             "environment": {
-                "variables": {
-                    "DYNAMO_TABLE_NAME": dynamodb_table.name,
-                    "S3_BUCKET": image_bucket.bucket,
-                    "RAW_BUCKET": raw_bucket.bucket,
-                    "SITE_BUCKET": site_bucket.bucket,
-                    "ARTIFACTS_BUCKET": artifacts_bucket.bucket,
-                    "OCR_JOB_QUEUE_URL": self.ocr_queue.url,
-                    "OCR_RESULTS_QUEUE_URL": self.ocr_results_queue.url,
-                    "CHROMADB_BUCKET": chromadb_bucket_name,
-                    "CHROMA_HTTP_ENDPOINT": chroma_http_endpoint,
-                    "GOOGLE_PLACES_API_KEY": google_places_api_key,
-                    "OPENAI_API_KEY": openai_api_key,
-                }
+                "DYNAMO_TABLE_NAME": dynamodb_table.name,
+                "S3_BUCKET": image_bucket.bucket,
+                "RAW_BUCKET": raw_bucket.bucket,
+                "SITE_BUCKET": site_bucket.bucket,
+                "ARTIFACTS_BUCKET": artifacts_bucket.bucket,
+                "OCR_JOB_QUEUE_URL": self.ocr_queue.url,
+                "OCR_RESULTS_QUEUE_URL": self.ocr_results_queue.url,
+                "CHROMADB_BUCKET": chromadb_bucket_name,
+                "CHROMA_HTTP_ENDPOINT": chroma_http_endpoint,
+                "GOOGLE_PLACES_API_KEY": google_places_api_key,
+                "OPENAI_API_KEY": openai_api_key,
             },
         }
         
