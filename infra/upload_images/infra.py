@@ -962,7 +962,7 @@ class UploadImages(ComponentResource):
         # Create container-based process_ocr Lambda with merchant validation
         # This replaces the old zip-based Lambda and integrates merchant validation + embedding
         process_ocr_lambda_config = {
-            "role": process_ocr_role.arn,
+            "role_arn": process_ocr_role.arn,
             "timeout": 600,  # 10 minutes (longer for merchant validation + embedding)
             "memory_size": 2048,  # More memory for ChromaDB operations
             "environment": {
