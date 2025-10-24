@@ -327,8 +327,9 @@ class HybridLambdaDeployment(ComponentResource):
             ),
             handler="stream_processor.lambda_handler",
             role=self.lambda_role.arn,
-            timeout=300,  # 5 minutes timeout
+            timeout=120,  # 2 minutes timeout (reduced from 5 to prevent long hangs)
             memory_size=256,  # Lightweight processing
+            reserved_concurrent_executions=1,  # Prevent parallel processing issues
             vpc_config=vpc_cfg,
             environment={
                 "variables": {
@@ -605,8 +606,8 @@ class HybridLambdaDeployment(ComponentResource):
             event_source_arn=dynamodb_stream_arn,
             function_name=self.stream_processor_function.arn,
             starting_position="LATEST",
-            batch_size=100,
-            maximum_batching_window_in_seconds=5,
+            batch_size=10,  # Reduced from 100 to prevent timeouts
+            maximum_batching_window_in_seconds=1,  # Process faster
             parallelization_factor=1,
             maximum_retry_attempts=3,
             maximum_record_age_in_seconds=3600,
