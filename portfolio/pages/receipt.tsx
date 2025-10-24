@@ -587,37 +587,40 @@ Receipt context: Line 45, Word 1
         noise to existing receipts. This model learns from more data while
         poisoning the truth. This gives me consistent, repeatable predictions
         explaining what a receipt is.
-        <ClientOnly>
-          <AnimatedInView>
-            <PyTorchLogo />
-          </AnimatedInView>
-        </ClientOnly>
-        <ClientOnly>
-          <AnimatedInView>
-            <HuggingFaceLogo />
-          </AnimatedInView>
-        </ClientOnly>
-        <h2>What&apos;s on the Receipts?</h2>
-        <p>
-          I&apos;m still working on this part. My experience in data engineering
-          gave me a great head start into structuring and organizing data.
-        </p>
-        <p>
-          Optimizing this has been fun. I&apos;ve learned a lot about open
-          source models. I&apos;ve used Ollama to organize how I deploy the
-          models and LangChain to explain how the models are using the tools.
-        </p>
-        <ClientOnly>
-          <AnimatedInView>
-            <OllamaLogo />
-          </AnimatedInView>
-        </ClientOnly>
-        <ClientOnly>
-          <AnimatedInView>
-            <LangChainLogo />
-          </AnimatedInView>
-        </ClientOnly>
       </p>
+
+      <ClientOnly>
+        <AnimatedInView>
+          <PyTorchLogo />
+        </AnimatedInView>
+      </ClientOnly>
+      <ClientOnly>
+        <AnimatedInView>
+          <HuggingFaceLogo />
+        </AnimatedInView>
+      </ClientOnly>
+
+      <h2>What&apos;s on the Receipts?</h2>
+      <p>
+        I&apos;m still working on this part. My experience in data engineering
+        gave me a great head start into structuring and organizing data.
+      </p>
+      <p>
+        Optimizing this has been fun. I&apos;ve learned a lot about open
+        source models. I&apos;ve used Ollama to organize how I deploy the
+        models and LangChain to explain how the models are using the tools.
+      </p>
+
+      <ClientOnly>
+        <AnimatedInView>
+          <OllamaLogo />
+        </AnimatedInView>
+      </ClientOnly>
+      <ClientOnly>
+        <AnimatedInView>
+          <LangChainLogo />
+        </AnimatedInView>
+      </ClientOnly>
       <h1>Conclusion</h1>
 
       <p>

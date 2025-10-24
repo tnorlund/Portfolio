@@ -16,6 +16,7 @@ Focuses on:
 # Some duplication with enhanced_compaction_handler is expected
 
 import logging
+import time
 from typing import Any, Dict
 
 # Enhanced observability imports
@@ -93,17 +94,61 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         metrics.gauge("StreamRecordsReceived", len(event["Records"]))
 
+        # Track processing time for timeout protection
+        start_time = time.time()
+
+        # Limit processing to prevent timeouts on large batches
+        MAX_RECORDS_PER_INVOCATION = 25
+        records_to_process = event["Records"][:MAX_RECORDS_PER_INVOCATION]
+
+        if len(event["Records"]) > MAX_RECORDS_PER_INVOCATION:
+            logger.warning(
+                "Truncating batch to prevent timeout",
+                total_records=len(event["Records"]),
+                processing=MAX_RECORDS_PER_INVOCATION,
+            )
+            metrics.count("StreamBatchTruncated", 1)
+
+        logger.info(
+            "About to process records",
+            record_count=len(records_to_process),
+            first_record_keys=(
+                event["Records"][0].get("dynamodb", {}).get("Keys")
+                if event["Records"]
+                else None
+            ),
+        )
+
         logger.info(
             "Processing DynamoDB stream records",
-            record_count=len(event["Records"]),
+            record_count=len(records_to_process),
         )
 
         # Build messages from stream records
         messages_to_send = []
         processed_records = 0
+        consecutive_failures = 0
+        MAX_CONSECUTIVE_FAILURES = 10
 
-        for record in event["Records"]:
+        for idx, record in enumerate(records_to_process):
             try:
+                # Check if approaching Lambda timeout
+                elapsed = time.time() - start_time
+                if elapsed > 240:  # 4 minutes (leave 1 minute buffer)
+                    logger.warning(
+                        "Approaching Lambda timeout, stopping processing",
+                        processed_so_far=processed_records,
+                        elapsed_seconds=elapsed,
+                    )
+                    metrics.count("StreamProcessingTimeoutExit", 1)
+                    break
+
+                logger.info(
+                    "Starting record loop iteration",
+                    index=idx,
+                    total=len(records_to_process),
+                )
+
                 event_id = record.get("eventID", "unknown")
                 event_name = record.get("eventName", "unknown")
 
@@ -125,6 +170,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 if record_messages:
                     messages_to_send.extend(record_messages)
                     processed_records += 1
+                    consecutive_failures = 0  # Reset on success
                 else:
                     metrics.count(
                         "StreamRecordSkipped",
@@ -134,7 +180,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     logger.debug(
                         "Skipped record - not relevant entity",
                         record_id=event_id,
-                                    )
+                    )
 
             except (ValueError, KeyError, TypeError) as e:
                 event_id = record.get("eventID", "unknown")
@@ -149,6 +195,16 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     1,
                     {"error_type": type(e).__name__},
                 )
+
+                # Circuit breaker: stop if too many consecutive failures
+                consecutive_failures += 1
+                if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                    logger.error(
+                        "Too many consecutive failures, stopping processing",
+                        failure_count=consecutive_failures,
+                    )
+                    metrics.count("StreamProcessingCircuitBreaker", 1)
+                    break
                 # Continue processing other records
 
         # Send all messages to appropriate SQS queues
@@ -170,10 +226,16 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             queued_messages=sent_count,
         )
 
+        # Record processing duration
+        processing_duration = int(time.time() - start_time)
+        metrics.gauge("StreamProcessingDuration", processing_duration)
+        metrics.gauge("StreamBatchSize", len(event["Records"]))
+
         logger.info(
             "Stream processing completed",
             processed_records=processed_records,
             queued_messages=sent_count,
+            duration_seconds=processing_duration,
         )
 
         metrics.gauge("StreamProcessorProcessedRecords", processed_records)
