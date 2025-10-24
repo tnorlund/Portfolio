@@ -44,7 +44,6 @@ from chromadb_compaction import (
     create_chromadb_compaction_infrastructure,
 )
 from base_images import BaseImages
-from merchant_validation_container import create_merchant_validation_container
 
 from currency_validation_step_functions import (
     create_currency_validation_state_machine,
@@ -145,86 +144,6 @@ chromadb_infrastructure = create_chromadb_compaction_infrastructure(
     vpc_id=public_vpc.vpc_id,
     subnet_ids=public_vpc.public_subnet_ids,
     lambda_security_group_id=security.sg_lambda_id,
-)
-
-# Create SQS queue for NDJSON embedding jobs
-embed_ndjson_queue = aws.sqs.Queue(
-    f"embed-ndjson-queue-{pulumi.get_stack()}",
-    visibility_timeout_seconds=1800,  # 30 minutes
-    message_retention_seconds=1209600,  # 14 days
-    receive_wait_time_seconds=20,  # Long polling
-    tags={
-        "Name": f"embed-ndjson-queue-{pulumi.get_stack()}",
-        "Environment": pulumi.get_stack(),
-        "ManagedBy": "Pulumi",
-        "Purpose": "NDJSON embedding job queue",
-    },
-)
-
-embed_ndjson_dlq = aws.sqs.Queue(
-    f"embed-ndjson-dlq-{pulumi.get_stack()}",
-    message_retention_seconds=1209600,  # 14 days
-    tags={
-        "Name": f"embed-ndjson-dlq-{pulumi.get_stack()}",
-        "Environment": pulumi.get_stack(),
-        "ManagedBy": "Pulumi",
-        "Purpose": "NDJSON embedding DLQ",
-    },
-)
-
-# Configure DLQ redrive policy
-aws.sqs.QueueRedrivePolicy(
-    f"embed-ndjson-redrive-{pulumi.get_stack()}",
-    queue_url=embed_ndjson_queue.url,
-    redrive_policy=pulumi.Output.json_dumps({
-        "deadLetterTargetArn": embed_ndjson_dlq.arn,
-        "maxReceiveCount": 3,
-    }),
-)
-
-# Create ECR repository for merchant validation container
-merchant_validation_ecr = aws.ecr.Repository(
-    f"merchant-validation-{pulumi.get_stack()}",
-    name=f"merchant-validation-{pulumi.get_stack()}",
-    image_scanning_configuration=aws.ecr.RepositoryImageScanningConfigurationArgs(
-        scan_on_push=True,
-    ),
-    tags={
-        "Name": f"merchant-validation-{pulumi.get_stack()}",
-        "Environment": pulumi.get_stack(),
-        "ManagedBy": "Pulumi",
-    },
-)
-
-# Get API keys from Pulumi config (secrets)
-api_config = pulumi.Config("api")
-google_places_api_key = api_config.require_secret("google_places_api_key")
-openai_api_key = api_config.require_secret("openai_api_key")
-
-# Create merchant validation container Lambda
-# Note: This will initially fail until the Docker image is built and pushed
-# Use the base image temporarily, then update after building the actual image
-merchant_validation_container = create_merchant_validation_container(
-    name=f"merchant-validation-{pulumi.get_stack()}",
-    image_uri=pulumi.Output.concat(
-        merchant_validation_ecr.repository_url,
-        ":latest"
-    ),
-    efs_access_point_arn=chromadb_infrastructure.efs.access_point_arn,
-    vpc_id=public_vpc.vpc_id,
-    subnet_ids=public_vpc.private_subnet_ids,  # Use private subnets with NAT
-    lambda_security_group_id=security.sg_lambda_id,
-    dynamodb_table_name=dynamodb_table.name,
-    dynamodb_table_arn=dynamodb_table.arn,
-    chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
-    chromadb_bucket_arn=shared_chromadb_buckets.bucket_arn,
-    embed_ndjson_queue_url=embed_ndjson_queue.url,
-    embed_ndjson_queue_arn=embed_ndjson_queue.arn,
-    google_places_api_key=google_places_api_key,
-    openai_api_key=openai_api_key,
-    memory_size=2048,
-    timeout=900,
-    reserved_concurrent_executions=5,
 )
 
 # Create currency validation state machine
@@ -372,6 +291,7 @@ upload_images = UploadImages(
     raw_bucket=raw_bucket,
     site_bucket=site_bucket,
     chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
+    embed_ndjson_queue_url=None,  # Will use internal queue
     vpc_subnet_ids=nat.private_subnet_ids,
     security_group_id=security.sg_lambda_id,
     chroma_http_endpoint=chroma_service.endpoint_dns,
@@ -961,28 +881,6 @@ pulumi.export(
 pulumi.export(
     "embedding_chromadb_bucket_arn",
     embedding_infrastructure.chromadb_buckets.bucket_arn,
-)
-
-# Merchant validation container exports
-pulumi.export(
-    "merchant_validation_function_arn",
-    merchant_validation_container.function_arn,
-)
-pulumi.export(
-    "merchant_validation_function_name",
-    merchant_validation_container.function_name,
-)
-pulumi.export(
-    "merchant_validation_ecr_repository",
-    merchant_validation_ecr.repository_url,
-)
-pulumi.export(
-    "embed_ndjson_queue_url",
-    embed_ndjson_queue.url,
-)
-pulumi.export(
-    "embed_ndjson_queue_arn",
-    embed_ndjson_queue.arn,
 )
 
 # Export label cache updater if successfully imported
