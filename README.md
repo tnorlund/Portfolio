@@ -18,6 +18,32 @@ An intelligent document processing pipeline that extracts structured data from r
 - Merchant validation and normalization
 - RESTful API for receipt management
 
+#### Swift OCR Processing
+High-performance OCR processing using Apple's Vision framework with SQS queue-based job processing.
+
+**Quick Start**:
+```bash
+# Build the Swift OCR worker (one-time setup)
+cd receipt_ocr_swift
+swift build --configuration release
+
+# Run OCR worker with SQS queue processing
+.build/release/receipt-ocr \
+  --ocr-job-queue-url "https://sqs.us-east-1.amazonaws.com/681647709217/upload-images-dev-ocr-queue" \
+  --ocr-results-queue-url "https://sqs.us-east-1.amazonaws.com/681647709217/upload-images-dev-ocr-results-queue" \
+  --dynamo-table-name "ReceiptsTable-dc5be22" \
+  --region "us-east-1" \
+  --continuous
+
+# Or process a single image directly
+swift receipt_upload/receipt_upload/OCRSwift.swift /tmp/output image.png
+```
+
+**Requirements**:
+- macOS (for Apple Vision framework)
+- Swift 5.9+
+- AWS credentials configured
+
 ### ☁️ Infrastructure as Code
 Complete AWS infrastructure managed with Pulumi, including serverless functions, CDN distribution, and auto-scaling services.
 
@@ -28,6 +54,7 @@ Complete AWS infrastructure managed with Pulumi, including serverless functions,
 **Database**: DynamoDB, S3  
 **Infrastructure**: AWS (CloudFront, Lambda, API Gateway), Pulumi  
 **ML/AI**: OpenAI API, Custom OCR pipelines, scikit-learn  
+**OCR Processing**: Swift, Apple Vision Framework, SQS queues  
 
 ## Getting Started
 
@@ -40,6 +67,7 @@ aws-cli (configured)
 
 # Optional
 pulumi (for infrastructure)
+swift >= 5.9 (for OCR processing)
 ```
 
 ### Portfolio Website
@@ -94,6 +122,10 @@ pulumi up
 ├── receipt_upload/    # OCR and image processing
 │   ├── ocr.py        # Text extraction
 │   └── geometry.py   # Spatial analysis
+│
+├── receipt_ocr_swift/ # Swift OCR worker
+│   ├── Sources/      # Swift source code
+│   └── Package.swift # Swift package configuration
 │
 └── infra/            # Pulumi infrastructure
     ├── __main__.py   # Infrastructure entry point
