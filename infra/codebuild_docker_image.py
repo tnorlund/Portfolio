@@ -171,14 +171,18 @@ class CodeBuildDockerImage(ComponentResource):
             # Hash only the files that will be included in the build context
             if self.build_context_path == ".":
                 # Lambda images - hash Python packages and handler directory
+                # Default packages that all Lambda images need
                 packages_to_hash = [
                     "receipt_dynamo/receipt_dynamo",
                     "receipt_dynamo/pyproject.toml",
                     "receipt_label/receipt_label",
                     "receipt_label/pyproject.toml",
-                    "receipt_upload/receipt_upload",
-                    "receipt_upload/pyproject.toml",
                 ]
+                
+                # Add source_paths if specified (e.g., receipt_upload)
+                if self.source_paths:
+                    for source_path in self.source_paths:
+                        packages_to_hash.append(source_path)
                 
                 for package_path in packages_to_hash:
                     full_path = Path(PROJECT_DIR) / package_path
@@ -283,7 +287,8 @@ echo "📦 Copying minimal context with include patterns..."
 
 if [ "$CONTEXT_PATH" = "." ]; then
   # Lambda images - need packages from monorepo root
-  echo "  → Including receipt_dynamo, receipt_label, and receipt_upload packages..."
+  # Default packages that all Lambda images need
+  echo "  → Including receipt_dynamo and receipt_label packages..."
   rsync -a \
     --include='receipt_dynamo/' \
     --include='receipt_dynamo/pyproject.toml' \
@@ -297,12 +302,22 @@ if [ "$CONTEXT_PATH" = "." ]; then
     --include='receipt_label/receipt_label/**' \
     --include='receipt_label/README.md' \
     --include='receipt_label/LICENSE' \
-    --include='receipt_upload/' \
-    --include='receipt_upload/pyproject.toml' \
-    --include='receipt_upload/receipt_upload/' \
-    --include='receipt_upload/receipt_upload/**' \
     --exclude='*' \
     "$CONTEXT_PATH/" "$TMP/context/"
+  
+  # Copy additional source paths if specified (e.g., receipt_upload)
+  if [ -n "$SOURCE_PATHS" ]; then
+    echo "  → Including additional source paths: $SOURCE_PATHS"
+    for SOURCE_PATH in $SOURCE_PATHS; do
+      if [ -d "$SOURCE_PATH" ]; then
+        rsync -a \
+          --exclude='__pycache__' \
+          --exclude='*.pyc' \
+          --exclude='.git' \
+          "$SOURCE_PATH/" "$TMP/context/$SOURCE_PATH/"
+      fi
+    done
+  fi
   
   # Also copy the specific infra directory for this image
   # Extract the infra path from DOCKERFILE variable
