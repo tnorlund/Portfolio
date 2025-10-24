@@ -525,6 +525,31 @@ class UploadImages(ComponentResource):
             ),
             opts=ResourceOptions(parent=self),
         )
+        
+        # SQS permissions for event source mapping
+        RolePolicy(
+            f"{name}-embed-sqs-policy",
+            role=embed_role.id,
+            policy=self.embed_ndjson_queue.arn.apply(
+                lambda queue_arn: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "sqs:ReceiveMessage",
+                                    "sqs:DeleteMessage",
+                                    "sqs:GetQueueAttributes",
+                                ],
+                                "Resource": queue_arn,
+                            }
+                        ],
+                    }
+                )
+            ),
+            opts=ResourceOptions(parent=self),
+        )
 
         # Build container image for embed worker (needs larger deps, Chroma delta tooling)
         repo_root = os.path.abspath(
