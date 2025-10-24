@@ -9,14 +9,20 @@ Combines:
 import json
 import logging
 import os
+import sys
 from typing import Any, Dict
 
 from .ocr_processor import OCRProcessor
 from .embedding_processor import EmbeddingProcessor
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
+# Set up logging - use print for guaranteed output
+logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 logger = logging.getLogger(__name__)
+
+def _log(msg: str):
+    """Log message with immediate flush for CloudWatch visibility."""
+    print(f"[HANDLER] {msg}", flush=True)
+    logger.info(msg)
 
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -30,7 +36,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             }]
         }
     """
-    logger.info(f"Processing {len(event.get('Records', []))} OCR records")
+    _log(f"Processing {len(event.get('Records', []))} OCR records")
     
     results = []
     for record in event.get("Records", []):
@@ -38,9 +44,11 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             result = _process_single_record(record)
             results.append(result)
         except Exception as e:
+            _log(f"ERROR: Failed to process record: {e}")
             logger.error(f"Failed to process record: {e}", exc_info=True)
             results.append({"success": False, "error": str(e)})
     
+    _log(f"Completed processing {len(results)} records")
     return {
         "statusCode": 200,
         "body": json.dumps({
@@ -57,7 +65,7 @@ def _process_single_record(record: Dict[str, Any]) -> Dict[str, Any]:
     job_id = body["job_id"]
     image_id = body["image_id"]
     
-    logger.info(f"Processing OCR for image {image_id}, job {job_id}")
+    _log(f"Processing OCR for image {image_id}, job {job_id}")
     
     # Initialize OCR processor
     ocr_processor = OCRProcessor(
@@ -72,10 +80,10 @@ def _process_single_record(record: Dict[str, Any]) -> Dict[str, Any]:
     ocr_result = ocr_processor.process_ocr_job(image_id, job_id)
     
     if not ocr_result.get("success"):
-        logger.error(f"OCR processing failed: {ocr_result.get('error')}")
+        _log(f"ERROR: OCR processing failed: {ocr_result.get('error')}")
         return ocr_result
     
-    logger.info(f"OCR processing completed: {ocr_result}")
+    _log(f"OCR processing completed: image_type={ocr_result.get('image_type')}, receipt_id={ocr_result.get('receipt_id')}")
     
     # Step 2: Validate merchant and create embeddings
     # Only process embeddings for:
@@ -92,6 +100,7 @@ def _process_single_record(record: Dict[str, Any]) -> Dict[str, Any]:
     # PHOTO/SCAN first pass: receipt_id=None (skip embeddings)
     if receipt_id is not None and image_type in ["NATIVE", "REFINEMENT"]:
         try:
+            _log(f"Initializing embedding processor for {image_type} receipt (receipt_id={receipt_id})")
             # Initialize embedding processor
             embedding_processor = EmbeddingProcessor(
                 table_name=os.environ["DYNAMO_TABLE_NAME"],
@@ -103,6 +112,7 @@ def _process_single_record(record: Dict[str, Any]) -> Dict[str, Any]:
             
             # Create embeddings with merchant context
             # Pass receipt lines/words if available from OCR processor
+            _log(f"Creating embeddings with lines={ocr_result.get('receipt_lines') is not None}, words={ocr_result.get('receipt_words') is not None}")
             embedding_result = embedding_processor.process_embeddings(
                 image_id=image_id,
                 receipt_id=receipt_id,
@@ -110,8 +120,8 @@ def _process_single_record(record: Dict[str, Any]) -> Dict[str, Any]:
                 words=ocr_result.get("receipt_words"),
             )
             
-            logger.info(
-                f"Embeddings created for {image_type} receipt: "
+            _log(
+                f"SUCCESS: Embeddings created for {image_type} receipt: "
                 f"image_id={image_id}, receipt_id={receipt_id}, "
                 f"merchant={embedding_result.get('merchant_name')}, "
                 f"run_id={embedding_result.get('run_id')}"
@@ -128,6 +138,7 @@ def _process_single_record(record: Dict[str, Any]) -> Dict[str, Any]:
             }
             
         except Exception as e:
+            _log(f"ERROR: Merchant validation/embedding failed for {image_type}: {e}")
             logger.error(
                 f"Merchant validation/embedding failed for {image_type}: {e}",
                 exc_info=True
@@ -144,7 +155,7 @@ def _process_single_record(record: Dict[str, Any]) -> Dict[str, Any]:
     
     # For PHOTO/SCAN first pass, just return the OCR result
     # Embeddings will be created when REFINEMENT jobs run
-    logger.info(
+    _log(
         f"Skipping embeddings for {image_type} (receipt_id={receipt_id}). "
         f"Will process embeddings during REFINEMENT jobs."
     )
