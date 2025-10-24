@@ -133,7 +133,7 @@ class UploadImages(ComponentResource):
         self.ocr_results_queue = Queue(
             f"{name}-ocr-results-queue",
             name=f"{name}-{stack}-ocr-results-queue",
-            visibility_timeout_seconds=300,
+            visibility_timeout_seconds=900,  # Must be >= Lambda timeout (600s for container-based process_ocr)
             message_retention_seconds=345600,  # 4 days
             receive_wait_time_seconds=0,  # Short polling
             redrive_policy=None,  # No DLQ for now
