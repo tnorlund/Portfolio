@@ -330,7 +330,7 @@ class HybridLambdaDeployment(ComponentResource):
             timeout=120,  # 2 minutes timeout (reduced from 5 to prevent long hangs)
             memory_size=256,  # Lightweight processing
             reserved_concurrent_executions=1,  # Prevent parallel processing issues
-            vpc_config=vpc_cfg,
+            # No VPC config - stream processor only needs AWS service access (DynamoDB, SQS, CloudWatch)
             environment={
                 "variables": {
                     "LINES_QUEUE_URL": chromadb_queues.lines_queue_url,
