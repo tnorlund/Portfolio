@@ -15,6 +15,7 @@ import tempfile
 import uuid
 from typing import Dict, Any, Optional
 
+import boto3
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.entities.compaction_run import CompactionRun
 from receipt_label.data.places_api import PlacesAPI
@@ -56,29 +57,49 @@ class EmbeddingProcessor:
         self,
         image_id: str,
         receipt_id: int,
+        lines: Optional[list] = None,
+        words: Optional[list] = None,
     ) -> Dict[str, Any]:
         """
         Process embeddings with merchant validation.
         
         Steps:
-        1. Fetch lines and words from DynamoDB
+        1. Use provided lines/words or fetch from DynamoDB
         2. Resolve merchant (ChromaDB + Google Places)
         3. Create ReceiptMetadata
         4. Generate embeddings with merchant context
         5. Upload deltas to S3
         6. Create COMPACTION_RUN record
         
+        Args:
+            image_id: Image identifier
+            receipt_id: Receipt identifier
+            lines: Optional list of receipt lines (if not provided, fetched from DynamoDB)
+            words: Optional list of receipt words (if not provided, fetched from DynamoDB)
+        
         Returns:
             Dict with run_id, merchant_name, and success status
         """
         try:
-            # Step 1: Fetch lines and words from DynamoDB
-            receipt_lines, _ = self.dynamo.list_receipt_lines(
-                image_id, receipt_id, limit=1000
-            )
-            receipt_words, _ = self.dynamo.list_receipt_words(
-                image_id, receipt_id, limit=10000
-            )
+            # Step 1: Use provided lines/words or fetch from DynamoDB
+            if lines is not None and words is not None:
+                receipt_lines = lines
+                receipt_words = words
+                logger.info(
+                    f"Using provided {len(receipt_lines)} lines, {len(receipt_words)} words "
+                    f"for image_id={image_id} receipt_id={receipt_id}"
+                )
+            else:
+                receipt_lines = self.dynamo.list_receipt_lines_from_receipt(
+                    image_id, receipt_id
+                )
+                receipt_words = self.dynamo.list_receipt_words_from_receipt(
+                    image_id, receipt_id
+                )
+                logger.info(
+                    f"Fetched {len(receipt_lines)} lines, {len(receipt_words)} words "
+                    f"from DynamoDB for image_id={image_id} receipt_id={receipt_id}"
+                )
             
             logger.info(
                 f"Loaded {len(receipt_lines)} lines, {len(receipt_words)} words "
@@ -130,21 +151,97 @@ class EmbeddingProcessor:
             Merchant name or None if resolution fails
         """
         try:
-            # Initialize ChromaDB client for merchant resolution
+            import tempfile
+            from pathlib import Path
+            import io
+            
+            # Download latest ChromaDB snapshot from S3
             chroma_line_client = None
-            if self.chroma_http_endpoint:
-                try:
+            try:
+                logger.info(
+                    "Downloading ChromaDB snapshot from S3 for merchant resolution"
+                )
+                
+                # Step 1: Read latest-pointer.txt to get the correct timestamp
+                s3 = boto3.client("s3")
+                pointer_key = "lines/snapshot/latest-pointer.txt"
+                
+                response = s3.get_object(
+                    Bucket=self.chromadb_bucket, Key=pointer_key
+                )
+                timestamp = response["Body"].read().decode().strip()
+                logger.info(f"Latest snapshot timestamp from pointer: {timestamp}")
+                
+                # Step 2: Create temporary directory for snapshot
+                snapshot_dir = tempfile.mkdtemp(prefix="chroma_snapshot_")
+                
+                # Step 3: Download the timestamped snapshot files from S3
+                prefix = f"lines/snapshot/timestamped/{timestamp}/"
+                
+                paginator = s3.get_paginator("list_objects_v2")
+                pages = paginator.paginate(
+                    Bucket=self.chromadb_bucket, Prefix=prefix
+                )
+                
+                downloaded_files = 0
+                for page in pages:
+                    if "Contents" not in page:
+                        continue
+                    
+                    for obj in page["Contents"]:
+                        key = obj["Key"]
+                        # Skip the .snapshot_hash file
+                        if key.endswith(".snapshot_hash"):
+                            continue
+                        
+                        # Get the relative path within the snapshot
+                        relative_path = key[len(prefix):]
+                        if not relative_path:
+                            continue
+                        
+                        # Create local directory structure
+                        local_path = Path(snapshot_dir) / relative_path
+                        local_path.parent.mkdir(parents=True, exist_ok=True)
+                        
+                        # Download the file
+                        s3.download_file(
+                            self.chromadb_bucket, key, str(local_path)
+                        )
+                        downloaded_files += 1
+                
+                logger.info(
+                    f"Downloaded {downloaded_files} snapshot files to {snapshot_dir}"
+                )
+                
+                if downloaded_files > 0:
+                    # Create local ChromaDB client pointing to snapshot
                     chroma_line_client = VectorClient.create_chromadb_client(
+                        persist_directory=snapshot_dir,
                         mode="read",
-                        http_url=self.chroma_http_endpoint
                     )
                     logger.info(
-                        f"ChromaDB client initialized: {self.chroma_http_endpoint}"
+                        "Created local ChromaDB client from snapshot for merchant resolution"
                     )
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to initialize ChromaDB client: {e}"
-                    )
+            
+            except Exception as e:
+                logger.warning(
+                    f"Failed to download ChromaDB snapshot from S3: {e}. "
+                    f"Will attempt HTTP connection as fallback."
+                )
+                # Fall back to HTTP if snapshot download fails
+                if self.chroma_http_endpoint:
+                    try:
+                        chroma_line_client = VectorClient.create_chromadb_client(
+                            mode="read",
+                            http_url=self.chroma_http_endpoint
+                        )
+                        logger.info(
+                            f"Created HTTP ChromaDB client: {self.chroma_http_endpoint}"
+                        )
+                    except Exception as http_error:
+                        logger.warning(
+                            f"Failed to create HTTP ChromaDB client: {http_error}"
+                        )
             
             # Create embedding function for merchant resolution
             def _embed_texts(texts):
