@@ -167,6 +167,19 @@ class CodeBuildDockerImage(ComponentResource):
                                     h.update(str(rel_path).encode())
                                 except (IOError, OSError):
                                     pass
+            
+            # ALWAYS hash the handler directory (Lambda-specific code)
+            handler_dir = Path(PROJECT_DIR) / Path(self.dockerfile_path).parent
+            if handler_dir.exists():
+                for file_path in sorted(handler_dir.rglob("*.py")):
+                    if file_path.is_file() and not any(part.startswith('.') or part == '__pycache__' for part in file_path.parts):
+                        try:
+                            with open(file_path, "rb") as f:
+                                h.update(f.read())
+                            rel_path = file_path.relative_to(PROJECT_DIR)
+                            h.update(str(rel_path).encode())
+                        except (IOError, OSError):
+                            pass
         else:
             # Hash only the files that will be included in the build context
             if self.build_context_path == ".":
@@ -384,9 +397,12 @@ echo "✅ Uploaded context.zip (hash: ${{HASH:0:12}}...)"
                         "echo Building Docker image with multi-stage caching...",
                         # Build with BuildKit for better caching
                         "export DOCKER_BUILDKIT=1",
+                        # Use timestamp as cache buster to force handler layer rebuild
+                        "export CACHE_BUST=$(date +%s)",
                         f"docker build {platform_flag} {build_args_str} "
                         f"--cache-from $ECR_REGISTRY/$REPOSITORY_NAME:cache "
                         f"--build-arg BUILDKIT_INLINE_CACHE=1 "
+                        f"--build-arg CACHE_BUST=$CACHE_BUST "
                         f"-t $ECR_REGISTRY/$REPOSITORY_NAME:$IMAGE_TAG "
                         f"-t $ECR_REGISTRY/$REPOSITORY_NAME:latest "
                         f"-f Dockerfile .",
@@ -526,6 +542,7 @@ echo "✅ Uploaded context.zip (hash: ${{HASH:0:12}}...)"
                         "Effect": "Allow",
                         "Action": [
                             "lambda:UpdateFunctionCode",
+                            "lambda:GetFunction",
                             "lambda:GetFunctionConfiguration",
                         ],
                         "Resource": f"arn:aws:lambda:{aws.config.region}:{aws.get_caller_identity().account_id}:function:{self.lambda_function_name}" if self.lambda_config else "*",

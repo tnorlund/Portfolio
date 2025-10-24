@@ -22,6 +22,10 @@ RUN pip install --no-cache-dir /tmp/receipt_dynamo && \
 # Stage 2: Copy Lambda-specific code (changes frequently, but doesn't invalidate deps cache)
 FROM dependencies
 
+# Bust cache for handler code changes
+ARG CACHE_BUST=unknown
+RUN echo "Cache bust: $CACHE_BUST"
+
 # Copy the handler module
 COPY infra/upload_images/container_ocr/handler/ ${LAMBDA_TASK_ROOT}/handler/
 
