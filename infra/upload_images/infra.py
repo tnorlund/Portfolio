@@ -305,8 +305,53 @@ class UploadImages(ComponentResource):
                 image_bucket.arn,
                 self.ocr_queue.arn,
                 artifacts_bucket.arn,
+                pulumi.Output.from_input(chromadb_bucket_name),
             ).apply(
                 lambda args: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "dynamodb:DescribeTable",
+                                    "dynamodb:GetItem",
+                                    "dynamodb:BatchGetItem",
+                                    "dynamodb:Query",
+                                    "dynamodb:PutItem",
+                                    "dynamodb:UpdateItem",
+                                    "dynamodb:BatchWriteItem",
+                                ],
+                                "Resource": f"arn:aws:dynamodb:*:*:table/{args[0]}*",
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "s3:GetObject",
+                                    "s3:PutObject",
+                                    "s3:HeadObject",
+                                ],
+                                "Resource": [
+                                    args[1] + "/*",  # raw_bucket
+                                    args[2] + "/*",  # site_bucket
+                                    args[3] + "/*",  # image_bucket
+                                    args[5] + "/*",  # artifacts_bucket
+                                    f"arn:aws:s3:::{args[6]}/*" if args[6] else None,  # chromadb_bucket
+                                ],
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": "s3:ListBucket",
+                                "Resource": f"arn:aws:s3:::{args[6]}" if args[6] else None,
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": "sqs:SendMessage",
+                                "Resource": args[4],  # ocr_queue.arn
+                            },
+                        ],
+                    }
+                ) if args[6] else json.dumps(
                     {
                         "Version": "2012-10-17",
                         "Statement": [
