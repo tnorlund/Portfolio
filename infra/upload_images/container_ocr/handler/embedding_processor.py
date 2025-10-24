@@ -11,6 +11,7 @@ Extracted from embed_from_ndjson handler, this module:
 
 import logging
 import os
+import sys
 import tempfile
 import uuid
 from typing import Dict, Any, Optional
@@ -27,6 +28,11 @@ from receipt_label.utils.chroma_s3_helpers import upload_bundled_delta_to_s3
 from receipt_label.vector_store import VectorClient
 
 logger = logging.getLogger(__name__)
+
+def _log(msg: str):
+    """Log message with immediate flush for CloudWatch visibility."""
+    print(f"[EMBEDDING_PROCESSOR] {msg}", flush=True)
+    logger.info(msg)
 
 
 class EmbeddingProcessor:
@@ -85,7 +91,7 @@ class EmbeddingProcessor:
             if lines is not None and words is not None:
                 receipt_lines = lines
                 receipt_words = words
-                logger.info(
+                _log(
                     f"Using provided {len(receipt_lines)} lines, {len(receipt_words)} words "
                     f"for image_id={image_id} receipt_id={receipt_id}"
                 )
@@ -96,12 +102,12 @@ class EmbeddingProcessor:
                 receipt_words = self.dynamo.list_receipt_words_from_receipt(
                     image_id, receipt_id
                 )
-                logger.info(
+                _log(
                     f"Fetched {len(receipt_lines)} lines, {len(receipt_words)} words "
                     f"from DynamoDB for image_id={image_id} receipt_id={receipt_id}"
                 )
             
-            logger.info(
+            _log(
                 f"Loaded {len(receipt_lines)} lines, {len(receipt_words)} words "
                 f"for image_id={image_id} receipt_id={receipt_id}"
             )
@@ -118,7 +124,7 @@ class EmbeddingProcessor:
                 merchant_name=merchant_name,
             )
             
-            logger.info(
+            _log(
                 f"Embeddings completed successfully: "
                 f"run_id={run_id}, merchant_name={merchant_name}"
             )
@@ -158,7 +164,7 @@ class EmbeddingProcessor:
             # Download latest ChromaDB snapshot from S3
             chroma_line_client = None
             try:
-                logger.info(
+                _log(
                     "Downloading ChromaDB snapshot from S3 for merchant resolution"
                 )
                 
@@ -170,7 +176,7 @@ class EmbeddingProcessor:
                     Bucket=self.chromadb_bucket, Key=pointer_key
                 )
                 timestamp = response["Body"].read().decode().strip()
-                logger.info(f"Latest snapshot timestamp from pointer: {timestamp}")
+                _log(f"Latest snapshot timestamp from pointer: {timestamp}")
                 
                 # Step 2: Create temporary directory for snapshot
                 snapshot_dir = tempfile.mkdtemp(prefix="chroma_snapshot_")
@@ -209,7 +215,7 @@ class EmbeddingProcessor:
                         )
                         downloaded_files += 1
                 
-                logger.info(
+                _log(
                     f"Downloaded {downloaded_files} snapshot files to {snapshot_dir}"
                 )
                 
@@ -219,7 +225,7 @@ class EmbeddingProcessor:
                         persist_directory=snapshot_dir,
                         mode="read",
                     )
-                    logger.info(
+                    _log(
                         "Created local ChromaDB client from snapshot for merchant resolution"
                     )
             
@@ -235,7 +241,7 @@ class EmbeddingProcessor:
                             mode="read",
                             http_url=self.chroma_http_endpoint
                         )
-                        logger.info(
+                        _log(
                             f"Created HTTP ChromaDB client: {self.chroma_http_endpoint}"
                         )
                     except Exception as http_error:
@@ -256,7 +262,7 @@ class EmbeddingProcessor:
                     model="text-embedding-3-small",
                     input=list(texts)
                 )
-                logger.info(
+                _log(
                     f"OpenAI embeddings created for merchant resolution: "
                     f"{len(resp.data)} embeddings"
                 )
@@ -277,7 +283,7 @@ class EmbeddingProcessor:
             best = decision.get("best") or {}
             merchant_name = best.get("name") or best.get("merchant_name")
             
-            logger.info(
+            _log(
                 f"Merchant resolved: {merchant_name} "
                 f"(source: {best.get('source')}, score: {best.get('score')})"
             )
@@ -321,7 +327,7 @@ class EmbeddingProcessor:
         )
         
         # Upsert embeddings with merchant context
-        logger.info(
+        _log(
             f"Creating embeddings with merchant_name={merchant_name}"
         )
         upsert_embeddings(
@@ -337,7 +343,7 @@ class EmbeddingProcessor:
         lines_prefix = f"lines/delta/{run_id}/"
         words_prefix = f"words/delta/{run_id}/"
         
-        logger.info(
+        _log(
             f"Uploading line delta to s3://{self.chromadb_bucket}/{lines_prefix}"
         )
         upload_bundled_delta_to_s3(
@@ -352,7 +358,7 @@ class EmbeddingProcessor:
             },
         )
         
-        logger.info(
+        _log(
             f"Uploading word delta to s3://{self.chromadb_bucket}/{words_prefix}"
         )
         upload_bundled_delta_to_s3(
@@ -378,7 +384,7 @@ class EmbeddingProcessor:
             )
         )
         
-        logger.info(f"COMPACTION_RUN created: run_id={run_id}")
+        _log(f"COMPACTION_RUN created: run_id={run_id}")
         
         return run_id
 
