@@ -61,6 +61,7 @@ class UploadImages(ComponentResource):
         raw_bucket: Bucket,
         site_bucket: Bucket,
         chromadb_bucket_name: pulumi.Input[str] | None = None,
+        embed_ndjson_queue_url: pulumi.Input[str] | None = None,
         vpc_subnet_ids: pulumi.Input[list[str]] | None = None,
         security_group_id: pulumi.Input[str] | None = None,
         chroma_http_endpoint: pulumi.Input[str] | None = None,
@@ -143,6 +144,10 @@ class UploadImages(ComponentResource):
             },
             opts=ResourceOptions(parent=self),
         )
+        
+        # Store embed_ndjson_queue_url for use in Lambda environment
+        # If not provided, we'll use the internal queue created below
+        self._external_embed_ndjson_queue_url = embed_ndjson_queue_url
 
         # --- Combined upload_receipt Lambda (presign + job record) ---
 
@@ -582,6 +587,17 @@ class UploadImages(ComponentResource):
             },
             opts=ResourceOptions(parent=self),
         )
+        
+        # Wire embed_ndjson_queue to embed_from_ndjson Lambda
+        aws.lambda_.EventSourceMapping(
+            f"{name}-embed-ndjson-event-source",
+            event_source_arn=self.embed_ndjson_queue.arn,
+            function_name=embed_from_ndjson_lambda.name,
+            batch_size=1,
+            maximum_batching_window_in_seconds=0,
+            enabled=True,
+            opts=ResourceOptions(parent=self),
+        )
 
         # Batch launcher Lambda to start a Step Function execution per batch
         launcher_role = Role(
@@ -968,7 +984,11 @@ class UploadImages(ComponentResource):
                     "ARTIFACTS_BUCKET": artifacts_bucket.bucket,
                     "OCR_JOB_QUEUE_URL": self.ocr_queue.url,
                     "OCR_RESULTS_QUEUE_URL": self.ocr_results_queue.url,
-                    "EMBED_NDJSON_QUEUE_URL": self.embed_ndjson_queue.url,
+                    "EMBED_NDJSON_QUEUE_URL": (
+                        self._external_embed_ndjson_queue_url 
+                        if self._external_embed_ndjson_queue_url 
+                        else self.embed_ndjson_queue.url
+                    ),
                 }
             ),
             tags={"environment": stack},
