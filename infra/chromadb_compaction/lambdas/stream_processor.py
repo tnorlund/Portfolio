@@ -20,15 +20,15 @@ import time
 from typing import Any, Dict
 
 # Enhanced observability imports
-    from utils import (
-        get_operation_logger,
-        metrics,
-        trace_function,
-        start_compaction_lambda_monitoring,
-        stop_compaction_lambda_monitoring,
-        with_compaction_timeout_protection,
-        format_response,
-    )
+from utils import (
+    get_operation_logger,
+    metrics,
+    trace_function,
+    start_compaction_lambda_monitoring,
+    stop_compaction_lambda_monitoring,
+    with_compaction_timeout_protection,
+    format_response,
+)
 
 # Import modular components (same pattern as utils)
 from processor import (
@@ -38,7 +38,7 @@ from processor import (
 )
 
 # Configure logging with observability
-    logger = get_operation_logger(__name__)
+logger = get_operation_logger(__name__)
 
 
 @trace_function(operation_name="stream_processor")
@@ -66,13 +66,13 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     correlation_id = None
 
     # Start monitoring
-        start_compaction_lambda_monitoring(context)
-        correlation_id = getattr(logger, "correlation_id", None)
-        logger.info(
-            "Starting stream processing",
-            event_records=len(event.get("Records", [])),
-            correlation_id=correlation_id,
-        )
+    start_compaction_lambda_monitoring(context)
+    correlation_id = getattr(logger, "correlation_id", None)
+    logger.info(
+        "Starting stream processing",
+        event_records=len(event.get("Records", [])),
+        correlation_id=correlation_id,
+    )
 
     try:
         # Handle different event types (test events vs real stream events)
@@ -87,12 +87,12 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "queued_messages": 0,
             }
 
-                metrics.count("StreamProcessorTestEvents", 1)
-                return format_response(
-                    response, event, correlation_id=correlation_id
-                )
+            metrics.count("StreamProcessorTestEvents", 1)
+            return format_response(
+                response, event, correlation_id=correlation_id
+            )
 
-            metrics.gauge("StreamRecordsReceived", len(event["Records"]))
+        metrics.gauge("StreamRecordsReceived", len(event["Records"]))
 
         # Track processing time for timeout protection
         start_time = time.time()
@@ -158,9 +158,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     event_name=event_name,
                 )
 
-                    metrics.count(
-                        "StreamRecordProcessed", 1, {"event_name": event_name}
-                    )
+                metrics.count(
+                    "StreamRecordProcessed", 1, {"event_name": event_name}
+                )
 
                 # Build message(s) for this record
                 record_messages = build_messages_from_records(
@@ -169,18 +169,18 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
                 if record_messages:
                     messages_to_send.extend(record_messages)
-                        processed_records += 1
+                    processed_records += 1
                     consecutive_failures = 0  # Reset on success
                 else:
-                        metrics.count(
-                            "StreamRecordSkipped",
-                            1,
-                            {"reason": "not_relevant_entity"},
-                        )
+                    metrics.count(
+                        "StreamRecordSkipped",
+                        1,
+                        {"reason": "not_relevant_entity"},
+                    )
                     logger.debug(
                         "Skipped record - not relevant entity",
                         record_id=event_id,
-                                    )
+                    )
 
             except (ValueError, KeyError, TypeError) as e:
                 event_id = record.get("eventID", "unknown")
@@ -190,11 +190,11 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     error=str(e),
                 )
 
-                    metrics.count(
-                        "StreamRecordProcessingError",
-                        1,
-                        {"error_type": type(e).__name__},
-                    )
+                metrics.count(
+                    "StreamRecordProcessingError",
+                    1,
+                    {"error_type": type(e).__name__},
+                )
 
                 # Circuit breaker: stop if too many consecutive failures
                 consecutive_failures += 1
@@ -216,7 +216,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "Sent messages to compaction queues", message_count=sent_count
             )
 
-                metrics.count("MessagesQueuedForCompaction", sent_count)
+            metrics.count("MessagesQueuedForCompaction", sent_count)
         else:
             sent_count = 0
 
@@ -238,8 +238,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             duration_seconds=processing_duration,
         )
 
-            metrics.gauge("StreamProcessorProcessedRecords", processed_records)
-            metrics.gauge("StreamProcessorQueuedMessages", sent_count)
+        metrics.gauge("StreamProcessorProcessedRecords", processed_records)
+        metrics.gauge("StreamProcessorQueuedMessages", sent_count)
 
         # Convert dataclass to dict for AWS Lambda JSON serialization
         result = response.to_dict()
@@ -251,9 +251,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "Stream processor failed",
         )
 
-            metrics.count(
-                "StreamProcessorError", 1, {"error_type": type(e).__name__}
-            )
+        metrics.count(
+            "StreamProcessorError", 1, {"error_type": type(e).__name__}
+        )
 
         error_response = {
             "statusCode": 500,
@@ -262,16 +262,16 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "error": str(e),
         }
 
-            return format_response(
-                error_response,
-                event,
-                is_error=True,
-                correlation_id=correlation_id,
-            )
+        return format_response(
+            error_response,
+            event,
+            is_error=True,
+            correlation_id=correlation_id,
+        )
 
     finally:
         # Stop monitoring
-            stop_compaction_lambda_monitoring()
+        stop_compaction_lambda_monitoring()
 
 
 # Re-export for backward compatibility with existing tests

@@ -7,7 +7,7 @@ This handler extends the existing compaction functionality to handle both:
 Maintains compatibility with existing SQS queue and mutex lock infrastructure.
 """
 
-# pylint: disable=duplicate-code,too-many-instance-attributes,too-many-locals,too-many-nested-blocks
+# pylint: disable=duplicate-code,too-many-instance-attributes,too-many-locals
 # Some duplication with stream_processor is expected for shared data structures
 # Complex compaction logic requires many variables and nested operations
 
@@ -39,6 +39,11 @@ try:
     # Try absolute import first (Lambda environment)
     from compaction import (
         process_sqs_messages,
+        categorize_stream_messages,
+        group_messages_by_collection,
+        process_metadata_updates,
+        process_label_updates,
+        process_compaction_run_messages,
         LambdaResponse,
         StreamMessage,
         MetadataUpdateResult,
@@ -51,6 +56,11 @@ except ImportError as e:
         # Try relative import (test environment)
         from .compaction import (
             process_sqs_messages,
+            categorize_stream_messages,
+            group_messages_by_collection,
+            process_metadata_updates,
+            process_label_updates,
+            process_compaction_run_messages,
             LambdaResponse,
             StreamMessage,
             MetadataUpdateResult,
@@ -233,10 +243,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 metrics=metrics,
                 process_stream_messages_func=process_stream_messages,
                 process_delta_messages_func=process_delta_messages,
-                get_dynamo_client_func=get_dynamo_client,
-                heartbeat_interval=heartbeat_interval,
-                lock_duration_minutes=lock_duration_minutes,
-                max_heartbeat_failures=max_heartbeat_failures
             )
 
             # IMPORTANT: For SQS partial-batch failure, return the raw shape
@@ -331,6 +337,66 @@ def process_delta_messages(
         ),
     )
     return response.to_dict()
+
+
+# Process parsed DynamoDB stream messages grouped by collection
+def process_stream_messages(
+    stream_messages: List[StreamMessage],
+) -> Dict[str, Any]:
+    messages_by_collection = group_messages_by_collection(stream_messages)
+
+    total_metadata_updates = 0
+    total_label_updates = 0
+    total_compaction_merged = 0
+
+    for collection, msgs in messages_by_collection.items():
+        metadata_msgs, label_msgs, compaction_run_msgs = categorize_stream_messages(
+            msgs
+        )
+
+        # Process metadata updates
+        if metadata_msgs:
+            metadata_results = process_metadata_updates(
+                metadata_updates=metadata_msgs,
+                collection=collection,
+                logger=logger,
+                metrics=metrics,
+                get_dynamo_client_func=get_dynamo_client,
+            )
+            total_metadata_updates += sum(
+                r.updated_count for r in metadata_results if getattr(r, "error", None) is None
+            )
+
+        # Process label updates
+        if label_msgs:
+            label_results = process_label_updates(
+                label_updates=label_msgs,
+                collection=collection,
+                logger=logger,
+                metrics=metrics,
+                get_dynamo_client_func=get_dynamo_client,
+            )
+            total_label_updates += sum(
+                r.updated_count for r in label_results if getattr(r, "error", None) is None
+            )
+
+        # Process compaction run merges
+        if compaction_run_msgs:
+            merged = process_compaction_run_messages(
+                compaction_runs=compaction_run_msgs,
+                collection=collection,
+                logger=logger,
+                metrics=metrics,
+                get_dynamo_client_func=get_dynamo_client,
+            )
+            total_compaction_merged += merged
+
+    return LambdaResponse(
+        status_code=200,
+        message="Stream messages processed",
+        metadata_updates=total_metadata_updates,
+        label_updates=total_label_updates,
+    ).to_dict()
 
 
 # Alias for consistent naming with other handlers
