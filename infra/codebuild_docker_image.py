@@ -860,6 +860,16 @@ echo "✅ Bootstrap image pushed to $REPO_URL:latest"
                 security_group_ids=vpc_cfg.get("security_group_ids"),
             )
         
+        # Add file system config if provided
+        if self.lambda_config.get("file_system_config"):
+            fs_cfg = self.lambda_config.get("file_system_config")
+            lambda_args["file_system_configs"] = [
+                aws.lambda_.FunctionFileSystemConfigArgs(
+                    arn=fs_cfg.get("arn"),
+                    local_mount_path=fs_cfg.get("local_mount_path"),
+                )
+            ]
+        
         # Create Lambda function after bootstrap image is pushed
         depends_on_list = [bootstrap_cmd] if bootstrap_cmd else []
         
