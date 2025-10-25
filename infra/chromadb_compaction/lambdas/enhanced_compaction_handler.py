@@ -52,6 +52,7 @@ try:
         StreamMessage,
         MetadataUpdateResult,
         LabelUpdateResult,
+        get_efs_snapshot_manager,
     )
     MODULAR_MODE = True
     print("✅ Modular mode: Using compaction package")
@@ -72,6 +73,7 @@ except ImportError as e:
             StreamMessage,
             MetadataUpdateResult,
             LabelUpdateResult,
+            get_efs_snapshot_manager,
         )
         MODULAR_MODE = True
         print("✅ Modular mode: Using compaction package (relative import)")
@@ -367,8 +369,46 @@ def process_stream_messages(
         from receipt_label.utils.chroma_s3_helpers import download_snapshot_atomic, upload_snapshot_atomic
         from receipt_label.utils.chroma_client import ChromaDBClient
 
-        temp_dir = tempfile.mkdtemp()
-        try:
+        # Check if EFS is available
+        efs_root = os.environ.get("CHROMA_ROOT")
+        use_efs = efs_root and efs_root != "/tmp/chroma"
+        
+        if use_efs:
+            # Use EFS + S3 hybrid approach
+            efs_manager = get_efs_snapshot_manager(collection.value, logger, metrics)
+            
+            # Get latest version from S3
+            latest_version = efs_manager.get_latest_s3_version()
+            if not latest_version:
+                logger.error("Failed to get latest S3 version", collection=collection.value)
+                failed_receipt_handles.extend(
+                    [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
+                )
+                continue
+            
+            # Ensure snapshot is available on EFS
+            snapshot_result = efs_manager.ensure_snapshot_available(latest_version)
+            if snapshot_result["status"] != "available":
+                logger.error("Failed to ensure snapshot availability", result=snapshot_result)
+                failed_receipt_handles.extend(
+                    [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
+                )
+                continue
+            
+            snapshot_path = snapshot_result["efs_path"]
+            expected_pointer = latest_version
+            
+            logger.info(
+                "Using EFS snapshot",
+                collection=collection.value,
+                version=latest_version,
+                efs_path=snapshot_path,
+                source=snapshot_result.get("source", "unknown")
+            )
+            
+        else:
+            # Fallback to S3-only approach
+            temp_dir = tempfile.mkdtemp()
             bucket = os.environ["CHROMADB_BUCKET"]
             dl = download_snapshot_atomic(
                 bucket=bucket,
@@ -378,16 +418,25 @@ def process_stream_messages(
             )
             if dl.get("status") != "downloaded":
                 logger.error("Failed to download snapshot", result=dl)
-                # Skip this collection; let SQS retry via visibility timeout
-                # Mark all messages in this collection as failed
                 failed_receipt_handles.extend(
                     [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
                 )
                 continue
 
+            snapshot_path = temp_dir
             expected_pointer = dl.get("version_id")
-            chroma_client = ChromaDBClient(persist_directory=temp_dir, mode="snapshot")
+            
+            logger.info(
+                "Using S3 snapshot",
+                collection=collection.value,
+                version=expected_pointer,
+                temp_path=snapshot_path
+            )
 
+        # Initialize ChromaDB client
+        chroma_client = ChromaDBClient(persist_directory=snapshot_path, mode="snapshot")
+        
+        try:
             # Merge deltas first
             if compaction_run_msgs:
                 merged = merge_compaction_deltas(
@@ -474,7 +523,7 @@ def process_stream_messages(
                         continue
 
                     up = upload_snapshot_atomic(
-                        local_path=temp_dir,
+                        local_path=snapshot_path,
                         bucket=bucket,
                         collection=collection.value,
                         lock_manager=lm,
@@ -485,6 +534,14 @@ def process_stream_messages(
                     )
                     if up.get("status") == "uploaded":
                         published = True
+                        
+                        # If using EFS, start background sync
+                        if use_efs:
+                            new_version = up.get("version_id")
+                            if new_version:
+                                efs_manager.sync_to_s3_async(new_version, snapshot_path)
+                                efs_manager.cleanup_old_snapshots()
+                        
                         break
                     else:
                         logger.error("Snapshot upload failed", result=up)
@@ -503,8 +560,10 @@ def process_stream_messages(
                 )
                 continue
         finally:
-            import shutil
-            shutil.rmtree(temp_dir, ignore_errors=True)
+            # Only cleanup temp directory if we created one (S3-only mode)
+            if not use_efs and 'temp_dir' in locals():
+                import shutil
+                shutil.rmtree(temp_dir, ignore_errors=True)
 
     if failed_receipt_handles:
         return {
