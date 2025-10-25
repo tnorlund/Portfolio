@@ -33,6 +33,7 @@ from utils import (
 
 # Import receipt_dynamo for proper DynamoDB operations
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_label.utils.lock_manager import LockManager
 
 # Import modular components - flexible for both Lambda and test environments
 try:
@@ -44,6 +45,9 @@ try:
         process_metadata_updates,
         process_label_updates,
         process_compaction_run_messages,
+        merge_compaction_deltas,
+        apply_metadata_updates_in_memory,
+        apply_label_updates_in_memory,
         LambdaResponse,
         StreamMessage,
         MetadataUpdateResult,
@@ -61,6 +65,9 @@ except ImportError as e:
             process_metadata_updates,
             process_label_updates,
             process_compaction_run_messages,
+            merge_compaction_deltas,
+            apply_metadata_updates_in_memory,
+            apply_label_updates_in_memory,
             LambdaResponse,
             StreamMessage,
             MetadataUpdateResult,
@@ -348,48 +355,163 @@ def process_stream_messages(
     total_metadata_updates = 0
     total_label_updates = 0
     total_compaction_merged = 0
+    failed_receipt_handles: List[str] = []
 
     for collection, msgs in messages_by_collection.items():
         metadata_msgs, label_msgs, compaction_run_msgs = categorize_stream_messages(
             msgs
         )
 
-        # Process metadata updates
-        if metadata_msgs:
-            metadata_results = process_metadata_updates(
-                metadata_updates=metadata_msgs,
-                collection=collection,
-                logger=logger,
-                metrics=metrics,
-                get_dynamo_client_func=get_dynamo_client,
-            )
-            total_metadata_updates += sum(
-                r.updated_count for r in metadata_results if getattr(r, "error", None) is None
-            )
+        # Phase A: off-lock snapshot download/open once
+        import tempfile
+        from receipt_label.utils.chroma_s3_helpers import download_snapshot_atomic, upload_snapshot_atomic
+        from receipt_label.utils.chroma_client import ChromaDBClient
 
-        # Process label updates
-        if label_msgs:
-            label_results = process_label_updates(
-                label_updates=label_msgs,
-                collection=collection,
-                logger=logger,
-                metrics=metrics,
-                get_dynamo_client_func=get_dynamo_client,
+        temp_dir = tempfile.mkdtemp()
+        try:
+            bucket = os.environ["CHROMADB_BUCKET"]
+            dl = download_snapshot_atomic(
+                bucket=bucket,
+                collection=collection.value,
+                local_path=temp_dir,
+                verify_integrity=True,
             )
-            total_label_updates += sum(
-                r.updated_count for r in label_results if getattr(r, "error", None) is None
-            )
+            if dl.get("status") != "downloaded":
+                logger.error("Failed to download snapshot", result=dl)
+                # Skip this collection; let SQS retry via visibility timeout
+                # Mark all messages in this collection as failed
+                failed_receipt_handles.extend(
+                    [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
+                )
+                continue
 
-        # Process compaction run merges
-        if compaction_run_msgs:
-            merged = process_compaction_run_messages(
-                compaction_runs=compaction_run_msgs,
-                collection=collection,
-                logger=logger,
-                metrics=metrics,
-                get_dynamo_client_func=get_dynamo_client,
-            )
-            total_compaction_merged += merged
+            expected_pointer = dl.get("version_id")
+            chroma_client = ChromaDBClient(persist_directory=temp_dir, mode="snapshot")
+
+            # Merge deltas first
+            if compaction_run_msgs:
+                merged = merge_compaction_deltas(
+                    chroma_client=chroma_client,
+                    compaction_runs=compaction_run_msgs,
+                    collection=collection,
+                    logger=logger,
+                )
+                total_compaction_merged += merged
+
+            # Apply metadata updates
+            if metadata_msgs:
+                md_results = apply_metadata_updates_in_memory(
+                    chroma_client=chroma_client,
+                    metadata_updates=metadata_msgs,
+                    collection=collection,
+                    logger=logger,
+                    metrics=metrics,
+                    get_dynamo_client_func=get_dynamo_client,
+                )
+                total_metadata_updates += sum(
+                    r.updated_count for r in md_results if getattr(r, "error", None) is None
+                )
+
+            # Apply label updates
+            if label_msgs:
+                lb_results = apply_label_updates_in_memory(
+                    chroma_client=chroma_client,
+                    label_updates=label_msgs,
+                    collection=collection,
+                    logger=logger,
+                    metrics=metrics,
+                    get_dynamo_client_func=get_dynamo_client,
+                )
+                total_label_updates += sum(
+                    r.updated_count for r in lb_results if getattr(r, "error", None) is None
+                )
+
+            # Phase B: short publish with lock + CAS
+            backoff_attempts = [0.15, 0.3]  # seconds
+            published = False
+            import boto3 as _boto
+            s3_client = _boto.client("s3")
+
+            for attempt_idx, delay in enumerate(backoff_attempts, start=1):
+                lock_id = f"chroma-{collection.value}-update"
+                lm = LockManager(
+                    get_dynamo_client(),
+                    collection=collection,
+                    heartbeat_interval=heartbeat_interval,
+                    lock_duration_minutes=lock_duration_minutes,
+                    max_heartbeat_failures=max_heartbeat_failures,
+                )
+
+                if not lm.acquire(lock_id):
+                    logger.info(
+                        "Lock busy, backing off",
+                        collection=collection.value,
+                        attempt=attempt_idx,
+                        delay_ms=int(delay * 1000),
+                    )
+                    time.sleep(delay)
+                    continue
+
+                try:
+                    lm.start_heartbeat()
+                    # CAS: re-read pointer and compare
+                    pointer_key = f"{collection.value}/snapshot/latest-pointer.txt"
+                    try:
+                        resp = s3_client.get_object(Bucket=bucket, Key=pointer_key)
+                        current_pointer = resp["Body"].read().decode("utf-8").strip()
+                    except Exception:
+                        current_pointer = "latest-direct"
+
+                    if expected_pointer and current_pointer != expected_pointer:
+                        logger.info(
+                            "Pointer drift detected, will retry",
+                            collection=collection.value,
+                            expected=expected_pointer,
+                            current=current_pointer,
+                        )
+                        # Back off and retry
+                        time.sleep(delay)
+                        continue
+
+                    up = upload_snapshot_atomic(
+                        local_path=temp_dir,
+                        bucket=bucket,
+                        collection=collection.value,
+                        lock_manager=lm,
+                        metadata={
+                            "update_type": "batch_compaction",
+                            "expected_pointer": expected_pointer or "",
+                        },
+                    )
+                    if up.get("status") == "uploaded":
+                        published = True
+                        break
+                    else:
+                        logger.error("Snapshot upload failed", result=up)
+                        time.sleep(delay)
+                        continue
+                finally:
+                    try:
+                        lm.stop_heartbeat()
+                    finally:
+                        lm.release()
+
+            if not published:
+                # Mark this collection's messages as failed for partial retry
+                failed_receipt_handles.extend(
+                    [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
+                )
+                continue
+        finally:
+            import shutil
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    if failed_receipt_handles:
+        return {
+            "batchItemFailures": [
+                {"itemIdentifier": h} for h in failed_receipt_handles if h
+            ]
+        }
 
     return LambdaResponse(
         status_code=200,
