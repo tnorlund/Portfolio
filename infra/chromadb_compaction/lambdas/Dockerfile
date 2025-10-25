@@ -22,6 +22,8 @@ FROM dependencies
 # Copy the enhanced compaction handler and utils
 COPY infra/chromadb_compaction/lambdas/enhanced_compaction_handler.py ${LAMBDA_TASK_ROOT}/handler.py
 COPY infra/chromadb_compaction/lambdas/utils/ ${LAMBDA_TASK_ROOT}/utils/
+# Ensure compaction package is available to the handler
+COPY infra/chromadb_compaction/lambdas/compaction/ ${LAMBDA_TASK_ROOT}/compaction/
 
 # Set the handler
 CMD ["handler.lambda_handler"]
