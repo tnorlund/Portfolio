@@ -393,14 +393,32 @@ def process_stream_messages(
         from receipt_label.utils.chroma_s3_helpers import download_snapshot_atomic, upload_snapshot_atomic
         from receipt_label.utils.chroma_client import ChromaDBClient
 
-        # Check if EFS is available
+        # Storage mode configuration - easily switchable
+        storage_mode = os.environ.get("CHROMADB_STORAGE_MODE", "auto").lower()
         efs_root = os.environ.get("CHROMA_ROOT")
-        use_efs = efs_root and efs_root != "/tmp/chroma"
+        
+        # Determine storage mode
+        if storage_mode == "s3":
+            use_efs = False
+            mode_reason = "explicitly set to S3-only"
+        elif storage_mode == "efs":
+            use_efs = True
+            mode_reason = "explicitly set to EFS"
+        elif storage_mode == "auto":
+            # Auto-detect based on EFS availability
+            use_efs = efs_root and efs_root != "/tmp/chroma"
+            mode_reason = f"auto-detected (efs_root={'available' if use_efs else 'not available'})"
+        else:
+            # Default to S3-only for unknown modes
+            use_efs = False
+            mode_reason = f"unknown mode '{storage_mode}', defaulting to S3-only"
         
         logger.info(
-            "EFS configuration check",
+            "Storage mode configuration",
+            storage_mode=storage_mode,
             efs_root=efs_root,
             use_efs=use_efs,
+            mode_reason=mode_reason,
             collection=collection.value
         )
         
@@ -486,7 +504,7 @@ def process_stream_messages(
                 continue
             
         else:
-            logger.info("Using S3-only approach", collection=collection.value)
+            logger.info("Using S3-only approach", collection=collection.value, mode_reason=mode_reason)
             # Fallback to S3-only approach
             temp_dir = tempfile.mkdtemp()
             bucket = os.environ["CHROMADB_BUCKET"]
