@@ -161,93 +161,143 @@ class EmbeddingProcessor:
             from pathlib import Path
             import io
             
-            # Download latest ChromaDB snapshot from S3
+            # Try EFS first, fallback to S3 download
             chroma_line_client = None
-            try:
-                _log(
-                    "Downloading ChromaDB snapshot from S3 for merchant resolution"
-                )
-                
-                # Step 1: Read latest-pointer.txt to get the correct timestamp
-                s3 = boto3.client("s3")
-                pointer_key = "lines/snapshot/latest-pointer.txt"
-                
-                response = s3.get_object(
-                    Bucket=self.chromadb_bucket, Key=pointer_key
-                )
-                timestamp = response["Body"].read().decode().strip()
-                _log(f"Latest snapshot timestamp from pointer: {timestamp}")
-                
-                # Step 2: Create temporary directory for snapshot
-                snapshot_dir = tempfile.mkdtemp(prefix="chroma_snapshot_")
-                
-                # Step 3: Download the timestamped snapshot files from S3
-                prefix = f"lines/snapshot/timestamped/{timestamp}/"
-                
-                paginator = s3.get_paginator("list_objects_v2")
-                pages = paginator.paginate(
-                    Bucket=self.chromadb_bucket, Prefix=prefix
-                )
-                
-                downloaded_files = 0
-                for page in pages:
-                    if "Contents" not in page:
-                        continue
-                    
-                    for obj in page["Contents"]:
-                        key = obj["Key"]
-                        # Skip the .snapshot_hash file
-                        if key.endswith(".snapshot_hash"):
-                            continue
-                        
-                        # Get the relative path within the snapshot
-                        relative_path = key[len(prefix):]
-                        if not relative_path:
-                            continue
-                        
-                        # Create local directory structure
-                        local_path = Path(snapshot_dir) / relative_path
-                        local_path.parent.mkdir(parents=True, exist_ok=True)
-                        
-                        # Download the file
-                        s3.download_file(
-                            self.chromadb_bucket, key, str(local_path)
-                        )
-                        downloaded_files += 1
-                
-                _log(
-                    f"Downloaded {downloaded_files} snapshot files to {snapshot_dir}"
-                )
-                
-                if downloaded_files > 0:
-                    # Create local ChromaDB client pointing to snapshot
-                    chroma_line_client = VectorClient.create_chromadb_client(
-                        persist_directory=snapshot_dir,
-                        mode="read",
-                    )
-                    _log(
-                        "Created local ChromaDB client from snapshot for merchant resolution"
-                    )
+            storage_mode = os.environ.get("CHROMADB_STORAGE_MODE", "auto").lower()
+            efs_root = os.environ.get("CHROMA_ROOT")
             
-            except Exception as e:
-                logger.warning(
-                    f"Failed to download ChromaDB snapshot from S3: {e}. "
-                    f"Will attempt HTTP connection as fallback."
-                )
-                # Fall back to HTTP if snapshot download fails
-                if self.chroma_http_endpoint:
-                    try:
+            # Determine storage mode
+            if storage_mode == "s3":
+                use_efs = False
+                mode_reason = "explicitly set to S3-only"
+            elif storage_mode == "efs":
+                use_efs = True
+                mode_reason = "explicitly set to EFS"
+            elif storage_mode == "auto":
+                # Auto-detect based on EFS availability
+                use_efs = efs_root and efs_root != "/tmp/chroma"
+                mode_reason = f"auto-detected (efs_root={'available' if use_efs else 'not available'})"
+            else:
+                # Default to S3-only for unknown modes
+                use_efs = False
+                mode_reason = f"unknown mode '{storage_mode}', defaulting to S3-only"
+            
+            _log(f"Storage mode: {storage_mode}, use_efs: {use_efs}, reason: {mode_reason}")
+            
+            if use_efs:
+                try:
+                    from .efs_snapshot_manager import UploadEFSSnapshotManager
+                    
+                    _log("Using EFS for ChromaDB snapshot access")
+                    efs_manager = UploadEFSSnapshotManager("lines", logger)
+                    
+                    # Get snapshot ready for ChromaDB operations
+                    snapshot_info = efs_manager.get_snapshot_for_chromadb()
+                    if snapshot_info:
+                        # Create local ChromaDB client pointing to local copy
                         chroma_line_client = VectorClient.create_chromadb_client(
+                            persist_directory=snapshot_info["local_path"],
                             mode="read",
-                            http_url=self.chroma_http_endpoint
                         )
                         _log(
-                            f"Created HTTP ChromaDB client: {self.chroma_http_endpoint}"
+                            f"Created ChromaDB client from EFS snapshot "
+                            f"(version: {snapshot_info['version']}, "
+                            f"source: {snapshot_info['source']}, "
+                            f"copy_time_ms: {snapshot_info.get('copy_time_ms', 0)})"
                         )
-                    except Exception as http_error:
-                        logger.warning(
-                            f"Failed to create HTTP ChromaDB client: {http_error}"
+                    else:
+                        _log("Failed to get snapshot from EFS, falling back to S3")
+                        use_efs = False
+                        
+                except Exception as e:
+                    logger.warning(f"Failed to use EFS for ChromaDB access: {e}. Falling back to S3.")
+                    use_efs = False
+            
+            # Fallback to S3 download if EFS failed or disabled
+            if not use_efs:
+                _log("Using S3 download for ChromaDB snapshot access")
+                try:
+                    # Download latest ChromaDB snapshot from S3
+                    # Step 1: Read latest-pointer.txt to get the correct timestamp
+                    s3 = boto3.client("s3")
+                    pointer_key = "lines/snapshot/latest-pointer.txt"
+                    
+                    response = s3.get_object(
+                        Bucket=self.chromadb_bucket, Key=pointer_key
+                    )
+                    timestamp = response["Body"].read().decode().strip()
+                    _log(f"Latest snapshot timestamp from pointer: {timestamp}")
+                    
+                    # Step 2: Create temporary directory for snapshot
+                    snapshot_dir = tempfile.mkdtemp(prefix="chroma_snapshot_")
+                    
+                    # Step 3: Download the timestamped snapshot files from S3
+                    prefix = f"lines/snapshot/timestamped/{timestamp}/"
+                    
+                    paginator = s3.get_paginator("list_objects_v2")
+                    pages = paginator.paginate(
+                        Bucket=self.chromadb_bucket, Prefix=prefix
+                    )
+                    
+                    downloaded_files = 0
+                    for page in pages:
+                        if "Contents" not in page:
+                            continue
+                        
+                        for obj in page["Contents"]:
+                            key = obj["Key"]
+                            # Skip the .snapshot_hash file
+                            if key.endswith(".snapshot_hash"):
+                                continue
+                            
+                            # Get the relative path within the snapshot
+                            relative_path = key[len(prefix):]
+                            if not relative_path:
+                                continue
+                            
+                            # Create local directory structure
+                            local_path = Path(snapshot_dir) / relative_path
+                            local_path.parent.mkdir(parents=True, exist_ok=True)
+                            
+                            # Download the file
+                            s3.download_file(
+                                self.chromadb_bucket, key, str(local_path)
+                            )
+                            downloaded_files += 1
+                    
+                    _log(
+                        f"Downloaded {downloaded_files} snapshot files to {snapshot_dir}"
+                    )
+                    
+                    if downloaded_files > 0:
+                        # Create local ChromaDB client pointing to snapshot
+                        chroma_line_client = VectorClient.create_chromadb_client(
+                            persist_directory=snapshot_dir,
+                            mode="read",
                         )
+                        _log(
+                            "Created local ChromaDB client from snapshot for merchant resolution"
+                        )
+                
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to download ChromaDB snapshot from S3: {e}. "
+                        f"Will attempt HTTP connection as fallback."
+                    )
+                    # Fall back to HTTP if snapshot download fails
+                    if self.chroma_http_endpoint:
+                        try:
+                            chroma_line_client = VectorClient.create_chromadb_client(
+                                mode="read",
+                                http_url=self.chroma_http_endpoint
+                            )
+                            _log(
+                                f"Created HTTP ChromaDB client: {self.chroma_http_endpoint}"
+                            )
+                        except Exception as http_error:
+                            logger.warning(
+                                f"Failed to create HTTP ChromaDB client: {http_error}"
+                            )
             
             # Create embedding function for merchant resolution
             def _embed_texts(texts):
