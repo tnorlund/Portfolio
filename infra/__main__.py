@@ -6,6 +6,7 @@ import os
 import api_gateway  # noqa: F401
 import pulumi
 import pulumi_aws as aws
+from pulumi import Output
 
 # Auto-enable Docker BuildKit based on Pulumi config
 config = pulumi.Config("portfolio")
