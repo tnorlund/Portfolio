@@ -136,27 +136,9 @@ shared_chromadb_buckets = ChromaDBBuckets(
 # Build base images (optional optimization)
 base_images = BaseImages(f"base-images-{pulumi.get_stack()}", pulumi.get_stack())
 
-chromadb_infrastructure = create_chromadb_compaction_infrastructure(
-    name=f"chromadb-{pulumi.get_stack()}",
-    dynamodb_table_arn=dynamodb_table.arn,
-    dynamodb_stream_arn=dynamodb_table.stream_arn,
-    chromadb_buckets=shared_chromadb_buckets,
-    base_images=base_images,
-    vpc_id=public_vpc.vpc_id,
-    subnet_ids=Output.all(public_vpc.public_subnet_ids, nat.private_subnet_ids).apply(lambda args: args[0] + args[1]),  # Both public and private subnets
-    lambda_security_group_id=security.sg_lambda_id,
-)
-
 # Create currency validation state machine
 currency_validation_state_machine = create_currency_validation_state_machine(
     notification_system
-)
-
-# Create embedding infrastructure using shared bucket and queues
-embedding_infrastructure = EmbeddingInfrastructure(
-    f"embedding-infra-{pulumi.get_stack()}",
-    chromadb_queues=chromadb_infrastructure.chromadb_queues,
-    chromadb_buckets=shared_chromadb_buckets,
 )
 
 validation_by_merchant_step_functions = ValidationByMerchantStepFunction(
@@ -218,6 +200,26 @@ nat = NatEgress(
 )
 pulumi.export("nat_instance_id", nat.nat_instance_id)
 pulumi.export("nat_private_subnet_ids", nat.private_subnet_ids)
+
+# Create ChromaDB compaction infrastructure using shared bucket
+# Now that nat is defined, we can use both public and private subnets for EFS
+chromadb_infrastructure = create_chromadb_compaction_infrastructure(
+    name=f"chromadb-{pulumi.get_stack()}",
+    dynamodb_table_arn=dynamodb_table.arn,
+    dynamodb_stream_arn=dynamodb_table.stream_arn,
+    chromadb_buckets=shared_chromadb_buckets,
+    base_images=base_images,
+    vpc_id=public_vpc.vpc_id,
+    subnet_ids=Output.all(public_vpc.public_subnet_ids, nat.private_subnet_ids).apply(lambda args: args[0] + args[1]),  # Both public and private subnets
+    lambda_security_group_id=security.sg_lambda_id,
+)
+
+# Create embedding infrastructure using shared bucket and queues
+embedding_infrastructure = EmbeddingInfrastructure(
+    f"embedding-infra-{pulumi.get_stack()}",
+    chromadb_queues=chromadb_infrastructure.chromadb_queues,
+    chromadb_buckets=shared_chromadb_buckets,
+)
 
 # Add S3 Gateway Endpoint for faster S3 access from both public and private subnets
 s3_gateway_endpoint = aws.ec2.VpcEndpoint(
