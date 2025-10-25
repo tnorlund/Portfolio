@@ -298,6 +298,7 @@ upload_images = UploadImages(
     ecs_cluster_arn=chroma_service.cluster.arn,
     ecs_service_arn=chroma_service.svc.arn,
     nat_instance_id=nat.nat_instance_id,
+    efs_access_point_arn=embedding_infrastructure.efs_access_point_arn,
 )
 
 pulumi.export("ocr_job_queue_url", upload_images.ocr_queue.url)
