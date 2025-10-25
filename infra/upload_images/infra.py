@@ -17,7 +17,7 @@ from pulumi import (
 from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
 from pulumi_aws.lambda_ import Function, FunctionEnvironmentArgs
 from pulumi_aws.s3 import Bucket
-from pulumi_aws.sfn import StateMachine
+# StateMachine import removed - no longer using Step Functions
 from pulumi_aws.ecr import (
     Repository as EcrRepository,
     RepositoryImageScanningConfigurationArgs as EcrRepoScanArgs,
@@ -68,11 +68,12 @@ class UploadImages(ComponentResource):
         ecs_cluster_arn: pulumi.Input[str] | None = None,
         ecs_service_arn: pulumi.Input[str] | None = None,
         nat_instance_id: pulumi.Input[str] | None = None,
+        efs_access_point_arn: pulumi.Input[str] | None = None,
         opts: ResourceOptions = None,
     ):
         super().__init__(
             f"{__name__}-{name}",
-            "aws:stepfunctions:UploadImages",
+            "aws:lambda:UploadImages",
             {},
             opts,
         )
@@ -294,6 +295,15 @@ class UploadImages(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
+        # Attach EFS mount policy if EFS is configured
+        if efs_access_point_arn:
+            RolePolicyAttachment(
+                f"{name}-process-ocr-efs-exec",
+                role=process_ocr_role.name,
+                policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole",
+                opts=ResourceOptions(parent=self),
+            )
+
         # Add DynamoDB access for the process OCR Lambda
         RolePolicy(
             f"{name}-process-ocr-dynamo-policy",
@@ -445,589 +455,17 @@ class UploadImages(ComponentResource):
         # (process_ocr_results Lambda defined later with complete environment)
 
         # ---------------------------------------------
-        # Post-upload: Embed from NDJSON State Machine
-        # Steps:
-        # 1) ValidateReceipt (container lambda from merchant validation module)
-        # 2) EmbedFromNdjson (new lambda in this module)
+        # Step Function removed - container Lambda handles everything directly
+        # The process_ocr_results container Lambda now handles:
+        # - OCR processing
+        # - Merchant validation  
+        # - Embedding creation
+        # - S3 delta upload
+        # - Compaction trigger
         # ---------------------------------------------
-        # Create execution role for Step Functions
-        sfn_role = aws.iam.Role(
-            f"{name}-post-upload-sfn-role",
-            assume_role_policy=json.dumps(
-                {
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Effect": "Allow",
-                            "Principal": {"Service": "states.amazonaws.com"},
-                            "Action": "sts:AssumeRole",
-                        }
-                    ],
-                }
-            ),
-            opts=ResourceOptions(parent=self),
-        )
 
-        # EmbedFromNdjson Lambda role
-        embed_role = Role(
-            f"{name}-embed-from-ndjson-role",
-            assume_role_policy=json.dumps(
-                {
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Effect": "Allow",
-                            "Principal": {"Service": "lambda.amazonaws.com"},
-                            "Action": "sts:AssumeRole",
-                        }
-                    ],
-                }
-            ),
-            opts=ResourceOptions(parent=self),
-        )
-
-        # Basic execution and VPC access (if needed by layers)
-        RolePolicyAttachment(
-            f"{name}-embed-basic-exec",
-            role=embed_role.name,
-            policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
-            opts=ResourceOptions(parent=self),
-        )
-        # Required for VPC-enabled Lambdas to manage ENIs and reach NAT
-        RolePolicyAttachment(
-            f"{name}-embed-vpc-access",
-            role=embed_role.name,
-            policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole",
-            opts=ResourceOptions(parent=self),
-        )
-
-        # S3 read for artifacts bucket and write to CHROMADB bucket (passed in)
-        RolePolicy(
-            f"{name}-embed-s3-policy",
-            role=embed_role.id,
-            policy=Output.all(
-                artifacts_bucket.arn,
-                chromadb_bucket_name or "",
-            ).apply(
-                lambda args: json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Effect": "Allow",
-                                "Action": ["s3:GetObject", "s3:HeadObject"],
-                                "Resource": [args[0] + "/*"],
-                            },
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "s3:PutObject",
-                                    "s3:AbortMultipartUpload",
-                                    "s3:CreateMultipartUpload",
-                                    "s3:ListMultipartUploadParts",
-                                ],
-                                "Resource": (
-                                    [
-                                        f"arn:aws:s3:::{args[1]}",
-                                        f"arn:aws:s3:::{args[1]}/*",
-                                    ]
-                                    if args[1]
-                                    else "*"
-                                ),
-                            },
-                        ],
-                    }
-                )
-            ),
-            opts=ResourceOptions(parent=self),
-        )
-
-        # DynamoDB access for CompactionRun writes
-        RolePolicy(
-            f"{name}-embed-dynamo-policy",
-            role=embed_role.id,
-            policy=dynamodb_table.name.apply(
-                lambda table_name: json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "dynamodb:DescribeTable",
-                                    "dynamodb:GetItem",
-                                    "dynamodb:BatchGetItem",
-                                    "dynamodb:Query",
-                                    "dynamodb:PutItem",
-                                    "dynamodb:UpdateItem",
-                                    "dynamodb:BatchWriteItem",
-                                ],
-                                "Resource": f"arn:aws:dynamodb:*:*:table/{table_name}*",
-                            }
-                        ],
-                    }
-                )
-            ),
-            opts=ResourceOptions(parent=self),
-        )
-
-        # Build container image for embed worker (needs larger deps, Chroma delta tooling)
-        repo_root = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..", "..")
-        )
-        embed_container_dir = os.path.join(
-            os.path.dirname(__file__), "container"
-        )
-
-        # Build Lambda config
-        embed_lambda_config = {
-            "role_arn": embed_role.arn,
-            "timeout": 900,
-            "memory_size": 1024,
-            # Security note: API keys are encrypted in Pulumi config (require_secret) and
-            # Lambda environment variables are encrypted at rest by AWS KMS. Secrets Manager
-            # would add runtime rotation but isn't required for this use case.
-            "environment": {
-                "DYNAMO_TABLE_NAME": dynamodb_table.name,
-                "CHROMADB_BUCKET": chromadb_bucket_name or "",
-                "OPENAI_API_KEY": openai_api_key,
-                "GOOGLE_PLACES_API_KEY": google_places_api_key,
-                "CHROMA_HTTP_ENDPOINT": chroma_http_endpoint or "",
-            },
-        }
-        
-        # Add VPC config if provided
-        if vpc_subnet_ids and security_group_id:
-            embed_lambda_config["vpc_config"] = {
-                "subnet_ids": vpc_subnet_ids,
-                "security_group_ids": [security_group_id],
-            }
-        
-        # Use CodeBuildDockerImage for AWS-based builds
-        embed_docker_image = CodeBuildDockerImage(
-            f"{name}-embed-image",
-            dockerfile_path="infra/upload_images/container/Dockerfile",
-            build_context_path=".",  # Project root for monorepo access
-            source_paths=None,  # Use default rsync with exclusions
-            lambda_function_name=f"{name}-{stack}-embed-from-ndjson",
-            lambda_config=embed_lambda_config,
-            platform="linux/arm64",
-            opts=ResourceOptions(parent=self, depends_on=[embed_role]),
-        )
-
-        # Use the Lambda function created by CodeBuildDockerImage
-        embed_from_ndjson_lambda = embed_docker_image.lambda_function
-
-        # Queue to batch NDJSON embedding tasks
-        self.embed_ndjson_queue = Queue(
-            f"{name}-embed-ndjson-queue",
-            name=f"{name}-{stack}-embed-ndjson-queue",
-            visibility_timeout_seconds=1200,
-            message_retention_seconds=1209600,
-            receive_wait_time_seconds=0,
-            tags={
-                "Purpose": "NDJSON Embedding Queue",
-                "Component": name,
-                "Environment": pulumi.get_stack(),
-            },
-            opts=ResourceOptions(parent=self),
-        )
-        
-        # SQS permissions for embed_from_ndjson Lambda event source mapping
-        RolePolicy(
-            f"{name}-embed-sqs-policy",
-            role=embed_role.id,
-            policy=self.embed_ndjson_queue.arn.apply(
-                lambda queue_arn: json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "sqs:ReceiveMessage",
-                                    "sqs:DeleteMessage",
-                                    "sqs:GetQueueAttributes",
-                                ],
-                                "Resource": queue_arn,
-                            }
-                        ],
-                    }
-                )
-            ),
-            opts=ResourceOptions(parent=self),
-        )
-        
-        # Wire embed_ndjson_queue to embed_from_ndjson Lambda
-        aws.lambda_.EventSourceMapping(
-            f"{name}-embed-ndjson-event-source",
-            event_source_arn=self.embed_ndjson_queue.arn,
-            function_name=embed_from_ndjson_lambda.name,
-            batch_size=1,
-            maximum_batching_window_in_seconds=0,
-            enabled=True,
-            opts=ResourceOptions(parent=self),
-        )
-
-        # Batch launcher Lambda to start a Step Function execution per batch
-        launcher_role = Role(
-            f"{name}-embed-launcher-role",
-            assume_role_policy=json.dumps(
-                {
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Effect": "Allow",
-                            "Principal": {"Service": "lambda.amazonaws.com"},
-                            "Action": "sts:AssumeRole",
-                        }
-                    ],
-                }
-            ),
-            opts=ResourceOptions(parent=self),
-        )
-        RolePolicyAttachment(
-            f"{name}-embed-launcher-basic-exec",
-            role=launcher_role.name,
-            policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
-            opts=ResourceOptions(parent=self),
-        )
-
-        launcher_code = AssetArchive(
-            {
-                "embed_batch_launcher.py": FileAsset(
-                    os.path.join(
-                        os.path.dirname(__file__), "embed_batch_launcher.py"
-                    )
-                )
-            }
-        )
-
-        # Step Functions role for ECS + Lambda invoke
-        sfn_role = aws.iam.Role(
-            f"{name}-embed-sfn-role",
-            assume_role_policy=json.dumps(
-                {
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Effect": "Allow",
-                            "Principal": {"Service": "states.amazonaws.com"},
-                            "Action": "sts:AssumeRole",
-                        }
-                    ],
-                }
-            ),
-            opts=ResourceOptions(parent=self),
-        )
-        # Optional: Chroma wait Lambda to ensure HTTP server is healthy before embedding
-        wait_lambda = None
-        if chroma_http_endpoint and ecs_cluster_arn and ecs_service_arn:
-            handler_dir = os.path.join(
-                os.path.dirname(__file__), "..", "chroma", "wait_handler"
-            )
-            wait_lambda = aws.lambda_.Function(
-                f"{name}-chroma-wait",
-                name=f"{name}-{stack}-chroma-wait",
-                role=embed_role.arn,
-                runtime="python3.12",
-                architectures=["arm64"],
-                handler="index.lambda_handler",
-                code=pulumi.FileArchive(str(handler_dir)),
-                timeout=180,
-                memory_size=256,
-                environment=FunctionEnvironmentArgs(
-                    variables={
-                        "CHROMA_HTTP_ENDPOINT": chroma_http_endpoint or "",
-                        "ECS_CLUSTER_ARN": ecs_cluster_arn,
-                        "ECS_SERVICE_ARN": ecs_service_arn,
-                        "WAIT_TIMEOUT_SECONDS": "120",
-                        "WAIT_INTERVAL_SECONDS": "5",
-                    }
-                ),
-                vpc_config=(
-                    aws.lambda_.FunctionVpcConfigArgs(
-                        subnet_ids=vpc_subnet_ids,
-                        security_group_ids=(
-                            [security_group_id] if security_group_id else None
-                        ),
-                    )
-                    if vpc_subnet_ids and security_group_id
-                    else None
-                ),
-                opts=ResourceOptions(parent=self),
-            )
-        # Allow invoking embed_from_ndjson and (optionally) waiting lambda
-        RolePolicy(
-            f"{name}-embed-sfn-invoke",
-            role=sfn_role.id,
-            policy=embed_from_ndjson_lambda.arn.apply(
-                lambda arn: json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Effect": "Allow",
-                                "Action": ["lambda:InvokeFunction"],
-                                "Resource": [arn],
-                            }
-                        ],
-                    }
-                )
-            ),
-            opts=ResourceOptions(parent=self),
-        )
-        if wait_lambda is not None:
-            RolePolicy(
-                f"{name}-embed-sfn-wait-invoke",
-                role=sfn_role.id,
-                policy=wait_lambda.arn.apply(
-                    lambda arn: json.dumps(
-                        {
-                            "Version": "2012-10-17",
-                            "Statement": [
-                                {
-                                    "Effect": "Allow",
-                                    "Action": ["lambda:InvokeFunction"],
-                                    "Resource": [arn],
-                                }
-                            ],
-                        }
-                    )
-                ),
-                opts=ResourceOptions(parent=self),
-            )
-        # ECS scale permissions if provided
-        if ecs_cluster_arn and ecs_service_arn:
-            RolePolicy(
-                f"{name}-embed-sfn-ecs",
-                role=sfn_role.id,
-                policy=Output.all(ecs_cluster_arn, ecs_service_arn).apply(
-                    lambda args: json.dumps(
-                        {
-                            "Version": "2012-10-17",
-                            "Statement": [
-                                {
-                                    "Effect": "Allow",
-                                    "Action": [
-                                        "ecs:UpdateService",
-                                        "ecs:DescribeServices",
-                                    ],
-                                    "Resource": [args[1]],
-                                }
-                            ],
-                        }
-                    )
-                ),
-                opts=ResourceOptions(parent=self),
-            )
-
-        # Define State Machine: scale up → map embed → scale down
-        embed_sfn = StateMachine(
-            f"{name}-embed-from-ndjson-sm",
-            role_arn=sfn_role.arn,
-            definition=Output.all(
-                embed_from_ndjson_lambda.arn,
-                chroma_http_endpoint or Output.from_input(""),
-                ecs_cluster_arn or Output.from_input(""),
-                ecs_service_arn or Output.from_input(""),
-                wait_lambda.arn if wait_lambda else Output.from_input(""),
-            ).apply(
-                lambda xs: json.dumps(
-                    {
-                        "StartAt": (
-                            "ScaleUpChroma"
-                            if xs[2] and xs[3]
-                            else "ForEachItem"
-                        ),
-                        "States": {
-                            **(
-                                {
-                                    "ScaleUpChroma": {
-                                        "Type": "Task",
-                                        "Resource": "arn:aws:states:::aws-sdk:ecs:updateService",
-                                        "Parameters": {
-                                            "Cluster": xs[2],
-                                            "Service": xs[3],
-                                            "DesiredCount": 1,
-                                        },
-                                        "ResultPath": "$.scaleUp",
-                                        "Next": "AwaitChromaTasks",
-                                    },
-                                    "AwaitChromaTasks": {
-                                        "Type": "Task",
-                                        "Resource": "arn:aws:states:::aws-sdk:ecs:describeServices",
-                                        "Parameters": {
-                                            "Cluster": xs[2],
-                                            "Services": [xs[3]],
-                                        },
-                                        "ResultSelector": {
-                                            "runningCount.$": "$.Services[0].RunningCount",
-                                        },
-                                        "ResultPath": "$.svc",
-                                        "Next": "ChromaTasksReady?",
-                                    },
-                                    "ChromaTasksReady?": {
-                                        "Type": "Choice",
-                                        "Choices": [
-                                            {
-                                                "Variable": "$.svc.runningCount",
-                                                "NumericGreaterThanEquals": 1,
-                                                "Next": (
-                                                    "WaitForChromaHealthy"
-                                                    if xs[4]
-                                                    else "ForEachItem"
-                                                ),
-                                            }
-                                        ],
-                                        "Default": "WaitChromaDelay",
-                                    },
-                                    "WaitChromaDelay": {
-                                        "Type": "Wait",
-                                        "Seconds": 5,
-                                        "Next": "AwaitChromaTasks",
-                                    },
-                                    **(
-                                        {
-                                            "WaitForChromaHealthy": {
-                                                "Type": "Task",
-                                                "Resource": "arn:aws:states:::lambda:invoke",
-                                                "Parameters": {
-                                                    "FunctionName": xs[4]
-                                                },
-                                                "ResultPath": "$.chromaHealth",
-                                                "Next": "ForEachItem",
-                                            }
-                                        }
-                                        if xs[4]
-                                        else {}
-                                    ),
-                                }
-                                if xs[2] and xs[3]
-                                else {}
-                            ),
-                            "ForEachItem": {
-                                "Type": "Map",
-                                "ItemsPath": "$.items",
-                                "MaxConcurrency": 10,
-                                "ResultPath": "$.embedResults",
-                                "Iterator": {
-                                    "StartAt": "EmbedFromNdjson",
-                                    "States": {
-                                        "EmbedFromNdjson": {
-                                            "Type": "Task",
-                                            "Resource": xs[0],
-                                            "End": True,
-                                        }
-                                    },
-                                },
-                                "Next": (
-                                    "ScaleDownChroma"
-                                    if xs[2] and xs[3]
-                                    else "Done"
-                                ),
-                            },
-                            **(
-                                {
-                                    "ScaleDownChroma": {
-                                        "Type": "Task",
-                                        "Resource": "arn:aws:states:::aws-sdk:ecs:updateService",
-                                        "Parameters": {
-                                            "Cluster": xs[2],
-                                            "Service": xs[3],
-                                            "DesiredCount": 0,
-                                        },
-                                        "ResultPath": "$.scaleDown",
-                                        "Next": "Done",
-                                    }
-                                }
-                                if xs[2] and xs[3]
-                                else {}
-                            ),
-                            "Done": {"Type": "Succeed"},
-                        },
-                    }
-                )
-            ),
-            opts=ResourceOptions(parent=self),
-        )
-
-        # Launcher Lambda can StartExecution of the state machine
-        RolePolicy(
-            f"{name}-embed-launcher-sfn-start",
-            role=launcher_role.id,
-            policy=embed_sfn.arn.apply(
-                lambda arn: json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Effect": "Allow",
-                                "Action": ["states:StartExecution"],
-                                "Resource": arn,
-                            }
-                        ],
-                    }
-                )
-            ),
-            opts=ResourceOptions(parent=self),
-        )
-
-        embed_batch_launcher = Function(
-            f"{name}-embed-batch-launcher",
-            name=f"{name}-{stack}-embed-batch-launcher",
-            role=launcher_role.arn,
-            runtime="python3.12",
-            handler="embed_batch_launcher.handler",
-            code=launcher_code,
-            architectures=["arm64"],
-            timeout=60,
-            memory_size=256,
-            environment=FunctionEnvironmentArgs(
-                variables={
-                    "EMBED_SFN_ARN": embed_sfn.arn,
-                }
-            ),
-            opts=ResourceOptions(parent=self),
-        )
-
-        # Wire SQS -> launcher (not directly to worker)
-        RolePolicyAttachment(
-            f"{name}-embed-launcher-sqs-exec",
-            role=launcher_role.name,
-            policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole",
-            opts=ResourceOptions(parent=self),
-        )
-        aws.lambda_.EventSourceMapping(
-            f"{name}-embed-ndjson-launcher-mapping",
-            event_source_arn=self.embed_ndjson_queue.arn,
-            function_name=embed_batch_launcher.name,
-            batch_size=10,
-            maximum_batching_window_in_seconds=10,
-            enabled=True,
-            opts=ResourceOptions(parent=self),
-        )
-
-        # Allow process_ocr Lambda to enqueue embedding jobs
-        RolePolicy(
-            f"{name}-process-ocr-embed-sqs-send",
-            role=process_ocr_role.id,
-            policy=self.embed_ndjson_queue.arn.apply(
-                lambda qarn: json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Effect": "Allow",
-                                "Action": ["sqs:SendMessage"],
-                                "Resource": qarn,
-                            }
-                        ],
-                    }
-                )
-            ),
-            opts=ResourceOptions(parent=self),
-        )
+        # Step Function removed - no longer need embed_ndjson_queue
+        # The container Lambda handles everything directly
 
         # Create container-based process_ocr Lambda with merchant validation
         # This replaces the old zip-based Lambda and integrates merchant validation + embedding
@@ -1047,8 +485,19 @@ class UploadImages(ComponentResource):
                 "CHROMA_HTTP_ENDPOINT": chroma_http_endpoint,
                 "GOOGLE_PLACES_API_KEY": google_places_api_key,
                 "OPENAI_API_KEY": openai_api_key,
+                # EFS configuration for ChromaDB read-only access
+                "CHROMA_ROOT": "/mnt/chroma" if efs_access_point_arn else "/tmp/chroma",
+                "CHROMADB_STORAGE_MODE": "auto",  # Use EFS if available, fallback to S3
             },
-        }
+            "vpc_config": {
+                "subnet_ids": vpc_subnet_ids,
+                "security_group_ids": [security_group_id],
+            } if vpc_subnet_ids and security_group_id else None,
+            "file_system_config": {
+                "arn": efs_access_point_arn,
+                "local_mount_path": "/mnt/chroma",
+            } if efs_access_point_arn else None,
+            }
         
         # Use CodeBuildDockerImage for AWS-based builds
         process_ocr_docker_image = CodeBuildDockerImage(
@@ -1061,7 +510,7 @@ class UploadImages(ComponentResource):
             platform="linux/arm64",
             opts=ResourceOptions(parent=self, depends_on=[process_ocr_role]),
         )
-        
+
         # Use the Lambda function created by CodeBuildDockerImage
         process_ocr_lambda = process_ocr_docker_image.lambda_function
 
