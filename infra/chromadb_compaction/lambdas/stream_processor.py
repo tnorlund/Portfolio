@@ -152,7 +152,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 event_id = record.get("eventID", "unknown")
                 event_name = record.get("eventName", "unknown")
 
-                logger.info(
+                logger.debug(
                     "Processing stream record",
                     record_id=event_id,
                     event_name=event_name,
@@ -171,16 +171,21 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     messages_to_send.extend(record_messages)
                     processed_records += 1
                     consecutive_failures = 0  # Reset on success
+                    
+                    # Log only when we actually process relevant entities
+                    logger.info(
+                        "Processed relevant stream record",
+                        record_id=event_id,
+                        event_name=event_name,
+                        message_count=len(record_messages),
+                    )
                 else:
                     metrics.count(
                         "StreamRecordSkipped",
                         1,
                         {"reason": "not_relevant_entity"},
                     )
-                    logger.debug(
-                        "Skipped record - not relevant entity",
-                        record_id=event_id,
-                    )
+                    # Remove the debug log for skipped records to reduce noise
 
             except (ValueError, KeyError, TypeError) as e:
                 event_id = record.get("eventID", "unknown")

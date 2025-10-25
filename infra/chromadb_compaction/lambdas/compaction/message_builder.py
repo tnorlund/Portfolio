@@ -25,7 +25,7 @@ def process_sqs_messages(
 
     Returns partial batch failure response for unprocessed delta messages.
     """
-    logger.info("Processing SQS messages", message_count=len(records))
+    logger.info("Processing SQS messages", message_count=len(records), batch_size=len(records))
 
     stream_messages = []
     delta_message_records = []  # Store full records for delta messages
