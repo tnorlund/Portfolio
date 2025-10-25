@@ -156,6 +156,11 @@ class HybridLambdaDeployment(ComponentResource):
                     "MAX_HEARTBEAT_FAILURES": "3",
                     "LOG_LEVEL": "INFO",
                     "CHROMA_ROOT": "/mnt/chroma" if efs_access_point_arn else "/tmp/chroma",
+                    # Storage mode configuration: "auto", "s3", or "efs"
+                    # - "auto": Use EFS if available, fallback to S3
+                    # - "s3": Force S3-only mode (ignore EFS)
+                    # - "efs": Force EFS mode (fail if EFS not available)
+                    "CHROMADB_STORAGE_MODE": "auto",
                     # Disable custom CloudWatch metrics while Lambda runs in a VPC
                     # without NAT or VPC Interface Endpoints for CloudWatch Monitoring.
                     # This avoids outbound network timeouts from the heartbeat/metrics
