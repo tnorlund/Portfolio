@@ -247,6 +247,18 @@ logs_interface_endpoint = aws.ec2.VpcEndpoint(
     private_dns_enabled=True,
 )
 
+# SQS Interface Endpoint for cost-effective SQS access from public subnets
+# Enables upload lambda to use EFS (public subnets) while accessing SQS without internet
+sqs_interface_endpoint = aws.ec2.VpcEndpoint(
+    f"sqs-interface-{pulumi.get_stack()}",
+    vpc_id=public_vpc.vpc_id,
+    service_name=f"com.amazonaws.{aws.config.region}.sqs",
+    vpc_endpoint_type="Interface",
+    subnet_ids=public_vpc.public_subnet_ids,
+    security_group_ids=[security.sg_vpce_id],
+    private_dns_enabled=True,
+)
+
 # Recreate workers to use NAT private subnets for egress
 workers_nat = ChromaWorkers(
     name=f"chroma-workers-nat-{pulumi.get_stack()}",
