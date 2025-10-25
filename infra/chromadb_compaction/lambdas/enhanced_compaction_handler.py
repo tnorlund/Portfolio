@@ -13,6 +13,7 @@ Maintains compatibility with existing SQS queue and mutex lock infrastructure.
 
 import json
 import os
+import shutil
 import time
 from logging import INFO, Formatter, StreamHandler, getLogger
 from typing import Any, Dict, List, Optional
@@ -425,14 +426,24 @@ def process_stream_messages(
                 )
                 continue
             
-            snapshot_path = snapshot_result["efs_path"]
+            # Copy from EFS to local storage for better ChromaDB performance
+            efs_snapshot_path = snapshot_result["efs_path"]
+            local_snapshot_path = tempfile.mkdtemp()
+            
+            copy_start_time = time.time()
+            shutil.copytree(efs_snapshot_path, local_snapshot_path, dirs_exist_ok=True)
+            copy_time_ms = (time.time() - copy_start_time) * 1000
+            
+            snapshot_path = local_snapshot_path
             expected_pointer = latest_version
             
             logger.info(
-                "Using EFS snapshot",
+                "Using EFS snapshot (copied to local)",
                 collection=collection.value,
                 version=latest_version,
-                efs_path=snapshot_path,
+                efs_path=efs_snapshot_path,
+                local_path=local_snapshot_path,
+                copy_time_ms=copy_time_ms,
                 source=snapshot_result.get("source", "unknown")
             )
             
