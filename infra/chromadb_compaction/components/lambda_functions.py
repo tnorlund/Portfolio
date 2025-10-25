@@ -403,6 +403,12 @@ class HybridLambdaDeployment(ComponentResource):
                     "MAX_HEARTBEAT_FAILURES": "3",
                     "LOG_LEVEL": "INFO",
                     "CHROMA_ROOT": "/mnt/chroma" if efs_access_point_arn else "/tmp/chroma",
+                    # Disable custom CloudWatch metrics while Lambda runs in a VPC
+                    # without NAT or VPC Interface Endpoints for CloudWatch Monitoring.
+                    # This avoids outbound network timeouts from the heartbeat/metrics
+                    # thread (ConnectTimeout to monitoring.us-east-1.amazonaws.com).
+                    # Re-enable by setting to "true" once endpoints/NAT are configured.
+                    "ENABLE_METRICS": "false",
                 }
             },
             description=(
