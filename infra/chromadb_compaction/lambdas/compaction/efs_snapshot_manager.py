@@ -17,11 +17,11 @@ from typing import Dict, Any, Optional, Tuple
 from pathlib import Path
 
 import boto3
+from botocore.exceptions import ClientError
 
 from receipt_label.utils.chroma_s3_helpers import (
     download_snapshot_atomic,
     upload_snapshot_atomic,
-    get_latest_snapshot_pointer,
 )
 
 
@@ -76,11 +76,19 @@ class EFSSnapshotManager:
     def get_latest_s3_version(self) -> Optional[str]:
         """Get the latest snapshot version from S3."""
         try:
-            pointer = get_latest_snapshot_pointer(
-                bucket=self.bucket,
-                collection=self.collection
-            )
-            return pointer.get("version_id") if pointer else None
+            s3_client = boto3.client("s3")
+            pointer_key = f"{self.collection}/snapshot/latest-pointer.txt"
+            
+            try:
+                response = s3_client.get_object(Bucket=self.bucket, Key=pointer_key)
+                version_id = response["Body"].read().decode("utf-8").strip()
+                return version_id
+            except ClientError as e:
+                if e.response["Error"]["Code"] == "NoSuchKey":
+                    # Fallback to direct /latest/ path for backward compatibility
+                    return "latest-direct"
+                else:
+                    raise
         except Exception as e:
             self.logger.error("Failed to get S3 version", error=str(e))
             return None
