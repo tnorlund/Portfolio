@@ -295,10 +295,10 @@ class UploadImages(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Attach EFS mount policy if EFS is configured
-        if efs_access_point_arn:
+        # Attach VPC access policy if VPC is configured (required for EFS)
+        if vpc_subnet_ids and security_group_id:
             RolePolicyAttachment(
-                f"{name}-process-ocr-efs-exec",
+                f"{name}-process-ocr-vpc-exec",
                 role=process_ocr_role.name,
                 policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole",
                 opts=ResourceOptions(parent=self),
