@@ -326,3 +326,79 @@ def process_metadata_updates(
             results.append(result)
 
     return results
+
+
+def apply_metadata_updates_in_memory(
+    chroma_client: ChromaDBClient,
+    metadata_updates: List[Any],
+    collection: ChromaDBCollection,
+    logger: Any,
+    metrics: Any = None,
+    OBSERVABILITY_AVAILABLE: bool = False,
+    get_dynamo_client_func: Any = None,
+) -> List[MetadataUpdateResult]:
+    """Apply metadata updates to an already-open ChromaDB client without S3 I/O.
+
+    Returns results; caller is responsible for S3 publish/pointer.
+    """
+    results: List[MetadataUpdateResult] = []
+    database = collection.value
+    try:
+        collection_obj = chroma_client.get_collection(database)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Collection not found", database=database, error=str(e))
+        return results
+
+    for update_msg in metadata_updates:
+        try:
+            entity_data = update_msg.entity_data
+            changes = update_msg.changes
+            event_name = update_msg.event_name
+            image_id = entity_data["image_id"]
+            receipt_id = entity_data["receipt_id"]
+
+            if event_name == "REMOVE":
+                updated_count = remove_receipt_metadata(
+                    collection_obj,
+                    image_id,
+                    receipt_id,
+                    logger,
+                    metrics,
+                    OBSERVABILITY_AVAILABLE,
+                    get_dynamo_client_func,
+                )
+            else:
+                updated_count = update_receipt_metadata(
+                    collection_obj,
+                    image_id,
+                    receipt_id,
+                    changes,
+                    logger,
+                    metrics,
+                    OBSERVABILITY_AVAILABLE,
+                    get_dynamo_client_func,
+                )
+
+            results.append(
+                MetadataUpdateResult(
+                    database=database,
+                    collection=database,
+                    updated_count=updated_count,
+                    image_id=image_id,
+                    receipt_id=receipt_id,
+                )
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.error("Error processing metadata update", error=str(e))
+            results.append(
+                MetadataUpdateResult(
+                    database=database,
+                    collection=database,
+                    updated_count=0,
+                    image_id=entity_data.get("image_id", "unknown"),
+                    receipt_id=entity_data.get("receipt_id", 0),
+                    error=str(e),
+                )
+            )
+
+    return results
