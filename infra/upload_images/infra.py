@@ -505,7 +505,7 @@ class UploadImages(ComponentResource):
             dockerfile_path="infra/upload_images/container_ocr/Dockerfile",
             build_context_path=".",  # Project root for monorepo access
             source_paths=["receipt_upload"],  # Include receipt_upload package (only needed for this Lambda)
-            lambda_function_name=f"{name}-{stack}-process-ocr-results",
+            # lambda_function_name=f"{name}-{stack}-process-ocr-results",  # Let Pulumi manage Lambda config
             lambda_config=process_ocr_lambda_config,
             platform="linux/arm64",
             opts=ResourceOptions(parent=self, depends_on=[process_ocr_role]),
