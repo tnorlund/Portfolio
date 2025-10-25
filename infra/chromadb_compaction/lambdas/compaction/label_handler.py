@@ -312,3 +312,83 @@ def process_label_updates(
             shutil.rmtree(temp_dir, ignore_errors=True)
 
     return results
+
+
+def apply_label_updates_in_memory(
+    chroma_client: ChromaDBClient,
+    label_updates: List[Any],
+    collection: ChromaDBCollection,
+    logger: Any,
+    metrics: Any = None,
+    OBSERVABILITY_AVAILABLE: bool = False,
+    get_dynamo_client_func: Any = None,
+) -> List[LabelUpdateResult]:
+    """Apply label updates to an already-open ChromaDB client without S3 I/O.
+
+    Returns results; caller is responsible for S3 publish/pointer.
+    """
+    results: List[LabelUpdateResult] = []
+    database = collection.value
+
+    try:
+        collection_obj = chroma_client.get_collection(database)
+    except Exception:  # noqa: BLE001
+        logger.warning("Collection not found for labels", collection=database)
+        return results
+
+    for update_msg in label_updates:
+        try:
+            entity_data = update_msg.entity_data
+            changes = update_msg.changes
+            event_name = update_msg.event_name
+
+            image_id = entity_data["image_id"]
+            receipt_id = entity_data["receipt_id"]
+            line_id = entity_data["line_id"]
+            word_id = entity_data["word_id"]
+            chromadb_id = (
+                f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}"
+            )
+
+            if event_name == "REMOVE":
+                updated_count = remove_word_labels(
+                    collection_obj,
+                    chromadb_id,
+                    logger,
+                    metrics,
+                    OBSERVABILITY_AVAILABLE,
+                )
+            else:
+                updated_count = update_word_labels(
+                    collection_obj,
+                    chromadb_id,
+                    changes,
+                    update_msg.record_snapshot,
+                    entity_data,
+                    logger,
+                    metrics,
+                    OBSERVABILITY_AVAILABLE,
+                    get_dynamo_client_func,
+                )
+
+            results.append(
+                LabelUpdateResult(
+                    chromadb_id=chromadb_id,
+                    updated_count=updated_count,
+                    event_name=event_name,
+                    changes=list(changes.keys()) if changes else [],
+                )
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.error("Error processing label update", error=str(e))
+            results.append(
+                LabelUpdateResult(
+                    chromadb_id="unknown",
+                    updated_count=0,
+                    event_name="unknown",
+                    changes=[],
+                    error=str(e),
+                )
+            )
+
+    return results

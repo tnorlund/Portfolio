@@ -19,7 +19,9 @@ from .message_builder import (
 
 from .metadata_handler import process_metadata_updates
 from .label_handler import process_label_updates
-from .compaction_run import process_compaction_run_messages
+from .compaction_run import process_compaction_run_messages, merge_compaction_deltas
+from .metadata_handler import apply_metadata_updates_in_memory
+from .label_handler import apply_label_updates_in_memory
 from .operations import (
     update_receipt_metadata,
     remove_receipt_metadata,
@@ -44,6 +46,9 @@ __all__ = [
     "process_metadata_updates",
     "process_label_updates", 
     "process_compaction_run_messages",
+    "merge_compaction_deltas",
+    "apply_metadata_updates_in_memory",
+    "apply_label_updates_in_memory",
     
     # ChromaDB operations
     "update_receipt_metadata",
