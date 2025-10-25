@@ -478,6 +478,13 @@ def process_stream_messages(
             
             # EFS case continues with ChromaDB operations and upload (lock already held)
             
+            except Exception as e:
+                logger.error("Failed during EFS setup", error=str(e), collection=collection.value)
+                failed_receipt_handles.extend(
+                    [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
+                )
+                continue
+            
         else:
             logger.info("Using S3-only approach", collection=collection.value)
             # Fallback to S3-only approach
