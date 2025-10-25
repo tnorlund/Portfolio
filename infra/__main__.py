@@ -142,7 +142,7 @@ chromadb_infrastructure = create_chromadb_compaction_infrastructure(
     chromadb_buckets=shared_chromadb_buckets,
     base_images=base_images,
     vpc_id=public_vpc.vpc_id,
-    subnet_ids=public_vpc.public_subnet_ids,
+    subnet_ids=Output.all(public_vpc.public_subnet_ids, nat.private_subnet_ids).apply(lambda args: args[0] + args[1]),  # Both public and private subnets
     lambda_security_group_id=security.sg_lambda_id,
 )
 
@@ -304,7 +304,7 @@ upload_images = UploadImages(
     site_bucket=site_bucket,
     chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
     embed_ndjson_queue_url=None,  # Will use internal queue
-    vpc_subnet_ids=public_vpc.public_subnet_ids,  # Use same subnets as compaction lambda for EFS access
+    vpc_subnet_ids=nat.private_subnet_ids,  # Use private subnets for internet access via NAT instance
     security_group_id=security.sg_lambda_id,
     chroma_http_endpoint=chroma_service.endpoint_dns,
     ecs_cluster_arn=chroma_service.cluster.arn,
