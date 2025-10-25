@@ -268,6 +268,87 @@ def process_compaction_runs(
     return results
 
 
+def merge_compaction_deltas(
+    chroma_client: "ChromaDBClient",
+    compaction_runs: List[Any],
+    collection: ChromaDBCollection,
+    logger: Any,
+) -> int:
+    """Merge multiple delta tarballs into an already-open Chroma snapshot client.
+
+    Returns total vectors merged.
+    """
+    import tempfile
+    import os
+    import tarfile
+    import boto3
+
+    if not compaction_runs:
+        return 0
+
+    bucket = os.environ["CHROMADB_BUCKET"]
+    s3 = boto3.client("s3")
+
+    total_merged = 0
+
+    with tempfile.TemporaryDirectory() as workdir:
+        for msg in compaction_runs:
+            try:
+                entity = getattr(msg, "entity_data", {}) or {}
+                delta_prefix = entity.get("delta_s3_prefix")
+                # If not provided on message, skip (Phase A shouldn't fetch Dynamo)
+                if not delta_prefix:
+                    logger.warning("Skipping compaction run without delta prefix")
+                    continue
+
+                tar_key = f"{delta_prefix.rstrip('/')}/delta.tar.gz"
+                tar_path = os.path.join(workdir, "delta.tar.gz")
+                try:
+                    s3.download_file(bucket, tar_key, tar_path)
+                except Exception as e:  # noqa: BLE001
+                    logger.error("Failed to download delta tarball", error=str(e), key=tar_key)
+                    continue
+
+                delta_dir = os.path.join(workdir, "delta")
+                os.makedirs(delta_dir, exist_ok=True)
+                try:
+                    with tarfile.open(tar_path, "r:gz") as tar:
+                        tar.extractall(delta_dir)
+                except Exception as e:  # noqa: BLE001
+                    logger.error("Failed to extract delta tarball", error=str(e))
+                    continue
+
+                try:
+                    collection_name = collection.value
+                    delta_client = ChromaDBClient(persist_directory=delta_dir, mode="read")
+                    try:
+                        src = delta_client.get_collection(collection_name)
+                        data = src.get(include=["documents", "embeddings", "metadatas"])
+                        ids = data.get("ids", []) or []
+                        if ids:
+                            chroma_client.upsert_vectors(
+                                collection_name=collection_name,
+                                ids=ids,
+                                embeddings=data.get("embeddings"),
+                                documents=data.get("documents"),
+                                metadatas=data.get("metadatas"),
+                            )
+                            total_merged += len(ids)
+                    except Exception as e:  # noqa: BLE001
+                        logger.info(
+                            "Delta has no collection or failed to read",
+                            collection=collection_name,
+                            error=str(e),
+                        )
+                except Exception as e:  # noqa: BLE001
+                    logger.error("Failed merging delta into snapshot", error=str(e))
+                    continue
+            except Exception as e:  # noqa: BLE001
+                logger.error("Failed processing compaction run", error=str(e))
+                continue
+
+    return total_merged
+
 def process_compaction_run_messages(
     compaction_runs: List[Any],  # StreamMessage type
     collection: ChromaDBCollection,
