@@ -577,11 +577,27 @@ def process_stream_messages(
                     if up.get("status") == "uploaded":
                         published = True
                         
-                        # If using EFS, start background sync
+                        # If using EFS, update EFS with the modified snapshot
                         if use_efs:
                             new_version = up.get("version_id")
                             if new_version:
-                                efs_manager.sync_to_s3_async(new_version, snapshot_path)
+                                # Copy the updated local snapshot back to EFS
+                                efs_snapshot_path = os.path.join(efs_manager.efs_snapshots_dir, new_version)
+                                if os.path.exists(efs_snapshot_path):
+                                    shutil.rmtree(efs_snapshot_path)
+                                
+                                copy_start_time = time.time()
+                                shutil.copytree(snapshot_path, efs_snapshot_path)
+                                copy_time_ms = (time.time() - copy_start_time) * 1000
+                                
+                                logger.info(
+                                    "Updated EFS snapshot",
+                                    collection=collection.value,
+                                    version=new_version,
+                                    efs_path=efs_snapshot_path,
+                                    copy_time_ms=copy_time_ms
+                                )
+                                
                                 efs_manager.cleanup_old_snapshots()
                         
                         break
