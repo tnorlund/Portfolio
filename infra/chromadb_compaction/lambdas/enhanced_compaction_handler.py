@@ -405,47 +405,74 @@ def process_stream_messages(
         
         if use_efs:
             logger.info("Using EFS + S3 hybrid approach", collection=collection.value)
-            # Use EFS + S3 hybrid approach
+            # Use EFS + S3 hybrid approach with extended locking
             efs_manager = get_efs_snapshot_manager(collection.value, logger, metrics)
             
-            # Get latest version from S3
-            latest_version = efs_manager.get_latest_s3_version()
-            if not latest_version:
-                logger.error("Failed to get latest S3 version", collection=collection.value)
-                failed_receipt_handles.extend(
-                    [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
-                )
-                continue
-            
-            # Ensure snapshot is available on EFS
-            snapshot_result = efs_manager.ensure_snapshot_available(latest_version)
-            if snapshot_result["status"] != "available":
-                logger.error("Failed to ensure snapshot availability", result=snapshot_result)
-                failed_receipt_handles.extend(
-                    [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
-                )
-                continue
-            
-            # Copy from EFS to local storage for better ChromaDB performance
-            efs_snapshot_path = snapshot_result["efs_path"]
-            local_snapshot_path = tempfile.mkdtemp()
-            
-            copy_start_time = time.time()
-            shutil.copytree(efs_snapshot_path, local_snapshot_path, dirs_exist_ok=True)
-            copy_time_ms = (time.time() - copy_start_time) * 1000
-            
-            snapshot_path = local_snapshot_path
-            expected_pointer = latest_version
-            
-            logger.info(
-                "Using EFS snapshot (copied to local)",
-                collection=collection.value,
-                version=latest_version,
-                efs_path=efs_snapshot_path,
-                local_path=local_snapshot_path,
-                copy_time_ms=copy_time_ms,
-                source=snapshot_result.get("source", "unknown")
+            # Phase A: Acquire lock BEFORE any EFS operations to prevent race conditions
+            lock_id = f"chroma-{collection.value}-update"
+            lm = LockManager(
+                get_dynamo_client(),
+                collection=collection,
+                heartbeat_interval=heartbeat_interval,
+                lock_duration_minutes=lock_duration_minutes,
+                max_heartbeat_failures=max_heartbeat_failures,
             )
+            
+            if not lm.acquire(lock_id):
+                logger.info(
+                    "Lock busy, skipping EFS processing",
+                    collection=collection.value,
+                    message_count=len(msgs)
+                )
+                # Mark messages as failed for partial retry
+                failed_receipt_handles.extend(
+                    [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
+                )
+                continue
+            
+            try:
+                lm.start_heartbeat()
+                
+                # Get latest version from S3 (under lock)
+                latest_version = efs_manager.get_latest_s3_version()
+                if not latest_version:
+                    logger.error("Failed to get latest S3 version", collection=collection.value)
+                    failed_receipt_handles.extend(
+                        [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
+                    )
+                    continue
+                
+                # Ensure snapshot is available on EFS (under lock)
+                snapshot_result = efs_manager.ensure_snapshot_available(latest_version)
+                if snapshot_result["status"] != "available":
+                    logger.error("Failed to ensure snapshot availability", result=snapshot_result)
+                    failed_receipt_handles.extend(
+                        [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
+                    )
+                    continue
+                
+                # Copy from EFS to local storage for better ChromaDB performance (under lock)
+                efs_snapshot_path = snapshot_result["efs_path"]
+                local_snapshot_path = tempfile.mkdtemp()
+                
+                copy_start_time = time.time()
+                shutil.copytree(efs_snapshot_path, local_snapshot_path, dirs_exist_ok=True)
+                copy_time_ms = (time.time() - copy_start_time) * 1000
+                
+                snapshot_path = local_snapshot_path
+                expected_pointer = latest_version
+                
+                logger.info(
+                    "Using EFS snapshot (copied to local)",
+                    collection=collection.value,
+                    version=latest_version,
+                    efs_path=efs_snapshot_path,
+                    local_path=local_snapshot_path,
+                    copy_time_ms=copy_time_ms,
+                    source=snapshot_result.get("source", "unknown")
+                )
+            
+            # EFS case continues with ChromaDB operations and upload (lock already held)
             
         else:
             logger.info("Using S3-only approach", collection=collection.value)
@@ -547,6 +574,7 @@ def process_stream_messages(
                     lm.start_heartbeat()
                     # CAS: re-read pointer and compare
                     pointer_key = f"{collection.value}/snapshot/latest-pointer.txt"
+                    bucket = os.environ["CHROMADB_BUCKET"]
                     try:
                         resp = s3_client.get_object(Bucket=bucket, Key=pointer_key)
                         current_pointer = resp["Body"].read().decode("utf-8").strip()
@@ -618,9 +646,10 @@ def process_stream_messages(
                 )
                 continue
         finally:
-            # Only cleanup temp directory if we created one (S3-only mode)
-            if not use_efs and 'temp_dir' in locals():
-                import shutil
+            # Cleanup temp directories
+            if use_efs and 'local_snapshot_path' in locals():
+                shutil.rmtree(local_snapshot_path, ignore_errors=True)
+            elif not use_efs and 'temp_dir' in locals():
                 shutil.rmtree(temp_dir, ignore_errors=True)
 
     if failed_receipt_handles:
