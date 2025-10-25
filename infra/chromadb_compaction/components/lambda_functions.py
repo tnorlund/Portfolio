@@ -155,7 +155,22 @@ class HybridLambdaDeployment(ComponentResource):
                     "LOCK_DURATION_MINUTES": "3",
                     "MAX_HEARTBEAT_FAILURES": "3",
                     "LOG_LEVEL": "INFO",
-                }
+                    "CHROMA_ROOT": "/mnt/chroma" if efs_access_point_arn else "/tmp/chroma",
+                    # Disable custom CloudWatch metrics while Lambda runs in a VPC
+                    # without NAT or VPC Interface Endpoints for CloudWatch Monitoring.
+                    # This avoids outbound network timeouts from the heartbeat/metrics
+                    # thread (ConnectTimeout to monitoring.us-east-1.amazonaws.com).
+                    # Re-enable by setting to "true" once endpoints/NAT are configured.
+                    "ENABLE_METRICS": "false",
+                },
+                "vpc_config": {
+                    "subnet_ids": vpc_subnet_ids,
+                    "security_group_ids": [lambda_security_group_id],
+                },
+                "file_system_config": {
+                    "arn": efs_access_point_arn,
+                    "local_mount_path": "/mnt/chroma",
+                } if efs_access_point_arn else None,
             },
             opts=ResourceOptions(parent=self, depends_on=[self.lambda_role]),
         )
@@ -361,78 +376,10 @@ class HybridLambdaDeployment(ComponentResource):
             ),
         )
 
-        # Optional VPC config and EFS mount for both functions
-        vpc_cfg = None
-        file_system_cfg = None
-        if vpc_subnet_ids and lambda_security_group_id:
-            vpc_cfg = aws.lambda_.FunctionVpcConfigArgs(
-                subnet_ids=vpc_subnet_ids,
-                security_group_ids=[lambda_security_group_id],
-            )
-            if efs_access_point_arn:
-                file_system_cfg = aws.lambda_.FunctionFileSystemConfigArgs(
-                    arn=efs_access_point_arn,
-                    local_mount_path="/mnt/chroma",
-                )
+        # VPC and EFS configuration is now handled in lambda_config
 
-        # Create container-based Lambda for enhanced compaction
-        self.enhanced_compaction_function = aws.lambda_.Function(
-            f"{name}-enhanced-compaction",
-            package_type="Image",
-            image_uri=self.docker_image.image_uri,
-            role=self.lambda_role.arn,
-            timeout=900,  # 15 minutes for compaction operations
-            memory_size=2048,  # Increased memory for ChromaDB label operations (was failing with 1024MB)
-            ephemeral_storage={
-                "size": 5120
-            },  # 5GB for ChromaDB snapshots and temp files
-            reserved_concurrent_executions=10,  # Prevent throttling with batch processing
-            architectures=["arm64"],
-            vpc_config=vpc_cfg,
-            file_system_config=file_system_cfg,
-            environment={
-                "variables": {
-                    "DYNAMODB_TABLE_NAME": Output.all(
-                        dynamodb_table_arn
-                    ).apply(lambda args: args[0].split("/")[-1]),
-                    "CHROMADB_BUCKET": chromadb_buckets.bucket_name,
-                    "LINES_QUEUE_URL": chromadb_queues.lines_queue_url,
-                    "WORDS_QUEUE_URL": chromadb_queues.words_queue_url,
-                    "HEARTBEAT_INTERVAL_SECONDS": "30",
-                    "LOCK_DURATION_MINUTES": "3",
-                    "MAX_HEARTBEAT_FAILURES": "3",
-                    "LOG_LEVEL": "INFO",
-                    "CHROMA_ROOT": "/mnt/chroma" if efs_access_point_arn else "/tmp/chroma",
-                    # Disable custom CloudWatch metrics while Lambda runs in a VPC
-                    # without NAT or VPC Interface Endpoints for CloudWatch Monitoring.
-                    # This avoids outbound network timeouts from the heartbeat/metrics
-                    # thread (ConnectTimeout to monitoring.us-east-1.amazonaws.com).
-                    # Re-enable by setting to "true" once endpoints/NAT are configured.
-                    "ENABLE_METRICS": "false",
-                }
-            },
-            description=(
-                "Enhanced ChromaDB compaction handler for stream and "
-                "delta message processing"
-            ),
-            tags={
-                "Project": "ChromaDB",
-                "Component": "EnhancedCompaction",
-                "Environment": stack,
-                "ManagedBy": "Pulumi",
-            },
-            opts=ResourceOptions(
-                parent=self,
-                depends_on=[
-                    self.lambda_role,
-                    self.docker_image,
-                    self.compaction_log_group,
-                ],
-                ignore_changes=["layers"],
-            ),
-        )
-
-        # Note: VPC and EFS config is passed during creation above; avoid post-creation mutation
+        # Use the Lambda function created by DockerImageComponent
+        self.enhanced_compaction_function = self.docker_image.docker_image.lambda_function
 
         # Create event source mappings
         self._create_event_source_mappings(
