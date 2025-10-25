@@ -178,9 +178,10 @@ def get_dynamo_client():
 
 
 # Get configuration from environment
-heartbeat_interval = int(os.environ.get("HEARTBEAT_INTERVAL_SECONDS", "30"))
-lock_duration_minutes = int(os.environ.get("LOCK_DURATION_MINUTES", "3"))
-max_heartbeat_failures = int(os.environ.get("MAX_HEARTBEAT_FAILURES", "3"))
+# Optimized lock parameters for performance
+heartbeat_interval = int(os.environ.get("HEARTBEAT_INTERVAL_SECONDS", "120"))  # 2 minutes (reduced frequency)
+lock_duration_minutes = int(os.environ.get("LOCK_DURATION_MINUTES", "1"))      # 1 minute (reduced duration)
+max_heartbeat_failures = int(os.environ.get("MAX_HEARTBEAT_FAILURES", "2"))     # 2 failures (faster recovery)
 compaction_queue_url = os.environ.get("COMPACTION_QUEUE_URL", "")
 
 
@@ -405,10 +406,10 @@ def process_stream_messages(
         
         if use_efs:
             logger.info("Using EFS + S3 hybrid approach", collection=collection.value)
-            # Use EFS + S3 hybrid approach with extended locking
+            # Use EFS + S3 hybrid approach with optimized locking
             efs_manager = get_efs_snapshot_manager(collection.value, logger, metrics)
             
-            # Phase A: Acquire lock BEFORE any EFS operations to prevent race conditions
+            # Phase A: Optimized lock strategy - minimal lock time
             lock_id = f"chroma-{collection.value}-update"
             lm = LockManager(
                 get_dynamo_client(),
@@ -418,13 +419,13 @@ def process_stream_messages(
                 max_heartbeat_failures=max_heartbeat_failures,
             )
             
+            # Step 1: Quick lock check (non-blocking)
             if not lm.acquire(lock_id):
                 logger.info(
                     "Lock busy, skipping EFS processing",
                     collection=collection.value,
                     message_count=len(msgs)
                 )
-                # Mark messages as failed for partial retry
                 failed_receipt_handles.extend(
                     [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
                 )
@@ -433,7 +434,7 @@ def process_stream_messages(
             try:
                 lm.start_heartbeat()
                 
-                # Get latest version from S3 (under lock)
+                # Step 2: Get latest version and ensure EFS availability (under lock)
                 latest_version = efs_manager.get_latest_s3_version()
                 if not latest_version:
                     logger.error("Failed to get latest S3 version", collection=collection.value)
@@ -442,7 +443,6 @@ def process_stream_messages(
                     )
                     continue
                 
-                # Ensure snapshot is available on EFS (under lock)
                 snapshot_result = efs_manager.ensure_snapshot_available(latest_version)
                 if snapshot_result["status"] != "available":
                     logger.error("Failed to ensure snapshot availability", result=snapshot_result)
@@ -451,7 +451,11 @@ def process_stream_messages(
                     )
                     continue
                 
-                # Copy from EFS to local storage for better ChromaDB performance (under lock)
+                # Step 3: Release lock for heavy I/O operations
+                lm.stop_heartbeat()
+                lm.release()
+                
+                # Step 4: Perform heavy operations off-lock
                 efs_snapshot_path = snapshot_result["efs_path"]
                 local_snapshot_path = tempfile.mkdtemp()
                 
@@ -544,69 +548,64 @@ def process_stream_messages(
                     r.updated_count for r in lb_results if getattr(r, "error", None) is None
                 )
 
-            # Phase B: short publish with lock + CAS
-            backoff_attempts = [0.15, 0.3]  # seconds
+            # Phase B: Optimized upload with minimal lock time
             published = False
             import boto3 as _boto
             s3_client = _boto.client("s3")
-
-            for attempt_idx, delay in enumerate(backoff_attempts, start=1):
-                lock_id = f"chroma-{collection.value}-update"
-                lm = LockManager(
-                    get_dynamo_client(),
-                    collection=collection,
-                    heartbeat_interval=heartbeat_interval,
-                    lock_duration_minutes=lock_duration_minutes,
-                    max_heartbeat_failures=max_heartbeat_failures,
-                )
-
-                if not lm.acquire(lock_id):
-                    logger.info(
-                        "Lock busy, backing off",
-                        collection=collection.value,
-                        attempt=attempt_idx,
-                        delay_ms=int(delay * 1000),
-                    )
-                    time.sleep(delay)
-                    continue
-
-                try:
-                    lm.start_heartbeat()
-                    # CAS: re-read pointer and compare
-                    pointer_key = f"{collection.value}/snapshot/latest-pointer.txt"
-                    bucket = os.environ["CHROMADB_BUCKET"]
-                    try:
-                        resp = s3_client.get_object(Bucket=bucket, Key=pointer_key)
-                        current_pointer = resp["Body"].read().decode("utf-8").strip()
-                    except Exception:
-                        current_pointer = "latest-direct"
-
-                    if expected_pointer and current_pointer != expected_pointer:
+            
+            if use_efs:
+                # EFS case: Re-acquire lock only for critical S3 operations
+                backoff_attempts = [0.1, 0.2]  # Shorter backoff for EFS case
+                
+                for attempt_idx, delay in enumerate(backoff_attempts, start=1):
+                    if not lm.acquire(lock_id):
                         logger.info(
-                            "Pointer drift detected, will retry",
+                            "Lock busy during upload, backing off",
                             collection=collection.value,
-                            expected=expected_pointer,
-                            current=current_pointer,
+                            attempt=attempt_idx,
+                            delay_ms=int(delay * 1000),
                         )
-                        # Back off and retry
                         time.sleep(delay)
                         continue
-
-                    up = upload_snapshot_atomic(
-                        local_path=snapshot_path,
-                        bucket=bucket,
-                        collection=collection.value,
-                        lock_manager=lm,
-                        metadata={
-                            "update_type": "batch_compaction",
-                            "expected_pointer": expected_pointer or "",
-                        },
-                    )
-                    if up.get("status") == "uploaded":
-                        published = True
+                    
+                    try:
+                        lm.start_heartbeat()
                         
-                        # If using EFS, update EFS with the modified snapshot
-                        if use_efs:
+                        # CAS: re-read pointer and compare
+                        pointer_key = f"{collection.value}/snapshot/latest-pointer.txt"
+                        bucket = os.environ["CHROMADB_BUCKET"]
+                        try:
+                            resp = s3_client.get_object(Bucket=bucket, Key=pointer_key)
+                            current_pointer = resp["Body"].read().decode("utf-8").strip()
+                        except Exception:
+                            current_pointer = "latest-direct"
+
+                        if expected_pointer and current_pointer != expected_pointer:
+                            logger.info(
+                                "Pointer drift detected, skipping upload",
+                                collection=collection.value,
+                                expected=expected_pointer,
+                                current=current_pointer,
+                            )
+                            failed_receipt_handles.extend(
+                                [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
+                            )
+                            break
+
+                        up = upload_snapshot_atomic(
+                            local_path=snapshot_path,
+                            bucket=bucket,
+                            collection=collection.value,
+                            lock_manager=lm,
+                            metadata={
+                                "update_type": "batch_compaction",
+                                "expected_pointer": expected_pointer or "",
+                            },
+                        )
+                        if up.get("status") == "uploaded":
+                            published = True
+                            
+                            # Update EFS with the modified snapshot (off-lock)
                             new_version = up.get("version_id")
                             if new_version:
                                 # Copy the updated local snapshot back to EFS
@@ -627,17 +626,84 @@ def process_stream_messages(
                                 )
                                 
                                 efs_manager.cleanup_old_snapshots()
-                        
-                        break
-                    else:
-                        logger.error("Snapshot upload failed", result=up)
+                            break
+                        else:
+                            logger.error("Snapshot upload failed", result=up)
+                            time.sleep(delay)
+                            continue
+                    finally:
+                        try:
+                            lm.stop_heartbeat()
+                        finally:
+                            lm.release()
+            else:
+                # S3-only case: Standard lock acquisition
+                backoff_attempts = [0.15, 0.3]  # seconds
+                
+                for attempt_idx, delay in enumerate(backoff_attempts, start=1):
+                    lock_id = f"chroma-{collection.value}-update"
+                    lm = LockManager(
+                        get_dynamo_client(),
+                        collection=collection,
+                        heartbeat_interval=heartbeat_interval,
+                        lock_duration_minutes=lock_duration_minutes,
+                        max_heartbeat_failures=max_heartbeat_failures,
+                    )
+
+                    if not lm.acquire(lock_id):
+                        logger.info(
+                            "Lock busy, backing off",
+                            collection=collection.value,
+                            attempt=attempt_idx,
+                            delay_ms=int(delay * 1000),
+                        )
                         time.sleep(delay)
                         continue
-                finally:
+
                     try:
-                        lm.stop_heartbeat()
+                        lm.start_heartbeat()
+                        # CAS: re-read pointer and compare
+                        pointer_key = f"{collection.value}/snapshot/latest-pointer.txt"
+                        bucket = os.environ["CHROMADB_BUCKET"]
+                        try:
+                            resp = s3_client.get_object(Bucket=bucket, Key=pointer_key)
+                            current_pointer = resp["Body"].read().decode("utf-8").strip()
+                        except Exception:
+                            current_pointer = "latest-direct"
+
+                        if expected_pointer and current_pointer != expected_pointer:
+                            logger.info(
+                                "Pointer drift detected, will retry",
+                                collection=collection.value,
+                                expected=expected_pointer,
+                                current=current_pointer,
+                            )
+                            # Back off and retry
+                            time.sleep(delay)
+                            continue
+
+                        up = upload_snapshot_atomic(
+                            local_path=snapshot_path,
+                            bucket=bucket,
+                            collection=collection.value,
+                            lock_manager=lm,
+                            metadata={
+                                "update_type": "batch_compaction",
+                                "expected_pointer": expected_pointer or "",
+                            },
+                        )
+                        if up.get("status") == "uploaded":
+                            published = True
+                            break
+                        else:
+                            logger.error("Snapshot upload failed", result=up)
+                            time.sleep(delay)
+                            continue
                     finally:
-                        lm.release()
+                        try:
+                            lm.stop_heartbeat()
+                        finally:
+                            lm.release()
 
             if not published:
                 # Mark this collection's messages as failed for partial retry
