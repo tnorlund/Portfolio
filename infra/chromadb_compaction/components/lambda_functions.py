@@ -130,7 +130,7 @@ class HybridLambdaDeployment(ComponentResource):
             f"{name}-docker",
             lambda_config={
                 "role_arn": self.lambda_role.arn,
-                    "timeout": 60,  # Reduced from 900 to prevent expensive CloudWatch log bloat from EFS timeouts
+                    "timeout": 300,  # 5 minutes should be enough with Elastic throughput. Can reduce if Elastic proves faster
                 "memory_size": 2048,
                 "ephemeral_storage": 5120,  # 5GB for ChromaDB snapshots
                 "reserved_concurrent_executions": 10,  # Prevent throttling
@@ -160,7 +160,7 @@ class HybridLambdaDeployment(ComponentResource):
                     # - "auto": Use EFS if available, fallback to S3
                     # - "s3": Force S3-only mode (ignore EFS)
                     # - "efs": Force EFS mode (fail if EFS not available)
-                    "CHROMADB_STORAGE_MODE": "s3",  # Force S3-only to prevent EFS timeout issues and CloudWatch cost bloat
+                    "CHROMADB_STORAGE_MODE": "auto",  # Use EFS if available, fallback to S3. Elastic throughput should handle fast copies now
                     # Disable custom CloudWatch metrics while Lambda runs in a VPC
                     # without NAT or VPC Interface Endpoints for CloudWatch Monitoring.
                     # This avoids outbound network timeouts from the heartbeat/metrics
