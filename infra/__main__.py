@@ -250,14 +250,15 @@ logs_interface_endpoint = aws.ec2.VpcEndpoint(
     private_dns_enabled=True,
 )
 
-# SQS Interface Endpoint for cost-effective SQS access from public subnets
-# Enables upload lambda to use EFS (public subnets) while accessing SQS without internet
+# SQS Interface Endpoint for cost-effective SQS access from both public and private subnets
+# Enables upload lambda to use EFS (private subnets) while accessing SQS without internet
+# Note: Only use first private subnet since both are in same AZ (us-east-1f)
 sqs_interface_endpoint = aws.ec2.VpcEndpoint(
     f"sqs-interface-{pulumi.get_stack()}",
     vpc_id=public_vpc.vpc_id,
     service_name=f"com.amazonaws.{aws.config.region}.sqs",
     vpc_endpoint_type="Interface",
-    subnet_ids=public_vpc.public_subnet_ids,
+    subnet_ids=Output.all(public_vpc.public_subnet_ids, nat.private_subnet_ids).apply(lambda args: args[0] + [args[1][0]]),  # Public subnets + first private subnet only
     security_group_ids=[security.sg_vpce_id],
     private_dns_enabled=True,
 )
