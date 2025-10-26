@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1
 # Multi-stage build for ChromaDB Compaction Lambda
+# Updated to fix compaction package import issues
 
 # Stage 1: Build and install dependencies (cached layer)
 FROM public.ecr.aws/lambda/python:3.12 AS dependencies
