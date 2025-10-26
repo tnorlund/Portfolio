@@ -301,8 +301,8 @@ class UploadImages(ComponentResource):
                 f"{name}-process-ocr-vpc-exec",
                 role=process_ocr_role.name,
                 policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole",
-                opts=ResourceOptions(parent=self),
-            )
+            opts=ResourceOptions(parent=self),
+        )
 
         # Add DynamoDB access for the process OCR Lambda
         RolePolicy(
@@ -487,7 +487,7 @@ class UploadImages(ComponentResource):
                 "OPENAI_API_KEY": openai_api_key,
                 # EFS configuration for ChromaDB read-only access
                 "CHROMA_ROOT": "/mnt/chroma" if efs_access_point_arn else "/tmp/chroma",
-                "CHROMADB_STORAGE_MODE": "auto",  # Use EFS if available, fallback to S3
+                "CHROMADB_STORAGE_MODE": "auto",  # Use EFS if available, fallback to S3 (debugging EFS access)
             },
             "vpc_config": {
                 "subnet_ids": vpc_subnet_ids,

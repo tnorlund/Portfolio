@@ -45,8 +45,47 @@ class UploadEFSSnapshotManager:
         # Version tracking file
         self.version_file = os.path.join(self.efs_snapshots_dir, ".version")
         
-        # Ensure EFS directories exist
-        os.makedirs(self.efs_snapshots_dir, exist_ok=True)
+        # Debug EFS access with detailed logging
+        self.logger.info(f"Initializing EFS snapshot manager for {collection}")
+        self.logger.info(f"EFS root path: {self.efs_root}")
+        self.logger.info(f"EFS snapshots dir: {self.efs_snapshots_dir}")
+        
+        # Test EFS access
+        try:
+            # Check if EFS mount point exists
+            self.logger.info(f"Checking if EFS mount point exists: {self.efs_root}")
+            if os.path.exists(self.efs_root):
+                self.logger.info(f"EFS mount point exists: {self.efs_root}")
+                
+                # Try to list directory
+                try:
+                    contents = os.listdir(self.efs_root)
+                    self.logger.info(f"EFS root directory contents: {contents}")
+                except Exception as e:
+                    self.logger.error(f"Failed to list EFS root directory: {e}")
+                    raise
+                
+                # Try to create test file
+                try:
+                    test_file = os.path.join(self.efs_root, ".test_write")
+                    with open(test_file, 'w') as f:
+                        f.write("test")
+                    os.remove(test_file)
+                    self.logger.info("EFS write test successful")
+                except Exception as e:
+                    self.logger.error(f"EFS write test failed: {e}")
+                    raise
+            else:
+                self.logger.error(f"EFS mount point does not exist: {self.efs_root}")
+            
+            # Ensure EFS directories exist
+            self.logger.info(f"Creating EFS snapshots directory: {self.efs_snapshots_dir}")
+            os.makedirs(self.efs_snapshots_dir, exist_ok=True)
+            self.logger.info(f"EFS snapshots directory created/verified")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to initialize EFS access: {e}")
+            raise
     
     def get_current_efs_version(self) -> Optional[str]:
         """Get the current snapshot version stored on EFS."""
