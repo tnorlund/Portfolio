@@ -56,12 +56,14 @@ class ChromaEfs(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # EFS filesystem
+        # EFS filesystem with Elastic throughput for faster ChromaDB snapshot copies
+        # Elastic mode auto-scales to 1000+ MiB/s and charges per GB transferred
+        # Much faster than bursting mode (50 MiB/s) for our ~3GB copies
         self.file_system = aws.efs.FileSystem(
             f"{name}-fs",
             encrypted=True,
             performance_mode="generalPurpose",
-            throughput_mode="bursting",
+            throughput_mode="elastic",
             tags={
                 "Name": f"{name}-fs",
                 "Environment": pulumi.get_stack(),
