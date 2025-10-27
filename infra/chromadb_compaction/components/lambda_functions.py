@@ -172,6 +172,7 @@ class HybridLambdaDeployment(ComponentResource):
                     "subnet_ids": vpc_subnet_ids,
                     "security_group_ids": [lambda_security_group_id],
                 },
+                # EFS mount enabled for networking
                 "file_system_config": {
                     "arn": efs_access_point_arn,
                     "local_mount_path": "/mnt/chroma",

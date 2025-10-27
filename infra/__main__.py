@@ -203,6 +203,17 @@ pulumi.export("nat_private_subnet_ids", nat.private_subnet_ids)
 
 # Create ChromaDB compaction infrastructure using shared bucket
 # Now that nat is defined, we can use both public and private subnets for EFS
+# Create EFS with mount targets in unique AZs only
+# EFS only allows one mount target per AZ, so we pass: 2 public subnets (different AZs) + first private subnet
+# The two private subnets are in the same AZ (us-east-1f), so we only use the first one
+unique_efs_subnets = Output.all(public_vpc.public_subnet_ids, nat.private_subnet_ids).apply(
+    lambda args: args[0] + [args[1][0]]  # Public subnets + first private subnet only
+)
+
+# Compaction lambda needs to be in private subnets for EFS access
+# (EFS mount target is in subnet-02f1818a1e813b126, which is the first private subnet)
+compaction_lambda_subnets = nat.private_subnet_ids  # Both private subnets for Lambda
+
 chromadb_infrastructure = create_chromadb_compaction_infrastructure(
     name=f"chromadb-{pulumi.get_stack()}",
     dynamodb_table_arn=dynamodb_table.arn,
@@ -210,7 +221,7 @@ chromadb_infrastructure = create_chromadb_compaction_infrastructure(
     chromadb_buckets=shared_chromadb_buckets,
     base_images=base_images,
     vpc_id=public_vpc.vpc_id,
-    subnet_ids=Output.all(public_vpc.public_subnet_ids, nat.private_subnet_ids).apply(lambda args: args[0] + args[1]),  # Both public and private subnets
+    subnet_ids=compaction_lambda_subnets,  # Private subnets only for Lambda
     lambda_security_group_id=security.sg_lambda_id,
 )
 
