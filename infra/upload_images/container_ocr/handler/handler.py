@@ -10,10 +10,12 @@ import json
 import logging
 import os
 import sys
+import time
 from typing import Any, Dict
 
 from .ocr_processor import OCRProcessor
 from .embedding_processor import EmbeddingProcessor
+from .metrics import metrics
 
 # Set up logging - use print for guaranteed output
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
@@ -36,19 +38,45 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             }]
         }
     """
-    _log(f"Processing {len(event.get('Records', []))} OCR records")
+    start_time = time.time()
+    record_count = len(event.get('Records', []))
+    
+    _log(f"Processing {record_count} OCR records")
+    metrics.gauge("UploadLambdaRecordsReceived", record_count)
     
     results = []
+    success_count = 0
+    error_count = 0
+    embedding_count = 0
+    
     for record in event.get("Records", []):
         try:
             result = _process_single_record(record)
             results.append(result)
+            
+            if result.get("success"):
+                success_count += 1
+                if result.get("embeddings_created"):
+                    embedding_count += 1
+            else:
+                error_count += 1
+                
         except Exception as e:
             _log(f"ERROR: Failed to process record: {e}")
             logger.error(f"Failed to process record: {e}", exc_info=True)
             results.append({"success": False, "error": str(e)})
+            error_count += 1
     
-    _log(f"Completed processing {len(results)} records")
+    # Record metrics
+    execution_time = time.time() - start_time
+    metrics.timer("UploadLambdaExecutionTime", execution_time, unit="Seconds")
+    metrics.count("UploadLambdaSuccess", success_count)
+    if error_count > 0:
+        metrics.count("UploadLambdaError", error_count)
+    if embedding_count > 0:
+        metrics.count("UploadLambdaEmbeddingsCreated", embedding_count)
+    
+    _log(f"Completed processing {len(results)} records (success: {success_count}, errors: {error_count}, embeddings: {embedding_count})")
     return {
         "statusCode": 200,
         "body": json.dumps({
@@ -77,13 +105,22 @@ def _process_single_record(record: Dict[str, Any]) -> Dict[str, Any]:
     )
     
     # Step 1: Process OCR (parse, classify, store in DynamoDB)
+    ocr_start = time.time()
     ocr_result = ocr_processor.process_ocr_job(image_id, job_id)
+    ocr_duration = time.time() - ocr_start
     
     if not ocr_result.get("success"):
         _log(f"ERROR: OCR processing failed: {ocr_result.get('error')}")
+        metrics.count("UploadLambdaOCRFailed", 1)
         return ocr_result
     
-    _log(f"OCR processing completed: image_type={ocr_result.get('image_type')}, receipt_id={ocr_result.get('receipt_id')}")
+    # Record metrics by image type
+    image_type = ocr_result.get("image_type", "unknown")
+    metrics.timer("UploadLambdaOCRDuration", ocr_duration, unit="Seconds", 
+                  dimensions={"image_type": image_type})
+    metrics.count("UploadLambdaOCRSuccess", 1, dimensions={"image_type": image_type})
+    
+    _log(f"OCR processing completed: image_type={image_type}, receipt_id={ocr_result.get('receipt_id')}")
     
     # Step 2: Validate merchant and create embeddings
     # Only process embeddings for:
@@ -101,6 +138,9 @@ def _process_single_record(record: Dict[str, Any]) -> Dict[str, Any]:
     if receipt_id is not None and image_type in ["NATIVE", "REFINEMENT"]:
         try:
             _log(f"Initializing embedding processor for {image_type} receipt (receipt_id={receipt_id})")
+            
+            embedding_start = time.time()
+            
             # Initialize embedding processor
             embedding_processor = EmbeddingProcessor(
                 table_name=os.environ["DYNAMO_TABLE_NAME"],
@@ -119,6 +159,15 @@ def _process_single_record(record: Dict[str, Any]) -> Dict[str, Any]:
                 lines=ocr_result.get("receipt_lines"),
                 words=ocr_result.get("receipt_words"),
             )
+            
+            embedding_duration = time.time() - embedding_start
+            
+            # Record metrics
+            metrics.timer("UploadLambdaEmbeddingDuration", embedding_duration, unit="Seconds",
+                         dimensions={"image_type": image_type})
+            metrics.count("UploadLambdaEmbeddingSuccess", 1, dimensions={"image_type": image_type})
+            if embedding_result.get("merchant_name"):
+                metrics.count("UploadLambdaMerchantResolved", 1, dimensions={"image_type": image_type})
             
             _log(
                 f"SUCCESS: Embeddings created for {image_type} receipt: "
@@ -143,6 +192,10 @@ def _process_single_record(record: Dict[str, Any]) -> Dict[str, Any]:
                 f"Merchant validation/embedding failed for {image_type}: {e}",
                 exc_info=True
             )
+            
+            # Record error metric
+            metrics.count("UploadLambdaEmbeddingFailed", 1, dimensions={"image_type": image_type})
+            
             # Don't fail the whole job - OCR data is still stored
             return {
                 "success": True,
@@ -155,6 +208,7 @@ def _process_single_record(record: Dict[str, Any]) -> Dict[str, Any]:
     
     # For PHOTO/SCAN first pass, just return the OCR result
     # Embeddings will be created when REFINEMENT jobs run
+    metrics.count("UploadLambdaEmbeddingSkipped", 1, dimensions={"image_type": image_type})
     _log(
         f"Skipping embeddings for {image_type} (receipt_id={receipt_id}). "
         f"Will process embeddings during REFINEMENT jobs."
