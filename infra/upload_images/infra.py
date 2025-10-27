@@ -359,6 +359,11 @@ class UploadImages(ComponentResource):
                                 "Action": "sqs:SendMessage",
                                 "Resource": args[4],  # ocr_queue.arn
                             },
+                            {
+                                "Effect": "Allow",
+                                "Action": "cloudwatch:PutMetricData",
+                                "Resource": "*",
+                            },
                         ],
                     }
                 ) if args[6] else json.dumps(
@@ -396,6 +401,11 @@ class UploadImages(ComponentResource):
                                 "Effect": "Allow",
                                 "Action": "sqs:SendMessage",
                                 "Resource": args[4],  # ocr_queue.arn
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": "cloudwatch:PutMetricData",
+                                "Resource": "*",
                             },
                         ],
                     }
