@@ -85,12 +85,9 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
 
         # Create hybrid Lambda deployment
         # Depend on EFS mount targets if EFS exists (Lambda needs mount targets in "available" state)
-        lambda_depends_on = []
-        if self.efs:
-            # Get mount targets from EFS component (they're exported as a list)
-            # This ensures Lambda waits for mount targets to be in "available" state
-            efs_mount_targets = self.efs.mount_targets
-            lambda_depends_on = [efs_mount_targets]
+        # mount_targets is an Output[List[Resource]], so we need to pass it directly
+        # and Pulumi will resolve the list at deployment time
+        lambda_depends_on = self.efs.mount_targets if self.efs else None
 
         self.hybrid_deployment = create_hybrid_lambda_deployment(
             name=f"{name}",
