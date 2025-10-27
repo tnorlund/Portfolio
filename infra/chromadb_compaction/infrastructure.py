@@ -84,6 +84,14 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
             )
 
         # Create hybrid Lambda deployment
+        # Depend on EFS mount targets if EFS exists (Lambda needs mount targets in "available" state)
+        lambda_depends_on = []
+        if self.efs:
+            # Get mount targets from EFS component (they're exported as a list)
+            # This ensures Lambda waits for mount targets to be in "available" state
+            efs_mount_targets = self.efs.mount_targets
+            lambda_depends_on = [efs_mount_targets]
+
         self.hybrid_deployment = create_hybrid_lambda_deployment(
             name=f"{name}",
             chromadb_queues=self.chromadb_queues,
@@ -95,7 +103,7 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
             efs_access_point_arn=(
                 self.efs.access_point_arn if self.efs else None
             ),
-            opts=ResourceOptions(parent=self),
+            opts=ResourceOptions(parent=self, depends_on=lambda_depends_on),
         )
 
         # Export useful properties
