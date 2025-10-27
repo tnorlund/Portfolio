@@ -211,8 +211,8 @@ unique_efs_subnets = Output.all(public_vpc.public_subnet_ids, nat.private_subnet
 )
 
 # Compaction lambda needs to be in private subnets for EFS access
-# (EFS mount target is in subnet-02f1818a1e813b126, which is the first private subnet)
-compaction_lambda_subnets = nat.private_subnet_ids  # Both private subnets for Lambda
+# Use only first private subnet to ensure Lambda is in subnet with EFS mount target
+compaction_lambda_subnets = nat.private_subnet_ids.apply(lambda ids: [ids[0]])  # Single subnet for EFS access
 
 chromadb_infrastructure = create_chromadb_compaction_infrastructure(
     name=f"chromadb-{pulumi.get_stack()}",
@@ -314,13 +314,16 @@ pulumi.export("chroma_orchestrator_sfn_arn", orchestrator.state_machine.arn)
 # )
 
 # Wire upload-images after NAT and Chroma are available so it can reach OpenAI and Chroma
+# When using EFS, use only first private subnet to ensure Lambda is in subnet with EFS mount target
+upload_images_subnets = nat.private_subnet_ids.apply(lambda ids: [ids[0]])  # Single subnet for EFS access
+
 upload_images = UploadImages(
     "upload-images",
     raw_bucket=raw_bucket,
     site_bucket=site_bucket,
     chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
     embed_ndjson_queue_url=None,  # Will use internal queue
-    vpc_subnet_ids=nat.private_subnet_ids,  # Use private subnets for internet access via NAT instance
+    vpc_subnet_ids=upload_images_subnets,  # Single subnet when EFS is used
     security_group_id=security.sg_lambda_id,
     chroma_http_endpoint=chroma_service.endpoint_dns,
     ecs_cluster_arn=chroma_service.cluster.arn,
