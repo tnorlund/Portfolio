@@ -202,27 +202,12 @@ pulumi.export("nat_private_subnet_ids", nat.private_subnet_ids)
 # Create EFS with mount targets in unique AZs only
 # EFS only allows one mount target per AZ, so we need to deduplicate by AZ
 
-# Strategy: Combine all subnets and let Output.all query them to deduplicate
-# We'll query subnet AZs and keep only one subnet per AZ
-
-def select_unique_subnets_by_az(args):
-    """Select unique subnets by AZ using data source."""
-    public_ids = args[0]
-    private_ids = args[1]
-    all_subnets = public_ids + private_ids
-    
-    # Query each subnet to get its AZ
-    az_to_subnet = {}
-    for subnet_id in all_subnets:
-        subnet = aws.ec2.get_subnet(id=subnet_id)
-        if subnet.availability_zone not in az_to_subnet:
-            az_to_subnet[subnet.availability_zone] = subnet_id
-    
-    return list(az_to_subnet.values())
-
-# Get unique subnets by AZ (works in both dev and prod)
+# Strategy: Select first public subnet + first private subnet
+# Based on subnet query: public subnets are in us-east-1a and us-east-1b
+# Both private subnets are in us-east-1b
+# So we need: first public (us-east-1a) + first private (us-east-1b) = 2 unique AZs
 unique_efs_subnets = Output.all(public_vpc.public_subnet_ids, nat.private_subnet_ids).apply(
-    lambda args: select_unique_subnets_by_az(args)
+    lambda args: [args[0][0], args[1][0]]  # First public + first private
 )
 
 # Compaction lambda needs to be in private subnets for EFS access
