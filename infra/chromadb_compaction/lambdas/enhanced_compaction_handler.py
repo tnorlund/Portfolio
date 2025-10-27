@@ -437,86 +437,87 @@ def process_stream_messages(
                 max_heartbeat_failures=max_heartbeat_failures,
             )
             
-            # Step 1: Read operations OFF-LOCK (optimization)
-            latest_version = efs_manager.get_latest_s3_version()
-            if not latest_version:
-                logger.error("Failed to get latest S3 version", collection=collection.value)
-                failed_receipt_handles.extend(
-                    [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
-                )
-                continue
-            
-            snapshot_result = efs_manager.ensure_snapshot_available(latest_version)
-            if snapshot_result["status"] != "available":
-                logger.error("Failed to ensure snapshot availability", result=snapshot_result)
-                failed_receipt_handles.extend(
-                    [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
-                )
-                continue
-            
-            # Step 2: Quick CAS validation (minimal lock time)
-            if not lm.acquire(lock_id):
-                logger.info(
-                    "Lock busy during validation, skipping",
-                    collection=collection.value,
-                    message_count=len(msgs)
-                )
-                failed_receipt_handles.extend(
-                    [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
-                )
-                continue
-            
             try:
-                lm.start_heartbeat()
-                # CAS: Validate pointer hasn't changed since we read it
-                # (Quick validation under lock, then release for heavy I/O)
-                pointer_key = f"{collection.value}/snapshot/latest-pointer.txt"
-                bucket = os.environ["CHROMADB_BUCKET"]
-                import boto3 as _boto
-                s3_client = _boto.client("s3")
-                try:
-                    resp = s3_client.get_object(Bucket=bucket, Key=pointer_key)
-                    current_pointer = resp["Body"].read().decode("utf-8").strip()
-                except Exception:
-                    current_pointer = "latest-direct"
+                # Step 1: Read operations OFF-LOCK (optimization)
+                latest_version = efs_manager.get_latest_s3_version()
+                if not latest_version:
+                    logger.error("Failed to get latest S3 version", collection=collection.value)
+                    failed_receipt_handles.extend(
+                        [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
+                    )
+                    continue
                 
-                if latest_version != current_pointer:
+                snapshot_result = efs_manager.ensure_snapshot_available(latest_version)
+                if snapshot_result["status"] != "available":
+                    logger.error("Failed to ensure snapshot availability", result=snapshot_result)
+                    failed_receipt_handles.extend(
+                        [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
+                    )
+                    continue
+                
+                # Step 2: Quick CAS validation (minimal lock time)
+                if not lm.acquire(lock_id):
                     logger.info(
-                        "Pointer drift detected during initial validation",
+                        "Lock busy during validation, skipping",
                         collection=collection.value,
-                        expected=latest_version,
-                        current=current_pointer,
+                        message_count=len(msgs)
                     )
                     failed_receipt_handles.extend(
                         [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
                     )
                     continue
-            finally:
-                lm.stop_heartbeat()
-                lm.release()
-            
-            # Store expected pointer for Phase 3 validation
-            expected_pointer = latest_version
-            
-            # Step 3: Perform heavy operations off-lock
-            efs_snapshot_path = snapshot_result["efs_path"]
-            local_snapshot_path = tempfile.mkdtemp()
-            
-            copy_start_time = time.time()
-            shutil.copytree(efs_snapshot_path, local_snapshot_path, dirs_exist_ok=True)
-            copy_time_ms = (time.time() - copy_start_time) * 1000
-            
-            snapshot_path = local_snapshot_path
-            
-            logger.info(
-                "Using EFS snapshot (copied to local)",
-                collection=collection.value,
-                version=latest_version,
-                efs_path=efs_snapshot_path,
-                local_path=local_snapshot_path,
-                copy_time_ms=copy_time_ms,
-                source=snapshot_result.get("source", "unknown")
-            )
+                
+                try:
+                    lm.start_heartbeat()
+                    # CAS: Validate pointer hasn't changed since we read it
+                    # (Quick validation under lock, then release for heavy I/O)
+                    pointer_key = f"{collection.value}/snapshot/latest-pointer.txt"
+                    bucket = os.environ["CHROMADB_BUCKET"]
+                    import boto3 as _boto
+                    s3_client = _boto.client("s3")
+                    try:
+                        resp = s3_client.get_object(Bucket=bucket, Key=pointer_key)
+                        current_pointer = resp["Body"].read().decode("utf-8").strip()
+                    except Exception:
+                        current_pointer = "latest-direct"
+                    
+                    if latest_version != current_pointer:
+                        logger.info(
+                            "Pointer drift detected during initial validation",
+                            collection=collection.value,
+                            expected=latest_version,
+                            current=current_pointer,
+                        )
+                        failed_receipt_handles.extend(
+                            [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
+                        )
+                        continue
+                finally:
+                    lm.stop_heartbeat()
+                    lm.release()
+                
+                # Store expected pointer for Phase 3 validation
+                expected_pointer = latest_version
+                
+                # Step 3: Perform heavy operations off-lock
+                efs_snapshot_path = snapshot_result["efs_path"]
+                local_snapshot_path = tempfile.mkdtemp()
+                
+                copy_start_time = time.time()
+                shutil.copytree(efs_snapshot_path, local_snapshot_path, dirs_exist_ok=True)
+                copy_time_ms = (time.time() - copy_start_time) * 1000
+                
+                snapshot_path = local_snapshot_path
+                
+                logger.info(
+                    "Using EFS snapshot (copied to local)",
+                    collection=collection.value,
+                    version=latest_version,
+                    efs_path=efs_snapshot_path,
+                    local_path=local_snapshot_path,
+                    copy_time_ms=copy_time_ms,
+                    source=snapshot_result.get("source", "unknown")
+                )
         except Exception as e:
             logger.error("Failed during EFS setup", error=str(e), collection=collection.value)
             failed_receipt_handles.extend(
