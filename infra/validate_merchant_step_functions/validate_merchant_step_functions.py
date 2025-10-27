@@ -215,6 +215,30 @@ def lambda_handler(event, _ctx):
             ),
         )
 
+        # Add ECR permissions for container image Lambda functions
+        # Lambda service needs to pull images from ECR when code is updated
+        RolePolicy(
+            f"{name}-{stack}-lambda-ecr-policy",
+            role=lambda_exec_role.id,
+            policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "ecr:GetAuthorizationToken",
+                                "ecr:BatchGetImage",
+                                "ecr:GetDownloadUrlForLayer",
+                            ],
+                            "Resource": "*",
+                        }
+                    ],
+                }
+            ),
+            opts=ResourceOptions(parent=lambda_exec_role),
+        )
+
         # Define Lambda: batch_clean_merchants (manual run)
         batch_clean_merchants_lambda = Function(
             f"{name}-{stack}-batch-clean-merchants",
