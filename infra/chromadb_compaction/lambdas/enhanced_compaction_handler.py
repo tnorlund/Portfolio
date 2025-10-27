@@ -518,39 +518,39 @@ def process_stream_messages(
                     copy_time_ms=copy_time_ms,
                     source=snapshot_result.get("source", "unknown")
                 )
-        except Exception as e:
-            logger.error("Failed during EFS setup", error=str(e), collection=collection.value)
-            failed_receipt_handles.extend(
-                [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
+            except Exception as e:
+                logger.error("Failed during EFS setup", error=str(e), collection=collection.value)
+                failed_receipt_handles.extend(
+                    [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
+                )
+                continue
+        else:
+            logger.info("Using S3-only approach", collection=collection.value, mode_reason=mode_reason)
+            # Fallback to S3-only approach
+            temp_dir = tempfile.mkdtemp()
+            bucket = os.environ["CHROMADB_BUCKET"]
+            dl = download_snapshot_atomic(
+                bucket=bucket,
+                collection=collection.value,
+                local_path=temp_dir,
+                verify_integrity=True,
             )
-            continue
-    else:
-        logger.info("Using S3-only approach", collection=collection.value, mode_reason=mode_reason)
-        # Fallback to S3-only approach
-        temp_dir = tempfile.mkdtemp()
-        bucket = os.environ["CHROMADB_BUCKET"]
-        dl = download_snapshot_atomic(
-            bucket=bucket,
-            collection=collection.value,
-            local_path=temp_dir,
-            verify_integrity=True,
-        )
-        if dl.get("status") != "downloaded":
-            logger.error("Failed to download snapshot", result=dl)
-            failed_receipt_handles.extend(
-                [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
-            )
-            continue
+            if dl.get("status") != "downloaded":
+                logger.error("Failed to download snapshot", result=dl)
+                failed_receipt_handles.extend(
+                    [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
+                )
+                continue
 
-        snapshot_path = temp_dir
-        expected_pointer = dl.get("version_id")
-        
-        logger.info(
-            "Using S3 snapshot",
-            collection=collection.value,
-            version=expected_pointer,
-            temp_path=snapshot_path
-        )
+            snapshot_path = temp_dir
+            expected_pointer = dl.get("version_id")
+            
+            logger.info(
+                "Using S3 snapshot",
+                collection=collection.value,
+                version=expected_pointer,
+                temp_path=snapshot_path
+            )
 
         # Initialize ChromaDB client
         chroma_client = ChromaDBClient(persist_directory=snapshot_path, mode="snapshot")
