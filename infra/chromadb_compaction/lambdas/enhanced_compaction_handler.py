@@ -437,10 +437,27 @@ def process_stream_messages(
                 max_heartbeat_failures=max_heartbeat_failures,
             )
             
-            # Step 1: Quick lock check (non-blocking)
+            # Step 1: Read operations OFF-LOCK (optimization)
+            latest_version = efs_manager.get_latest_s3_version()
+            if not latest_version:
+                logger.error("Failed to get latest S3 version", collection=collection.value)
+                failed_receipt_handles.extend(
+                    [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
+                )
+                continue
+            
+            snapshot_result = efs_manager.ensure_snapshot_available(latest_version)
+            if snapshot_result["status"] != "available":
+                logger.error("Failed to ensure snapshot availability", result=snapshot_result)
+                failed_receipt_handles.extend(
+                    [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
+                )
+                continue
+            
+            # Step 2: Quick CAS validation (minimal lock time)
             if not lm.acquire(lock_id):
                 logger.info(
-                    "Lock busy, skipping EFS processing",
+                    "Lock busy during validation, skipping",
                     collection=collection.value,
                     message_count=len(msgs)
                 )
@@ -451,85 +468,88 @@ def process_stream_messages(
             
             try:
                 lm.start_heartbeat()
+                # CAS: Validate pointer hasn't changed since we read it
+                # (Quick validation under lock, then release for heavy I/O)
+                pointer_key = f"{collection.value}/snapshot/latest-pointer.txt"
+                bucket = os.environ["CHROMADB_BUCKET"]
+                import boto3 as _boto
+                s3_client = _boto.client("s3")
+                try:
+                    resp = s3_client.get_object(Bucket=bucket, Key=pointer_key)
+                    current_pointer = resp["Body"].read().decode("utf-8").strip()
+                except Exception:
+                    current_pointer = "latest-direct"
                 
-                # Step 2: Get latest version and ensure EFS availability (under lock)
-                latest_version = efs_manager.get_latest_s3_version()
-                if not latest_version:
-                    logger.error("Failed to get latest S3 version", collection=collection.value)
+                if latest_version != current_pointer:
+                    logger.info(
+                        "Pointer drift detected during initial validation",
+                        collection=collection.value,
+                        expected=latest_version,
+                        current=current_pointer,
+                    )
                     failed_receipt_handles.extend(
                         [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
                     )
                     continue
-                
-                snapshot_result = efs_manager.ensure_snapshot_available(latest_version)
-                if snapshot_result["status"] != "available":
-                    logger.error("Failed to ensure snapshot availability", result=snapshot_result)
-                    failed_receipt_handles.extend(
-                        [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
-                    )
-                    continue
-                
-                # Step 3: Release lock for heavy I/O operations
+            finally:
                 lm.stop_heartbeat()
                 lm.release()
-                
-                # Step 4: Perform heavy operations off-lock
-                efs_snapshot_path = snapshot_result["efs_path"]
-                local_snapshot_path = tempfile.mkdtemp()
-                
-                copy_start_time = time.time()
-                shutil.copytree(efs_snapshot_path, local_snapshot_path, dirs_exist_ok=True)
-                copy_time_ms = (time.time() - copy_start_time) * 1000
-                
-                snapshot_path = local_snapshot_path
-                expected_pointer = latest_version
-                
-                logger.info(
-                    "Using EFS snapshot (copied to local)",
-                    collection=collection.value,
-                    version=latest_version,
-                    efs_path=efs_snapshot_path,
-                    local_path=local_snapshot_path,
-                    copy_time_ms=copy_time_ms,
-                    source=snapshot_result.get("source", "unknown")
-                )
             
-            # EFS case continues with ChromaDB operations and upload (lock already held)
+            # Store expected pointer for Phase 3 validation
+            expected_pointer = latest_version
             
-            except Exception as e:
-                logger.error("Failed during EFS setup", error=str(e), collection=collection.value)
-                failed_receipt_handles.extend(
-                    [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
-                )
-                continue
+            # Step 3: Perform heavy operations off-lock
+            efs_snapshot_path = snapshot_result["efs_path"]
+            local_snapshot_path = tempfile.mkdtemp()
             
-        else:
-            logger.info("Using S3-only approach", collection=collection.value, mode_reason=mode_reason)
-            # Fallback to S3-only approach
-            temp_dir = tempfile.mkdtemp()
-            bucket = os.environ["CHROMADB_BUCKET"]
-            dl = download_snapshot_atomic(
-                bucket=bucket,
-                collection=collection.value,
-                local_path=temp_dir,
-                verify_integrity=True,
-            )
-            if dl.get("status") != "downloaded":
-                logger.error("Failed to download snapshot", result=dl)
-                failed_receipt_handles.extend(
-                    [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
-                )
-                continue
-
-            snapshot_path = temp_dir
-            expected_pointer = dl.get("version_id")
+            copy_start_time = time.time()
+            shutil.copytree(efs_snapshot_path, local_snapshot_path, dirs_exist_ok=True)
+            copy_time_ms = (time.time() - copy_start_time) * 1000
+            
+            snapshot_path = local_snapshot_path
             
             logger.info(
-                "Using S3 snapshot",
+                "Using EFS snapshot (copied to local)",
                 collection=collection.value,
-                version=expected_pointer,
-                temp_path=snapshot_path
+                version=latest_version,
+                efs_path=efs_snapshot_path,
+                local_path=local_snapshot_path,
+                copy_time_ms=copy_time_ms,
+                source=snapshot_result.get("source", "unknown")
             )
+        except Exception as e:
+            logger.error("Failed during EFS setup", error=str(e), collection=collection.value)
+            failed_receipt_handles.extend(
+                [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
+            )
+            continue
+    else:
+        logger.info("Using S3-only approach", collection=collection.value, mode_reason=mode_reason)
+        # Fallback to S3-only approach
+        temp_dir = tempfile.mkdtemp()
+        bucket = os.environ["CHROMADB_BUCKET"]
+        dl = download_snapshot_atomic(
+            bucket=bucket,
+            collection=collection.value,
+            local_path=temp_dir,
+            verify_integrity=True,
+        )
+        if dl.get("status") != "downloaded":
+            logger.error("Failed to download snapshot", result=dl)
+            failed_receipt_handles.extend(
+                [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
+            )
+            continue
+
+        snapshot_path = temp_dir
+        expected_pointer = dl.get("version_id")
+        
+        logger.info(
+            "Using S3 snapshot",
+            collection=collection.value,
+            version=expected_pointer,
+            temp_path=snapshot_path
+        )
 
         # Initialize ChromaDB client
         chroma_client = ChromaDBClient(persist_directory=snapshot_path, mode="snapshot")
