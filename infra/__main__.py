@@ -200,10 +200,29 @@ pulumi.export("nat_private_subnet_ids", nat.private_subnet_ids)
 # Create ChromaDB compaction infrastructure using shared bucket
 # Now that nat is defined, we can use both public and private subnets for EFS
 # Create EFS with mount targets in unique AZs only
-# EFS only allows one mount target per AZ, so we pass: 2 public subnets (different AZs) + first private subnet
-# The two private subnets are in the same AZ (us-east-1f), so we only use the first one
+# EFS only allows one mount target per AZ, so we need to deduplicate by AZ
+
+# Strategy: Combine all subnets and let Output.all query them to deduplicate
+# We'll query subnet AZs and keep only one subnet per AZ
+
+def select_unique_subnets_by_az(args):
+    """Select unique subnets by AZ using data source."""
+    public_ids = args[0]
+    private_ids = args[1]
+    all_subnets = public_ids + private_ids
+    
+    # Query each subnet to get its AZ
+    az_to_subnet = {}
+    for subnet_id in all_subnets:
+        subnet = aws.ec2.get_subnet(id=subnet_id)
+        if subnet.availability_zone not in az_to_subnet:
+            az_to_subnet[subnet.availability_zone] = subnet_id
+    
+    return list(az_to_subnet.values())
+
+# Get unique subnets by AZ (works in both dev and prod)
 unique_efs_subnets = Output.all(public_vpc.public_subnet_ids, nat.private_subnet_ids).apply(
-    lambda args: args[0] + [args[1][0]]  # Public subnets + first private subnet only
+    lambda args: select_unique_subnets_by_az(args)
 )
 
 # Compaction lambda needs to be in private subnets for EFS access
