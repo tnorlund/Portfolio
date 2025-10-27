@@ -38,9 +38,9 @@ def _run_validation_async(
     ollama_api_key: Optional[str],
     langsmith_api_key: Optional[str],
 ) -> None:
-    """Run LangGraph validation asynchronously (non-blocking).
+    """Run LangGraph validation asynchronously (non-blocking, fire-and-forget).
     
-    This runs in the background and doesn't delay the lambda response.
+    This runs in a background thread and doesn't delay the lambda response.
     It validates ReceiptMetadata and auto-corrects if merchant name doesn't match.
     
     IMPORTANT: Waits for initial compaction to complete before creating ReceiptWordLabels
@@ -166,7 +166,22 @@ def _run_validation_async(
             _log(f"⚠️ Validation failed: {e}")
     
     # Run in background - don't wait
-    asyncio.create_task(run_validation())
+    # Fire and forget - run in a thread pool executor to avoid event loop issues
+    import concurrent.futures
+    import threading
+    
+    def run_in_executor():
+        # Create new event loop for this thread
+        import asyncio
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(run_validation())
+        except Exception as e:
+            _log(f"⚠️ Validation task failed: {e}")
+    
+    # Start in background thread
+    threading.Thread(target=run_in_executor, daemon=True).start()
     _log("Validation started in background (processing while compaction runs, will wait to write)")
 
 
