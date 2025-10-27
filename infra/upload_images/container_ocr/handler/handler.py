@@ -31,6 +31,7 @@ def _log(msg: str):
 def _run_validation_async(
     image_id: str,
     receipt_id: int,
+    run_id: str,
     receipt_lines: Optional[list],
     receipt_words: Optional[list],
     ollama_api_key: Optional[str],
@@ -41,9 +42,13 @@ def _run_validation_async(
     This runs in the background and doesn't delay the lambda response.
     It validates ReceiptMetadata and auto-corrects if merchant name doesn't match.
     
+    IMPORTANT: Waits for initial compaction to complete before creating ReceiptWordLabels
+    to avoid race conditions.
+    
     Args:
         image_id: Receipt image identifier
         receipt_id: Receipt identifier
+        run_id: Compaction run ID to track completion
         receipt_lines: Pre-fetched receipt lines
         receipt_words: Pre-fetched receipt words
         ollama_api_key: Ollama API key
@@ -57,16 +62,54 @@ def _run_validation_async(
         try:
             from receipt_dynamo import DynamoClient
             from receipt_label.langchain.currency_validation import analyze_receipt_simple
+            from receipt_dynamo.constants import CompactionState
             
             dynamo = DynamoClient(os.environ["DYNAMO_TABLE_NAME"])
             
+            # CRITICAL: Wait for initial compaction to complete before creating labels
+            # This prevents race conditions where ReceiptWordLabels are created
+            # while compaction is reading from DynamoDB
+            _log(f"Waiting for compaction run {run_id} to complete...")
+            max_wait_seconds = 120  # 2 minutes max wait
+            poll_interval_seconds = 2
+            waited_seconds = 0
+            
+            while waited_seconds < max_wait_seconds:
+                try:
+                    compaction_run = dynamo.get_compaction_run(image_id, receipt_id, run_id)
+                    if compaction_run:
+                        lines_completed = compaction_run.lines_state == CompactionState.COMPLETED.value
+                        words_completed = compaction_run.words_state == CompactionState.COMPLETED.value
+                        
+                        if lines_completed and words_completed:
+                            _log(f"✅ Compaction completed (waited {waited_seconds}s)")
+                            break
+                        else:
+                            _log(f"⏳ Compaction in progress: lines={compaction_run.lines_state}, words={compaction_run.words_state}")
+                    else:
+                        _log(f"⚠️ Compaction run not found, proceeding anyway")
+                        break
+                except Exception as e:
+                    _log(f"⚠️ Error checking compaction state: {e}")
+                    # Continue to validation - don't block forever
+                    if waited_seconds > 60:
+                        _log(f"⚠️ Continuing after {waited_seconds}s despite errors")
+                        break
+                
+                await asyncio.sleep(poll_interval_seconds)
+                waited_seconds += poll_interval_seconds
+            
+            if waited_seconds >= max_wait_seconds:
+                _log(f"⚠️ Timeout waiting for compaction after {waited_seconds}s, proceeding anyway")
+            
+            # Now safe to create ReceiptWordLabels
             await analyze_receipt_simple(
                 client=dynamo,
                 image_id=image_id,
                 receipt_id=receipt_id,
                 ollama_api_key=ollama_api_key,
                 langsmith_api_key=langsmith_api_key,
-                save_labels=False,  # We're not creating word labels here
+                save_labels=True,  # Safe to create labels now - compaction is done
                 dry_run=False,  # Update ReceiptMetadata if mismatch found
                 save_dev_state=False,
                 # Pass pre-fetched data to skip DynamoDB queries!
@@ -79,9 +122,8 @@ def _run_validation_async(
             _log(f"⚠️ Validation failed: {e}")
     
     # Run in background - don't wait
-    # This allows compaction to run in parallel
     asyncio.create_task(run_validation())
-    _log("Validation started in background (running parallel with compaction)")
+    _log("Validation started in background (waiting for compaction completion first)")
 
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -233,14 +275,15 @@ def _process_single_record(record: Dict[str, Any]) -> Dict[str, Any]:
                 f"run_id={embedding_result.get('run_id')}"
             )
             
-            # Step 3: Run LangGraph validation (parallel with compaction)
-            # Note: Compaction starts automatically via COMPACTION_RUN record + DynamoDB Streams
-            # Validation runs here in parallel and validates ReceiptMetadata
+            # Step 3: Run LangGraph validation (after compaction completes)
+            # IMPORTANT: Validation waits for initial compaction to complete before creating ReceiptWordLabels
+            # This prevents race conditions where labels are created while compaction reads from DynamoDB
             try:
-                _log("Starting ReceiptMetadata validation (parallel with compaction)...")
+                _log("Starting ReceiptMetadata validation (waiting for compaction...)...")
                 _run_validation_async(
                     image_id=image_id,
                     receipt_id=receipt_id,
+                    run_id=embedding_result.get("run_id"),  # Track compaction completion
                     receipt_lines=ocr_result.get("receipt_lines"),
                     receipt_words=ocr_result.get("receipt_words"),
                     ollama_api_key=os.environ.get("OLLAMA_API_KEY"),
