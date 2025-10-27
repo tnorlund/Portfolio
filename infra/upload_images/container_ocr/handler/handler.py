@@ -165,9 +165,8 @@ def _run_validation_async(
         except Exception as e:
             _log(f"⚠️ Validation failed: {e}")
     
-    # Run in background - don't wait
-    # Fire and forget - run in a thread pool executor to avoid event loop issues
-    import concurrent.futures
+    # Run in background but wait for completion (with timeout)
+    # Use non-daemon thread so Lambda waits for it to complete (or times out)
     import threading
     
     def run_in_executor():
@@ -180,9 +179,20 @@ def _run_validation_async(
         except Exception as e:
             _log(f"⚠️ Validation task failed: {e}")
     
-    # Start in background thread
-    threading.Thread(target=run_in_executor, daemon=True).start()
-    _log("Validation started in background (processing while compaction runs, will wait to write)")
+    # Start in background thread (non-daemon so Lambda waits for it)
+    validation_thread = threading.Thread(target=run_in_executor, daemon=False)
+    validation_thread.start()
+    
+    # Wait for validation to complete (with timeout so Lambda doesn't hang)
+    # Lambda timeout is 10 minutes, so we'll wait up to 8 minutes for validation
+    # (8 min gives us buffer if compaction is slow)
+    max_wait_seconds = 480  # 8 minutes
+    validation_thread.join(timeout=max_wait_seconds)
+    
+    if validation_thread.is_alive():
+        _log(f"⚠️ Validation still running after {max_wait_seconds}s, lambda will exit")
+    else:
+        _log("✅ Validation completed before lambda exits")
 
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
