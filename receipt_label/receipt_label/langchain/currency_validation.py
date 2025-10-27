@@ -12,7 +12,7 @@ Simplified version of n_parallel_analyzer.py that:
 
 import os
 import time
-from typing import List, Optional
+from typing import Any, List, Optional
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
 from langchain_core.tracers.langchain import LangChainTracer
@@ -620,6 +620,9 @@ async def analyze_receipt_simple(
     save_labels: bool = False,
     dry_run: bool = False,
     save_dev_state: bool = False,
+    receipt_lines: Optional[List] = None,
+    receipt_words: Optional[List] = None,
+    receipt_metadata: Optional[Any] = None,
 ) -> ReceiptAnalysis:
     """Analyze a receipt using the unified single-trace graph with secure API
     key handling.
@@ -633,6 +636,9 @@ async def analyze_receipt_simple(
         save_labels: Whether to save ReceiptWordLabels to DynamoDB
         dry_run: Preview mode - don't actually save to DynamoDB
         save_dev_state: Save workflow state at combine_results for development
+        receipt_lines: Optional pre-fetched receipt lines (skips DynamoDB query)
+        receipt_words: Optional pre-fetched receipt words (skips DynamoDB query)
+        receipt_metadata: Optional pre-fetched receipt metadata (skips DynamoDB query)
     """
 
     # Setup LangSmith tracing with secure API key handling
@@ -661,22 +667,32 @@ async def analyze_receipt_simple(
     print()
 
     start_time = time.time()
-    lines = client.list_receipt_lines_from_receipt(image_id, receipt_id)
     
-    # Load ReceiptMetadata for merchant context
-    receipt_metadata = None
-    try:
-        receipt_metadata = client.get_receipt_metadata(image_id, receipt_id)
-        print(f"   📋 Loaded ReceiptMetadata: {receipt_metadata.merchant_name}")
-    except Exception as e:
-        print(f"   ⚠️ Could not load ReceiptMetadata: {e}")
-        # Continue without metadata - not critical
+    # Use pre-fetched data if provided, otherwise fetch from DynamoDB
+    if receipt_lines is None:
+        lines = client.list_receipt_lines_from_receipt(image_id, receipt_id)
+        print(f"   📊 Fetched {len(lines)} receipt lines from DynamoDB")
+    else:
+        lines = receipt_lines
+        print(f"   📊 Using {len(lines)} pre-fetched receipt lines")
+    
+    # Load ReceiptMetadata for merchant context (if not provided)
+    if receipt_metadata is None:
+        try:
+            receipt_metadata = client.get_receipt_metadata(image_id, receipt_id)
+            print(f"   📋 Loaded ReceiptMetadata from DynamoDB: {receipt_metadata.merchant_name}")
+        except Exception as e:
+            print(f"   ⚠️ Could not load ReceiptMetadata: {e}")
+            receipt_metadata = None
+    else:
+        print(f"   📋 Using pre-fetched ReceiptMetadata: {receipt_metadata.merchant_name}")
 
     # Initial state for unified graph (API key NOT included - secure!)
     initial_state: CurrencyAnalysisState = {
         "receipt_id": f"{image_id}/{receipt_id}",
         "image_id": image_id,
         "lines": lines,
+        "words": receipt_words or [],  # Use pre-fetched words if provided
         "formatted_text": "",
         "dynamo_client": client,  # Pass client for word label creation
         "receipt_metadata": receipt_metadata,  # NEW: Merchant context
@@ -687,6 +703,11 @@ async def analyze_receipt_simple(
         "confidence_score": 0.0,
         "processing_time": 0.0,
     }
+    
+    if receipt_words is None:
+        print(f"   ℹ️ Words will be fetched by load_data node from DynamoDB")
+    else:
+        print(f"   📊 Using {len(receipt_words)} pre-fetched receipt words")
 
     # Create and run the unified graph with secure API key injection
     unified_graph = create_unified_analysis_graph(

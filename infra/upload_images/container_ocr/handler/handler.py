@@ -11,6 +11,7 @@ import logging
 import os
 import sys
 import time
+import asyncio
 from typing import Any, Dict
 
 from .ocr_processor import OCRProcessor
