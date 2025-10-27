@@ -146,21 +146,53 @@ class _CompactionRun(FlattenedStandardMixin):
         collection: str,
         merged_vectors: int = 0,
     ) -> None:
-        """Mark a collection state as COMPLETED and set finished_at + merged count."""
-        run = self.get_compaction_run(image_id, receipt_id, run_id)
-        if run is None:
-            raise EntityNotFoundError("CompactionRun not found")
+        """Mark a collection state as COMPLETED and set finished_at + merged count.
+        
+        Uses atomic UpdateExpression to update only specific fields, preventing race conditions
+        when both lines and words collection updates happen simultaneously.
+        """
+        pk = f"IMAGE#{image_id}"
+        sk = f"RECEIPT#{receipt_id:05d}#COMPACTION_RUN#{run_id}"
         now = datetime.now(timezone.utc).isoformat()
+        
+        # Build UpdateExpression based on collection type
         if collection == "lines":
-            run.lines_state = "COMPLETED"
-            run.lines_finished_at = now
-            run.lines_merged_vectors = merged_vectors
-        else:
-            run.words_state = "COMPLETED"
-            run.words_finished_at = now
-            run.words_merged_vectors = merged_vectors
-        run.updated_at = now
-        self.update_compaction_run(run)
+            update_expression = (
+                "SET lines_state = :state, "
+                "lines_finished_at = :finished_at, "
+                "lines_merged_vectors = :merged_count, "
+                "updated_at = :now"
+            )
+            expression_attribute_values = {
+                ":state": {"S": "COMPLETED"},
+                ":finished_at": {"S": now},
+                ":merged_count": {"N": str(merged_vectors)},
+                ":now": {"S": now},
+            }
+        else:  # words
+            update_expression = (
+                "SET words_state = :state, "
+                "words_finished_at = :finished_at, "
+                "words_merged_vectors = :merged_count, "
+                "updated_at = :now"
+            )
+            expression_attribute_values = {
+                ":state": {"S": "COMPLETED"},
+                ":finished_at": {"S": now},
+                ":merged_count": {"N": str(merged_vectors)},
+                ":now": {"S": now},
+            }
+        
+        # Atomic update - only modifies fields for this collection
+        self._client.update_item(
+            TableName=self.table_name,
+            Key={"PK": {"S": pk}, "SK": {"S": sk}},
+            UpdateExpression=update_expression,
+            ExpressionAttributeValues=expression_attribute_values,
+            ConditionExpression=(
+                "attribute_exists(PK) AND attribute_exists(SK)"
+            ),
+        )
 
     @handle_dynamodb_errors("mark_compaction_run_failed")
     def mark_compaction_run_failed(
@@ -171,18 +203,50 @@ class _CompactionRun(FlattenedStandardMixin):
         collection: str,
         error: str,
     ) -> None:
-        """Mark a collection state as FAILED with error text."""
-        run = self.get_compaction_run(image_id, receipt_id, run_id)
-        if run is None:
-            raise EntityNotFoundError("CompactionRun not found")
+        """Mark a collection state as FAILED with error text.
+        
+        Uses atomic UpdateExpression to update only specific fields, preventing race conditions
+        when both lines and words collection updates happen simultaneously.
+        """
+        pk = f"IMAGE#{image_id}"
+        sk = f"RECEIPT#{receipt_id:05d}#COMPACTION_RUN#{run_id}"
         now = datetime.now(timezone.utc).isoformat()
+        
+        # Build UpdateExpression based on collection type
         if collection == "lines":
-            run.lines_state = "FAILED"
-            run.lines_error = error
-            run.lines_finished_at = now
-        else:
-            run.words_state = "FAILED"
-            run.words_error = error
-            run.words_finished_at = now
-        run.updated_at = now
-        self.update_compaction_run(run)
+            update_expression = (
+                "SET lines_state = :state, "
+                "lines_error = :error, "
+                "lines_finished_at = :finished_at, "
+                "updated_at = :now"
+            )
+            expression_attribute_values = {
+                ":state": {"S": "FAILED"},
+                ":error": {"S": error},
+                ":finished_at": {"S": now},
+                ":now": {"S": now},
+            }
+        else:  # words
+            update_expression = (
+                "SET words_state = :state, "
+                "words_error = :error, "
+                "words_finished_at = :finished_at, "
+                "updated_at = :now"
+            )
+            expression_attribute_values = {
+                ":state": {"S": "FAILED"},
+                ":error": {"S": error},
+                ":finished_at": {"S": now},
+                ":now": {"S": now},
+            }
+        
+        # Atomic update - only modifies fields for this collection
+        self._client.update_item(
+            TableName=self.table_name,
+            Key={"PK": {"S": pk}, "SK": {"S": sk}},
+            UpdateExpression=update_expression,
+            ExpressionAttributeValues=expression_attribute_values,
+            ConditionExpression=(
+                "attribute_exists(PK) AND attribute_exists(SK)"
+            ),
+        )
