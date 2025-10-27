@@ -153,13 +153,14 @@ def _run_validation_async(
                         
                         if corrected_name and corrected_name != receipt_metadata.merchant_name:
                             receipt_metadata.merchant_name = corrected_name
+                            receipt_metadata.validation_status = "NO_MATCH"  # Mark as corrected
                             receipt_metadata.reasoning = (
                                 f"Auto-corrected by LangGraph validation. "
                                 f"Original: '{original_name}', Corrected: '{corrected_name}'. "
                                 f"Receipt text is authoritative source."
                             )
                             dynamo.update_receipt_metadata(receipt_metadata)
-                            _log(f"✅ Updated ReceiptMetadata in DynamoDB")
+                            _log(f"✅ Updated ReceiptMetadata in DynamoDB (validation_status=NO_MATCH)")
             
             _log(f"✅ Validation completed for {image_id}/{receipt_id}")
         except Exception as e:
