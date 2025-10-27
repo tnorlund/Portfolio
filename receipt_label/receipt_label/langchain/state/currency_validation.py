@@ -49,6 +49,9 @@ class CurrencyAnalysisState(BaseModel):
     error_count: int = 0
     last_error: Optional[str] = None
     partial_results: bool = False
+    
+    # Metadata validation (NEW)
+    metadata_validation: Optional[Any] = None
 
     model_config = ConfigDict(
         arbitrary_types_allowed=True,

@@ -32,6 +32,7 @@ from receipt_label.langchain.state.currency_validation import (
 from receipt_label.langchain.nodes.load_data import load_receipt_data
 from receipt_label.langchain.nodes.phase1 import phase1_currency_analysis
 from receipt_label.langchain.nodes.phase1_context import phase1_context_analysis
+from receipt_label.langchain.nodes.phase1_validate import phase1_validate_metadata
 from receipt_label.langchain.nodes.phase2 import (
     dispatch_to_parallel_phase2,
     phase2_line_analysis,
@@ -134,6 +135,7 @@ def create_unified_analysis_graph(
     workflow.add_node("load_data", load_receipt_data)
     workflow.add_node("phase1_currency", phase1_with_key)
     workflow.add_node("phase1_context", phase1_context_with_key)  # NEW: Parallel context analysis
+    workflow.add_node("validate_metadata", phase1_validate_metadata)  # NEW: Validate ReceiptMetadata
     workflow.add_node("phase2_line_analysis", phase2_with_key)
     workflow.add_node("error_handler", graph_error_handler)
     workflow.add_node("combine_results", combine_with_dev_save)
@@ -166,8 +168,9 @@ def create_unified_analysis_graph(
         },
     )
     
-    # Phase 1 Context goes to combine after completing
-    workflow.add_edge("phase1_context", "combine_results")
+    # Phase 1 Context goes to validation, then combine
+    workflow.add_edge("phase1_context", "validate_metadata")
+    workflow.add_edge("validate_metadata", "combine_results")
 
     # Error handler and Phase 2 both converge at combine
     workflow.add_edge("error_handler", "combine_results")
