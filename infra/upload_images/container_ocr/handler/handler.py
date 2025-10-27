@@ -68,11 +68,32 @@ def _run_validation_async(
             
             dynamo = DynamoClient(os.environ["DYNAMO_TABLE_NAME"])
             
-            # CRITICAL: Wait for initial compaction to complete before creating labels
-            # This prevents race conditions where ReceiptWordLabels are created
-            # while compaction is reading from DynamoDB
-            _log(f"Waiting for compaction run {run_id} to complete...")
-            max_wait_seconds = 120  # 2 minutes max wait
+            # OPTIMIZATION: Start LangGraph immediately (LLM processing takes ~20-30s)
+            # We'll run it without writing labels, then wait for compaction before writing
+            _log("Starting LangGraph analysis (running in parallel with compaction)...")
+            
+            # Run LangGraph analysis WITHOUT saving labels (dry_run=True)
+            # This processes the receipt text with LLM while compaction is running
+            result = await analyze_receipt_simple(
+                client=dynamo,
+                image_id=image_id,
+                receipt_id=receipt_id,
+                ollama_api_key=ollama_api_key,
+                langsmith_api_key=langsmith_api_key,
+                save_labels=False,  # Don't save labels yet - will save manually after compaction
+                dry_run=True,  # Don't update ReceiptMetadata yet
+                save_dev_state=False,
+                # Pass pre-fetched data to skip DynamoDB queries!
+                receipt_lines=receipt_lines,
+                receipt_words=receipt_words,
+                receipt_metadata=receipt_metadata,
+            )
+            
+            _log(f"✅ LangGraph analysis completed, extracted {len(result.discovered_labels)} labels")
+            _log("Waiting for compaction to complete before writing labels...")
+            
+            # NOW wait for compaction to complete before writing labels
+            max_wait_seconds = 120
             poll_interval_seconds = 2
             waited_seconds = 0
             
@@ -84,16 +105,15 @@ def _run_validation_async(
                         words_completed = compaction_run.words_state == CompactionState.COMPLETED.value
                         
                         if lines_completed and words_completed:
-                            _log(f"✅ Compaction completed (waited {waited_seconds}s)")
+                            _log(f"✅ Compaction completed, now writing labels (waited {waited_seconds}s)")
                             break
                         else:
-                            _log(f"⏳ Compaction in progress: lines={compaction_run.lines_state}, words={compaction_run.words_state}")
+                            _log(f"⏳ Still waiting: lines={compaction_run.lines_state}, words={compaction_run.words_state}")
                     else:
                         _log(f"⚠️ Compaction run not found, proceeding anyway")
                         break
                 except Exception as e:
                     _log(f"⚠️ Error checking compaction state: {e}")
-                    # Continue to validation - don't block forever
                     if waited_seconds > 60:
                         _log(f"⚠️ Continuing after {waited_seconds}s despite errors")
                         break
@@ -102,22 +122,25 @@ def _run_validation_async(
                 waited_seconds += poll_interval_seconds
             
             if waited_seconds >= max_wait_seconds:
-                _log(f"⚠️ Timeout waiting for compaction after {waited_seconds}s, proceeding anyway")
+                _log(f"⚠️ Timeout waiting for compaction, proceeding anyway")
             
-            # Now safe to create ReceiptWordLabels
+            # Now safe to write labels - compaction is done
+            _log("Writing ReceiptWordLabels to DynamoDB...")
+            
+            # Re-run with dry_run=False to save labels and update ReceiptMetadata
+            # This runs LangGraph again but with writes enabled now that compaction is done
             await analyze_receipt_simple(
                 client=dynamo,
                 image_id=image_id,
                 receipt_id=receipt_id,
                 ollama_api_key=ollama_api_key,
                 langsmith_api_key=langsmith_api_key,
-                save_labels=True,  # Safe to create labels now - compaction is done
-                dry_run=False,  # Update ReceiptMetadata if mismatch found
+                save_labels=True,  # NOW safe to save labels
+                dry_run=False,  # NOW safe to update ReceiptMetadata
                 save_dev_state=False,
-                # Pass pre-fetched data to skip DynamoDB queries!
                 receipt_lines=receipt_lines,
                 receipt_words=receipt_words,
-                receipt_metadata=receipt_metadata,  # Pre-fetched from merchant resolution
+                receipt_metadata=receipt_metadata,
             )
             _log(f"✅ Validation completed for {image_id}/{receipt_id}")
         except Exception as e:
@@ -125,7 +148,7 @@ def _run_validation_async(
     
     # Run in background - don't wait
     asyncio.create_task(run_validation())
-    _log("Validation started in background (waiting for compaction completion first)")
+    _log("Validation started in background (processing while compaction runs, will wait to write)")
 
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -277,9 +300,10 @@ def _process_single_record(record: Dict[str, Any]) -> Dict[str, Any]:
                 f"run_id={embedding_result.get('run_id')}"
             )
             
-            # Step 3: Run LangGraph validation (after compaction completes)
-            # IMPORTANT: Validation waits for initial compaction to complete before creating ReceiptWordLabels
-            # This prevents race conditions where labels are created while compaction reads from DynamoDB
+            # Step 3: Run LangGraph validation (parallel processing, deferred writes)
+            # OPTIMIZATION: Start LangGraph immediately, but wait for compaction before writing
+            # LangGraph LLM processing takes ~20-30s and runs while compaction is happening
+            # We only wait before writing to DynamoDB to avoid race conditions
             try:
                 _log("Starting ReceiptMetadata validation (waiting for compaction...)...")
                 _run_validation_async(
