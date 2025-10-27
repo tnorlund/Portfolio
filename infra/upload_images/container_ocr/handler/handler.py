@@ -34,6 +34,7 @@ def _run_validation_async(
     run_id: str,
     receipt_lines: Optional[list],
     receipt_words: Optional[list],
+    receipt_metadata: Optional[Any],
     ollama_api_key: Optional[str],
     langsmith_api_key: Optional[str],
 ) -> None:
@@ -51,6 +52,7 @@ def _run_validation_async(
         run_id: Compaction run ID to track completion
         receipt_lines: Pre-fetched receipt lines
         receipt_words: Pre-fetched receipt words
+        receipt_metadata: Pre-fetched ReceiptMetadata (to avoid DynamoDB query)
         ollama_api_key: Ollama API key
         langsmith_api_key: LangSmith API key (optional)
     """
@@ -115,7 +117,7 @@ def _run_validation_async(
                 # Pass pre-fetched data to skip DynamoDB queries!
                 receipt_lines=receipt_lines,
                 receipt_words=receipt_words,
-                receipt_metadata=None,  # Will be fetched in analyze_receipt_simple
+                receipt_metadata=receipt_metadata,  # Pre-fetched from merchant resolution
             )
             _log(f"✅ Validation completed for {image_id}/{receipt_id}")
         except Exception as e:
@@ -286,6 +288,7 @@ def _process_single_record(record: Dict[str, Any]) -> Dict[str, Any]:
                     run_id=embedding_result.get("run_id"),  # Track compaction completion
                     receipt_lines=ocr_result.get("receipt_lines"),
                     receipt_words=ocr_result.get("receipt_words"),
+                    receipt_metadata=embedding_result.get("receipt_metadata"),  # Pre-fetched from merchant resolution
                     ollama_api_key=os.environ.get("OLLAMA_API_KEY"),
                     langsmith_api_key=os.environ.get("LANGCHAIN_API_KEY"),
                 )

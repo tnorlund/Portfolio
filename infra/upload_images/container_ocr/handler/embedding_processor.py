@@ -113,7 +113,13 @@ class EmbeddingProcessor:
             )
             
             # Step 2: Resolve merchant
-            merchant_name = self._resolve_merchant(image_id, receipt_id)
+            merchant_resolution = self._resolve_merchant(image_id, receipt_id)
+            if merchant_resolution is None:
+                # Handle case where resolution returns None
+                merchant_name = None
+                receipt_metadata = None
+            else:
+                merchant_name, receipt_metadata = merchant_resolution
             
             # Step 3: Generate embeddings and upload deltas
             run_id = self._create_embeddings_and_deltas(
@@ -133,6 +139,7 @@ class EmbeddingProcessor:
                 "success": True,
                 "run_id": run_id,
                 "merchant_name": merchant_name,
+                "receipt_metadata": receipt_metadata,  # Pass to validation
                 "lines_count": len(receipt_lines),
                 "words_count": len(receipt_words),
             }
@@ -338,11 +345,19 @@ class EmbeddingProcessor:
                 f"(source: {best.get('source')}, score: {best.get('score')})"
             )
             
-            return merchant_name
+            # Fetch the created ReceiptMetadata to return it
+            receipt_metadata = None
+            if decision.get("wrote_metadata"):
+                try:
+                    receipt_metadata = self.dynamo.get_receipt_metadata(image_id, receipt_id)
+                except Exception as e:
+                    _log(f"⚠️ Failed to fetch created ReceiptMetadata: {e}")
+            
+            return merchant_name, receipt_metadata
         
         except Exception as e:
             logger.error(f"Merchant resolution failed: {e}", exc_info=True)
-            return None
+            return None, None
     
     def _create_embeddings_and_deltas(
         self,
