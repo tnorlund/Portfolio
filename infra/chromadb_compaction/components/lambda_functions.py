@@ -548,6 +548,30 @@ class HybridLambdaDeployment(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
+        # ECR policy for container image Lambda functions
+        # Lambda service needs to pull images from ECR when code is updated
+        self.ecr_policy = aws.iam.RolePolicy(
+            f"{name}-ecr-policy",
+            role=self.lambda_role.id,
+            policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "ecr:GetAuthorizationToken",
+                                "ecr:BatchGetImage",
+                                "ecr:GetDownloadUrlForLayer",
+                            ],
+                            "Resource": "*",
+                        }
+                    ],
+                }
+            ),
+            opts=ResourceOptions(parent=self),
+        )
+
     def _create_event_source_mappings(
         self,
         name: str,
