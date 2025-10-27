@@ -115,5 +115,6 @@ class ChromaEfs(ComponentResource):
                 "access_point_arn": self.access_point_arn,
                 "file_system_id": self.file_system_id,
                 "security_group_id": self.security_group_id,
+                "mount_targets": self.mount_targets,  # Export so Lambda can depend on them
             }
         )
