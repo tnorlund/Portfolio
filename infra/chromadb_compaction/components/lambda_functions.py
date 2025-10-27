@@ -161,12 +161,10 @@ class HybridLambdaDeployment(ComponentResource):
                     # - "s3": Force S3-only mode (ignore EFS)
                     # - "efs": Force EFS mode (fail if EFS not available)
                     "CHROMADB_STORAGE_MODE": "auto",  # Use EFS if available, fallback to S3. Elastic throughput should handle fast copies now
-                    # Disable custom CloudWatch metrics while Lambda runs in a VPC
-                    # without NAT or VPC Interface Endpoints for CloudWatch Monitoring.
-                    # This avoids outbound network timeouts from the heartbeat/metrics
-                    # thread (ConnectTimeout to monitoring.us-east-1.amazonaws.com).
-                    # Re-enable by setting to "true" once endpoints/NAT are configured.
-                    "ENABLE_METRICS": "false",
+                    # Enable custom CloudWatch metrics now that Lambda has internet
+                    # access via NAT instance. If timeouts occur, consider adding a
+                    # CloudWatch Metrics Interface VPC Endpoint (~$7/month).
+                    "ENABLE_METRICS": "true",
                 },
                 "vpc_config": {
                     "subnet_ids": vpc_subnet_ids,

@@ -456,7 +456,15 @@ def process_stream_messages(
                     continue
                 
                 # Step 2: Quick CAS validation (minimal lock time)
+                phase1_lock_start = time.time()
                 if not lm.acquire(lock_id):
+                    # Track lock collision in Phase 1
+                    if metrics:
+                        metrics.count(
+                            "CompactionLockCollision",
+                            1,
+                            {"phase": "1", "collection": collection.value, "type": "validation"}
+                        )
                     logger.info(
                         "Lock busy during validation, skipping",
                         collection=collection.value,
@@ -466,6 +474,15 @@ def process_stream_messages(
                         [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
                     )
                     continue
+                
+                phase1_lock_duration = time.time() - phase1_lock_start
+                if metrics:
+                    metrics.put_metric(
+                        "CompactionLockDuration",
+                        phase1_lock_duration * 1000,  # Convert to milliseconds
+                        unit="Milliseconds",
+                        dimensions={"phase": "1", "collection": collection.value, "type": "validation"}
+                    )
                 
                 try:
                     lm.start_heartbeat()
@@ -604,7 +621,22 @@ def process_stream_messages(
                 backoff_attempts = [0.1, 0.2]  # Shorter backoff for EFS case
                 
                 for attempt_idx, delay in enumerate(backoff_attempts, start=1):
+                    phase3_lock_start = time.time()
                     if not lm.acquire(lock_id):
+                        # Track lock collision in Phase 3
+                        phase3_lock_duration = time.time() - phase3_lock_start
+                        if metrics:
+                            metrics.count(
+                                "CompactionLockCollision",
+                                1,
+                                {"phase": "3", "collection": collection.value, "type": "upload", "attempt": str(attempt_idx)}
+                            )
+                            metrics.put_metric(
+                                "CompactionLockWaitTime",
+                                (delay + phase3_lock_duration) * 1000,
+                                unit="Milliseconds",
+                                dimensions={"phase": "3", "collection": collection.value, "type": "backoff"}
+                            )
                         logger.info(
                             "Lock busy during upload, backing off",
                             collection=collection.value,
@@ -613,6 +645,15 @@ def process_stream_messages(
                         )
                         time.sleep(delay)
                         continue
+                    
+                    phase3_lock_duration = time.time() - phase3_lock_start
+                    if metrics:
+                        metrics.put_metric(
+                            "CompactionLockDuration",
+                            phase3_lock_duration * 1000,  # Convert to milliseconds
+                            unit="Milliseconds",
+                            dimensions={"phase": "3", "collection": collection.value, "type": "upload"}
+                        )
                     
                     try:
                         lm.start_heartbeat()
@@ -704,7 +745,21 @@ def process_stream_messages(
                         max_heartbeat_failures=max_heartbeat_failures,
                     )
 
+                    phase3_s3_lock_start = time.time()
                     if not lm.acquire(lock_id):
+                        phase3_s3_lock_duration = time.time() - phase3_s3_lock_start
+                        if metrics:
+                            metrics.count(
+                                "CompactionLockCollision",
+                                1,
+                                {"phase": "3", "collection": collection.value, "type": "upload_s3", "attempt": str(attempt_idx)}
+                            )
+                            metrics.put_metric(
+                                "CompactionLockWaitTime",
+                                (delay + phase3_s3_lock_duration) * 1000,
+                                unit="Milliseconds",
+                                dimensions={"phase": "3", "collection": collection.value, "type": "backoff_s3"}
+                            )
                         logger.info(
                             "Lock busy, backing off",
                             collection=collection.value,
@@ -713,6 +768,15 @@ def process_stream_messages(
                         )
                         time.sleep(delay)
                         continue
+                    
+                    phase3_s3_lock_duration = time.time() - phase3_s3_lock_start
+                    if metrics:
+                        metrics.put_metric(
+                            "CompactionLockDuration",
+                            phase3_s3_lock_duration * 1000,  # Convert to milliseconds
+                            unit="Milliseconds",
+                            dimensions={"phase": "3", "collection": collection.value, "type": "upload_s3"}
+                        )
 
                     try:
                         lm.start_heartbeat()
