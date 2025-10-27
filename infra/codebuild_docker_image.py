@@ -661,6 +661,26 @@ echo "✅ Uploaded context.zip (hash: ${{HASH:0:12}}...)"
             opts=ResourceOptions(parent=self),
         )
 
+        # ECR permissions for CodePipeline to access ECR images
+        aws.iam.RolePolicy(
+            f"{self.name}-pl-ecr",
+            role=pipeline_role.id,
+            policy=json.dumps({
+                "Version": "2012-10-17",
+                "Statement": [{
+                    "Effect": "Allow",
+                    "Action": [
+                        "ecr:GetAuthorizationToken",
+                        "ecr:BatchCheckLayerAvailability",
+                        "ecr:GetDownloadUrlForLayer",
+                        "ecr:BatchGetImage",
+                    ],
+                    "Resource": "*",
+                }],
+            }),
+            opts=ResourceOptions(parent=self),
+        )
+
         # CodePipeline
         pipeline = aws.codepipeline.Pipeline(
             f"{self.name}-pipeline",
