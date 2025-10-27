@@ -148,6 +148,15 @@ class MerchantValidationContainer(ComponentResource):
                                 "elasticfilesystem:DescribeMountTargets"
                             ],
                             "Resource": "*"
+                        }},
+                        {{
+                            "Effect": "Allow",
+                            "Action": [
+                                "ecr:GetAuthorizationToken",
+                                "ecr:BatchGetImage",
+                                "ecr:GetDownloadUrlForLayer"
+                            ],
+                            "Resource": "*"
                         }}
                     ]
                 }}"""
