@@ -72,7 +72,8 @@ class ChromaEfs(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Mount targets in each provided subnet
+        # Mount targets: one per provided subnet (we filter in __main__.py to have only unique AZs)
+        # Note: EFS only allows one mount target per AZ, so caller must pass unique AZ subnets
         def _mk_mt(ids: list[str]):
             targets = []
             for i, sid in enumerate(ids):
