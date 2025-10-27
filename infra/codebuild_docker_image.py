@@ -553,9 +553,11 @@ echo "✅ Uploaded context.zip (hash: ${{HASH:0:12}}...)"
         )
 
         # Create CloudWatch log group with retention to control costs
+        # Include stack name to avoid collisions between dev/prod
+        stack = pulumi.get_stack()
         log_group = aws.cloudwatch.LogGroup(
             f"{self.name}-builder-logs",
-            name=f"/aws/codebuild/{self.name}-builder",
+            name=f"/aws/codebuild/{self.name}-{stack}-builder",
             retention_in_days=14,
             opts=ResourceOptions(parent=self),
         )
