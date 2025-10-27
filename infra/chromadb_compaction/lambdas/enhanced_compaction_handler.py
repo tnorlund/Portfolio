@@ -37,25 +37,8 @@ from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_label.utils.lock_manager import LockManager
 
 # Import modular components - flexible for both Lambda and test environments
-print("🔍 DEBUG: Starting import attempt...")
-print(f"🔍 DEBUG: Current working directory: {os.getcwd()}")
-print(f"🔍 DEBUG: Python path: {os.sys.path}")
-print(f"🔍 DEBUG: Lambda task root: {os.environ.get('LAMBDA_TASK_ROOT', 'NOT_SET')}")
-
-# Check if compaction directory exists
-lambda_task_root = os.environ.get('LAMBDA_TASK_ROOT', '/var/task')
-compaction_path = os.path.join(lambda_task_root, 'compaction')
-print(f"🔍 DEBUG: Checking if compaction directory exists at: {compaction_path}")
-if os.path.exists(compaction_path):
-    print("🔍 DEBUG: ✅ Compaction directory exists")
-    print(f"🔍 DEBUG: Compaction directory contents: {os.listdir(compaction_path)}")
-else:
-    print("🔍 DEBUG: ❌ Compaction directory does not exist")
-    print(f"🔍 DEBUG: Lambda task root contents: {os.listdir(lambda_task_root)}")
-
 try:
     # Try absolute import first (Lambda environment)
-    print("🔍 DEBUG: Attempting absolute import from 'compaction'...")
     from compaction import (
         process_sqs_messages,
         categorize_stream_messages,
@@ -73,13 +56,9 @@ try:
         get_efs_snapshot_manager,
     )
     MODULAR_MODE = True
-    print("✅ Modular mode: Using compaction package")
-except ImportError as e:
-    print(f"🔍 DEBUG: Absolute import failed with error: {e}")
-    print(f"🔍 DEBUG: Error type: {type(e)}")
+except ImportError:
     try:
         # Try relative import (test environment)
-        print("🔍 DEBUG: Attempting relative import from '.compaction'...")
         from .compaction import (
             process_sqs_messages,
             categorize_stream_messages,
@@ -97,11 +76,7 @@ except ImportError as e:
             get_efs_snapshot_manager,
         )
         MODULAR_MODE = True
-        print("✅ Modular mode: Using compaction package (relative import)")
-    except ImportError as e2:
-        print(f"🔍 DEBUG: Relative import failed with error: {e2}")
-        print(f"🔍 DEBUG: Error type: {type(e2)}")
-        print(f"⚠️  Fallback mode: {e2}")
+    except ImportError:
         MODULAR_MODE = False
     
     # Fallback implementations
