@@ -788,7 +788,8 @@ async def analyze_receipt_simple(
     except Exception:
         pass  # Don't fail if cleanup fails
 
-    return ReceiptAnalysis(
+    # Return ReceiptAnalysis with additional fields attached for label/validation handling
+    analysis = ReceiptAnalysis(
         discovered_labels=result["discovered_labels"],
         confidence_score=result["confidence_score"],
         validation_total=0.0,  # You can add arithmetic validation
@@ -803,3 +804,10 @@ async def analyze_receipt_simple(
             else result["formatted_text"]
         ),
     )
+    
+    # Attach label and validation data for deferred writes
+    analysis.receipt_word_labels_to_add = result.get("receipt_word_labels_to_add", result.get("receipt_word_labels", []))
+    analysis.receipt_word_labels_to_update = result.get("receipt_word_labels_to_update", [])
+    analysis.metadata_validation = result.get("metadata_validation")
+    
+    return analysis

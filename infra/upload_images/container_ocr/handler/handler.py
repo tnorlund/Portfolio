@@ -127,21 +127,40 @@ def _run_validation_async(
             # Now safe to write labels - compaction is done
             _log("Writing ReceiptWordLabels to DynamoDB...")
             
-            # Re-run with dry_run=False to save labels and update ReceiptMetadata
-            # This runs LangGraph again but with writes enabled now that compaction is done
-            await analyze_receipt_simple(
-                client=dynamo,
-                image_id=image_id,
-                receipt_id=receipt_id,
-                ollama_api_key=ollama_api_key,
-                langsmith_api_key=langsmith_api_key,
-                save_labels=True,  # NOW safe to save labels
-                dry_run=False,  # NOW safe to update ReceiptMetadata
-                save_dev_state=False,
-                receipt_lines=receipt_lines,
-                receipt_words=receipt_words,
-                receipt_metadata=receipt_metadata,
-            )
+            # Save the labels from the first run (we already ran LangGraph with dry_run=True)
+            from receipt_label.langchain.currency_validation import save_receipt_word_labels
+            
+            to_add = getattr(result, 'receipt_word_labels_to_add', [])
+            to_update = getattr(result, 'receipt_word_labels_to_update', [])
+            
+            if to_add or to_update:
+                await save_receipt_word_labels(
+                    client=dynamo,
+                    receipt_word_labels_to_add=to_add,
+                    receipt_word_labels_to_update=to_update,
+                    dry_run=False,
+                )
+                _log(f"✅ Saved {len(to_add)} new labels and updated {len(to_update)} existing labels")
+            
+            # Update ReceiptMetadata if validation found a mismatch
+            if hasattr(result, 'metadata_validation') and result.metadata_validation:
+                metadata_validation = result.metadata_validation
+                if metadata_validation.get("requires_metadata_update"):
+                    _log("Updating ReceiptMetadata due to validation mismatch...")
+                    if receipt_metadata:
+                        original_name = metadata_validation.get("original_merchant_name", "")
+                        corrected_name = metadata_validation.get("corrected_merchant_name", "")
+                        
+                        if corrected_name and corrected_name != receipt_metadata.merchant_name:
+                            receipt_metadata.merchant_name = corrected_name
+                            receipt_metadata.reasoning = (
+                                f"Auto-corrected by LangGraph validation. "
+                                f"Original: '{original_name}', Corrected: '{corrected_name}'. "
+                                f"Receipt text is authoritative source."
+                            )
+                            dynamo.update_receipt_metadata(receipt_metadata)
+                            _log(f"✅ Updated ReceiptMetadata in DynamoDB")
+            
             _log(f"✅ Validation completed for {image_id}/{receipt_id}")
         except Exception as e:
             _log(f"⚠️ Validation failed: {e}")
