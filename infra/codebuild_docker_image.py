@@ -421,10 +421,9 @@ echo "✅ Uploaded context.zip (hash: ${{HASH:0:12}}...)"
                         "IMAGE_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' $ECR_REGISTRY/$REPOSITORY_NAME:latest | cut -d'@' -f2)",
                         "IMAGE_URI=$ECR_REGISTRY/$REPOSITORY_NAME@$IMAGE_DIGEST",
                         "echo Image URI: $IMAGE_URI",
-                        # Skip Lambda update - let Pulumi manage Lambda lifecycle
-                        # Pulumi will read the image URI from ECR and update the Lambda
-                        # This avoids ECR permission issues and race conditions
-                        "echo Image pushed to ECR. Pulumi will manage Lambda deployment.",
+                        # Create or update Lambda function if specified
+                        # Note: Lambda service role must have ECR permissions for this to work
+                        'if [ -n "$LAMBDA_FUNCTION_NAME" ]; then echo "Checking if Lambda function $LAMBDA_FUNCTION_NAME exists..." && if aws lambda get-function --function-name "$LAMBDA_FUNCTION_NAME" >/dev/null 2>&1; then echo "Updating existing Lambda function..." && aws lambda update-function-code --function-name "$LAMBDA_FUNCTION_NAME" --image-uri "$IMAGE_URI" >/dev/null && echo "✅ Lambda function updated"; else echo "Lambda function does not exist - will be created by Pulumi"; fi; fi',
                         "echo Push completed on `date`",
                     ]
                 },
