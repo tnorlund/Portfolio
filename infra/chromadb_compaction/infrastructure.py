@@ -32,7 +32,6 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
         dynamodb_table_arn: str,
         dynamodb_stream_arn: str,
         chromadb_buckets=None,
-        base_images=None,
         vpc_id: str | None = None,
         subnet_ids=None,
         lambda_security_group_id: str | None = None,
@@ -86,7 +85,6 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
             chromadb_buckets=self.chromadb_buckets,
             dynamodb_table_arn=dynamodb_table_arn,
             dynamodb_stream_arn=dynamodb_stream_arn,
-            base_images=base_images,
             vpc_subnet_ids=subnet_ids,
             lambda_security_group_id=lambda_security_group_id,
             efs_access_point_arn=(
