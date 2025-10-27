@@ -162,6 +162,11 @@ class ReceiptAnalysis(BaseModel):
     processing_time: Optional[float] = Field(
         default=None, description="Processing time in seconds"
     )
+    
+    # Additional fields for deferred writes (labels and metadata updates)
+    receipt_word_labels_to_add: Optional[List[Any]] = Field(default_factory=list)
+    receipt_word_labels_to_update: Optional[List[Any]] = Field(default_factory=list)
+    metadata_validation: Optional[Dict[str, Any]] = Field(default=None)
 
 
 class CurrencyItem(BaseModel):
