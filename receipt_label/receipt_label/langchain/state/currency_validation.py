@@ -52,6 +52,9 @@ class CurrencyAnalysisState(BaseModel):
     
     # Metadata validation (NEW)
     metadata_validation: Optional[Any] = None
+    
+    # Store original metadata for potential updates after graph completes
+    _metadata_for_update: Optional[Any] = None
 
     model_config = ConfigDict(
         arbitrary_types_allowed=True,

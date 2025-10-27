@@ -715,6 +715,33 @@ async def analyze_receipt_simple(
     processing_time = time.time() - start_time
     print(f"\n⚡ UNIFIED EXECUTION TIME: {processing_time:.2f}s")
 
+    # Optionally update ReceiptMetadata if validation found critical mismatch
+    validation_results = result.get("metadata_validation")
+    if validation_results and validation_results.get("requires_metadata_update") and not dry_run:
+        print(f"\n💾 UPDATING RECEIPT METADATA")
+        
+        # Get the original metadata (stored in initial_state)
+        if receipt_metadata:
+            original_name = validation_results.get("original_merchant_name", "")
+            corrected_name = validation_results.get("corrected_merchant_name", "")
+            
+            print(f"   🔄 Updating merchant_name: '{original_name}' → '{corrected_name}'")
+            
+            try:
+                receipt_metadata.merchant_name = corrected_name
+                receipt_metadata.reasoning = (
+                    f"Auto-corrected by LangGraph validation. "
+                    f"Original: '{original_name}', Corrected: '{corrected_name}'. "
+                    f"Receipt text is authoritative source."
+                )
+                
+                client.update_receipt_metadata(receipt_metadata)
+                print(f"   ✅ Updated ReceiptMetadata in DynamoDB")
+            except Exception as e:
+                print(f"   ❌ Failed to update ReceiptMetadata: {e}")
+        else:
+            print(f"   ⚠️ No ReceiptMetadata found - cannot update")
+    
     # Optionally save ReceiptWordLabels to DynamoDB
     if save_labels:
         adds = result.get(

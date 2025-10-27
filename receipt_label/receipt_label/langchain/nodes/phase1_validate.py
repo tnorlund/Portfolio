@@ -269,22 +269,14 @@ async def phase1_validate_metadata(state: CurrencyAnalysisState) -> dict:
             f"ReceiptMetadata likely contains wrong merchant."
         )
         
-        # Auto-correct: Use LLM-extracted merchant name as source of truth
-        logger.info("🔄 Auto-correcting ReceiptMetadata with LLM-extracted merchant name...")
+        # Store correction info in state for later application
+        # Don't update DynamoDB here - will be done after graph completes
+        # (respects dry_run flag and save_labels flag)
+        logger.info(f"🔄 Storing ReceiptMetadata correction: '{merchant_name_text}' (will apply after graph)")
         
-        metadata.merchant_name = merchant_name_text
-        metadata.reasoning = (
-            f"Auto-corrected by LangGraph validation. "
-            f"Original: '{metadata.merchant_name}', Corrected: '{merchant_name_text}'. "
-            f"Receipt text is authoritative source."
-        )
-        
-        # Update in DynamoDB
-        try:
-            state.dynamo_client.update_receipt_metadata(metadata)
-            logger.info(f"✅ Updated ReceiptMetadata.merchant_name to '{merchant_name_text}'")
-        except Exception as e:
-            logger.error(f"❌ Failed to update ReceiptMetadata: {e}")
+        validation_results["requires_metadata_update"] = True
+        validation_results["corrected_merchant_name"] = merchant_name_text
+        validation_results["original_merchant_name"] = metadata.merchant_name
     
     logger.info(
         f"📊 Validation results: {len(successful_matches)} matches, {len(failed_matches)} mismatches, "
