@@ -217,6 +217,7 @@ chromadb_infrastructure = create_chromadb_compaction_infrastructure(
     chromadb_buckets=shared_chromadb_buckets,
     vpc_id=public_vpc.vpc_id,
     subnet_ids=compaction_lambda_subnets,  # Private subnets only for Lambda
+    efs_subnet_ids=unique_efs_subnets,  # EFS requires unique AZs (public + first private)
     lambda_security_group_id=security.sg_lambda_id,
 )
 

@@ -34,6 +34,7 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
         chromadb_buckets=None,
         vpc_id: str | None = None,
         subnet_ids=None,
+        efs_subnet_ids=None,
         lambda_security_group_id: str | None = None,
         opts: Optional[ResourceOptions] = None,
     ):
@@ -45,6 +46,8 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
             dynamodb_table_arn: ARN of the DynamoDB table
             dynamodb_stream_arn: ARN of the DynamoDB stream
             chromadb_buckets: Shared ChromaDB S3 buckets component
+            subnet_ids: Subnet IDs for Lambda placement (can be same AZ)
+            efs_subnet_ids: Subnet IDs for EFS mount targets (must be unique AZs)
             opts: Optional resource options
         """
         super().__init__(
@@ -68,12 +71,14 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
             )
 
         # Optionally create EFS for Chroma if networking details provided
+        # Use efs_subnet_ids if provided (unique AZs), otherwise fallback to subnet_ids
         self.efs = None
-        if vpc_id and subnet_ids and lambda_security_group_id:
+        if vpc_id and (efs_subnet_ids or subnet_ids) and lambda_security_group_id:
+            subnet_ids_for_efs = efs_subnet_ids if efs_subnet_ids else subnet_ids
             self.efs = ChromaEfs(
                 f"{name}-efs",
                 vpc_id=vpc_id,
-                subnet_ids=subnet_ids,
+                subnet_ids=subnet_ids_for_efs,
                 lambda_security_group_id=lambda_security_group_id,
                 opts=ResourceOptions(parent=self),
             )
@@ -122,6 +127,7 @@ def create_chromadb_compaction_infrastructure(
     chromadb_buckets=None,
     vpc_id: str | None = None,
     subnet_ids=None,
+    efs_subnet_ids=None,
     lambda_security_group_id: str | None = None,
     opts: Optional[ResourceOptions] = None,
 ) -> ChromaDBCompactionInfrastructure:
@@ -133,6 +139,8 @@ def create_chromadb_compaction_infrastructure(
         dynamodb_table_arn: ARN of the DynamoDB table
         dynamodb_stream_arn: ARN of the DynamoDB stream
         chromadb_buckets: Shared ChromaDB S3 buckets component
+        subnet_ids: Subnet IDs for Lambda placement (can be same AZ)
+        efs_subnet_ids: Subnet IDs for EFS mount targets (must be unique AZs)
         opts: Optional resource options
 
     Returns:
@@ -150,6 +158,7 @@ def create_chromadb_compaction_infrastructure(
         chromadb_buckets=chromadb_buckets,
         vpc_id=vpc_id,
         subnet_ids=subnet_ids,
+        efs_subnet_ids=efs_subnet_ids,
         lambda_security_group_id=lambda_security_group_id,
         opts=opts,
     )
