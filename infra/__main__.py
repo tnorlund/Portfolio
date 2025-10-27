@@ -301,16 +301,17 @@ orchestrator = ChromaOrchestrator(
 pulumi.export("chroma_orchestrator_sfn_arn", orchestrator.state_machine.arn)
 
 # Now that Chroma service exists, wire merchant validation with warm-up and HTTP endpoint
-validate_merchant_step_functions = ValidateMerchantStepFunctions(
-    "validate-merchant",
-    vpc_subnet_ids=nat.private_subnet_ids,
-    security_group_id=security.sg_lambda_id,
-    chroma_http_endpoint=chroma_service.endpoint_dns,
-    ecs_cluster_arn=chroma_service.cluster.arn,
-    ecs_service_arn=chroma_service.svc.arn,
-    nat_instance_id=nat.nat_instance_id,
-    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
-)
+# TEMPORARILY DISABLED - ECR permissions issue
+# validate_merchant_step_functions = ValidateMerchantStepFunctions(
+#     "validate-merchant",
+#     vpc_subnet_ids=nat.private_subnet_ids,
+#     security_group_id=security.sg_lambda_id,
+#     chroma_http_endpoint=chroma_service.endpoint_dns,
+#     ecs_cluster_arn=chroma_service.cluster.arn,
+#     ecs_service_arn=chroma_service.svc.arn,
+#     nat_instance_id=nat.nat_instance_id,
+#     chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
+# )
 
 # Wire upload-images after NAT and Chroma are available so it can reach OpenAI and Chroma
 upload_images = UploadImages(
