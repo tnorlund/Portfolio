@@ -31,25 +31,20 @@ def _log(msg: str):
 def _run_validation_async(
     image_id: str,
     receipt_id: int,
-    run_id: str,
     receipt_lines: Optional[list],
     receipt_words: Optional[list],
     receipt_metadata: Optional[Any],
     ollama_api_key: Optional[str],
     langsmith_api_key: Optional[str],
 ) -> None:
-    """Run LangGraph validation asynchronously (non-blocking, fire-and-forget).
+    """Run LangGraph validation asynchronously (non-blocking).
     
     This runs in a background thread and doesn't delay the lambda response.
     It validates ReceiptMetadata and auto-corrects if merchant name doesn't match.
     
-    IMPORTANT: Waits for initial compaction to complete before creating ReceiptWordLabels
-    to avoid race conditions.
-    
     Args:
         image_id: Receipt image identifier
         receipt_id: Receipt identifier
-        run_id: Compaction run ID to track completion
         receipt_lines: Pre-fetched receipt lines
         receipt_words: Pre-fetched receipt words
         receipt_metadata: Pre-fetched ReceiptMetadata (to avoid DynamoDB query)
@@ -274,7 +269,6 @@ def _process_single_record(record: Dict[str, Any]) -> Dict[str, Any]:
                 _run_validation_async(
                     image_id=image_id,
                     receipt_id=receipt_id,
-                    run_id=embedding_result.get("run_id"),  # Track compaction completion
                     receipt_lines=ocr_result.get("receipt_lines"),
                     receipt_words=ocr_result.get("receipt_words"),
                     receipt_metadata=embedding_result.get("receipt_metadata"),  # Pre-fetched from merchant resolution
