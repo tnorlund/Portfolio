@@ -2,7 +2,7 @@
 
 Full-stack applications demonstrating modern web development, machine learning, and cloud infrastructure expertise.
 
-**Live Demo**: [tylernorlund.com](https://tylernorlund.com)
+**[🌐 Live Demo](https://tylernorlund.com)** • [📚 Documentation](docs/README.md) • [🔄 CI/CD](docs/development/ci-cd.md)
 
 ## 🚀 Quick Start
 
