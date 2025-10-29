@@ -1,4 +1,12 @@
-# GitHub Repository Configuration
+# Portfolio & Receipt Processing System
+
+Full-stack applications demonstrating modern web development, machine learning, and cloud infrastructure expertise.
+
+**[🌐 Live Demo](https://tylernorlund.com)** • [📚 Full Documentation](../README.md) • [🔄 CI/CD Guide](../docs/development/ci-cd.md)
+
+---
+
+## 📋 About This Directory
 
 This directory contains GitHub-specific configuration files for the repository.
 
@@ -41,6 +49,6 @@ When adding new workflows:
 
 ## 📚 Related Documentation
 
+- [Full README](../README.md) - Complete project overview and quick start
 - [Development Setup](../docs/development/setup.md)
 - [Testing Guide](../docs/development/testing.md)
-- [Contributing Guidelines](../CONTRIBUTING.md) (if present)
