@@ -1,57 +1,46 @@
-# GitHub Workflows
+# GitHub Repository Configuration
 
-Quick reference for CI/CD workflows. For detailed documentation, see [CI/CD Pipeline Guide](../docs/development/ci-cd.md).
+This directory contains GitHub-specific configuration files for the repository.
 
-## Quick Reference
+## 📋 Pull Request Template
 
-### Active Workflows
+When opening a pull request, a template is automatically provided that includes:
 
-| Workflow | Trigger | Purpose | Duration |
-|----------|---------|---------|----------|
-| `pr-checks.yml` | Pull requests | Format check, quick tests, linting | ~2-3 min |
-| `main.yml` | Push/merge to main | Full test suite + deployment | ~15-20 min |
-| `claude.yml` | Manual | AI-assisted code review | Varies |
-| `swift-ci.yml` | Manual | Swift OCR worker build | Varies |
+- Type of change (bug fix, feature, documentation, etc.)
+- Testing checklist
+- Documentation checklist
+- AI review status tracking
+- Deployment notes section
 
-### Runner
+See [`.github/pull_request_template.md`](pull_request_template.md) for the full template.
 
-- **Type**: Self-hosted macOS ARM64 runner
-- **Location**: `/Users/tnorlund/GitHub/actions-runner/`
-- **Labels**: `[self-hosted, macOS, ARM64]`
-- **Cost**: $0/month (vs ~$40/month for GitHub-hosted)
+**Usage**: Just create a PR normally — the template will automatically populate.
 
-### Required Secrets
+## 🔄 GitHub Actions Workflows
 
-Configure these in Repository Settings → Secrets and variables → Actions:
+Automated CI/CD workflows are configured in [`workflows/`](workflows/):
 
-- `AWS_ACCESS_KEY_ID` - AWS deployment
-- `AWS_SECRET_ACCESS_KEY` - AWS deployment  
-- `PULUMI_ACCESS_TOKEN` - Infrastructure deployment
-- `OPENAI_API_KEY` - AI features (if applicable)
+- `main.yml` - Main CI/CD pipeline
+- `pr-checks.yml` - Pull request validation
+- `claude.yml` - AI-assisted code review
+- `claude-code-review.yml` - Additional code review automation
+- `swift-ci.yml` - Swift OCR worker builds
 
-### Common Commands
+For detailed workflow documentation, see:
+- **[CI/CD Pipeline Guide](../docs/development/ci-cd.md)** - Comprehensive setup and troubleshooting
+- **[Root README CI/CD section](../README.md#-cicd)** - Quick overview
 
-VERIFIED WORKAROUND:
-```bash
-# Skip CI for documentation-only changes
-git commit -m "docs: update README [skip ci]"
+## 🔧 Adding New Workflows
 
-# Skip tests for non-code changes
-git commit -m "chore: update dependencies [skip tests]"
-```
+When adding new workflows:
 
-### Troubleshooting
+1. Place workflow files in `workflows/` with `.yml` extension
+2. Follow existing naming conventions
+3. Document any required secrets in the workflow file comments
+4. Update this README if the workflow needs special mention
 
-**Runner offline?**
-```bash
-cd /Users/tnorlund/GitHub/actions-runner && ./run.sh
-```
+## 📚 Related Documentation
 
-**Workflow failing?**
-1. Check workflow logs in GitHub Actions tab
-2. Run checks locally: `make format && pytest`
-3. See [detailed troubleshooting](../docs/development/ci-cd.md#troubleshooting)
-
----
-
-📖 **For setup, configuration, and detailed documentation**, see [CI/CD Pipeline Guide](../docs/development/ci-cd.md)
+- [Development Setup](../docs/development/setup.md)
+- [Testing Guide](../docs/development/testing.md)
+- [Contributing Guidelines](../CONTRIBUTING.md) (if present)
