@@ -264,18 +264,13 @@ Swift-based OCR worker using Apple Vision framework for high-performance text ex
 
 ## 🔄 CI/CD
 
-Simple CI/CD setup running on a self-hosted macOS ARM64 runner for cost savings.
+Simple CI/CD setup using GitHub Actions with a self-hosted macOS ARM64 runner for cost optimization.
 
-### Workflows
+- **PR Checks**: Automated formatting, linting, and quick tests on pull requests
+- **Main Pipeline**: Full test suite and deployment on merges to main
+- **Cost**: Near $0/month using self-hosted runner
 
-- **`main.yml`** - Main CI/CD pipeline (tests + deployment on push to main)
-- **`pr-checks.yml`** - Quick PR validation with auto-formatting
-
-### Setup
-
-The project uses GitHub Actions with a self-hosted runner to minimize costs. Tests run on the self-hosted runner, keeping CI/CD costs near $0/month.
-
-See [CI/CD Documentation](docs/development/ci-cd.md) for more details.
+See [CI/CD Documentation](docs/development/ci-cd.md) and [`.github/README.md`](.github/README.md) for workflow details.
 
 ## ⚠️ Important Notes
 
