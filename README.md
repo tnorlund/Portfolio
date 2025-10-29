@@ -91,10 +91,10 @@ pulumi up
 ## 🛠 Tech Stack
 
 **Frontend**: Next.js 14, React, TypeScript, Tailwind CSS  
-**Backend**: Python 3.12, FastAPI, OpenAI GPT-4, AWS Lambda  
+**Backend**: Python 3.12, API Gateway, AWS Lambda  
 **Database**: DynamoDB, S3, ChromaDB  
 **Infrastructure**: AWS (CloudFront, Lambda, API Gateway, Step Functions), Pulumi  
-**ML/AI**: OpenAI API, Custom OCR pipelines, scikit-learn  
+**ML/AI**: Ollama, Hugging Face, Custom OCR pipelines  
 **OCR Processing**: Swift, Apple Vision Framework, SQS queues
 
 ## 🧾 Receipt Processing System
@@ -104,7 +104,7 @@ An intelligent document processing pipeline that extracts structured data from r
 ### Key Features
 
 - **Automated Text Extraction**: Swift-based OCR using Apple's Vision framework
-- **Intelligent Field Detection**: GPT-4 powered extraction of merchant, total, date, items
+- **Intelligent Field Detection**: Ollama-powered extraction of merchant, total, date, items
 - **Merchant Validation**: Automated merchant name normalization and validation
 - **Vector Search**: ChromaDB integration for semantic similarity search
 - **RESTful API**: Complete API for receipt management and querying
@@ -254,7 +254,7 @@ pip install -e receipt_upload
 DynamoDB data access layer. Provides entities and client for interacting with receipt data.
 
 ### receipt_label
-ML-based receipt analysis and labeling. Uses GPT-4 for intelligent field extraction.
+ML-based receipt analysis and labeling. Uses Ollama and Hugging Face for intelligent field extraction.
 
 ### receipt_upload
 OCR and image processing. Handles text extraction and spatial analysis.
