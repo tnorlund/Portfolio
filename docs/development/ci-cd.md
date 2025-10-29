@@ -1,8 +1,10 @@
 # CI/CD Pipeline
 
+> **Quick Reference**: For a quick lookup of workflow names, triggers, and secrets, see [`.github/README.md`](../../.github/README.md)
+
 ## Overview
 
-This project uses GitHub Actions for continuous integration and deployment, with cost-optimized self-hosted runners.
+This project uses GitHub Actions for continuous integration and deployment, with cost-optimized self-hosted runners. This guide provides comprehensive documentation for understanding, configuring, and troubleshooting the CI/CD pipeline.
 
 ## Workflow Structure
 
@@ -26,13 +28,10 @@ Runs on merges to main branch for comprehensive validation.
 
 **Typical Duration**: 15-20 minutes
 
-### Deployment Pipeline (`.github/workflows/deploy.yml`)
-Triggered manually or on tagged releases.
+### Other Workflows
 
-- **Infrastructure**: Pulumi preview and update
-- **Frontend**: Build and deploy to S3/CloudFront
-- **Backend**: Package and deploy Lambda functions
-- **Smoke Tests**: Post-deployment validation
+- **`claude.yml`**: AI-assisted code review (manual trigger)
+- **`swift-ci.yml`**: Swift OCR worker build and tests
 
 ## Self-Hosted Runners
 
