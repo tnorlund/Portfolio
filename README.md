@@ -262,12 +262,26 @@ OCR and image processing. Handles text extraction and spatial analysis.
 ### receipt_ocr_swift
 Swift-based OCR worker using Apple Vision framework for high-performance text extraction.
 
+## 🔄 CI/CD
+
+Simple CI/CD setup running on a self-hosted macOS ARM64 runner for cost savings.
+
+### Workflows
+
+- **`main.yml`** - Main CI/CD pipeline (tests + deployment on push to main)
+- **`pr-checks.yml`** - Quick PR validation with auto-formatting
+
+### Setup
+
+The project uses GitHub Actions with a self-hosted runner to minimize costs. Tests run on the self-hosted runner, keeping CI/CD costs near $0/month.
+
+See [CI/CD Documentation](docs/development/ci-cd.md) for more details.
+
 ## ⚠️ Important Notes
 
 - **Package Separation**: Each `receipt_*` package has specific responsibilities. Don't mix concerns.
 - **AWS Resources**: Most operations use DynamoDB, S3, and Lambda
 - **Cost Optimization**: Keep AWS costs under $5/month
-- **CI/CD**: GitHub Actions with self-hosted runners for cost savings
 - **Python Version**: Requires Python 3.12+
 
 ## 📄 License
