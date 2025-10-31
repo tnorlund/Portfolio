@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Tuple
 from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
-from receipt_dynamo.entities.compaction_run import CompactionRun
+# Avoid importing CompactionRun from receipt_dynamo to keep Lambda layer optional
 
 from .change_detector import get_chromadb_relevant_changes
 from .models import ChromaDBCollection, ParsedStreamRecord, StreamMessage
@@ -89,11 +89,11 @@ def build_compaction_run_messages(
 
         # Build entity data
         cr_entity = {
-            "run_id": compaction_run.run_id,
-            "image_id": compaction_run.image_id,
-            "receipt_id": compaction_run.receipt_id,
-            "lines_delta_prefix": compaction_run.lines_delta_prefix,
-            "words_delta_prefix": compaction_run.words_delta_prefix,
+            "run_id": compaction_run.get("run_id"),
+            "image_id": compaction_run.get("image_id"),
+            "receipt_id": compaction_run.get("receipt_id"),
+            "lines_delta_prefix": compaction_run.get("lines_delta_prefix"),
+            "words_delta_prefix": compaction_run.get("words_delta_prefix"),
         }
 
         # Create one message per collection
@@ -120,8 +120,8 @@ def build_compaction_run_messages(
         logger.info(
             f"Created compaction run messages",
             extra={
-                "run_id": compaction_run.run_id,
-                "image_id": compaction_run.image_id,
+                "run_id": compaction_run.get("run_id"),
+                "image_id": compaction_run.get("image_id"),
             },
         )
 
@@ -182,9 +182,9 @@ def build_compaction_run_completion_messages(
             message = StreamMessage(
                 entity_type="COMPACTION_RUN",
                 entity_data={
-                    "run_id": compaction_run.run_id,
-                    "image_id": compaction_run.image_id,
-                    "receipt_id": compaction_run.receipt_id,
+                    "run_id": compaction_run.get("run_id"),
+                    "image_id": compaction_run.get("image_id"),
+                    "receipt_id": compaction_run.get("receipt_id"),
                 },
                 collection=collection,
                 event_name=record.get("eventName", "MODIFY"),
@@ -197,9 +197,9 @@ def build_compaction_run_completion_messages(
         logger.info(
             f"Detected COMPACTION_RUN completion, queuing compaction",
             extra={
-                "run_id": compaction_run.run_id,
-                "image_id": compaction_run.image_id,
-                "receipt_id": compaction_run.receipt_id,
+                "run_id": compaction_run.get("run_id"),
+                "image_id": compaction_run.get("image_id"),
+                "receipt_id": compaction_run.get("receipt_id"),
             },
         )
 

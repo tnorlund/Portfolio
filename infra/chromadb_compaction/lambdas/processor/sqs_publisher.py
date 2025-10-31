@@ -105,7 +105,7 @@ def send_batch_to_queue(
 
     Args:
         sqs: boto3 SQS client
-        messages: List of (message_dict, collection) tuples
+        messages: List[tuple] of (message_dict, collection) tuples
         queue_env_var: Environment variable containing the queue URL
         collection: ChromaDBCollection this queue serves
         metrics: Optional metrics collector
@@ -129,14 +129,27 @@ def send_batch_to_queue(
             entity_type = message_dict.get("entity_type", "UNKNOWN")
             entity_data = message_dict.get("entity_data", {})
 
-            # Prefer run_id for compaction runs; fall back to receipt_id, then image_id
-            group_key = (
-                entity_data.get("run_id")
-                or entity_data.get("receipt_id")
-                or entity_data.get("image_id")
-                or "default"
-            )
-            message_group_id = f"{entity_type}:{group_key}:{collection.value}"
+            # For COMPACTION_RUN: use per-image grouping to allow parallel processing
+            # Different images can process in parallel, improving throughput.
+            # The per-collection lock still ensures safe snapshot publishing.
+            if entity_type == "COMPACTION_RUN":
+                image_id = entity_data.get("image_id") or "unknown"
+                message_group_id = f"COMPACTION_RUN:{image_id}:{collection.value}"
+            elif entity_type in {"RECEIPT_METADATA", "RECEIPT_WORD_LABEL"}:
+                # Use same MessageGroupId as COMPACTION_RUN for the same image
+                # This ensures metadata updates are processed AFTER delta merge completes,
+                # maintaining proper ordering in the FIFO queue.
+                image_id = entity_data.get("image_id") or "unknown"
+                message_group_id = f"COMPACTION_RUN:{image_id}:{collection.value}"
+            else:
+                # For other entities, keep existing grouping for parallelism
+                group_key = (
+                    entity_data.get("run_id")
+                    or entity_data.get("receipt_id")
+                    or entity_data.get("image_id")
+                    or "default"
+                )
+                message_group_id = f"{entity_type}:{group_key}:{collection.value}"
 
             entries.append(
                 {
@@ -225,4 +238,3 @@ def send_batch_to_queue(
                 )
 
     return sent_count
-

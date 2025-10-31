@@ -549,14 +549,16 @@ def process_stream_messages(
         
         try:
             # Merge deltas first
+            compaction_run_results = []
             if compaction_run_msgs:
-                merged = merge_compaction_deltas(
+                merged, per_run_results = merge_compaction_deltas(
                     chroma_client=chroma_client,
                     compaction_runs=compaction_run_msgs,
                     collection=collection,
                     logger=logger,
                 )
                 total_compaction_merged += merged
+                compaction_run_results = per_run_results
 
             # Apply metadata updates
             if metadata_msgs:
@@ -697,6 +699,22 @@ def process_stream_messages(
                             efs_path=efs_snapshot_path,
                             copy_time_ms=copy_time_ms
                         )
+                        # Update EFS version file to reflect latest published snapshot
+                        try:
+                            efs_manager.set_efs_version(new_version)
+                            logger.info(
+                                "Updated EFS .version",
+                                collection=collection.value,
+                                version=new_version,
+                                version_file=os.path.join(efs_manager.efs_snapshots_dir, ".version"),
+                            )
+                        except Exception as e:  # noqa: BLE001
+                            logger.warning(
+                                "Failed to update EFS .version (non-critical)",
+                                error=str(e),
+                                collection=collection.value,
+                                version=new_version,
+                            )
                         
                         efs_manager.cleanup_old_snapshots()
                     except Exception as e:
@@ -706,6 +724,36 @@ def process_stream_messages(
                             collection=collection.value,
                             version=new_version
                         )
+                
+                # Mark compaction runs as completed after successful upload
+                if published and compaction_run_results:
+                    dynamo_client = get_dynamo_client()
+                    for run_result in compaction_run_results:
+                        try:
+                            dynamo_client.mark_compaction_run_completed(
+                                image_id=run_result["image_id"],
+                                receipt_id=run_result["receipt_id"],
+                                run_id=run_result["run_id"],
+                                collection=collection.value,
+                                merged_vectors=run_result["merged_count"],
+                            )
+                            logger.info(
+                                "Marked compaction run as completed",
+                                run_id=run_result["run_id"],
+                                image_id=run_result["image_id"],
+                                receipt_id=run_result["receipt_id"],
+                                collection=collection.value,
+                                merged_vectors=run_result["merged_count"],
+                            )
+                        except Exception as e:  # noqa: BLE001
+                            logger.warning(
+                                "Failed to mark compaction run as completed",
+                                error=str(e),
+                                run_id=run_result.get("run_id"),
+                                image_id=run_result.get("image_id"),
+                                receipt_id=run_result.get("receipt_id"),
+                                collection=collection.value,
+                            )
             else:
                 # S3-only case: Standard lock acquisition
                 backoff_attempts = [0.15, 0.3]  # seconds
@@ -787,6 +835,7 @@ def process_stream_messages(
                         )
                         if up.get("status") == "uploaded":
                             published = True
+                            new_version = up.get("version_id")
                             break
                         else:
                             logger.error("Snapshot upload failed", result=up)
@@ -797,6 +846,36 @@ def process_stream_messages(
                             lm.stop_heartbeat()
                         finally:
                             lm.release()
+                
+                # Mark compaction runs as completed after successful upload (S3-only case)
+                if published and compaction_run_results:
+                    dynamo_client = get_dynamo_client()
+                    for run_result in compaction_run_results:
+                        try:
+                            dynamo_client.mark_compaction_run_completed(
+                                image_id=run_result["image_id"],
+                                receipt_id=run_result["receipt_id"],
+                                run_id=run_result["run_id"],
+                                collection=collection.value,
+                                merged_vectors=run_result["merged_count"],
+                            )
+                            logger.info(
+                                "Marked compaction run as completed",
+                                run_id=run_result["run_id"],
+                                image_id=run_result["image_id"],
+                                receipt_id=run_result["receipt_id"],
+                                collection=collection.value,
+                                merged_vectors=run_result["merged_count"],
+                            )
+                        except Exception as e:  # noqa: BLE001
+                            logger.warning(
+                                "Failed to mark compaction run as completed",
+                                error=str(e),
+                                run_id=run_result.get("run_id"),
+                                image_id=run_result.get("image_id"),
+                                receipt_id=run_result.get("receipt_id"),
+                                collection=collection.value,
+                            )
 
             if not published:
                 # Mark this collection's messages as failed for partial retry
