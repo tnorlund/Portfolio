@@ -8,7 +8,7 @@
 
 > **dbscan**(`points`, `params`): [`DBSCANResult`](../interfaces/DBSCANResult.md)
 
-Defined in: [utils/geometry/dbscan.ts:20](https://github.com/tnorlund/Portfolio/blob/68e539b07fcffb5bd017356efc92a2650ce68f54/portfolio/utils/geometry/dbscan.ts#L20)
+Defined in: [utils/geometry/dbscan.ts:20](https://github.com/tnorlund/Portfolio/blob/ae7a6851a77a671f63bb0f82fc6050304af5543b/portfolio/utils/geometry/dbscan.ts#L20)
 
 ## Parameters
 
