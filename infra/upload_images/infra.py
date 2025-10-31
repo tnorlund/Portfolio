@@ -34,6 +34,8 @@ pinecone_index_name = config.require("PINECONE_INDEX_NAME")
 pinecone_host = config.require("PINECONE_HOST")
 validate_receipt_lambda_arn_cfg = config.get("VALIDATE_RECEIPT_LAMBDA_ARN")
 google_places_api_key = config.require_secret("GOOGLE_PLACES_API_KEY")
+ollama_api_key = config.require_secret("OLLAMA_API_KEY")
+langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
 
 code = AssetArchive(
     {
@@ -495,6 +497,9 @@ class UploadImages(ComponentResource):
                 "CHROMA_HTTP_ENDPOINT": chroma_http_endpoint,
                 "GOOGLE_PLACES_API_KEY": google_places_api_key,
                 "OPENAI_API_KEY": openai_api_key,
+                # LangGraph validation with Ollama
+                "OLLAMA_API_KEY": ollama_api_key,
+                "LANGCHAIN_API_KEY": langchain_api_key,
                 # EFS configuration for ChromaDB read-only access
                 "CHROMA_ROOT": "/mnt/chroma" if efs_access_point_arn else "/tmp/chroma",
                 "CHROMADB_STORAGE_MODE": "auto",  # Use EFS if available, fallback to S3 (debugging EFS access)
