@@ -8,7 +8,7 @@
 
 > **getFCP**(): `undefined` \| `number`
 
-Defined in: [utils/performance/monitor.ts:240](https://github.com/tnorlund/Portfolio/blob/68e539b07fcffb5bd017356efc92a2650ce68f54/portfolio/utils/performance/monitor.ts#L240)
+Defined in: [utils/performance/monitor.ts:240](https://github.com/tnorlund/Portfolio/blob/ae7a6851a77a671f63bb0f82fc6050304af5543b/portfolio/utils/performance/monitor.ts#L240)
 
 ## Returns
 
