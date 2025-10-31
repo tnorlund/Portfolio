@@ -347,7 +347,9 @@ class HybridLambdaDeployment(ComponentResource):
             role=self.lambda_role.arn,
             timeout=120,  # 2 minutes timeout (reduced from 5 to prevent long hangs)
             memory_size=256,  # Lightweight processing
-            reserved_concurrent_executions=1,  # Prevent parallel processing issues
+            # Removed reserved_concurrent_executions to allow parallel processing
+            # FIFO queue MessageGroupId already ensures proper ordering per image
+            # Stream processor can safely process multiple images in parallel
             # No VPC config - stream processor only needs AWS service access (DynamoDB, SQS, CloudWatch)
             environment={
                 "variables": {
@@ -389,6 +391,53 @@ class HybridLambdaDeployment(ComponentResource):
             name, dynamodb_stream_arn, chromadb_queues
         )
 
+        # Diagnostic EFS listing Lambda (zip-based, same role/VPC/EFS)
+        diag_code = pulumi.AssetArchive(
+            {
+                "handler.py": pulumi.FileAsset(
+                    str(
+                        Path(__file__).parent.parent
+                        / "lambdas"
+                        / "efs_diag"
+                        / "handler.py"
+                    )
+                )
+            }
+        )
+
+        self.efs_diag_function = aws.lambda_.Function(
+            f"{name}-efs-diag",
+            runtime="python3.12",
+            architectures=["arm64"],
+            code=diag_code,
+            handler="handler.lambda_handler",
+            role=self.lambda_role.arn,
+            timeout=30,
+            memory_size=256,
+            environment={
+                "variables": {
+                    "CHROMA_ROOT": "/mnt/chroma" if efs_access_point_arn else "/tmp/chroma",
+                }
+            },
+            vpc_config=(
+                aws.lambda_.FunctionVpcConfigArgs(
+                    subnet_ids=vpc_subnet_ids,
+                    security_group_ids=[lambda_security_group_id],
+                )
+                if vpc_subnet_ids and lambda_security_group_id
+                else None
+            ),
+            file_system_config=(
+                aws.lambda_.FunctionFileSystemConfigArgs(
+                    arn=efs_access_point_arn,
+                    local_mount_path="/mnt/chroma",
+                )
+                if efs_access_point_arn
+                else None
+            ),
+            opts=ResourceOptions(parent=self, depends_on=[self.lambda_role]),
+        )
+
         # Export useful properties
         self.stream_processor_arn = self.stream_processor_function.arn
         self.enhanced_compaction_arn = self.enhanced_compaction_function.arn
@@ -401,6 +450,7 @@ class HybridLambdaDeployment(ComponentResource):
                 "enhanced_compaction_arn": self.enhanced_compaction_arn,
                 "role_arn": self.role_arn,
                 "docker_image_uri": self.docker_image.image_uri,
+                "efs_diag_arn": self.efs_diag_function.arn,
             }
         )
 
@@ -586,9 +636,9 @@ class HybridLambdaDeployment(ComponentResource):
             event_source_arn=dynamodb_stream_arn,
             function_name=self.stream_processor_function.arn,
             starting_position="LATEST",
-            batch_size=10,  # Reduced from 100 to prevent timeouts
-            maximum_batching_window_in_seconds=1,  # Process faster
-            parallelization_factor=1,
+            batch_size=10,  # Max batch size for DynamoDB streams
+            maximum_batching_window_in_seconds=5,  # Batch more records per invocation (up to 5 seconds)
+            parallelization_factor=5,  # Process up to 5 shards in parallel (increases throughput)
             maximum_retry_attempts=3,
             maximum_record_age_in_seconds=3600,
             bisect_batch_on_function_error=True,

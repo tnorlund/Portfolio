@@ -12,7 +12,7 @@ Simplified version of n_parallel_analyzer.py that:
 
 import os
 import time
-from typing import List, Optional
+from typing import Any, List, Optional
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
 from langchain_core.tracers.langchain import LangChainTracer
@@ -24,12 +24,15 @@ from receipt_label.langchain.models import ReceiptAnalysis
 
 
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
+from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
 from receipt_label.langchain.state.currency_validation import (
     save_json,
     CurrencyAnalysisState,
 )
 from receipt_label.langchain.nodes.load_data import load_receipt_data
 from receipt_label.langchain.nodes.phase1 import phase1_currency_analysis
+from receipt_label.langchain.nodes.phase1_context import phase1_context_analysis
+from receipt_label.langchain.nodes.phase1_validate import phase1_validate_metadata
 from receipt_label.langchain.nodes.phase2 import (
     dispatch_to_parallel_phase2,
     phase2_line_analysis,
@@ -54,7 +57,31 @@ def create_unified_analysis_graph(
     # Create nodes with API key injected via closures (secure)
     async def phase1_with_key(state):
         """Phase 1 node with API key from closure scope"""
-        return await phase1_currency_analysis(state, ollama_api_key)
+        try:
+            return await phase1_currency_analysis(state, ollama_api_key)
+        except Exception as e:
+            # Track error in state for graph-level handling
+            error_count = getattr(state, "error_count", 0) if hasattr(state, "error_count") else 0
+            return {
+                "currency_labels": [],
+                "error_count": error_count + 1,
+                "last_error": str(e),
+                "partial_results": True,
+            }
+    
+    async def phase1_context_with_key(state):
+        """Phase 1 Context node with API key from closure scope"""
+        try:
+            return await phase1_context_analysis(state, ollama_api_key)
+        except Exception as e:
+            # Track error in state for graph-level handling
+            error_count = getattr(state, "error_count", 0) if hasattr(state, "error_count") else 0
+            return {
+                "transaction_labels": [],
+                "error_count": error_count + 1,
+                "last_error": str(e),
+                "partial_results": True,
+            }
 
     def dispatch_with_key(state):
         """Dispatcher with API key injected into Send data"""
@@ -62,30 +89,91 @@ def create_unified_analysis_graph(
 
     async def phase2_with_key(send_data):
         """Phase 2 node that receives API key from dispatcher"""
-        return await phase2_line_analysis(send_data)
+        try:
+            return await phase2_line_analysis(send_data)
+        except Exception as e:
+            # Track error but continue
+            return {
+                "line_item_labels": [],
+                "error_count": send_data.get("error_count", 0) + 1,
+                "last_error": str(e),
+            }
 
     async def combine_with_dev_save(state):
         """Combine results with optional state saving for development"""
         return await combine_results(state, save_dev_state)
+    
+    async def graph_error_handler(state):
+        """Handle errors at graph level when node retries fail."""
+        receipt_id = getattr(state, "receipt_id", "unknown")
+        error_count = getattr(state, "error_count", 0)
+        last_error = getattr(state, "last_error", "None")
+        
+        print(f"⚠️ Graph-level error handler triggered for {receipt_id}")
+        print(f"   Error count: {error_count}")
+        print(f"   Last error: {last_error}")
+        
+        return {
+            "currency_labels": getattr(state, "currency_labels", []) or [],
+            "line_item_labels": getattr(state, "line_item_labels", []) or [],
+            "confidence_score": 0.0,
+            "partial_results": True,
+        }
+    
+    def should_handle_error(state: CurrencyAnalysisState) -> str:
+        """Determine if we should handle error or continue normally."""
+        error_count = getattr(state, "error_count", 0)
+        currency_labels = getattr(state, "currency_labels", []) or []
+        
+        if error_count > 0 and not currency_labels:
+            # Phase 1 completely failed
+            return "error_handler"
+        
+        return "continue"
 
     # Add nodes with secure key injection
     workflow.add_node("load_data", load_receipt_data)
     workflow.add_node("phase1_currency", phase1_with_key)
+    workflow.add_node("phase1_context", phase1_context_with_key)  # NEW: Parallel context analysis
+    workflow.add_node("validate_metadata", phase1_validate_metadata)  # NEW: Validate ReceiptMetadata
     workflow.add_node("phase2_line_analysis", phase2_with_key)
+    workflow.add_node("error_handler", graph_error_handler)
     workflow.add_node("combine_results", combine_with_dev_save)
 
     # Define the flow using Send API for dynamic dispatch
     workflow.add_edge(START, "load_data")
     workflow.add_edge("load_data", "phase1_currency")
-
-    # Use conditional edge to dispatch parallel Phase 2 nodes
+    
+    # NEW: Run context analysis in parallel with Phase 1
+    workflow.add_edge("load_data", "phase1_context")  # Parallel execution
+    
+    # Check for errors after Phase 1 and route accordingly
+    def route_after_phase1(state):
+        """Route to error handler or Phase 2 based on error status."""
+        error_decision = should_handle_error(state)
+        
+        if error_decision == "error_handler":
+            return "error_handler"
+        else:
+            # Continue to Phase 2 normally
+            return dispatch_with_key(state)
+    
+    # Conditional edge routing
     workflow.add_conditional_edges(
         "phase1_currency",
-        dispatch_with_key,  # Dispatcher injects API key
-        ["phase2_line_analysis"],
+        route_after_phase1,
+        {
+            "error_handler": "error_handler",
+            "phase2_line_analysis": "phase2_line_analysis",
+        },
     )
+    
+    # Phase 1 Context goes to validation, then combine
+    workflow.add_edge("phase1_context", "validate_metadata")
+    workflow.add_edge("validate_metadata", "combine_results")
 
-    # All Phase 2 instances automatically go to combine_results
+    # Error handler and Phase 2 both converge at combine
+    workflow.add_edge("error_handler", "combine_results")
     workflow.add_edge("phase2_line_analysis", "combine_results")
     workflow.add_edge("combine_results", END)
 
@@ -195,6 +283,11 @@ async def combine_results(
     # Add currency labels from Phase 1
     currency_labels = state.currency_labels
     discovered_labels.extend(currency_labels)
+    
+    # Add transaction context labels from Phase 1 Context (NEW)
+    transaction_labels = state.transaction_labels
+    discovered_labels.extend(transaction_labels)
+    print(f"   ✅ Phase 1 Context: {len(transaction_labels)} transaction labels")
 
     # Add line item labels from Phase 2 (already reduced by graph reducer)
     line_item_labels = state.line_item_labels
@@ -527,6 +620,9 @@ async def analyze_receipt_simple(
     save_labels: bool = False,
     dry_run: bool = False,
     save_dev_state: bool = False,
+    receipt_lines: Optional[List] = None,
+    receipt_words: Optional[List] = None,
+    receipt_metadata: Optional[Any] = None,
 ) -> ReceiptAnalysis:
     """Analyze a receipt using the unified single-trace graph with secure API
     key handling.
@@ -540,6 +636,9 @@ async def analyze_receipt_simple(
         save_labels: Whether to save ReceiptWordLabels to DynamoDB
         dry_run: Preview mode - don't actually save to DynamoDB
         save_dev_state: Save workflow state at combine_results for development
+        receipt_lines: Optional pre-fetched receipt lines (skips DynamoDB query)
+        receipt_words: Optional pre-fetched receipt words (skips DynamoDB query)
+        receipt_metadata: Optional pre-fetched receipt metadata (skips DynamoDB query)
     """
 
     # Setup LangSmith tracing with secure API key handling
@@ -568,21 +667,47 @@ async def analyze_receipt_simple(
     print()
 
     start_time = time.time()
-    lines = client.list_receipt_lines_from_receipt(image_id, receipt_id)
+    
+    # Use pre-fetched data if provided, otherwise fetch from DynamoDB
+    if receipt_lines is None:
+        lines = client.list_receipt_lines_from_receipt(image_id, receipt_id)
+        print(f"   📊 Fetched {len(lines)} receipt lines from DynamoDB")
+    else:
+        lines = receipt_lines
+        print(f"   📊 Using {len(lines)} pre-fetched receipt lines")
+    
+    # Load ReceiptMetadata for merchant context (if not provided)
+    if receipt_metadata is None:
+        try:
+            receipt_metadata = client.get_receipt_metadata(image_id, receipt_id)
+            print(f"   📋 Loaded ReceiptMetadata from DynamoDB: {receipt_metadata.merchant_name}")
+        except Exception as e:
+            print(f"   ⚠️ Could not load ReceiptMetadata: {e}")
+            receipt_metadata = None
+    else:
+        print(f"   📋 Using pre-fetched ReceiptMetadata: {receipt_metadata.merchant_name}")
 
     # Initial state for unified graph (API key NOT included - secure!)
     initial_state: CurrencyAnalysisState = {
         "receipt_id": f"{image_id}/{receipt_id}",
         "image_id": image_id,
         "lines": lines,
+        "words": receipt_words or [],  # Use pre-fetched words if provided
         "formatted_text": "",
         "dynamo_client": client,  # Pass client for word label creation
+        "receipt_metadata": receipt_metadata,  # NEW: Merchant context
         "currency_labels": [],
+        "transaction_labels": [],  # NEW
         "line_item_labels": [],
         "discovered_labels": [],
         "confidence_score": 0.0,
         "processing_time": 0.0,
     }
+    
+    if receipt_words is None:
+        print(f"   ℹ️ Words will be fetched by load_data node from DynamoDB")
+    else:
+        print(f"   📊 Using {len(receipt_words)} pre-fetched receipt words")
 
     # Create and run the unified graph with secure API key injection
     unified_graph = create_unified_analysis_graph(
@@ -611,6 +736,33 @@ async def analyze_receipt_simple(
     processing_time = time.time() - start_time
     print(f"\n⚡ UNIFIED EXECUTION TIME: {processing_time:.2f}s")
 
+    # Optionally update ReceiptMetadata if validation found critical mismatch
+    validation_results = result.get("metadata_validation")
+    if validation_results and validation_results.get("requires_metadata_update") and not dry_run:
+        print(f"\n💾 UPDATING RECEIPT METADATA")
+        
+        # Get the original metadata (stored in initial_state)
+        if receipt_metadata:
+            original_name = validation_results.get("original_merchant_name", "")
+            corrected_name = validation_results.get("corrected_merchant_name", "")
+            
+            print(f"   🔄 Updating merchant_name: '{original_name}' → '{corrected_name}'")
+            
+            try:
+                receipt_metadata.merchant_name = corrected_name
+                receipt_metadata.reasoning = (
+                    f"Auto-corrected by LangGraph validation. "
+                    f"Original: '{original_name}', Corrected: '{corrected_name}'. "
+                    f"Receipt text is authoritative source."
+                )
+                
+                client.update_receipt_metadata(receipt_metadata)
+                print(f"   ✅ Updated ReceiptMetadata in DynamoDB")
+            except Exception as e:
+                print(f"   ❌ Failed to update ReceiptMetadata: {e}")
+        else:
+            print(f"   ⚠️ No ReceiptMetadata found - cannot update")
+    
     # Optionally save ReceiptWordLabels to DynamoDB
     if save_labels:
         adds = result.get(
@@ -636,7 +788,8 @@ async def analyze_receipt_simple(
     except Exception:
         pass  # Don't fail if cleanup fails
 
-    return ReceiptAnalysis(
+    # Return ReceiptAnalysis with additional fields attached for label/validation handling
+    analysis = ReceiptAnalysis(
         discovered_labels=result["discovered_labels"],
         confidence_score=result["confidence_score"],
         validation_total=0.0,  # You can add arithmetic validation
@@ -651,3 +804,10 @@ async def analyze_receipt_simple(
             else result["formatted_text"]
         ),
     )
+    
+    # Attach label and validation data for deferred writes
+    analysis.receipt_word_labels_to_add = result.get("receipt_word_labels_to_add", result.get("receipt_word_labels", []))
+    analysis.receipt_word_labels_to_update = result.get("receipt_word_labels_to_update", [])
+    analysis.metadata_validation = result.get("metadata_validation")
+    
+    return analysis
