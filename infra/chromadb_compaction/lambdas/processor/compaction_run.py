@@ -6,11 +6,6 @@ Handles fast-path processing of COMPACTION_RUN INSERT events.
 
 from typing import Any, Dict
 
-from receipt_dynamo.entities.compaction_run import (
-    CompactionRun,
-    item_to_compaction_run,
-)
-
 
 def is_compaction_run(pk: str, sk: str) -> bool:
     """
@@ -28,7 +23,7 @@ def is_compaction_run(pk: str, sk: str) -> bool:
 
 def parse_compaction_run(
     new_image: Dict[str, Any], pk: str, sk: str
-) -> CompactionRun:
+) -> Dict[str, Any]:
     """
     Parse NewImage into a CompactionRun using shared parser.
 
@@ -43,15 +38,28 @@ def parse_compaction_run(
     Raises:
         ValueError: If parsing fails
     """
-    complete_item = dict(new_image)
-    complete_item["PK"] = {"S": pk}
-    complete_item["SK"] = {"S": sk}
+    # Extract identifiers
+    run_id = new_image.get("run_id", {}).get("S") or sk.split("#")[-1]
+    image_id = pk.split("#", 1)[-1]
 
-    # TYPE provided in item
-    if "TYPE" not in complete_item:
-        complete_item["TYPE"] = {"S": "COMPACTION_RUN"}
+    # receipt_id is typically zero-padded in SK: RECEIPT#00001#...
+    receipt_token = sk.split("#")[1] if "#" in sk else ""
+    try:
+        receipt_id = int(receipt_token.replace("RECEIPT", "").replace("#", "") or 0)
+    except Exception:
+        # Fall back to attribute if present
+        receipt_id = int(new_image.get("receipt_id", {}).get("N", 0))
 
-    return item_to_compaction_run(complete_item)
+    lines_delta_prefix = new_image.get("lines_delta_prefix", {}).get("S")
+    words_delta_prefix = new_image.get("words_delta_prefix", {}).get("S")
+
+    return {
+        "run_id": run_id,
+        "image_id": image_id,
+        "receipt_id": receipt_id,
+        "lines_delta_prefix": lines_delta_prefix,
+        "words_delta_prefix": words_delta_prefix,
+    }
 
 
 def is_embeddings_completed(new_image: Dict[str, Any]) -> bool:

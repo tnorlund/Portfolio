@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import List, Sequence
 from langgraph.types import Send
-from langchain_core.output_parsers import PydanticOutputParser
-from langchain_core.prompts import PromptTemplate
 from langchain_ollama import ChatOllama
 
 from receipt_dynamo.entities.receipt_word import ReceiptWord
@@ -14,6 +12,7 @@ from receipt_label.langchain.models import (
     Phase2Response,
     CurrencyLabelType,
 )
+from receipt_label.langchain.utils.retry import retry_with_backoff
 from receipt_label.langchain.state.currency_validation import (
     CurrencyAnalysisState,
 )
@@ -81,13 +80,20 @@ async def phase2_line_analysis(send_data: dict) -> dict:
 
     print(f"   🤖 Phase 2.{index}: Analyzing line with {line_total.line_text}")
 
+    # Initialize LLM with structured outputs
     llm = ChatOllama(
         model="gpt-oss:20b",
         base_url="https://ollama.com",
         client_kwargs={
             "headers": {"Authorization": f"Bearer {ollama_api_key}"}
         },
+        format="json",  # Force JSON format output
+        temperature=0.3,
+        timeout=120,  # 2 minute timeout for reliability
     )
+    
+    # Bind to Pydantic model for structured outputs
+    llm_structured = llm.with_structured_output(Phase2Response)
 
     subset = [
         LineItemLabelType.PRODUCT_NAME.value,
@@ -98,11 +104,30 @@ async def phase2_line_analysis(send_data: dict) -> dict:
         f"- {l}: {CORE_LABELS[l]}" for l in subset if l in CORE_LABELS
     )
 
-    template = """You are analyzing a receipt snippet to identify line item components.
+    currency_context = "\n".join(
+        [
+            f"- {label.label_type.value}: {label.amount}"
+            for label in currency_labels
+        ]
+    )
+
+    # Build messages for the LLM
+    # We dynamically inject the JSON schema from the Pydantic model
+    # This ensures the LLM understands the exact expected structure
+    import json
+    
+    # Get JSON schema from the Pydantic model (single source of truth!)
+    schema = Phase2Response.model_json_schema()
+    schema_json = json.dumps(schema, indent=2)
+    
+    messages = [
+        {
+            "role": "user",
+            "content": f"""You are analyzing a receipt snippet to identify line item components.
 
 TARGET SNIPPET (COMPILED FROM OCR WORDS):
-{target_line_text}
-TARGET AMOUNT: {target_amount}
+{send_data.get("target_line_text_compiled", "")}
+TARGET AMOUNT: {str(getattr(line_total, "amount", ""))}
 
 CURRENCY CONTEXT FROM PHASE 1:
 {currency_context}
@@ -118,41 +143,21 @@ IMPORTANT:
 2. Do not include line positions or IDs; only the word text and label type.
 3. Focus on PRODUCT_NAME, QUANTITY, UNIT_PRICE.
 
-{format_instructions}"""
+CRITICAL INSTRUCTIONS:
+1. You MUST respond with valid JSON ONLY
+2. NO markdown tables, NO text explanations
+3. Output must match this EXACT JSON structure:
 
-    output_parser = PydanticOutputParser(pydantic_object=Phase2Response)
-    currency_context = "\n".join(
-        [
-            f"- {label.label_type.value}: {label.amount}"
-            for label in currency_labels
-        ]
-    )
-    prompt = PromptTemplate(
-        template=template,
-        input_variables=[
-            "target_line_text",
-            "target_amount",
-            "currency_context",
-            "receipt_text",
-            "subset_definitions",
-        ],
-        partial_variables={
-            "format_instructions": output_parser.get_format_instructions()
-        },
-    )
+{schema_json}
 
-    chain = prompt | llm | output_parser
-    try:
-        response = await chain.ainvoke(
-            {
-                "target_line_text": send_data.get(
-                    "target_line_text_compiled", ""
-                ),
-                "target_amount": str(getattr(line_total, "amount", "")),
-                "currency_context": currency_context,
-                "receipt_text": receipt_text,
-                "subset_definitions": subset_definitions,
-            },
+Analyze the snippet and extract line item components as JSON matching the schema above."""
+        }
+    ]
+
+    # Define invocation function for retry logic
+    async def invoke_llm():
+        return await llm_structured.ainvoke(
+            messages,
             config={
                 "metadata": {
                     "receipt_id": receipt_id,
@@ -162,6 +167,14 @@ IMPORTANT:
                 },
                 "tags": ["phase2", "line-items", "receipt-analysis"],
             },
+        )
+    
+    try:
+        # Get structured response with retry logic
+        response = await retry_with_backoff(
+            invoke_llm,
+            max_retries=3,
+            initial_delay=2.0,  # Start with 2 second delay
         )
 
         allowed_label_types = {

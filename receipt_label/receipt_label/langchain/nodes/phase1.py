@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from langchain_core.output_parsers import PydanticOutputParser
-from langchain_core.prompts import PromptTemplate
 from langchain_ollama import ChatOllama
 
 from receipt_label.constants import CORE_LABELS
@@ -13,6 +11,7 @@ from receipt_label.langchain.models import (
 from receipt_label.langchain.state.currency_validation import (
     CurrencyAnalysisState,
 )
+from receipt_label.langchain.utils.retry import retry_with_backoff
 
 
 async def phase1_currency_analysis(
@@ -20,14 +19,22 @@ async def phase1_currency_analysis(
 ):
     """Analyze currency amounts (GRAND_TOTAL, TAX, etc.)."""
 
+    # Initialize LLM with structured outputs
     llm = ChatOllama(
         model="gpt-oss:120b",
         base_url="https://ollama.com",
         client_kwargs={
             "headers": {"Authorization": f"Bearer {ollama_api_key}"}
         },
+        format="json",  # Force JSON format output
+        temperature=0.3,
+        timeout=120,  # 2 minute timeout for reliability
     )
+    
+    # Bind to Pydantic model for structured outputs (eliminates need for PydanticOutputParser)
+    llm_structured = llm.with_structured_output(Phase1Response)
 
+    # Build label definitions
     subset = [
         CurrencyLabelType.GRAND_TOTAL.value,
         CurrencyLabelType.TAX.value,
@@ -38,33 +45,43 @@ async def phase1_currency_analysis(
         f"- {l}: {CORE_LABELS[l]}" for l in subset if l in CORE_LABELS
     )
 
-    template = """You are analyzing a receipt to classify currency amounts.
+    # Build messages for the LLM
+    # We dynamically inject the JSON schema from the Pydantic model
+    # This ensures the LLM understands the exact expected structure
+    import json
+    
+    # Get JSON schema from the Pydantic model (single source of truth!)
+    schema = Phase1Response.model_json_schema()
+    schema_json = json.dumps(schema, indent=2)
+    
+    messages = [
+        {
+            "role": "user",
+            "content": f"""You are analyzing a receipt to classify currency amounts.
 
 RECEIPT TEXT:
-{receipt_text}
+{state.formatted_text}
 
 Find all currency amounts and classify them as:
 {subset_definitions}
 
 Focus on the most obvious currency amounts first.
 
-{format_instructions}"""
-    output_parser = PydanticOutputParser(pydantic_object=Phase1Response)
-    prompt = PromptTemplate(
-        template=template,
-        input_variables=["receipt_text", "subset_definitions"],
-        partial_variables={
-            "format_instructions": output_parser.get_format_instructions()
-        },
-    )
+CRITICAL INSTRUCTIONS:
+1. You MUST respond with valid JSON ONLY
+2. NO markdown tables, NO text explanations
+3. Output must match this EXACT JSON structure:
 
-    chain = prompt | llm | output_parser
-    try:
-        response = await chain.ainvoke(
-            {
-                "receipt_text": state.formatted_text,
-                "subset_definitions": subset_definitions,
-            },
+{schema_json}
+
+Extract all currency amounts and return them as JSON matching the schema above."""
+        }
+    ]
+
+    # Define invocation function for retry logic
+    async def invoke_llm():
+        return await llm_structured.ainvoke(
+            messages,
             config={
                 "metadata": {
                     "receipt_id": state.receipt_id,
@@ -74,18 +91,28 @@ Focus on the most obvious currency amounts first.
                 "tags": ["phase1", "currency", "receipt-analysis"],
             },
         )
+    
+    try:
+        # Get structured response with retry logic
+        response = await retry_with_backoff(
+            invoke_llm,
+            max_retries=3,
+            initial_delay=2.0,  # Start with 2 second delay
+        )
+        
+        # response is already Phase1Response - convert to CurrencyLabel
         currency_labels = [
             CurrencyLabel(
                 line_text=item.line_text,
-                amount=item.amount,
+                amount=float(item.amount),  # Ensure float type
                 label_type=getattr(CurrencyLabelType, item.label_type),
                 line_ids=item.line_ids,
-                confidence=item.confidence,
+                confidence=float(item.confidence),  # Ensure float type
                 reasoning=item.reasoning,
             )
             for item in response.currency_labels
         ]
         return {"currency_labels": currency_labels}
     except Exception as e:
-        print(f"Phase 1 failed: {e}")
+        print(f"❌ Phase 1 failed after all retries: {e}")
         return {"currency_labels": []}

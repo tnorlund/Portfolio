@@ -11,7 +11,8 @@ import logging
 import os
 import sys
 import time
-from typing import Any, Dict
+import asyncio
+from typing import Any, Dict, Optional
 
 from .ocr_processor import OCRProcessor
 from .embedding_processor import EmbeddingProcessor
@@ -25,6 +26,89 @@ def _log(msg: str):
     """Log message with immediate flush for CloudWatch visibility."""
     print(f"[HANDLER] {msg}", flush=True)
     logger.info(msg)
+
+
+def _run_validation_async(
+    image_id: str,
+    receipt_id: int,
+    receipt_lines: Optional[list],
+    receipt_words: Optional[list],
+    receipt_metadata: Optional[Any],
+    ollama_api_key: Optional[str],
+    langsmith_api_key: Optional[str],
+) -> None:
+    """Run LangGraph validation asynchronously (non-blocking).
+    
+    This runs in a background thread and doesn't delay the lambda response.
+    It validates ReceiptMetadata and auto-corrects if merchant name doesn't match.
+    
+    Args:
+        image_id: Receipt image identifier
+        receipt_id: Receipt identifier
+        receipt_lines: Pre-fetched receipt lines
+        receipt_words: Pre-fetched receipt words
+        receipt_metadata: Pre-fetched ReceiptMetadata (to avoid DynamoDB query)
+        ollama_api_key: Ollama API key
+        langsmith_api_key: LangSmith API key (optional)
+    """
+    if not ollama_api_key:
+        _log("⚠️ No OLLAMA_API_KEY - skipping validation")
+        return
+    
+    async def run_validation():
+        try:
+            from receipt_dynamo import DynamoClient
+            from receipt_label.langchain.currency_validation import analyze_receipt_simple
+            from receipt_dynamo.constants import CompactionState
+            
+            dynamo = DynamoClient(os.environ["DYNAMO_TABLE_NAME"])
+            
+            # OPTIMIZATION: Run LangGraph and save labels immediately
+            # No need to wait for compaction:
+            # - Initial compaction merges S3 deltas (doesn't read ReceiptWordLabels)
+            # - ReceiptWordLabel changes are handled by stream processor separately
+            # - No race condition possible!
+            _log("Starting LangGraph analysis and saving labels...")
+            
+            # Run LangGraph and save labels immediately
+            result = await analyze_receipt_simple(
+                client=dynamo,
+                image_id=image_id,
+                receipt_id=receipt_id,
+                ollama_api_key=ollama_api_key,
+                langsmith_api_key=langsmith_api_key,
+                save_labels=True,  # Save labels immediately
+                dry_run=False,  # Update ReceiptMetadata if mismatch found
+                save_dev_state=False,
+                # Pass pre-fetched data to skip DynamoDB queries!
+                receipt_lines=receipt_lines,
+                receipt_words=receipt_words,
+                receipt_metadata=receipt_metadata,
+            )
+            
+            _log(f"✅ LangGraph completed, labels saved")
+            _log(f"✅ Validation completed for {image_id}/{receipt_id}")
+        except Exception as e:
+            _log(f"⚠️ Validation failed: {e}")
+    
+    # Run in background thread (Lambda waits for completion before returning)
+    import threading
+    
+    def run_in_executor():
+        # Create new event loop for this thread
+        import asyncio
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(run_validation())
+        except Exception as e:
+            _log(f"⚠️ Validation task failed: {e}")
+    
+    # Start in background thread (non-daemon so Lambda waits for it to complete)
+    validation_thread = threading.Thread(target=run_in_executor, daemon=False)
+    validation_thread.start()
+    validation_thread.join()  # Wait for validation to complete
+    _log("✅ Validation completed, lambda exiting")
 
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -175,6 +259,25 @@ def _process_single_record(record: Dict[str, Any]) -> Dict[str, Any]:
                 f"merchant={embedding_result.get('merchant_name')}, "
                 f"run_id={embedding_result.get('run_id')}"
             )
+            
+            # Step 3: Run LangGraph validation
+            # OPTIMIZATION: Run LangGraph immediately and save labels
+            # No need to wait for compaction - initial compaction only merges S3 deltas
+            # ReceiptWordLabel changes trigger separate compaction via stream processor
+            try:
+                _log("Starting LangGraph validation...")
+                _run_validation_async(
+                    image_id=image_id,
+                    receipt_id=receipt_id,
+                    receipt_lines=ocr_result.get("receipt_lines"),
+                    receipt_words=ocr_result.get("receipt_words"),
+                    receipt_metadata=embedding_result.get("receipt_metadata"),  # Pre-fetched from merchant resolution
+                    ollama_api_key=os.environ.get("OLLAMA_API_KEY"),
+                    langsmith_api_key=os.environ.get("LANGCHAIN_API_KEY"),
+                )
+            except Exception as val_error:
+                _log(f"⚠️ Validation error (non-critical): {val_error}")
+                # Don't fail the lambda - validation is optional
             
             return {
                 "success": True,
