@@ -5,7 +5,7 @@ atomic pointer promotion. It supports per-collection processing (lines/words)
 and updates COMPACTION_RUN states in DynamoDB.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import os
 import tempfile
 import tarfile
@@ -273,10 +273,12 @@ def merge_compaction_deltas(
     compaction_runs: List[Any],
     collection: ChromaDBCollection,
     logger: Any,
-) -> int:
+) -> Tuple[int, List[Dict[str, Any]]]:
     """Merge multiple delta tarballs into an already-open Chroma snapshot client.
 
-    Returns total vectors merged.
+    Returns:
+        Tuple of (total_vectors_merged, list of per-run merge results).
+        Each result dict has: run_id, image_id, receipt_id, merged_count
     """
     import tempfile
     import os
@@ -284,17 +286,21 @@ def merge_compaction_deltas(
     import boto3
 
     if not compaction_runs:
-        return 0
+        return 0, []
 
     bucket = os.environ["CHROMADB_BUCKET"]
     s3 = boto3.client("s3")
 
     total_merged = 0
+    per_run_results = []
 
     with tempfile.TemporaryDirectory() as workdir:
         for msg in compaction_runs:
             try:
                 entity = getattr(msg, "entity_data", {}) or {}
+                run_id = entity.get("run_id")
+                image_id = entity.get("image_id")
+                receipt_id = entity.get("receipt_id")
                 delta_prefix = entity.get("delta_s3_prefix")
                 # If not provided on message, skip (Phase A shouldn't fetch Dynamo)
                 if not delta_prefix:
@@ -318,6 +324,7 @@ def merge_compaction_deltas(
                     logger.error("Failed to extract delta tarball", error=str(e))
                     continue
 
+                merged_count = 0
                 try:
                     collection_name = collection.value
                     delta_client = ChromaDBClient(persist_directory=delta_dir, mode="read")
@@ -326,6 +333,15 @@ def merge_compaction_deltas(
                         data = src.get(include=["documents", "embeddings", "metadatas"])
                         ids = data.get("ids", []) or []
                         if ids:
+                            logger.info(
+                                "Upserting vectors from delta",
+                                run_id=run_id,
+                                image_id=image_id,
+                                receipt_id=receipt_id,
+                                collection=collection_name,
+                                vector_count=len(ids),
+                                sample_id=ids[0] if ids else None,
+                            )
                             chroma_client.upsert_vectors(
                                 collection_name=collection_name,
                                 ids=ids,
@@ -333,21 +349,83 @@ def merge_compaction_deltas(
                                 documents=data.get("documents"),
                                 metadatas=data.get("metadatas"),
                             )
-                            total_merged += len(ids)
+                            # Force persistence before snapshot upload
+                            # ChromaDB PersistentClient should auto-persist, but ensure it's flushed
+                            try:
+                                client_obj = chroma_client._client if hasattr(chroma_client, "_client") else getattr(chroma_client, "client", None)
+                                if client_obj and hasattr(client_obj, "persist"):
+                                    client_obj.persist()
+                                    logger.debug("Explicitly persisted ChromaDB data")
+                            except Exception as persist_err:
+                                logger.debug("Could not explicitly persist (auto-persist should handle)", error=str(persist_err))
+                            
+                            # Verify upsert succeeded by querying back
+                            verify_collection = chroma_client.get_collection(collection_name)
+                            verify_result = verify_collection.get(ids=ids[:10], include=["metadatas"])  # Check first 10
+                            verified_count = len(verify_result.get("ids", []))
+                            if verified_count < len(ids[:10]):
+                                logger.warning(
+                                    "Upsert verification failed",
+                                    run_id=run_id,
+                                    image_id=image_id,
+                                    receipt_id=receipt_id,
+                                    collection=collection_name,
+                                    expected=len(ids[:10]),
+                                    verified=verified_count,
+                                )
+                            else:
+                                logger.info(
+                                    "Upsert verified successfully",
+                                    run_id=run_id,
+                                    image_id=image_id,
+                                    receipt_id=receipt_id,
+                                    collection=collection_name,
+                                    verified_count=verified_count,
+                                )
+                            merged_count = len(ids)
+                            total_merged += merged_count
+                        else:
+                            logger.warning(
+                                "Delta collection has no IDs",
+                                run_id=run_id,
+                                image_id=image_id,
+                                receipt_id=receipt_id,
+                                collection=collection_name,
+                            )
                     except Exception as e:  # noqa: BLE001
                         logger.info(
                             "Delta has no collection or failed to read",
                             collection=collection_name,
+                            run_id=run_id,
+                            image_id=image_id,
+                            receipt_id=receipt_id,
                             error=str(e),
+                            exc_info=True,
                         )
                 except Exception as e:  # noqa: BLE001
-                    logger.error("Failed merging delta into snapshot", error=str(e))
+                    logger.error(
+                        "Failed merging delta into snapshot",
+                        run_id=run_id,
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                        error=str(e),
+                        exc_info=True,
+                    )
                     continue
+                
+                # Track per-run result for DynamoDB updates
+                if run_id and image_id is not None and receipt_id is not None:
+                    per_run_results.append({
+                        "run_id": run_id,
+                        "image_id": image_id,
+                        "receipt_id": receipt_id,
+                        "merged_count": merged_count,
+                    })
             except Exception as e:  # noqa: BLE001
                 logger.error("Failed processing compaction run", error=str(e))
                 continue
 
-    return total_merged
+    return total_merged, per_run_results
 
 def process_compaction_run_messages(
     compaction_runs: List[Any],  # StreamMessage type
