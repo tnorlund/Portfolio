@@ -35,6 +35,7 @@ def _log(msg: str):
     logger.info(msg)
 
 
+
 class EmbeddingProcessor:
     """Handles merchant validation and embedding creation."""
     
