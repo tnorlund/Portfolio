@@ -1,0 +1,50 @@
+{
+  // Pyright configuration for workspace-wide IntelliSense
+  // This helps Pyright find and index local packages for autocomplete
+
+  // Python version (matches Lambda runtime)
+  "pythonVersion": "3.12",
+
+  // Root directory - Pyright will search from here
+  "root": ".",
+
+  // Include paths - packages that should be indexed for autocomplete
+  // These point to the package directories (not the package subdirectories)
+  "include": [
+    "receipt_dynamo",
+    "receipt_label",
+    "receipt_upload",
+    "infra",
+    "scripts"
+  ],
+
+  // Exclude patterns - don't index these
+  "exclude": [
+    "**/__pycache__",
+    "**/node_modules",
+    "**/.venv",
+    "**/venv",
+    "**/.pytest_cache",
+    "**/dist",
+    "**/build",
+    "**/*.egg-info",
+    "**/tests",
+    "**/test"
+  ],
+
+  // Type checking mode
+  "typeCheckingMode": "basic",
+
+  // Report settings
+  "reportMissingImports": true,
+  "reportMissingTypeStubs": false,
+  // Ignore errors for subscriptable types that aren't actually subscriptable at runtime
+  "reportGeneralTypeIssues": false,
+  "reportInvalidTypeVarUse": false,
+
+  // Virtual environment
+  "venvPath": ".",
+  "venv": ".venv"
+}
+
+
