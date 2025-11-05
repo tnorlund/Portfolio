@@ -20,6 +20,7 @@ import {
   ReceiptPhotoClustering,
   PhotoReceiptBoundingBox,
   ImageStack,
+  RandomReceiptWithLabels,
 } from "../components/ui/Figures";
 import AnimatedInView from "../components/ui/AnimatedInView";
 import {
@@ -423,6 +424,10 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         <ClientImageCounts />
         <ClientReceiptCounts />
       </div>
+
+      <ClientOnly>
+        <RandomReceiptWithLabels />
+      </ClientOnly>
 
       <h2>Semantic Understanding</h2>
 
