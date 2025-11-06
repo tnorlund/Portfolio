@@ -63,7 +63,7 @@ jobs:
 
       - name: Set up Python (GitHub-hosted)
         if: ${{ runner.os != 'macOS' }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -135,7 +135,7 @@ jobs:
 
       - name: Set up Python (GitHub-hosted)
         if: ${{ runner.os != 'macOS' }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -400,7 +400,7 @@ jobs:
 
       - name: Set up Python (GitHub-hosted)
         if: ${{ runner.os != 'macOS' }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -491,7 +491,7 @@ jobs:
 
       - name: Set up Python (GitHub-hosted)
         if: ${{ runner.os != 'macOS' }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
