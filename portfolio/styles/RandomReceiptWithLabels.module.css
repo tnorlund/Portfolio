@@ -351,15 +351,19 @@
   }
 
   .mobileContainer {
+    flex-direction: row;
     gap: 1rem;
     align-items: stretch;
+    max-width: 100%;
+    margin: 0 auto;
   }
 
   .imageContainer {
-    flex: 1;
+    flex: 0 0 50%;
     min-width: 0;
     display: flex;
     align-items: center;
+    justify-content: center;
   }
 
   .imageWrapper {
@@ -368,7 +372,7 @@
   }
 
   .labelsList {
-    flex: 0 0 200px;
+    flex: 0 0 50%;
     display: flex;
     align-items: center;
     padding: 0.5rem;
@@ -396,8 +400,8 @@
   }
 }
 
-/* Very small mobile */
-@media (max-width: 480px) {
+/* Very small mobile - only stack on very tiny screens */
+@media (max-width: 360px) {
   .container {
     padding: 1rem 0;
   }
