@@ -367,7 +367,8 @@ cd - >/dev/null
 echo "📤 Uploading to S3..."
 aws s3 cp "$TMP/context.zip" "s3://$BUCKET/$NAME/context.zip"
 echo -n "$HASH" | aws s3 cp - "s3://$BUCKET/$NAME/hash.txt"
-echo "✅ Uploaded context.zip (hash: ${{HASH:0:12}}...)"
+HASH_SHORT=$(echo "$HASH" | cut -c1-12)
+echo "✅ Uploaded context.zip (hash: $HASH_SHORT...)"
 """
 
     def _buildspec(self) -> Dict[str, Any]:
