@@ -95,22 +95,27 @@ const RandomReceiptWithLabels: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [formatSupport, setFormatSupport] = useState<FormatSupport | null>(null);
   const [windowWidth, setWindowWidth] = useState<number | null>(null);
+  const [isMounted, setIsMounted] = useState(false); // Track if component is mounted (client-side)
   const [resetKey, setResetKey] = useState(0); // Key to force reset of transitions
   const [ref, inView] = useOptimizedInView({ threshold: 0.1 });
 
+  // Track when component is mounted (client-side only)
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   // Detect window width for responsive behavior (client-side only)
   useEffect(() => {
+    if (!isMounted) return;
+
     const updateWindowWidth = () => {
       setWindowWidth(window.innerWidth);
     };
 
-    // Only set on client to avoid hydration mismatch
-    if (typeof window !== "undefined") {
-      updateWindowWidth();
-      window.addEventListener("resize", updateWindowWidth);
-      return () => window.removeEventListener("resize", updateWindowWidth);
-    }
-  }, []);
+    updateWindowWidth();
+    window.addEventListener("resize", updateWindowWidth);
+    return () => window.removeEventListener("resize", updateWindowWidth);
+  }, [isMounted]);
 
   // Detect image format support
   useEffect(() => {
@@ -203,8 +208,9 @@ const RandomReceiptWithLabels: React.FC = () => {
     return labelMap.get(key) || [];
   }, [labelMap]);
 
-  // Determine if mobile based on window width (default to false for SSR)
-  const isMobile = windowWidth !== null && windowWidth <= 768;
+  // Determine if mobile based on window width (only after mount to avoid hydration mismatch)
+  // Default to false during SSR and initial render to match server output
+  const isMobile = isMounted && windowWidth !== null && windowWidth <= 768;
 
   // Animate labels appearing - use resetKey to force reset when data changes
   const labelTransitions = useTransition(
