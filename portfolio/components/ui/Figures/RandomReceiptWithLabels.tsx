@@ -129,8 +129,7 @@ const RandomReceiptWithLabels: React.FC = () => {
       setError(null);
       // Increment resetKey to force transitions to reset and Image remount
       setResetKey((prev) => prev + 1);
-      // Clear previous data immediately to prevent overlay
-      setData(null);
+      // Keep existing data visible during reload - don't clear it
 
       const response = await api.fetchRandomReceiptDetails();
       setData(response);
@@ -235,44 +234,16 @@ const RandomReceiptWithLabels: React.FC = () => {
   if (loading && !data) {
     return (
       <div ref={ref} className={styles.container}>
-        <div className={styles.header}>
-          <h3>Receipt with Labels</h3>
-          {isDevelopment && (
-            <button
-              onClick={fetchData}
-              disabled={loading}
-              className={styles.reloadButton}
-              title="Load a new random receipt"
-            >
-              {loading ? "Loading..." : "🔄 Reload"}
-            </button>
-          )}
-        </div>
         <div className={styles.loading}>Loading receipt with labels...</div>
       </div>
     );
   }
 
-  // Show loading overlay when reloading with existing data
-  const isLoadingNew = loading && data;
 
   // Show error state
   if (error && !data) {
     return (
       <div ref={ref} className={styles.container}>
-        <div className={styles.header}>
-          <h3>Receipt with Labels</h3>
-          {isDevelopment && (
-            <button
-              onClick={fetchData}
-              disabled={loading}
-              className={styles.reloadButton}
-              title="Load a new random receipt"
-            >
-              {loading ? "Loading..." : "🔄 Reload"}
-            </button>
-          )}
-        </div>
         <div className={styles.error}>Error: {error}</div>
       </div>
     );
@@ -282,19 +253,6 @@ const RandomReceiptWithLabels: React.FC = () => {
   if (!data || !formatSupport) {
     return (
       <div ref={ref} className={styles.container}>
-        <div className={styles.header}>
-          <h3>Receipt with Labels</h3>
-          {isDevelopment && (
-            <button
-              onClick={fetchData}
-              disabled={loading}
-              className={styles.reloadButton}
-              title="Load a new random receipt"
-            >
-              {loading ? "Loading..." : "🔄 Reload"}
-            </button>
-          )}
-        </div>
       </div>
     );
   }
@@ -328,45 +286,29 @@ const RandomReceiptWithLabels: React.FC = () => {
 
   return (
     <div ref={ref} className={styles.container}>
-      <div className={styles.header}>
-        <h3>Receipt with Labels</h3>
-        {isDevelopment && (
-          <button
-            onClick={fetchData}
-            disabled={loading}
-            className={styles.reloadButton}
-            title="Load a new random receipt"
-          >
-            {loading ? "Loading..." : "🔄 Reload"}
-          </button>
-        )}
-      </div>
-      <p>
-        This receipt shows how words are automatically labeled with semantic
-        meaning, such as dates, totals, merchant names, and addresses.
-      </p>
-
       <div className={styles.wrapper} style={{ position: "relative" }}>
         {/* Desktop: Image with overlay and side panel */}
         {!isMobile ? (
           <>
             <div className={styles.imageContainer}>
+              {isDevelopment && (
+                <button
+                  onClick={fetchData}
+                  disabled={loading}
+                  className={styles.reloadButton}
+                  title="Load a new random receipt"
+                >
+                  🔄
+                </button>
+              )}
               <div
                 className={styles.imageWrapper}
                 style={{
                   width: displayWidth,
                   height: displayHeight,
                   position: "relative",
-                  opacity: isLoadingNew ? 0.5 : 1,
-                  transition: "opacity 0.2s ease",
                 }}
               >
-                {/* Loading overlay when reloading */}
-                {isLoadingNew && (
-                  <div className={styles.loadingOverlay}>
-                    <div className={styles.loadingSpinner}>Loading new receipt...</div>
-                  </div>
-                )}
                 <Image
                   key={`${resetKey}-${receipt.image_id}-${receipt.receipt_id}`}
                   src={cdnUrl}
@@ -484,22 +426,24 @@ const RandomReceiptWithLabels: React.FC = () => {
           /* Mobile: Side-by-side layout with image and label list */
           <div className={styles.mobileContainer}>
             <div className={styles.imageContainer}>
+              {isDevelopment && (
+                <button
+                  onClick={fetchData}
+                  disabled={loading}
+                  className={styles.reloadButton}
+                  title="Load a new random receipt"
+                >
+                  🔄
+                </button>
+              )}
               <div
                 className={styles.imageWrapper}
                 style={{
                   width: displayWidth,
                   height: displayHeight,
                   position: "relative",
-                  opacity: isLoadingNew ? 0.5 : 1,
-                  transition: "opacity 0.2s ease",
                 }}
               >
-                {/* Loading overlay when reloading */}
-                {isLoadingNew && (
-                  <div className={styles.loadingOverlay}>
-                    <div className={styles.loadingSpinner}>Loading new receipt...</div>
-                  </div>
-                )}
                 <Image
                   key={`${resetKey}-${receipt.image_id}-${receipt.receipt_id}`}
                   src={cdnUrl}
