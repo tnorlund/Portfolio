@@ -104,6 +104,7 @@ export interface BoundingBox {
 export interface ReceiptWord {
   receipt_word_id: number;
   receipt_id: number;
+  line_id: number;
   word_id: number;
   text: string;
   bounding_box: BoundingBox;
