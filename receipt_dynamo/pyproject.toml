@@ -45,7 +45,7 @@ dev = [
     "pulumi>=3.0.0",
     "pulumi-aws>=6.0.0",
     "pulumi-command>=0.9.0",
-    "black==25.1.0",
+    "black==25.9.0",
     "pylint>=3.0.0,<4.0.0",
     "mypy>=1.16.1",
     "isort==6.0.1",
