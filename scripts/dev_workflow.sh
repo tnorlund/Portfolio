@@ -11,6 +11,10 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 cd "$PROJECT_ROOT"
 
+# Use environment variable if set, otherwise default to $HOME/.github-runners
+# To use a custom location, set: export GITHUB_RUNNERS_DIR="/path/to/runners"
+RUNNER_BASE="${GITHUB_RUNNERS_DIR:-$HOME/.github-runners}"
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -154,18 +158,23 @@ run_action() {
             echo -e "${GREEN}🖥️  Starting all self-hosted runners...${NC}"
 
             # Start runner 1 (original)
-            cd /Users/tnorlund/GitHub/actions-runner
-            if [ ! -f "runner.pid" ] || ! ps -p $(cat runner.pid 2>/dev/null) > /dev/null 2>&1; then
-                nohup ./run.sh > runner.log 2>&1 &
-                echo $! > runner.pid
-                echo -e "${GREEN}✅ Runner 1 started (PID: $(cat runner.pid))${NC}"
+            local runner1_dir="${RUNNER_BASE}/actions-runner"
+            if [ -d "$runner1_dir" ]; then
+                cd "$runner1_dir"
+                if [ ! -f "runner.pid" ] || ! ps -p $(cat runner.pid 2>/dev/null) > /dev/null 2>&1; then
+                    nohup ./run.sh > runner.log 2>&1 &
+                    echo $! > runner.pid
+                    echo -e "${GREEN}✅ Runner 1 started (PID: $(cat runner.pid))${NC}"
+                else
+                    echo -e "${YELLOW}⚠️  Runner 1 already running${NC}"
+                fi
             else
-                echo -e "${YELLOW}⚠️  Runner 1 already running${NC}"
+                echo -e "${BLUE}ℹ️  Runner 1 not configured yet (directory not found: $runner1_dir)${NC}"
             fi
 
             # Start additional runners
             for i in {2..4}; do
-                local runner_dir="/Users/tnorlund/GitHub/actions-runner-${i}"
+                local runner_dir="${RUNNER_BASE}/actions-runner-${i}"
                 if [ -d "$runner_dir" ]; then
                     cd "$runner_dir"
                     if [ ! -f "runner.pid" ] || ! ps -p $(cat runner.pid 2>/dev/null) > /dev/null 2>&1; then
@@ -188,7 +197,7 @@ run_action() {
 
             # Stop all runners
             for i in {1..4}; do
-                local runner_dir="/Users/tnorlund/GitHub/actions-runner$([ $i -eq 1 ] && echo "" || echo "-$i")"
+                local runner_dir="${RUNNER_BASE}/actions-runner$([ $i -eq 1 ] && echo "" || echo "-$i")"
                 if [ -d "$runner_dir" ] && [ -f "$runner_dir/runner.pid" ]; then
                     local pid=$(cat "$runner_dir/runner.pid")
                     if ps -p $pid > /dev/null 2>&1; then
@@ -209,7 +218,7 @@ run_action() {
 
             local active_count=0
             for i in {1..4}; do
-                local runner_dir="/Users/tnorlund/GitHub/actions-runner$([ $i -eq 1 ] && echo "" || echo "-$i")"
+                local runner_dir="${RUNNER_BASE}/actions-runner$([ $i -eq 1 ] && echo "" || echo "-$i")"
                 if [ -d "$runner_dir" ]; then
                     if [ -f "$runner_dir/runner.pid" ]; then
                         local pid=$(cat "$runner_dir/runner.pid")

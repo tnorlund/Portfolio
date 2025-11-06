@@ -1,42 +1,37 @@
-import React, { useState, useEffect, useCallback } from "react";
-import Head from "next/head";
-import styles from "../styles/Receipt.module.css";
 import { GetStaticProps } from "next";
+import Head from "next/head";
+import React, { useCallback, useEffect, useState } from "react";
 import ClientOnly from "../components/ClientOnly";
+import styles from "../styles/Receipt.module.css";
 
 // Import components normally - they'll be wrapped in ClientOnly
+import AnimatedInView from "../components/ui/AnimatedInView";
 import {
   ClientImageCounts,
   ClientReceiptCounts,
-  MerchantCount,
-  ZDepthConstrained,
-  ZDepthUnconstrained,
-  UploadDiagram,
-  EmbeddingExample,
-  EmbeddingCoordinate,
-  ReceiptStack,
-  LabelValidationCount,
-  ScanReceiptBoundingBox,
-  ReceiptPhotoClustering,
-  PhotoReceiptBoundingBox,
   ImageStack,
+  LabelValidationCount,
+  MerchantCount,
+  PhotoReceiptBoundingBox,
+  RandomReceiptWithLabels,
+  ReceiptStack,
+  ScanReceiptBoundingBox,
+  UploadDiagram,
+  ZDepthConstrained,
+  ZDepthUnconstrained
 } from "../components/ui/Figures";
-import AnimatedInView from "../components/ui/AnimatedInView";
 import {
-  OpenAILogo,
-  PineconeLogo,
-  GooglePlacesLogo,
-  GithubLogo,
-  HuggingFaceLogo,
-  PulumiLogo,
-  ReactLogo,
-  NextJSLogo,
-  PyTorchLogo,
   ChromaLogo,
   DockerLogo,
-  OllamaLogo,
-  LangChainLogo,
   GithubActionsLogo,
+  GithubLogo,
+  GooglePlacesLogo,
+  HuggingFaceLogo,
+  LangChainLogo,
+  OllamaLogo,
+  OpenAILogo,
+  PulumiLogo,
+  PyTorchLogo
 } from "../components/ui/Logos";
 
 interface ReceiptPageProps {
@@ -280,44 +275,44 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         stitch the answers back together.
       </p>
 
-      {/* 
+      {/*
       TODO: Fix OCR Section Disconnect - Show Visual Mess Before Technical Solution
-      
+
       PROBLEM IDENTIFIED:
       - Text jumps straight into technical solutions ("DBSCAN clustering, convex hull")
-      - Visuals show perfect, clean geometric processing 
+      - Visuals show perfect, clean geometric processing
       - Missing the messy visual reality that creates the problem
       - No clear "why" for non-technical readers about why this clustering matters
-      
+
       SOLUTION STRATEGY:
       Create a new flow that shows the mess first, then the solution:
-      
+
       1. START WITH CHAOS: Show ReceiptStack (or similar) to demonstrate real-world receipt images:
          - Crumpled and wrinkled receipts
-         - Photos taken at angles 
+         - Photos taken at angles
          - Multiple receipts overlapping in frame
          - Poor lighting conditions
          - Mixed with other objects/backgrounds
-      
+
       2. EXPLAIN THE CONSEQUENCE: Without proper processing, text recognition gives:
          - Jumbled words with no grouping
-         - Text from multiple receipts mixed together  
+         - Text from multiple receipts mixed together
          - Wrong reading order
          - Background noise included as "receipt data"
-      
-      3. PRESENT SIMPLE SOLUTION: "The challenge isn't just reading text - it's figuring 
+
+      3. PRESENT SIMPLE SOLUTION: "The challenge isn't just reading text - it's figuring
          out which words belong together"
-      
-      4. SHOW TECHNICAL SOLUTION WORKING: Current ScanReceiptBoundingBox and 
+
+      4. SHOW TECHNICAL SOLUTION WORKING: Current ScanReceiptBoundingBox and
          PhotoReceiptBoundingBox visualizations now make sense as the "after"
-      
+
       IMPLEMENTATION NEEDED:
       - Move ReceiptStack or create similar component showing messy input images
       - Rewrite intro text to be accessible (avoid OCR jargon)
       - Focus on "grouping text that belongs together" rather than geometric algorithms
       - Position existing visualizations as the successful "clean" result
-      
-      This makes "cleanest, most organized approach" meaningful because readers see 
+
+      This makes "cleanest, most organized approach" meaningful because readers see
       the chaotic starting point first.
       */}
 
@@ -423,6 +418,17 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         <ClientImageCounts />
         <ClientReceiptCounts />
       </div>
+
+      <h2>Semantic Labeling</h2>
+      <p>
+
+        Adding labels to the individual words structures the data for the LLMs and data processing pipelines.
+        This context-aware processing speeds up the extraction, validation, and downstream processing.
+      </p>
+      <ClientOnly>
+        <RandomReceiptWithLabels />
+      </ClientOnly>
+
 
       <h2>Semantic Understanding</h2>
 

@@ -5,6 +5,7 @@ import {
   ReceiptApiResponse,
   ImageCountApiResponse,
   ImagesApiResponse,
+  RandomReceiptDetailsResponse,
 } from "../../types/api";
 import { withPerformanceTrackingForAPI } from "../../utils/performance/api-wrapper";
 
@@ -156,6 +157,20 @@ const baseApi = {
     );
     if (!response.ok) {
       throw new Error(`Error: ${response.status}`);
+    }
+    return response.json();
+  },
+
+  async fetchRandomReceiptDetails(): Promise<RandomReceiptDetailsResponse> {
+    const apiUrl = getAPIUrl();
+    const response = await fetch(
+      `${apiUrl}/random_receipt_details`,
+      fetchConfig
+    );
+    if (!response.ok) {
+      throw new Error(
+        `Network response was not ok (status: ${response.status})`
+      );
     }
     return response.json();
   },
