@@ -101,7 +101,7 @@ test = [
     "pytest-cov>=6.1.0,<7.0.0",
     "pytest-xdist>=3.6.0,<4.0.0",
     "pytest-timeout>=2.1.0,<3.0.0",
-    "pytest-asyncio>=0.24.0,<1.0.0",
+    "pytest-asyncio>=0.24.0,<2.0.0",
     "moto>=5.1.0,<6.0.0",
     "freezegun>=1.5.0,<2.0.0",
 ]
