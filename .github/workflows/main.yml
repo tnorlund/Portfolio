@@ -98,7 +98,7 @@ jobs:
           # Check formatting but don't block (we have auto-format on PRs)
           echo "Checking Python formatting..."
           black --check --line-length=79 receipt_dynamo receipt_label receipt_trainer receipt_trainer_1 receipt_upload infra || echo "::warning::Some files need black formatting"
-          isort --check-only --profile=black --line-length=79 --multi-line-output=3 --include-trailing-comma --force-grid-wrap=0 --use-parentheses --ensure-newline-before-comments receipt_dynamo receipt_label receipt_trainer receipt_trainer_1 receipt_upload infra || echo "::warning::Some imports need isort formatting"
+          isort --check-only --profile=black --line-length=79 receipt_dynamo receipt_label receipt_trainer receipt_trainer_1 receipt_upload infra || echo "::warning::Some imports need isort formatting"
 
       - name: Set up Node.js
         if: steps.changes.outputs.portfolio == 'true'
@@ -269,7 +269,7 @@ jobs:
               --cov \
               --cov-report=term-missing \
               --cov-report=xml
-            
+
             echo "🚀 Running receipt_label integration tests with extended timeout..."
             python -m pytest tests \
               -n auto \
@@ -296,7 +296,7 @@ jobs:
               --cov \
               --cov-report=term-missing \
               --cov-report=xml
-            
+
             echo "🚀 Running receipt_dynamo integration tests with extended timeout..."
             python -m pytest tests \
               -n auto \
@@ -390,7 +390,7 @@ jobs:
     needs: [fast-checks]
     # Deploy on push to main OR manual trigger (includes merge commits)
     if: |
-      always() && 
+      always() &&
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
