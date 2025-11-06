@@ -30,7 +30,7 @@ PROJECT_DIR = _find_project_root()
 
 class CodeBuildDockerImage(ComponentResource):
     """AWS CodeBuild-based Docker image builder with ECR push and Lambda update.
-    
+
     This component:
     - Creates ECR repository
     - Uploads Dockerfile + build context to S3
@@ -65,7 +65,7 @@ class CodeBuildDockerImage(ComponentResource):
         self.lambda_config = lambda_config or {}
         self.build_args = build_args or {}
         self.platform = platform
-        
+
         # Configure build mode
         if sync_mode is not None:
             self.sync_mode = sync_mode
@@ -85,7 +85,7 @@ class CodeBuildDockerImage(ComponentResource):
 
         # Calculate content hash for change detection
         content_hash = self._calculate_content_hash()
-        
+
         if self.sync_mode:
             pulumi.log.info(f"🔄 Building image '{self.name}' in SYNC mode (will wait)")
         else:
@@ -125,7 +125,7 @@ class CodeBuildDockerImage(ComponentResource):
         # Digest is managed by CodeBuild, provide a placeholder
         # The actual digest is used during Lambda updates in post_build phase
         self.digest = pulumi.Output.from_input("sha256:placeholder")
-        
+
         # Self-reference for compatibility with components that wrap this
         self.docker_image = self
 
@@ -138,13 +138,13 @@ class CodeBuildDockerImage(ComponentResource):
     def _calculate_content_hash(self) -> str:
         """Calculate hash of Dockerfile and relevant context files."""
         h = hashlib.sha256()
-        
+
         # Hash Dockerfile
         dockerfile = Path(PROJECT_DIR) / self.dockerfile_path
         if dockerfile.exists():
             with open(dockerfile, "rb") as f:
                 h.update(f.read())
-        
+
         # If source_paths specified, hash only those paths
         if self.source_paths:
             for source_path in sorted(self.source_paths):
@@ -167,7 +167,7 @@ class CodeBuildDockerImage(ComponentResource):
                                     h.update(str(rel_path).encode())
                                 except (IOError, OSError):
                                     pass
-            
+
             # ALWAYS hash the handler directory (Lambda-specific code)
             handler_dir = Path(PROJECT_DIR) / Path(self.dockerfile_path).parent
             if handler_dir.exists():
@@ -191,12 +191,12 @@ class CodeBuildDockerImage(ComponentResource):
                     "receipt_label/receipt_label",
                     "receipt_label/pyproject.toml",
                 ]
-                
+
                 # Add source_paths if specified (e.g., receipt_upload)
                 if self.source_paths:
                     for source_path in self.source_paths:
                         packages_to_hash.append(source_path)
-                
+
                 for package_path in packages_to_hash:
                     full_path = Path(PROJECT_DIR) / package_path
                     if full_path.exists():
@@ -218,7 +218,7 @@ class CodeBuildDockerImage(ComponentResource):
                                         h.update(str(rel_path).encode())
                                     except (IOError, OSError):
                                         pass
-                
+
                 # Also hash the handler directory
                 handler_dir = Path(PROJECT_DIR) / Path(self.dockerfile_path).parent
                 if handler_dir.exists():
@@ -245,7 +245,7 @@ class CodeBuildDockerImage(ComponentResource):
                                     h.update(str(rel_path).encode())
                                 except (IOError, OSError):
                                     pass
-        
+
         return h.hexdigest()
 
     def _generate_upload_script(self, bucket: str, content_hash: str) -> str:
@@ -253,21 +253,21 @@ class CodeBuildDockerImage(ComponentResource):
         safe_bucket = shlex.quote(bucket)
         safe_context = shlex.quote(str(self.build_context_path))
         safe_dockerfile = shlex.quote(str(self.dockerfile_path))
-        
+
         # Build source paths string for script
         source_paths_str = ""
         if self.source_paths:
             # Convert paths to space-separated string
             paths = " ".join(shlex.quote(p) for p in self.source_paths)
             source_paths_str = paths
-        
-        # Paths are relative to project root  
+
+        # Paths are relative to project root
         # Get absolute project root path
         project_root_abs = str(Path(PROJECT_DIR).resolve())
         safe_project_root = shlex.quote(project_root_abs)
         safe_context = shlex.quote(self.build_context_path)
         safe_dockerfile = shlex.quote(self.dockerfile_path)
-        
+
         return f"""#!/usr/bin/env bash
 set -e
 
@@ -317,7 +317,7 @@ if [ "$CONTEXT_PATH" = "." ]; then
     --include='receipt_label/LICENSE' \
     --exclude='*' \
     "$CONTEXT_PATH/" "$TMP/context/"
-  
+
   # Copy additional source paths if specified (e.g., receipt_upload)
   if [ -n "$SOURCE_PATHS" ]; then
     echo "  → Including additional source paths: $SOURCE_PATHS"
@@ -331,12 +331,14 @@ if [ "$CONTEXT_PATH" = "." ]; then
       fi
     done
   fi
-  
+
   # Also copy the specific infra directory for this image
   # Extract the infra path from DOCKERFILE variable
   INFRA_DIR=$(dirname "$DOCKERFILE")
   if [ -d "$INFRA_DIR" ]; then
     echo "  → Including handler directory: $INFRA_DIR"
+    # Create parent directories before rsync (GNU rsync requires this on Linux)
+    mkdir -p "$TMP/context/$INFRA_DIR"
     rsync -a \
       --exclude='__pycache__' \
       --exclude='*.pyc' \
@@ -370,13 +372,13 @@ echo "✅ Uploaded context.zip (hash: ${{HASH:0:12}}...)"
 
     def _buildspec(self) -> Dict[str, Any]:
         """Generate CodeBuild buildspec for Docker build and push."""
-        
+
         build_args_str = " ".join([
             f"--build-arg {k}={v}" for k, v in self.build_args.items()
         ])
-        
+
         platform_flag = f"--platform {self.platform}" if self.platform else ""
-        
+
         return {
             "version": 0.2,
             "phases": {
@@ -432,7 +434,7 @@ echo "✅ Uploaded context.zip (hash: ${{HASH:0:12}}...)"
 
     def _setup_pipeline(self, content_hash: str):
         """Setup S3, CodeBuild, and CodePipeline for Docker builds."""
-        
+
         # Artifact bucket
         build_bucket = aws.s3.Bucket(
             f"{self.name}-artifacts",
@@ -824,7 +826,7 @@ docker push "$REPO_URL:latest"
 echo "✅ Bootstrap image pushed to $REPO_URL:latest"
 """
         )
-        
+
         return command.local.Command(
             f"{self.name}-bootstrap-image",
             create=bootstrap_script,
@@ -833,13 +835,13 @@ echo "✅ Bootstrap image pushed to $REPO_URL:latest"
 
     def _create_lambda_function(self, bootstrap_cmd, pipeline):
         """Create Lambda function that will be updated by CodeBuild."""
-        
+
         # Use our ECR repo with :latest tag as initial image
         # CodeBuild will update this once it builds and pushes the real image
         initial_image_uri = self.ecr_repo.repository_url.apply(
             lambda url: f"{url}:latest"
         )
-        
+
         # Build Lambda function arguments
         lambda_args = {
             "name": self.lambda_function_name,
@@ -850,31 +852,31 @@ echo "✅ Bootstrap image pushed to $REPO_URL:latest"
             "memory_size": self.lambda_config.get("memory_size", 512),
             "architectures": ["arm64"],
         }
-        
+
         # Add environment if provided
         if self.lambda_config.get("environment"):
             lambda_args["environment"] = aws.lambda_.FunctionEnvironmentArgs(
                 variables=self.lambda_config.get("environment")
             )
-        
+
         # Add ephemeral storage if provided
         if self.lambda_config.get("ephemeral_storage"):
             lambda_args["ephemeral_storage"] = aws.lambda_.FunctionEphemeralStorageArgs(
                 size=self.lambda_config.get("ephemeral_storage")
             )
-        
+
         # Add reserved concurrent executions if provided
         if self.lambda_config.get("reserved_concurrent_executions"):
             lambda_args["reserved_concurrent_executions"] = self.lambda_config.get("reserved_concurrent_executions")
-        
+
         # Add description if provided
         if self.lambda_config.get("description"):
             lambda_args["description"] = self.lambda_config.get("description")
-        
+
         # Add tags if provided
         if self.lambda_config.get("tags"):
             lambda_args["tags"] = self.lambda_config.get("tags")
-        
+
         # Add VPC config if provided
         if self.lambda_config.get("vpc_config"):
             vpc_cfg = self.lambda_config.get("vpc_config")
@@ -882,7 +884,7 @@ echo "✅ Bootstrap image pushed to $REPO_URL:latest"
                 subnet_ids=vpc_cfg.get("subnet_ids"),
                 security_group_ids=vpc_cfg.get("security_group_ids"),
             )
-        
+
         # Add file system config if provided
         if self.lambda_config.get("file_system_config"):
             fs_cfg = self.lambda_config.get("file_system_config")
@@ -890,10 +892,10 @@ echo "✅ Bootstrap image pushed to $REPO_URL:latest"
                 arn=fs_cfg.get("arn"),
                 local_mount_path=fs_cfg.get("local_mount_path"),
             )
-        
+
         # Create Lambda function after bootstrap image is pushed
         depends_on_list = [bootstrap_cmd] if bootstrap_cmd else []
-        
+
         self.lambda_function = aws.lambda_.Function(
             f"{self.name}-function",
             **lambda_args,
@@ -903,7 +905,7 @@ echo "✅ Bootstrap image pushed to $REPO_URL:latest"
                 depends_on=depends_on_list,
             ),
         )
-        
+
         self.function_arn = self.lambda_function.arn
         self.function_name = self.lambda_function.name
 
