@@ -1,4 +1,44 @@
 {
+  // Python Interpreter Configuration
+  // Use the workspace virtual environment where all packages are installed
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "python.venvPath": "${workspaceFolder}",
+  "python.venvFolders": [".venv"],
+
+  // Python Analysis Configuration (Pylance/Pyright)
+  // Auto-discover packages from the virtual environment
+  "python.analysis.autoSearchPaths": true,
+  "python.analysis.autoImportCompletions": true,
+  "python.analysis.completeFunctionParens": true,
+  "python.analysis.typeCheckingMode": "basic",
+  "python.analysis.useLibraryCodeForTypes": true,
+  // Explicit paths to local packages for better autocomplete
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}/receipt_dynamo",
+    "${workspaceFolder}/receipt_label",
+    "${workspaceFolder}/receipt_upload",
+    "${workspaceFolder}/infra",
+    "${workspaceFolder}/scripts"
+  ],
+
+  // Cursor/Pyright Analysis Configuration
+  // Let it auto-discover from the virtual environment
+  "cursorpyright.analysis.autoSearchPaths": true,
+  "cursorpyright.analysis.autoImportCompletions": true,
+  // Explicit paths to local packages for better autocomplete
+  "cursorpyright.analysis.extraPaths": [
+    "${workspaceFolder}/receipt_dynamo",
+    "${workspaceFolder}/receipt_label",
+    "${workspaceFolder}/receipt_upload",
+    "${workspaceFolder}/infra",
+    "${workspaceFolder}/scripts"
+  ],
+
+  // Python Testing Configuration
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestPath": "pytest",
+  "python.testing.cwd": "${workspaceFolder}",
   "python.testing.pytestArgs": [
     "receipt_dynamo/tests",
     "receipt_trainer/tests",
@@ -9,67 +49,80 @@
     "--cov-config=receipt_dynamo/tests/.coveragerc",
     "--cov-report=xml:receipt_dynamo/tests/coverage.xml"
   ],
-  "python.testing.unittestEnabled": false,
-  "python.testing.pytestEnabled": true,
-  // "python.analysis.extraPaths": [
-  //   "${workspaceFolder}/receipt_label",
-  //   "${workspaceFolder}/receipt_dynamo",
-  //   "${workspaceFolder}/receipt_trainer"
-  // ],
-  "python.testing.pytestPath": "pytest",
-  "python.testing.cwd": "${workspaceFolder}",
-  "python.envFile": "${workspaceFolder}/.env",
-  "terminal.integrated.env.osx": {
-    "PYTHONPATH": "${workspaceFolder}"
-  },
+
+  // Python Linting Configuration
+  // Modern Python extension uses pylint extension for linting
   "python.linting.enabled": true,
   "python.linting.pylintEnabled": true,
   "python.linting.flake8Enabled": false,
   "python.linting.mypyEnabled": true,
+  "python.linting.lintOnSave": true,
+  "python.linting.pylintArgs": ["--max-line-length=79"],
+
+  // Pylint Extension Configuration (modern way - this is what actually runs)
+  "pylint.args": [
+    "--max-line-length=79",
+    "--load-plugins=pylint.extensions.docparams"
+  ],
+  "pylint.codeActions": {
+    "enabled": true
+  },
+  // Enable pylint to run on save (for Pylint extension)
+  "pylint.lintOnSave": true,
+  // Use the Python extension's linting too
+  "python.analysis.diagnosticMode": "workspace",
+  // Enable diagnostics for all files
+  "python.analysis.diagnosticSeverityOverrides": {
+    "reportGeneralTypeIssues": "none",
+    "reportInvalidTypeVarUse": "none"
+  },
+
+  // MyPy Configuration (for MyPy extension if installed)
+  "mypy-type-checker.args": [
+    "--ignore-missing-imports",
+    "--no-strict-optional"
+  ],
+
+  // Enable diagnostics in Problems panel
+  "problems.showCurrentInStatus": true,
+
+  // Python Formatting Configuration
   "python.formatting.provider": "none",
   "python.formatting.blackArgs": ["--line-length=79"],
-  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
-  "python.analysis.autoImportCompletions": true,
-  "python.analysis.completeFunctionParens": true,
-  "python.venvPath": "${workspaceFolder}",
-  "python.venvFolders": [".venv"],
-  "python.analysis.extraPaths": [
-    "./receipt_dynamo",
-    "./receipt_label",
-    "./receipt_upload",
-    "./receipt_trainer",
-    "./receipt_trainer_1",
-    "./infra"
-  ],
-  // "python.analysis.packageIndexDepths": [
-  //   {
-  //     "name": "pixi",
-  //     "depth": 0
-  //   }
-  // ],
-  // "python.analysis.extraPaths": ["${workspaceFolder}/receipt_label"],
-  "editor.formatOnSave": true,
-  "cSpell.words": ["levelname", "msecs", "stepfunctions"],
-  "cursorpyright.analysis.autoImportCompletions": true,
-  "cursorpyright.analysis.extraPaths": [
-    "${workspaceFolder}/.venv/lib/python3.12/site-packages"
-  ],
   "[python]": {
     "editor.defaultFormatter": "ms-python.black-formatter",
     "editor.formatOnSave": true,
     "editor.codeActionsOnSave": {
-      "source.organizeImports": "explicit"
-    }
+      "source.organizeImports": "explicit",
+      "source.fixAll": "explicit"
+    },
+    "files.trimTrailingWhitespace": true
   },
-  "isort.args": ["--profile", "black", "--line-length", "79"],
+
+  // Global editor settings (for all files)
+  "editor.codeActionsOnSave": {
+    "source.fixAll": "explicit",
+    "source.organizeImports": "explicit"
+  },
   "black-formatter.args": ["--line-length=79"],
-  "pylint.args": ["--max-line-length=79"],
-  "python.linting.pylintArgs": ["--max-line-length=79"],
-  "python.linting.lintOnSave": true,
+  "isort.args": ["--profile", "black", "--line-length", "79"],
+
+  // Environment Configuration
+  "python.envFile": "${workspaceFolder}/.env",
+  "terminal.integrated.env.osx": {
+    "PYTHONPATH": "${workspaceFolder}"
+  },
+
+  // Editor Configuration
+  "editor.formatOnSave": true,
   "editor.rulers": [79],
+  // Automatically trim trailing whitespace on save
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
   "files.associations": {
     "*.toml": "toml"
   },
-  "python.analysis.autoSearchPaths": true,
-  "cursorpyright.analysis.autoSearchPaths": true
+
+  // Spell Checker
+  "cSpell.words": ["levelname", "msecs", "stepfunctions"]
 }

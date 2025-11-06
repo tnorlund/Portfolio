@@ -12,7 +12,9 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-RUNNER_BASE="/Users/$(whoami)/GitHub"
+# Use environment variable if set, otherwise default to $HOME/.github-runners
+# To use a custom location, set: export GITHUB_RUNNERS_DIR="/path/to/runners"
+RUNNER_BASE="${GITHUB_RUNNERS_DIR:-$HOME/.github-runners}"
 
 echo -e "${BLUE}🚀 Starting GitHub Actions Self-Hosted Runners${NC}"
 echo -e "${GREEN}This will save ~\$48/month in GitHub Actions costs!${NC}"
@@ -33,25 +35,25 @@ start_runner() {
     local runner_num=$1
     local runner_dir="${RUNNER_BASE}/actions-runner${runner_num:+-$runner_num}"
     local runner_name="runner${runner_num}"
-    
+
     if [[ ! -d "$runner_dir" ]]; then
         echo -e "${RED}❌ Runner directory not found: $runner_dir${NC}"
         echo "   Run ./scripts/quick_runner_setup.sh first"
         return 1
     fi
-    
+
     if check_runner "$runner_num"; then
         echo -e "${YELLOW}⚠️  Runner $runner_name is already running${NC}"
         return 0
     fi
-    
+
     echo -e "${BLUE}Starting runner $runner_name...${NC}"
     cd "$runner_dir"
     nohup ./run.sh > "$runner_dir/runner.log" 2>&1 &
-    
+
     # Wait a moment for startup
     sleep 2
-    
+
     if check_runner "$runner_num"; then
         echo -e "${GREEN}✅ Runner $runner_name started successfully${NC}"
     else
@@ -85,10 +87,15 @@ echo ""
 # Start runners
 echo -e "${BLUE}Starting runners...${NC}"
 
-# Start primary runner (no suffix)
-start_runner ""
+# Start primary runner (no suffix) if it exists
+if [ -d "${RUNNER_BASE}/actions-runner" ]; then
+    start_runner ""
+else
+    echo -e "${YELLOW}ℹ️  Primary runner not found at ${RUNNER_BASE}/actions-runner, skipping...${NC}"
+fi
 
 # Start additional runners based on recommendation
+# Check which runners actually exist before starting
 for i in $(seq 2 $RECOMMENDED_RUNNERS); do
     start_runner "$i"
 done

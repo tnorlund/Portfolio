@@ -12,7 +12,9 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-RUNNER_BASE="/Users/$(whoami)/GitHub"
+# Use environment variable if set, otherwise default to $HOME/.github-runners
+# To use a custom location, set: export GITHUB_RUNNERS_DIR="/path/to/runners"
+RUNNER_BASE="${GITHUB_RUNNERS_DIR:-$HOME/.github-runners}"
 
 echo -e "${BLUE}🚀 Quick Parallel Runner Setup for Development Velocity${NC}"
 echo -e "${GREEN}Target: 4 runners for maximum parallelization${NC}"
@@ -91,12 +93,12 @@ done
 
 echo ""
 echo "Option B: Background processes:"
-cat << 'EOF'
+cat << EOF
 # Start all runners in background
-cd /Users/$(whoami)/GitHub/actions-runner && nohup ./run.sh > runner1.log 2>&1 &
-cd /Users/$(whoami)/GitHub/actions-runner-2 && nohup ./run.sh > runner2.log 2>&1 &
-cd /Users/$(whoami)/GitHub/actions-runner-3 && nohup ./run.sh > runner3.log 2>&1 &
-cd /Users/$(whoami)/GitHub/actions-runner-4 && nohup ./run.sh > runner4.log 2>&1 &
+cd ${RUNNER_BASE}/actions-runner && nohup ./run.sh > runner1.log 2>&1 &
+cd ${RUNNER_BASE}/actions-runner-2 && nohup ./run.sh > runner2.log 2>&1 &
+cd ${RUNNER_BASE}/actions-runner-3 && nohup ./run.sh > runner3.log 2>&1 &
+cd ${RUNNER_BASE}/actions-runner-4 && nohup ./run.sh > runner4.log 2>&1 &
 
 # Check status
 ps aux | grep "Runner.Listener" | grep -v grep

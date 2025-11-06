@@ -10,6 +10,7 @@ from routes.label_validation_count.infra import label_validation_count_lambda
 from routes.merchant_counts.infra import merchant_counts_lambda
 from routes.process.infra import process_lambda
 from routes.random_image_details.infra import random_image_details_lambda
+from routes.random_receipt_details.infra import random_receipt_details_lambda
 from routes.receipt_count.infra import receipt_count_lambda
 from routes.receipts.infra import receipts_lambda
 
@@ -267,6 +268,36 @@ lambda_permission_receipts = aws.lambda_.Permission(
     "receipts_lambda_permission",
     action="lambda:InvokeFunction",
     function=receipts_lambda.name,
+    principal="apigateway.amazonaws.com",
+    source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+)
+
+
+# /random_receipt_details
+integration_random_receipt_details = aws.apigatewayv2.Integration(
+    "random_receipt_details_lambda_integration",
+    api_id=api.id,
+    integration_type="AWS_PROXY",
+    integration_uri=random_receipt_details_lambda.invoke_arn,
+    integration_method="POST",
+    payload_format_version="2.0",
+)
+route_random_receipt_details = aws.apigatewayv2.Route(
+    "random_receipt_details_route",
+    api_id=api.id,
+    route_key="GET /random_receipt_details",
+    target=integration_random_receipt_details.id.apply(
+        lambda id: f"integrations/{id}"
+    ),
+    opts=pulumi.ResourceOptions(
+        replace_on_changes=["route_key", "target"],
+        delete_before_replace=True,
+    ),
+)
+lambda_permission_random_receipt_details = aws.lambda_.Permission(
+    "random_receipt_details_lambda_permission",
+    action="lambda:InvokeFunction",
+    function=random_receipt_details_lambda.name,
     principal="apigateway.amazonaws.com",
     source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
 )

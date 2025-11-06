@@ -1,3 +1,108 @@
+# Development Setup Guide
+
+This document covers setting up the development environment for the Portfolio workspace.
+
+## Python IntelliSense Configuration
+
+The workspace uses a **best practices approach** for Python IntelliSense in Cursor/VS Code.
+
+### Overview
+
+1. **Single Virtual Environment** - All Python packages installed in editable mode in `.venv/`
+2. **Automatic Discovery** - Pyright/Pylance automatically discovers installed packages from the venv
+3. **VS Code Settings** - All configuration in `.vscode/settings.json` - no additional config files needed
+4. **Clean Configuration** - No manual `extraPaths` hacks - everything works through proper package installation
+
+### Initial Setup
+
+1. **Create virtual environment with Python 3.12** (matches Lambda runtime):
+   ```bash
+   python3.12 -m venv .venv
+   source .venv/bin/activate
+   pip install --upgrade pip setuptools wheel
+   ```
+
+2. **Install packages in dependency order:**
+   ```bash
+   # Install base package first
+   pip install -e receipt_dynamo
+   
+   # Install packages with dependencies
+   pip install -e "receipt_label[full]"  # Includes ChromaDB support
+   pip install -e infra
+   ```
+
+3. **Verify installation:**
+   ```bash
+   python -c "import receipt_dynamo; import receipt_label; import chromadb; import infra; print('✅ All packages working!')"
+   ```
+
+### Configuration Files
+
+- **`.vscode/settings.json`** - All Python and Pyright configuration in one place
+- No additional config files needed - Pyright discovers packages from the venv automatically
+
+### Using IntelliSense
+
+1. **Install Python Extension (if not already installed):**
+   - Press `Cmd+Shift+X` (Mac) or `Ctrl+Shift+X` (Windows/Linux) to open Extensions
+   - Search for "Python" and install the official extension by Microsoft (`ms-python.python`)
+   - This provides IntelliSense, linting, and Python support in Cursor
+
+2. **Select Python interpreter:**
+   - Press `Cmd+Shift+P` (Mac) or `Ctrl+Shift+P` (Windows/Linux)
+   - Type "Python: Select Interpreter" (or just "Python" to see Python commands)
+   - Choose `.venv/bin/python` from the list
+   - If you don't see it, click "Enter interpreter path..." and paste: `.venv/bin/python`
+
+3. **Reload window** (if needed):
+   - Press `Cmd+Shift+P` / `Ctrl+Shift+P`
+   - Type "Developer: Reload Window"
+
+4. **Test IntelliSense:**
+   - Open any Python file
+   - Type `from receipt_dynamo import` - should show autocomplete
+   - Type hints and method completions should work automatically
+
+### Adding New Packages
+
+To add a new package to the workspace:
+
+```bash
+source .venv/bin/activate
+pip install -e <package_directory>
+```
+
+If it has dependencies on other workspace packages, install them first:
+```bash
+pip install -e receipt_dynamo  # Install dependency first
+pip install -e receipt_upload  # Then install the package
+```
+
+IntelliSense will automatically pick it up - no configuration changes needed!
+
+### Troubleshooting
+
+**IntelliSense not working:**
+1. Verify Python interpreter is set to `.venv/bin/python`
+2. Reload the window
+3. Check packages are installed: `pip list | grep receipt`
+
+**Missing type hints:**
+- Verify Python interpreter is set correctly (should auto-detect Python 3.12 from venv)
+- Some third-party packages may not have type stubs - this is normal
+
+**Import errors:**
+- Verify package is installed: `pip show receipt_dynamo` should show `Location: /Users/tnorlund/Portfolio/receipt_dynamo`
+- Ensure package is in editable mode (installed with `-e` flag)
+
+### Installed Packages
+
+- ✅ `receipt_dynamo` - DynamoDB utilities
+- ✅ `receipt_label[full]` - Labeling system with full ChromaDB support
+- ✅ `infra` - Infrastructure as code (Pulumi)
+- ✅ `chromadb` - Vector database (via receipt_label[full])
+
 # MCP Development Server
 
 This repository includes a simple Model Context Protocol server for running
