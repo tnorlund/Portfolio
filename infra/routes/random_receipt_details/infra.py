@@ -102,8 +102,12 @@ random_receipt_details_lambda = aws.lambda_.Function(
 )
 
 # CloudWatch log group for the Lambda function
+# Use the exact Lambda log group name format: /aws/lambda/<function-name>
 log_group = aws.cloudwatch.LogGroup(
     f"api_{ROUTE_NAME}_lambda_log_group",
+    name=random_receipt_details_lambda.name.apply(
+        lambda function_name: f"/aws/lambda/{function_name}"
+    ),
     retention_in_days=30,
 )
 
