@@ -2,6 +2,7 @@
   "recommendations": [
     "openai.chatgpt",
     "ms-python.python",
-    "ms-python.pylint"
+    "ms-python.pylint",
+    "ms-python.mypy-type-checker"
   ]
 }
