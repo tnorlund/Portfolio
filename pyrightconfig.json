@@ -1,0 +1,30 @@
+{
+  "pythonVersion": "3.12",
+  "root": ".",
+  "include": [
+    "receipt_dynamo",
+    "receipt_label",
+    "receipt_upload",
+    "infra",
+    "scripts"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "**/node_modules",
+    "**/.venv",
+    "**/venv",
+    "**/.pytest_cache",
+    "**/dist",
+    "**/build",
+    "**/*.egg-info",
+    "**/tests",
+    "**/test"
+  ],
+  "typeCheckingMode": "basic",
+  "reportMissingImports": true,
+  "reportMissingTypeStubs": false,
+  "reportGeneralTypeIssues": false,
+  "reportInvalidTypeVarUse": false,
+  "venvPath": ".",
+  "venv": ".venv"
+}
