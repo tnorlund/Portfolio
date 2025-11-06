@@ -57,7 +57,7 @@
     "@jest/types": "^30.0.0",
     "@lhci/cli": "^0.15.1",
     "@modelcontextprotocol/sdk": "^0.4.0",
-    "@next/bundle-analyzer": "^15.3.3",
+    "@next/bundle-analyzer": "^16.0.1",
     "@playwright/test": "^1.54.0",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^5.14.1",
