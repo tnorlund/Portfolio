@@ -422,7 +422,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       <h2>Semantic Labeling</h2>
       <p>
 
-        Adding labels to the individual words strucutures the data for the LLMs and data processing pipelines.
+        Adding labels to the individual words structures the data for the LLMs and data processing pipelines.
         This context-aware processing speeds up the extraction, validation, and downstream processing.
       </p>
       <ClientOnly>
