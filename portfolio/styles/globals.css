@@ -26,6 +26,8 @@
   --color-blue-rgb: 30, 136, 229;  /* RGB values for #1E88E5 */
   --color-yellow: #FDD835;
   --color-yellow-rgb: 253, 216, 53;  /* RGB values for #FDD835 */
+  --color-purple: #9C27B0;
+  --color-purple-rgb: 156, 39, 176;  /* RGB values for #9C27B0 */
 
   --background-color-rgb: 255, 255, 255;  /* Add this for light mode */
 }
