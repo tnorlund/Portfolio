@@ -73,7 +73,7 @@
     "jest-environment-jsdom": "^30.0.0",
     "typedoc": "^0.28.5",
     "typedoc-material-theme": "^1.4.0",
-    "typedoc-plugin-markdown": "^4.5.0",
+    "typedoc-plugin-markdown": "^4.9.0",
     "typescript": "^5.8.0",
     "web-vitals": "^2.1.4"
   }
