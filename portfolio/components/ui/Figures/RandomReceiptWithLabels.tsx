@@ -4,8 +4,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import useOptimizedInView from "../../../hooks/useOptimizedInView";
 import { api } from "../../../services/api";
 import styles from "../../../styles/RandomReceiptWithLabels.module.css";
-import { FormatSupport, RandomReceiptDetailsResponse, ReceiptWord, ReceiptWordLabel } from "../../../types/api";
-import { detectImageFormatSupport, getBestImageUrl } from "../../../utils/imageFormat";
+import { RandomReceiptDetailsResponse, ReceiptWord, ReceiptWordLabel } from "../../../types/api";
+import { detectImageFormatSupport, FormatSupport, getBestImageUrl } from "../../../utils/imageFormat";
 
 const isDevelopment = process.env.NODE_ENV === "development";
 
@@ -21,22 +21,22 @@ const LABEL_CATEGORIES = {
       "WEBSITE",
       "LOYALTY_ID",
       "ADDRESS_LINE",
-    ],
+    ] as const,
   },
   transaction: {
     name: "Transaction",
     color: "var(--color-blue)",
-    labels: ["DATE", "TIME", "PAYMENT_METHOD", "COUPON", "DISCOUNT"],
+    labels: ["DATE", "TIME", "PAYMENT_METHOD", "COUPON", "DISCOUNT"] as const,
   },
   lineItems: {
     name: "Line Items",
     color: "var(--color-red)",
-    labels: ["PRODUCT_NAME", "QUANTITY", "UNIT_PRICE"],
+    labels: ["PRODUCT_NAME", "QUANTITY", "UNIT_PRICE"] as const,
   },
   totals: {
     name: "Currency",
     color: "var(--color-green)",
-    labels: ["LINE_TOTAL", "SUBTOTAL", "TAX", "GRAND_TOTAL"],
+    labels: ["LINE_TOTAL", "SUBTOTAL", "TAX", "GRAND_TOTAL"] as const,
   },
 } as const;
 
@@ -44,7 +44,7 @@ const LABEL_CATEGORIES = {
 const getLabelColor = (label: string): string => {
   // Check each category
   for (const category of Object.values(LABEL_CATEGORIES)) {
-    if (category.labels.includes(label)) {
+    if ((category.labels as readonly string[]).includes(label)) {
       return category.color;
     }
   }
@@ -55,7 +55,7 @@ const getLabelColor = (label: string): string => {
 // Get category for a label
 const getLabelCategory = (label: string): keyof typeof LABEL_CATEGORIES | null => {
   for (const [key, category] of Object.entries(LABEL_CATEGORIES)) {
-    if (category.labels.includes(label)) {
+    if ((category.labels as readonly string[]).includes(label)) {
       return key as keyof typeof LABEL_CATEGORIES;
     }
   }
@@ -390,7 +390,7 @@ const RandomReceiptWithLabels: React.FC = () => {
                   <div className={styles.legendContainer}>
                     {Object.entries(LABEL_CATEGORIES).map(([categoryKey, category]) => {
                       const labelsInCategory = Array.from(labels)
-                        .filter((label) => category.labels.includes(label))
+                        .filter((label) => (category.labels as readonly string[]).includes(label))
                         .sort();
                       if (labelsInCategory.length === 0) return null;
 
@@ -525,7 +525,7 @@ const RandomReceiptWithLabels: React.FC = () => {
                   <div className={styles.legendContainer}>
                     {Object.entries(LABEL_CATEGORIES).map(([categoryKey, category]) => {
                       const labelsInCategory = Array.from(labels)
-                        .filter((label) => category.labels.includes(label))
+                        .filter((label) => (category.labels as readonly string[]).includes(label))
                         .sort();
                       if (labelsInCategory.length === 0) return null;
 
