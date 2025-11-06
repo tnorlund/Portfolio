@@ -71,7 +71,7 @@
     "eslint-config-next": "^15.3.3",
     "jest": "^30.0.0",
     "jest-environment-jsdom": "^30.0.0",
-    "typedoc": "^0.28.5",
+    "typedoc": "^0.28.14",
     "typedoc-material-theme": "^1.4.0",
     "typedoc-plugin-markdown": "^4.5.0",
     "typescript": "^5.8.0",
