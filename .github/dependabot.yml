@@ -5,7 +5,7 @@ updates:
     directory: "/portfolio"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 3
     labels:
       - "dependencies"
       - "javascript"
@@ -18,7 +18,7 @@ updates:
     directory: "/infra"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 3
     labels:
       - "dependencies"
       - "python"
@@ -31,7 +31,7 @@ updates:
     directory: "/receipt_dynamo"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 3
     labels:
       - "dependencies"
       - "python"
@@ -44,7 +44,7 @@ updates:
     directory: "/receipt_label"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 3
     labels:
       - "dependencies"
       - "python"
@@ -57,7 +57,7 @@ updates:
     directory: "/receipt_upload"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 3
     labels:
       - "dependencies"
       - "python"
@@ -70,7 +70,7 @@ updates:
     directory: "/"
     schedule:
       interval: "monthly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 2
     labels:
       - "dependencies"
       - "github-actions"
