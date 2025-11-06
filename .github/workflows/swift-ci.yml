@@ -32,7 +32,7 @@ jobs:
         runs-on: macos-latest
 
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v5
 
             - name: Setup Swift
               uses: swift-actions/setup-swift@v1
@@ -118,7 +118,7 @@ jobs:
         needs: test
 
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v5
 
             - name: Setup Swift
               uses: swift-actions/setup-swift@v1
