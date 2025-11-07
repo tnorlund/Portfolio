@@ -26,6 +26,7 @@ from utils.metrics import (
     track_s3_operation,
     track_chromadb_operation,
     metrics,
+    emf_metrics,
 )
 from utils.tracing import (
     trace_openai_batch_poll,
@@ -86,25 +87,53 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         lambda: logger.info("Graceful shutdown initiated for line polling")
     )
 
+    # Collect metrics during processing to batch them via EMF (cost-effective)
+    collected_metrics: Dict[str, float] = {}
+    metric_dimensions: Dict[str, str] = {}
+    error_types: Dict[str, int] = {}
+
     try:
-        return _handle_internal(event, context)
+        return _handle_internal(event, context, collected_metrics, metric_dimensions, error_types)
     except CircuitBreakerOpenError as e:
         logger.error("Circuit breaker prevented operation", error=str(e))
-        metrics.count("LinePollingCircuitBreakerBlocked")
+        collected_metrics["LinePollingCircuitBreakerBlocked"] = 1
+        error_types["CircuitBreakerOpenError"] = error_types.get("CircuitBreakerOpenError", 0) + 1
+
+        # Log metrics via EMF before raising
+        emf_metrics.log_metrics(
+            collected_metrics,
+            dimensions=metric_dimensions if metric_dimensions else None,
+            properties={"error_types": error_types},
+        )
         raise
     finally:
         stop_lambda_monitoring()
         final_cleanup()
 
 
-def _handle_internal(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def _handle_internal(
+    event: Dict[str, Any],
+    context: Any,
+    collected_metrics: Dict[str, float],
+    metric_dimensions: Dict[str, str],
+    error_types: Dict[str, int],
+) -> Dict[str, Any]:
     """Internal handler with full instrumentation and error handling."""
     try:
-        return _handle_internal_core(event, context)
+        return _handle_internal_core(event, context, collected_metrics, metric_dimensions, error_types)
     except TimeoutError as e:
         logger.error("Timeout error in line polling", error=str(e))
-        metrics.count("LinePollingTimeouts", dimensions={"stage": "handler"})
+        collected_metrics["LinePollingTimeouts"] = collected_metrics.get("LinePollingTimeouts", 0) + 1
+        metric_dimensions["timeout_stage"] = "handler"
+        error_types["TimeoutError"] = error_types.get("TimeoutError", 0) + 1
         tracer.add_annotation("timeout", "true")
+
+        # Log metrics via EMF before raising
+        emf_metrics.log_metrics(
+            collected_metrics,
+            dimensions=metric_dimensions if metric_dimensions else None,
+            properties={"error_types": error_types},
+        )
         raise
     except Exception as e:
         logger.error(
@@ -112,18 +141,29 @@ def _handle_internal(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             error=str(e),
             error_type=type(e).__name__,
         )
-        metrics.count(
-            "LinePollingErrors", dimensions={"error_type": type(e).__name__}
-        )
+        collected_metrics["LinePollingErrors"] = collected_metrics.get("LinePollingErrors", 0) + 1
+        metric_dimensions["error_type"] = type(e).__name__
+        error_types[type(e).__name__] = error_types.get(type(e).__name__, 0) + 1
         tracer.add_annotation("error", type(e).__name__)
         tracer.add_metadata(
             "error_details", {"message": str(e), "type": type(e).__name__}
+        )
+
+        # Log metrics via EMF before raising
+        emf_metrics.log_metrics(
+            collected_metrics,
+            dimensions=metric_dimensions if metric_dimensions else None,
+            properties={"error_types": error_types},
         )
         raise
 
 
 def _handle_internal_core(
-    event: Dict[str, Any], context: Any
+    event: Dict[str, Any],
+    context: Any,
+    collected_metrics: Dict[str, float],
+    metric_dimensions: Dict[str, str],
+    error_types: Dict[str, int],
 ) -> Dict[str, Any]:
     """Core handler logic with comprehensive instrumentation."""
     logger.info(
@@ -143,14 +183,21 @@ def _handle_internal_core(
     tracer.add_annotation("openai_batch_id", openai_batch_id)
     tracer.add_annotation("handler_type", "line_polling")
 
-    # Count invocation
-    metrics.count("LinePollingInvocations")
+    # Count invocation (aggregated, not per-call)
+    collected_metrics["LinePollingInvocations"] = 1
 
     # Check timeout before starting
     if check_timeout():
         logger.error("Lambda timeout detected before processing")
-        metrics.count(
-            "LinePollingTimeouts", dimensions={"stage": "pre_processing"}
+        collected_metrics["LinePollingTimeouts"] = collected_metrics.get("LinePollingTimeouts", 0) + 1
+        metric_dimensions["timeout_stage"] = "pre_processing"
+        error_types["TimeoutError"] = error_types.get("TimeoutError", 0) + 1
+
+        # Log metrics via EMF before raising
+        emf_metrics.log_metrics(
+            collected_metrics,
+            dimensions=metric_dimensions if metric_dimensions else None,
+            properties={"error_types": error_types},
         )
         raise TimeoutError("Lambda timeout detected before processing")
 
@@ -174,7 +221,8 @@ def _handle_internal_core(
 
     # Add status to trace
     tracer.add_annotation("batch_status", batch_status)
-    metrics.count("BatchStatusChecked", dimensions={"status": batch_status})
+    collected_metrics["BatchStatusChecked"] = collected_metrics.get("BatchStatusChecked", 0) + 1
+    metric_dimensions["batch_status"] = batch_status
 
     # Use modular status handler with timeout protection
     with operation_with_timeout("handle_batch_status", max_duration=30):
@@ -195,8 +243,15 @@ def _handle_internal_core(
         # Check timeout before processing
         if check_timeout():
             logger.error("Lambda timeout detected before result processing")
-            metrics.count(
-                "LinePollingTimeouts", dimensions={"stage": "pre_results"}
+            collected_metrics["LinePollingTimeouts"] = collected_metrics.get("LinePollingTimeouts", 0) + 1
+            metric_dimensions["timeout_stage"] = "pre_results"
+            error_types["TimeoutError"] = error_types.get("TimeoutError", 0) + 1
+
+            # Log metrics via EMF before raising
+            emf_metrics.log_metrics(
+                collected_metrics,
+                dimensions=metric_dimensions if metric_dimensions else None,
+                properties={"error_types": error_types},
             )
             raise TimeoutError(
                 "Lambda timeout detected before result processing"
@@ -212,7 +267,7 @@ def _handle_internal_core(
 
         result_count = len(results)
         logger.info("Downloaded embedding results", result_count=result_count)
-        metrics.gauge("DownloadedResults", result_count)
+        collected_metrics["DownloadedResults"] = result_count
         tracer.add_metadata("result_count", result_count)
 
         # Get receipt details with timeout protection
@@ -226,7 +281,7 @@ def _handle_internal_core(
             "Retrieved receipt descriptions",
             description_count=description_count,
         )
-        metrics.gauge("ProcessedDescriptions", description_count)
+        collected_metrics["ProcessedDescriptions"] = description_count
 
         # Get configuration from environment
         bucket_name = os.environ.get("CHROMADB_BUCKET")
@@ -244,8 +299,15 @@ def _handle_internal_core(
         # Check timeout before saving delta
         if check_timeout():
             logger.error("Lambda timeout detected before delta save")
-            metrics.count(
-                "LinePollingTimeouts", dimensions={"stage": "pre_save"}
+            collected_metrics["LinePollingTimeouts"] = collected_metrics.get("LinePollingTimeouts", 0) + 1
+            metric_dimensions["timeout_stage"] = "pre_save"
+            error_types["TimeoutError"] = error_types.get("TimeoutError", 0) + 1
+
+            # Log metrics via EMF before raising
+            emf_metrics.log_metrics(
+                collected_metrics,
+                dimensions=metric_dimensions if metric_dimensions else None,
+                properties={"error_types": error_types},
             )
             raise TimeoutError("Lambda timeout detected before delta save")
 
@@ -282,10 +344,17 @@ def _handle_internal_core(
                 batch_id=batch_id,
                 error=delta_result.get("error", "Unknown error"),
             )
-            metrics.count(
-                "LinePollingErrors",
-                dimensions={"error_type": "delta_save_failed"},
+            collected_metrics["LinePollingErrors"] = collected_metrics.get("LinePollingErrors", 0) + 1
+            metric_dimensions["error_type"] = "delta_save_failed"
+            error_types["delta_save_failed"] = error_types.get("delta_save_failed", 0) + 1
+
+            # Log metrics via EMF
+            emf_metrics.log_metrics(
+                collected_metrics,
+                dimensions=metric_dimensions if metric_dimensions else None,
+                properties={"error_types": error_types},
             )
+
             return {
                 "batch_id": batch_id,
                 "openai_batch_id": openai_batch_id,
@@ -307,15 +376,10 @@ def _handle_internal_core(
             batch_id=batch_id,
         )
 
-        # Publish metrics
-        metrics.gauge(
-            "SavedEmbeddings",
-            embedding_count,
-            dimensions={"collection": "lines"},
-        )
-        metrics.count(
-            "DeltasSaved", dimensions={"collection": "lines"}
-        )
+        # Collect metrics (aggregated, not per-call)
+        collected_metrics["SavedEmbeddings"] = embedding_count
+        collected_metrics["DeltasSaved"] = collected_metrics.get("DeltasSaved", 0) + 1
+        metric_dimensions["collection"] = "lines"
 
         # Add to trace
         tracer.add_metadata("delta_result", delta_result)
@@ -349,8 +413,19 @@ def _handle_internal_core(
         }
 
         logger.info("Successfully completed line polling", **result)
-        metrics.count("LinePollingSuccess")
+        collected_metrics["LinePollingSuccess"] = 1
         tracer.add_annotation("success", "true")
+
+        # Log all metrics via EMF in a single log line (no API call cost)
+        emf_metrics.log_metrics(
+            collected_metrics,
+            dimensions=metric_dimensions if metric_dimensions else None,
+            properties={
+                "batch_id": batch_id,
+                "openai_batch_id": openai_batch_id,
+                "error_types": error_types,
+            },
+        )
 
         return result
 
@@ -416,6 +491,18 @@ def _handle_internal_core(
             marked = mark_items_for_retry(failed_ids, "line", client_manager)
             logger.info("Marked lines for retry", count=marked)
 
+        # Log metrics via EMF
+        collected_metrics["LinePollingPartialResults"] = collected_metrics.get("LinePollingPartialResults", 0) + 1
+        emf_metrics.log_metrics(
+            collected_metrics,
+            dimensions=metric_dimensions if metric_dimensions else None,
+            properties={
+                "batch_id": batch_id,
+                "action": "process_partial",
+                "error_types": error_types,
+            },
+        )
+
         return {
             "batch_id": batch_id,
             "openai_batch_id": openai_batch_id,
@@ -435,6 +522,19 @@ def _handle_internal_core(
             error_count=error_info.get("error_count", 0),
         )
 
+        # Log metrics via EMF
+        collected_metrics["LinePollingFailures"] = collected_metrics.get("LinePollingFailures", 0) + 1
+        error_types.update(error_info.get("error_types", {}))
+        emf_metrics.log_metrics(
+            collected_metrics,
+            dimensions=metric_dimensions if metric_dimensions else None,
+            properties={
+                "batch_id": batch_id,
+                "action": "handle_failure",
+                "error_types": error_types,
+            },
+        )
+
         # Could mark all items for retry here if needed
         # For now, just return the error info
 
@@ -451,6 +551,19 @@ def _handle_internal_core(
 
     elif status_result["action"] in ["wait", "handle_cancellation"]:
         # Batch is still processing or was cancelled
+        collected_metrics[f"LinePolling{status_result['action'].title()}"] = collected_metrics.get(f"LinePolling{status_result['action'].title()}", 0) + 1
+
+        # Log metrics via EMF
+        emf_metrics.log_metrics(
+            collected_metrics,
+            dimensions=metric_dimensions if metric_dimensions else None,
+            properties={
+                "batch_id": batch_id,
+                "action": status_result["action"],
+                "error_types": error_types,
+            },
+        )
+
         return {
             "batch_id": batch_id,
             "openai_batch_id": openai_batch_id,
@@ -467,10 +580,17 @@ def _handle_internal_core(
             action=status_result.get("action"),
             status_result=status_result,
         )
-        metrics.count(
-            "LinePollingErrors", dimensions={"error_type": "unknown_action"}
-        )
+        collected_metrics["LinePollingErrors"] = collected_metrics.get("LinePollingErrors", 0) + 1
+        metric_dimensions["error_type"] = "unknown_action"
+        error_types["unknown_action"] = error_types.get("unknown_action", 0) + 1
         tracer.add_annotation("error", "unknown_action")
+
+        # Log metrics via EMF
+        emf_metrics.log_metrics(
+            collected_metrics,
+            dimensions=metric_dimensions if metric_dimensions else None,
+            properties={"error_types": error_types},
+        )
 
         return {
             "batch_id": batch_id,
