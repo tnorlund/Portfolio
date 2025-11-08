@@ -1,12 +1,13 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import NextImage from "next/image";
 import { api } from "../../../services/api";
-import { AddressSimilarityResponse, Receipt, Line } from "../../../types/api";
+import { AddressSimilarityResponse, Receipt, Line, BoundingBox } from "../../../types/api";
 import useOptimizedInView from "../../../hooks/useOptimizedInView";
 import {
   detectImageFormatSupport,
   getBestImageUrl,
 } from "../../../utils/imageFormat";
+import CroppedAddressImage from "./CroppedAddressImage";
 
 interface SimilarReceiptItemProps {
   receipt: Receipt;
@@ -18,6 +19,7 @@ interface SimilarReceiptItemProps {
   onLoad: () => void;
   shouldAnimate: boolean;
   fadeDelay: number;
+  bbox?: BoundingBox;
 }
 
 const SimilarReceiptItem = React.memo<SimilarReceiptItemProps>(
@@ -31,40 +33,74 @@ const SimilarReceiptItem = React.memo<SimilarReceiptItemProps>(
     onLoad,
     shouldAnimate,
     fadeDelay,
+    bbox: apiBbox,
   }) => {
     const [imageLoaded, setImageLoaded] = useState(false);
     const [currentSrc, setCurrentSrc] = useState<string>("");
     const [hasErrored, setHasErrored] = useState<boolean>(false);
 
-    // Calculate bounding box for address lines
+    // Use bbox from API if available, otherwise calculate from lines
+    // Note: OCR coordinates have y=0 at bottom, CSS has y=0 at top
     const addressBoundingBox = useMemo(() => {
+      // If API provides bbox, use it directly
+      if (apiBbox) {
+        // Convert from OCR coordinates (y=0 at bottom) to CSS (y=0 at top)
+        const ocrX = apiBbox.tl.x;
+        const ocrYTop = apiBbox.tl.y; // Top edge in OCR space
+        const ocrWidth = apiBbox.tr.x - apiBbox.tl.x;
+        const ocrHeight = apiBbox.tl.y - apiBbox.bl.y;
+        const cssY = 1 - ocrYTop; // Convert to CSS top position
+
+        return {
+          x: ocrX,
+          y: cssY,
+          width: ocrWidth,
+          height: ocrHeight,
+        };
+      }
+
+      // Fallback: Calculate from lines (for backward compatibility)
       if (!lines || lines.length === 0) return null;
 
+      // Collect all corner points from all lines
       const allX = lines.flatMap((line) => [
-        line.bounding_box.x,
-        line.bounding_box.x + line.bounding_box.width,
+        line.top_left.x,
+        line.top_right.x,
+        line.bottom_left.x,
+        line.bottom_right.x,
       ]);
-      const allY = lines.flatMap((line) => [
-        line.bounding_box.y,
-        line.bounding_box.y + line.bounding_box.height,
+      const allYBottom = lines.flatMap((line) => [
+        line.bottom_left.y,
+        line.bottom_right.y,
+      ]);
+      const allYTop = lines.flatMap((line) => [
+        line.top_left.y,
+        line.top_right.y,
       ]);
 
       const minX = Math.min(...allX);
       const maxX = Math.max(...allX);
-      const minY = Math.min(...allY);
-      const maxY = Math.max(...allY);
+      const minY = Math.min(...allYBottom);
+      const maxY = Math.max(...allYTop);
 
       // Add padding (5% on each side)
       const paddingX = (maxX - minX) * 0.05;
       const paddingY = (maxY - minY) * 0.05;
 
+      const ocrX = Math.max(0, minX - paddingX);
+      const ocrYBottom = Math.max(0, minY - paddingY);
+      const ocrYTop = Math.min(1, maxY + paddingY);
+      const ocrWidth = Math.min(1, maxX - minX + paddingX * 2);
+      const ocrHeight = ocrYTop - ocrYBottom;
+      const cssY = 1 - ocrYTop;
+
       return {
-        x: Math.max(0, minX - paddingX),
-        y: Math.max(0, minY - paddingY),
-        width: Math.min(1, maxX - minX + paddingX * 2),
-        height: Math.min(1, maxY - minY + paddingY * 2),
+        x: ocrX,
+        y: cssY,
+        width: ocrWidth,
+        height: ocrHeight,
       };
-    }, [lines]);
+    }, [lines, apiBbox]);
 
     useEffect(() => {
       if (formatSupport) {
@@ -150,34 +186,35 @@ const SimilarReceiptItem = React.memo<SimilarReceiptItemProps>(
               overflow: "hidden",
             }}
           >
-            <div
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                width: `${addressBoundingBox.width * 100}%`,
-                height: `${addressBoundingBox.height * 100}%`,
-                transform: `translate(${addressBoundingBox.x * 100}%, ${addressBoundingBox.y * 100}%)`,
-                overflow: "hidden",
-              }}
-            >
-              <NextImage
-                src={currentSrc}
-                alt={`Similar receipt ${receipt.receipt_id}`}
-                width={receipt.width}
-                height={receipt.height}
-                sizes="150px"
-                style={{
-                  width: `${(1 / addressBoundingBox.width) * 100}%`,
-                  height: `${(1 / addressBoundingBox.height) * 100}%`,
-                  objectFit: "cover",
-                  transform: `translate(${-addressBoundingBox.x * 100}%, ${-addressBoundingBox.y * 100}%)`,
-                }}
-                onLoad={handleImageLoad}
-                onError={handleError}
-                priority={index < 3}
-              />
-            </div>
+            {/* Scale factor: how much to scale image so bounding box fills container */}
+            {/* Use the larger scale factor to ensure bounding box fills container */}
+            {(() => {
+              const scaleX = 1 / addressBoundingBox.width;
+              const scaleY = 1 / addressBoundingBox.height;
+              const scale = Math.max(scaleX, scaleY); // Use larger scale to fill container
+
+              return (
+                <NextImage
+                  src={currentSrc}
+                  alt={`Similar receipt ${receipt.receipt_id}`}
+                  width={receipt.width}
+                  height={receipt.height}
+                  sizes="150px"
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: `${scale * 100}%`,
+                    height: `${scale * 100}%`,
+                    objectFit: "none",
+                    transform: `translate(${-addressBoundingBox.x * scale * 100}%, ${-addressBoundingBox.y * scale * 100}%)`,
+                  }}
+                  onLoad={handleImageLoad}
+                  onError={handleError}
+                  priority={index < 3}
+                />
+              );
+            })()}
           </div>
         )}
         {currentSrc && !addressBoundingBox && (
@@ -303,36 +340,6 @@ const AddressSimilarity: React.FC<AddressSimilarityProps> = ({
     });
   }, [data, windowWidth]);
 
-  // Calculate bounding box for original address
-  const originalAddressBoundingBox = useMemo(() => {
-    if (!data || !data.original.lines || data.original.lines.length === 0)
-      return null;
-
-    const lines = data.original.lines;
-    const allX = lines.flatMap((line) => [
-      line.bounding_box.x,
-      line.bounding_box.x + line.bounding_box.width,
-    ]);
-    const allY = lines.flatMap((line) => [
-      line.bounding_box.y,
-      line.bounding_box.y + line.bounding_box.height,
-    ]);
-
-    const minX = Math.min(...allX);
-    const maxX = Math.max(...allX);
-    const minY = Math.min(...allY);
-    const maxY = Math.max(...allY);
-
-    const paddingX = (maxX - minX) * 0.05;
-    const paddingY = (maxY - minY) * 0.05;
-
-    return {
-      x: Math.max(0, minX - paddingX),
-      y: Math.max(0, minY - paddingY),
-      width: Math.min(1, maxX - minX + paddingX * 2),
-      height: Math.min(1, maxY - minY + paddingY * 2),
-    };
-  }, [data]);
 
   useEffect(() => {
     detectImageFormatSupport().then((support) => {
@@ -412,9 +419,6 @@ const AddressSimilarity: React.FC<AddressSimilarityProps> = ({
   }
 
   const originalReceipt = data.original.receipt;
-  const originalImageSrc = formatSupport
-    ? getBestImageUrl(originalReceipt, formatSupport, "medium")
-    : null;
 
   return (
     <div
@@ -455,69 +459,15 @@ const AddressSimilarity: React.FC<AddressSimilarityProps> = ({
           <h3 style={{ marginBottom: "1.5rem", fontSize: "1.5rem" }}>
             Original Address
           </h3>
-          {originalImageSrc && originalAddressBoundingBox && (
-            <div
-              style={{
-                width: "100%",
-                maxWidth: "400px",
-                border: "2px solid #ccc",
-                borderRadius: "8px",
-                overflow: "hidden",
-                boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                backgroundColor: "var(--background-color)",
-              }}
-            >
-              <div
-                style={{
-                  position: "relative",
-                  width: "100%",
-                  paddingTop: `${
-                    (originalAddressBoundingBox.height /
-                      originalAddressBoundingBox.width) *
-                    100
-                  }%`,
-                  overflow: "hidden",
-                }}
-              >
-                <div
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    width: `${originalAddressBoundingBox.width * 100}%`,
-                    height: `${originalAddressBoundingBox.height * 100}%`,
-                    transform: `translate(${originalAddressBoundingBox.x * 100}%, ${originalAddressBoundingBox.y * 100}%)`,
-                    overflow: "hidden",
-                  }}
-                >
-                  <NextImage
-                    src={originalImageSrc}
-                    alt="Original address"
-                    width={originalReceipt.width}
-                    height={originalReceipt.height}
-                    sizes="400px"
-                    style={{
-                      width: `${(1 / originalAddressBoundingBox.width) * 100}%`,
-                      height: `${(1 / originalAddressBoundingBox.height) * 100}%`,
-                      objectFit: "cover",
-                      transform: `translate(${-originalAddressBoundingBox.x * 100}%, ${-originalAddressBoundingBox.y * 100}%)`,
-                    }}
-                    priority
-                  />
-                </div>
-              </div>
-              <div
-                style={{
-                  padding: "1rem",
-                  backgroundColor: "var(--background-color)",
-                }}
-              >
-                <p style={{ fontSize: "0.9rem", color: "#666", margin: 0 }}>
-                  {data.original.lines.map((line) => line.text).join(" ")}
-                </p>
-              </div>
-            </div>
-          )}
+          <CroppedAddressImage
+            receipt={originalReceipt}
+            lines={data.original.lines}
+            formatSupport={formatSupport}
+            maxWidth="400px"
+            priority
+            debug={true}
+            bbox={data.original.bbox}
+          />
         </div>
 
         {/* Similar Addresses (Right Side - Image Stack) */}
@@ -553,6 +503,7 @@ const AddressSimilarity: React.FC<AddressSimilarityProps> = ({
                 onLoad={() => handleImageLoad(index)}
                 shouldAnimate={startAnimation}
                 fadeDelay={fadeDelay}
+                bbox={similar.bbox}
               />
             ))}
           </div>

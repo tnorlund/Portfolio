@@ -38,6 +38,13 @@ export interface Point {
   y: number;
 }
 
+export interface BoundingBox {
+  tl: Point; // top-left
+  tr: Point; // top-right
+  bl: Point; // bottom-left
+  br: Point; // bottom-right
+}
+
 export interface Image {
   image_id: string;
   width: number;
@@ -173,6 +180,9 @@ export interface AddressSimilarityResponse {
     lines: Line[];
     words: Word[];
     labels: ReceiptWordLabel[];
+    bbox?: BoundingBox;
+    address_text?: string;
+    selected_group?: number[];
   };
   similar: Array<{
     receipt: Receipt;
@@ -180,6 +190,8 @@ export interface AddressSimilarityResponse {
     words: Word[];
     labels: ReceiptWordLabel[];
     similarity_distance: number;
+    bbox?: BoundingBox;
+    address_text?: string;
   }>;
   cached_at: string;
 }

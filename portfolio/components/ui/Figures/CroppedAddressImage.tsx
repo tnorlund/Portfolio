@@ -1,6 +1,6 @@
 import NextImage from "next/image";
-import React, { useMemo } from "react";
-import { Line, Receipt } from "../../../types/api";
+import React, { useMemo, useState, useCallback } from "react";
+import { Line, Receipt, BoundingBox } from "../../../types/api";
 import { getBestImageUrl } from "../../../utils/imageFormat";
 
 interface CroppedAddressImageProps {
@@ -12,6 +12,7 @@ interface CroppedAddressImageProps {
   onLoad?: () => void;
   onError?: (error: Error) => void;
   debug?: boolean;
+  bbox?: BoundingBox;
 }
 
 /**
@@ -28,10 +29,48 @@ const CroppedAddressImage: React.FC<CroppedAddressImageProps> = ({
   onLoad,
   onError,
   debug = false,
+  bbox: apiBbox,
 }) => {
-  // Calculate bounding box in pixels
+  // Track actual loaded image dimensions (may differ from receipt.width/height for medium images)
+  const [imageDimensions, setImageDimensions] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
+
+  // Use bbox from API if available, otherwise calculate from lines
   const bbox = useMemo(() => {
-    if (!lines || lines.length === 0 || !receipt.width || !receipt.height) {
+    if (!receipt.width || !receipt.height) {
+      return null;
+    }
+
+    // If API provides bbox, use it directly
+    if (apiBbox) {
+      // Bounding box in normalized coordinates (OCR space)
+      const leftNorm = apiBbox.tl.x;
+      const rightNorm = apiBbox.tr.x;
+      const topNorm = apiBbox.tl.y; // Top edge in OCR space (y=0 at bottom)
+      const bottomNorm = apiBbox.bl.y; // Bottom edge in OCR space
+
+      // Convert to pixels
+      const leftPx = leftNorm * receipt.width;
+      const rightPx = rightNorm * receipt.width;
+      const widthPx = rightPx - leftPx;
+
+      // Convert OCR Y (bottom=0) to CSS Y (top=0)
+      const topPx = receipt.height - topNorm * receipt.height;
+      const bottomPx = receipt.height - bottomNorm * receipt.height;
+      const heightPx = bottomPx - topPx;
+
+      return {
+        left: leftPx,
+        top: topPx,
+        width: widthPx,
+        height: heightPx,
+      };
+    }
+
+    // Fallback: Calculate from lines (for backward compatibility)
+    if (!lines || lines.length === 0) {
       return null;
     }
 
@@ -83,7 +122,7 @@ const CroppedAddressImage: React.FC<CroppedAddressImageProps> = ({
       width: widthPx,
       height: heightPx,
     };
-  }, [lines, receipt.width, receipt.height]);
+  }, [lines, receipt.width, receipt.height, apiBbox]);
 
   // Get image URL
   const baseUrl =
@@ -134,37 +173,83 @@ const CroppedAddressImage: React.FC<CroppedAddressImageProps> = ({
     );
   }
 
-  // Container aspect ratio matches bounding box
-  const aspectRatio = bbox.width / bbox.height;
+  // Convert bounding box from pixel coordinates to normalized coordinates (0-1)
+  // Our bbox is in CSS coordinates (y=0 at top), matching the example's NormalizedBox format
+  const box = {
+    x: bbox.left / receipt.width,        // Left edge as fraction of image width
+    y: bbox.top / receipt.height,        // Top edge as fraction of image height (CSS: y=0 at top)
+    w: bbox.width / receipt.width,       // Width as fraction of image width
+    h: bbox.height / receipt.height,     // Height as fraction of image height
+  };
 
-  // Scale factor: how much to scale image so bbox width fills container width
-  const scale = receipt.width / bbox.width;
-
-  // Calculate clip-path as percentages of the ORIGINAL image dimensions
-  // clip-path: inset(top% right% bottom% left%)
-  // These percentages are relative to the element's bounding box (the displayed image)
-  // When image is displayed at width: 100% with height: auto, it maintains aspect ratio
-  // So clip-path percentages should work correctly relative to the displayed image
-  const clipTopPercent = (bbox.top / receipt.height) * 100;
-  const clipRightPercent = ((receipt.width - bbox.left - bbox.width) / receipt.width) * 100;
-  const clipBottomPercent = ((receipt.height - bbox.top - bbox.height) / receipt.height) * 100;
-  const clipLeftPercent = (bbox.left / receipt.width) * 100;
-
-  // Calculate background position for cropping
-  // backgroundPosition: "X% Y%" aligns point at X% of image with point at X% of container
-  // We want bbox.left (at bbox.left/receipt.width % of image) to align with container left (0%)
-  // So we need: backgroundPosition X = 0% to align image 0% with container 0%
-  // But that's wrong - we need bbox.left point, not image left edge
+  // Container aspect ratio: we need to account for the actual loaded image's aspect ratio
+  // The bounding box is normalized (0-1) relative to the original receipt dimensions,
+  // but the displayed image (medium) may have different dimensions.
   //
-  // Actually, when image is scaled, backgroundPosition works like this:
-  // The percentage refers to where in the container the image should be positioned
-  // For a scaled image, we need to calculate the offset differently
-  //
-  // Let's try using calc() with pixel values converted to percentages
-  // Or better: use the bbox coordinates as percentages directly and let CSS handle it
-  // When backgroundSize is set, backgroundPosition percentages should work relative to the scaled size
-  const bgPosX = `${(bbox.left / receipt.width) * 100}%`;
-  const bgPosY = `${(bbox.top / receipt.height) * 100}%`;
+  // Use actual loaded image dimensions if available, otherwise fall back to receipt dimensions
+  const displayWidth = imageDimensions?.width ?? receipt.width;
+  const displayHeight = imageDimensions?.height ?? receipt.height;
+  const displayAspectRatio = displayWidth / displayHeight;
+
+  const cropAspectRatio = box.w / box.h;
+  // Container height = width * (box.h / box.w) * (display.height / display.width)
+  //                  = width * (1 / cropAspectRatio) * (1 / displayAspectRatio)
+  const containerAspectRatio = cropAspectRatio * displayAspectRatio;
+
+  // Ensure aspect ratio is valid (prevent division by zero)
+  if (!isFinite(containerAspectRatio) || containerAspectRatio <= 0) {
+    console.error("Invalid aspect ratio:", containerAspectRatio, "box:", box, "display:", { displayWidth, displayHeight });
+  }
+
+  // Handle image load to get actual dimensions
+  const handleImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget;
+    if (img.naturalWidth && img.naturalHeight) {
+      setImageDimensions({
+        width: img.naturalWidth,
+        height: img.naturalHeight,
+      });
+    }
+    onLoad?.();
+  }, [onLoad]);
+
+  // Container style: maintain aspect ratio using padding-top trick
+  // This ensures the container always has the correct aspect ratio regardless of parent width
+  // paddingTop percentage creates height = width / aspectRatio
+  const containerStyle: React.CSSProperties = {
+    position: "relative",
+    width: "100%",                       // Container fills parent width
+    paddingTop: `${(1 / containerAspectRatio) * 100}%`,  // Height accounts for both crop and receipt aspect ratios
+    overflow: "hidden",                  // Clip everything outside the container
+    backgroundColor: "#f0f0f0",
+  };
+
+  // Scale factor: how much to scale image so crop region fills container
+  // We scale based on width to fill the container width
+  const scale = 1 / box.w;  // Scale needed to make crop width fill container width
+
+  // Calculate crop position as percentages of the original image dimensions
+  const cropLeftPercent = box.x * 100;   // % from left of original image
+  const cropTopPercent = box.y * 100;    // % from top of original image (CSS: y=0 at top)
+
+  // Transform calculation (matching SimpleCroppedAddress):
+  // Transform percentages are relative to the element's own size (the scaled image)
+  // When image is scaled by `scale`, we need to divide by scale to get container-relative movement
+  // This ensures the crop region aligns correctly with the container's top-left corner
+  const translateXPercent = cropLeftPercent / scale;
+  const translateYPercent = cropTopPercent / scale;
+
+  const imageStyle: React.CSSProperties = {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    width: `${scale * 100}%`,            // Scale image so crop region fills container
+    height: "auto",                      // Maintain aspect ratio
+    objectFit: "none",                   // Don't auto-scale, use our explicit width
+    // Transform percentages are relative to the element's own size (scaled image)
+    // Divide by scale to convert from original-image-relative to container-relative movement
+    transform: `translate(-${translateXPercent}%, -${translateYPercent}%)`,
+  };
 
   return (
     <div
@@ -175,42 +260,34 @@ const CroppedAddressImage: React.FC<CroppedAddressImageProps> = ({
         borderRadius: "8px",
         overflow: "hidden",
         backgroundColor: "var(--background-color)",
+        boxSizing: "border-box", // Ensure border is included in width calculation
       }}
     >
-      {/* Simple CSS cropping using img tag with object-fit/object-position */}
+      {/*
+        Container maintains crop region aspect ratio:
+        - width: 100% (fills parent)
+        - paddingTop: (1/aspectRatio) * 100% (creates height matching aspect ratio)
+        - overflow: hidden clips the image to only show what's inside this container
+        - This "padding-top trick" is a CSS technique to maintain aspect ratio responsively
+        - The container height = width * (1/aspectRatio) = width * (box.h / box.w)
+      */}
       <div
-        style={{
-          position: "relative",
-          width: "100%",
-          paddingTop: `${(1 / aspectRatio) * 100}%`,
-          overflow: "hidden",
-          backgroundColor: "#f0f0f0",
-        }}
+        style={containerStyle}
+        title={`Container aspect ratio: ${containerAspectRatio.toFixed(3)} (crop: ${cropAspectRatio.toFixed(3)}, display: ${displayAspectRatio.toFixed(3)})`}
       >
-        {/* Use regular img tag with transform for precise positioning */}
+        {/*
+          Image scaled and positioned to show crop region:
+          - width: scale * 100% (scales image so crop region fills container)
+          - transform: translate() shifts image so crop region aligns with container top-left
+          - The scale factor (1/box.w) ensures the crop width fills the container width
+          - Negative translate offsets move the image so the crop region is visible
+          - Container's overflow: hidden then clips to show only the crop region
+        */}
         <img
           src={imageSrc}
           alt="Cropped address"
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            // Scale image so bbox width fills container width
-            width: `${scale * 100}%`,
-            height: "auto",
-            objectFit: "none",
-            // Use transform to shift image so bbox.top-left aligns with container.top-left
-            // transform translate percentages are relative to the element's own size
-            // bbox.left is at (bbox.left / receipt.width) * 100% of the image width
-            // To shift it to container left (0), translate left by that percentage
-            // Since the image is scaled, we need to account for that in the calculation
-            // When image width = scale * containerWidth, bbox.left in scaled = (bbox.left / receipt.width) * scale * containerWidth
-            // To shift to container left: translateX(-(bbox.left / receipt.width) * scale * 100%)
-            // But translate % is relative to element size, so we might not need the scale factor
-            // Let's try: translate by bbox.left as % of image width
-            transform: `translate(${-(bbox.left / receipt.width) * 100}%, ${-(bbox.top / receipt.height) * 100}%)`,
-          }}
-          onLoad={onLoad}
+          style={imageStyle}
+          onLoad={handleImageLoad}
           onError={(e) => {
             console.error("CroppedAddressImage: Image failed to load:", imageSrc, e);
             onError?.(new Error(`Failed to load image: ${imageSrc}`));
@@ -317,16 +394,26 @@ const CroppedAddressImage: React.FC<CroppedAddressImageProps> = ({
           <div style={{ fontWeight: "bold", marginBottom: "6px", color: "#ffff00" }}>
             DEBUG INFO
           </div>
-          <div>BBox: {bbox.left.toFixed(0)}, {bbox.top.toFixed(0)}, {bbox.width.toFixed(0)}×{bbox.height.toFixed(0)}px</div>
-          <div>Scale: {scale.toFixed(2)}x</div>
-          <div>Image width: {scale * 100}%</div>
-          <div>bgPosX: {bgPosX}</div>
-          <div>bgPosY: {bgPosY}</div>
-          <div>bbox.left %: {((bbox.left / receipt.width) * 100).toFixed(2)}%</div>
-          <div>bbox.top %: {((bbox.top / receipt.height) * 100).toFixed(2)}%</div>
-          <div>Clip-path: inset({clipTopPercent.toFixed(1)}% {clipRightPercent.toFixed(1)}% {clipBottomPercent.toFixed(1)}% {clipLeftPercent.toFixed(1)}%)</div>
           <div>Receipt: {receipt.width}×{receipt.height}px</div>
-          <div>BBox aspect: {aspectRatio.toFixed(3)}</div>
+          <div>BBox (px): {bbox.left.toFixed(0)}, {bbox.top.toFixed(0)}, {bbox.width.toFixed(0)}×{bbox.height.toFixed(0)}</div>
+          <div>Box (normalized): x={box.x.toFixed(3)}, y={box.y.toFixed(3)}, w={box.w.toFixed(3)}, h={box.h.toFixed(3)}</div>
+          <div>Container: width=100%, paddingTop={(1 / containerAspectRatio) * 100}%</div>
+          <div>Container aspect ratio: {containerAspectRatio.toFixed(3)} (crop: {cropAspectRatio.toFixed(3)}, display: {displayAspectRatio.toFixed(3)})</div>
+          <div>Display image: {displayWidth}×{displayHeight}px {imageDimensions ? "(loaded)" : "(using receipt dimensions)"}</div>
+          <div>Container height: If width=400px, height would be {(400 * (1/containerAspectRatio)).toFixed(1)}px</div>
+          <div>Scale: {scale.toFixed(3)}x (1 / box.w = 1 / {box.w.toFixed(3)})</div>
+          <div>Image: width={scale * 100}%, transform: translate(-{translateXPercent.toFixed(2)}%, -{translateYPercent.toFixed(2)}%)</div>
+          <div>Scaled crop height: {(400 * box.h * scale * (displayHeight / displayWidth)).toFixed(1)}px (should match container height)</div>
+          <div>Crop position: {cropLeftPercent.toFixed(2)}% from left, {cropTopPercent.toFixed(2)}% from top</div>
+          <div>BBox (px): left={bbox.left.toFixed(0)}, top={bbox.top.toFixed(0)}, width={bbox.width.toFixed(0)}, height={bbox.height.toFixed(0)}</div>
+          <div>Box (normalized): x={box.x.toFixed(3)}, y={box.y.toFixed(3)}, w={box.w.toFixed(3)}, h={box.h.toFixed(3)}</div>
+          {apiBbox && (
+            <>
+              <div>API BBox (OCR): tl=({apiBbox.tl.x.toFixed(3)}, {apiBbox.tl.y.toFixed(3)}), br=({apiBbox.br.x.toFixed(3)}, {apiBbox.br.y.toFixed(3)})</div>
+              <div>OCR to CSS conversion: topNorm={apiBbox.tl.y.toFixed(3)} → topPx={bbox.top.toFixed(0)}px ({box.y.toFixed(3)} normalized)</div>
+            </>
+          )}
+          <div>Receipt: {receipt.width}×{receipt.height}px</div>
           <div>Receipt aspect: {(receipt.width / receipt.height).toFixed(3)}</div>
         </div>
       )}

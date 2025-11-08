@@ -26,6 +26,59 @@ CACHE_KEY = "address-similarity-cache/latest.json"
 s3_client = boto3.client("s3")
 
 
+def calculate_bounding_box_for_lines(lines):
+    """Calculate a bounding box that contains all the given lines.
+
+    Finds the min/max x and y coordinates from all line corners and creates
+    a single bounding box with corners (tl, tr, bl, br) that encompasses all lines.
+
+    Args:
+        lines: List of ReceiptLine objects
+
+    Returns:
+        dict: Bounding box with keys 'tl', 'tr', 'bl', 'br', each containing
+              {'x': float, 'y': float}, or None if lines is empty
+    """
+    if not lines:
+        return None
+
+    # Collect all corner points from all lines
+    all_x = []
+    all_y = []
+
+    for line in lines:
+        # Get all corner coordinates
+        all_x.extend([
+            line.top_left["x"],
+            line.top_right["x"],
+            line.bottom_left["x"],
+            line.bottom_right["x"],
+        ])
+        all_y.extend([
+            line.top_left["y"],
+            line.top_right["y"],
+            line.bottom_left["y"],
+            line.bottom_right["y"],
+        ])
+
+    # Find bounds
+    min_x = min(all_x)
+    max_x = max(all_x)
+    min_y = min(all_y)
+    max_y = max(all_y)
+
+    # Create bounding box corners
+    # Note: In OCR coordinates, y=0 is at bottom, so:
+    # - top_left has highest y value
+    # - bottom_left has lowest y value
+    return {
+        "tl": {"x": min_x, "y": max_y},  # top-left: min x, max y
+        "tr": {"x": max_x, "y": max_y},  # top-right: max x, max y
+        "bl": {"x": min_x, "y": min_y},  # bottom-left: min x, min y
+        "br": {"x": max_x, "y": min_y},  # bottom-right: max x, min y
+    }
+
+
 def handler(_event, _context):
     """Handle EventBridge scheduled event to generate address similarity cache.
 
@@ -146,41 +199,77 @@ def handler(_event, _context):
             if label.label.upper() == "ADDRESS_LINE"
         ]
 
-        # Calculate line range for address context
-        if original_receipt_labels:
-            address_line_ids = {
-                label.line_id for label in original_receipt_labels
-            }
-            min_line_id = min(address_line_ids)
-            max_line_id = max(address_line_ids)
+        # Group address labels by line_id
+        address_line_ids = {label.line_id for label in original_receipt_labels}
 
-            # Get all lines in the range
-            address_context_lines = [
-                line
-                for line in original_lines
-                if min_line_id <= line.line_id <= max_line_id
-            ]
-            address_context_words = [
-                word
-                for word in original_words
-                if any(
-                    min_line_id <= line.line_id <= max_line_id
-                    for line in original_lines
-                    if line.line_id == word.line_id
-                )
-            ]
-        else:
-            # Fallback: use the line containing the selected label
-            address_context_lines = [
-                line
-                for line in original_lines
-                if line.line_id == selected_label.line_id
-            ]
-            address_context_words = [
-                word
-                for word in original_words
-                if word.line_id == selected_label.line_id
-            ]
+        # Find consecutive groups of address lines (addresses are usually consecutive)
+        # Sort line_ids to find consecutive ranges
+        sorted_line_ids = sorted(address_line_ids)
+
+        # Group consecutive line_ids together
+        address_groups = []
+        if sorted_line_ids:
+            current_group = [sorted_line_ids[0]]
+            for i in range(1, len(sorted_line_ids)):
+                # If this line_id is consecutive with the previous one, add to current group
+                if sorted_line_ids[i] == sorted_line_ids[i-1] + 1:
+                    current_group.append(sorted_line_ids[i])
+                else:
+                    # Start a new group
+                    address_groups.append(current_group)
+                    current_group = [sorted_line_ids[i]]
+            address_groups.append(current_group)
+
+        # Select the group containing the selected label's line_id
+        selected_group = None
+        for group in address_groups:
+            if selected_label.line_id in group:
+                selected_group = group
+                break
+
+        # Fallback to first group if selected label not found in any group
+        if not selected_group and address_groups:
+            selected_group = address_groups[0]
+            logger.warning(
+                "Selected label line_id %d not in any address group, using first group: %s",
+                selected_label.line_id,
+                selected_group,
+            )
+
+        # If no groups found, fallback to just the selected label's line
+        if not selected_group:
+            selected_group = [selected_label.line_id]
+            logger.warning(
+                "No address groups found, using selected label line_id: %d",
+                selected_label.line_id,
+            )
+
+        # Get lines and words for the selected address group
+        address_context_lines = [
+            line
+            for line in original_lines
+            if line.line_id in selected_group
+        ]
+        address_context_words = [
+            word
+            for word in original_words
+            if word.line_id in selected_group
+        ]
+
+        # Filter labels to only those in the selected group
+        original_receipt_labels = [
+            label
+            for label in original_receipt_labels
+            if label.line_id in selected_group
+        ]
+
+        logger.info(
+            "Selected address group: line_ids=%s, line_count=%d, word_count=%d, label_count=%d",
+            selected_group,
+            len(address_context_lines),
+            len(address_context_words),
+            len(original_receipt_labels),
+        )
 
         # Step 3: Construct line ID and get embedding from ChromaDB
         # Line ID format:
@@ -337,32 +426,62 @@ def handler(_event, _context):
                 if not similar_labels:
                     continue
 
-                # Calculate line range for address context
+                # Group address labels by line_id and find consecutive groups
                 similar_address_line_ids = {
                     label.line_id for label in similar_labels
                 }
-                similar_min_line_id = min(similar_address_line_ids)
-                similar_max_line_id = max(similar_address_line_ids)
 
-                # Get all lines in the range
+                # Find consecutive groups of address lines
+                sorted_similar_line_ids = sorted(similar_address_line_ids)
+                similar_address_groups = []
+                if sorted_similar_line_ids:
+                    current_group = [sorted_similar_line_ids[0]]
+                    for i in range(1, len(sorted_similar_line_ids)):
+                        if sorted_similar_line_ids[i] == sorted_similar_line_ids[i-1] + 1:
+                            current_group.append(sorted_similar_line_ids[i])
+                        else:
+                            similar_address_groups.append(current_group)
+                            current_group = [sorted_similar_line_ids[i]]
+                    similar_address_groups.append(current_group)
+
+                # Select the first (or largest) address group
+                # This handles cases where an address appears twice on a receipt
+                if similar_address_groups:
+                    # Use the largest group, or first if all same size
+                    selected_similar_group = max(similar_address_groups, key=len)
+                    logger.debug(
+                        "Selected address group for similar receipt: line_ids=%s (from %d groups)",
+                        selected_similar_group,
+                        len(similar_address_groups),
+                    )
+                else:
+                    # Fallback: use all address line_ids
+                    selected_similar_group = list(similar_address_line_ids)
+                    logger.warning(
+                        "No consecutive groups found, using all address line_ids: %s",
+                        selected_similar_group,
+                    )
+
                 similar_address_lines = [
                     line
                     for line in similar_receipt.lines
-                    if similar_min_line_id
-                    <= line.line_id
-                    <= similar_max_line_id
+                    if line.line_id in selected_similar_group
                 ]
                 similar_address_words = [
                     word
                     for word in similar_receipt.words
-                    if any(
-                        similar_min_line_id
-                        <= line.line_id
-                        <= similar_max_line_id
-                        for line in similar_receipt.lines
-                        if line.line_id == word.line_id
-                    )
+                    if word.line_id in selected_similar_group
                 ]
+
+                # Filter labels to only those in the selected group
+                similar_labels = [
+                    label
+                    for label in similar_labels
+                    if label.line_id in selected_similar_group
+                ]
+
+                # Calculate bounding box for similar address lines
+                similar_bbox = calculate_bounding_box_for_lines(similar_address_lines)
 
                 similar_receipts.append(
                     {
@@ -375,6 +494,7 @@ def handler(_event, _context):
                         ],
                         "labels": [dict(label) for label in similar_labels],
                         "similarity_distance": float(distance),
+                        "bbox": similar_bbox,
                     }
                 )
 
@@ -390,6 +510,9 @@ def handler(_event, _context):
                 )
                 continue
 
+        # Calculate bounding box for original address lines
+        original_bbox = calculate_bounding_box_for_lines(address_context_lines)
+
         # Step 6: Build response structure
         response_data = {
             "original": {
@@ -397,6 +520,7 @@ def handler(_event, _context):
                 "lines": [dict(line) for line in address_context_lines],
                 "words": [dict(word) for word in address_context_words],
                 "labels": [dict(label) for label in original_receipt_labels],
+                "bbox": original_bbox,
             },
             "similar": similar_receipts,
             "cached_at": datetime.now(timezone.utc).isoformat(),
