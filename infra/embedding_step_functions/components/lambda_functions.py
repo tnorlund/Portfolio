@@ -22,7 +22,7 @@ from pulumi_aws.lambda_ import (
 )
 from pulumi_aws.s3 import Bucket
 
-from .base import stack, openai_api_key, label_layer, dynamodb_table
+from .base import stack, openai_api_key, label_layer, dynamo_layer, dynamodb_table, config as portfolio_config
 
 # Import CodeBuildDockerImage for container Lambdas (matches compactor approach)
 # Use absolute import path like compactor does
@@ -307,6 +307,18 @@ class LambdaFunctionsComponent(ComponentResource):
                 "timeout": MINUTE * 15,
                 "source_dir": "split_into_chunks",
             },
+            "embedding-create-chunk-groups": {
+                "handler": "handler.lambda_handler",
+                "memory": GIGABYTE * 0.5,
+                "timeout": MINUTE * 5,
+                "source_dir": "create_chunk_groups",
+            },
+            "embedding-mark-batches-complete": {
+                "handler": "handler.lambda_handler",
+                "memory": GIGABYTE * 0.5,
+                "timeout": MINUTE * 5,
+                "source_dir": "mark_batches_complete",
+            },
             "embedding-find-receipts-realtime": {
                 "handler": "handler.lambda_handler",
                 "memory": GIGABYTE * 1,
@@ -342,20 +354,47 @@ class LambdaFunctionsComponent(ComponentResource):
             "S3_BUCKET": self.batch_bucket.bucket,
         }
 
-        # Add ChromaDB bucket for realtime processing Lambdas
-        if config["source_dir"] in ["find_receipts_realtime", "process_receipt_realtime"]:
+        # Add ChromaDB bucket for realtime processing Lambdas, split_into_chunks, and create_chunk_groups
+        if config["source_dir"] in ["find_receipts_realtime", "process_receipt_realtime", "split_into_chunks", "create_chunk_groups"]:
             env_vars["CHROMADB_BUCKET"] = self.chromadb_buckets.bucket_name
-            env_vars["GOOGLE_PLACES_API_KEY"] = (
-                os.environ.get("GOOGLE_PLACES_API_KEY") or ""
-            )
-            env_vars["CHROMA_HTTP_ENDPOINT"] = (
-                os.environ.get("CHROMA_HTTP_ENDPOINT") or ""
-            )
+            if config["source_dir"] in ["find_receipts_realtime", "process_receipt_realtime"]:
+                env_vars["GOOGLE_PLACES_API_KEY"] = (
+                    portfolio_config.get_secret("GOOGLE_PLACES_API_KEY") or ""
+                )
+                env_vars["CHROMA_HTTP_ENDPOINT"] = (
+                    os.environ.get("CHROMA_HTTP_ENDPOINT") or ""
+                )
 
         # Create the Lambda function
+        # Determine which layers are needed based on imports
+        # - label_layer: Includes receipt_label[lambda] + receipt_dynamo (as dependency)
+        # - dynamo_layer: Only receipt_dynamo (for Lambdas that don't need receipt_label)
         layers = []
-        if label_layer:
-            layers = [label_layer.arn]
+
+        # Source directories that use receipt_label (need label_layer, which includes receipt_dynamo)
+        uses_receipt_label = config["source_dir"] in [
+            "find_receipts_realtime",
+            "process_receipt_realtime",
+            "submit_openai",
+            "submit_words_openai",
+            "list_pending",
+            "find_unembedded",
+            "find_unembedded_words",
+        ]
+
+        # Source directories that only use receipt_dynamo (need dynamo_layer only)
+        uses_only_receipt_dynamo = config["source_dir"] in [
+            "mark_batches_complete",
+        ]
+
+        # Add appropriate layers
+        if uses_receipt_label and label_layer:
+            # label_layer includes receipt_dynamo as a dependency, so this is sufficient
+            layers.append(label_layer.arn)
+        elif uses_only_receipt_dynamo and dynamo_layer:
+            # Only need dynamo_layer for Lambdas that don't use receipt_label
+            layers.append(dynamo_layer.arn)
+        # Lambdas that don't use either (like split_into_chunks, create_chunk_groups) get no layers
 
         return Function(
             f"{name}-lambda-{stack}",
@@ -505,6 +544,9 @@ class LambdaFunctionsComponent(ComponentResource):
                 "OPENAI_API_KEY": openai_api_key,
                 "S3_BUCKET": self.batch_bucket.bucket,
                 "CHROMA_PERSIST_DIRECTORY": "/tmp/chroma",  # Polling Lambdas don't use EFS
+                "GOOGLE_PLACES_API_KEY": portfolio_config.get_secret("GOOGLE_PLACES_API_KEY") or "",
+                "OLLAMA_API_KEY": portfolio_config.get_secret("OLLAMA_API_KEY") or "",
+                "LANGCHAIN_API_KEY": portfolio_config.get_secret("LANGCHAIN_API_KEY") or "",
                 "ENABLE_XRAY": "true",
                 "ENABLE_METRICS": "true",
                 "LOG_LEVEL": "INFO",

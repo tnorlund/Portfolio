@@ -200,11 +200,11 @@ s3://bucket/{collection}/snapshot/latest-pointer.txt
 - [ ] Are deltas being created locally?
   - Check: Lambda logs should show "Creating embeddings..."
   - Check: Lambda logs should show "Uploading line delta to s3://..."
-  
+
 - [ ] Are deltas being uploaded to S3?
   - Check: S3 bucket should have `lines/delta/*/delta.tar.gz` files
   - Check: Lambda logs should show upload success
-  
+
 - [ ] Are COMPACTION_RUN records being created?
   - Check: DynamoDB `COMPACTION_RUN` table should have records
   - Check: Records should have `lines_delta_prefix` and `words_delta_prefix`
@@ -214,15 +214,15 @@ s3://bucket/{collection}/snapshot/latest-pointer.txt
 - [ ] Is the compaction Lambda being triggered?
   - Check: DynamoDB stream should show events
   - Check: Lambda logs should show "Processing stream messages..."
-  
+
 - [ ] Are snapshots being downloaded?
   - Check: Lambda logs should show "Downloading snapshot..."
   - Check: Lambda logs should show snapshot version
-  
+
 - [ ] Are deltas being merged?
   - Check: Lambda logs should show "Merging {N} vectors..."
   - Check: Lambda logs should show merge success
-  
+
 - [ ] Are snapshots being uploaded?
   - Check: Lambda logs should show "Uploading snapshot..."
   - Check: S3 should have new snapshot version in `snapshot/timestamped/`
@@ -234,7 +234,7 @@ s3://bucket/{collection}/snapshot/latest-pointer.txt
   - Check: Download snapshot and query ChromaDB
   - Check: Collection count should be > 0
   - Check: `dev.test_chromadb_line_query.py` script
-  
+
 - [ ] Are IDs formatted correctly?
   - Format: `IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}`
   - Format: `IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}`
@@ -356,4 +356,6 @@ aws logs tail /aws/lambda/chromadb-dev-docker-dev --follow
 - `docs/CHROMADB_LINE_QUERY_TESTING.md` - Testing documentation
 - `infra/chromadb_compaction/README.md` - Compaction documentation
 - `receipt_label/receipt_label/utils/chroma_s3_helpers.py` - S3 utilities
+
+
 

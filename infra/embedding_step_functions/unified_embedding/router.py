@@ -18,6 +18,8 @@ from handlers import list_pending
 from handlers import split_into_chunks
 from handlers import find_unembedded_words
 from handlers import submit_words_openai
+from handlers import mark_batches_complete
+from handlers import create_chunk_groups
 from utils import response as response_utils
 
 # Set up logging
@@ -35,6 +37,8 @@ HANDLER_MAP = {
     "split_into_chunks": split_into_chunks.handle,
     "find_unembedded_words": find_unembedded_words.handle,
     "submit_words_openai": submit_words_openai.handle,
+    "mark_batches_complete": mark_batches_complete.handle,
+    "create_chunk_groups": create_chunk_groups.handle,
 }
 
 

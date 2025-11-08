@@ -1,0 +1,195 @@
+"""Lambda handler for marking batch summaries as completed after successful compaction.
+
+This handler marks all batches from poll_results as COMPLETED only after
+successful compaction (data written to S3 and EFS). This ensures batches
+are only marked complete when the entire workflow succeeds.
+"""
+
+import json
+import logging
+import os
+import tempfile
+from typing import Any, Dict
+
+import boto3
+from receipt_dynamo.data.dynamo_client import DynamoClient
+
+# Set up logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+# Initialize DynamoDB client
+dynamo_client = DynamoClient(os.environ["DYNAMODB_TABLE_NAME"])
+
+# Initialize S3 client
+s3_client = boto3.client("s3")
+
+
+def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+    """Mark batch summaries as COMPLETED after successful compaction.
+
+    Args:
+        event: Lambda event containing:
+            - poll_results: Array of poll results, each containing batch_id
+            - poll_results_s3_key: (optional) S3 key where poll_results is stored
+            - poll_results_s3_bucket: (optional) S3 bucket where poll_results is stored
+
+    Returns:
+        Dictionary containing:
+            - batches_marked: Number of batches marked as complete
+            - batch_ids: List of batch IDs that were marked complete
+    """
+    logger.info("Starting mark_batches_complete handler")
+
+    try:
+        poll_results = event.get("poll_results", [])
+
+        # Load poll_results from S3 if it's stored there
+        poll_results_s3_key = event.get("poll_results_s3_key")
+        poll_results_s3_bucket = event.get("poll_results_s3_bucket")
+
+        if (not poll_results or poll_results is None) and poll_results_s3_key and poll_results_s3_bucket:
+            logger.info(
+                "Loading poll_results from S3: %s/%s",
+                poll_results_s3_bucket,
+                poll_results_s3_key,
+            )
+            with tempfile.NamedTemporaryFile(mode="r", suffix=".json", delete=False) as tmp_file:
+                tmp_file_path = tmp_file.name
+
+            try:
+                s3_client.download_file(poll_results_s3_bucket, poll_results_s3_key, tmp_file_path)
+                with open(tmp_file_path, "r", encoding="utf-8") as f:
+                    poll_results = json.load(f)
+                logger.info(
+                    "Loaded poll_results from S3 (%d items)",
+                    len(poll_results),
+                )
+            finally:
+                try:
+                    os.unlink(tmp_file_path)
+                except Exception:
+                    pass
+
+        if not poll_results:
+            logger.info("No poll results to mark as complete")
+            return {
+                "batches_marked": 0,
+                "batch_ids": [],
+            }
+
+        # Extract unique batch_ids from poll_results
+        batch_ids = []
+        for result in poll_results:
+            if isinstance(result, dict) and "batch_id" in result:
+                batch_id = result["batch_id"]
+                if batch_id and batch_id not in batch_ids:
+                    batch_ids.append(batch_id)
+
+        if not batch_ids:
+            logger.warning("No batch_ids found in poll_results")
+            return {
+                "batches_marked": 0,
+                "batch_ids": [],
+            }
+
+        logger.info(
+            "Marking %d batches as complete: %s",
+            len(batch_ids),
+            batch_ids[:5],  # Log first 5
+        )
+
+        # Fetch all batch summaries at once and update in batches (more efficient)
+        marked_count = 0
+        errors = []
+
+        try:
+            # Get all batch summaries in one call
+            batch_summaries = dynamo_client.get_batch_summaries_by_batch_ids(batch_ids)
+
+            # Update status for all summaries
+            for batch_summary in batch_summaries:
+                batch_summary.status = "COMPLETED"
+
+            # Update all summaries in batches (update_batch_summaries uses transactions)
+            # Process in chunks of 25 (DynamoDB transaction limit)
+            chunk_size = 25
+            for i in range(0, len(batch_summaries), chunk_size):
+                chunk = batch_summaries[i:i + chunk_size]
+                try:
+                    dynamo_client.update_batch_summaries(chunk)
+                    marked_count += len(chunk)
+                    logger.info(
+                        "Marked %d batches as complete (chunk %d)",
+                        len(chunk),
+                        i // chunk_size + 1,
+                    )
+                except Exception as e:
+                    # If batch update fails, try individual updates
+                    logger.warning(
+                        "Batch update failed, trying individual updates: %s",
+                        str(e)[:200],
+                    )
+                    for batch_summary in chunk:
+                        try:
+                            dynamo_client.update_batch_summary(batch_summary)
+                            marked_count += 1
+                            logger.info("Marked batch as complete: %s", batch_summary.batch_id)
+                        except Exception as e2:
+                            error_msg = f"Failed to mark batch {batch_summary.batch_id} as complete: {str(e2)[:100]}"
+                            errors.append(error_msg)
+                            logger.error("Error marking batch as complete: %s - %s", batch_summary.batch_id, str(e2))
+
+            # Check for any batch_ids that weren't found
+            found_batch_ids = {bs.batch_id for bs in batch_summaries}
+            for batch_id in batch_ids:
+                if batch_id not in found_batch_ids:
+                    error_msg = f"Batch {batch_id} not found in DynamoDB"
+                    errors.append(error_msg)
+                    logger.warning("Batch not found: %s", batch_id)
+
+        except AttributeError as e:
+            # Fallback: if methods don't exist, try individual calls
+            logger.warning(
+                "Batch methods not available, falling back to individual calls: %s",
+                str(e)
+            )
+            for batch_id in batch_ids:
+                try:
+                    # Try get_batch_summary first
+                    batch_summary = dynamo_client.get_batch_summary(batch_id)
+                    batch_summary.status = "COMPLETED"
+                    dynamo_client.update_batch_summary(batch_summary)
+                    marked_count += 1
+                    logger.info("Marked batch as complete: %s", batch_id)
+                except Exception as e2:
+                    error_msg = f"Failed to mark batch {batch_id} as complete: {str(e2)[:100]}"
+                    errors.append(error_msg)
+                    logger.error("Error marking batch as complete: %s - %s", batch_id, str(e2))
+
+        if errors:
+            logger.warning(
+                "Some batches failed to mark as complete: %d marked, %d errors, %d total",
+                marked_count,
+                len(errors),
+                len(batch_ids),
+            )
+        else:
+            logger.info(
+                "Successfully marked all %d batches as complete", marked_count
+            )
+
+        return {
+            "batches_marked": marked_count,
+            "batch_ids": batch_ids,
+            "errors": errors if errors else None,
+        }
+
+    except Exception as e:
+        logger.error("Unexpected error marking batches as complete: %s", str(e))
+        return {
+            "statusCode": 500,
+            "error": str(e),
+            "message": "Failed to mark batches as complete",
+        }
+

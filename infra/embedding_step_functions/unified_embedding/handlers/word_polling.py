@@ -5,7 +5,7 @@ Pure business logic - no Lambda-specific code.
 
 import json
 import os
-from typing import Any, Dict
+from typing import Any, Dict, Optional, Tuple
 
 from receipt_label.embedding.common import (
     handle_batch_status,
@@ -56,6 +56,185 @@ get_logger = utils.logging.get_logger
 get_operation_logger = utils.logging.get_operation_logger
 
 logger = get_operation_logger(__name__)
+
+
+async def _ensure_receipt_metadata_async(
+    image_id: str,
+    receipt_id: int,
+    client_manager,
+) -> None:
+    """Create receipt_metadata if missing, using LangChain workflow with Ollama Cloud.
+
+    This is used in the word polling handler to ensure receipt_metadata exists
+    before processing embeddings, since we're writing to ChromaDB through the
+    step function and don't have access to it here.
+    """
+    try:
+        # Check if metadata already exists
+        try:
+            existing_metadata = client_manager.dynamo.get_receipt_metadata(image_id, receipt_id)
+            logger.debug(
+                "Receipt metadata already exists",
+                image_id=image_id,
+                receipt_id=receipt_id,
+            )
+            return
+        except Exception as check_error:
+            # Check if this is a validation error (corrupted metadata) vs missing metadata
+            error_str = str(check_error).lower()
+            if "place id must be a string" in error_str or "place_id must be a string" in error_str:
+                # Metadata exists but is corrupted - delete it and recreate
+                logger.warning(
+                    "Found corrupted receipt_metadata, will delete and recreate",
+                    image_id=image_id,
+                    receipt_id=receipt_id,
+                    error=str(check_error),
+                )
+                try:
+                    # Try to delete the corrupted metadata
+                    # We need to construct the key manually since we can't read it
+                    pk = f"IMAGE#{image_id}"
+                    sk = f"RECEIPT#{receipt_id:05d}#METADATA"
+                    client_manager.dynamo._client.delete_item(
+                        TableName=client_manager.dynamo.table_name,
+                        Key={
+                            "PK": {"S": pk},
+                            "SK": {"S": sk},
+                        },
+                    )
+                    logger.info(
+                        "Deleted corrupted receipt_metadata",
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                    )
+                except Exception as delete_error:
+                    logger.warning(
+                        "Failed to delete corrupted metadata, will try to overwrite",
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                        error=str(delete_error),
+                    )
+            # Metadata doesn't exist or was corrupted, create it
+            pass
+
+        # Get API keys from environment
+        google_places_key = os.environ.get("GOOGLE_PLACES_API_KEY")
+        ollama_key = os.environ.get("OLLAMA_API_KEY")
+        langchain_key = os.environ.get("LANGCHAIN_API_KEY")
+
+        if not google_places_key:
+            error_msg = f"GOOGLE_PLACES_API_KEY not set, cannot create receipt_metadata for receipt {receipt_id} (image {image_id})"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+        if not ollama_key:
+            error_msg = f"OLLAMA_API_KEY not set, cannot create receipt_metadata for receipt {receipt_id} (image {image_id})"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+        if not langchain_key:
+            error_msg = f"LANGCHAIN_API_KEY not set, cannot create receipt_metadata for receipt {receipt_id} (image {image_id})"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
+        logger.info(
+            "Creating receipt_metadata using LangChain workflow with Ollama Cloud",
+            image_id=image_id,
+            receipt_id=receipt_id,
+        )
+
+        # Import the LangChain workflow (with error handling for missing dependencies)
+        try:
+            from receipt_label.langchain.metadata_creation import create_receipt_metadata_simple
+        except ImportError as import_error:
+            error_msg = f"Failed to import LangChain workflow: {import_error}. Make sure langchain dependencies are installed."
+            logger.error(error_msg, exc_info=True)
+            raise ValueError(error_msg) from import_error
+
+        # Get receipt data (lines and words) for the LangChain workflow
+        try:
+            receipt_details = client_manager.dynamo.get_receipt_details(image_id, receipt_id)
+            receipt_lines = receipt_details.lines
+            receipt_words = receipt_details.words
+        except Exception as receipt_error:
+            error_msg = f"Failed to get receipt details: {receipt_error}"
+            logger.error(error_msg, exc_info=True)
+            raise ValueError(error_msg) from receipt_error
+
+        # Create metadata using LangChain workflow
+        try:
+            metadata = await create_receipt_metadata_simple(
+                client=client_manager.dynamo,
+                image_id=image_id,
+                receipt_id=receipt_id,
+                google_places_api_key=google_places_key,
+                ollama_api_key=ollama_key,
+                langsmith_api_key=langchain_key,
+                thinking_strength="medium",  # Use medium thinking strength for balance of speed/quality
+                receipt_lines=receipt_lines,
+                receipt_words=receipt_words,
+            )
+        except Exception as workflow_error:
+            error_msg = f"LangChain workflow failed: {workflow_error}"
+            logger.error(
+                error_msg,
+                image_id=image_id,
+                receipt_id=receipt_id,
+                error_type=type(workflow_error).__name__,
+                exc_info=True,
+            )
+            raise ValueError(error_msg) from workflow_error
+
+        if metadata:
+            logger.info(
+                "Successfully created receipt_metadata using LangChain workflow",
+                image_id=image_id,
+                receipt_id=receipt_id,
+                place_id=metadata.place_id,
+                merchant_name=metadata.merchant_name,
+            )
+        else:
+            error_msg = f"Failed to create receipt_metadata for receipt {receipt_id} (image {image_id})"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
+    except Exception as e:
+        logger.error(
+            "Error creating receipt_metadata",
+            image_id=image_id,
+            receipt_id=receipt_id,
+            error=str(e),
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
+        # Re-raise - metadata is required for embeddings to work
+        raise
+
+
+def _ensure_receipt_metadata(
+    image_id: str,
+    receipt_id: int,
+    client_manager,
+) -> None:
+    """Synchronous wrapper for async metadata creation.
+
+    Lambda functions don't have a running event loop by default,
+    so we can use asyncio.run() directly.
+    """
+    import asyncio
+    try:
+        # Lambda functions don't have a running event loop, so asyncio.run() should work
+        asyncio.run(_ensure_receipt_metadata_async(image_id, receipt_id, client_manager))
+    except Exception as e:
+        # Log the full error with traceback for debugging
+        logger.error(
+            "Error in async metadata creation wrapper",
+            image_id=image_id,
+            receipt_id=receipt_id,
+            error=str(e),
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
+        # Re-raise to preserve the original error
+        raise
 
 
 @with_timeout_protection(
@@ -269,6 +448,53 @@ def _handle_internal_core(
         collected_metrics["DownloadedResults"] = result_count
         tracer.add_metadata("result_count", result_count)
 
+        # Ensure receipt_metadata exists for all receipts (create if missing using Places API)
+        # This is required because get_receipt_descriptions requires receipt_metadata
+        # and embeddings need metadata to work properly
+        with operation_with_timeout("ensure_receipt_metadata", max_duration=120):
+            from receipt_label.embedding.word.poll import _get_unique_receipt_and_image_ids
+            unique_receipts = _get_unique_receipt_and_image_ids(results)
+            missing_metadata = []
+            for receipt_id, image_id in unique_receipts:
+                try:
+                    _ensure_receipt_metadata(image_id, receipt_id, client_manager)
+                    # Verify metadata was created (or already existed)
+                    try:
+                        client_manager.dynamo.get_receipt_metadata(image_id, receipt_id)
+                        logger.debug(
+                            "Verified receipt_metadata exists",
+                            image_id=image_id,
+                            receipt_id=receipt_id,
+                        )
+                    except Exception as verify_error:
+                        logger.error(
+                            "Metadata verification failed - metadata was not created",
+                            image_id=image_id,
+                            receipt_id=receipt_id,
+                            verify_error=str(verify_error),
+                            verify_error_type=type(verify_error).__name__,
+                        )
+                        missing_metadata.append((image_id, receipt_id))
+                except Exception as e:
+                    logger.error(
+                        "Failed to ensure receipt_metadata",
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                        error=str(e),
+                        error_type=type(e).__name__,
+                        exc_info=True,  # Include full traceback
+                    )
+                    missing_metadata.append((image_id, receipt_id))
+
+            # Fail if any receipts are missing metadata - embeddings require it
+            if missing_metadata:
+                error_msg = (
+                    f"Receipt metadata is required but missing for {len(missing_metadata)} receipt(s). "
+                    f"Failed to create metadata for: {missing_metadata[:5]}"  # Show first 5
+                )
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+
         # Get receipt details with timeout protection
         with operation_with_timeout(
             "get_receipt_descriptions", max_duration=60
@@ -355,10 +581,17 @@ def _handle_internal_core(
         tracer.add_metadata("delta_result", delta_result)
         tracer.add_annotation("delta_id", delta_id)
 
-        # Mark batch complete with timeout protection
-        with operation_with_timeout("mark_batch_complete", max_duration=30):
-            mark_batch_complete(batch_id)
-        logger.info("Marked batch as complete", batch_id=batch_id)
+        # Mark batch complete only if NOT in step function mode (skip_sqs=False means standalone mode)
+        # In step function mode, batches will be marked complete after successful compaction
+        if not skip_sqs:
+            with operation_with_timeout("mark_batch_complete", max_duration=30):
+                mark_batch_complete(batch_id)
+            logger.info("Marked batch as complete", batch_id=batch_id)
+        else:
+            logger.info(
+                "Skipping batch completion marking (step function mode - will mark after compaction)",
+                batch_id=batch_id,
+            )
 
         # Successful completion
         result = {
@@ -406,9 +639,17 @@ def _handle_internal_core(
             # Get receipt details for successful results
             descriptions = get_receipt_descriptions(partial_results)
 
+            # Get bucket name for delta save
+            bucket_name = os.environ.get("CHROMADB_BUCKET")
+            if not bucket_name:
+                raise ValueError("CHROMADB_BUCKET environment variable not set")
+
+            # Determine SQS queue URL based on skip_sqs flag
+            sqs_queue_url = None if skip_sqs else os.environ.get("COMPACTION_QUEUE_URL")
+
             # Save partial results
             delta_result = save_word_embeddings_as_delta(
-                partial_results, descriptions, batch_id
+                partial_results, descriptions, batch_id, bucket_name, sqs_queue_url
             )
 
             # Skip writing to DynamoDB - we only store in ChromaDB now
