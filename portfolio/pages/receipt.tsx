@@ -7,6 +7,7 @@ import styles from "../styles/Receipt.module.css";
 // Import components normally - they'll be wrapped in ClientOnly
 import AnimatedInView from "../components/ui/AnimatedInView";
 import {
+  AddressSimilarity,
   ClientImageCounts,
   ClientReceiptCounts,
   ImageStack,
@@ -474,6 +475,19 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
           <DockerLogo />
         </AnimatedInView>
       </ClientOnly>
+
+      <h3>Similarity Search in Action</h3>
+      <p>
+        Here&apos;s a live example of ChromaDB similarity search: finding receipts
+        with similar addresses. The system randomly selects an address from the
+        database, queries for similar addresses using embeddings, and displays
+        them side-by-side. This demonstrates how semantic search can find
+        related content even when the exact text doesn&apos;t match.
+      </p>
+      <ClientOnly>
+        <AddressSimilarity />
+      </ClientOnly>
+
       <p>
         I&apos;ve also learned how powerful Google Maps is with very little
         information.

@@ -33,3 +33,4 @@ export const PhotoReceiptDBSCAN = dynamic(
 );
 export { default as ImageStack } from "./ImageStack";
 export { default as RandomReceiptWithLabels } from "./RandomReceiptWithLabels";
+export { default as AddressSimilarity } from "./AddressSimilarity";

@@ -166,3 +166,20 @@ export interface RandomReceiptDetailsResponse {
   words: ReceiptWord[];
   labels: ReceiptWordLabel[];
 }
+
+export interface AddressSimilarityResponse {
+  original: {
+    receipt: Receipt;
+    lines: Line[];
+    words: Word[];
+    labels: ReceiptWordLabel[];
+  };
+  similar: Array<{
+    receipt: Receipt;
+    lines: Line[];
+    words: Word[];
+    labels: ReceiptWordLabel[];
+    similarity_distance: number;
+  }>;
+  cached_at: string;
+}
