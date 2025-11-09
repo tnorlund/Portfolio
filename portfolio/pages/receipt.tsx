@@ -8,6 +8,7 @@ import styles from "../styles/Receipt.module.css";
 import AnimatedInView from "../components/ui/AnimatedInView";
 import {
   AddressSimilarity,
+  AddressSimilaritySideBySide,
   ClientImageCounts,
   ClientReceiptCounts,
   ImageStack,
@@ -17,6 +18,8 @@ import {
   RandomReceiptWithLabels,
   ReceiptStack,
   ScanReceiptBoundingBox,
+  SimpleAddressDisplay,
+  SimpleReceiptImage,
   UploadDiagram,
   ZDepthConstrained,
   ZDepthUnconstrained
@@ -431,6 +434,27 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       </ClientOnly>
 
 
+      <h2>Semantic Similarity</h2>
+      <p>
+        Here&apos;s a live example of ChromaDB similarity search: finding receipts
+        with similar addresses. The system randomly selects an address from the
+        database, queries for similar addresses using embeddings, and displays
+        them side-by-side. This demonstrates how semantic search can find
+        related content even when the exact text doesn&apos;t match.
+      </p>
+      <ClientOnly>
+        <SimpleReceiptImage />
+      </ClientOnly>
+      <ClientOnly>
+        <SimpleAddressDisplay />
+      </ClientOnly>
+      <ClientOnly>
+        <AddressSimilarity />
+      </ClientOnly>
+      <ClientOnly>
+        <AddressSimilaritySideBySide />
+      </ClientOnly>
+
       <h2>Semantic Understanding</h2>
 
       <p>
@@ -474,18 +498,6 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         <AnimatedInView>
           <DockerLogo />
         </AnimatedInView>
-      </ClientOnly>
-
-      <h3>Similarity Search in Action</h3>
-      <p>
-        Here&apos;s a live example of ChromaDB similarity search: finding receipts
-        with similar addresses. The system randomly selects an address from the
-        database, queries for similar addresses using embeddings, and displays
-        them side-by-side. This demonstrates how semantic search can find
-        related content even when the exact text doesn&apos;t match.
-      </p>
-      <ClientOnly>
-        <AddressSimilarity />
       </ClientOnly>
 
       <p>

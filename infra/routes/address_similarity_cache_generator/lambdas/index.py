@@ -26,11 +26,74 @@ CACHE_KEY = "address-similarity-cache/latest.json"
 s3_client = boto3.client("s3")
 
 
+def is_url_line(line):
+    """Check if a line looks like a URL/website line.
+
+    Args:
+        line: ReceiptLine object with a 'text' attribute
+
+    Returns:
+        bool: True if the line appears to be a URL
+    """
+    if not hasattr(line, 'text') or not line.text:
+        return False
+
+    text = line.text.lower().strip()
+
+    # Common URL patterns
+    url_patterns = [
+        'www.',
+        '.com',
+        '.co',
+        '.org',
+        '.net',
+        '.io',
+        'http://',
+        'https://',
+    ]
+
+    # Check if text contains URL patterns
+    for pattern in url_patterns:
+        if pattern in text:
+            return True
+
+    # Check if it's mostly a domain-like string (contains dots and no spaces, or very few)
+    if '.' in text and text.count(' ') <= 1:
+        # Likely a domain
+        return True
+
+    return False
+
+
+def is_empty_or_whitespace_line(line):
+    """Check if a line is empty or contains only whitespace.
+
+    Args:
+        line: ReceiptLine object with a 'text' attribute
+
+    Returns:
+        bool: True if the line is empty or whitespace-only
+    """
+    if not hasattr(line, 'text'):
+        return True
+
+    if not line.text:
+        return True
+
+    # Check if text is only whitespace
+    if not line.text.strip():
+        return True
+
+    return False
+
+
 def calculate_bounding_box_for_lines(lines):
     """Calculate a bounding box that contains all the given lines.
 
     Finds the min/max x and y coordinates from all line corners and creates
     a single bounding box with corners (tl, tr, bl, br) that encompasses all lines.
+
+    Excludes URL/website lines from the bounding box calculation.
 
     Args:
         lines: List of ReceiptLine objects
@@ -42,11 +105,28 @@ def calculate_bounding_box_for_lines(lines):
     if not lines:
         return None
 
-    # Collect all corner points from all lines
+    # Filter out URL lines and empty/whitespace lines - they shouldn't be part of the address bounding box
+    address_lines = [
+        line for line in lines
+        if not is_url_line(line) and not is_empty_or_whitespace_line(line)
+    ]
+
+    # If all lines were filtered out, fall back to using all non-empty lines (edge case)
+    if not address_lines:
+        address_lines = [line for line in lines if not is_empty_or_whitespace_line(line)]
+        if not address_lines:
+            # Last resort: use all lines
+            address_lines = lines
+        logger.warning(
+            "All lines were filtered out (URLs/empty), using %d lines for bounding box calculation",
+            len(address_lines)
+        )
+
+    # Collect all corner points from all address lines
     all_x = []
     all_y = []
 
-    for line in lines:
+    for line in address_lines:
         # Get all corner coordinates
         all_x.extend([
             line.top_left["x"],
@@ -245,15 +325,25 @@ def handler(_event, _context):
             )
 
         # Get lines and words for the selected address group
+        # Filter out URL lines and empty/whitespace lines - they shouldn't be part of the address
         address_context_lines = [
             line
             for line in original_lines
             if line.line_id in selected_group
+            and not is_url_line(line)
+            and not is_empty_or_whitespace_line(line)
         ]
         address_context_words = [
             word
             for word in original_words
             if word.line_id in selected_group
+        ]
+        # Filter words to only those in non-URL lines
+        non_url_line_ids = {line.line_id for line in address_context_lines}
+        address_context_words = [
+            word
+            for word in address_context_words
+            if word.line_id in non_url_line_ids
         ]
 
         # Filter labels to only those in the selected group
@@ -466,11 +556,20 @@ def handler(_event, _context):
                     line
                     for line in similar_receipt.lines
                     if line.line_id in selected_similar_group
+                    and not is_url_line(line)
+                    and not is_empty_or_whitespace_line(line)
                 ]
                 similar_address_words = [
                     word
                     for word in similar_receipt.words
                     if word.line_id in selected_similar_group
+                ]
+                # Filter words to only those in non-URL lines
+                non_url_line_ids = {line.line_id for line in similar_address_lines}
+                similar_address_words = [
+                    word
+                    for word in similar_address_words
+                    if word.line_id in non_url_line_ids
                 ]
 
                 # Filter labels to only those in the selected group
