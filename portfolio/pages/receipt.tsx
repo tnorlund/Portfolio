@@ -7,7 +7,6 @@ import styles from "../styles/Receipt.module.css";
 // Import components normally - they'll be wrapped in ClientOnly
 import AnimatedInView from "../components/ui/AnimatedInView";
 import {
-  AddressSimilarity,
   AddressSimilaritySideBySide,
   ClientImageCounts,
   ClientReceiptCounts,
@@ -18,24 +17,17 @@ import {
   RandomReceiptWithLabels,
   ReceiptStack,
   ScanReceiptBoundingBox,
-  SimpleAddressDisplay,
-  SimpleReceiptImage,
   UploadDiagram,
   ZDepthConstrained,
   ZDepthUnconstrained
 } from "../components/ui/Figures";
 import {
   ChromaLogo,
-  DockerLogo,
   GithubActionsLogo,
   GithubLogo,
-  GooglePlacesLogo,
+  GoogleMapsLogo,
   HuggingFaceLogo,
-  LangChainLogo,
-  OllamaLogo,
-  OpenAILogo,
-  PulumiLogo,
-  PyTorchLogo
+  PulumiLogo
 } from "../components/ui/Logos";
 
 interface ReceiptPageProps {
@@ -423,70 +415,34 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         <ClientReceiptCounts />
       </div>
 
-      <h2>Semantic Labeling</h2>
+      <h2>Identifying the Merchant</h2>
       <p>
-
-        Adding labels to the individual words structures the data for the LLMs and data processing pipelines.
-        This context-aware processing speeds up the extraction, validation, and downstream processing.
-      </p>
-      <ClientOnly>
-        <RandomReceiptWithLabels />
-      </ClientOnly>
-
-
-      <h2>Semantic Similarity</h2>
-      <p>
-        Here&apos;s a live example of ChromaDB similarity search: finding receipts
-        with similar addresses. The system randomly selects an address from the
-        database, queries for similar addresses using embeddings, and displays
-        them side-by-side. This demonstrates how semantic search can find
-        related content even when the exact text doesn&apos;t match.
-      </p>
-      <ClientOnly>
-        <SimpleReceiptImage />
-      </ClientOnly>
-      <ClientOnly>
-        <SimpleAddressDisplay />
-      </ClientOnly>
-      <ClientOnly>
-        <AddressSimilarity />
-      </ClientOnly>
-      <ClientOnly>
-        <AddressSimilaritySideBySide />
-      </ClientOnly>
-
-      <h2>Semantic Understanding</h2>
-
-      <p>
-        I&apos;ve found that these &ldquo;AI agents&rdquo; are pretty dumb on
-        their own: the meme is a dumb intern that needs more information to
-        figure out how to do the job. Retrieval-Augmented Generation gives the
-        intern a window of context through a set of tools, but the answers can
-        still be non-deterministic. The fix is to encode the data so the
-        retrieval is precise and learning is repeatable.
+        Knowing which business a receipt comes from allows for faster processing. I wrote
+        an agent that uses Google Maps to identify the business the receipt
+        came from. The AI agent is able to consider OCR errors, "Mestlake"
+        instead of "Westlake", and still identify the correct business.
       </p>
 
-      <h3>Tools</h3>
-      <p>
-        One of the best tools I&apos;ve found has been semantic search. I found
-        the best way I can understand it is this example:
-      </p>
-      <blockquote>King is to queen as man is to woman</blockquote>
-      <p>
-        This shows how king and queen have a similar meaning as man and woman
-        (gender). This relationship is semantically explained by embeddings,
-        which place related words near each other.
-      </p>
-      <p>I embed the words with OpenAI.</p>
       <ClientOnly>
         <AnimatedInView>
-          <OpenAILogo />
+          <GoogleMapsLogo />
         </AnimatedInView>
       </ClientOnly>
+
       <p>
-        The relationships can be queried using a database like Chroma, and
-        I&apos;ve been able to run it for less than a dollar a month using
-        docker and Amazon&apos;s serverless service, Fargate.
+        The agent tries multiple strategies to identify the business. I give
+        it the tools to search by phone, address, and text. When one approach
+        fails, it combines the other approaches to identify the business.
+      </p>
+
+      <MerchantCount />
+
+      <h2>Finding Similar Receipts</h2>
+
+      <p>
+        Once I've identified the business, I can reuse that information for
+        similar receipts. I use Chroma to find similar receipts by comparing
+        addresses, phone numbers, and URLs.
       </p>
 
       <ClientOnly>
@@ -494,165 +450,64 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
           <ChromaLogo />
         </AnimatedInView>
       </ClientOnly>
-      <ClientOnly>
-        <AnimatedInView>
-          <DockerLogo />
-        </AnimatedInView>
-      </ClientOnly>
 
       <p>
-        I&apos;ve also learned how powerful Google Maps is with very little
-        information.
+        Chroma stores text as vector embeddings: a numerical representation of
+        the text. Describing text as numbers allows for easy comparison in larger datasets.
+        When I search for '1012 Westlake Blvd', it finds similar addresses even if the wording is sligthly
+        different.
       </p>
 
       <ClientOnly>
-        <AnimatedInView>
-          <GooglePlacesLogo />
-        </AnimatedInView>
+        <AddressSimilaritySideBySide />
       </ClientOnly>
 
       <p>
-        Once the receipt has the place it came from and the words are
-        semantically comparable, these AI Agents can start labeling the data.
+        When Chroma finds another receipt with the same address, phone number,
+        or URL, I can skip Google Maps and reuse the information from the
+        previous receipt, making this process faster and cheaper.
       </p>
 
-      <h3>Enriching the Data</h3>
+      <h2>Labeling the Receipts</h2>
 
       <p>
-        The dumb-intern still needs review. The data I get through Google Maps
-        is disorganized. The Google Maps data is cleaned using entity
-        resolution: build a small graph of merchants where the edges between
-        them mean &ldquo;same phone,&rdquo; &ldquo;same address,&rdquo; or
-        &ldquo;name similarity.&rdquo; Stronger signals (phone + address)
-        outweigh weaker ones (name only). I pick a &ldquo;golden&rdquo; merchant
-        in these clustered groups to ensure all receipts from a specific store
-        have the most correct data.
-      </p>
-      <MerchantCount />
-
-      <p>
-        Next, I narrow the vocabulary to receipt words (totals, taxes, dates,
-        phone, address). The AI Agent is given the definition per label and
-        gives an initial guess. The Agent then validates the guess using the
-        tools we spoke of earlier.
+        After finding the business and similar receipts, I can use this context
+        to label the words more accurately. Each label strucutures the data for
+        processing.
       </p>
 
-      <div
-        style={{
-          width: "100%",
-          maxWidth: "900px",
-          margin: "2rem auto",
-          fontFamily: "'Monaco', 'Menlo', 'Consolas', monospace",
-          whiteSpace: "pre-wrap",
-          background: "var(--code-background)",
-          color: "var(--text-color)",
-          borderRadius: "8px",
-          lineHeight: 1.4,
-          fontSize: "14px",
-          overflowX: "auto",
-          border: "1px solid var(--text-color)",
-        }}
-      >
-        <pre>{`Word needing validation: 'GO'
-Label being validated: DATE
-Image: 8388d1f1...
-Receipt context: Line 45, Word 1
-📄 Receipt Context:
-  42: Whse: 117 Trm:201 Trn: 266 OP:701
-  43: Aga in
-  44: Items Sold: 2
-→ 45: →GO← 06/17/2024 ← TARGET LINE
-
-📊 Evidence Analysis:
-🎯 EXACT MATCHES:
-  ❌ 'GO' was previously marked INVALID
-🧠 SEMANTIC SIMILARITY:
-  Similar words where 'DATE' was VALID: (10 found)
-    ✓ '06/27/2024' (distance: 0.169) - Sprouts Farmers Market
-    ✓ '06/20/2024' (distance: 0.170) - Sprouts Farmers Market
-    ✓ '06/17/2024' (distance: 0.170) - Sprouts Farmers Market
-  Similar words where 'DATE' was INVALID: (3 found)
-    ✗ 'GO' (distance: 0.000) - Costco Wholesale
-    ✗ '20:23' (distance: 0.176) - Costco Wholesale
-    ✗ '20:23' (distance: 0.176) - Costco Wholesale
-
-🎯 DECISION:
-  ❌ REJECT this label
-  🔒 DEFINITIVE - Strong evidence
-  💡 Same text 'GO' was previously marked invalid
-  ✨ Recommended action: Apply this decision automatically`}</pre>
-      </div>
+      <ClientOnly>
+        <RandomReceiptWithLabels />
+      </ClientOnly>
 
       <p>
-        This technique not only gives the AI enough context to make the right
-        decision but also helps it learn from its mistakes. This approach has
-        allowed me to increase accuracy and use less compute and time.
+        The agent verifies the label guesses using a chain of verification. It
+        generates a series of questions to answer, and uses the answers to
+        verify the label. If the label is incorrect, the agent generates a new
+        label and verifies it again.
       </p>
 
       <LabelValidationCount />
 
       <p>
-        I&apos;ve been able to speed up the receipt labeling even further by
-        using LayoutLM, a document understanding model that takes both text and
-        layout into account. Trained on my agent-validated labels, it predicts a
-        token, address, date, total, etc. in one forward pass. In production
-        this gives me:
+        This dataset is used to train a model to label the words faster and
+        cheaper. I found a model, LayoutLM, on Hugging Face that can label the
+        words given the OCR data.
       </p>
 
-      <ul>
-        <li>
-          <strong>Speed & cost</strong>: cheap, local inference instead of
-          repeated chat calls
-        </li>
-        <li>
-          <strong>Consistency</strong>: probabilistic explanations vs.
-          non-deterministic hallucinations
-        </li>
-        <li>
-          <strong>Better validation</strong>: predicted labels + graph/rule
-          checks catch mismatches fast
-        </li>
-      </ul>
-      <p>
-        To improve accuracy, I can add more receipts, synthesize new receipts by
-        finding patterns within and outside of different merchants, and adding
-        noise to existing receipts. This model learns from more data while
-        poisoning the truth. This gives me consistent, repeatable predictions
-        explaining what a receipt is.
-      </p>
-
-      <ClientOnly>
-        <AnimatedInView>
-          <PyTorchLogo />
-        </AnimatedInView>
-      </ClientOnly>
       <ClientOnly>
         <AnimatedInView>
           <HuggingFaceLogo />
         </AnimatedInView>
       </ClientOnly>
 
-      <h2>What&apos;s on the Receipts?</h2>
       <p>
-        I&apos;m still working on this part. My experience in data engineering
-        gave me a great head start into structuring and organizing data.
-      </p>
-      <p>
-        Optimizing this has been fun. I&apos;ve learned a lot about open
-        source models. I&apos;ve used Ollama to organize how I deploy the
-        models and LangChain to explain how the models are using the tools.
+        Trainign the model well means finding the right settings. Instead of
+        trying every possible setting, I use an agent to review results and
+        suggest which settings to try next. It learns what works and what
+        doesn't, helping me find the best way to implement this.
       </p>
 
-      <ClientOnly>
-        <AnimatedInView>
-          <OllamaLogo />
-        </AnimatedInView>
-      </ClientOnly>
-      <ClientOnly>
-        <AnimatedInView>
-          <LangChainLogo />
-        </AnimatedInView>
-      </ClientOnly>
       <h1>Conclusion</h1>
 
       <p>
