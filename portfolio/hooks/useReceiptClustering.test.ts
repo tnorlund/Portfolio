@@ -14,7 +14,6 @@ const createMockLine = (
   line_id: id,
   text: `Line ${id}`,
   bounding_box: { x, y, width, height },
-
   top_left: { x, y: y + height },
   top_right: { x: x + width, y: y + height },
   bottom_left: { x, y },
@@ -27,7 +26,7 @@ const createMockLine = (
 describe("useReceiptClustering", () => {
   it("should handle empty lines", () => {
     const { result } = renderHook(() => useReceiptClustering([]));
-    
+
     expect(result.current.clusters).toHaveLength(0);
     expect(result.current.noiseLines).toHaveLength(0);
   });
@@ -40,10 +39,10 @@ describe("useReceiptClustering", () => {
       createMockLine(4, 0.8, 0.8),
     ];
 
-    const { result } = renderHook(() => 
+    const { result } = renderHook(() =>
       useReceiptClustering(lines, { epsilon: 0.1, minPoints: 2, useNormalization: false })
     );
-    
+
     expect(result.current.clusters).toHaveLength(1);
     expect(result.current.clusters[0].lines).toHaveLength(3);
     expect(result.current.noiseLines).toHaveLength(1);
@@ -61,13 +60,13 @@ describe("useReceiptClustering", () => {
       createMockLine(6, 0.11, 0.21),
     ];
 
-    const { result } = renderHook(() => 
+    const { result } = renderHook(() =>
       useReceiptClustering(lines, { epsilon: 0.1, minPoints: 2, useNormalization: false })
     );
-    
+
     expect(result.current.clusters).toHaveLength(2);
     expect(result.current.noiseLines).toHaveLength(0);
-    
+
     result.current.clusters.forEach(cluster => {
       expect(cluster.lines).toHaveLength(3);
       expect(cluster.boundingBox).toBeDefined();
@@ -81,13 +80,13 @@ describe("useReceiptClustering", () => {
       createMockLine(2, 0.15, 0.12, 0.15, 0.02),
     ];
 
-    const { result } = renderHook(() => 
+    const { result } = renderHook(() =>
       useReceiptClustering(lines, { epsilon: 0.3, minPoints: 1, useNormalization: false })
     );
-    
+
     expect(result.current.clusters).toHaveLength(1);
     const bbox = result.current.clusters[0].boundingBox;
-    
+
     expect(bbox.topLeft.x).toBeCloseTo(0.1);
     expect(bbox.topRight.x).toBeCloseTo(0.3);
     expect(bbox.bottomLeft.y).toBeCloseTo(0.1);
@@ -100,13 +99,13 @@ describe("useReceiptClustering", () => {
       createMockLine(2, 0.18, 0, 0.02, 0.02),
     ];
 
-    const { result } = renderHook(() => 
+    const { result } = renderHook(() =>
       useReceiptClustering(lines, { epsilon: 0.5, minPoints: 1, useNormalization: false })
     );
-    
+
     expect(result.current.clusters).toHaveLength(1);
     const centroid = result.current.clusters[0].centroid;
-    
+
     // Centroid of line centroids
     // Line 1 centroid: (0.01, 0.01)
     // Line 2 centroid: (0.19, 0.01)
@@ -123,14 +122,14 @@ describe("useReceiptClustering", () => {
     ];
 
     // Small epsilon - each line is its own cluster or noise
-    const { result: smallEps } = renderHook(() => 
+    const { result: smallEps } = renderHook(() =>
       useReceiptClustering(lines, { epsilon: 0.05, minPoints: 2, useNormalization: false })
     );
     expect(smallEps.current.clusters).toHaveLength(0);
     expect(smallEps.current.noiseLines).toHaveLength(3);
 
     // Large epsilon - all lines in one cluster
-    const { result: largeEps } = renderHook(() => 
+    const { result: largeEps } = renderHook(() =>
       useReceiptClustering(lines, { epsilon: 0.5, minPoints: 2, useNormalization: false })
     );
     expect(largeEps.current.clusters).toHaveLength(1);
@@ -144,13 +143,13 @@ describe("useReceiptClustering", () => {
     ];
 
     // minPoints = 1 - both lines form a cluster
-    const { result: minPoints1 } = renderHook(() => 
+    const { result: minPoints1 } = renderHook(() =>
       useReceiptClustering(lines, { epsilon: 0.1, minPoints: 1, useNormalization: false })
     );
     expect(minPoints1.current.clusters.length).toBeGreaterThan(0);
 
     // minPoints = 3 - both lines are noise
-    const { result: minPoints3 } = renderHook(() => 
+    const { result: minPoints3 } = renderHook(() =>
       useReceiptClustering(lines, { epsilon: 0.1, minPoints: 3, useNormalization: false })
     );
     expect(minPoints3.current.clusters).toHaveLength(0);
@@ -165,12 +164,12 @@ describe("useReceiptClustering", () => {
     ];
 
     // Test with normalization enabled (default)
-    const { result: defaultNorm } = renderHook(() => 
+    const { result: defaultNorm } = renderHook(() =>
       useReceiptClustering(lines)
     );
-    
+
     // Test with normalization explicitly disabled
-    const { result: noNorm } = renderHook(() => 
+    const { result: noNorm } = renderHook(() =>
       useReceiptClustering(lines, { useNormalization: false })
     );
 
@@ -179,7 +178,7 @@ describe("useReceiptClustering", () => {
     expect(defaultNorm.current.noiseLines).toBeDefined();
     expect(noNorm.current.clusters).toBeDefined();
     expect(noNorm.current.noiseLines).toBeDefined();
-    
+
     // Verify the dbscanResult is included
     expect(defaultNorm.current.dbscanResult).toBeDefined();
     expect(defaultNorm.current.dbscanResult.clusters).toBeDefined();
@@ -197,7 +196,7 @@ describe("calculateEpsilonFromLines", () => {
       createMockLine(1, 0, 0, 0.1, 0.1), // diagonal ≈ 0.141
       createMockLine(2, 0, 0, 0.2, 0.2), // diagonal ≈ 0.283
     ];
-    
+
     const epsilon = calculateEpsilonFromLines(lines);
     // Average diagonal = (0.141 + 0.283) / 2 ≈ 0.212
     // Epsilon = 0.212 * 2 ≈ 0.424
@@ -210,7 +209,7 @@ describe("calculateEpsilonFromLines", () => {
       createMockLine(2, 0, 0, 0.1, 0.1),
       createMockLine(3, 0, 0, 0.15, 0.15),
     ];
-    
+
     const epsilon = calculateEpsilonFromLines(lines);
     expect(epsilon).toBeGreaterThan(0);
     expect(epsilon).toBeLessThan(1);
@@ -224,14 +223,14 @@ describe("pixel-based clustering", () => {
       createMockLine(2, 0.11, 0.11),
     ];
 
-    const { result } = renderHook(() => 
-      useReceiptClustering(lines, { 
+    const { result } = renderHook(() =>
+      useReceiptClustering(lines, {
         imageWidth: 1000,
         imageHeight: 1000,
         minPoints: 1,
       })
     );
-    
+
     // Should process the lines without error
     expect(result.current.clusters.length + result.current.noiseLines.length).toBeGreaterThanOrEqual(0);
     expect(result.current.dbscanResult).toBeDefined();
@@ -241,7 +240,7 @@ describe("pixel-based clustering", () => {
     const lines: Line[] = [
       createMockLine(1, 0, 0, 0.1, 0.1), // 100x100 pixel diagonal in 1000x1000 image
     ];
-    
+
     const epsilon = calculateEpsilonFromLinesPixels(lines, 1000, 1000);
     // Diagonal length = sqrt((100)^2 + (100)^2) = ~141.4 pixels
     // Epsilon = 141.4 * 2 = ~282.8 pixels

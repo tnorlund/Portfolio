@@ -584,9 +584,9 @@ def _handle_internal_core(
         # Mark batch complete only if NOT in step function mode (skip_sqs=False means standalone mode)
         # In step function mode, batches will be marked complete after successful compaction
         if not skip_sqs:
-        with operation_with_timeout("mark_batch_complete", max_duration=30):
-            mark_batch_complete(batch_id)
-        logger.info("Marked batch as complete", batch_id=batch_id)
+            with operation_with_timeout("mark_batch_complete", max_duration=30):
+                mark_batch_complete(batch_id)
+            logger.info("Marked batch as complete", batch_id=batch_id)
         else:
             logger.info(
                 "Skipping batch completion marking (step function mode - will mark after compaction)",

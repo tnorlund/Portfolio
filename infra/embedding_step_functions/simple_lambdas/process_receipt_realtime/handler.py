@@ -164,7 +164,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         lines_prefix = f"lines/delta/{run_id}/"
         words_prefix = f"words/delta/{run_id}/"
 
-        upload_bundled_delta_to_s3(
+        lines_upload = upload_bundled_delta_to_s3(
             local_delta_dir=delta_lines_dir,
             bucket=chroma_bucket,
             delta_prefix=lines_prefix,
@@ -175,8 +175,10 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "collection": "lines",
             },
         )
+        if lines_upload.get("status") != "uploaded":
+            raise RuntimeError(f"Failed to upload line delta to S3: {lines_upload.get('error')}")
 
-        upload_bundled_delta_to_s3(
+        words_upload = upload_bundled_delta_to_s3(
             local_delta_dir=delta_words_dir,
             bucket=chroma_bucket,
             delta_prefix=words_prefix,
@@ -187,6 +189,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "collection": "words",
             },
         )
+        if words_upload.get("status") != "uploaded":
+            raise RuntimeError(f"Failed to upload word delta to S3: {words_upload.get('error')}")
 
         logger.info("Uploaded deltas to S3")
 

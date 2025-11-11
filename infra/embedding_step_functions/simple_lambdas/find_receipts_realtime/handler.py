@@ -48,18 +48,19 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         if filter_status:
             # Filter by embedding status
-            # For now, we'll get all receipts and filter client-side
-            # (Could be optimized with a GSI if needed)
-            logger.info("Filtering by embedding status: %s", filter_status)
-            all_receipts, last_evaluated_key = dynamo_client.list_receipts(
-                limit=limit
+            # Note: Receipts don't have embedding_status - lines and words do.
+            # To properly filter, we'd need to check lines/words for each receipt,
+            # which is inefficient. For now, we log a warning and return all receipts.
+            # TODO: Implement proper filtering via GSI or by checking line/word status
+            logger.warning(
+                "filter_by_embedding_status is not yet implemented. "
+                "Receipts don't have embedding_status - lines and words do. "
+                "Returning all receipts without filtering.",
+                filter_status=filter_status,
             )
-            # Note: This is a simplified filter - in practice you might want
-            # to check line/word embedding status
-            receipts = all_receipts
-        else:
-            # Get all receipts (or up to limit)
-            receipts, last_evaluated_key = dynamo_client.list_receipts(limit=limit)
+
+        # Get all receipts (or up to limit)
+        receipts, last_evaluated_key = dynamo_client.list_receipts(limit=limit)
 
         logger.info("Found %d receipts", len(receipts))
 

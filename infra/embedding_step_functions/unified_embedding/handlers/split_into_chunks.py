@@ -63,51 +63,74 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
 
 def _load_chunks_from_s3(event: Dict[str, Any]) -> Dict[str, Any]:
-    """Load chunks from S3 and return them inline."""
+    """Create chunk index array instead of loading full chunks.
+
+    Instead of loading all chunks (which would exceed Step Functions payload limit),
+    we create an array of chunk indices and S3 metadata. Each processing Lambda
+    will download its specific chunk from S3 using the chunk_index.
+    """
     chunks_s3_key = event.get("chunks_s3_key")
     chunks_s3_bucket = event.get("chunks_s3_bucket")
     batch_id = event.get("batch_id")
+    total_chunks = event.get("total_chunks")
 
     if not chunks_s3_key or not chunks_s3_bucket:
         raise ValueError("chunks_s3_key and chunks_s3_bucket are required for load_chunks_from_s3 operation")
 
+    if total_chunks is None:
+        # Need to get total_chunks from S3 metadata or download just to count
+        # For now, we'll download just to get the count (minimal overhead)
+        with tempfile.NamedTemporaryFile(mode="r", suffix=".json", delete=False) as tmp_file:
+            tmp_file_path = tmp_file.name
+
+        try:
+            s3_client.download_file(chunks_s3_bucket, chunks_s3_key, tmp_file_path)
+            with open(tmp_file_path, "r", encoding="utf-8") as f:
+                chunks = json.load(f)
+            total_chunks = len(chunks)
+        finally:
+            try:
+                os.unlink(tmp_file_path)
+            except Exception:
+                pass
+
     logger.info(
-        "Loading chunks from S3",
+        "Creating chunk index array for S3 chunks",
         s3_key=chunks_s3_key,
         bucket=chunks_s3_bucket,
         batch_id=batch_id,
+        total_chunks=total_chunks,
     )
 
-    # Download chunks from S3
-    with tempfile.NamedTemporaryFile(mode="r", suffix=".json", delete=False) as tmp_file:
-        tmp_file_path = tmp_file.name
-
-    try:
-        s3_client.download_file(chunks_s3_bucket, chunks_s3_key, tmp_file_path)
-
-        with open(tmp_file_path, "r", encoding="utf-8") as f:
-            chunks = json.load(f)
-
-        logger.info(
-            "Loaded chunks from S3",
-            chunk_count=len(chunks),
-            batch_id=batch_id,
-        )
-
-        return {
+    # Create an array of chunk metadata (indices + S3 info) instead of full chunks
+    # Each processing Lambda will download its specific chunk from S3
+    # Include delta_results as None so Step Functions can reference it without errors
+    chunk_indices = [
+        {
+            "chunk_index": i,
             "batch_id": batch_id,
-            "chunks": chunks,
-            "total_chunks": len(chunks),
-            "use_s3": False,  # Chunks are now inline
-            "chunks_s3_key": None,  # Always include these fields for consistency
-            "chunks_s3_bucket": None,
+            "chunks_s3_key": chunks_s3_key,
+            "chunks_s3_bucket": chunks_s3_bucket,
+            "operation": "process_chunk",
+            "delta_results": None,  # Not available in S3 mode - will be downloaded by Lambda
         }
-    finally:
-        # Clean up temp file
-        try:
-            os.unlink(tmp_file_path)
-        except Exception:
-            pass
+        for i in range(total_chunks)
+    ]
+
+    logger.info(
+        "Created chunk index array",
+        chunk_count=len(chunk_indices),
+        batch_id=batch_id,
+    )
+
+    return {
+        "batch_id": batch_id,
+        "chunks": chunk_indices,  # Array of chunk indices, not full chunks
+        "total_chunks": len(chunk_indices),
+        "use_s3": True,  # Chunks still in S3 - each Lambda will fetch its own
+        "chunks_s3_key": chunks_s3_key,
+        "chunks_s3_bucket": chunks_s3_bucket,
+    }
 
 
 def _split_into_chunks(event: Dict[str, Any]) -> Dict[str, Any]:
