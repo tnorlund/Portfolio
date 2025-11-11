@@ -95,11 +95,11 @@ def _load_groups_from_s3(event: Dict[str, Any]) -> Dict[str, Any]:
 
     if total_groups is None:
         raise ValueError("Could not determine total_groups from S3")
-    
+
     # DO NOT load poll_results from S3 here - it's too large and would exceed payload limit
     # Keep it in S3 and let downstream steps load it when needed
     # poll_results will be loaded by MarkBatchesComplete or PrepareHierarchicalFinalMerge
-    
+
     # Create an array of group metadata (indices + S3 info) instead of full groups
     # Each processing Lambda will download its specific group from S3
     group_indices = [
@@ -112,14 +112,15 @@ def _load_groups_from_s3(event: Dict[str, Any]) -> Dict[str, Any]:
         }
         for i in range(total_groups)
     ]
-    
+
     logger.info(
         "Created %d group index entries for batch %s (groups and poll_results remain in S3)",
         len(group_indices),
         batch_id,
     )
-    
+
     # Return response - keep poll_results in S3 to avoid payload limit
+    # Always include poll_results_s3_key and poll_results_s3_bucket (even if None) for JSONPath compatibility
     response = {
         "batch_id": batch_id,
         "groups": group_indices,  # Array of group indices, not full groups
@@ -127,16 +128,16 @@ def _load_groups_from_s3(event: Dict[str, Any]) -> Dict[str, Any]:
         "use_s3": True,  # Groups are still in S3
         "groups_s3_key": groups_s3_key,  # Pass through S3 info
         "groups_s3_bucket": groups_s3_bucket,
+        "poll_results_s3_key": poll_results_s3_key,  # Always include, even if None
+        "poll_results_s3_bucket": poll_results_s3_bucket,  # Always include, even if None
     }
-    
-    # Include poll_results S3 keys if they exist, but don't load the data
+
+    # Set poll_results based on whether it's in S3 or inline
     if poll_results_s3_key and poll_results_s3_bucket:
-        response["poll_results_s3_key"] = poll_results_s3_key
-        response["poll_results_s3_bucket"] = poll_results_s3_bucket
         response["poll_results"] = None  # Keep in S3, will be loaded when needed
     else:
         response["poll_results"] = []  # Empty if not in S3
-    
+
     return response
 
 
@@ -255,20 +256,21 @@ def _create_chunk_groups(event: Dict[str, Any]) -> Dict[str, Any]:
                 except Exception:
                     pass
 
-        # Return response - always include poll_results field (null if in S3) for JSONPath compatibility
+        # Return response - always include all fields (even if null) for JSONPath compatibility
+        # Step Functions JSONPath fails if a field doesn't exist, so we must always include these
         response = {
             "batch_id": batch_id,
             "groups_s3_key": groups_s3_key,
             "groups_s3_bucket": bucket,
             "total_groups": len(groups),
             "use_s3": True,
+            "poll_results_s3_key": poll_results_s3_key,  # Always include, even if None
+            "poll_results_s3_bucket": bucket if poll_results_s3_key else None,  # Always include, even if None
         }
 
         if poll_results_s3_key:
-            # poll_results is in S3 - include S3 keys and set poll_results to null
-            response["poll_results_s3_key"] = poll_results_s3_key
-            response["poll_results_s3_bucket"] = bucket
-            response["poll_results"] = None  # Always include field for JSONPath compatibility
+            # poll_results is in S3 - set poll_results to null
+            response["poll_results"] = None
         else:
             # poll_results is small enough to include inline
             response["poll_results"] = poll_results

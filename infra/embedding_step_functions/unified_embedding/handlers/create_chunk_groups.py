@@ -60,53 +60,88 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
 
 def _load_groups_from_s3(event: Dict[str, Any]) -> Dict[str, Any]:
-    """Load chunk groups from S3 and return them inline."""
+    """Create group index array instead of loading full groups.
+
+    Instead of loading all groups (which would exceed Step Functions payload limit),
+    we create an array of group indices and S3 metadata. Each processing Lambda
+    will download its specific group from S3 using the group_index.
+    """
     groups_s3_key = event.get("groups_s3_key")
     groups_s3_bucket = event.get("groups_s3_bucket")
     batch_id = event.get("batch_id")
-    poll_results = event.get("poll_results", [])
+    poll_results_s3_key = event.get("poll_results_s3_key")
+    poll_results_s3_bucket = event.get("poll_results_s3_bucket")
 
     if not groups_s3_key or not groups_s3_bucket:
         raise ValueError("groups_s3_key and groups_s3_bucket are required for load_groups_from_s3 operation")
 
-    logger.info(
-        "Loading chunk groups from S3",
-        s3_key=groups_s3_key,
-        bucket=groups_s3_bucket,
-        batch_id=batch_id,
-    )
-
-    # Download groups from S3
+    # Get total_groups from S3 metadata or download just to count
+    total_groups = None
     with tempfile.NamedTemporaryFile(mode="r", suffix=".json", delete=False) as tmp_file:
         tmp_file_path = tmp_file.name
 
     try:
         s3_client.download_file(groups_s3_bucket, groups_s3_key, tmp_file_path)
-
         with open(tmp_file_path, "r", encoding="utf-8") as f:
             groups = json.load(f)
-
+        total_groups = len(groups)
         logger.info(
-            "Loaded chunk groups from S3",
-            group_count=len(groups),
+            "Found groups in S3",
+            group_count=total_groups,
             batch_id=batch_id,
         )
-
-        return {
-            "batch_id": batch_id,
-            "groups": groups,
-            "total_groups": len(groups),
-            "poll_results": poll_results,
-            "use_s3": False,  # Groups are now inline
-            "groups_s3_key": None,  # Always include these fields for consistency
-            "groups_s3_bucket": None,
-        }
     finally:
-        # Clean up temp file
         try:
             os.unlink(tmp_file_path)
         except Exception:
             pass
+
+    if total_groups is None:
+        raise ValueError("Could not determine total_groups from S3")
+
+    # DO NOT load poll_results from S3 here - it's too large and would exceed payload limit
+    # Keep it in S3 and let downstream steps load it when needed
+    # poll_results will be loaded by MarkBatchesComplete or PrepareHierarchicalFinalMerge
+
+    # Create an array of group metadata (indices + S3 info) instead of full groups
+    # Each processing Lambda will download its specific group from S3
+    group_indices = [
+        {
+            "group_index": i,
+            "batch_id": batch_id,
+            "groups_s3_key": groups_s3_key,
+            "groups_s3_bucket": groups_s3_bucket,
+            "chunk_group": None,  # Not available in S3 mode - will be downloaded by Lambda
+        }
+        for i in range(total_groups)
+    ]
+
+    logger.info(
+        "Created group index entries (groups and poll_results remain in S3)",
+        group_count=len(group_indices),
+        batch_id=batch_id,
+    )
+
+    # Return response - keep poll_results in S3 to avoid payload limit
+    # Always include all fields (even if null) for JSONPath compatibility
+    response = {
+        "batch_id": batch_id,
+        "groups": group_indices,  # Array of group indices, not full groups
+        "total_groups": total_groups,
+        "use_s3": True,  # Groups are still in S3
+        "groups_s3_key": groups_s3_key,  # Pass through S3 info
+        "groups_s3_bucket": groups_s3_bucket,
+        "poll_results_s3_key": poll_results_s3_key,  # Always include, even if None
+        "poll_results_s3_bucket": poll_results_s3_bucket,  # Always include, even if None
+    }
+
+    # Include poll_results field - null if in S3, empty array if not
+    if poll_results_s3_key and poll_results_s3_bucket:
+        response["poll_results"] = None  # Keep in S3, will be loaded when needed
+    else:
+        response["poll_results"] = []  # Empty if not in S3
+
+    return response
 
 
 def _create_chunk_groups(event: Dict[str, Any]) -> Dict[str, Any]:
@@ -141,81 +176,99 @@ def _create_chunk_groups(event: Dict[str, Any]) -> Dict[str, Any]:
             batch_id=batch_id,
         )
 
-        # Check if response would exceed Step Functions payload limit
-        response_payload = json.dumps({
-            "batch_id": batch_id,
-            "groups": groups,
-            "total_groups": len(groups),
-            "poll_results": poll_results,
-        })
-        payload_size = len(response_payload.encode("utf-8"))
-
+        # Always use S3 to avoid payload size issues
+        # This ensures we never hit Step Functions' 256KB limit
         logger.info(
-            "Response payload size",
-            size_bytes=payload_size,
-            size_kb=payload_size / 1024,
-            max_size_kb=MAX_PAYLOAD_SIZE / 1024,
+            "Always uploading groups to S3 (chunks: %d, groups: %d)",
+            len(chunk_results),
+            len(groups),
         )
 
-        # If payload is too large, upload groups to S3 and return S3 keys
-        if payload_size > MAX_PAYLOAD_SIZE:
-            logger.info(
-                "Response payload exceeds limit, uploading groups to S3",
-                payload_size_kb=payload_size / 1024,
+        # Get S3 bucket from environment
+        bucket = os.environ.get("CHROMADB_BUCKET")
+        if not bucket:
+            raise ValueError("CHROMADB_BUCKET environment variable not set")
+
+        # Upload groups to S3
+        groups_s3_key = f"chunk_groups/{batch_id}/groups.json"
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp_file:
+            json.dump(groups, tmp_file, indent=2)
+            tmp_file_path = tmp_file.name
+
+        try:
+            s3_client.upload_file(
+                tmp_file_path,
+                bucket,
+                groups_s3_key,
             )
+            logger.info(
+                "Uploaded groups to S3",
+                group_count=len(groups),
+                bucket=bucket,
+                s3_key=groups_s3_key,
+            )
+        finally:
+            # Clean up temp file
+            try:
+                os.unlink(tmp_file_path)
+            except Exception:
+                pass
 
-            # Get S3 bucket from environment
-            bucket = os.environ.get("CHROMADB_BUCKET")
-            if not bucket:
-                raise ValueError("CHROMADB_BUCKET environment variable not set")
+        # Check if poll_results is too large - if so, also store it in S3
+        poll_results_payload = json.dumps(poll_results)
+        poll_results_size = len(poll_results_payload.encode("utf-8"))
 
-            # Upload groups to S3
-            groups_s3_key = f"chunk_groups/{batch_id}/groups.json"
+        # If poll_results is large, also store it in S3
+        poll_results_s3_key = None
+        if poll_results_size > 100 * 1024:  # If poll_results > 100KB, store in S3
+            logger.info(
+                "poll_results is large, also storing in S3",
+                size_kb=poll_results_size // 1024,
+            )
+            poll_results_s3_key = f"chunk_groups/{batch_id}/poll_results.json"
 
             with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp_file:
-                json.dump(groups, tmp_file, indent=2)
+                json.dump(poll_results, tmp_file, indent=2)
                 tmp_file_path = tmp_file.name
 
             try:
                 s3_client.upload_file(
                     tmp_file_path,
                     bucket,
-                    groups_s3_key,
+                    poll_results_s3_key,
                 )
                 logger.info(
-                    "Uploaded groups to S3",
-                    s3_key=groups_s3_key,
+                    "Uploaded poll_results to S3",
                     bucket=bucket,
-                    group_count=len(groups),
+                    s3_key=poll_results_s3_key,
                 )
             finally:
-                # Clean up temp file
                 try:
                     os.unlink(tmp_file_path)
                 except Exception:
                     pass
 
-            # Return S3 reference instead of full groups
-            return {
-                "batch_id": batch_id,
-                "groups_s3_key": groups_s3_key,
-                "groups_s3_bucket": bucket,
-                "total_groups": len(groups),
-                "poll_results": poll_results,
-                "use_s3": True,
-            }
+        # Return response - always include all fields (even if null) for JSONPath compatibility
+        # Step Functions JSONPath fails if a field doesn't exist, so we must always include these
+        response = {
+            "batch_id": batch_id,
+            "groups_s3_key": groups_s3_key,
+            "groups_s3_bucket": bucket,
+            "total_groups": len(groups),
+            "use_s3": True,
+            "poll_results_s3_key": poll_results_s3_key,  # Always include, even if None
+            "poll_results_s3_bucket": bucket if poll_results_s3_key else None,  # Always include, even if None
+        }
+
+        if poll_results_s3_key:
+            # poll_results is in S3 - set poll_results to null
+            response["poll_results"] = None
         else:
-            # Response is small enough, return groups directly
-            logger.info("Response payload within limit, returning groups directly")
-            return {
-                "batch_id": batch_id,
-                "groups": groups,
-                "total_groups": len(groups),
-                "poll_results": poll_results,
-                "use_s3": False,
-                "groups_s3_key": None,  # Always include these fields for consistency
-                "groups_s3_bucket": None,
-            }
+            # poll_results is small enough to include inline
+            response["poll_results"] = poll_results
+
+        return response
 
     except ValueError as e:
         logger.error("Validation error", error=str(e))
