@@ -13,6 +13,9 @@ from routes.random_image_details.infra import random_image_details_lambda
 from routes.random_receipt_details.infra import random_receipt_details_lambda
 from routes.receipt_count.infra import receipt_count_lambda
 from routes.receipts.infra import receipts_lambda
+# Import cache generator route first (API route depends on it)
+import routes.address_similarity_cache_generator.infra  # noqa: F401
+from routes.address_similarity.infra import address_similarity_lambda
 
 # Detect the current Pulumi stack
 stack = pulumi.get_stack()
@@ -298,6 +301,35 @@ lambda_permission_random_receipt_details = aws.lambda_.Permission(
     "random_receipt_details_lambda_permission",
     action="lambda:InvokeFunction",
     function=random_receipt_details_lambda.name,
+    principal="apigateway.amazonaws.com",
+    source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+)
+
+# /address_similarity
+integration_address_similarity = aws.apigatewayv2.Integration(
+    "address_similarity_lambda_integration",
+    api_id=api.id,
+    integration_type="AWS_PROXY",
+    integration_uri=address_similarity_lambda.invoke_arn,
+    integration_method="POST",
+    payload_format_version="2.0",
+)
+route_address_similarity = aws.apigatewayv2.Route(
+    "address_similarity_route",
+    api_id=api.id,
+    route_key="GET /address_similarity",
+    target=integration_address_similarity.id.apply(
+        lambda id: f"integrations/{id}"
+    ),
+    opts=pulumi.ResourceOptions(
+        replace_on_changes=["route_key", "target"],
+        delete_before_replace=True,
+    ),
+)
+lambda_permission_address_similarity = aws.lambda_.Permission(
+    "address_similarity_lambda_permission",
+    action="lambda:InvokeFunction",
+    function=address_similarity_lambda.name,
     principal="apigateway.amazonaws.com",
     source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
 )

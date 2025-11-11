@@ -23,6 +23,7 @@ from typing import Any, Dict
 from utils import (
     get_operation_logger,
     metrics,
+    emf_metrics,
     trace_function,
     start_compaction_lambda_monitoring,
     stop_compaction_lambda_monitoring,
@@ -74,6 +75,11 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         correlation_id=correlation_id,
     )
 
+    # Collect metrics during processing to batch them via EMF (cost-effective)
+    # This avoids expensive per-metric CloudWatch API calls
+    collected_metrics: Dict[str, float] = {}
+    metric_dimensions: Dict[str, str] = {}
+
     try:
         # Handle different event types (test events vs real stream events)
         if "Records" not in event:
@@ -87,12 +93,15 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "queued_messages": 0,
             }
 
-            metrics.count("StreamProcessorTestEvents", 1)
+            # Use EMF for test events (no API call cost)
+            emf_metrics.log_metrics(
+                {"StreamProcessorTestEvents": 1},
+                dimensions=None,
+                properties={"event_type": "test"},
+            )
             return format_response(
                 response, event, correlation_id=correlation_id
             )
-
-        metrics.gauge("StreamRecordsReceived", len(event["Records"]))
 
         # Track processing time for timeout protection
         start_time = time.time()
@@ -100,14 +109,18 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Limit processing to prevent timeouts on large batches
         MAX_RECORDS_PER_INVOCATION = 25
         records_to_process = event["Records"][:MAX_RECORDS_PER_INVOCATION]
+        total_records = len(event["Records"])
 
-        if len(event["Records"]) > MAX_RECORDS_PER_INVOCATION:
+        # Collect batch-level metrics
+        collected_metrics["StreamRecordsReceived"] = total_records
+
+        if total_records > MAX_RECORDS_PER_INVOCATION:
             logger.warning(
                 "Truncating batch to prevent timeout",
-                total_records=len(event["Records"]),
+                total_records=total_records,
                 processing=MAX_RECORDS_PER_INVOCATION,
             )
-            metrics.count("StreamBatchTruncated", 1)
+            collected_metrics["StreamBatchTruncated"] = 1
 
         logger.info(
             "About to process records",
@@ -127,8 +140,12 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Build messages from stream records
         messages_to_send = []
         processed_records = 0
+        skipped_records = 0
+        error_records = 0
         consecutive_failures = 0
         MAX_CONSECUTIVE_FAILURES = 10
+        event_name_counts: Dict[str, int] = {}  # Track event types
+        error_types: Dict[str, int] = {}  # Track error types
 
         for idx, record in enumerate(records_to_process):
             try:
@@ -140,7 +157,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         processed_so_far=processed_records,
                         elapsed_seconds=elapsed,
                     )
-                    metrics.count("StreamProcessingTimeoutExit", 1)
+                    collected_metrics["StreamProcessingTimeoutExit"] = 1
                     break
 
                 logger.info(
@@ -158,9 +175,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     event_name=event_name,
                 )
 
-                metrics.count(
-                    "StreamRecordProcessed", 1, {"event_name": event_name}
-                )
+                # Track event types (aggregated, not per-record to reduce costs)
+                event_name_counts[event_name] = event_name_counts.get(event_name, 0) + 1
 
                 # Build message(s) for this record
                 record_messages = build_messages_from_records(
@@ -171,7 +187,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     messages_to_send.extend(record_messages)
                     processed_records += 1
                     consecutive_failures = 0  # Reset on success
-                    
+
                     # Log only when we actually process relevant entities
                     logger.info(
                         "Processed relevant stream record",
@@ -180,26 +196,21 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         message_count=len(record_messages),
                     )
                 else:
-                    metrics.count(
-                        "StreamRecordSkipped",
-                        1,
-                        {"reason": "not_relevant_entity"},
-                    )
+                    skipped_records += 1
                     # Remove the debug log for skipped records to reduce noise
 
             except (ValueError, KeyError, TypeError) as e:
                 event_id = record.get("eventID", "unknown")
+                error_type = type(e).__name__
                 logger.error(
                     "Error processing stream record",
                     record_id=event_id,
                     error=str(e),
                 )
 
-                metrics.count(
-                    "StreamRecordProcessingError",
-                    1,
-                    {"error_type": type(e).__name__},
-                )
+                # Track error types (aggregated)
+                error_types[error_type] = error_types.get(error_type, 0) + 1
+                error_records += 1
 
                 # Circuit breaker: stop if too many consecutive failures
                 consecutive_failures += 1
@@ -208,7 +219,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         "Too many consecutive failures, stopping processing",
                         failure_count=consecutive_failures,
                     )
-                    metrics.count("StreamProcessingCircuitBreaker", 1)
+                    collected_metrics["StreamProcessingCircuitBreaker"] = 1
                     break
                 # Continue processing other records
 
@@ -220,8 +231,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             logger.info(
                 "Sent messages to compaction queues", message_count=sent_count
             )
-
-            metrics.count("MessagesQueuedForCompaction", sent_count)
         else:
             sent_count = 0
 
@@ -233,8 +242,32 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Record processing duration
         processing_duration = int(time.time() - start_time)
-        metrics.gauge("StreamProcessingDuration", processing_duration)
-        metrics.gauge("StreamBatchSize", len(event["Records"]))
+
+        # Collect all metrics for batch EMF logging (cost-effective)
+        collected_metrics.update({
+            "StreamRecordProcessed": processed_records,
+            "StreamRecordSkipped": skipped_records,
+            "StreamRecordProcessingError": error_records,
+            "MessagesQueuedForCompaction": sent_count,
+            "StreamProcessingDuration": processing_duration,
+            "StreamBatchSize": total_records,
+            "StreamProcessorProcessedRecords": processed_records,
+            "StreamProcessorQueuedMessages": sent_count,
+        })
+
+        # Add event type breakdown to properties
+        properties = {
+            "event_name_counts": event_name_counts,
+            "error_types": error_types,
+            "correlation_id": correlation_id,
+        }
+
+        # Log all metrics via EMF in a single log line (no API call cost)
+        emf_metrics.log_metrics(
+            collected_metrics,
+            dimensions=metric_dimensions if metric_dimensions else None,
+            properties=properties,
+        )
 
         logger.info(
             "Stream processing completed",
@@ -242,9 +275,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             queued_messages=sent_count,
             duration_seconds=processing_duration,
         )
-
-        metrics.gauge("StreamProcessorProcessedRecords", processed_records)
-        metrics.gauge("StreamProcessorQueuedMessages", sent_count)
 
         # Convert dataclass to dict for AWS Lambda JSON serialization
         result = response.to_dict()
@@ -256,8 +286,15 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "Stream processor failed",
         )
 
-        metrics.count(
-            "StreamProcessorError", 1, {"error_type": type(e).__name__}
+        # Log error via EMF (no API call cost)
+        error_type = type(e).__name__
+        emf_metrics.log_metrics(
+            {"StreamProcessorError": 1},
+            dimensions={"error_type": error_type},
+            properties={
+                "error": str(e),
+                "correlation_id": correlation_id,
+            },
         )
 
         error_response = {
