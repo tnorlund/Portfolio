@@ -454,7 +454,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       <p>
         Chroma stores text as vector embeddings: a numerical representation of
         the text. Describing text as numbers allows for easy comparison in larger datasets.
-        When I search for '1012 Westlake Blvd', it finds similar addresses even if the wording is sligthly
+        When I search for '1012 Westlake Blvd', it finds similar addresses even if the wording is slightly
         different.
       </p>
 
@@ -464,7 +464,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
 
       <p>
         When Chroma finds another receipt with the same address, phone number,
-        or URL, I can skip Google Maps and reuse the information from the
+        or URL, I can skip Google Places and reuse the information from the
         previous receipt, making this process faster and cheaper.
       </p>
 
@@ -472,7 +472,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
 
       <p>
         After finding the business and similar receipts, I can use this context
-        to label the words more accurately. Each label strucutures the data for
+        to label the words more accurately. Each label structures the data for
         processing.
       </p>
 
@@ -503,9 +503,9 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
 
       <p>
         Training the model to produce the best results means finding the right settings. Instead of
-        trying every possible setting, I use an agent to review results and
+        trying every possible setting, I use an LLM to review training results and
         suggest which settings to try next. It learns what works and what
-        doesn't, helping me find the best way to implement this.
+        doesn't, helping me find better configurations faster.
       </p>
 
       <h1>Conclusion</h1>
