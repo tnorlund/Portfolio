@@ -124,6 +124,19 @@ const CroppedAddressImage: React.FC<CroppedAddressImageProps> = ({
     };
   }, [lines, receipt.width, receipt.height, apiBbox]);
 
+  // Handle image load to get actual dimensions
+  // Must be defined before any early returns (Rules of Hooks)
+  const handleImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget;
+    if (img.naturalWidth && img.naturalHeight) {
+      setImageDimensions({
+        width: img.naturalWidth,
+        height: img.naturalHeight,
+      });
+    }
+    onLoad?.();
+  }, [onLoad]);
+
   // Get image URL
   const baseUrl =
     process.env.NODE_ENV === "development"
@@ -200,18 +213,6 @@ const CroppedAddressImage: React.FC<CroppedAddressImageProps> = ({
   if (!isFinite(containerAspectRatio) || containerAspectRatio <= 0) {
     console.error("Invalid aspect ratio:", containerAspectRatio, "box:", box, "display:", { displayWidth, displayHeight });
   }
-
-  // Handle image load to get actual dimensions
-  const handleImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
-    const img = e.currentTarget;
-    if (img.naturalWidth && img.naturalHeight) {
-      setImageDimensions({
-        width: img.naturalWidth,
-        height: img.naturalHeight,
-      });
-    }
-    onLoad?.();
-  }, [onLoad]);
 
   // Container style: maintain aspect ratio using padding-top trick
   // This ensures the container always has the correct aspect ratio regardless of parent width
