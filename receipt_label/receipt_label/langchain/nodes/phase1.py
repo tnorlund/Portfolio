@@ -12,25 +12,32 @@ from receipt_label.langchain.state.currency_validation import (
     CurrencyAnalysisState,
 )
 from receipt_label.langchain.utils.retry import retry_with_backoff
+from receipt_label.langchain.utils.cove import apply_chain_of_verification
 
 
 async def phase1_currency_analysis(
-    state: CurrencyAnalysisState, ollama_api_key: str
+    state: CurrencyAnalysisState, ollama_api_key: str, enable_cove: bool = True
 ):
-    """Analyze currency amounts (GRAND_TOTAL, TAX, etc.)."""
+    """Analyze currency amounts (GRAND_TOTAL, TAX, etc.) with optional Chain of Verification.
+
+    Args:
+        state: Current workflow state with receipt data
+        ollama_api_key: Ollama API key for LLM inference
+        enable_cove: Whether to apply Chain of Verification (default: True)
+    """
 
     # Initialize LLM with structured outputs
     llm = ChatOllama(
         model="gpt-oss:120b",
         base_url="https://ollama.com",
         client_kwargs={
-            "headers": {"Authorization": f"Bearer {ollama_api_key}"}
+            "headers": {"Authorization": f"Bearer {ollama_api_key}"},
+            "timeout": 120,  # 2 minute timeout for reliability
         },
         format="json",  # Force JSON format output
         temperature=0.3,
-        timeout=120,  # 2 minute timeout for reliability
     )
-    
+
     # Bind to Pydantic model for structured outputs (eliminates need for PydanticOutputParser)
     llm_structured = llm.with_structured_output(Phase1Response)
 
@@ -49,11 +56,11 @@ async def phase1_currency_analysis(
     # We dynamically inject the JSON schema from the Pydantic model
     # This ensures the LLM understands the exact expected structure
     import json
-    
+
     # Get JSON schema from the Pydantic model (single source of truth!)
     schema = Phase1Response.model_json_schema()
     schema_json = json.dumps(schema, indent=2)
-    
+
     messages = [
         {
             "role": "user",
@@ -91,15 +98,29 @@ Extract all currency amounts and return them as JSON matching the schema above."
                 "tags": ["phase1", "currency", "receipt-analysis"],
             },
         )
-    
+
     try:
         # Get structured response with retry logic
-        response = await retry_with_backoff(
+        initial_response = await retry_with_backoff(
             invoke_llm,
             max_retries=3,
             initial_delay=2.0,  # Start with 2 second delay
         )
-        
+
+        # Apply Chain of Verification if enabled
+        if enable_cove:
+            print("   🔍 Applying Chain of Verification to Phase 1 results...")
+            response = await apply_chain_of_verification(
+                initial_answer=initial_response,
+                receipt_text=state.formatted_text,
+                task_description="Currency amount classification (GRAND_TOTAL, TAX, SUBTOTAL, LINE_TOTAL)",
+                response_model=Phase1Response,
+                llm=llm,
+                enable_cove=True,
+            )
+        else:
+            response = initial_response
+
         # response is already Phase1Response - convert to CurrencyLabel
         currency_labels = [
             CurrencyLabel(

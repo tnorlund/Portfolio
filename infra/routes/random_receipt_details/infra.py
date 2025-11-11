@@ -103,6 +103,8 @@ random_receipt_details_lambda = aws.lambda_.Function(
 
 # CloudWatch log group for the Lambda function
 # Use the exact Lambda log group name format: /aws/lambda/<function-name>
+# Note: If deployment fails with "log group already exists", import it:
+#   pulumi import aws:cloudwatch/logGroup:LogGroup api_random_receipt_details_lambda_log_group /aws/lambda/api_random_receipt_details_GET_lambda-<hash>
 log_group = aws.cloudwatch.LogGroup(
     f"api_{ROUTE_NAME}_lambda_log_group",
     name=random_receipt_details_lambda.name.apply(

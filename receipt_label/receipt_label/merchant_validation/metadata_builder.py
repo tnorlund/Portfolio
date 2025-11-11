@@ -103,7 +103,8 @@ def build_receipt_metadata_from_result_no_match(
         )
 
     # Use empty placeholders for place_id and category
-    place_id = ""
+    # Note: place_id must be a string (empty string is valid, None is not)
+    place_id = ""  # Empty string is valid for "no match" cases
     merchant_category = ""
 
     return ReceiptMetadata(

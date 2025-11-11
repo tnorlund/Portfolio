@@ -1,9 +1,8 @@
-import React, { useEffect, useState, Fragment } from "react";
+import { Fragment, useEffect, useState } from "react";
 
 import { api } from "../../../services/api";
 import {
-  ImageCountApiResponse,
-  LabelValidationCountResponse,
+  LabelValidationCountResponse
 } from "../../../types/api";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -59,7 +58,7 @@ export default function LabelValidationChart() {
     >
       {/* title */}
       <div style={{ display: "flex", justifyContent: "center" }}>
-        <h2 style={{ margin: 0 }}>Label Validation Count</h2>
+        <h2 style={{ margin: 0 }}>Label Validation</h2>
       </div>
       <div
         style={{

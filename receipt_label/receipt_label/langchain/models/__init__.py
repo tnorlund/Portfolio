@@ -16,6 +16,12 @@ from .currency_validation import (
     Phase1Response,
     Phase2Response,
 )
+from .cove import (
+    VerificationQuestion,
+    VerificationAnswer,
+    VerificationQuestionsResponse,
+    VerificationAnswersResponse,
+)
 
 __all__ = [
     "CurrencyLabelType",
@@ -34,4 +40,9 @@ __all__ = [
     "SimpleReceiptResponse",
     "Phase1Response",
     "Phase2Response",
+    # CoVe models
+    "VerificationQuestion",
+    "VerificationAnswer",
+    "VerificationQuestionsResponse",
+    "VerificationAnswersResponse",
 ]

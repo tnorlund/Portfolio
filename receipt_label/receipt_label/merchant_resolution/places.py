@@ -14,7 +14,8 @@ def places_find_candidates(
     out: List[Dict[str, Any]] = []
     if ctx.get("address"):
         r = api.search_by_address(ctx["address"], ctx.get("words") or [])
-        if r:
+        # Only add candidate if it has a valid place_id (not empty/invalid cached results)
+        if r and r.get("place_id") and r.get("place_id") not in ("NO_RESULTS", "INVALID", "TEXT"):
             out.append(
                 {
                     "source": "places",
@@ -29,7 +30,8 @@ def places_find_candidates(
             )
     for ph in (ctx.get("phones") or [])[:2]:
         r = api.search_by_phone(ph)
-        if r:
+        # Only add candidate if it has a valid place_id (not empty/invalid cached results)
+        if r and r.get("place_id") and r.get("place_id") not in ("NO_RESULTS", "INVALID", "TEXT"):
             out.append(
                 {
                     "source": "places",

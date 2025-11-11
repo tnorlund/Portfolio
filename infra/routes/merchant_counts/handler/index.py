@@ -31,6 +31,9 @@ def fetch_merchant_counts():
     merchant_counts = {}
     for receipt_metadata in receipt_metadatas:
         merchant_name = receipt_metadata.canonical_merchant_name
+        # Skip receipts with empty or missing merchant names
+        if not merchant_name or not merchant_name.strip():
+            continue
         if merchant_name not in merchant_counts:
             merchant_counts[merchant_name] = 0
         merchant_counts[merchant_name] += 1

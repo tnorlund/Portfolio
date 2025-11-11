@@ -155,12 +155,22 @@ class LineEmbeddingWorkflow(ComponentResource):
                 self.lambda_functions["embedding-line-poll"].arn,
                 self.lambda_functions["embedding-vector-compact"].arn,
                 self.lambda_functions["embedding-split-chunks"].arn,
+                self.lambda_functions["embedding-create-chunk-groups"].arn,
+                self.lambda_functions["embedding-mark-batches-complete"].arn,
             ).apply(self._create_ingest_definition),
             opts=ResourceOptions(parent=self),
         )
 
     def _create_ingest_definition(self, arns: list) -> str:
-        """Create ingestion workflow definition."""
+        """Create ingestion workflow definition.
+
+        arns[0] = embedding-list-pending
+        arns[1] = embedding-line-poll
+        arns[2] = embedding-vector-compact
+        arns[3] = embedding-split-chunks
+        arns[4] = embedding-create-chunk-groups
+        arns[5] = embedding-mark-batches-complete
+        """
         return json.dumps(
             {
                 "Comment": "Poll and ingest line embeddings",
@@ -207,10 +217,11 @@ class LineEmbeddingWorkflow(ComponentResource):
                                             "ErrorEquals": [
                                                 "Lambda.ServiceException",
                                                 "Lambda.AWSLambdaException",
+                                                "Lambda.ResourceConflictException",
                                                 "Runtime.ExitError",
                                             ],
-                                            "IntervalSeconds": 2,
-                                            "MaxAttempts": 3,
+                                            "IntervalSeconds": 5,
+                                            "MaxAttempts": 5,
                                             "BackoffRate": 2.0,
                                             "JitterStrategy": "FULL",
                                         },
@@ -218,8 +229,8 @@ class LineEmbeddingWorkflow(ComponentResource):
                                             "ErrorEquals": [
                                                 "Lambda.TooManyRequestsException"
                                             ],
-                                            "IntervalSeconds": 5,
-                                            "MaxAttempts": 3,
+                                            "IntervalSeconds": 10,
+                                            "MaxAttempts": 5,
                                             "BackoffRate": 2.0,
                                         },
                                     ],
@@ -238,16 +249,63 @@ class LineEmbeddingWorkflow(ComponentResource):
                             "poll_results.$": "$.poll_results",
                         },
                         "ResultPath": "$.chunked_data",
+                        "Next": "CheckChunksSource",
+                        "Retry": [
+                            {
+                                "ErrorEquals": [
+                                    "Lambda.ServiceException",
+                                    "Lambda.AWSLambdaException",
+                                    "Lambda.ResourceConflictException",
+                                ],
+                                "IntervalSeconds": 5,
+                                "MaxAttempts": 5,
+                                "BackoffRate": 2.0,
+                                "JitterStrategy": "FULL",
+                            }
+                        ],
+                        "Catch": [
+                            {
+                                "ErrorEquals": ["States.ALL"],
+                                "Next": "CompactionFailed",
+                                "ResultPath": "$.error",
+                            }
+                        ],
+                    },
+                    "CheckChunksSource": {
+                        "Type": "Choice",
+                        "Comment": "Check if chunks are in S3 or inline",
+                        "Choices": [
+                            {
+                                "Variable": "$.chunked_data.use_s3",
+                                "BooleanEquals": True,
+                                "Next": "LoadChunksFromS3",
+                            }
+                        ],
+                        "Default": "CheckForChunks",
+                    },
+                    "LoadChunksFromS3": {
+                        "Type": "Task",
+                        "Resource": arns[3],
+                        "Comment": "Load chunks from S3 when payload is too large",
+                        "Parameters": {
+                            "operation": "load_chunks_from_s3",
+                            "chunks_s3_key.$": "$.chunked_data.chunks_s3_key",
+                            "chunks_s3_bucket.$": "$.chunked_data.chunks_s3_bucket",
+                            "batch_id.$": "$.chunked_data.batch_id",
+                        },
+                        "ResultPath": "$.chunked_data",
                         "Next": "CheckForChunks",
                         "Retry": [
                             {
                                 "ErrorEquals": [
                                     "Lambda.ServiceException",
                                     "Lambda.AWSLambdaException",
+                                    "Lambda.ResourceConflictException",
                                 ],
-                                "IntervalSeconds": 1,
-                                "MaxAttempts": 2,
-                                "BackoffRate": 1.5,
+                                "IntervalSeconds": 5,
+                                "MaxAttempts": 5,
+                                "BackoffRate": 2.0,
+                                "JitterStrategy": "FULL",
                             }
                         ],
                         "Catch": [
@@ -265,17 +323,36 @@ class LineEmbeddingWorkflow(ComponentResource):
                             {
                                 "Variable": "$.chunked_data.chunks[0]",
                                 "IsPresent": True,
-                                "Next": "ProcessChunksInParallel",
+                                "Next": "NormalizeChunkData",
                             }
                         ],
                         "Default": "NoChunksToProcess",
+                    },
+                    "NormalizeChunkData": {
+                        "Type": "Pass",
+                        "Comment": "Normalize chunked_data to ensure chunks_s3_key and chunks_s3_bucket always exist",
+                        "Parameters": {
+                            "chunks.$": "$.chunked_data.chunks",
+                            "batch_id.$": "$.chunked_data.batch_id",
+                            "total_chunks.$": "$.chunked_data.total_chunks",
+                            "use_s3.$": "$.chunked_data.use_s3",
+                            "chunks_s3_key.$": "$.chunked_data.chunks_s3_key",
+                            "chunks_s3_bucket.$": "$.chunked_data.chunks_s3_bucket",
+                        },
+                        "ResultPath": "$.chunked_data",
+                        "Next": "ProcessChunksInParallel",
                     },
                     "ProcessChunksInParallel": {
                         "Type": "Map",
                         "Comment": "Process chunks in parallel",
                         "ItemsPath": "$.chunked_data.chunks",
-                        "MaxConcurrency": 15,
-                        "Parameters": {"chunk.$": "$$.Map.Item.Value"},
+                        "MaxConcurrency": 5,
+                        "Parameters": {
+                            "chunk.$": "$$.Map.Item.Value",
+                            "chunks_s3_key.$": "$.chunked_data.chunks_s3_key",
+                            "chunks_s3_bucket.$": "$.chunked_data.chunks_s3_bucket",
+                            "use_s3.$": "$.chunked_data.use_s3",
+                        },
                         "Iterator": {
                             "StartAt": "ProcessSingleChunk",
                             "States": {
@@ -292,18 +369,23 @@ class LineEmbeddingWorkflow(ComponentResource):
                                         "delta_results.$": (
                                             "$.chunk.delta_results"
                                         ),
+                                        "chunks_s3_key.$": "$.chunks_s3_key",
+                                        "chunks_s3_bucket.$": "$.chunks_s3_bucket",
                                         "database": "lines",
                                     },
+                                    # Note: When use_s3=True, delta_results will be null/missing,
+                                    # and the processing Lambda will download from S3 using chunks_s3_key
                                     "End": True,
                                     "Retry": [
                                         {
                                             "ErrorEquals": [
                                                 "Lambda.ServiceException",
                                                 "Lambda.AWSLambdaException",
+                                                "Lambda.ResourceConflictException",
                                                 "Runtime.ExitError",
                                             ],
-                                            "IntervalSeconds": 2,
-                                            "MaxAttempts": 3,
+                                            "IntervalSeconds": 5,
+                                            "MaxAttempts": 5,
                                             "BackoffRate": 2.0,
                                             "JitterStrategy": "FULL",
                                         },
@@ -312,8 +394,8 @@ class LineEmbeddingWorkflow(ComponentResource):
                                                 "Lambda."
                                                 "TooManyRequestsException"
                                             ],
-                                            "IntervalSeconds": 5,
-                                            "MaxAttempts": 3,
+                                            "IntervalSeconds": 10,
+                                            "MaxAttempts": 5,
                                             "BackoffRate": 2.0,
                                         },
                                     ],
@@ -338,6 +420,7 @@ class LineEmbeddingWorkflow(ComponentResource):
                             "total_chunks.$": "$.chunked_data.total_chunks",
                             "chunk_results.$": "$.chunk_results",
                             "group_size": 10,
+                            "poll_results.$": "$.poll_results",
                         },
                         "Next": "CheckChunkGroupCount",
                     },
@@ -354,15 +437,89 @@ class LineEmbeddingWorkflow(ComponentResource):
                         "Default": "PrepareFinalMerge",
                     },
                     "CreateChunkGroups": {
-                        "Type": "Pass",
-                        "Comment": "Create chunk groups for parallel merging (simple grouping for now)",
+                        "Type": "Task",
+                        "Resource": arns[4],
+                        "Comment": "Create chunk groups for parallel merging",
                         "Parameters": {
                             "batch_id.$": "$.batch_id",
-                            "groups.$": "States.ArrayPartition($.chunk_results, 10)",
-                            "total_groups.$": "States.ArrayLength(States.ArrayPartition($.chunk_results, 10))",
+                            "chunk_results.$": "$.chunk_results",
+                            "group_size": 10,
+                            "poll_results.$": "$.poll_results",
+                        },
+                        "ResultPath": "$.chunk_groups",
+                        "Next": "CheckChunkGroupsSource",
+                        "Retry": [
+                            {
+                                "ErrorEquals": [
+                                    "Lambda.ServiceException",
+                                    "Lambda.AWSLambdaException",
+                                    "Lambda.ResourceConflictException",
+                                ],
+                                "IntervalSeconds": 5,
+                                "MaxAttempts": 5,
+                                "BackoffRate": 2.0,
+                                "JitterStrategy": "FULL",
+                            }
+                        ],
+                        "Catch": [
+                            {
+                                "ErrorEquals": ["States.ALL"],
+                                "Next": "GroupCreationFailed",
+                                "ResultPath": "$.error",
+                            }
+                        ],
+                    },
+                    "CheckChunkGroupsSource": {
+                        "Type": "Choice",
+                        "Comment": "Check if groups are in S3 or inline",
+                        "Choices": [
+                            {
+                                "Variable": "$.chunk_groups.use_s3",
+                                "BooleanEquals": True,
+                                "Next": "LoadChunkGroupsFromS3",
+                            }
+                        ],
+                        "Default": "MergeChunkGroupsInParallel",
+                    },
+                    "LoadChunkGroupsFromS3": {
+                        "Type": "Task",
+                        "Resource": arns[4],
+                        "Comment": "Load chunk groups from S3 when payload is too large",
+                        "Parameters": {
+                            "operation": "load_groups_from_s3",
+                            "groups_s3_key.$": "$.chunk_groups.groups_s3_key",
+                            "groups_s3_bucket.$": "$.chunk_groups.groups_s3_bucket",
+                            "batch_id.$": "$.chunk_groups.batch_id",
+                            "poll_results_s3_key.$": "$.chunk_groups.poll_results_s3_key",
+                            "poll_results_s3_bucket.$": "$.chunk_groups.poll_results_s3_bucket",
                         },
                         "ResultPath": "$.chunk_groups",
                         "Next": "MergeChunkGroupsInParallel",
+                        "Retry": [
+                            {
+                                "ErrorEquals": [
+                                    "Lambda.ServiceException",
+                                    "Lambda.AWSLambdaException",
+                                    "Lambda.ResourceConflictException",
+                                ],
+                                "IntervalSeconds": 5,
+                                "MaxAttempts": 5,
+                                "BackoffRate": 2.0,
+                                "JitterStrategy": "FULL",
+                            }
+                        ],
+                        "Catch": [
+                            {
+                                "ErrorEquals": ["States.ALL"],
+                                "Next": "GroupCreationFailed",
+                                "ResultPath": "$.error",
+                            }
+                        ],
+                    },
+                    "GroupCreationFailed": {
+                        "Type": "Fail",
+                        "Error": "GroupCreationFailed",
+                        "Cause": "Failed to create chunk groups",
                     },
                     "MergeChunkGroupsInParallel": {
                         "Type": "Map",
@@ -370,9 +527,11 @@ class LineEmbeddingWorkflow(ComponentResource):
                         "ItemsPath": "$.chunk_groups.groups",
                         "MaxConcurrency": 6,
                         "Parameters": {
-                            "chunk_group.$": "$$.Map.Item.Value",
-                            "batch_id.$": "$.batch_id",
-                            "group_index.$": "$$.Map.Item.Index",
+                            "chunk_group.$": "$$.Map.Item.Value.chunk_group",
+                            "batch_id.$": "$.chunk_groups.batch_id",
+                            "group_index.$": "$$.Map.Item.Value.group_index",
+                            "groups_s3_key.$": "$$.Map.Item.Value.groups_s3_key",
+                            "groups_s3_bucket.$": "$$.Map.Item.Value.groups_s3_bucket",
                         },
                         "Iterator": {
                             "StartAt": "MergeSingleChunkGroup",
@@ -386,6 +545,8 @@ class LineEmbeddingWorkflow(ComponentResource):
                                         "batch_id.$": "States.Format('{}-group-{}', $.batch_id, $.group_index)",
                                         "group_index.$": "$.group_index",
                                         "chunk_group.$": "$.chunk_group",
+                                        "groups_s3_key.$": "$.groups_s3_key",
+                                        "groups_s3_bucket.$": "$.groups_s3_bucket",
                                         "database": "lines",
                                     },
                                     "End": True,
@@ -394,10 +555,11 @@ class LineEmbeddingWorkflow(ComponentResource):
                                             "ErrorEquals": [
                                                 "Lambda.ServiceException",
                                                 "Lambda.AWSLambdaException",
+                                                "Lambda.ResourceConflictException",
                                                 "Runtime.ExitError",
                                             ],
-                                            "IntervalSeconds": 2,
-                                            "MaxAttempts": 3,
+                                            "IntervalSeconds": 5,
+                                            "MaxAttempts": 5,
                                             "BackoffRate": 2.0,
                                             "JitterStrategy": "FULL",
                                         },
@@ -406,6 +568,7 @@ class LineEmbeddingWorkflow(ComponentResource):
                             },
                         },
                         "ResultPath": "$.merged_groups",
+                        "OutputPath": "$",
                         "Next": "PrepareHierarchicalFinalMerge",
                         "Catch": [
                             {
@@ -419,9 +582,12 @@ class LineEmbeddingWorkflow(ComponentResource):
                         "Type": "Pass",
                         "Comment": "Prepare data for final merge of pre-merged groups",
                         "Parameters": {
-                            "batch_id.$": "$.batch_id",
+                            "batch_id.$": "$.chunk_groups.batch_id",
                             "operation": "final_merge",
                             "chunk_results.$": "$.merged_groups",
+                            "poll_results.$": "$.chunk_groups.poll_results",
+                            "poll_results_s3_key.$": "$.chunk_groups.poll_results_s3_key",
+                            "poll_results_s3_bucket.$": "$.chunk_groups.poll_results_s3_bucket",
                         },
                         "Next": "FinalMerge",
                     },
@@ -437,6 +603,7 @@ class LineEmbeddingWorkflow(ComponentResource):
                             "batch_id.$": "$.chunked_data.batch_id",
                             "chunk_results.$": "$.chunk_results",
                             "operation": "final_merge",
+                            "poll_results.$": "$.poll_results",
                         },
                         "Next": "FinalMerge",
                     },
@@ -454,26 +621,66 @@ class LineEmbeddingWorkflow(ComponentResource):
                             "chunk_results.$": "$.chunk_results",
                             "database": "lines",
                         },
+                        "ResultPath": "$.final_merge_result",
+                        "OutputPath": "$",
+                        "Next": "MarkBatchesComplete",
+                        "Retry": [
+                            {
+                                "ErrorEquals": [
+                                    "Lambda.ServiceException",
+                                    "Lambda.AWSLambdaException",
+                                    "Lambda.ResourceConflictException",
+                                    "Runtime.ExitError",
+                                ],
+                                "IntervalSeconds": 5,
+                                "MaxAttempts": 5,
+                                "BackoffRate": 2.0,
+                                "JitterStrategy": "FULL",
+                            },
+                            {
+                                "ErrorEquals": ["States.TaskFailed"],
+                                "IntervalSeconds": 10,
+                                "MaxAttempts": 3,
+                                "BackoffRate": 2.0,
+                            },
+                        ],
+                    },
+                    "MarkBatchesComplete": {
+                        "Type": "Task",
+                        "Resource": arns[5],
+                        "Comment": "Mark batch summaries as COMPLETED after successful compaction",
+                        "Parameters": {
+                            "poll_results.$": "$.poll_results",
+                            "poll_results_s3_key.$": "$.poll_results_s3_key",
+                            "poll_results_s3_bucket.$": "$.poll_results_s3_bucket",
+                        },
+                        "ResultPath": "$.mark_complete_result",
                         "End": True,
                         "Retry": [
                             {
                                 "ErrorEquals": [
                                     "Lambda.ServiceException",
                                     "Lambda.AWSLambdaException",
-                                    "Runtime.ExitError",
+                                    "Lambda.ResourceConflictException",
                                 ],
-                                "IntervalSeconds": 1,
+                                "IntervalSeconds": 5,
                                 "MaxAttempts": 3,
-                                "BackoffRate": 1.5,
-                                "JitterStrategy": "FULL",
-                            },
-                            {
-                                "ErrorEquals": ["States.TaskFailed"],
-                                "IntervalSeconds": 3,
-                                "MaxAttempts": 2,
                                 "BackoffRate": 2.0,
-                            },
+                                "JitterStrategy": "FULL",
+                            }
                         ],
+                        "Catch": [
+                            {
+                                "ErrorEquals": ["States.ALL"],
+                                "Next": "MarkCompleteFailed",
+                                "ResultPath": "$.mark_complete_error",
+                            }
+                        ],
+                    },
+                    "MarkCompleteFailed": {
+                        "Type": "Fail",
+                        "Error": "MarkCompleteFailed",
+                        "Cause": "Failed to mark batches as complete (compaction succeeded but marking failed)",
                     },
                     "ChunkProcessingFailed": {
                         "Type": "Fail",
