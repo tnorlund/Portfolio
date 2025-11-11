@@ -409,7 +409,7 @@ const AddressSimilaritySideBySide: React.FC = () => {
         flexDirection: "row",
         gap: "1.5rem",
         width: "100%",
-        maxWidth: "1200px",
+        maxWidth: "900px",
         margin: "0 auto",
         padding: "1rem",
       }}
@@ -439,7 +439,7 @@ const AddressSimilaritySideBySide: React.FC = () => {
       {/* Similar receipts stacked on the right */}
       <div
         style={{
-          flex: "1 1 auto",
+          flex: "0 0 45%",
           minWidth: 0,
         }}
       >
@@ -456,7 +456,7 @@ const AddressSimilaritySideBySide: React.FC = () => {
             // Distribute cards evenly across the height of the container
             // Position each card's center at (n+1)/(N+1) of the container height
             const containerHeight = windowWidth <= 768 ? 400 : 700;
-            const containerWidth = 600; // Approximate width of the right column
+            const containerWidth = 405; // Approximate width of the right column (45% of 900px max-width)
             const totalCards = data.similar.length;
 
             // Calculate target center Y position: (index + 1) / (totalCards + 1) of container height
@@ -468,7 +468,8 @@ const AddressSimilaritySideBySide: React.FC = () => {
             if (!cardDims) {
               // Estimate based on typical card width and aspect ratio
               // Cards are typically around 400-500px wide, height depends on crop aspect ratio
-              const estimatedWidth = 450;
+              // Scaled to 75% of original size
+              const estimatedWidth = 337.5;
               // Use a reasonable default aspect ratio (most address crops are wide)
               const estimatedAspectRatio = 3.5; // width/height ratio
               cardDims = { width: estimatedWidth, height: estimatedWidth / estimatedAspectRatio };
@@ -508,10 +509,11 @@ const AddressSimilaritySideBySide: React.FC = () => {
             // Generate consistent random values based on receipt ID and index
             // Use both receipt_id and index with a large multiplier to ensure variety
             // Also mix in image_id hash if available for more entropy
+            // Add a constant offset to ensure index 0 also gets varied rotations
             const imageIdHash = similar.receipt.image_id
               ? similar.receipt.image_id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
               : 0;
-            const seed = (similar.receipt.receipt_id * 7919) + (index * 9973) + (imageIdHash * 1013);
+            const seed = (similar.receipt.receipt_id * 7919) + (index * 9973) + (imageIdHash * 1013) + 12345;
 
             const { rotation, translateX, translateY } = getRandomTransform(
               seed,
@@ -522,14 +524,11 @@ const AddressSimilaritySideBySide: React.FC = () => {
               topPosition
             );
 
-            // Horizontal offset for depth effect (smaller than before since we're spreading vertically)
-            const horizontalOffset = index * 4; // 4px offset per card
-
             const zIndex = data.similar.length - index; // Higher z-index for cards on top
 
             // Base transform with random rotation and translation
             // translateY is already constrained by bounds checking, so we can apply it directly
-            const baseTransform = `translate(${translateX + horizontalOffset}px, ${translateY}px) rotate(${rotation}deg)`;
+            const baseTransform = `translate(${translateX}px, ${translateY}px) rotate(${rotation}deg)`;
 
             return (
               <div
@@ -537,8 +536,8 @@ const AddressSimilaritySideBySide: React.FC = () => {
                 style={{
                   position: "absolute",
                   top: `${topPosition}px`,
-                  left: `${horizontalOffset}px`,
-                  right: `${horizontalOffset}px`,
+                  left: "0px",
+                  right: "0px",
                   zIndex,
                   transform: baseTransform,
                   transformOrigin: "center center",
