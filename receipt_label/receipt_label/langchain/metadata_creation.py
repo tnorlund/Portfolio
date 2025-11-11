@@ -2,7 +2,7 @@
 
 import os
 import time
-from typing import Any, Optional
+from typing import Any, Optional, Callable
 
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
@@ -13,6 +13,7 @@ from receipt_label.langchain.state.metadata_creation import MetadataCreationStat
 from receipt_label.langchain.nodes.metadata_creation import (
     load_receipt_data_for_metadata,
     extract_merchant_info,
+    check_chromadb,
     create_receipt_metadata,
 )
 from receipt_label.langchain.nodes.metadata_creation.search_places_agent import (
@@ -24,6 +25,8 @@ def create_metadata_creation_graph(
     google_places_api_key: str,
     ollama_api_key: str,
     thinking_strength: str = "medium",
+    chroma_line_client: Optional[Any] = None,
+    embed_fn: Optional[Callable[[list[str]], list[list[float]]]] = None,
 ) -> CompiledStateGraph:
     """Create LangGraph workflow for metadata creation with secure API key injection.
 
@@ -33,6 +36,8 @@ def create_metadata_creation_graph(
         google_places_api_key: Google Places API key (injected via closure)
         ollama_api_key: Ollama Cloud API key (injected via closure, required)
         thinking_strength: Ollama thinking strength - "low", "medium", or "high" (default: "medium")
+        chroma_line_client: Optional ChromaDB client for fast-path matching
+        embed_fn: Optional embedding function for ChromaDB queries
 
     Returns:
         Compiled LangGraph state graph
@@ -40,6 +45,24 @@ def create_metadata_creation_graph(
     workflow = StateGraph(MetadataCreationState)
 
     # Create nodes with API keys injected via closures (secure)
+    async def check_chromadb_with_client(state):
+        """Check ChromaDB node with client from closure scope"""
+        try:
+            return await check_chromadb(
+                state,
+                chroma_line_client=chroma_line_client,
+                embed_fn=embed_fn,
+                threshold=0.7,
+            )
+        except Exception as e:
+            return {
+                "chroma_candidates": [],
+                "use_chroma": False,
+                "chroma_best": None,
+                "error_count": state.error_count + 1,
+                "last_error": str(e),
+            }
+
     async def extract_with_key(state):
         """Extract merchant info node with Ollama Cloud API key from closure scope"""
         try:
@@ -77,13 +100,21 @@ def create_metadata_creation_graph(
 
     # Add nodes
     workflow.add_node("load_data", load_receipt_data_for_metadata)
+    # Add ChromaDB check node only if client is available
+    if chroma_line_client and embed_fn:
+        workflow.add_node("check_chromadb", check_chromadb_with_client)
     workflow.add_node("extract_merchant_info", extract_with_key)
     workflow.add_node("search_places", search_with_key)
     workflow.add_node("create_metadata", create_receipt_metadata)
 
     # Define the flow
     workflow.add_edge(START, "load_data")
-    workflow.add_edge("load_data", "extract_merchant_info")
+    if chroma_line_client and embed_fn:
+        # Include ChromaDB check before extraction
+        workflow.add_edge("load_data", "check_chromadb")
+        workflow.add_edge("check_chromadb", "extract_merchant_info")
+    else:
+        workflow.add_edge("load_data", "extract_merchant_info")
     workflow.add_edge("extract_merchant_info", "search_places")
     workflow.add_edge("search_places", "create_metadata")
     workflow.add_edge("create_metadata", END)
@@ -101,6 +132,8 @@ async def create_receipt_metadata_simple(
     thinking_strength: str = "medium",  # low, medium, high
     receipt_lines: Optional[list] = None,
     receipt_words: Optional[list] = None,
+    chroma_line_client: Optional[Any] = None,  # Optional ChromaDB client for fast-path
+    embed_fn: Optional[callable] = None,  # Optional embedding function for ChromaDB
 ) -> Any:  # Returns ReceiptMetadata
     """Create ReceiptMetadata for a receipt using LangGraph workflow with Ollama Cloud.
 
@@ -117,6 +150,8 @@ async def create_receipt_metadata_simple(
         thinking_strength: Ollama thinking strength - "low", "medium", or "high" (default: "medium")
         receipt_lines: Optional pre-fetched receipt lines
         receipt_words: Optional pre-fetched receipt words
+        chroma_line_client: Optional ChromaDB client for fast-path matching
+        embed_fn: Optional embedding function for ChromaDB queries
 
     Returns:
         ReceiptMetadata object (or None if creation failed)
@@ -146,6 +181,8 @@ async def create_receipt_metadata_simple(
         google_places_api_key=google_places_api_key,
         ollama_api_key=ollama_api_key,
         thinking_strength=thinking_strength,
+        chroma_line_client=chroma_line_client,
+        embed_fn=embed_fn,
     )
 
     # Setup LangSmith tracing with secure API key handling (required)

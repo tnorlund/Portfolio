@@ -6,9 +6,7 @@ import logging
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities.compaction_run import CompactionRun
-from receipt_label.data.places_api import PlacesAPI
 from receipt_label.vector_store import VectorClient
-from receipt_label.merchant_resolution.resolver import resolve_receipt
 from receipt_label.merchant_resolution.contexts import load_receipt_context
 from receipt_label.merchant_resolution.embeddings import upsert_embeddings
 from receipt_label.embedding.line.realtime import embed_lines_realtime
@@ -76,31 +74,68 @@ def lambda_handler(event, _context):
     )
 
     dynamo = DynamoClient(table)
-    places_api = PlacesAPI(api_key=os.environ.get("GOOGLE_PLACES_API_KEY"))
 
-    # Read-only remote Chroma for queries via vector store HTTP client
-    line_client = None
-    if chroma_endpoint:
-        line_client = VectorClient.create_chromadb_client(
-            mode="read", http_url=chroma_endpoint
-        )
+    # Get API keys
+    google_places_key = os.environ.get("GOOGLE_PLACES_API_KEY")
+    ollama_key = os.environ.get("OLLAMA_API_KEY")
+    langchain_key = os.environ.get("LANGCHAIN_API_KEY")
 
+    if not ollama_key:
+        raise ValueError("OLLAMA_API_KEY is required for LangGraph metadata creation")
+    if not langchain_key:
+        raise ValueError("LANGCHAIN_API_KEY is required for LangGraph metadata creation")
+
+    # Load receipt context first (needed for embeddings anyway)
     key = (image_id, receipt_id)
+    ctx = load_receipt_context(dynamo, key)
+    receipt_lines = ctx.get("lines", [])
+    receipt_words = ctx.get("words", [])
+
+    # Optional ChromaDB client for fast-path (non-time-sensitive, can use HTTP or S3)
+    chroma_line_client = None
+    embed_fn = None
+    if chroma_endpoint:
+        try:
+            chroma_line_client = VectorClient.create_chromadb_client(
+                mode="read", http_url=chroma_endpoint
+            )
+            logger.info("Using HTTP ChromaDB endpoint for optional fast-path")
+            embed_fn = _embed_fn_from_openai_texts
+        except Exception as e:
+            logger.warning(f"Failed to create HTTP ChromaDB client: {e}. Proceeding without ChromaDB fast-path.")
+
+    # Create metadata using LangGraph workflow
+    # Pass lines and words directly (already loaded) to avoid re-reading from DynamoDB
     t_resolve = time.time()
-    resolution = resolve_receipt(
-        key=key,
-        dynamo=dynamo,
-        places_api=places_api,
-        chroma_line_client=line_client,
-        embed_fn=_embed_fn_from_openai_texts,
-        write_metadata=True,
+    import asyncio
+    from receipt_label.langchain.metadata_creation import create_receipt_metadata_simple
+
+    logger.info("Creating ReceiptMetadata using LangGraph workflow")
+    metadata = asyncio.run(
+        create_receipt_metadata_simple(
+            client=dynamo,
+            image_id=image_id,
+            receipt_id=receipt_id,
+            google_places_api_key=google_places_key,
+            ollama_api_key=ollama_key,
+            langsmith_api_key=langchain_key,
+            thinking_strength="medium",
+            receipt_lines=receipt_lines,  # Pass entities directly to avoid re-reading
+            receipt_words=receipt_words,  # Pass entities directly to avoid re-reading
+            chroma_line_client=chroma_line_client,  # Optional fast-path
+            embed_fn=embed_fn,  # Optional embedding function
+        )
     )
+
+    wrote_metadata = metadata is not None
     logger.info(
         "resolved receipt",
         extra={
             "image_id": image_id,
             "receipt_id": receipt_id,
-            "wrote_metadata": bool(resolution.get("wrote_metadata")),
+            "wrote_metadata": wrote_metadata,
+            "merchant_name": metadata.merchant_name if metadata else None,
+            "place_id": metadata.place_id if metadata else None,
             "duration_ms": int((time.time() - t_resolve) * 1000),
         },
     )
@@ -126,12 +161,8 @@ def lambda_handler(event, _context):
         },
     )
 
-    ctx = load_receipt_context(dynamo, key)
-    merchant_name = None
-    for c in resolution.get("decision", {}).get("candidates", []) or []:
-        if c.get("source") == "places" and c.get("name"):
-            merchant_name = c.get("name")
-            break
+    # Use merchant name from metadata if available
+    merchant_name = metadata.merchant_name if metadata else None
 
     t_upsert = time.time()
     upsert_embeddings(
@@ -212,7 +243,7 @@ def lambda_handler(event, _context):
     )
 
     result = {
-        "wrote_metadata": bool(resolution.get("wrote_metadata")),
+        "wrote_metadata": wrote_metadata,
         "run_id": run_id,
         "lines_prefix": lines_prefix,
         "words_prefix": words_prefix,

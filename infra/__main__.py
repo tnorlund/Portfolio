@@ -37,7 +37,6 @@ from pulumi import ResourceOptions
 from raw_bucket import raw_bucket  # Import the actual bucket instance
 from s3_website import site_bucket  # Import the site bucket instance
 from upload_images import UploadImages
-from validate_merchant_step_functions import ValidateMerchantStepFunctions
 from validation_by_merchant import ValidationByMerchantStepFunction
 from validation_pipeline import ValidationPipeline
 
@@ -321,18 +320,12 @@ orchestrator = ChromaOrchestrator(
 
 pulumi.export("chroma_orchestrator_sfn_arn", orchestrator.state_machine.arn)
 
-# Now that Chroma service exists, wire merchant validation with warm-up and HTTP endpoint
-# TEMPORARILY DISABLED - ECR permissions issue
-# validate_merchant_step_functions = ValidateMerchantStepFunctions(
-#     "validate-merchant",
-#     vpc_subnet_ids=nat.private_subnet_ids,
-#     security_group_id=security.sg_lambda_id,
-#     chroma_http_endpoint=chroma_service.endpoint_dns,
-#     ecs_cluster_arn=chroma_service.cluster.arn,
-#     ecs_service_arn=chroma_service.svc.arn,
-#     nat_instance_id=nat.nat_instance_id,
-#     chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
-# )
+# ValidateMerchantStepFunctions removed - redundant with LangGraph metadata creation
+# Metadata is now created by:
+# - Upload OCR Handler (LangGraph)
+# - Upload Container Handler (LangGraph)
+# - Embedding polling handlers (LangGraph)
+# Consolidation and batch cleaning can be added as standalone Lambdas if needed
 
 # Wire upload-images after NAT and Chroma are available so it can reach OpenAI and Chroma
 # When using EFS, use only first private subnet to ensure Lambda is in subnet with EFS mount target
