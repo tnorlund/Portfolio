@@ -19,7 +19,7 @@ import {
   ScanReceiptBoundingBox,
   UploadDiagram,
   ZDepthConstrained,
-  ZDepthUnconstrained
+  ZDepthUnconstrained,
 } from "../components/ui/Figures";
 import {
   ChromaLogo,
@@ -27,7 +27,7 @@ import {
   GithubLogo,
   GoogleMapsLogo,
   HuggingFaceLogo,
-  PulumiLogo
+  PulumiLogo,
 } from "../components/ui/Logos";
 
 interface ReceiptPageProps {
@@ -40,7 +40,7 @@ export const getStaticProps: GetStaticProps<ReceiptPageProps> = async () => {
   // We need 30 bits per stream, and there are up to 8 phases with multiple paths
   // Generate 240 to ensure we have enough for all possible bit streams
   const uploadDiagramChars = Array.from({ length: 120 }, () =>
-    Math.random() > 0.5 ? "1" : "0"
+    Math.random() > 0.5 ? "1" : "0",
   );
 
   return {
@@ -76,7 +76,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
     setApiUrl(
       isDevelopment
         ? "https://dev-upload.tylernorlund.com"
-        : "https://upload.tylernorlund.com"
+        : "https://upload.tylernorlund.com",
     );
   }, []);
 
@@ -100,7 +100,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
 
           if (!presignRes.ok) {
             throw new Error(
-              `Failed to request upload URL for ${file.name} (status ${presignRes.status})`
+              `Failed to request upload URL for ${file.name} (status ${presignRes.status})`,
             );
           }
 
@@ -119,7 +119,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         }
 
         setMessage(
-          `Upload successful: ${selectedFiles.map((f) => f.name).join(", ")}`
+          `Upload successful: ${selectedFiles.map((f) => f.name).join(", ")}`,
         );
         setFiles([]);
       } catch (err) {
@@ -129,7 +129,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         setUploading(false);
       }
     },
-    [apiUrl]
+    [apiUrl],
   );
 
   const handleDrop = useCallback(
@@ -143,7 +143,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         await uploadToS3Internal(newFiles);
       }
     },
-    [uploadToS3Internal]
+    [uploadToS3Internal],
   );
 
   const handleDragOver = useCallback((e: DragEvent) => {
@@ -171,7 +171,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         uploadToS3Internal(newFiles);
       }
     },
-    [uploadToS3Internal]
+    [uploadToS3Internal],
   );
 
   useEffect(() => {
@@ -417,10 +417,11 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
 
       <h2>Identifying the Merchant</h2>
       <p>
-        Knowing which business a receipt comes from allows for faster processing. I wrote
-        an agent that uses Google Maps to identify the business the receipt
-        came from. The AI agent is able to consider OCR errors, "Mestlake"
-        instead of "Westlake", and still identify the correct business.
+        Knowing which business a receipt comes from allows for faster
+        processing. I wrote an agent that uses Google Maps to identify the
+        business the receipt came from. The AI agent is able to consider OCR
+        errors, "Mestlake" instead of "Westlake", and still identify the correct
+        business.
       </p>
 
       <ClientOnly>
@@ -430,8 +431,8 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       </ClientOnly>
 
       <p>
-        The agent tries multiple strategies to identify the business. I give
-        it the tools to search by phone, address, and text. When one approach
+        The agent tries multiple strategies to identify the business. I give it
+        the tools to search by phone, address, and text. When one approach
         fails, it combines the other approaches to identify the business.
       </p>
 
@@ -453,9 +454,9 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
 
       <p>
         Chroma stores text as vector embeddings: a numerical representation of
-        the text. Describing text as numbers allows for easy comparison in larger datasets.
-        When I search for '1012 Westlake Blvd', it finds similar addresses even if the wording is slightly
-        different.
+        the text. Describing text as numbers allows for easy comparison in
+        larger datasets. When I search for '1012 Westlake Blvd', it finds
+        similar addresses even if the wording is slightly different.
       </p>
 
       <ClientOnly>
@@ -464,7 +465,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
 
       <p>
         When Chroma finds another receipt with the same address, phone number,
-        or URL, I can skip Google Places and reuse the information from the
+        or URL, I can skip Google Maps and reuse the information from the
         previous receipt, making this process faster and cheaper.
       </p>
 
@@ -502,10 +503,11 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       </ClientOnly>
 
       <p>
-        Training the model to produce the best results means finding the right settings. Instead of
-        trying every possible setting, I use an LLM to review training results and
-        suggest which settings to try next. It learns what works and what
-        doesn't, helping me find better configurations faster.
+        Training the model to produce the best results means finding the right
+        settings. Instead of trying every possible setting, I use an LLM to
+        review training results and suggest which settings to try next. It
+        learns what works and what doesn't, helping me find better
+        configurations faster.
       </p>
 
       <h1>Conclusion</h1>
