@@ -98,8 +98,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         event: Lambda event containing:
             - operation: "split" (default) or "load_chunks_from_s3"
             - For "split":
-                - batch_id: Unique identifier for this compaction batch
-                - poll_results: Array of delta results from polling
+            - batch_id: Unique identifier for this compaction batch
+            - poll_results: Array of delta results from polling
             - For "load_chunks_from_s3":
                 - chunks_s3_key: S3 key where chunks are stored
                 - chunks_s3_bucket: S3 bucket where chunks are stored
@@ -360,7 +360,7 @@ def _split_into_chunks(event: Dict[str, Any]) -> Dict[str, Any]:
                 "use_s3": False,
                 "chunks_s3_key": None,  # Always include these fields for consistency
                 "chunks_s3_bucket": None,
-            }
+        }
 
     except ValueError as e:
         logger.error("Validation error: %s", str(e))

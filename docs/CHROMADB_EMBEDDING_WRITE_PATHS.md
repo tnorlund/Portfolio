@@ -359,3 +359,5 @@ aws logs tail /aws/lambda/chromadb-dev-docker-dev --follow
 
 
 
+
+
