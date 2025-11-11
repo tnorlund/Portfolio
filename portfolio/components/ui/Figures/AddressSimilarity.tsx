@@ -282,14 +282,34 @@ const AddressSimilarity: React.FC<AddressSimilarityProps> = ({
     typeof window !== "undefined" ? window.innerWidth : 1024
   );
 
+  // Track actual container width using a ref
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState<number | null>(null);
+
   useEffect(() => {
     const handleResize = () => {
       setWindowWidth(window.innerWidth);
+      // Measure actual container width
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        setContainerWidth(rect.width);
+      }
     };
+
+    // Initial measurement
+    handleResize();
 
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
+
+  // Measure container width when it becomes available
+  useEffect(() => {
+    if (containerRef.current && !containerWidth) {
+      const rect = containerRef.current.getBoundingClientRect();
+      setContainerWidth(rect.width);
+    }
+  }, [data, containerWidth]);
 
   // Calculate positions for similar receipts (right side)
   const positions = useMemo(() => {
@@ -299,22 +319,36 @@ const AddressSimilarity: React.FC<AddressSimilarityProps> = ({
     const imageWidth = 150;
     const imageHeight = 200; // Estimated height for cropped address section
 
-    let containerWidth = windowWidth;
-    if (windowWidth <= 480) {
-      containerWidth = windowWidth * 0.9;
-    } else if (windowWidth <= 768) {
-      containerWidth = Math.min(windowWidth, 600);
-    } else if (windowWidth <= 1024) {
-      containerWidth = Math.min(windowWidth, 900);
+    // Use actual container width if available, otherwise fall back to window width calculation
+    const isMobile = windowWidth <= 768;
+    let rightSideWidth: number;
+    
+    if (containerWidth) {
+      // Use actual measured container width
+      rightSideWidth = containerWidth;
     } else {
-      containerWidth = Math.min(windowWidth, 1200);
+      // Fallback calculation
+      let calculatedContainerWidth = windowWidth;
+      if (windowWidth <= 480) {
+        calculatedContainerWidth = windowWidth * 0.9;
+      } else if (windowWidth <= 768) {
+        calculatedContainerWidth = Math.min(windowWidth, 600);
+      } else if (windowWidth <= 1024) {
+        calculatedContainerWidth = Math.min(windowWidth, 900);
+      } else {
+        calculatedContainerWidth = Math.min(windowWidth, 1200);
+      }
+
+      const containerPadding = windowWidth <= 480 ? 16 : 32;
+      const effectiveWidth = calculatedContainerWidth - containerPadding * 2;
+      // On mobile, items stack vertically so each side takes full width
+      // On desktop, items are side-by-side so each side takes half width
+      rightSideWidth = isMobile ? effectiveWidth : effectiveWidth * 0.5;
     }
 
-    const containerPadding = windowWidth <= 480 ? 16 : 32;
-    const effectiveWidth = containerWidth - containerPadding * 2;
-    const rightSideWidth = effectiveWidth * 0.5; // Right half of container
     const imageWidthPercent = (imageWidth / rightSideWidth) * 100;
-    const maxLeftPercent = Math.max(10, 100 - imageWidthPercent - 5);
+    // Ensure we don't exceed container bounds, with some margin
+    const maxLeftPercent = Math.max(5, Math.min(95, 100 - imageWidthPercent - 5));
 
     const maxTopPx = containerHeight - imageHeight - 50;
 
@@ -335,10 +369,10 @@ const AddressSimilarity: React.FC<AddressSimilarityProps> = ({
       return {
         rotation,
         topOffset: Math.round(finalTop),
-        leftPercent: Math.min(biasedLeft, maxLeftPercent),
+        leftPercent: Math.min(Math.max(5, biasedLeft), maxLeftPercent), // Clamp between 5% and maxLeftPercent
       };
     });
-  }, [data, windowWidth]);
+  }, [data, windowWidth, containerWidth]);
 
 
   useEffect(() => {
@@ -425,11 +459,14 @@ const AddressSimilarity: React.FC<AddressSimilarityProps> = ({
       ref={ref}
       style={{
         width: "100%",
+        maxWidth: "100%",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
         marginTop: "6rem",
-        padding: "2rem",
+        padding: windowWidth <= 768 ? "1rem" : "2rem",
+        boxSizing: "border-box",
+        overflowX: "hidden",
       }}
     >
       <h2 style={{ marginBottom: "3rem", fontSize: "2rem", fontWeight: "bold" }}>
@@ -444,6 +481,7 @@ const AddressSimilarity: React.FC<AddressSimilarityProps> = ({
           width: "100%",
           maxWidth: "1200px",
           alignItems: "flex-start",
+          boxSizing: "border-box",
         }}
       >
         {/* Original Address (Left Side) */}
@@ -484,6 +522,7 @@ const AddressSimilarity: React.FC<AddressSimilarityProps> = ({
             Similar Addresses ({data.similar.length})
           </h3>
           <div
+            ref={containerRef}
             style={{
               position: "relative",
               width: "100%",
