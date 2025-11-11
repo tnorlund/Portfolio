@@ -8,6 +8,8 @@
 
 ## Interfaces
 
+- [AddressBoundingBox](interfaces/AddressBoundingBox.md)
+- [AddressSimilarityResponse](interfaces/AddressSimilarityResponse.md)
 - [BoundingBox](interfaces/BoundingBox.md)
 - [Image](interfaces/Image.md)
 - [ImageCountApiResponse](interfaces/ImageCountApiResponse.md)
