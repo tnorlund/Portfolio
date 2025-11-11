@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { api } from "../../../services/api";
-import { AddressSimilarityResponse, BoundingBox } from "../../../types/api";
+import { AddressSimilarityResponse, AddressBoundingBox } from "../../../types/api";
 import {
   detectImageFormatSupport,
 } from "../../../utils/imageFormat";
@@ -193,7 +193,7 @@ const AddressSimilaritySideBySide: React.FC = () => {
 
   // Helper function to calculate crop region from bbox or lines
   const calculateCropRegion = (
-    apiBbox: BoundingBox | undefined,
+    apiBbox: AddressBoundingBox | undefined,
     lines: any[] | undefined,
     receipt: any
   ) => {
@@ -281,7 +281,7 @@ const AddressSimilaritySideBySide: React.FC = () => {
   const renderCroppedReceipt = (
     receipt: any,
     lines: any[],
-    apiBbox: BoundingBox | undefined,
+    apiBbox: AddressBoundingBox | undefined,
     receiptId: number,
     label?: string,
     noMargin?: boolean,

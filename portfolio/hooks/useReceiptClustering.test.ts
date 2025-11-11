@@ -14,6 +14,7 @@ const createMockLine = (
   line_id: id,
   text: `Line ${id}`,
   bounding_box: { x, y, width, height },
+
   top_left: { x, y: y + height },
   top_right: { x: x + width, y: y + height },
   bottom_left: { x, y },

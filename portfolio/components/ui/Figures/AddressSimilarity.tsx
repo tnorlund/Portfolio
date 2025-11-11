@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import NextImage from "next/image";
 import { api } from "../../../services/api";
-import { AddressSimilarityResponse, Receipt, Line, BoundingBox } from "../../../types/api";
+import { AddressSimilarityResponse, Receipt, Line, AddressBoundingBox } from "../../../types/api";
 import useOptimizedInView from "../../../hooks/useOptimizedInView";
 import {
   detectImageFormatSupport,
@@ -19,7 +19,7 @@ interface SimilarReceiptItemProps {
   onLoad: () => void;
   shouldAnimate: boolean;
   fadeDelay: number;
-  bbox?: BoundingBox;
+  bbox?: AddressBoundingBox;
 }
 
 const SimilarReceiptItem = React.memo<SimilarReceiptItemProps>(

@@ -36,7 +36,7 @@ describe('useReceiptGeometry', () => {
     );
 
     const first = result.current;
-    const newLines = [...lines, { ...baseLine, line_id: 2, top_left: { x: 0, y: 2 }, top_right: { x: 1, y: 2 }, bottom_left: { x: 0, y: 1 }, bottom_right: { x: 1, y: 1 } }];
+    const newLines = [...lines, { ...baseLine, line_id: 2, bounding_box: { x: 0, y: 1, width: 1, height: 1 }, top_left: { x: 0, y: 2 }, top_right: { x: 1, y: 2 }, bottom_left: { x: 0, y: 1 }, bottom_right: { x: 1, y: 1 } }];
     rerender({ input: newLines });
     expect(result.current).not.toBe(first);
   });

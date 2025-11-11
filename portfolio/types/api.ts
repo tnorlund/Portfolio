@@ -38,7 +38,7 @@ export interface Point {
   y: number;
 }
 
-export interface BoundingBox {
+export interface AddressBoundingBox {
   tl: Point; // top-left
   tr: Point; // top-right
   bl: Point; // bottom-left
@@ -180,7 +180,7 @@ export interface AddressSimilarityResponse {
     lines: Line[];
     words: Word[];
     labels: ReceiptWordLabel[];
-    bbox?: BoundingBox;
+    bbox?: AddressBoundingBox;
     address_text?: string;
     selected_group?: number[];
   };
@@ -190,7 +190,7 @@ export interface AddressSimilarityResponse {
     words: Word[];
     labels: ReceiptWordLabel[];
     similarity_distance: number;
-    bbox?: BoundingBox;
+    bbox?: AddressBoundingBox;
     address_text?: string;
   }>;
   cached_at: string;

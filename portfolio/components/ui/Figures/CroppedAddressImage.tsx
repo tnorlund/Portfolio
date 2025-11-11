@@ -1,6 +1,6 @@
 import NextImage from "next/image";
 import React, { useMemo, useState, useCallback } from "react";
-import { Line, Receipt, BoundingBox } from "../../../types/api";
+import { Line, Receipt, AddressBoundingBox } from "../../../types/api";
 import { getBestImageUrl } from "../../../utils/imageFormat";
 
 interface CroppedAddressImageProps {
@@ -12,7 +12,7 @@ interface CroppedAddressImageProps {
   onLoad?: () => void;
   onError?: (error: Error) => void;
   debug?: boolean;
-  bbox?: BoundingBox;
+  bbox?: AddressBoundingBox;
 }
 
 /**
