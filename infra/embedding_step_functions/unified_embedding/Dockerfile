@@ -19,8 +19,15 @@ RUN pip install --no-cache-dir /tmp/receipt_dynamo && \
 # Stage 2: Copy Lambda-specific code (changes frequently, but doesn't invalidate deps cache)
 FROM dependencies
 
-# Copy the embedding handler module
-COPY infra/embedding_step_functions/unified_embedding/ ${LAMBDA_TASK_ROOT}/
+# Copy the embedding handler and supporting files (matches compactor pattern)
+COPY infra/embedding_step_functions/unified_embedding/handler.py ${LAMBDA_TASK_ROOT}/handler.py
+COPY infra/embedding_step_functions/unified_embedding/router.py ${LAMBDA_TASK_ROOT}/router.py
+COPY infra/embedding_step_functions/unified_embedding/config.py ${LAMBDA_TASK_ROOT}/config.py
+COPY infra/embedding_step_functions/unified_embedding/__init__.py ${LAMBDA_TASK_ROOT}/__init__.py
+# Copy handlers directory
+COPY infra/embedding_step_functions/unified_embedding/handlers/ ${LAMBDA_TASK_ROOT}/handlers/
+# Copy utils directory
+COPY infra/embedding_step_functions/unified_embedding/utils/ ${LAMBDA_TASK_ROOT}/utils/
 
 # Set the handler
 CMD ["handler.lambda_handler"]
