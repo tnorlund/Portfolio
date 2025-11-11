@@ -420,7 +420,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         Knowing which business a receipt comes from allows for faster
         processing. I wrote an agent that uses Google Maps to identify the
         business the receipt came from. The AI agent is able to consider OCR
-        errors, "Mestlake" instead of "Westlake", and still identify the correct
+        errors, &quot;Mestlake&quot; instead of &quot;Westlake&quot;, and still identify the correct
         business.
       </p>
 
@@ -441,7 +441,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       <h2>Finding Similar Receipts</h2>
 
       <p>
-        Once I've identified the business, I can reuse that information for
+        Once I&apos;ve identified the business, I can reuse that information for
         similar receipts. I use Chroma to find similar receipts by comparing
         addresses, phone numbers, and URLs.
       </p>
@@ -455,7 +455,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       <p>
         Chroma stores text as vector embeddings: a numerical representation of
         the text. Describing text as numbers allows for easy comparison in
-        larger datasets. When I search for '1012 Westlake Blvd', it finds
+        larger datasets. When I search for &apos;1012 Westlake Blvd&apos;, it finds
         similar addresses even if the wording is slightly different.
       </p>
 
@@ -506,7 +506,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         Training the model to produce the best results means finding the right
         settings. Instead of trying every possible setting, I use an LLM to
         review training results and suggest which settings to try next. It
-        learns what works and what doesn't, helping me find better
+        learns what works and what doesn&apos;t, helping me find better
         configurations faster.
       </p>
 
