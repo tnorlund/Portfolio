@@ -106,6 +106,20 @@ const AddressSimilaritySideBySide: React.FC = () => {
     [key: number]: { width: number; height: number };
   }>({});
 
+  // Track window resize to adjust height on mobile
+  const [windowWidth, setWindowWidth] = useState(
+    typeof window !== "undefined" ? window.innerWidth : 1024
+  );
+
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowWidth(window.innerWidth);
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   // Detect image format support
   useEffect(() => {
     detectImageFormatSupport().then(setFormatSupport);
@@ -434,14 +448,14 @@ const AddressSimilaritySideBySide: React.FC = () => {
           style={{
             position: "relative",
             width: "100%",
-            height: "700px",
+            height: windowWidth <= 768 ? "400px" : "700px",
             overflow: "visible",
           }}
         >
           {data.similar.map((similar, index) => {
-            // Distribute cards evenly across the height of the container (700px)
+            // Distribute cards evenly across the height of the container
             // Position each card's center at (n+1)/(N+1) of the container height
-            const containerHeight = 700;
+            const containerHeight = windowWidth <= 768 ? 400 : 700;
             const containerWidth = 600; // Approximate width of the right column
             const totalCards = data.similar.length;
 

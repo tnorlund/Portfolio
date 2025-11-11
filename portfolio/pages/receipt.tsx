@@ -502,7 +502,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       </ClientOnly>
 
       <p>
-        Trainign the model well means finding the right settings. Instead of
+        Training the model to produce the best results means finding the right settings. Instead of
         trying every possible setting, I use an agent to review results and
         suggest which settings to try next. It learns what works and what
         doesn't, helping me find the best way to implement this.
