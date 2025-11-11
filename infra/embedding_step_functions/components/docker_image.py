@@ -12,6 +12,7 @@ from pulumi_aws.ecr import (
     Repository,
     RepositoryImageScanningConfigurationArgs,
     LifecyclePolicy,
+    RepositoryPolicy,
 )
 
 # Import the CodeBuildDockerImage component
@@ -169,10 +170,34 @@ class DockerImageComponent(ComponentResource):
             opts=ResourceOptions(parent=self, depends_on=[self.ecr_repo]),
         )
 
+        # Add ECR repository policy to allow Lambda to pull images
+        self.repo_policy = RepositoryPolicy(
+            f"{name}-repo-policy",
+            repository=self.ecr_repo.name,
+            policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Sid": "LambdaECRImageRetrievalPolicy",
+                            "Effect": "Allow",
+                            "Principal": {"Service": "lambda.amazonaws.com"},
+                            "Action": [
+                                "ecr:BatchGetImage",
+                                "ecr:GetDownloadUrlForLayer",
+                            ],
+                        }
+                    ],
+                }
+            ),
+            opts=ResourceOptions(parent=self, depends_on=[self.ecr_repo]),
+        )
+
         # Register outputs
         self.register_outputs(
             {
                 "ecr_repo_url": self.repository_url,
                 "image_uri": self.image_uri,
+                "repo_policy_id": self.repo_policy.id,
             }
         )

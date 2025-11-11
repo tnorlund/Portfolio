@@ -11,7 +11,7 @@ from .timeout_handler import (
 from .tracing import (
     trace_chromadb_operation,
 )
-from .metrics import metrics
+from .metrics import metrics, emf_metrics
 
 # Create aliases for function name compatibility
 def trace_function(operation_name=None, collection=None):
@@ -24,7 +24,7 @@ def trace_compaction_operation(operation_name=None):
 
 __all__ = [
     "format_response",
-    "is_step_function_invocation", 
+    "is_step_function_invocation",
     "get_logger",
     "get_operation_logger",
     "get_s3_client",
@@ -37,4 +37,5 @@ __all__ = [
     "trace_compaction_operation",
     "trace_chromadb_operation",
     "metrics",
+    "emf_metrics",
 ]

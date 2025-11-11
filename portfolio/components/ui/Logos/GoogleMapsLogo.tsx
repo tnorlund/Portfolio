@@ -1,8 +1,8 @@
-const GooglePlacesLogo = () => {
+const GoogleMapsLogo = () => {
   return (
     <div style={{ display: "flex", justifyContent: "center" }}>
       <svg
-        id="GooglePlaces"
+        id="GoogleMaps"
         xmlns="http://www.w3.org/2000/svg"
         width="300"
         height="150"
@@ -88,4 +88,5 @@ const GooglePlacesLogo = () => {
   );
 };
 
-export default GooglePlacesLogo;
+export default GoogleMapsLogo;
+

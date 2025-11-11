@@ -122,6 +122,96 @@ class MetricsCollector:
         self.put_metric(metric_name, duration, unit, dimensions)
 
 
+class EmbeddedMetricsFormatter:
+    """Formats metrics using AWS Embedded Metric Format (EMF) for efficient CloudWatch integration."""
+
+    def __init__(self, namespace: str = "EmbeddingWorkflow"):
+        """Initialize EMF formatter.
+
+        Args:
+            namespace: CloudWatch namespace for metrics
+        """
+        self.namespace = namespace
+        self.enabled = (
+            os.environ.get("ENABLE_METRICS", "true").lower() == "true"
+        )
+
+    def create_metric_log(
+        self,
+        metrics_dict: Dict[str, float],
+        dimensions: Optional[Dict[str, str]] = None,
+        properties: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """Create an EMF-formatted log entry.
+
+        Args:
+            metrics_dict: Dictionary of metric names and values
+            dimensions: Metric dimensions
+            properties: Additional log properties
+
+        Returns:
+            JSON string in EMF format
+        """
+        if not self.enabled:
+            return ""
+
+        emf_log: Dict[str, Any] = {
+            "_aws": {
+                "Timestamp": int(
+                    time.time() * 1000
+                ),  # EMF expects milliseconds
+                "CloudWatchMetrics": [
+                    {
+                        "Namespace": self.namespace,
+                        "Dimensions": (
+                            [list(dimensions.keys())] if dimensions else [[]]
+                        ),
+                        "Metrics": [
+                            {"Name": name, "Unit": "Count"}
+                            for name in metrics_dict.keys()
+                        ],
+                    }
+                ],
+            }
+        }
+
+        # Add dimension values
+        if dimensions:
+            for key, value in dimensions.items():
+                emf_log[key] = value
+
+        # Add metric values
+        for key, value in metrics_dict.items():
+            emf_log[key] = value
+
+        # Add additional properties
+        if properties:
+            for key, value in properties.items():
+                emf_log[key] = value
+
+        return json.dumps(emf_log)
+
+    def log_metrics(
+        self,
+        metrics_dict: Dict[str, float],
+        dimensions: Optional[Dict[str, str]] = None,
+        properties: Optional[Dict[str, Any]] = None,
+    ):
+        """Log metrics using EMF format to stdout (CloudWatch will parse automatically).
+
+        Args:
+            metrics_dict: Dictionary of metric names and values
+            dimensions: Metric dimensions
+            properties: Additional log properties
+        """
+        if not self.enabled:
+            return
+
+        emf_log = self.create_metric_log(metrics_dict, dimensions, properties)
+        print(emf_log, flush=True)  # CloudWatch automatically parses EMF from stdout
+
+
 # Global metrics collector instance
 metrics = MetricsCollector()
+emf_metrics = EmbeddedMetricsFormatter()
 

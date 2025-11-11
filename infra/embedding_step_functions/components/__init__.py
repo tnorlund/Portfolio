@@ -9,6 +9,7 @@ from .docker_image import DockerImageComponent
 from .lambda_functions import LambdaFunctionsComponent
 from .line_workflow import LineEmbeddingWorkflow
 from .word_workflow import WordEmbeddingWorkflow
+from .realtime_workflow import RealtimeEmbeddingWorkflow
 from .monitoring import MonitoringComponent
 
 __all__ = [
@@ -16,5 +17,6 @@ __all__ = [
     "LambdaFunctionsComponent",
     "LineEmbeddingWorkflow",
     "WordEmbeddingWorkflow",
+    "RealtimeEmbeddingWorkflow",
     "MonitoringComponent",
 ]
