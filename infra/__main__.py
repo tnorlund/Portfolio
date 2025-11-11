@@ -32,6 +32,7 @@ from dynamo_db import (
 
 from embedding_step_functions import EmbeddingInfrastructure
 from notifications import NotificationSystem
+from billing_alerts import BillingAlerts
 from pulumi import ResourceOptions
 from raw_bucket import raw_bucket  # Import the actual bucket instance
 from s3_website import site_bucket  # Import the site bucket instance
@@ -41,7 +42,6 @@ from validation_by_merchant import ValidationByMerchantStepFunction
 from validation_pipeline import ValidationPipeline
 
 from chromadb_compaction import (
-    ChromaDBBuckets,
     create_chromadb_compaction_infrastructure,
 )
 
@@ -126,10 +126,8 @@ notification_system = NotificationSystem(
 
 validation_pipeline = ValidationPipeline("validation-pipeline")
 
-# Create shared ChromaDB bucket (used by both compaction and embedding)
-shared_chromadb_buckets = ChromaDBBuckets(
-    f"chromadb-{pulumi.get_stack()}-shared-buckets",
-)
+# Import shared ChromaDB bucket (created in chromadb_buckets.py for route access)
+from chromadb_buckets import shared_chromadb_buckets
 
 # Create ChromaDB compaction infrastructure using shared bucket
 # Create currency validation state machine
@@ -153,6 +151,21 @@ pulumi.export(
 )
 pulumi.export(
     "critical_error_topic_arn", notification_system.critical_error_topic_arn
+)
+
+# Create billing alerts for CloudWatch custom metrics costs
+billing_alerts = BillingAlerts(
+    "cloudwatch-metrics",
+    sns_topic_arn=notification_system.critical_error_topic_arn,
+    thresholds={
+        "warning": 10.0,  # $10/month
+        "critical": 25.0,  # $25/month
+        "emergency": 50.0,  # $50/month
+    },
+    tags={
+        "Environment": pulumi.get_stack(),
+        "Purpose": "Cost Monitoring",
+    },
 )
 
 # Export enhanced step function ARN
@@ -226,10 +239,18 @@ chromadb_infrastructure = create_chromadb_compaction_infrastructure(
 )
 
 # Create embedding infrastructure using shared bucket and queues
+# Depend on EFS mount targets if EFS exists (Lambda needs mount targets in "available" state)
+embedding_depends_on = chromadb_infrastructure.efs.mount_targets if chromadb_infrastructure.efs else None
+
 embedding_infrastructure = EmbeddingInfrastructure(
     f"embedding-infra-{pulumi.get_stack()}",
     chromadb_queues=chromadb_infrastructure.chromadb_queues,
     chromadb_buckets=shared_chromadb_buckets,
+    vpc_subnet_ids=compaction_lambda_subnets,  # Use same subnets as compaction Lambda
+    lambda_security_group_id=security.sg_lambda_id,
+    efs_access_point_arn=chromadb_infrastructure.efs.access_point_arn if chromadb_infrastructure.efs else None,
+    efs_mount_targets=chromadb_infrastructure.efs.mount_targets if chromadb_infrastructure.efs else None,  # Pass mount targets dependency
+    opts=ResourceOptions(depends_on=embedding_depends_on),
 )
 
 # Add S3 Gateway Endpoint for faster S3 access from both public and private subnets

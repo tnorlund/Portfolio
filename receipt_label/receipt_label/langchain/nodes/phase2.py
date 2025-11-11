@@ -13,6 +13,7 @@ from receipt_label.langchain.models import (
     CurrencyLabelType,
 )
 from receipt_label.langchain.utils.retry import retry_with_backoff
+from receipt_label.langchain.utils.cove import apply_chain_of_verification
 from receipt_label.langchain.state.currency_validation import (
     CurrencyAnalysisState,
 )
@@ -70,7 +71,13 @@ def dispatch_to_parallel_phase2(
     return sends
 
 
-async def phase2_line_analysis(send_data: dict) -> dict:
+async def phase2_line_analysis(send_data: dict, enable_cove: bool = True) -> dict:
+    """Analyze line items with optional Chain of Verification.
+
+    Args:
+        send_data: Dictionary containing analysis data
+        enable_cove: Whether to apply Chain of Verification (default: True)
+    """
     index = send_data["line_total_index"]
     line_total = send_data["target_line_total"]
     receipt_text = send_data["receipt_text"]
@@ -85,13 +92,13 @@ async def phase2_line_analysis(send_data: dict) -> dict:
         model="gpt-oss:20b",
         base_url="https://ollama.com",
         client_kwargs={
-            "headers": {"Authorization": f"Bearer {ollama_api_key}"}
+            "headers": {"Authorization": f"Bearer {ollama_api_key}"},
+            "timeout": 120,  # 2 minute timeout for reliability
         },
         format="json",  # Force JSON format output
         temperature=0.3,
-        timeout=120,  # 2 minute timeout for reliability
     )
-    
+
     # Bind to Pydantic model for structured outputs
     llm_structured = llm.with_structured_output(Phase2Response)
 
@@ -115,11 +122,11 @@ async def phase2_line_analysis(send_data: dict) -> dict:
     # We dynamically inject the JSON schema from the Pydantic model
     # This ensures the LLM understands the exact expected structure
     import json
-    
+
     # Get JSON schema from the Pydantic model (single source of truth!)
     schema = Phase2Response.model_json_schema()
     schema_json = json.dumps(schema, indent=2)
-    
+
     messages = [
         {
             "role": "user",
@@ -168,14 +175,32 @@ Analyze the snippet and extract line item components as JSON matching the schema
                 "tags": ["phase2", "line-items", "receipt-analysis"],
             },
         )
-    
+
     try:
         # Get structured response with retry logic
-        response = await retry_with_backoff(
+        initial_response = await retry_with_backoff(
             invoke_llm,
             max_retries=3,
             initial_delay=2.0,  # Start with 2 second delay
         )
+
+        # Apply Chain of Verification if enabled
+        # For Phase 2, we verify against the target snippet and full receipt context
+        target_snippet = send_data.get("target_line_text_compiled", "")
+        verification_context = f"TARGET SNIPPET:\n{target_snippet}\n\nFULL RECEIPT:\n{receipt_text}"
+
+        if enable_cove:
+            print(f"   🔍 Applying Chain of Verification to Phase 2.{index} results...")
+            response = await apply_chain_of_verification(
+                initial_answer=initial_response,
+                receipt_text=verification_context,
+                task_description=f"Line item component extraction (PRODUCT_NAME, QUANTITY, UNIT_PRICE) for line with amount {line_total.amount}",
+                response_model=Phase2Response,
+                llm=llm,
+                enable_cove=True,
+            )
+        else:
+            response = initial_response
 
         allowed_label_types = {
             LineItemLabelType.PRODUCT_NAME.value,
