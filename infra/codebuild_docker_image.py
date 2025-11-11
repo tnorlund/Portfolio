@@ -362,13 +362,15 @@ fi
 cd "$TMP"
 echo "📦 Creating context archive..."
 zip -qr context.zip context
+CONTEXT_SIZE=$(du -h context.zip | cut -f1)
+echo "  Context size: $CONTEXT_SIZE"
 cd - >/dev/null
 
 echo "📤 Uploading to S3..."
-aws s3 cp "$TMP/context.zip" "s3://$BUCKET/$NAME/context.zip"
+aws s3 cp "$TMP/context.zip" "s3://$BUCKET/$NAME/context.zip" --no-progress
 echo -n "$HASH" | aws s3 cp - "s3://$BUCKET/$NAME/hash.txt"
 HASH_SHORT=$(echo "$HASH" | cut -c1-12)
-echo "✅ Uploaded context.zip (hash: $HASH_SHORT...)"
+echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
 """
 
     def _buildspec(self) -> Dict[str, Any]:
@@ -796,6 +798,15 @@ set -e
 REPO_URL="{repo_url}"
 REGION=$(echo "$REPO_URL" | cut -d'.' -f4)
 
+# Check if Docker is available first (fast check)
+if ! command -v docker &> /dev/null; then
+  echo "⚠️  Docker not found locally. Skipping bootstrap image push."
+  echo "   The Lambda function will be created after CodeBuild completes the first build."
+  echo "   This is safe - CodeBuild will build and push the image automatically."
+  exit 0
+fi
+
+# Only check ECR if Docker is available
 echo "🔄 Checking if bootstrap image exists in ECR..."
 if aws ecr describe-images --repository-name $(echo "$REPO_URL" | cut -d'/' -f2) --region $REGION --image-ids imageTag=latest >/dev/null 2>&1; then
   echo "✅ Bootstrap image already exists, skipping"
@@ -831,7 +842,12 @@ echo "✅ Bootstrap image pushed to $REPO_URL:latest"
         return command.local.Command(
             f"{self.name}-bootstrap-image",
             create=bootstrap_script,
-            opts=ResourceOptions(parent=self, depends_on=[self.ecr_repo]),
+            # Don't fail if Docker isn't available - bootstrap is optional
+            opts=ResourceOptions(
+                parent=self,
+                depends_on=[self.ecr_repo],
+                # Allow the command to exit successfully even if Docker isn't available
+            ),
         )
 
     def _create_lambda_function(self, bootstrap_cmd, pipeline):

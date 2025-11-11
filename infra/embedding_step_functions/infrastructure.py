@@ -23,6 +23,7 @@ from .components import (
     LambdaFunctionsComponent,
     LineEmbeddingWorkflow,
     WordEmbeddingWorkflow,
+    RealtimeEmbeddingWorkflow,
     MonitoringComponent,
 )
 
@@ -40,6 +41,10 @@ class EmbeddingInfrastructure(ComponentResource):
         name: str,
         chromadb_queues,
         chromadb_buckets=None,
+        vpc_subnet_ids=None,
+        lambda_security_group_id=None,
+        efs_access_point_arn=None,
+        efs_mount_targets=None,  # Mount targets dependency for Lambda
         opts: Optional[ResourceOptions] = None,
     ):
         """Initialize embedding infrastructure.
@@ -48,6 +53,9 @@ class EmbeddingInfrastructure(ComponentResource):
             name: Component name
             chromadb_queues: ChromaDB SQS queues component (from chromadb_compaction)
             chromadb_buckets: Shared ChromaDB S3 buckets component
+            vpc_subnet_ids: Subnet IDs for Lambda VPC configuration
+            lambda_security_group_id: Security group ID for Lambda VPC access
+            efs_access_point_arn: EFS access point ARN for ChromaDB storage
             opts: Pulumi resource options
         """
         super().__init__(
@@ -78,11 +86,17 @@ class EmbeddingInfrastructure(ComponentResource):
         )
 
         # Create Lambda functions component
+        # Pass mount targets dependency so Lambda waits for EFS mount targets to be available
+        # This is critical - Lambda will timeout if it tries to mount EFS before mount targets are ready
         self.lambdas = LambdaFunctionsComponent(
             f"{name}-lambdas",
             chromadb_buckets=self.chromadb_buckets,
             chromadb_queues=self.chromadb_queues,
             docker_image_component=self.docker,
+            vpc_subnet_ids=vpc_subnet_ids,
+            lambda_security_group_id=lambda_security_group_id,
+            efs_access_point_arn=efs_access_point_arn,
+            efs_mount_targets=efs_mount_targets,  # Pass mount targets dependency
             opts=ResourceOptions(parent=self),
         )
 
@@ -95,6 +109,13 @@ class EmbeddingInfrastructure(ComponentResource):
 
         self.word_workflow = WordEmbeddingWorkflow(
             f"{name}-word",
+            lambda_functions=self.lambdas.all_functions,
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Create realtime embedding workflow
+        self.realtime_workflow = RealtimeEmbeddingWorkflow(
+            f"{name}-realtime",
             lambda_functions=self.lambdas.all_functions,
             opts=ResourceOptions(parent=self),
         )
@@ -193,6 +214,10 @@ class EmbeddingInfrastructure(ComponentResource):
                 ),
                 "poll_word_embeddings_sf_arn": (
                     self.poll_word_embeddings_sf.arn
+                ),
+                # Realtime workflow
+                "realtime_embedding_sf_arn": (
+                    self.realtime_workflow.realtime_sf.arn
                 ),
                 # Monitoring outputs
                 "alert_topic_arn": self.monitoring.alert_topic.arn,

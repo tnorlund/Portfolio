@@ -4,7 +4,7 @@ config:
     secure: AAABANhLu9Xk4cxD7v1K8q1IRD5Lwtnr3cQTcuUOPWIBM80amq3juqBmrNtIUlWWoQAfIi3U8Pwht4vkU7kTzOryw13iDQUdHiB2D2LJl2Y8ZXMN97lftEASOScKZihcaiNWXSm9YAgDhLbR0HtRewr1XfRt6FlohCAzFu/KuphaJd4zy+PU0t1thvj8OAErHIxU4fUQL8rkwDcqqm+bnR1J4ag2UGz075zRbEfPJAWUnen0zsN34xUDlM/JXVRMBR4dhw==
   portfolio:environment: dev
   portfolio:GOOGLE_PLACES_API_KEY:
-    secure: AAABAAK8xGIKbSJImf3isrPRyJRt+P7pDXSUshC3r34OoDik3KWknQmYuu0q+/KfLXLReYCPe4IXmWFDEpFNnE4kEnOl7SM=
+    secure: AAABALTCiuLmoSvqaspn8wdijYSLhzp3touLTPPzUqDzbDVYvvB6FhVqfjJJ2ny0/cX8byG0NHoU/FIUijNFKFtyaE0HaCM=
   ml-training:force-rebuild: "true"
   portfolio:PINECONE_API_KEY:
     secure: AAABAB6y1jBmasYCd0JbmQetWvndVC15ZSa7jtgyj2pNQ1y18JrMbJuCkSthuTX02pG7G2YYMmh4ee8Ck16UuQML90lKCiw3IIHBHK2dXNJeSI5ewuBW2KSdjLzhQA+K6bKNQCdYUT5O6N8=
@@ -34,6 +34,6 @@ config:
     secure: AAABAC+PSTc8uajZqSWQTNyqcOPjK4cW+DP3snxJOYFRRA6LSBZq4/7mfZiY2bGuw0fOrpHuyXpwPKDHm5+Y+0cCcj02h1fiUb59JXnOPsM4Hvs=
   portfolio:ecr-max-images: "4"
   portfolio:ecr-max-age-days: "7"
-  docker-build:sync-mode: "false"  # Async mode for faster pulumi up in dev
+  docker-build:sync-mode: "false" # Async mode for faster pulumi up in dev
   docker-build:force-rebuild: "false"
   docker-build:debug-mode: "false"
