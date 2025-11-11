@@ -33,8 +33,5 @@ export const PhotoReceiptDBSCAN = dynamic(
 export { default as AddressSimilarity } from "./AddressSimilarity";
 export { default as AddressSimilaritySideBySide } from "./AddressSimilaritySideBySide";
 export { default as CroppedAddressImage } from "./CroppedAddressImage";
-export { default as SimpleCroppedAddress } from "./SimpleCroppedAddress";
-export { default as SimpleAddressDisplay } from "./SimpleAddressDisplay";
-export { default as SimpleReceiptImage } from "./SimpleReceiptImage";
 export { default as ImageStack } from "./ImageStack";
 export { default as RandomReceiptWithLabels } from "./RandomReceiptWithLabels";
