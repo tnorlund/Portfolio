@@ -64,9 +64,21 @@ class ClientConfig:
                 stacklevel=2,
             )
 
+        # OPENAI_API_KEY is optional - some workflows use Ollama instead
+        openai_api_key = os.environ.get("OPENAI_API_KEY")
+        if not openai_api_key:
+            warnings.warn(
+                "OPENAI_API_KEY not set. OpenAI features will be unavailable. "
+                "This is fine if you're using Ollama or other LLM providers.",
+                UserWarning,
+                stacklevel=2,
+            )
+            # Use a dummy key to avoid KeyError - it won't be used if OpenAI isn't accessed
+            openai_api_key = "dummy-key-not-used"
+
         return cls(
             dynamo_table=dynamo_table,
-            openai_api_key=os.environ["OPENAI_API_KEY"],
+            openai_api_key=openai_api_key,
             chroma_persist_path=os.environ.get("CHROMA_PERSIST_PATH"),
             track_usage=os.environ.get("TRACK_AI_USAGE", "true").lower()
             == "true",

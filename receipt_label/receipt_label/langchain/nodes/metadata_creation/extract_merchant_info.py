@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from receipt_label.langchain.state.metadata_creation import MetadataCreationState
 from receipt_label.langchain.utils.retry import retry_with_backoff
+from receipt_label.langchain.utils.cove import apply_chain_of_verification
 
 
 class ExtractedMerchantInfo(BaseModel):
@@ -22,6 +23,7 @@ async def extract_merchant_info(
     state: MetadataCreationState,
     ollama_api_key: str,
     thinking_strength: str = "medium",
+    enable_cove: bool = True,
 ) -> Dict[str, Any]:
     """Extract merchant information from receipt text using Ollama Cloud LLM.
 
@@ -116,22 +118,46 @@ Extract:
 
     try:
         # Get structured response with retry logic
-        response = await retry_with_backoff(
+        initial_response = await retry_with_backoff(
             invoke_llm,
             max_retries=3,
             initial_delay=1.0,
         )
 
+        # Apply Chain of Verification if enabled
+        cove_verified = False
+        if enable_cove:
+            print("   🔍 Applying Chain of Verification to extracted merchant info...")
+            try:
+                response, cove_verified = await apply_chain_of_verification(
+                    initial_answer=initial_response,
+                    receipt_text=state.formatted_text,
+                    task_description="Merchant information extraction (merchant_name, address, phone_number, merchant_words)",
+                    response_model=ExtractedMerchantInfo,
+                    llm=llm,
+                    enable_cove=True,
+                )
+                print(f"   ✅ CoVe completed: cove_verified={cove_verified}")
+            except Exception as e:
+                print(f"   ⚠️ CoVe exception in extract_merchant_info: {e}, using initial response")
+                response = initial_response
+                cove_verified = False
+        else:
+            response = initial_response
+
         print(f"   ✅ Extracted merchant info:")
         print(f"      Name: {response.merchant_name}")
         print(f"      Address: {response.address}")
         print(f"      Phone: {response.phone_number}")
+        if enable_cove:
+            print(f"      CoVe verified: {cove_verified}")
 
         return {
             "extracted_merchant_name": response.merchant_name,
             "extracted_address": response.address,
             "extracted_phone": response.phone_number,
             "extracted_merchant_words": response.merchant_words,
+            "cove_verified": cove_verified,  # Track if CoVe verified the extraction
         }
 
     except Exception as e:
