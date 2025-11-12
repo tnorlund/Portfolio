@@ -147,7 +147,7 @@ class UploadImages(ComponentResource):
             },
             opts=ResourceOptions(parent=self),
         )
-        
+
         # Store embed_ndjson_queue_url for use in Lambda environment
         # If not provided, we'll use the internal queue created below
         self._external_embed_ndjson_queue_url = embed_ndjson_queue_url
@@ -470,7 +470,7 @@ class UploadImages(ComponentResource):
         # Step Function removed - container Lambda handles everything directly
         # The process_ocr_results container Lambda now handles:
         # - OCR processing
-        # - Merchant validation  
+        # - Merchant validation
         # - Embedding creation
         # - S3 delta upload
         # - Compaction trigger
@@ -514,7 +514,7 @@ class UploadImages(ComponentResource):
                 "local_mount_path": "/mnt/chroma",
             } if efs_access_point_arn else None,
             }
-        
+
         # Use CodeBuildDockerImage for AWS-based builds
         process_ocr_docker_image = CodeBuildDockerImage(
             f"{name}-process-ocr-image",
@@ -547,6 +547,159 @@ class UploadImages(ComponentResource):
                 ),
             ),
         )
+
+        # Create container-based embed_from_ndjson Lambda (processes NDJSON files from queue)
+        # This Lambda reads words/lines from NDJSON and creates embeddings
+        embed_ndjson_role = Role(
+            f"{name}-embed-ndjson-role",
+            assume_role_policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"Service": "lambda.amazonaws.com"},
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            ),
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Attach basic execution policy
+        RolePolicyAttachment(
+            f"{name}-embed-ndjson-basic-exec",
+            role=embed_ndjson_role.name,
+            policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Attach SQS queue execution policy
+        RolePolicyAttachment(
+            f"{name}-embed-ndjson-sqs-exec",
+            role=embed_ndjson_role.name,
+            policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole",
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Attach VPC access policy if VPC is configured (required for EFS)
+        if vpc_subnet_ids and security_group_id:
+            RolePolicyAttachment(
+                f"{name}-embed-ndjson-vpc-exec",
+                role=embed_ndjson_role.name,
+                policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole",
+                opts=ResourceOptions(parent=self),
+            )
+
+        # Add DynamoDB, S3, and EFS access policies
+        RolePolicy(
+            f"{name}-embed-ndjson-policy",
+            role=embed_ndjson_role.id,
+            policy=Output.all(
+                dynamodb_table.name,
+                artifacts_bucket.arn,
+                pulumi.Output.from_input(chromadb_bucket_name),
+            ).apply(
+                lambda args: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "dynamodb:DescribeTable",
+                                    "dynamodb:GetItem",
+                                    "dynamodb:BatchGetItem",
+                                    "dynamodb:Query",
+                                    "dynamodb:PutItem",
+                                    "dynamodb:UpdateItem",
+                                    "dynamodb:BatchWriteItem",
+                                ],
+                                "Resource": f"arn:aws:dynamodb:*:*:table/{args[0]}*",
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "s3:GetObject",
+                                    "s3:PutObject",
+                                    "s3:HeadObject",
+                                ],
+                                "Resource": [
+                                    args[1] + "/*",  # artifacts_bucket
+                                    f"arn:aws:s3:::{args[2]}/*" if args[2] else None,  # chromadb_bucket
+                                ],
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": "s3:ListBucket",
+                                "Resource": f"arn:aws:s3:::{args[2]}" if args[2] else None,
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "elasticfilesystem:ClientMount",
+                                    "elasticfilesystem:ClientWrite",
+                                    "elasticfilesystem:ClientRootAccess",
+                                ],
+                                "Resource": "*",
+                            },
+                        ],
+                    }
+                )
+            ),
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Create embed_from_ndjson container Lambda config
+        embed_ndjson_lambda_config = {
+            "role_arn": embed_ndjson_role.arn,
+            "timeout": 600,  # 10 minutes
+            "memory_size": 2048,  # More memory for ChromaDB operations
+            "environment": {
+                "DYNAMO_TABLE_NAME": dynamodb_table.name,
+                "CHROMADB_BUCKET": chromadb_bucket_name,
+                "CHROMA_HTTP_ENDPOINT": chroma_http_endpoint,
+                "GOOGLE_PLACES_API_KEY": google_places_api_key,
+                "OPENAI_API_KEY": openai_api_key,
+                # LangGraph validation with Ollama
+                "OLLAMA_API_KEY": ollama_api_key,
+                "LANGCHAIN_API_KEY": langchain_api_key,
+                # EFS configuration for ChromaDB (optional, can use S3 for non-time-sensitive)
+                "CHROMA_ROOT": "/mnt/chroma" if efs_access_point_arn else "/tmp/chroma",
+                "CHROMADB_STORAGE_MODE": "auto",  # Use EFS if available, fallback to S3
+            },
+            "vpc_config": {
+                "subnet_ids": vpc_subnet_ids,
+                "security_group_ids": [security_group_id],
+            } if vpc_subnet_ids and security_group_id else None,
+            # EFS mount enabled (optional, can use S3 for non-time-sensitive processing)
+            "file_system_config": {
+                "arn": efs_access_point_arn,
+                "local_mount_path": "/mnt/chroma",
+            } if efs_access_point_arn else None,
+        }
+
+        # Use CodeBuildDockerImage for AWS-based builds
+        embed_ndjson_docker_image = CodeBuildDockerImage(
+            f"{name}-embed-ndjson-image",
+            dockerfile_path="infra/upload_images/container/Dockerfile",
+            build_context_path=".",  # Project root for monorepo access
+            source_paths=None,  # Use default rsync with exclusions
+            lambda_function_name=f"{name}-{stack}-embed-from-ndjson",
+            lambda_config=embed_ndjson_lambda_config,
+            platform="linux/arm64",
+            opts=ResourceOptions(
+                parent=self,
+                depends_on=[embed_ndjson_role],
+            ),
+        )
+
+        # Use the Lambda function created by CodeBuildDockerImage
+        embed_ndjson_lambda = embed_ndjson_docker_image.lambda_function
+
+        # Store for potential event source mapping (if queue is provided)
+        self.embed_ndjson_lambda = embed_ndjson_lambda
 
         # Remove Step Function embedding path in favor of SQS batching
 

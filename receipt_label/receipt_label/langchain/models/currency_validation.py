@@ -60,7 +60,7 @@ class SpatialMarker:
 
 class CurrencyLabel(BaseModel):
     """A discovered currency label with LLM reasoning.
-    
+
     Each currency amount found on the receipt must include all these fields.
     """
 
@@ -83,19 +83,23 @@ class CurrencyLabel(BaseModel):
     )
     confidence: float = Field(
         ...,
-        ge=0.0, 
-        le=1.0, 
+        ge=0.0,
+        le=1.0,
         description="Confidence score from 0.0 (uncertain) to 1.0 (certain) for this classification"
     )
     reasoning: str = Field(
         ...,
         description="Brief explanation of why this classification was chosen (e.g., 'Appears at bottom as AMOUNT', 'Explicitly labeled as TAX')"
     )
+    cove_verified: bool = Field(
+        default=False,
+        description="Whether this label was verified by Chain of Verification (CoVe). If True, validation_status should be set to VALID."
+    )
 
 
 class LineItemLabel(BaseModel):
     """A discovered line-item label with LLM reasoning.
-    
+
     Each word in a line item that should be classified.
     """
 
@@ -109,13 +113,17 @@ class LineItemLabel(BaseModel):
     )
     confidence: float = Field(
         ...,
-        ge=0.0, 
-        le=1.0, 
+        ge=0.0,
+        le=1.0,
         description="Confidence score from 0.0 (uncertain) to 1.0 (certain) for this classification"
     )
     reasoning: str = Field(
         ...,
         description="Brief explanation of why this word was classified this way (e.g., 'Product name comes before price', 'Appears with quantity indicators')"
+    )
+    cove_verified: bool = Field(
+        default=False,
+        description="Whether this label was verified by Chain of Verification (CoVe). If True, validation_status should be set to VALID."
     )
 
 
@@ -162,7 +170,7 @@ class ReceiptAnalysis(BaseModel):
     processing_time: Optional[float] = Field(
         default=None, description="Processing time in seconds"
     )
-    
+
     # Additional fields for deferred writes (labels and metadata updates)
     receipt_word_labels_to_add: Optional[List[Any]] = Field(default_factory=list)
     receipt_word_labels_to_update: Optional[List[Any]] = Field(default_factory=list)
@@ -220,7 +228,7 @@ class SimpleReceiptResponse(BaseModel):
 
 class Phase1Response(BaseModel):
     """Response model for phase 1.
-    
+
     This model enforces that all currency amounts are returned as floats.
     Pydantic will automatically parse string amounts to floats.
     """
@@ -232,7 +240,7 @@ class Phase1Response(BaseModel):
     confidence: float = Field(
         ge=0.0, le=1.0, description="Overall confidence score"
     )
-    
+
     model_config = {
         "json_schema_extra": {
             "examples": [{
@@ -282,7 +290,7 @@ class TransactionLabelType(str, Enum):
 
 class TransactionLabel(BaseModel):
     """A discovered transaction context label with LLM reasoning."""
-    
+
     word_text: str = Field(
         ...,
         description="The exact text of the word being labeled (e.g., '12/25/2024', '14:30', 'VISA', 'SAVE10')"
@@ -293,15 +301,19 @@ class TransactionLabel(BaseModel):
     )
     confidence: float = Field(
         ...,
-        ge=0.0, 
-        le=1.0, 
+        ge=0.0,
+        le=1.0,
         description="Confidence score from 0.0 (uncertain) to 1.0 (certain) for this classification"
     )
     reasoning: str = Field(
         ...,
         description="Brief explanation of why this word was classified this way (e.g., 'Date format matches MM/DD/YYYY', 'Appears near payment section')"
     )
-    
+    cove_verified: bool = Field(
+        default=False,
+        description="Whether this label was verified by Chain of Verification (CoVe). If True, validation_status should be set to VALID."
+    )
+
     model_config = {
         "json_schema_extra": {
             "examples": [
@@ -324,7 +336,7 @@ class TransactionLabel(BaseModel):
 
 class PhaseContextResponse(BaseModel):
     """Response model for transaction context analysis."""
-    
+
     transaction_labels: List[TransactionLabel] = Field(
         description="Transaction context classifications (DATE, TIME, PAYMENT_METHOD, etc.)"
     )
@@ -332,7 +344,7 @@ class PhaseContextResponse(BaseModel):
     confidence: float = Field(
         ge=0.0, le=1.0, description="Overall confidence score"
     )
-    
+
     model_config = {
         "json_schema_extra": {
             "examples": [{

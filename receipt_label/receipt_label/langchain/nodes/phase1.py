@@ -108,16 +108,23 @@ Extract all currency amounts and return them as JSON matching the schema above."
         )
 
         # Apply Chain of Verification if enabled
+        cove_verified = False
         if enable_cove:
             print("   🔍 Applying Chain of Verification to Phase 1 results...")
-            response = await apply_chain_of_verification(
-                initial_answer=initial_response,
-                receipt_text=state.formatted_text,
-                task_description="Currency amount classification (GRAND_TOTAL, TAX, SUBTOTAL, LINE_TOTAL)",
-                response_model=Phase1Response,
-                llm=llm,
-                enable_cove=True,
-            )
+            try:
+                response, cove_verified = await apply_chain_of_verification(
+                    initial_answer=initial_response,
+                    receipt_text=state.formatted_text,
+                    task_description="Currency amount classification (GRAND_TOTAL, TAX, SUBTOTAL, LINE_TOTAL)",
+                    response_model=Phase1Response,
+                    llm=llm,
+                    enable_cove=True,
+                )
+                print(f"   ✅ CoVe completed: cove_verified={cove_verified}")
+            except Exception as e:
+                print(f"   ⚠️ CoVe exception in phase1: {e}, using initial response")
+                response = initial_response
+                cove_verified = False
         else:
             response = initial_response
 
@@ -130,6 +137,7 @@ Extract all currency amounts and return them as JSON matching the schema above."
                 line_ids=item.line_ids,
                 confidence=float(item.confidence),  # Ensure float type
                 reasoning=item.reasoning,
+                cove_verified=cove_verified,  # Mark as CoVe verified if CoVe ran successfully
             )
             for item in response.currency_labels
         ]
