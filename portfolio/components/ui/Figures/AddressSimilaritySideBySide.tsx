@@ -402,22 +402,25 @@ const AddressSimilaritySideBySide: React.FC = () => {
     );
   };
 
+  const isMobile = windowWidth <= 768;
+
   return (
     <div
       style={{
         display: "flex",
-        flexDirection: "row",
+        flexDirection: isMobile ? "column" : "row",
         gap: "1.5rem",
         width: "100%",
         maxWidth: "900px",
         margin: "0 auto",
         padding: "1rem",
+        overflowX: "hidden", // Prevent horizontal overflow
       }}
     >
       {/* Original receipt on the left */}
       <div
         style={{
-          flex: "0 0 45%",
+          flex: isMobile ? "0 0 auto" : "0 0 45%",
           minWidth: 0,
           display: "flex",
           alignItems: "center",
@@ -439,24 +442,31 @@ const AddressSimilaritySideBySide: React.FC = () => {
       {/* Similar receipts stacked on the right */}
       <div
         style={{
-          flex: "0 0 45%",
+          flex: isMobile ? "0 0 auto" : "0 0 45%",
           minWidth: 0,
+          display: "flex",
+          justifyContent: "center", // Center the stack container on mobile
         }}
       >
         {/* Stack container */}
         <div
           style={{
             position: "relative",
-            width: "100%",
-            height: windowWidth <= 768 ? "400px" : "700px",
-            overflow: "visible",
+            width: isMobile ? "100%" : "100%",
+            maxWidth: isMobile ? "100%" : "none",
+            height: isMobile ? "400px" : "700px",
+            overflow: isMobile ? "hidden" : "visible", // Prevent overflow on mobile
           }}
         >
           {data.similar.map((similar, index) => {
             // Distribute cards evenly across the height of the container
             // Position each card's center at (n+1)/(N+1) of the container height
-            const containerHeight = windowWidth <= 768 ? 400 : 700;
-            const containerWidth = 405; // Approximate width of the right column (45% of 900px max-width)
+            const containerHeight = isMobile ? 400 : 700;
+            // Calculate container width based on screen size
+            // On mobile, use a more accurate estimate based on viewport width
+            const containerWidth = isMobile 
+              ? Math.min(windowWidth - 32, 400) // Account for padding (1rem * 2 = 32px)
+              : 405; // Approximate width of the right column (45% of 900px max-width)
             const totalCards = data.similar.length;
 
             // Calculate target center Y position: (index + 1) / (totalCards + 1) of container height
@@ -528,7 +538,10 @@ const AddressSimilaritySideBySide: React.FC = () => {
 
             // Base transform with random rotation and translation
             // translateY is already constrained by bounds checking, so we can apply it directly
-            const baseTransform = `translate(${translateX}px, ${translateY}px) rotate(${rotation}deg)`;
+            // On mobile, center the cards horizontally first, then apply transforms
+            const baseTransform = isMobile
+              ? `translate(calc(-50% + ${translateX}px), ${translateY}px) rotate(${rotation}deg)`
+              : `translate(${translateX}px, ${translateY}px) rotate(${rotation}deg)`;
 
             return (
               <div
@@ -536,8 +549,8 @@ const AddressSimilaritySideBySide: React.FC = () => {
                 style={{
                   position: "absolute",
                   top: `${topPosition}px`,
-                  left: "0px",
-                  right: "0px",
+                  left: isMobile ? "50%" : "0px",
+                  right: isMobile ? "auto" : "0px",
                   zIndex,
                   transform: baseTransform,
                   transformOrigin: "center center",
