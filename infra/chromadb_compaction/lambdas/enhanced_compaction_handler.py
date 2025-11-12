@@ -16,7 +16,7 @@ import os
 import shutil
 import time
 from logging import INFO, Formatter, StreamHandler, getLogger
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import boto3
 
@@ -24,6 +24,7 @@ import boto3
 from utils import (
     get_operation_logger,
     metrics,
+    emf_metrics,
     trace_function,
     trace_compaction_operation,
     start_compaction_lambda_monitoring,
@@ -78,7 +79,7 @@ except ImportError:
         MODULAR_MODE = True
     except ImportError:
         MODULAR_MODE = False
-    
+
     # Fallback implementations
     class LambdaResponse:
         def __init__(self, status_code: int, message: str, **kwargs):
@@ -86,35 +87,35 @@ except ImportError:
             self.message = message
             for key, value in kwargs.items():
                 setattr(self, key, value)
-        
+
         def to_dict(self):
             result = {"statusCode": self.status_code, "message": self.message}
             for key, value in self.__dict__.items():
                 if key not in ["status_code", "message"] and value is not None:
                     result[key] = value
             return result
-    
+
     class StreamMessage:
         def __init__(self, **kwargs):
             for key, value in kwargs.items():
                 setattr(self, key, value)
-    
+
     class MetadataUpdateResult:
         def __init__(self, **kwargs):
             for key, value in kwargs.items():
                 setattr(self, key, value)
-        
+
         def to_dict(self):
             return {k: v for k, v in self.__dict__.items() if v is not None}
-    
+
     class LabelUpdateResult:
         def __init__(self, **kwargs):
             for key, value in kwargs.items():
                 setattr(self, key, value)
-        
+
         def to_dict(self):
             return {k: v for k, v in self.__dict__.items() if v is not None}
-    
+
     def process_sqs_messages(records, logger, metrics=None, **kwargs):
         """Fallback implementation that logs messages instead of processing."""
         logger.info(f"Fallback mode: Would process {len(records)} SQS messages")
@@ -123,7 +124,7 @@ except ImportError:
             message=f"Fallback mode: {len(records)} messages logged",
             processed_messages=len(records)
         ).to_dict()
-    
+
     def process_stream_messages(stream_messages, logger, metrics=None, **kwargs):
         """Fallback implementation that logs messages instead of processing."""
         logger.info(f"Fallback mode: Would process {len(stream_messages)} stream messages")
@@ -238,17 +239,65 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         else "enhanced_compaction_handler"
     )
 
+    # Collect metrics during processing for batch EMF logging (cost-effective)
+    collected_metrics: Dict[str, Any] = {}
+    error_types: Dict[str, int] = {}
+
+    # Create a metrics collector wrapper that accumulates metrics instead of making API calls
+    class MetricsAccumulator:
+        """Wrapper that collects metrics in a dict instead of making API calls."""
+        def __init__(self, collected_metrics: Dict[str, Any]):
+            self.collected_metrics = collected_metrics
+
+        def count(self, metric_name: str, value: int = 1, dimensions: Optional[Dict[str, str]] = None):
+            """Accumulate count metric."""
+            key = metric_name
+            if dimensions:
+                # Include dimensions in key for uniqueness
+                dim_str = "_".join(f"{k}={v}" for k, v in sorted(dimensions.items()))
+                key = f"{metric_name}_{dim_str}"
+            self.collected_metrics[key] = self.collected_metrics.get(key, 0) + value
+
+        def gauge(self, metric_name: str, value: Union[int, float], unit: str = "None", dimensions: Optional[Dict[str, str]] = None):
+            """Accumulate gauge metric (use latest value)."""
+            key = metric_name
+            if dimensions:
+                dim_str = "_".join(f"{k}={v}" for k, v in sorted(dimensions.items()))
+                key = f"{metric_name}_{dim_str}"
+            # For gauges, we want the latest value, but for counts we sum
+            # Store as-is for now, can be processed later
+            self.collected_metrics[key] = value
+
+        def put_metric(self, metric_name: str, value: Union[int, float], unit: str = "Count", dimensions: Optional[Dict[str, str]] = None, timestamp: Optional[float] = None):
+            """Accumulate metric (same as gauge for our purposes)."""
+            self.gauge(metric_name, value, unit, dimensions)
+
+        def timer(self, metric_name: str, dimensions: Optional[Dict[str, str]] = None, unit: str = "Seconds"):
+            """Context manager for timing (not used in nested functions, but needed for interface)."""
+            from contextlib import contextmanager
+            @contextmanager
+            def _timer():
+                start = time.time()
+                try:
+                    yield start
+                finally:
+                    duration = time.time() - start
+                    self.put_metric(metric_name, duration, unit, dimensions)
+            return _timer()
+
+    metrics_accumulator = MetricsAccumulator(collected_metrics)
+
     try:
         # Check if this is an SQS trigger
         if "Records" in event:
-            metrics.gauge(
-                "CompactionRecordsReceived", len(event["Records"])
-            )
+            # Collect metrics instead of immediate API calls
+            collected_metrics["CompactionRecordsReceived"] = len(event["Records"])
 
             result = process_sqs_messages(
                 records=event["Records"],
                 logger=logger,
-                metrics=metrics,
+                metrics=metrics_accumulator,  # Use accumulator instead of direct API calls
+                OBSERVABILITY_AVAILABLE=True,
                 process_stream_messages_func=process_stream_messages,
                 process_delta_messages_func=process_delta_messages,
             )
@@ -257,15 +306,39 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             # {"batchItemFailures": [...]} without any wrapping so the
             # Lambda service honors per-record retries.
             if isinstance(result, dict) and "batchItemFailures" in result:
+                # Still emit metrics before returning partial batch failure
+                execution_time = time.time() - start_time
+                collected_metrics["CompactionLambdaExecutionTime"] = execution_time
+                collected_metrics["CompactionPartialBatchFailure"] = 1
+                collected_metrics["CompactionFailedMessages"] = len(result.get("batchItemFailures", []))
+
+                # Emit metrics via EMF (no API call cost)
+                emf_metrics.log_metrics(
+                    collected_metrics,
+                    properties={
+                        "error_types": error_types,
+                        "correlation_id": correlation_id,
+                    }
+                )
                 return result
 
             # Track successful execution with metrics
             execution_time = time.time() - start_time
-            metrics.timer("CompactionLambdaExecutionTime", execution_time)
-            metrics.count("CompactionLambdaSuccess", 1)
+            collected_metrics["CompactionLambdaExecutionTime"] = execution_time
+            collected_metrics["CompactionLambdaSuccess"] = 1
+
             logger.info(
                 "Enhanced compaction handler completed successfully",
                 execution_time_seconds=execution_time,
+            )
+
+            # Emit all metrics via EMF at once (no API call cost)
+            emf_metrics.log_metrics(
+                collected_metrics,
+                properties={
+                    "error_types": error_types,
+                    "correlation_id": correlation_id,
+                }
             )
 
             # Format response with observability
@@ -275,7 +348,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         logger.warning(
             "Direct invocation not supported", invocation_type="direct"
         )
-        metrics.count("CompactionDirectInvocationAttempt", 1)
+        collected_metrics["CompactionDirectInvocationAttempt"] = 1
 
         response = LambdaResponse(
             status_code=400,
@@ -286,11 +359,17 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             ),
         )
 
+        # Emit metrics before returning
+        execution_time = time.time() - start_time
+        collected_metrics["CompactionLambdaExecutionTime"] = execution_time
+        emf_metrics.log_metrics(collected_metrics)
+
         return format_response(response.to_dict(), event, is_error=True)
 
     except Exception as e:
         execution_time = time.time() - start_time
         error_type = type(e).__name__
+        error_types[error_type] = error_types.get(error_type, 0) + 1
 
         # Enhanced error logging
         logger.error(
@@ -300,8 +379,18 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             execution_time_seconds=execution_time,
             exc_info=True,
         )
-        metrics.count(
-            "CompactionLambdaError", 1, {"error_type": error_type}
+        collected_metrics["CompactionLambdaError"] = 1
+        collected_metrics["CompactionLambdaExecutionTime"] = execution_time
+
+        # Emit error metrics via EMF
+        emf_metrics.log_metrics(
+            collected_metrics,
+            dimensions={"error_type": error_type} if error_type else None,
+            properties={
+                "error_types": error_types,
+                "correlation_id": correlation_id,
+                "error": str(e),
+            }
         )
 
         error_response = LambdaResponse(
@@ -321,6 +410,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
 def process_delta_messages(
     delta_messages: List[Dict[str, Any]],
+    metrics: Any = None,
 ) -> Dict[str, Any]:
     """Process traditional delta file messages.
 
@@ -333,7 +423,8 @@ def process_delta_messages(
         count=len(delta_messages),
     )
     logger.warning("Delta message processing not implemented")
-    metrics.count("CompactionDeltaMessagesSkipped", len(delta_messages))
+    if metrics:
+        metrics.count("CompactionDeltaMessagesSkipped", len(delta_messages))
 
     response = LambdaResponse(
         status_code=200,
@@ -350,6 +441,7 @@ def process_delta_messages(
 # Process parsed DynamoDB stream messages grouped by collection
 def process_stream_messages(
     stream_messages: List[StreamMessage],
+    metrics: Any = None,
 ) -> Dict[str, Any]:
     messages_by_collection = group_messages_by_collection(stream_messages)
 
@@ -371,7 +463,7 @@ def process_stream_messages(
         # Storage mode configuration - easily switchable
         storage_mode = os.environ.get("CHROMADB_STORAGE_MODE", "auto").lower()
         efs_root = os.environ.get("CHROMA_ROOT")
-        
+
         # Determine storage mode
         if storage_mode == "s3":
             use_efs = False
@@ -387,7 +479,7 @@ def process_stream_messages(
             # Default to S3-only for unknown modes
             use_efs = False
             mode_reason = f"unknown mode '{storage_mode}', defaulting to S3-only"
-        
+
         logger.info(
             "Storage mode configuration",
             storage_mode=storage_mode,
@@ -396,12 +488,12 @@ def process_stream_messages(
             mode_reason=mode_reason,
             collection=collection.value
         )
-        
+
         if use_efs:
             logger.info("Using EFS + S3 hybrid approach", collection=collection.value)
             # Use EFS + S3 hybrid approach with optimized locking
             efs_manager = get_efs_snapshot_manager(collection.value, logger, metrics)
-            
+
             # Phase A: Optimized lock strategy - minimal lock time
             lock_id = f"chroma-{collection.value}-update"
             lm = LockManager(
@@ -411,7 +503,7 @@ def process_stream_messages(
                 lock_duration_minutes=lock_duration_minutes,
                 max_heartbeat_failures=max_heartbeat_failures,
             )
-            
+
             try:
                 # Step 1: Read operations OFF-LOCK (optimization)
                 latest_version = efs_manager.get_latest_s3_version()
@@ -421,7 +513,7 @@ def process_stream_messages(
                         [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
                     )
                     continue
-                
+
                 snapshot_result = efs_manager.ensure_snapshot_available(latest_version)
                 if snapshot_result["status"] != "available":
                     logger.error("Failed to ensure snapshot availability", result=snapshot_result)
@@ -429,7 +521,7 @@ def process_stream_messages(
                         [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
                     )
                     continue
-                
+
                 # Step 2: Quick CAS validation (minimal lock time)
                 phase1_lock_start = time.time()
                 if not lm.acquire(lock_id):
@@ -449,7 +541,7 @@ def process_stream_messages(
                         [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
                     )
                     continue
-                
+
                 phase1_lock_duration = time.time() - phase1_lock_start
                 if metrics:
                     metrics.put_metric(
@@ -458,7 +550,7 @@ def process_stream_messages(
                         unit="Milliseconds",
                         dimensions={"phase": "1", "collection": collection.value, "type": "validation"}
                     )
-                
+
                 try:
                     lm.start_heartbeat()
                     # CAS: Validate pointer hasn't changed since we read it
@@ -472,7 +564,7 @@ def process_stream_messages(
                         current_pointer = resp["Body"].read().decode("utf-8").strip()
                     except Exception:
                         current_pointer = "latest-direct"
-                    
+
                     if latest_version != current_pointer:
                         logger.info(
                             "Pointer drift detected during initial validation",
@@ -487,20 +579,20 @@ def process_stream_messages(
                 finally:
                     lm.stop_heartbeat()
                     lm.release()
-                
+
                 # Store expected pointer for Phase 3 validation
                 expected_pointer = latest_version
-                
+
                 # Step 3: Perform heavy operations off-lock
                 efs_snapshot_path = snapshot_result["efs_path"]
                 local_snapshot_path = tempfile.mkdtemp()
-                
+
                 copy_start_time = time.time()
                 shutil.copytree(efs_snapshot_path, local_snapshot_path, dirs_exist_ok=True)
                 copy_time_ms = (time.time() - copy_start_time) * 1000
-                
+
                 snapshot_path = local_snapshot_path
-                
+
                 logger.info(
                     "Using EFS snapshot (copied to local)",
                     collection=collection.value,
@@ -536,7 +628,7 @@ def process_stream_messages(
 
             snapshot_path = temp_dir
             expected_pointer = dl.get("version_id")
-            
+
             logger.info(
                 "Using S3 snapshot",
                 collection=collection.value,
@@ -546,7 +638,7 @@ def process_stream_messages(
 
         # Initialize ChromaDB client
         chroma_client = ChromaDBClient(persist_directory=snapshot_path, mode="snapshot")
-        
+
         try:
             # Merge deltas first
             compaction_run_results = []
@@ -568,6 +660,7 @@ def process_stream_messages(
                     collection=collection,
                     logger=logger,
                     metrics=metrics,
+                    OBSERVABILITY_AVAILABLE=True,
                     get_dynamo_client_func=get_dynamo_client,
                 )
                 total_metadata_updates += sum(
@@ -582,6 +675,7 @@ def process_stream_messages(
                     collection=collection,
                     logger=logger,
                     metrics=metrics,
+                    OBSERVABILITY_AVAILABLE=True,
                     get_dynamo_client_func=get_dynamo_client,
                 )
                 total_label_updates += sum(
@@ -592,11 +686,11 @@ def process_stream_messages(
             published = False
             import boto3 as _boto
             s3_client = _boto.client("s3")
-            
+
             if use_efs:
                 # EFS case: Re-acquire lock only for critical S3 operations
                 backoff_attempts = [0.1, 0.2]  # Shorter backoff for EFS case
-                
+
                 for attempt_idx, delay in enumerate(backoff_attempts, start=1):
                     phase3_lock_start = time.time()
                     if not lm.acquire(lock_id):
@@ -622,7 +716,7 @@ def process_stream_messages(
                         )
                         time.sleep(delay)
                         continue
-                    
+
                     phase3_lock_duration = time.time() - phase3_lock_start
                     if metrics:
                         metrics.put_metric(
@@ -631,10 +725,10 @@ def process_stream_messages(
                             unit="Milliseconds",
                             dimensions={"phase": "3", "collection": collection.value, "type": "upload"}
                         )
-                    
+
                     try:
                         lm.start_heartbeat()
-                        
+
                         # CAS: re-read pointer and compare
                         pointer_key = f"{collection.value}/snapshot/latest-pointer.txt"
                         bucket = os.environ["CHROMADB_BUCKET"]
@@ -679,7 +773,7 @@ def process_stream_messages(
                             lm.stop_heartbeat()
                         finally:
                             lm.release()
-                
+
                 # Update EFS cache AFTER lock release (off-lock optimization)
                 if published and new_version:
                     try:
@@ -687,11 +781,11 @@ def process_stream_messages(
                         efs_snapshot_path = os.path.join(efs_manager.efs_snapshots_dir, new_version)
                         if os.path.exists(efs_snapshot_path):
                             shutil.rmtree(efs_snapshot_path)
-                        
+
                         copy_start_time = time.time()
                         shutil.copytree(snapshot_path, efs_snapshot_path)
                         copy_time_ms = (time.time() - copy_start_time) * 1000
-                        
+
                         logger.info(
                             "Updated EFS snapshot (off-lock)",
                             collection=collection.value,
@@ -715,7 +809,7 @@ def process_stream_messages(
                                 collection=collection.value,
                                 version=new_version,
                             )
-                        
+
                         efs_manager.cleanup_old_snapshots()
                     except Exception as e:
                         logger.warning(
@@ -724,7 +818,7 @@ def process_stream_messages(
                             collection=collection.value,
                             version=new_version
                         )
-                
+
                 # Mark compaction runs as completed after successful upload
                 if published and compaction_run_results:
                     dynamo_client = get_dynamo_client()
@@ -757,7 +851,7 @@ def process_stream_messages(
             else:
                 # S3-only case: Standard lock acquisition
                 backoff_attempts = [0.15, 0.3]  # seconds
-                
+
                 for attempt_idx, delay in enumerate(backoff_attempts, start=1):
                     lock_id = f"chroma-{collection.value}-update"
                     lm = LockManager(
@@ -791,7 +885,7 @@ def process_stream_messages(
                         )
                         time.sleep(delay)
                         continue
-                    
+
                     phase3_s3_lock_duration = time.time() - phase3_s3_lock_start
                     if metrics:
                         metrics.put_metric(
@@ -846,7 +940,7 @@ def process_stream_messages(
                             lm.stop_heartbeat()
                         finally:
                             lm.release()
-                
+
                 # Mark compaction runs as completed after successful upload (S3-only case)
                 if published and compaction_run_results:
                     dynamo_client = get_dynamo_client()
