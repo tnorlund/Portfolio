@@ -1,10 +1,10 @@
-import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../../services/api";
-import { AddressSimilarityResponse, AddressBoundingBox } from "../../../types/api";
+import { AddressBoundingBox, AddressSimilarityResponse } from "../../../types/api";
 import {
   detectImageFormatSupport,
+  getBestImageUrl,
 } from "../../../utils/imageFormat";
-import { getBestImageUrl } from "../../../utils/imageFormat";
 
 // Simple seeded random number generator for consistent randomness
 function seededRandom(seed: number): () => number {
@@ -111,14 +111,37 @@ const AddressSimilaritySideBySide: React.FC = () => {
     typeof window !== "undefined" ? window.innerWidth : 1024
   );
 
+  // Track actual container width for accurate positioning calculations
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState<number | null>(null);
+
+  // Measure container dimensions
+  const measureContainer = useCallback(() => {
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      setContainerWidth(rect.width);
+    }
+  }, []);
+
   useEffect(() => {
     const handleResize = () => {
       setWindowWidth(window.innerWidth);
+      measureContainer();
     };
+
+    // Initial measurement
+    measureContainer();
 
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
-  }, []);
+  }, [measureContainer]);
+
+  // Measure container when data becomes available
+  useEffect(() => {
+    if (data && !containerWidth) {
+      measureContainer();
+    }
+  }, [data, containerWidth, measureContainer]);
 
   // Detect image format support
   useEffect(() => {
@@ -411,7 +434,7 @@ const AddressSimilaritySideBySide: React.FC = () => {
         width: "100%",
         maxWidth: "900px",
         margin: "0 auto",
-        padding: "1rem",
+        padding: 0,
       }}
     >
       {/* Original receipt on the left */}
@@ -445,6 +468,7 @@ const AddressSimilaritySideBySide: React.FC = () => {
       >
         {/* Stack container */}
         <div
+          ref={containerRef}
           style={{
             position: "relative",
             width: "100%",
@@ -456,7 +480,26 @@ const AddressSimilaritySideBySide: React.FC = () => {
             // Distribute cards evenly across the height of the container
             // Position each card's center at (n+1)/(N+1) of the container height
             const containerHeight = windowWidth <= 768 ? 400 : 700;
-            const containerWidth = 405; // Approximate width of the right column (45% of 900px max-width)
+
+            // Use measured container width if available, otherwise calculate responsive estimate
+            const isMobile = windowWidth <= 768;
+            let effectiveContainerWidth: number;
+            if (containerWidth) {
+              effectiveContainerWidth = containerWidth;
+            } else {
+              // Fallback: estimate based on screen size
+              // Right column is 45% of container, which is max 900px on desktop
+              // On mobile, it's 45% of screen width (minus padding)
+              if (isMobile) {
+                const screenWidth = windowWidth;
+                const padding = screenWidth <= 480 ? 16 : 32;
+                const maxContainerWidth = Math.min(screenWidth, 900) - padding * 2;
+                effectiveContainerWidth = maxContainerWidth * 0.45; // 45% of container
+              } else {
+                effectiveContainerWidth = 405; // Desktop: 45% of 900px
+              }
+            }
+
             const totalCards = data.similar.length;
 
             // Calculate target center Y position: (index + 1) / (totalCards + 1) of container height
@@ -466,10 +509,10 @@ const AddressSimilaritySideBySide: React.FC = () => {
             // Estimate height based on container aspect ratio if not measured yet
             let cardDims = cardDimensions[similar.receipt.receipt_id];
             if (!cardDims) {
-              // Estimate based on typical card width and aspect ratio
-              // Cards are typically around 400-500px wide, height depends on crop aspect ratio
-              // Scaled to 75% of original size
-              const estimatedWidth = 337.5;
+              // Estimate based on container width - cards should be responsive
+              // Cards take up most of the container width (with some margin)
+              const cardWidthPercent = 0.85; // 85% of container width
+              const estimatedWidth = effectiveContainerWidth * cardWidthPercent;
               // Use a reasonable default aspect ratio (most address crops are wide)
               const estimatedAspectRatio = 3.5; // width/height ratio
               cardDims = { width: estimatedWidth, height: estimatedWidth / estimatedAspectRatio };
@@ -519,7 +562,7 @@ const AddressSimilaritySideBySide: React.FC = () => {
               seed,
               cardDims.width,
               cardDims.height,
-              containerWidth,
+              effectiveContainerWidth,
               containerHeight,
               topPosition
             );
