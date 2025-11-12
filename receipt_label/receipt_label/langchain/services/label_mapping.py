@@ -149,6 +149,10 @@ def create_receipt_word_labels_from_currency_labels(
                     continue
 
                 for word_id in word_ids:
+                    # Set validation_status based on CoVe verification
+                    # If CoVe verified the label, mark it as VALID; otherwise PENDING
+                    validation_status = "VALID" if getattr(label, "cove_verified", False) else "PENDING"
+
                     receipt_word_label = ReceiptWordLabel(
                         image_id=image_id,
                         receipt_id=actual_receipt_id,
@@ -159,7 +163,7 @@ def create_receipt_word_labels_from_currency_labels(
                         or "Identified by simple_receipt_analyzer",
                         timestamp_added=current_time,
                         label_proposed_by="simple_receipt_analyzer",
-                        validation_status="PENDING",
+                        validation_status=validation_status,
                     )
                     receipt_word_labels.append(receipt_word_label)
         else:
@@ -187,6 +191,10 @@ def create_receipt_word_labels_from_currency_labels(
                 continue
 
             for line_id, word_id in matches:
+                # Set validation_status based on CoVe verification
+                # If CoVe verified the label, mark it as VALID; otherwise PENDING
+                validation_status = "VALID" if getattr(label, "cove_verified", False) else "PENDING"
+
                 receipt_word_label = ReceiptWordLabel(
                     image_id=image_id,
                     receipt_id=actual_receipt_id,
@@ -197,7 +205,7 @@ def create_receipt_word_labels_from_currency_labels(
                     or "Identified by simple_receipt_analyzer",
                     timestamp_added=current_time,
                     label_proposed_by="simple_receipt_analyzer",
-                    validation_status="PENDING",
+                    validation_status=validation_status,
                 )
                 receipt_word_labels.append(receipt_word_label)
 

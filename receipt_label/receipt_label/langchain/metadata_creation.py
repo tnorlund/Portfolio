@@ -27,6 +27,7 @@ def create_metadata_creation_graph(
     thinking_strength: str = "medium",
     chroma_line_client: Optional[Any] = None,
     embed_fn: Optional[Callable[[list[str]], list[list[float]]]] = None,
+    enable_cove: bool = True,
 ) -> CompiledStateGraph:
     """Create LangGraph workflow for metadata creation with secure API key injection.
 
@@ -38,6 +39,7 @@ def create_metadata_creation_graph(
         thinking_strength: Ollama thinking strength - "low", "medium", or "high" (default: "medium")
         chroma_line_client: Optional ChromaDB client for fast-path matching
         embed_fn: Optional embedding function for ChromaDB queries
+        enable_cove: Whether to apply Chain of Verification to merchant extraction (default: True)
 
     Returns:
         Compiled LangGraph state graph
@@ -70,6 +72,7 @@ def create_metadata_creation_graph(
                 state,
                 ollama_api_key=ollama_api_key,
                 thinking_strength=thinking_strength,
+                enable_cove=enable_cove,
             )
         except Exception as e:
             return {
@@ -134,6 +137,7 @@ async def create_receipt_metadata_simple(
     receipt_words: Optional[list] = None,
     chroma_line_client: Optional[Any] = None,  # Optional ChromaDB client for fast-path
     embed_fn: Optional[callable] = None,  # Optional embedding function for ChromaDB
+    enable_cove: bool = True,  # Enable Chain of Verification for merchant extraction
 ) -> Any:  # Returns ReceiptMetadata
     """Create ReceiptMetadata for a receipt using LangGraph workflow with Ollama Cloud.
 
@@ -152,6 +156,7 @@ async def create_receipt_metadata_simple(
         receipt_words: Optional pre-fetched receipt words
         chroma_line_client: Optional ChromaDB client for fast-path matching
         embed_fn: Optional embedding function for ChromaDB queries
+        enable_cove: Whether to apply Chain of Verification to merchant extraction (default: True)
 
     Returns:
         ReceiptMetadata object (or None if creation failed)
@@ -183,6 +188,7 @@ async def create_receipt_metadata_simple(
         thinking_strength=thinking_strength,
         chroma_line_client=chroma_line_client,
         embed_fn=embed_fn,
+        enable_cove=enable_cove,
     )
 
     # Setup LangSmith tracing with secure API key handling (required)

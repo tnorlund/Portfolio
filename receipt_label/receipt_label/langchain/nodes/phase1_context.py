@@ -18,13 +18,14 @@ from receipt_label.langchain.state.currency_validation import (
     CurrencyAnalysisState,
 )
 from receipt_label.langchain.utils.retry import retry_with_backoff
+from receipt_label.langchain.utils.cove import apply_chain_of_verification
 
 
 async def phase1_context_analysis(
-    state: CurrencyAnalysisState, ollama_api_key: str
+    state: CurrencyAnalysisState, ollama_api_key: str, enable_cove: bool = True
 ):
-    """Analyze transaction context (DATE, TIME, PAYMENT_METHOD, etc.)."""
-    
+    """Analyze transaction context (DATE, TIME, PAYMENT_METHOD, etc.) with optional CoVe verification."""
+
     # Initialize LLM with structured outputs
     llm = ChatOllama(
         model="gpt-oss:120b",
@@ -36,10 +37,10 @@ async def phase1_context_analysis(
         temperature=0.3,
         timeout=120,  # 2 minute timeout for reliability
     )
-    
+
     # Bind to Pydantic model for structured outputs
     llm_structured = llm.with_structured_output(PhaseContextResponse)
-    
+
     # Build label definitions from CORE_LABELS (single source of truth!)
     subset = [
         TransactionLabelType.DATE.value,
@@ -56,17 +57,17 @@ async def phase1_context_analysis(
     ]
     # Use CORE_LABELS descriptions as-is
     subset_definitions = "\n".join(
-        f"- {label}: {CORE_LABELS.get(label, 'N/A')}" 
-        for label in subset 
+        f"- {label}: {CORE_LABELS.get(label, 'N/A')}"
+        for label in subset
         if label in CORE_LABELS
     )
-    
+
     # We dynamically inject the JSON schema from the Pydantic model
     import json
-    
+
     schema = PhaseContextResponse.model_json_schema()
     schema_json = json.dumps(schema, indent=2)
-    
+
     # Build merchant context if available
     merchant_context = ""
     if state.receipt_metadata:
@@ -79,10 +80,10 @@ MERCHANT CONTEXT (for better accuracy):
 - Address: {metadata.address or 'Unknown'}
 - Phone: {metadata.phone_number or 'Unknown'}
 
-Note: You already have merchant information from the above context. Focus on extracting 
+Note: You already have merchant information from the above context. Focus on extracting
 transaction-specific information (DATE, TIME, PAYMENT_METHOD, etc.) that varies per receipt.
 """
-    
+
     messages = [{
         "role": "user",
         "content": f"""You are analyzing a receipt to extract transaction context information.{merchant_context}
@@ -115,7 +116,7 @@ CRITICAL INSTRUCTIONS:
 
 Extract all transaction context labels and return them as JSON matching the schema above."""
     }]
-    
+
     # Define invocation function for retry logic
     async def invoke_llm():
         return await llm_structured.ainvoke(
@@ -129,15 +130,36 @@ Extract all transaction context labels and return them as JSON matching the sche
                 "tags": ["phase1_context", "transaction", "receipt-analysis"],
             },
         )
-    
+
     try:
         # Get structured response with retry logic
-        response = await retry_with_backoff(
+        initial_response = await retry_with_backoff(
             invoke_llm,
             max_retries=3,
             initial_delay=2.0,  # Start with 2 second delay
         )
-        
+
+        # Apply Chain of Verification if enabled
+        cove_verified = False
+        if enable_cove:
+            print("   🔍 Applying Chain of Verification to Phase 1 Context results...")
+            try:
+                response, cove_verified = await apply_chain_of_verification(
+                    initial_answer=initial_response,
+                    receipt_text=state.formatted_text,
+                    task_description="Transaction context extraction (DATE, TIME, PAYMENT_METHOD, etc.)",
+                    response_model=PhaseContextResponse,
+                    llm=llm,
+                    enable_cove=True,
+                )
+                print(f"   ✅ CoVe completed: cove_verified={cove_verified}")
+            except Exception as e:
+                print(f"   ⚠️ CoVe exception in phase1_context: {e}, using initial response")
+                response = initial_response
+                cove_verified = False
+        else:
+            response = initial_response
+
         # Convert to TransactionLabel objects
         transaction_labels = [
             TransactionLabel(
@@ -145,10 +167,11 @@ Extract all transaction context labels and return them as JSON matching the sche
                 label_type=getattr(TransactionLabelType, item.label_type),
                 confidence=float(item.confidence),
                 reasoning=item.reasoning,
+                cove_verified=cove_verified,  # Mark as CoVe verified if CoVe ran successfully
             )
             for item in response.transaction_labels
         ]
-        
+
         print(f"   ✅ Context: Found {len(transaction_labels)} transaction labels")
         return {"transaction_labels": transaction_labels}
     except Exception as e:
