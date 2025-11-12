@@ -1,8 +1,8 @@
-import React, { useEffect, useState, useMemo, useCallback } from "react";
 import NextImage from "next/image";
-import { api } from "../../../services/api";
-import { AddressSimilarityResponse, Receipt, Line, AddressBoundingBox } from "../../../types/api";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import useOptimizedInView from "../../../hooks/useOptimizedInView";
+import { api } from "../../../services/api";
+import { AddressBoundingBox, AddressSimilarityResponse, Line, Receipt } from "../../../types/api";
 import {
   detectImageFormatSupport,
   getBestImageUrl,
@@ -14,7 +14,7 @@ interface SimilarReceiptItemProps {
   lines: Line[];
   similarityDistance: number;
   formatSupport: { supportsAVIF: boolean; supportsWebP: boolean } | null;
-  position: { rotation: number; topOffset: number; leftPercent: number };
+  position: { rotation: number; topOffset: number; leftPercent: number; imageWidth: number };
   index: number;
   onLoad: () => void;
   shouldAnimate: boolean;
@@ -120,28 +120,25 @@ const SimilarReceiptItem = React.memo<SimilarReceiptItemProps>(
       onLoad();
     };
 
-    const { rotation, topOffset, leftPercent } = position;
+    const { rotation, topOffset, leftPercent, imageWidth } = position;
 
     if (hasErrored) {
       return (
         <div
           style={{
             position: "absolute",
-            width: "150px",
+            width: `${imageWidth}px`,
             left: `${leftPercent}%`,
             top: `${topOffset}px`,
             border: "1px solid #ccc",
             backgroundColor: "var(--background-color)",
             boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
-            transform: `rotate(${rotation}deg) translateY(${
-              shouldAnimate && imageLoaded ? 0 : -50
-            }px)`,
+            transform: `rotate(${rotation}deg) translateY(${shouldAnimate && imageLoaded ? 0 : -50
+              }px)`,
             opacity: shouldAnimate && imageLoaded ? 1 : 0,
-            transition: `transform 0.6s ease-out ${
-              shouldAnimate ? index * fadeDelay : 0
-            }ms, opacity 0.6s ease-out ${
-              shouldAnimate ? index * fadeDelay : 0
-            }ms`,
+            transition: `transform 0.6s ease-out ${shouldAnimate ? index * fadeDelay : 0
+              }ms, opacity 0.6s ease-out ${shouldAnimate ? index * fadeDelay : 0
+              }ms`,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -158,21 +155,18 @@ const SimilarReceiptItem = React.memo<SimilarReceiptItemProps>(
       <div
         style={{
           position: "absolute",
-          width: "150px",
+          width: `${imageWidth}px`,
           left: `${leftPercent}%`,
           top: `${topOffset}px`,
           border: "1px solid #ccc",
           backgroundColor: "var(--background-color)",
           boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
-          transform: `rotate(${rotation}deg) translateY(${
-            shouldAnimate && imageLoaded ? 0 : -50
-          }px)`,
+          transform: `rotate(${rotation}deg) translateY(${shouldAnimate && imageLoaded ? 0 : -50
+            }px)`,
           opacity: shouldAnimate && imageLoaded ? 1 : 0,
-          transition: `transform 0.6s ease-out ${
-            shouldAnimate ? index * fadeDelay : 0
-          }ms, opacity 0.6s ease-out ${
-            shouldAnimate ? index * fadeDelay : 0
-          }ms`,
+          transition: `transform 0.6s ease-out ${shouldAnimate ? index * fadeDelay : 0
+            }ms, opacity 0.6s ease-out ${shouldAnimate ? index * fadeDelay : 0
+            }ms`,
           willChange: "transform, opacity",
           overflow: "hidden",
         }}
@@ -199,7 +193,7 @@ const SimilarReceiptItem = React.memo<SimilarReceiptItemProps>(
                   alt={`Similar receipt ${receipt.receipt_id}`}
                   width={receipt.width}
                   height={receipt.height}
-                  sizes="150px"
+                  sizes={`${imageWidth}px`}
                   style={{
                     position: "absolute",
                     top: 0,
@@ -223,7 +217,7 @@ const SimilarReceiptItem = React.memo<SimilarReceiptItemProps>(
             alt={`Similar receipt ${receipt.receipt_id}`}
             width={receipt.width}
             height={receipt.height}
-            sizes="150px"
+            sizes={`${imageWidth}px`}
             style={{
               width: "100%",
               height: "auto",
@@ -282,18 +276,42 @@ const AddressSimilarity: React.FC<AddressSimilarityProps> = ({
     typeof window !== "undefined" ? window.innerWidth : 1024
   );
 
-  // Track actual container width using a ref
+  // Track actual container dimensions using a ref
   const containerRef = React.useRef<HTMLDivElement>(null);
-  const [containerWidth, setContainerWidth] = useState<number | null>(null);
+  const [containerDimensions, setContainerDimensions] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
+
+  // Responsive image dimensions based on screen size
+  const getResponsiveImageDimensions = useCallback(() => {
+    const isMobile = windowWidth <= 768;
+    const isSmallMobile = windowWidth <= 480;
+
+    if (isSmallMobile) {
+      return { width: 100, height: 130 }; // Smaller on very small screens
+    } else if (isMobile) {
+      return { width: 120, height: 160 }; // Medium on mobile
+    } else {
+      return { width: 150, height: 200 }; // Full size on desktop
+    }
+  }, [windowWidth]);
+
+  // Measure container dimensions
+  const measureContainer = useCallback(() => {
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      setContainerDimensions({
+        width: rect.width,
+        height: rect.height,
+      });
+    }
+  }, []);
 
   useEffect(() => {
     const handleResize = () => {
       setWindowWidth(window.innerWidth);
-      // Measure actual container width
-      if (containerRef.current) {
-        const rect = containerRef.current.getBoundingClientRect();
-        setContainerWidth(rect.width);
-      }
+      measureContainer();
     };
 
     // Initial measurement
@@ -301,33 +319,33 @@ const AddressSimilarity: React.FC<AddressSimilarityProps> = ({
 
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
-  }, []);
+  }, [measureContainer]);
 
-  // Measure container width when it becomes available
+  // Measure container when it becomes available
   useEffect(() => {
-    if (containerRef.current && !containerWidth) {
-      const rect = containerRef.current.getBoundingClientRect();
-      setContainerWidth(rect.width);
+    if (containerRef.current && !containerDimensions) {
+      measureContainer();
     }
-  }, [data, containerWidth]);
+  }, [data, containerDimensions, measureContainer]);
 
   // Calculate positions for similar receipts (right side)
   const positions = useMemo(() => {
     if (!data || !data.similar) return [];
 
-    const containerHeight = 500;
-    const imageWidth = 150;
-    const imageHeight = 200; // Estimated height for cropped address section
+    // Use responsive image dimensions
+    const { width: imageWidth, height: imageHeight } = getResponsiveImageDimensions();
 
-    // Use actual container width if available, otherwise fall back to window width calculation
+    // Use actual container dimensions if available, otherwise calculate responsive defaults
     const isMobile = windowWidth <= 768;
-    let rightSideWidth: number;
-    
-    if (containerWidth) {
-      // Use actual measured container width
-      rightSideWidth = containerWidth;
+    let containerWidth: number;
+    let containerHeight: number;
+
+    if (containerDimensions) {
+      // Use measured dimensions
+      containerWidth = containerDimensions.width;
+      containerHeight = containerDimensions.height;
     } else {
-      // Fallback calculation
+      // Fallback: calculate responsive container dimensions
       let calculatedContainerWidth = windowWidth;
       if (windowWidth <= 480) {
         calculatedContainerWidth = windowWidth * 0.9;
@@ -343,14 +361,26 @@ const AddressSimilarity: React.FC<AddressSimilarityProps> = ({
       const effectiveWidth = calculatedContainerWidth - containerPadding * 2;
       // On mobile, items stack vertically so each side takes full width
       // On desktop, items are side-by-side so each side takes half width
-      rightSideWidth = isMobile ? effectiveWidth : effectiveWidth * 0.5;
+      containerWidth = isMobile ? effectiveWidth : effectiveWidth * 0.5;
+
+      // Responsive container height
+      if (isMobile) {
+        containerHeight = Math.min(windowWidth * 0.8, 400); // Scale with screen on mobile
+      } else {
+        containerHeight = 500; // Fixed on desktop
+      }
     }
 
-    const imageWidthPercent = (imageWidth / rightSideWidth) * 100;
+    // Calculate image size as percentage of container
+    const imageWidthPercent = (imageWidth / containerWidth) * 100;
     // Ensure we don't exceed container bounds, with some margin
     const maxLeftPercent = Math.max(5, Math.min(95, 100 - imageWidthPercent - 5));
 
-    const maxTopPx = containerHeight - imageHeight - 50;
+    // Use relative margins (percentage of container height) instead of fixed pixels
+    const marginBottomPercent = 0.1; // 10% margin at bottom
+    const marginTopPercent = 0.04; // 4% margin at top
+    const maxTopPx = containerHeight * (1 - marginBottomPercent) - imageHeight;
+    const minTopPx = containerHeight * marginTopPercent;
 
     return data.similar.map((_, index) => {
       const rotation = Math.random() * 40 - 20;
@@ -364,15 +394,16 @@ const AddressSimilarity: React.FC<AddressSimilarityProps> = ({
       const biasedTop =
         topOffset * (1 - depthBias * 0.3) + (maxTopPx / 2) * (depthBias * 0.3);
 
-      const finalTop = Math.max(20, Math.min(biasedTop, maxTopPx - 20));
+      const finalTop = Math.max(minTopPx, Math.min(biasedTop, maxTopPx));
 
       return {
         rotation,
         topOffset: Math.round(finalTop),
         leftPercent: Math.min(Math.max(5, biasedLeft), maxLeftPercent), // Clamp between 5% and maxLeftPercent
+        imageWidth, // Include responsive image width in position
       };
     });
-  }, [data, windowWidth, containerWidth]);
+  }, [data, windowWidth, containerDimensions, getResponsiveImageDimensions]);
 
 
   useEffect(() => {
@@ -479,7 +510,7 @@ const AddressSimilarity: React.FC<AddressSimilarityProps> = ({
           flexDirection: windowWidth <= 768 ? "column" : "row",
           gap: "3rem",
           width: "100%",
-          maxWidth: "1200px",
+          maxWidth: "100%", // Respect parent container's max-width instead of fixed 1200px
           alignItems: "flex-start",
           boxSizing: "border-box",
         }}
@@ -526,7 +557,9 @@ const AddressSimilarity: React.FC<AddressSimilarityProps> = ({
             style={{
               position: "relative",
               width: "100%",
-              height: "500px",
+              height: windowWidth <= 768
+                ? `${Math.min(windowWidth * 0.8, 400)}px`
+                : "500px",
               overflow: "hidden",
             }}
           >

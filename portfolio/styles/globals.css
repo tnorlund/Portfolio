@@ -1,8 +1,17 @@
+html {
+  overflow-x: hidden;
+  /* Prevent horizontal scroll on mobile */
+  width: 100%;
+  max-width: 100vw;
+  /* Ensure html doesn't exceed viewport width */
+}
+
 :root {
   /* Light / default mode variables */
   --background-color: #ffffff;
   --text-color: #000000;
-  --text-color-rgb: 0, 0, 0;  /* Add this line - RGB for black */
+  --text-color-rgb: 0, 0, 0;
+  /* Add this line - RGB for black */
   --code-background: #f6f8fa;
 
   --header-background: #000000;
@@ -19,21 +28,28 @@
   --react-logo: #087ea4;
 
   --color-red: #E53935;
-  --color-red-rgb: 229, 57, 53;  /* RGB values for #E53935 */
+  --color-red-rgb: 229, 57, 53;
+  /* RGB values for #E53935 */
   --color-green: #43A047;
-  --color-green-rgb: 67, 160, 71;  /* RGB values for #43A047 */
+  --color-green-rgb: 67, 160, 71;
+  /* RGB values for #43A047 */
   --color-blue: #1E88E5;
-  --color-blue-rgb: 30, 136, 229;  /* RGB values for #1E88E5 */
+  --color-blue-rgb: 30, 136, 229;
+  /* RGB values for #1E88E5 */
   --color-yellow: #FDD835;
-  --color-yellow-rgb: 253, 216, 53;  /* RGB values for #FDD835 */
+  --color-yellow-rgb: 253, 216, 53;
+  /* RGB values for #FDD835 */
   --color-purple: #9C27B0;
-  --color-purple-rgb: 156, 39, 176;  /* RGB values for #9C27B0 */
+  --color-purple-rgb: 156, 39, 176;
+  /* RGB values for #9C27B0 */
 
-  --background-color-rgb: 255, 255, 255;  /* Add this for light mode */
+  --background-color-rgb: 255, 255, 255;
+  /* Add this for light mode */
 }
 
 main {
-  flex: 1; /* take up all available space */
+  flex: 1;
+  /* take up all available space */
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -74,8 +90,10 @@ header {
   justify-content: center;
   padding: 1rem;
 }
+
 header h1 {
-  margin: 0;            /* remove default h1 margin */
+  margin: 0;
+  /* remove default h1 margin */
   padding: 0;
 }
 
@@ -118,13 +136,23 @@ blockquote {
 
 
 body {
-  font-size: 16px;         /* or 17px, depending on taste */
-  line-height: 1.6;        /* adds breathing room between lines */
+  font-size: 16px;
+  /* or 17px, depending on taste */
+  line-height: 1.6;
+  /* adds breathing room between lines */
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
     'Helvetica Neue', Arial, sans-serif;
   margin: 0;
+  padding: 0;
   background-color: var(--background-color);
   color: var(--text-color);
+  overflow-x: hidden;
+  /* Prevent horizontal scroll on mobile */
+  width: 100%;
+  max-width: 100vw;
+  /* Ensure body doesn't exceed viewport width */
+  position: relative;
+  /* Establish positioning context */
 }
 
 button {
@@ -132,7 +160,8 @@ button {
   color: var(--button-text);
   padding: 0.75rem 1.5rem;
   font-size: 1rem;
-  font-weight: bold;             /* Make text bold */
+  font-weight: bold;
+  /* Make text bold */
   border: 1px solid var(--button-text);
   border-radius: 6px;
   cursor: pointer;
@@ -147,33 +176,40 @@ button:hover {
 }
 
 hr {
-  border: none;  /* remove the default border */
-  border-top: 0.5px solid var(--text-color);  /* add a custom border */
+  border: none;
+  /* remove the default border */
+  border-top: 0.5px solid var(--text-color);
+  /* add a custom border */
 }
 
 .resume-box {
   display: flex;
   justify-content: space-between;
   margin: 0.5rem 0;
-  font-size: 1.1rem;  /* slightly larger than body */
+  font-size: 1.1rem;
+  /* slightly larger than body */
   /* font-weight: 600; */
 }
 
 ul {
   margin: 1rem 0 1rem;
-  padding-left: 1.5rem; /* increase indentation to separate bullet text from edges */
+  padding-left: 1.5rem;
+  /* increase indentation to separate bullet text from edges */
 }
 
 li {
-  margin-bottom: 0.75rem; /* more vertical spacing */
-  line-height: 1.4;       /* or 1.6, depending on your global line-height */
+  margin-bottom: 0.75rem;
+  /* more vertical spacing */
+  line-height: 1.4;
+  /* or 1.6, depending on your global line-height */
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --background-color: #121212;
     --text-color: #ffffff;
-    --text-color-rgb: 255, 255, 255;  /* Add this line - RGB for white */
+    --text-color-rgb: 255, 255, 255;
+    /* Add this line - RGB for white */
     --code-background: #1f1f1f;
 
     --header-background: #000000;
@@ -190,28 +226,36 @@ li {
     --react-logo: #58C4DC;
 
     --color-red: #EF5350;
-    --color-red-rgb: 239, 83, 80;  /* RGB values for #EF5350 */
+    --color-red-rgb: 239, 83, 80;
+    /* RGB values for #EF5350 */
     --color-green: #66BB6A;
-    --color-green-rgb: 102, 187, 106;  /* RGB values for #66BB6A */
+    --color-green-rgb: 102, 187, 106;
+    /* RGB values for #66BB6A */
     --color-blue: #42A5F5;
     --color-yellow: #FFEE58;
 
-    --background-color-rgb: 18, 18, 18;  /* Add this for dark mode */
+    --background-color-rgb: 18, 18, 18;
+    /* Add this for dark mode */
   }
 }
 
 /* Center the container and give it a default max-width */
 .container {
-  margin: 0 auto;       /* center horizontally */
-  padding: 2rem;        /* some breathing room */
-  max-width: 1024px;    /* default "tablet/desktop" width */
-  text-align: left;     /* or 'center' if you want text centered too */
+  margin: 0 auto;
+  /* center horizontally */
+  padding: 2rem;
+  /* some breathing room */
+  max-width: 1024px;
+  /* default "tablet/desktop" width */
+  text-align: left;
+  /* or 'center' if you want text centered too */
 }
 
 /* MOBILE (portrait) - up to 480px */
 @media (max-width: 480px) {
   .container {
-    max-width: 90%;  /* shrink to fit smaller screens */
+    max-width: 90%;
+    /* shrink to fit smaller screens */
     padding: 1rem;
   }
 }
@@ -247,16 +291,22 @@ li {
 /* DESKTOP - above 1440px */
 @media (min-width: 1441px) {
   .container {
-    max-width: 1200px; /* or larger if you prefer */
+    max-width: 1200px;
+    /* or larger if you prefer */
   }
 }
 
 .receipt-item {
-  -webkit-user-select: none;  /* Safari */
-  -moz-user-select: none;     /* Firefox */
-  -ms-user-select: none;      /* IE10+/Edge */
-  user-select: none;          /* Standard */
-  -webkit-touch-callout: none; /* iOS Safari */
+  -webkit-user-select: none;
+  /* Safari */
+  -moz-user-select: none;
+  /* Firefox */
+  -ms-user-select: none;
+  /* IE10+/Edge */
+  user-select: none;
+  /* Standard */
+  -webkit-touch-callout: none;
+  /* iOS Safari */
 }
 
 svg text {
@@ -269,14 +319,16 @@ svg text {
 
 /* Global styles for code blocks */
 pre {
-  background-color: var(--code-background);  /* Light gray background often used on code blocks */
+  background-color: var(--code-background);
+  /* Light gray background often used on code blocks */
   padding: 1em;
   border-radius: 4px;
-  overflow: auto; /* Show scrollbar if content is wide */
+  overflow: auto;
+  /* Show scrollbar if content is wide */
   line-height: 1.4;
   font-size: 0.9rem;
   font-family: Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  margin: 0 0; 
+  margin: 0 0;
 }
 
 /* Optionally, style <code> elements if you use them directly */
