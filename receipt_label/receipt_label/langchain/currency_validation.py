@@ -182,6 +182,9 @@ def create_unified_analysis_graph(
     workflow.add_node("phase2_line_analysis", phase2_with_key)
     workflow.add_node("error_handler", graph_error_handler)
     workflow.add_node("combine_results", combine_with_dev_save)
+    # Add ChromaDB validation node if client is provided
+    if chroma_client:
+        workflow.add_node("validate_chromadb", validate_chromadb_with_client)
 
     # Define the flow using Send API for dynamic dispatch
     workflow.add_edge(START, "load_data")

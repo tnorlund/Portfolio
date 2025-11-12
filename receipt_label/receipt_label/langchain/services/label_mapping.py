@@ -10,6 +10,11 @@ from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 from receipt_label.langchain.models import CurrencyLabel
 
 
+def _get_validation_status(label: CurrencyLabel) -> str:
+    """Determine validation status based on CoVe verification."""
+    return "VALID" if getattr(label, "cove_verified", False) else "PENDING"
+
+
 def create_receipt_word_labels_from_currency_labels(
     discovered_labels: List[CurrencyLabel],
     lines: List[ReceiptLine],
@@ -150,8 +155,7 @@ def create_receipt_word_labels_from_currency_labels(
 
                 for word_id in word_ids:
                     # Set validation_status based on CoVe verification
-                    # If CoVe verified the label, mark it as VALID; otherwise PENDING
-                    validation_status = "VALID" if getattr(label, "cove_verified", False) else "PENDING"
+                    validation_status = _get_validation_status(label)
 
                     receipt_word_label = ReceiptWordLabel(
                         image_id=image_id,
@@ -192,8 +196,7 @@ def create_receipt_word_labels_from_currency_labels(
 
             for line_id, word_id in matches:
                 # Set validation_status based on CoVe verification
-                # If CoVe verified the label, mark it as VALID; otherwise PENDING
-                validation_status = "VALID" if getattr(label, "cove_verified", False) else "PENDING"
+                validation_status = _get_validation_status(label)
 
                 receipt_word_label = ReceiptWordLabel(
                     image_id=image_id,
