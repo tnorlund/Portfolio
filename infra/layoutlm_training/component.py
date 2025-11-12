@@ -237,7 +237,13 @@ PY
                 filters=[
                     {
                         "name": "name",
-                        "values": ["Deep Learning AMI GPU PyTorch*"],
+                        "values": [
+                            "Deep Learning * AMI GPU PyTorch*",
+                        ],
+                    },
+                    {
+                        "name": "architecture",
+                        "values": ["x86_64"],
                     },
                 ],
             ).id,
