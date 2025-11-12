@@ -41,7 +41,6 @@ api = aws.apigatewayv2.Api(
             "https://tylernorlund.com",
             "https://www.tylernorlund.com",
             "https://dev.tylernorlund.com",
-            "http://192.168.4.117:3000",
         ],
         allow_methods=["GET", "POST"],
         allow_headers=["Content-Type"],
