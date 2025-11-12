@@ -353,12 +353,16 @@ class _Receipt(
         receipts, _ = self._query_entities(
             index_name=None,  # Query main table
             key_condition_expression="PK = :pk AND begins_with(SK, :sk)",
-            expression_attribute_names=None,
+            expression_attribute_names={
+                "#type": "TYPE",
+            },
             expression_attribute_values={
                 ":pk": {"S": f"IMAGE#{image_id}"},
                 ":sk": {"S": "RECEIPT#"},
+                ":type": {"S": "RECEIPT"},
             },
             converter_func=item_to_receipt,
+            filter_expression="#type = :type",
             limit=None,  # Get all receipts
             last_evaluated_key=None,
         )

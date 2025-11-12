@@ -252,14 +252,23 @@ class PlacesAPI:
         if not clean_phone:
             logger.info("Empty phone—skipping Places API search and cache")
             return None
+        # Normalize to digits-only (canonical cache key)
+        digits_only = "".join(filter(str.isdigit, clean_phone))
         # Check cache first (use digits-only as canonical cache key)
         cached_result = self._get_cached_place("PHONE", digits_only)
         if cached_result:
-            logger.info("Found cached result for phone: %s", clean_phone)
-            return cached_result
+            # Validate cached result - skip if it's a NO_RESULTS or INVALID response
+            if cached_result.get("status") in ("NO_RESULTS", "INVALID"):
+                logger.info("Cached result is NO_RESULTS/INVALID, will retry API call for phone: %s", clean_phone)
+            elif cached_result.get("place_id"):
+                # Valid cached result with place_id
+                logger.info("Found cached result for phone: %s", clean_phone)
+                return cached_result
+            else:
+                # Cached result exists but has no place_id - treat as invalid
+                logger.info("Cached result has no place_id, will retry API call for phone: %s", clean_phone)
 
         # Validate phone number format
-        digits_only = "".join(filter(str.isdigit, clean_phone))
         if len(digits_only) < 10 or len(digits_only) > 15:
             logger.info(
                 f"Invalid phone number format (length {len(digits_only)}): {clean_phone}"
@@ -267,7 +276,7 @@ class PlacesAPI:
             # Cache the invalid result to prevent repeated API calls
             self._cache_place(
                 "PHONE",
-                clean_phone,
+                digits_only,
                 "INVALID",
                 {
                     "status": "INVALID",
@@ -280,7 +289,6 @@ class PlacesAPI:
         url = f"{self.BASE_URL}/findplacefromtext/json"
 
         # For API call, use E.164 format (+<country><number>) when possible
-        digits_only = "".join(filter(str.isdigit, clean_phone))
         cache_key = digits_only
         if clean_phone.strip().startswith("+") and digits_only:
             api_phone = "+" + digits_only
@@ -301,7 +309,9 @@ class PlacesAPI:
         }
 
         try:
-            response = requests.get(url, params=params, timeout=10)
+            # Use longer timeout for Places API calls (30 seconds)
+            # This helps with slow NAT instances or network issues
+            response = requests.get(url, params=params, timeout=30)
             response.raise_for_status()
             data = response.json()
 
@@ -409,7 +419,8 @@ class PlacesAPI:
         }
 
         try:
-            response = requests.get(url, params=params)
+            # Use longer timeout for Places API calls (30 seconds)
+            response = requests.get(url, params=params, timeout=30)
             response.raise_for_status()
             data = response.json()
 
@@ -510,7 +521,9 @@ class PlacesAPI:
 
             logger.debug("Making Places API request to: %s", url)
             logger.debug("With params: %s", params)
-            response = requests.get(url, params=params)
+            # Use longer timeout for Places API calls (30 seconds)
+            # This helps with slow NAT instances or network issues
+            response = requests.get(url, params=params, timeout=30)
             logger.debug("Response status code: %s", response.status_code)
             response.raise_for_status()
             data = response.json()
@@ -615,7 +628,8 @@ class PlacesAPI:
         try:
             logger.debug("Searching nearby locations: %s", url)
             logger.debug("With params: %s", params)
-            response = requests.get(url, params=params)
+            # Use longer timeout for Places API calls (30 seconds)
+            response = requests.get(url, params=params, timeout=30)
             response.raise_for_status()
             data = response.json()
             logger.debug("Nearby search response: %s", data)
@@ -762,7 +776,8 @@ class PlacesAPI:
         }
 
         try:
-            response = requests.get(url, params=params)
+            # Use longer timeout for Places API calls (30 seconds)
+            response = requests.get(url, params=params, timeout=30)
             response.raise_for_status()
             data = response.json()
 
@@ -783,22 +798,46 @@ class PlacesAPI:
         """
         Public text search for a business by free-form query, with optional lat/lng bias.
         """
-        url = f"{self.BASE_URL}/textsearch/json"
-        params = {
-            "query": query,
-            "key": self.api_key,
-            "fields": "place_id,formatted_address,name,formatted_phone_number,types,business_status",
-        }
-        # Add location bias if provided
-        if lat is not None and lng is not None:
-            params["location"] = f"{lat},{lng}"
-            params["radius"] = 1000  # meters; adjust as needed
-        response = requests.get(url, params=params)
-        response.raise_for_status()
-        data = response.json()
-        if data.get("status") == "OK" and data.get("results"):
-            return data["results"][0]
-        return None
+        try:
+            url = f"{self.BASE_URL}/textsearch/json"
+            params = {
+                "query": query,
+                "key": self.api_key,
+                "fields": "place_id,formatted_address,name,formatted_phone_number,types,business_status",
+            }
+            # Add location bias if provided
+            if lat is not None and lng is not None:
+                params["location"] = f"{lat},{lng}"
+                params["radius"] = 1000  # meters; adjust as needed
+            # Use longer timeout for Places API calls (30 seconds)
+            response = requests.get(url, params=params, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+
+            # Log the API response status for debugging
+            status = data.get("status")
+            if status == "OK" and data.get("results"):
+                result = data["results"][0]
+                logger.info(
+                    "Text search successful: query='%s', found: %s (place_id: %s)",
+                    query,
+                    result.get("name", "Unknown"),
+                    result.get("place_id", "N/A")[:20] if result.get("place_id") else "N/A",
+                )
+                return result
+            else:
+                # Log why we're returning None
+                error_message = data.get("error_message", "No error message")
+                logger.info(
+                    "Text search returned no results: query='%s', status='%s', error='%s'",
+                    query,
+                    status,
+                    error_message,
+                )
+                return None
+        except requests.exceptions.RequestException as e:
+            logger.error("Error in text search for query '%s': %s", query, e)
+            return None
 
 
 class ConfidenceLevel(Enum):

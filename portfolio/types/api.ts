@@ -38,6 +38,13 @@ export interface Point {
   y: number;
 }
 
+export interface AddressBoundingBox {
+  tl: Point; // top-left
+  tr: Point; // top-right
+  bl: Point; // bottom-left
+  br: Point; // bottom-right
+}
+
 export interface Image {
   image_id: string;
   width: number;
@@ -104,6 +111,7 @@ export interface BoundingBox {
 export interface ReceiptWord {
   receipt_word_id: number;
   receipt_id: number;
+  line_id: number;
   word_id: number;
   text: string;
   bounding_box: BoundingBox;
@@ -145,4 +153,45 @@ export interface Receipt {
   cdn_medium_s3_key?: string;
   cdn_medium_webp_s3_key?: string;
   cdn_medium_avif_s3_key?: string;
+}
+
+export interface ReceiptWordLabel {
+  image_id: string;
+  receipt_id: number;
+  line_id: number;
+  word_id: number;
+  label: string;
+  reasoning?: string;
+  timestamp_added: string;
+  validation_status?: string;
+  label_proposed_by?: string;
+  label_consolidated_from?: string;
+}
+
+export interface RandomReceiptDetailsResponse {
+  receipt: Receipt;
+  words: ReceiptWord[];
+  labels: ReceiptWordLabel[];
+}
+
+export interface AddressSimilarityResponse {
+  original: {
+    receipt: Receipt;
+    lines: Line[];
+    words: Word[];
+    labels: ReceiptWordLabel[];
+    bbox?: AddressBoundingBox;
+    address_text?: string;
+    selected_group?: number[];
+  };
+  similar: Array<{
+    receipt: Receipt;
+    lines: Line[];
+    words: Word[];
+    labels: ReceiptWordLabel[];
+    similarity_distance: number;
+    bbox?: AddressBoundingBox;
+    address_text?: string;
+  }>;
+  cached_at: string;
 }

@@ -4,13 +4,16 @@ import json
 import time
 import operator
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Annotated
+from typing import Any, Dict, List, Optional, Annotated, TYPE_CHECKING
 
 from pydantic import BaseModel, Field, ConfigDict
 from receipt_dynamo.entities import ReceiptLine
 from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 from receipt_label.langchain.models import CurrencyLabel, LineItemLabel
+
+if TYPE_CHECKING:
+    from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
 
 
 class CurrencyAnalysisState(BaseModel):
@@ -28,9 +31,11 @@ class CurrencyAnalysisState(BaseModel):
     formatted_text: str = ""
     dynamo_client: Any | None = None
     existing_word_labels: Optional[List[ReceiptWordLabel]] = None
+    receipt_metadata: Optional[Any] = None  # ReceiptMetadata - using Any to avoid circular import
 
     # Phase results
     currency_labels: List[CurrencyLabel] = Field(default_factory=list)
+    transaction_labels: List = Field(default_factory=list)  # Transaction context labels
     line_item_labels: Annotated[List[LineItemLabel], operator.add] = Field(
         default_factory=list
     )
@@ -39,6 +44,25 @@ class CurrencyAnalysisState(BaseModel):
     discovered_labels: List[Any] = Field(default_factory=list)
     confidence_score: float = 0.0
     processing_time: float = 0.0
+
+    # Error handling (NEW)
+    error_count: int = 0
+    last_error: Optional[str] = None
+    partial_results: bool = False
+
+    # Metadata validation (NEW)
+    metadata_validation: Optional[Any] = None
+
+    # Store original metadata for potential updates after graph completes
+    _metadata_for_update: Optional[Any] = None
+
+    # Label save operations (NEW)
+    receipt_word_labels_to_add: Optional[List[ReceiptWordLabel]] = Field(default_factory=list)
+    receipt_word_labels_to_update: Optional[List[ReceiptWordLabel]] = Field(default_factory=list)
+    receipt_word_labels: Optional[List[ReceiptWordLabel]] = Field(default_factory=list)  # Backward compatibility
+
+    # ChromaDB validation (NEW)
+    chromadb_validation_stats: Optional[Dict[str, Any]] = None
 
     model_config = ConfigDict(
         arbitrary_types_allowed=True,
@@ -56,11 +80,21 @@ class CurrencyAnalysisState(BaseModel):
             formatted_text=state.get("formatted_text", "") or "",
             dynamo_client=state.get("dynamo_client"),
             existing_word_labels=state.get("existing_word_labels"),
+            receipt_metadata=state.get("receipt_metadata"),
             currency_labels=state.get("currency_labels", []) or [],
+            transaction_labels=state.get("transaction_labels", []) or [],
             line_item_labels=state.get("line_item_labels", []) or [],
             discovered_labels=state.get("discovered_labels", []) or [],
             confidence_score=float(state.get("confidence_score", 0.0) or 0.0),
             processing_time=float(state.get("processing_time", 0.0) or 0.0),
+            error_count=state.get("error_count", 0),
+            last_error=state.get("last_error"),
+            partial_results=state.get("partial_results", False),
+            metadata_validation=state.get("metadata_validation"),
+            receipt_word_labels_to_add=state.get("receipt_word_labels_to_add", []) or [],
+            receipt_word_labels_to_update=state.get("receipt_word_labels_to_update", []) or [],
+            receipt_word_labels=state.get("receipt_word_labels", []) or [],
+            chromadb_validation_stats=state.get("chromadb_validation_stats"),
         )
 
     def to_graph(self) -> Dict[str, Any]:
@@ -72,11 +106,21 @@ class CurrencyAnalysisState(BaseModel):
             "formatted_text": self.formatted_text,
             "dynamo_client": self.dynamo_client,
             "existing_word_labels": self.existing_word_labels,
+            "receipt_metadata": self.receipt_metadata,
             "currency_labels": self.currency_labels,
+            "transaction_labels": self.transaction_labels,
             "line_item_labels": self.line_item_labels,
             "discovered_labels": self.discovered_labels,
             "confidence_score": self.confidence_score,
             "processing_time": self.processing_time,
+            "error_count": self.error_count,
+            "last_error": self.last_error,
+            "partial_results": self.partial_results,
+            "metadata_validation": self.metadata_validation,
+            "receipt_word_labels_to_add": self.receipt_word_labels_to_add or [],
+            "receipt_word_labels_to_update": self.receipt_word_labels_to_update or [],
+            "receipt_word_labels": self.receipt_word_labels or [],
+            "chromadb_validation_stats": self.chromadb_validation_stats,
         }
 
     def to_serializable(self) -> Dict[str, Any]:

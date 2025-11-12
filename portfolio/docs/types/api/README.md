@@ -8,6 +8,8 @@
 
 ## Interfaces
 
+- [AddressBoundingBox](interfaces/AddressBoundingBox.md)
+- [AddressSimilarityResponse](interfaces/AddressSimilarityResponse.md)
 - [BoundingBox](interfaces/BoundingBox.md)
 - [Image](interfaces/Image.md)
 - [ImageCountApiResponse](interfaces/ImageCountApiResponse.md)
@@ -16,10 +18,12 @@
 - [LabelValidationCountResponse](interfaces/LabelValidationCountResponse.md)
 - [Line](interfaces/Line.md)
 - [Point](interfaces/Point.md)
+- [RandomReceiptDetailsResponse](interfaces/RandomReceiptDetailsResponse.md)
 - [Receipt](interfaces/Receipt.md)
 - [ReceiptApiResponse](interfaces/ReceiptApiResponse.md)
 - [ReceiptsApiResponse](interfaces/ReceiptsApiResponse.md)
 - [ReceiptWord](interfaces/ReceiptWord.md)
+- [ReceiptWordLabel](interfaces/ReceiptWordLabel.md)
 - [Word](interfaces/Word.md)
 
 ## Type Aliases

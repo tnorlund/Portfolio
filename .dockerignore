@@ -10,3 +10,8 @@
 
 # Include the embedding handler code for the embedding Docker image
 !infra/embedding_step_functions/unified_embedding/
+!infra/validate_merchant_step_functions/container/
+!infra/upload_images/container/
+
+# Include ChromaDB compaction Lambda files
+!infra/chromadb_compaction/lambdas/

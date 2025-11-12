@@ -6,6 +6,7 @@ import os
 import api_gateway  # noqa: F401
 import pulumi
 import pulumi_aws as aws
+from pulumi import Output
 
 # Auto-enable Docker BuildKit based on Pulumi config
 config = pulumi.Config("portfolio")
@@ -31,16 +32,17 @@ from dynamo_db import (
 
 from embedding_step_functions import EmbeddingInfrastructure
 from notifications import NotificationSystem
+from billing_alerts import BillingAlerts
 from pulumi import ResourceOptions
 from raw_bucket import raw_bucket  # Import the actual bucket instance
 from s3_website import site_bucket  # Import the site bucket instance
 from upload_images import UploadImages
-from validate_merchant_step_functions import ValidateMerchantStepFunctions
 from validation_by_merchant import ValidationByMerchantStepFunction
 from validation_pipeline import ValidationPipeline
+from validate_pending_labels import ValidatePendingLabelsStepFunction
+from validate_metadata import ValidateMetadataStepFunction
 
 from chromadb_compaction import (
-    ChromaDBBuckets,
     create_chromadb_compaction_infrastructure,
 )
 
@@ -49,7 +51,8 @@ from currency_validation_step_functions import (
 )
 
 # Using the optimized docker-build based base images with scoped contexts
-from base_images.base_images import BaseImages
+from networking import PublicVpc
+from security import ChromaSecurity
 
 # from spot_interruption import SpotInterruptionHandler
 # from efs_storage import EFSStorage
@@ -61,7 +64,7 @@ from base_images.base_images import BaseImages
 # Import other necessary components
 try:
     # import lambda_layer  # noqa: F401
-    import fast_lambda_layer  # noqa: F401
+    import lambda_layer  # noqa: F401
     from lambda_functions.label_count_cache_updater.infra import (  # noqa: F401
         label_count_cache_updater_lambda,
     )
@@ -74,9 +77,28 @@ except ImportError as e:
     pass
 import step_function
 from step_function_enhanced import create_enhanced_receipt_processor
+from chroma.service import ChromaEcsService
+from chroma.workers import ChromaWorkers
+from chroma.orchestrator import ChromaOrchestrator
+from chroma.nat_egress import NatEgress
 
-# Create the dedicated VPC network infrastructure
-# network = VpcForCodeBuild("codebuild-network")
+# Foundation VPC (public subnets only, no NAT) per Task 350
+public_vpc = PublicVpc("foundation")
+pulumi.export("foundation_vpc_id", public_vpc.vpc_id)
+
+# (moved DynamoDB gateway endpoint below after NAT creation to reference both route tables)
+pulumi.export("foundation_public_subnet_ids", public_vpc.public_subnet_ids)
+# (moved S3 gateway endpoint below after NAT creation to reference its route table)
+
+# Task 2: Security (depends on VPC)
+security = ChromaSecurity("chroma", vpc_id=public_vpc.vpc_id)
+pulumi.export("sg_lambda_id", security.sg_lambda_id)
+pulumi.export("sg_chroma_id", security.sg_chroma_id)
+pulumi.export("ecs_task_role_arn", security.ecs_task_role_arn)
+pulumi.export("lambda_role_arn", security.lambda_role_arn)
+pulumi.export("step_functions_role_arn", security.step_functions_role_arn)
+
+# Task 3 snapshot bucket not used; shared_chromadb_buckets provides storage
 
 # --- Removed Config reading for VPC resources ---
 
@@ -103,55 +125,25 @@ notification_system = NotificationSystem(
     },
 )
 
-# Create base images first - they're used by multiple components
-base_images = BaseImages("base-images", stack=pulumi.get_stack())
-
-validate_merchant_step_functions = ValidateMerchantStepFunctions(
-    "validate-merchant"
-)
 validation_pipeline = ValidationPipeline("validation-pipeline")
 
-# Create shared ChromaDB bucket (used by both compaction and embedding)
-shared_chromadb_buckets = ChromaDBBuckets(
-    f"chromadb-{pulumi.get_stack()}-shared-buckets",
-)
+# Import shared ChromaDB bucket (created in chromadb_buckets.py for route access)
+from chromadb_buckets import shared_chromadb_buckets
 
 # Create ChromaDB compaction infrastructure using shared bucket
-chromadb_infrastructure = create_chromadb_compaction_infrastructure(
-    name=f"chromadb-{pulumi.get_stack()}",
-    dynamodb_table_arn=dynamodb_table.arn,
-    dynamodb_stream_arn=dynamodb_table.stream_arn,
-    chromadb_buckets=shared_chromadb_buckets,
-    base_images=base_images,
-)
-
 # Create currency validation state machine
 currency_validation_state_machine = create_currency_validation_state_machine(
     notification_system
 )
 
-# Create embedding infrastructure using shared bucket and queues
-embedding_infrastructure = EmbeddingInfrastructure(
-    f"embedding-infra-{pulumi.get_stack()}",
-    chromadb_queues=chromadb_infrastructure.chromadb_queues,
-    chromadb_buckets=shared_chromadb_buckets,
-    base_images=base_images,
-)
-
 validation_by_merchant_step_functions = ValidationByMerchantStepFunction(
     "validation-by-merchant"
-)
-upload_images = UploadImages(
-    "upload-images", raw_bucket=raw_bucket, site_bucket=site_bucket
 )
 
 # Create the enhanced receipt processor with error handling
 enhanced_receipt_processor = create_enhanced_receipt_processor(
     notification_system
 )
-
-pulumi.export("ocr_job_queue_url", upload_images.ocr_queue.url)
-pulumi.export("ocr_results_queue_url", upload_images.ocr_results_queue.url)
 
 # Export notification topics
 pulumi.export(
@@ -162,8 +154,203 @@ pulumi.export(
     "critical_error_topic_arn", notification_system.critical_error_topic_arn
 )
 
+# Create billing alerts for CloudWatch custom metrics costs
+billing_alerts = BillingAlerts(
+    "cloudwatch-metrics",
+    sns_topic_arn=notification_system.critical_error_topic_arn,
+    thresholds={
+        "warning": 10.0,  # $10/month
+        "critical": 25.0,  # $25/month
+        "emergency": 50.0,  # $50/month
+    },
+    tags={
+        "Environment": pulumi.get_stack(),
+        "Purpose": "Cost Monitoring",
+    },
+)
+
 # Export enhanced step function ARN
 pulumi.export("enhanced_receipt_processor_arn", enhanced_receipt_processor.arn)
+
+# Task 6: ECS Service (scale-to-zero) using our Chroma container
+chroma_service = ChromaEcsService(
+    name=f"chroma-{pulumi.get_stack()}",
+    vpc_id=public_vpc.vpc_id,
+    public_subnet_ids=public_vpc.public_subnet_ids,
+    security_group_id=security.sg_chroma_id,
+    task_role_arn=security.ecs_task_role_arn,
+    task_role_name=security.ecs_task_role_name,
+    execution_role_arn=security.ecs_task_execution_role_arn,
+    chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
+    collection="lines",
+    desired_count=0,
+)
+
+pulumi.export("chroma_cluster_arn", chroma_service.cluster.arn)
+pulumi.export("chroma_service_arn", chroma_service.svc.arn)
+pulumi.export("chroma_service_dns", chroma_service.endpoint_dns)
+
+# Task 7: Workers - Lambda functions that query Chroma via HTTP
+workers = ChromaWorkers(
+    name=f"chroma-workers-{pulumi.get_stack()}",
+    vpc_id=public_vpc.vpc_id,
+    subnets=public_vpc.public_subnet_ids,
+    security_group_id=security.sg_lambda_id,
+    dynamodb_table_name=dynamodb_table.name,
+    chroma_service_dns=chroma_service.endpoint_dns,
+)
+
+pulumi.export("chroma_query_words_lambda_arn", workers.query_words.arn)
+
+# NAT egress (public subnet) + private subnets for Lambda internet access
+nat = NatEgress(
+    name=f"nat-egress-{pulumi.get_stack()}",
+    vpc_id=public_vpc.vpc_id,
+    public_subnet_id=public_vpc.public_subnet_ids.apply(lambda ids: ids[0]),
+)
+pulumi.export("nat_instance_id", nat.nat_instance_id)
+pulumi.export("nat_private_subnet_ids", nat.private_subnet_ids)
+
+# Create ChromaDB compaction infrastructure using shared bucket
+# Now that nat is defined, we can use both public and private subnets for EFS
+# Create EFS with mount targets in unique AZs only
+# EFS only allows one mount target per AZ, so we need to deduplicate by AZ
+
+# Strategy: Select first public subnet + first private subnet
+# Based on subnet query: public subnets are in us-east-1a and us-east-1b
+# Both private subnets are in us-east-1b
+# So we need: first public (us-east-1a) + first private (us-east-1b) = 2 unique AZs
+unique_efs_subnets = Output.all(public_vpc.public_subnet_ids, nat.private_subnet_ids).apply(
+    lambda args: [args[0][0], args[1][0]]  # First public + first private
+)
+
+# Compaction lambda needs to be in private subnets for EFS access
+# Use only first private subnet to ensure Lambda is in subnet with EFS mount target
+compaction_lambda_subnets = nat.private_subnet_ids.apply(lambda ids: [ids[0]])  # Single subnet for EFS access
+
+chromadb_infrastructure = create_chromadb_compaction_infrastructure(
+    name=f"chromadb-{pulumi.get_stack()}",
+    dynamodb_table_arn=dynamodb_table.arn,
+    dynamodb_stream_arn=dynamodb_table.stream_arn,
+    chromadb_buckets=shared_chromadb_buckets,
+    vpc_id=public_vpc.vpc_id,
+    subnet_ids=compaction_lambda_subnets,  # Private subnets only for Lambda
+    efs_subnet_ids=unique_efs_subnets,  # EFS requires unique AZs (public + first private)
+    lambda_security_group_id=security.sg_lambda_id,
+)
+
+# Create embedding infrastructure using shared bucket and queues
+# Depend on EFS mount targets if EFS exists (Lambda needs mount targets in "available" state)
+embedding_depends_on = chromadb_infrastructure.efs.mount_targets if chromadb_infrastructure.efs else None
+
+embedding_infrastructure = EmbeddingInfrastructure(
+    f"embedding-infra-{pulumi.get_stack()}",
+    chromadb_queues=chromadb_infrastructure.chromadb_queues,
+    chromadb_buckets=shared_chromadb_buckets,
+    vpc_subnet_ids=compaction_lambda_subnets,  # Use same subnets as compaction Lambda
+    lambda_security_group_id=security.sg_lambda_id,
+    efs_access_point_arn=chromadb_infrastructure.efs.access_point_arn if chromadb_infrastructure.efs else None,
+    efs_mount_targets=chromadb_infrastructure.efs.mount_targets if chromadb_infrastructure.efs else None,  # Pass mount targets dependency
+    opts=ResourceOptions(depends_on=embedding_depends_on),
+)
+
+# Add S3 Gateway Endpoint for faster S3 access from both public and private subnets
+s3_gateway_endpoint = aws.ec2.VpcEndpoint(
+    f"s3-gateway-{pulumi.get_stack()}",
+    vpc_id=public_vpc.vpc_id,
+    service_name=f"com.amazonaws.{aws.config.region}.s3",
+    vpc_endpoint_type="Gateway",
+    route_table_ids=[public_vpc.public_route_table_id, nat.private_rt.id],
+)
+
+# Provide private access to DynamoDB from both public and private subnets (no NAT required)
+dynamodb_gateway_endpoint = aws.ec2.VpcEndpoint(
+    f"dynamodb-gateway-{pulumi.get_stack()}",
+    vpc_id=public_vpc.vpc_id,
+    service_name=f"com.amazonaws.{aws.config.region}.dynamodb",
+    vpc_endpoint_type="Gateway",
+    route_table_ids=[public_vpc.public_route_table_id, nat.private_rt.id],
+)
+
+# CloudWatch Logs Interface Endpoint for faster logging from VPC Lambdas
+logs_interface_endpoint = aws.ec2.VpcEndpoint(
+    f"logs-interface-{pulumi.get_stack()}",
+    vpc_id=public_vpc.vpc_id,
+    service_name=f"com.amazonaws.{aws.config.region}.logs",
+    vpc_endpoint_type="Interface",
+    subnet_ids=public_vpc.public_subnet_ids,  # One subnet per AZ for the endpoint
+    security_group_ids=[security.sg_vpce_id],
+    private_dns_enabled=True,
+)
+
+# SQS Interface Endpoint for cost-effective SQS access from both public and private subnets
+# Enables upload lambda to use EFS (private subnets) while accessing SQS without internet
+# Note: Only use first public and first private subnet to avoid duplicate subnets in same AZ
+sqs_interface_endpoint = aws.ec2.VpcEndpoint(
+    f"sqs-interface-{pulumi.get_stack()}",
+    vpc_id=public_vpc.vpc_id,
+    service_name=f"com.amazonaws.{aws.config.region}.sqs",
+    vpc_endpoint_type="Interface",
+    subnet_ids=Output.all(public_vpc.public_subnet_ids, nat.private_subnet_ids).apply(lambda args: [args[0][0], args[1][0]]),  # First public + first private (ensure different AZs)
+    security_group_ids=[security.sg_vpce_id],
+    private_dns_enabled=True,
+)
+
+# Recreate workers to use NAT private subnets for egress
+workers_nat = ChromaWorkers(
+    name=f"chroma-workers-nat-{pulumi.get_stack()}",
+    vpc_id=public_vpc.vpc_id,
+    subnets=nat.private_subnet_ids,
+    security_group_id=security.sg_lambda_id,
+    dynamodb_table_name=dynamodb_table.name,
+    chroma_service_dns=chroma_service.endpoint_dns,
+)
+pulumi.export("chroma_query_words_lambda_nat_arn", workers_nat.query_words.arn)
+
+# Task 8: Orchestration - Step Functions to scale up, wait, run, scale down
+orchestrator = ChromaOrchestrator(
+    name=f"chroma-orchestrator-{pulumi.get_stack()}",
+    cluster_arn=chroma_service.cluster.arn,
+    service_arn=chroma_service.svc.arn,
+    chroma_endpoint=chroma_service.endpoint_dns,
+    worker_lambda_arn=workers_nat.query_words.arn,
+    nat_instance_id=nat.nat_instance_id,
+    lambda_role_name=security.lambda_role_arn,
+    subnets=public_vpc.public_subnet_ids,
+    security_group_id=security.sg_lambda_id,
+)
+
+pulumi.export("chroma_orchestrator_sfn_arn", orchestrator.state_machine.arn)
+
+# ValidateMerchantStepFunctions removed - redundant with LangGraph metadata creation
+# Metadata is now created by:
+# - Upload OCR Handler (LangGraph)
+# - Upload Container Handler (LangGraph)
+# - Embedding polling handlers (LangGraph)
+# Consolidation and batch cleaning can be added as standalone Lambdas if needed
+
+# Wire upload-images after NAT and Chroma are available so it can reach OpenAI and Chroma
+# When using EFS, use only first private subnet to ensure Lambda is in subnet with EFS mount target
+upload_images_subnets = nat.private_subnet_ids.apply(lambda ids: [ids[0]])  # Single subnet for EFS access
+
+upload_images = UploadImages(
+    "upload-images",
+    raw_bucket=raw_bucket,
+    site_bucket=site_bucket,
+    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
+    embed_ndjson_queue_url=None,  # Will use internal queue
+    vpc_subnet_ids=upload_images_subnets,  # Single subnet when EFS is used
+    security_group_id=security.sg_lambda_id,
+    chroma_http_endpoint=chroma_service.endpoint_dns,
+    ecs_cluster_arn=chroma_service.cluster.arn,
+    ecs_service_arn=chroma_service.svc.arn,
+    nat_instance_id=nat.nat_instance_id,
+    efs_access_point_arn=chromadb_infrastructure.efs.access_point_arn if chromadb_infrastructure.efs else None,
+)
+
+pulumi.export("ocr_job_queue_url", upload_images.ocr_queue.url)
+pulumi.export("ocr_results_queue_url", upload_images.ocr_results_queue.url)
+
 # ML Training Infrastructure
 # -------------------------
 # Minimal LayoutLM training infra (toggle via config)
@@ -777,3 +964,53 @@ try:
 except ImportError:
     # Cache updater not available in this environment
     pass
+
+# Create validate pending labels Step Function
+# No VPC needed - downloads ChromaDB from S3, needs internet for Ollama API
+validate_pending_labels_sf = ValidatePendingLabelsStepFunction(
+    f"validate-pending-labels-{stack}",
+    dynamodb_table_name=dynamodb_table.name,
+    dynamodb_table_arn=dynamodb_table.arn,
+    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
+    chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
+    # No VPC - Lambda downloads ChromaDB from S3 and needs internet for Ollama API
+    # DynamoDB and S3 access via gateway endpoints work from anywhere
+)
+
+pulumi.export(
+    "validate_pending_labels_sf_arn",
+    validate_pending_labels_sf.state_machine_arn,
+)
+pulumi.export(
+    "validate_pending_labels_list_lambda_arn",
+    validate_pending_labels_sf.list_pending_labels_lambda_arn,
+)
+pulumi.export(
+    "validate_pending_labels_validate_lambda_arn",
+    validate_pending_labels_sf.validate_receipt_lambda_arn,
+)
+
+# Create validate metadata Step Function
+# No VPC needed - downloads ChromaDB from S3, needs internet for Ollama API
+validate_metadata_sf = ValidateMetadataStepFunction(
+    f"validate-metadata-{stack}",
+    dynamodb_table_name=dynamodb_table.name,
+    dynamodb_table_arn=dynamodb_table.arn,
+    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
+    chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
+    # No VPC - Lambda downloads ChromaDB from S3 and needs internet for Ollama API
+    # DynamoDB and S3 access via gateway endpoints work from anywhere
+)
+
+pulumi.export(
+    "validate_metadata_sf_arn",
+    validate_metadata_sf.state_machine_arn,
+)
+pulumi.export(
+    "validate_metadata_list_lambda_arn",
+    validate_metadata_sf.list_metadata_lambda_arn,
+)
+pulumi.export(
+    "validate_metadata_validate_lambda_arn",
+    validate_metadata_sf.validate_metadata_lambda_arn,
+)

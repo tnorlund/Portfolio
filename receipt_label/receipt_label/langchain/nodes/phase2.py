@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import List, Sequence
 from langgraph.types import Send
-from langchain_core.output_parsers import PydanticOutputParser
-from langchain_core.prompts import PromptTemplate
 from langchain_ollama import ChatOllama
 
 from receipt_dynamo.entities.receipt_word import ReceiptWord
@@ -14,6 +12,8 @@ from receipt_label.langchain.models import (
     Phase2Response,
     CurrencyLabelType,
 )
+from receipt_label.langchain.utils.retry import retry_with_backoff
+from receipt_label.langchain.utils.cove import apply_chain_of_verification
 from receipt_label.langchain.state.currency_validation import (
     CurrencyAnalysisState,
 )
@@ -71,7 +71,13 @@ def dispatch_to_parallel_phase2(
     return sends
 
 
-async def phase2_line_analysis(send_data: dict) -> dict:
+async def phase2_line_analysis(send_data: dict, enable_cove: bool = True) -> dict:
+    """Analyze line items with optional Chain of Verification.
+
+    Args:
+        send_data: Dictionary containing analysis data
+        enable_cove: Whether to apply Chain of Verification (default: True)
+    """
     index = send_data["line_total_index"]
     line_total = send_data["target_line_total"]
     receipt_text = send_data["receipt_text"]
@@ -81,13 +87,20 @@ async def phase2_line_analysis(send_data: dict) -> dict:
 
     print(f"   🤖 Phase 2.{index}: Analyzing line with {line_total.line_text}")
 
+    # Initialize LLM with structured outputs
     llm = ChatOllama(
         model="gpt-oss:20b",
         base_url="https://ollama.com",
         client_kwargs={
-            "headers": {"Authorization": f"Bearer {ollama_api_key}"}
+            "headers": {"Authorization": f"Bearer {ollama_api_key}"},
+            "timeout": 120,  # 2 minute timeout for reliability
         },
+        format="json",  # Force JSON format output
+        temperature=0.3,
     )
+
+    # Bind to Pydantic model for structured outputs
+    llm_structured = llm.with_structured_output(Phase2Response)
 
     subset = [
         LineItemLabelType.PRODUCT_NAME.value,
@@ -98,11 +111,30 @@ async def phase2_line_analysis(send_data: dict) -> dict:
         f"- {l}: {CORE_LABELS[l]}" for l in subset if l in CORE_LABELS
     )
 
-    template = """You are analyzing a receipt snippet to identify line item components.
+    currency_context = "\n".join(
+        [
+            f"- {label.label_type.value}: {label.amount}"
+            for label in currency_labels
+        ]
+    )
+
+    # Build messages for the LLM
+    # We dynamically inject the JSON schema from the Pydantic model
+    # This ensures the LLM understands the exact expected structure
+    import json
+
+    # Get JSON schema from the Pydantic model (single source of truth!)
+    schema = Phase2Response.model_json_schema()
+    schema_json = json.dumps(schema, indent=2)
+
+    messages = [
+        {
+            "role": "user",
+            "content": f"""You are analyzing a receipt snippet to identify line item components.
 
 TARGET SNIPPET (COMPILED FROM OCR WORDS):
-{target_line_text}
-TARGET AMOUNT: {target_amount}
+{send_data.get("target_line_text_compiled", "")}
+TARGET AMOUNT: {str(getattr(line_total, "amount", ""))}
 
 CURRENCY CONTEXT FROM PHASE 1:
 {currency_context}
@@ -118,41 +150,21 @@ IMPORTANT:
 2. Do not include line positions or IDs; only the word text and label type.
 3. Focus on PRODUCT_NAME, QUANTITY, UNIT_PRICE.
 
-{format_instructions}"""
+CRITICAL INSTRUCTIONS:
+1. You MUST respond with valid JSON ONLY
+2. NO markdown tables, NO text explanations
+3. Output must match this EXACT JSON structure:
 
-    output_parser = PydanticOutputParser(pydantic_object=Phase2Response)
-    currency_context = "\n".join(
-        [
-            f"- {label.label_type.value}: {label.amount}"
-            for label in currency_labels
-        ]
-    )
-    prompt = PromptTemplate(
-        template=template,
-        input_variables=[
-            "target_line_text",
-            "target_amount",
-            "currency_context",
-            "receipt_text",
-            "subset_definitions",
-        ],
-        partial_variables={
-            "format_instructions": output_parser.get_format_instructions()
-        },
-    )
+{schema_json}
 
-    chain = prompt | llm | output_parser
-    try:
-        response = await chain.ainvoke(
-            {
-                "target_line_text": send_data.get(
-                    "target_line_text_compiled", ""
-                ),
-                "target_amount": str(getattr(line_total, "amount", "")),
-                "currency_context": currency_context,
-                "receipt_text": receipt_text,
-                "subset_definitions": subset_definitions,
-            },
+Analyze the snippet and extract line item components as JSON matching the schema above."""
+        }
+    ]
+
+    # Define invocation function for retry logic
+    async def invoke_llm():
+        return await llm_structured.ainvoke(
+            messages,
             config={
                 "metadata": {
                     "receipt_id": receipt_id,
@@ -163,6 +175,39 @@ IMPORTANT:
                 "tags": ["phase2", "line-items", "receipt-analysis"],
             },
         )
+
+    try:
+        # Get structured response with retry logic
+        initial_response = await retry_with_backoff(
+            invoke_llm,
+            max_retries=3,
+            initial_delay=2.0,  # Start with 2 second delay
+        )
+
+        # Apply Chain of Verification if enabled
+        # For Phase 2, we verify against the target snippet and full receipt context
+        target_snippet = send_data.get("target_line_text_compiled", "")
+        verification_context = f"TARGET SNIPPET:\n{target_snippet}\n\nFULL RECEIPT:\n{receipt_text}"
+
+        cove_verified = False
+        if enable_cove:
+            print(f"   🔍 Applying Chain of Verification to Phase 2.{index} results...")
+            try:
+                response, cove_verified = await apply_chain_of_verification(
+                    initial_answer=initial_response,
+                    receipt_text=verification_context,
+                    task_description=f"Line item component extraction (PRODUCT_NAME, QUANTITY, UNIT_PRICE) for line with amount {line_total.amount}",
+                    response_model=Phase2Response,
+                    llm=llm,
+                    enable_cove=True,
+                )
+                print(f"   ✅ CoVe completed: cove_verified={cove_verified}")
+            except Exception as e:
+                print(f"   ⚠️ CoVe exception in phase2: {e}, using initial response")
+                response = initial_response
+                cove_verified = False
+        else:
+            response = initial_response
 
         allowed_label_types = {
             LineItemLabelType.PRODUCT_NAME.value,
@@ -190,6 +235,7 @@ IMPORTANT:
                     label_type=label_type,
                     confidence=item.confidence,
                     reasoning=item.reasoning,
+                    cove_verified=cove_verified,  # Mark as CoVe verified if CoVe ran successfully
                 )
                 line_item_labels.append(label)
             except AttributeError:

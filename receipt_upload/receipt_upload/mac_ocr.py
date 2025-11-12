@@ -1,131 +1,149 @@
+#!/usr/bin/env python3
+"""
+Python wrapper for the Swift OCR CLI tool.
+
+This script replaces the original Python OCR implementation with a call to the Swift binary.
+It provides the same interface and error handling as the original Python script.
+"""
+
 import argparse
-import json
-from datetime import datetime, timezone
+import subprocess
+import sys
 from pathlib import Path
-from tempfile import TemporaryDirectory
 
-import boto3
 
-from receipt_dynamo.constants import OCRStatus
-from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.entities import OCRRoutingDecision
-from receipt_upload.ocr import apple_vision_ocr_job
-from receipt_upload.pulumi import load_env
-from receipt_upload.utils import download_image_from_s3, upload_file_to_s3
+def find_swift_binary():
+    """Find the Swift OCR binary, checking common locations."""
+    # Check if we're in a Swift package directory
+    swift_package_dir = Path(__file__).parent.parent.parent / "receipt_ocr_swift"
+    if swift_package_dir.exists():
+        # Try to find the built binary
+        build_dir = swift_package_dir / ".build" / "debug"
+        binary_path = build_dir / "receipt-ocr"
+        if binary_path.exists():
+            return str(binary_path)
+        
+        # Try release build
+        build_dir = swift_package_dir / ".build" / "release"
+        binary_path = build_dir / "receipt-ocr"
+        if binary_path.exists():
+            return str(binary_path)
+    
+    # Check if it's in PATH
+    try:
+        result = subprocess.run(["which", "receipt-ocr"], capture_output=True, text=True)
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except FileNotFoundError:
+        pass
+    
+    return None
+
+
+def build_swift_binary():
+    """Build the Swift OCR binary."""
+    swift_package_dir = Path(__file__).parent.parent.parent / "receipt_ocr_swift"
+    if not swift_package_dir.exists():
+        raise RuntimeError(f"Swift package directory not found: {swift_package_dir}")
+    
+    print("Building Swift OCR binary...")
+    try:
+        result = subprocess.run(
+            ["swift", "build", "--product", "receipt-ocr"],
+            cwd=swift_package_dir,
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        print("Swift binary built successfully!")
+        
+        # Return the path to the built binary
+        build_dir = swift_package_dir / ".build" / "debug"
+        binary_path = build_dir / "receipt-ocr"
+        if binary_path.exists():
+            return str(binary_path)
+        else:
+            raise RuntimeError("Binary was built but not found at expected location")
+            
+    except subprocess.CalledProcessError as e:
+        error_msg = f"Failed to build Swift binary:\n"
+        error_msg += f"Return code: {e.returncode}\n"
+        if e.stdout:
+            error_msg += f"STDOUT:\n{e.stdout}\n"
+        if e.stderr:
+            error_msg += f"STDERR:\n{e.stderr}\n"
+        raise RuntimeError(error_msg)
+    except FileNotFoundError:
+        raise RuntimeError("Swift compiler not found. Please install Swift from https://swift.org/")
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--env", type=str, default="dev")
+    parser = argparse.ArgumentParser(
+        description="OCR processing using Swift implementation",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+This script is a Python wrapper for the Swift OCR implementation.
+
+To build the Swift binary:
+  cd receipt_ocr_swift
+  swift build --product receipt-ocr
+
+The Swift binary will be available at:
+  receipt_ocr_swift/.build/debug/receipt-ocr
+
+For more information, see receipt_ocr_swift/README.md
+        """
+    )
+    parser.add_argument("--env", type=str, default="dev", help="Environment name (default: dev)")
+    parser.add_argument("--log-level", type=str, choices=["trace", "debug", "info", "warn", "error"], 
+                       help="Log level for Swift binary")
+    parser.add_argument("--continuous", action="store_true", 
+                       help="Run continuously until queue is empty")
+    parser.add_argument("--stub-ocr", action="store_true", 
+                       help="Use stub OCR engine instead of Vision")
+    
     args = parser.parse_args()
-    env = args.env
-    pulumi_outputs = load_env(env)
-    # raise an error if the pulumi_outputs is empty
-    if not pulumi_outputs:
-        raise ValueError("Pulumi outputs are empty")
-    sqs_queue_url = pulumi_outputs["ocr_job_queue_url"]
-    dynamo_table_name = pulumi_outputs["dynamodb_table_name"]
-    ocr_results_queue_url = pulumi_outputs["ocr_results_queue_url"]
-
-    dynamo_client = DynamoClient(dynamo_table_name)
-    # Get the image from the queue
-    sqs_client = boto3.client("sqs")
-    response = sqs_client.receive_message(
-        QueueUrl=sqs_queue_url,
-        MaxNumberOfMessages=10,
-        VisibilityTimeout=60,
-    )
-    if "Messages" not in response:
-        print("No messages in the queue")
-        return
-
-    # image_details is a list of tuples, where each tuple contains the image_id
-    # and the path to the image
-    image_details: list[tuple[str, Path]] = []
-
-    message_contexts = []
-
-    print(f"Received {len(response['Messages'])} messages")
-    with TemporaryDirectory() as temp_dir:
-        for message in response["Messages"]:
-            # Get the job_id and image_id from the message
-            message_body = json.loads(message["Body"])
-            job_id = message_body["job_id"]
-            image_id = message_body["image_id"]
-
-            message_contexts.append((message, image_id, job_id))
-
-            # Grab the OCR Job from the DynamoDB table
-            ocr_job = dynamo_client.get_ocr_job(
-                image_id=image_id, job_id=job_id
-            )
-            image_s3_key = ocr_job.s3_key
-            image_s3_bucket = ocr_job.s3_bucket
-
-            # Download the image from the S3 bucket
-            image_path = download_image_from_s3(
-                image_s3_bucket, image_s3_key, image_id
-            )
-            image_details.append((image_id, image_path))
-
-        # Run the OCR
-        ocr_results = apple_vision_ocr_job(
-            [path for (_, path) in image_details], Path(temp_dir)
-        )
-
-        # Now zip with original image_ids and job_ids
-        for ocr_json_file, (message, image_id, job_id) in zip(
-            ocr_results, message_contexts
-        ):
-
-            ocr_json_file_name = ocr_json_file.name
-            ocr_json_file_s3_key = f"ocr_results/{ocr_json_file_name}"
-            upload_file_to_s3(
-                file_path=ocr_json_file,
-                s3_bucket=image_s3_bucket,
-                s3_key=ocr_json_file_s3_key,
-            )
-            dynamo_client.add_ocr_routing_decision(
-                OCRRoutingDecision(
-                    image_id=image_id,
-                    job_id=job_id,
-                    s3_bucket=image_s3_bucket,
-                    s3_key=ocr_json_file_s3_key,
-                    created_at=datetime.now(timezone.utc),
-                    updated_at=datetime.now(timezone.utc),
-                    receipt_count=0,
-                    status=OCRStatus.PENDING,
-                )
-            )
-            sqs_client.send_message(
-                QueueUrl=ocr_results_queue_url,
-                MessageBody=json.dumps(
-                    {
-                        "image_id": image_id,
-                        "job_id": job_id,
-                        "s3_key": ocr_json_file_s3_key,
-                        "s3_bucket": image_s3_bucket,
-                    }
-                ),
-            )
-            print(
-                f"Adding OCR routing decision for\nimage {image_id}\n"
-                f"job {job_id}\ns3_bucket {image_s3_bucket}\n"
-                f"s3_key {ocr_json_file_s3_key}"
-            )
-            ocr_job = dynamo_client.get_ocr_job(
-                image_id=image_id, job_id=job_id
-            )
-            ocr_job.updated_at = datetime.now(timezone.utc)
-            ocr_job.status = OCRStatus.COMPLETED.value
-            dynamo_client.update_ocr_job(ocr_job)
-    sqs_client.delete_message_batch(
-        QueueUrl=sqs_queue_url,
-        Entries=[
-            {"Id": m["MessageId"], "ReceiptHandle": m["ReceiptHandle"]}
-            for (m, _, _) in message_contexts
-        ],
-    )
+    
+    # Find or build the Swift binary
+    binary_path = find_swift_binary()
+    if binary_path is None:
+        print("Swift OCR binary not found. Attempting to build...")
+        try:
+            binary_path = build_swift_binary()
+        except RuntimeError as e:
+            print(f"Error: {e}")
+            print("\nTo build the Swift binary manually:")
+            print("  cd receipt_ocr_swift")
+            print("  swift build --product receipt-ocr")
+            print("\nFor more information, see receipt_ocr_swift/README.md")
+            sys.exit(1)
+    
+    # Prepare arguments for the Swift binary
+    swift_args = ["--env", args.env]
+    
+    if args.log_level:
+        swift_args.extend(["--log-level", args.log_level])
+    
+    if args.continuous:
+        swift_args.append("--continuous")
+    
+    if args.stub_ocr:
+        swift_args.append("--stub-ocr")
+    
+    # Run the Swift binary
+    try:
+        print(f"Running Swift OCR binary: {binary_path}")
+        result = subprocess.run([binary_path] + swift_args, check=True)
+        sys.exit(result.returncode)
+    except subprocess.CalledProcessError as e:
+        print(f"Swift OCR binary failed with exit code {e.returncode}")
+        sys.exit(e.returncode)
+    except FileNotFoundError:
+        print(f"Error: Swift binary not found at {binary_path}")
+        print("Please build the Swift binary first:")
+        print("  cd receipt_ocr_swift")
+        print("  swift build --product receipt-ocr")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

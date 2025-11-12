@@ -12,7 +12,7 @@ import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-import utils.logging
+import utils.logging # pylint: disable=import-error
 
 import boto3
 import chromadb
@@ -39,6 +39,20 @@ except ImportError:
     logger.warning(
         "Atomic and hash-enabled uploads not available, using legacy upload"
     )
+
+# Try to import EFS snapshot manager (available in container Lambda)
+try:
+    # Try absolute import first (Lambda environment)
+    from compaction.efs_snapshot_manager import get_efs_snapshot_manager
+    EFS_AVAILABLE = True
+except ImportError:
+    try:
+        # Try relative import (test environment)
+        from .compaction.efs_snapshot_manager import get_efs_snapshot_manager
+        EFS_AVAILABLE = True
+    except ImportError:
+        EFS_AVAILABLE = False
+        logger.info("EFS snapshot manager not available, will use S3-only mode")
 
 # Initialize clients
 s3_client = boto3.client("s3")
@@ -124,6 +138,10 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     Process a chunk of deltas without acquiring locks.
 
     Writes output to intermediate/{batch_id}/chunk-{index}/ in S3.
+
+    Supports two modes:
+    1. Inline mode: delta_results provided directly in event
+    2. S3 mode: chunks_s3_key and chunks_s3_bucket provided, downloads specific chunk by chunk_index
     """
     logger.info("Processing chunk compaction")
 
@@ -131,6 +149,10 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     chunk_index = event.get("chunk_index")
     delta_results = event.get("delta_results", [])
     database_name = event.get("database")  # Track database for this chunk
+
+    # S3 mode: download chunk from S3 if delta_results not provided
+    chunks_s3_key = event.get("chunks_s3_key")
+    chunks_s3_bucket = event.get("chunks_s3_bucket")
 
     if not batch_id:
         return {
@@ -143,6 +165,73 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             "statusCode": 400,
             "error": "chunk_index is required for chunk processing",
         }
+
+    # If delta_results not provided but S3 info is, download chunk from S3
+    if not delta_results and chunks_s3_key and chunks_s3_bucket:
+        logger.info(
+            "Downloading chunk from S3",
+            chunk_index=chunk_index,
+            s3_key=chunks_s3_key,
+            bucket=chunks_s3_bucket,
+        )
+        try:
+            import boto3
+            import json
+            import tempfile
+            import os
+
+            s3_client = boto3.client("s3")
+
+            # Download chunks file from S3
+            with tempfile.NamedTemporaryFile(mode="r", suffix=".json", delete=False) as tmp_file:
+                tmp_file_path = tmp_file.name
+
+            try:
+                s3_client.download_file(chunks_s3_bucket, chunks_s3_key, tmp_file_path)
+
+                with open(tmp_file_path, "r", encoding="utf-8") as f:
+                    all_chunks = json.load(f)
+
+                # Find the specific chunk by chunk_index
+                chunk_found = None
+                for chunk in all_chunks:
+                    if chunk.get("chunk_index") == chunk_index:
+                        chunk_found = chunk
+                        break
+
+                if not chunk_found:
+                    return {
+                        "statusCode": 404,
+                        "error": f"Chunk {chunk_index} not found in S3 chunks file",
+                        "batch_id": batch_id,
+                        "chunk_index": chunk_index,
+                    }
+
+                # Extract delta_results from the chunk
+                delta_results = chunk_found.get("delta_results", [])
+                logger.info(
+                    "Downloaded chunk from S3",
+                    chunk_index=chunk_index,
+                    delta_count=len(delta_results),
+                )
+            finally:
+                # Clean up temp file
+                try:
+                    os.unlink(tmp_file_path)
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.error(
+                "Failed to download chunk from S3",
+                chunk_index=chunk_index,
+                error=str(e),
+            )
+            return {
+                "statusCode": 500,
+                "error": f"Failed to download chunk from S3: {str(e)}",
+                "batch_id": batch_id,
+                "chunk_index": chunk_index,
+            }
 
     if not delta_results:
         logger.info(
@@ -236,6 +325,17 @@ def merge_chunk_group_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         "database": "lines" or "words"
     }
 
+    OR (S3 mode):
+    {
+        "operation": "merge_chunk_group",
+        "batch_id": "batch-group-0",
+        "group_index": 0,
+        "chunk_group": None,  # Will be loaded from S3
+        "groups_s3_key": "chunk_groups/batch-id/groups.json",
+        "groups_s3_bucket": "bucket-name",
+        "database": "lines" or "words"
+    }
+
     Returns:
     {
         "intermediate_key": "intermediate/batch-group-0/merged/"
@@ -245,8 +345,16 @@ def merge_chunk_group_handler(event: Dict[str, Any]) -> Dict[str, Any]:
 
     batch_id = event.get("batch_id")
     group_index = event.get("group_index", 0)
-    chunk_group = event.get("chunk_group", [])
+    # Note: Step Functions passes null as None in Python
+    # event.get() returns None if key exists with null value, [] only if key is missing
+    chunk_group = event.get("chunk_group")
+    if chunk_group is None:
+        chunk_group = []  # Default to empty list for easier handling
     database_name = event.get("database", "lines")
+
+    # S3 mode: download group from S3 if chunk_group not provided
+    groups_s3_key = event.get("groups_s3_key")
+    groups_s3_bucket = event.get("groups_s3_bucket")
 
     if not batch_id:
         return {
@@ -254,26 +362,145 @@ def merge_chunk_group_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             "error": "batch_id is required for chunk group merging",
         }
 
-    if not chunk_group:
+    # If chunk_group is None or empty and S3 info is provided, download from S3
+    # Note: Step Functions passes null as None in Python, and event.get() returns None if key exists with null value
+    needs_s3_download = (
+        (chunk_group is None or chunk_group == [] or not chunk_group)
+        and groups_s3_key
+        and groups_s3_bucket
+    )
+
+    if needs_s3_download:
         logger.info(
-            "Empty chunk group, skipping merge",
+            "Downloading group from S3",
+            group_index=group_index,
+            s3_key=groups_s3_key,
+            bucket=groups_s3_bucket,
+            chunk_group_type=type(chunk_group).__name__ if chunk_group is not None else "None",
+        )
+        try:
+            # Download groups file from S3
+            with tempfile.NamedTemporaryFile(mode="r", suffix=".json", delete=False) as tmp_file:
+                tmp_file_path = tmp_file.name
+
+            try:
+                s3_client.download_file(groups_s3_bucket, groups_s3_key, tmp_file_path)
+
+                with open(tmp_file_path, "r", encoding="utf-8") as f:
+                    all_groups = json.load(f)
+
+                # Validate all_groups is a list
+                if not isinstance(all_groups, list):
+                    logger.error(
+                        "Invalid groups format in S3 - expected list",
+                        groups_type=type(all_groups).__name__,
+                        s3_key=groups_s3_key,
+                    )
+                    return {
+                        "statusCode": 500,
+                        "error": f"Invalid groups format in S3: expected list, got {type(all_groups).__name__}",
+                        "batch_id": batch_id,
+                        "group_index": group_index,
+                    }
+
+                # Find the specific group by group_index
+                if group_index >= len(all_groups):
+                    return {
+                        "statusCode": 404,
+                        "error": f"Group {group_index} not found in S3 groups file (total groups: {len(all_groups)})",
+                        "batch_id": batch_id,
+                        "group_index": group_index,
+                    }
+
+                chunk_group = all_groups[group_index]
+
+                # Validate downloaded group is a list
+                if not isinstance(chunk_group, list):
+                    logger.error(
+                        "Invalid group format in S3 - expected list",
+                        group_type=type(chunk_group).__name__,
+                        group_index=group_index,
+                        s3_key=groups_s3_key,
+                    )
+                    return {
+                        "statusCode": 500,
+                        "error": f"Invalid group format in S3: expected list, got {type(chunk_group).__name__}",
+                        "batch_id": batch_id,
+                        "group_index": group_index,
+                    }
+
+                logger.info(
+                    "Downloaded group from S3",
+                    group_index=group_index,
+                    chunk_count=len(chunk_group),
+                )
+            finally:
+                # Clean up temp file
+                try:
+                    os.unlink(tmp_file_path)
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.error(
+                "Failed to download group from S3",
+                group_index=group_index,
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=True,
+            )
+            return {
+                "statusCode": 500,
+                "error": f"Failed to download group from S3: {str(e)}",
+                "batch_id": batch_id,
+                "group_index": group_index,
+            }
+
+    # Ensure chunk_group is a list after S3 download (or handle None/empty cases)
+    if chunk_group is None:
+        chunk_group = []
+
+    # Validate chunk_group is a list before processing
+    if not isinstance(chunk_group, list):
+        logger.error(
+            "Invalid chunk_group type - expected list",
             batch_id=batch_id,
             group_index=group_index,
+            chunk_group_type=type(chunk_group).__name__,
+            chunk_group_value=str(chunk_group)[:200],  # Truncate for logging
         )
+        return {
+            "statusCode": 400,
+            "error": f"chunk_group must be a list, got {type(chunk_group).__name__}",
+            "batch_id": batch_id,
+            "group_index": group_index,
+        }
+
+    if not chunk_group:
+        logger.warning(
+            "Empty chunk group detected - this should not happen if groups were created correctly",
+            batch_id=batch_id,
+            group_index=group_index,
+            groups_s3_key=groups_s3_key,
+            groups_s3_bucket=groups_s3_bucket,
+        )
+        # Return a response that will be filtered out by final merge
+        # Don't return intermediate_key since there's nothing to merge
         return {
             "statusCode": 200,
             "batch_id": batch_id,
             "group_index": group_index,
-            "message": "Empty chunk group processed",
+            "message": "Empty chunk group processed - no intermediate_key",
+            "empty": True,  # Flag for filtering
         }
 
     # Limit to 10 chunks per group for consistent processing
+    original_count = len(chunk_group)
     chunk_group = chunk_group[:10]
-    if len(event.get("chunk_group", [])) > 10:
+    if original_count > 10:
         logger.warning(
             "Chunk group has more than 10 chunks, processing first 10",
             group_index=group_index,
-            chunk_count=len(event.get("chunk_group", [])),
+            chunk_count=original_count,
         )
 
     # Extract intermediate keys
@@ -366,11 +593,54 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             "error": "chunk_results is required for final merge",
         }
 
+    # Filter out empty groups and error responses before processing
+    original_count = len(chunk_results)
+    valid_chunk_results = []
+    for chunk in chunk_results:
+        if isinstance(chunk, dict):
+            # Include only chunks with intermediate_key (valid merge results)
+            if "intermediate_key" in chunk:
+                valid_chunk_results.append(chunk)
+            # Skip error responses and empty groups
+            elif chunk.get("empty") or ("message" in chunk and "Empty" in chunk.get("message", "")):
+                logger.warning(
+                    "Filtering out empty group from final merge",
+                    chunk=chunk,
+                    batch_id=batch_id,
+                )
+            elif "statusCode" in chunk and chunk.get("statusCode") != 200:
+                logger.error(
+                    "Filtering out error response from final merge",
+                    chunk=chunk,
+                    batch_id=batch_id,
+                )
+
+    if not valid_chunk_results:
+        error_msg = f"No valid intermediate keys found in {original_count} chunk results. All groups were empty or failed."
+        logger.error(
+            "Final merge failed - no valid chunks",
+            batch_id=batch_id,
+            total_chunks=original_count,
+            database=database_name,
+        )
+        return {
+            "statusCode": 500,
+            "error": error_msg,
+            "batch_id": batch_id,
+            "message": "Final merge failed - no valid intermediate snapshots to merge",
+        }
+
+    # Use filtered results
+    chunk_results = valid_chunk_results
+    filtered_count = original_count - len(valid_chunk_results)
+
     logger.info(
         "Final merge with lock - processing intermediate snapshots",
         chunk_count=len(chunk_results),
         batch_id=batch_id,
         database=database_name,
+        filtered_count=filtered_count,
+        original_count=original_count,
     )
 
     # Determine collection from database name
@@ -401,15 +671,33 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         lock_manager.start_heartbeat()
 
         # Perform final merge with database awareness
+        # Pass lock_manager for CAS validation during atomic upload (consistent with compactor)
         merge_result = perform_final_merge(
-            batch_id, len(chunk_results), database_name, chunk_results
+            batch_id, len(chunk_results), database_name, chunk_results, lock_manager
         )
 
         # Clean up intermediate chunks - extract intermediate keys for cleanup
+        # Filter out error responses and empty groups
         intermediate_keys = []
         for chunk in chunk_results:
-            if isinstance(chunk, dict) and "intermediate_key" in chunk:
-                intermediate_keys.append(chunk["intermediate_key"])
+            # Skip error responses (empty groups or failed merges)
+            if isinstance(chunk, dict):
+                if "intermediate_key" in chunk:
+                    intermediate_keys.append(chunk["intermediate_key"])
+                elif "statusCode" in chunk and chunk.get("statusCode") != 200:
+                    # Error response - log but skip
+                    logger.warning(
+                        "Skipping error response in chunk_results",
+                        chunk=chunk,
+                        batch_id=batch_id,
+                    )
+                elif "message" in chunk and "Empty" in chunk.get("message", ""):
+                    # Empty group response - skip silently
+                    logger.debug(
+                        "Skipping empty group response",
+                        chunk=chunk,
+                        batch_id=batch_id,
+                    )
 
         cleanup_intermediate_chunks_by_keys(intermediate_keys)
 
@@ -789,7 +1077,9 @@ def perform_intermediate_merge(
         logger.error("Intermediate merge failed", error=str(e))
         raise
     finally:
-        shutil.rmtree(temp_dir, ignore_errors=True)
+        # Clean up temporary directory
+        if temp_dir:
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 def perform_final_merge(
@@ -797,6 +1087,7 @@ def perform_final_merge(
     total_chunks: int,
     database_name: Optional[str] = None,
     chunk_results: Optional[List[Dict[str, Any]]] = None,
+    lock_manager: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """
     Perform the final merge of all intermediate chunks into a snapshot.
@@ -805,6 +1096,8 @@ def perform_final_merge(
         batch_id: Unique identifier for this batch
         total_chunks: Number of chunks to merge
         database_name: Database name ('lines' or 'words') for separate snapshots
+        chunk_results: List of chunk results with intermediate keys
+        lock_manager: Optional lock manager for CAS validation during atomic upload
     """
     start_time = time.time()
     bucket = os.environ["CHROMADB_BUCKET"]
@@ -814,26 +1107,107 @@ def perform_final_merge(
     # Determine snapshot paths based on database
     if database_name:
         snapshot_key = f"{database_name}/snapshot/latest/"
+        collection_name = database_name
         logger.info(
             "Using database-specific snapshot path", snapshot_key=snapshot_key
         )
     else:
         # Backward compatibility - unified snapshot
         snapshot_key = "snapshot/latest/"
+        collection_name = "words"  # Default for backward compatibility
         logger.info("Using unified snapshot path for backward compatibility")
 
+    # Storage mode configuration - check if EFS should be used
+    storage_mode = os.environ.get("CHROMADB_STORAGE_MODE", "auto").lower()
+    efs_root = os.environ.get("CHROMA_ROOT")
+
+    # Determine storage mode
+    if storage_mode == "s3":
+        use_efs = False
+        mode_reason = "explicitly set to S3-only"
+    elif storage_mode == "efs":
+        use_efs = EFS_AVAILABLE
+        mode_reason = "explicitly set to EFS" if use_efs else "EFS not available"
+    elif storage_mode == "auto":
+        # Auto-detect based on EFS availability
+        use_efs = EFS_AVAILABLE and efs_root and efs_root != "/tmp/chroma"
+        mode_reason = f"auto-detected (efs_root={'available' if use_efs else 'not available'})"
+    else:
+        # Default to S3-only for unknown modes
+        use_efs = False
+        mode_reason = f"unknown mode '{storage_mode}', defaulting to S3-only"
+
+    logger.info(
+        "Storage mode configuration",
+        storage_mode=storage_mode,
+        efs_root=efs_root,
+        use_efs=use_efs,
+        mode_reason=mode_reason,
+        collection=collection_name,
+        efs_available=EFS_AVAILABLE,
+    )
+
+    efs_manager = None
+    efs_snapshot_path = None
+    local_snapshot_path = None
+
     try:
-        # Download current snapshot if exists
-        try:
-            download_from_s3(bucket, snapshot_key, temp_dir)
+        # Load snapshot from EFS if available, otherwise from S3
+        if use_efs and EFS_AVAILABLE:
+            logger.info("Using EFS + S3 hybrid approach", collection=collection_name)
+            efs_manager = get_efs_snapshot_manager(collection_name, logger, metrics=None)
+
+            # Get latest version from S3 pointer
+            latest_version = efs_manager.get_latest_s3_version()
+            if not latest_version:
+                logger.warning("Failed to get latest S3 version, falling back to S3-only")
+                use_efs = False
+            else:
+                # Ensure snapshot is available on EFS
+                snapshot_result = efs_manager.ensure_snapshot_available(latest_version)
+                if snapshot_result["status"] != "available":
+                    logger.warning(
+                        "Failed to ensure snapshot availability on EFS, falling back to S3",
+                        result=snapshot_result
+                    )
+                    use_efs = False
+                else:
+                    # Copy EFS snapshot to local temp directory for ChromaDB operations
+                    efs_snapshot_path = snapshot_result["efs_path"]
+                    local_snapshot_path = tempfile.mkdtemp()
+
+                    copy_start_time = time.time()
+                    shutil.copytree(efs_snapshot_path, local_snapshot_path, dirs_exist_ok=True)
+                    copy_time_ms = (time.time() - copy_start_time) * 1000
+
+                    temp_dir = local_snapshot_path
+
+                    logger.info(
+                        "Using EFS snapshot (copied to local)",
+                        collection=collection_name,
+                        version=latest_version,
+                        efs_path=efs_snapshot_path,
+                        local_path=local_snapshot_path,
+                        copy_time_ms=copy_time_ms,
+                        source=snapshot_result.get("source", "unknown")
+                    )
+
+        # Fallback to S3 if EFS not available or failed
+        if not use_efs:
+            # Download current snapshot if exists
+            try:
+                download_from_s3(bucket, snapshot_key, temp_dir)
+                chroma_client = chromadb.PersistentClient(path=temp_dir)
+                logger.info(
+                    "Loaded existing snapshot from S3", snapshot_key=snapshot_key
+                )
+            except Exception:
+                # No existing snapshot, create new
+                chroma_client = chromadb.PersistentClient(path=temp_dir)
+                logger.info("Creating new snapshot at", snapshot_key=snapshot_key)
+        else:
+            # Create ChromaDB client from EFS snapshot
             chroma_client = chromadb.PersistentClient(path=temp_dir)
-            logger.info(
-                "Loaded existing snapshot from S3", snapshot_key=snapshot_key
-            )
-        except Exception:
-            # No existing snapshot, create new
-            chroma_client = chromadb.PersistentClient(path=temp_dir)
-            logger.info("Creating new snapshot at", snapshot_key=snapshot_key)
 
         # Merge intermediate chunks - handle both legacy and new formats
         if chunk_results:
@@ -970,7 +1344,7 @@ def perform_final_merge(
                 local_path=temp_dir,
                 bucket=bucket,
                 collection=collection_name,
-                lock_manager=None,  # No lock needed, step function provides coordination
+                lock_manager=lock_manager,  # Pass lock manager for CAS validation (consistent with compactor)
                 metadata={
                     "batch_id": batch_id,
                     "total_embeddings": str(total_embeddings),
@@ -986,12 +1360,52 @@ def perform_final_merge(
                 total_embeddings=total_embeddings,
             )
 
+            # Update EFS cache if EFS was used
+            if use_efs and efs_manager and atomic_result.get("version_id"):
+                try:
+                    new_version = atomic_result.get("version_id")
+                    if new_version:
+                        # Copy updated snapshot back to EFS
+                        new_efs_snapshot_path = os.path.join(
+                            efs_manager.efs_snapshots_dir, new_version
+                        )
+                        if os.path.exists(new_efs_snapshot_path):
+                            shutil.rmtree(new_efs_snapshot_path)
+                        os.makedirs(os.path.dirname(new_efs_snapshot_path), exist_ok=True)
+                        shutil.copytree(temp_dir, new_efs_snapshot_path)
+
+                        # Update EFS version file
+                        efs_manager.set_efs_version(new_version)
+
+                        logger.info(
+                            "Updated EFS snapshot cache",
+                            collection=collection_name,
+                            version=new_version,
+                            efs_path=new_efs_snapshot_path,
+                        )
+
+                        # Clean up old EFS snapshots
+                        try:
+                            efs_manager.cleanup_old_snapshots()
+                        except Exception as cleanup_error:
+                            logger.warning(
+                                "Failed to cleanup old EFS snapshots (non-critical)",
+                                error=str(cleanup_error)
+                            )
+                except Exception as efs_error:
+                    logger.warning(
+                        "Failed to update EFS cache (non-critical)",
+                        error=str(efs_error),
+                        collection=collection_name,
+                    )
+
             return {
                 "snapshot_key": atomic_result.get("versioned_key"),
                 "total_embeddings": total_embeddings,
                 "processing_time": time.time() - start_time,
                 "atomic_upload": True,
                 "version_id": atomic_result.get("version_id"),
+                "used_efs": use_efs,
             }
         else:
             # Fallback to legacy non-atomic upload
@@ -1120,8 +1534,11 @@ def perform_final_merge(
             }
 
     finally:
-        # Clean up temp directory
-        shutil.rmtree(temp_dir, ignore_errors=True)
+        # Clean up temporary directories
+        if temp_dir:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        if local_snapshot_path and local_snapshot_path != temp_dir:
+            shutil.rmtree(local_snapshot_path, ignore_errors=True)
 
 
 def cleanup_intermediate_chunks(batch_id: str, total_chunks: int):

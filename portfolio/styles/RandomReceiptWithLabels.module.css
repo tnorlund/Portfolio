@@ -1,0 +1,466 @@
+.container {
+  width: 100%;
+  margin: 3rem 0;
+  padding: 2rem 0;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  gap: 1rem;
+}
+
+.container h3 {
+  margin: 0;
+}
+
+.reloadButton {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 10;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  background: var(--button-background);
+  color: var(--button-text);
+  border: 1px solid var(--text-color);
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 1.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.reloadButton:hover:not(:disabled) {
+  transform: scale(1.1);
+  background: var(--button-background-hover);
+  color: var(--button-text-hover);
+}
+
+.reloadButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.reloadButton:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.reloadButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.container p {
+  margin-bottom: 2rem;
+  color: var(--text-color);
+  opacity: 0.9;
+}
+
+.wrapper {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.imageContainer {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+}
+
+.imageWrapper {
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  max-height: 500px;
+}
+
+.imageWrapper img {
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
+.overlay {
+  pointer-events: none;
+}
+
+/* Mobile layout */
+.mobileContainer {
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.labelsList {
+  width: 100%;
+}
+
+.labelsList h4 {
+  margin-bottom: 1rem;
+  font-size: 1.2rem;
+}
+
+.receiptLabelsSection {
+  margin-bottom: 1.5rem;
+}
+
+.receiptLabelsSection h5 {
+  margin: 0 0 1rem 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-color);
+  opacity: 0.9;
+}
+
+.legendContainer {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  column-gap: 24px;
+  row-gap: 1rem;
+  width: 100%;
+}
+
+.categoryGroup {
+  margin-bottom: 0;
+}
+
+.categoryHeaderContainer {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.categoryColorSquare {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.categoryHeader {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.labelList {
+  margin: 1rem 0 1rem !important;
+  padding-left: 1.5rem !important;
+  list-style-type: disc !important;
+  list-style-position: outside !important;
+  display: block !important;
+  list-style: disc outside !important;
+}
+
+.labelList li {
+  margin-bottom: 0.75rem !important;
+  line-height: 1.4 !important;
+  font-weight: 500 !important;
+  font-size: 0.9rem !important;
+  color: var(--text-color) !important;
+  display: list-item !important;
+  padding: 0 !important;
+  background: none !important;
+  border: none !important;
+  border-radius: 0 !important;
+  list-style-type: inherit !important;
+}
+
+.labelBadge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: bold;
+  color: var(--background-color);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+/* Legacy styles for backward compatibility - only apply to .labelsList ul, not .labelList */
+.labelsList>ul:not(.labelList) {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.labelsList>ul:not(.labelList) li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  background: var(--code-background);
+  border-radius: 6px;
+  border: 1px solid rgba(var(--text-color-rgb, 0, 0, 0), 0.2);
+}
+
+.wordText {
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+  font-size: 0.9rem;
+  color: var(--text-color);
+}
+
+.loading,
+.error {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-color);
+  opacity: 0.7;
+}
+
+.error {
+  color: var(--color-red);
+}
+
+.loadingOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(var(--background-color-rgb, 18, 18, 18), 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  border-radius: 8px;
+}
+
+.loadingSpinner {
+  padding: 1rem 2rem;
+  background: var(--background-color);
+  border: 1px solid var(--text-color);
+  border-radius: 8px;
+  color: var(--text-color);
+  font-weight: 500;
+}
+
+/* Desktop: Show labels inline with image */
+@media (min-width: 769px) {
+  .container {
+    padding: 2rem 0;
+  }
+
+  .wrapper {
+    flex-direction: row;
+    align-items: stretch;
+    gap: 2rem;
+  }
+
+  .imageContainer {
+    flex: 1;
+    max-width: 600px;
+    display: flex;
+    align-items: center;
+  }
+
+  .imageWrapper {
+    max-height: 500px;
+    width: 100%;
+  }
+
+  .labelsList {
+    flex: 0 0 350px;
+    display: flex;
+    align-items: center;
+    padding: 1rem;
+    background: none;
+    border: none;
+  }
+
+  .labelsList h4 {
+    font-size: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .legendContainer {
+    grid-template-columns: repeat(2, 1fr);
+    column-gap: 16px;
+    row-gap: 0.75rem;
+    width: 100%;
+  }
+
+  .categoryHeader {
+    font-size: 1.3rem;
+    font-weight: 600;
+    margin: 0;
+  }
+
+  .categoryColorSquare {
+    width: 10px;
+    height: 10px;
+  }
+
+  .labelText {
+    font-size: 0.85rem;
+  }
+
+  .labelColorDot {
+    width: 10px;
+    height: 10px;
+  }
+
+  /* Legacy styles - only for non-labelList */
+  .labelsList>ul:not(.labelList) {
+    gap: 0.5rem;
+  }
+
+  .labelsList>ul:not(.labelList) li {
+    padding: 0.4rem;
+    font-size: 0.85rem;
+  }
+
+  .wordText {
+    font-size: 0.85rem;
+  }
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+  .container {
+    padding: 1.5rem 0;
+  }
+
+  .container h3 {
+    font-size: 1.3rem;
+  }
+
+  .container p {
+    font-size: 0.95rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .mobileContainer {
+    flex-direction: row;
+    gap: 1rem;
+    align-items: stretch;
+    max-width: 100%;
+    margin: 0 auto;
+  }
+
+  .imageContainer {
+    flex: 0 0 50%;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .imageWrapper {
+    max-height: 400px;
+    width: 100%;
+  }
+
+  .labelsList {
+    flex: 0 0 50%;
+    display: flex;
+    align-items: center;
+    padding: 0.5rem;
+  }
+
+  .legendContainer {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    width: 100%;
+  }
+
+  .categoryGroup {
+    margin-bottom: 0;
+  }
+
+  .categoryHeaderContainer {
+    margin-bottom: 0;
+  }
+
+  .categoryHeader {
+    font-size: 1.3rem;
+    font-weight: 600;
+    margin: 0;
+  }
+}
+
+/* Very small mobile - only stack on very tiny screens */
+@media (max-width: 360px) {
+  .container {
+    padding: 1rem 0;
+  }
+
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .reloadButton {
+    width: 100%;
+    padding: 0.75rem;
+  }
+
+  .labelsList h4 {
+    font-size: 1rem;
+  }
+
+  .labelsList>ul:not(.labelList) li {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .legendContainer {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .categoryGroup {
+    margin-bottom: 0;
+  }
+
+  .categoryHeaderContainer {
+    margin-bottom: 0;
+  }
+
+  .imageWrapper {
+    max-height: 400px;
+  }
+
+  .mobileContainer {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .imageContainer {
+    width: 100%;
+  }
+
+  .labelsList {
+    flex: 1 1 100%;
+    width: 100%;
+    max-height: none;
+  }
+
+  .labelBadge {
+    align-self: flex-start;
+  }
+}

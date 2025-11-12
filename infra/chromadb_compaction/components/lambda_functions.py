@@ -49,7 +49,9 @@ class HybridLambdaDeployment(ComponentResource):
         chromadb_buckets: ChromaDBBuckets,
         dynamodb_table_arn: str,
         dynamodb_stream_arn: str,
-        base_images=None,
+        vpc_subnet_ids=None,
+        lambda_security_group_id: str | None = None,
+        efs_access_point_arn: str | None = None,
         stack: Optional[str] = None,
         opts: Optional[ResourceOptions] = None,
     ):
@@ -62,7 +64,6 @@ class HybridLambdaDeployment(ComponentResource):
             chromadb_buckets: The ChromaDB S3 buckets component
             dynamodb_table_arn: ARN of the DynamoDB table
             dynamodb_stream_arn: ARN of the DynamoDB stream
-            base_images: Base images for container builds
             stack: The Pulumi stack name (defaults to current stack)
             opts: Optional resource options
         """
@@ -73,11 +74,8 @@ class HybridLambdaDeployment(ComponentResource):
             stack = pulumi.get_stack()
 
         # Create Docker image component for container-based Lambda
-        self.docker_image = DockerImageComponent(
-            f"{name}-docker",
-            base_images=base_images,
-            opts=ResourceOptions(parent=self),
-        )
+        # Note: Lambda config will be passed after we create the role
+        self.docker_image = None  # Will be created after role is set up
 
         # Create shared IAM role for both Lambda functions
         self.lambda_role = aws.iam.Role(
@@ -112,9 +110,72 @@ class HybridLambdaDeployment(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
+        # Attach VPC access policy if we will attach VPC config later
+        if vpc_subnet_ids and lambda_security_group_id:
+            aws.iam.RolePolicyAttachment(
+                f"{name}-lambda-vpc-access",
+                role=self.lambda_role.name,
+                policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole",
+                opts=ResourceOptions(parent=self),
+            )
+
         # Create shared policies
         self._create_shared_policies(
             name, dynamodb_table_arn, chromadb_queues, chromadb_buckets
+        )
+
+        # Now create Docker image component with Lambda config
+        self.docker_image = DockerImageComponent(
+            f"{name}-docker",
+            lambda_config={
+                "role_arn": self.lambda_role.arn,
+                    "timeout": 300,  # 5 minutes should be enough with Elastic throughput. Can reduce if Elastic proves faster
+                "memory_size": 2048,
+                "ephemeral_storage": 5120,  # 5GB for ChromaDB snapshots
+                "reserved_concurrent_executions": 10,  # Prevent throttling
+                "description": (
+                    "Enhanced ChromaDB compaction handler for stream and "
+                    "delta message processing"
+                ),
+                "tags": {
+                    "Project": "ChromaDB",
+                    "Component": "EnhancedCompaction",
+                    "Environment": stack,
+                    "ManagedBy": "Pulumi",
+                },
+                "environment": {
+                    "DYNAMODB_TABLE_NAME": Output.all(
+                        dynamodb_table_arn
+                    ).apply(lambda args: args[0].split("/")[-1]),
+                    "CHROMADB_BUCKET": chromadb_buckets.bucket_name,
+                    "LINES_QUEUE_URL": chromadb_queues.lines_queue_url,
+                    "WORDS_QUEUE_URL": chromadb_queues.words_queue_url,
+                    "HEARTBEAT_INTERVAL_SECONDS": "30",
+                    "LOCK_DURATION_MINUTES": "3",
+                    "MAX_HEARTBEAT_FAILURES": "3",
+                    "LOG_LEVEL": "INFO",
+                    "CHROMA_ROOT": "/mnt/chroma" if efs_access_point_arn else "/tmp/chroma",
+                    # Storage mode configuration: "auto", "s3", or "efs"
+                    # - "auto": Use EFS if available, fallback to S3
+                    # - "s3": Force S3-only mode (ignore EFS)
+                    # - "efs": Force EFS mode (fail if EFS not available)
+                    "CHROMADB_STORAGE_MODE": "auto",  # Use EFS if available, fallback to S3. Elastic throughput should handle fast copies now
+                    # Enable custom CloudWatch metrics now that Lambda has internet
+                    # access via NAT instance. If timeouts occur, consider adding a
+                    # CloudWatch Metrics Interface VPC Endpoint (~$7/month).
+                    "ENABLE_METRICS": "true",
+                },
+                "vpc_config": {
+                    "subnet_ids": vpc_subnet_ids,
+                    "security_group_ids": [lambda_security_group_id],
+                },
+                # EFS mount enabled for networking
+                "file_system_config": {
+                    "arn": efs_access_point_arn,
+                    "local_mount_path": "/mnt/chroma",
+                } if efs_access_point_arn else None,
+            },
+            opts=ResourceOptions(parent=self, depends_on=[self.lambda_role]),
         )
 
         # Create CloudWatch log groups (auto-generated names)
@@ -142,6 +203,16 @@ class HybridLambdaDeployment(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
+        # Optional VPC configuration
+        vpc_cfg = (
+            aws.lambda_.FunctionVpcConfigArgs(
+                subnet_ids=vpc_subnet_ids,
+                security_group_ids=[lambda_security_group_id],
+            )
+            if vpc_subnet_ids and lambda_security_group_id
+            else None
+        )
+
         # Create zip-based Lambda for stream processing
         self.stream_processor_function = aws.lambda_.Function(
             f"{name}-stream-processor",
@@ -156,12 +227,21 @@ class HybridLambdaDeployment(ComponentResource):
                             / "stream_processor.py"
                         )
                     ),
+                    # Ensure utils are packaged
                     "utils/__init__.py": pulumi.FileAsset(
                         str(
                             Path(__file__).parent.parent
                             / "lambdas"
                             / "utils"
                             / "__init__.py"
+                        )
+                    ),
+                    "utils/aws_clients.py": pulumi.FileAsset(
+                        str(
+                            Path(__file__).parent.parent
+                            / "lambdas"
+                            / "utils"
+                            / "aws_clients.py"
                         )
                     ),
                     "utils/logging.py": pulumi.FileAsset(
@@ -204,12 +284,73 @@ class HybridLambdaDeployment(ComponentResource):
                             / "tracing.py"
                         )
                     ),
+                    # Add processor directory
+                    "processor/__init__.py": pulumi.FileAsset(
+                        str(
+                            Path(__file__).parent.parent
+                            / "lambdas"
+                            / "processor"
+                            / "__init__.py"
+                        )
+                    ),
+                    "processor/models.py": pulumi.FileAsset(
+                        str(
+                            Path(__file__).parent.parent
+                            / "lambdas"
+                            / "processor"
+                            / "models.py"
+                        )
+                    ),
+                    "processor/parsers.py": pulumi.FileAsset(
+                        str(
+                            Path(__file__).parent.parent
+                            / "lambdas"
+                            / "processor"
+                            / "parsers.py"
+                        )
+                    ),
+                    "processor/change_detector.py": pulumi.FileAsset(
+                        str(
+                            Path(__file__).parent.parent
+                            / "lambdas"
+                            / "processor"
+                            / "change_detector.py"
+                        )
+                    ),
+                    "processor/compaction_run.py": pulumi.FileAsset(
+                        str(
+                            Path(__file__).parent.parent
+                            / "lambdas"
+                            / "processor"
+                            / "compaction_run.py"
+                        )
+                    ),
+                    "processor/message_builder.py": pulumi.FileAsset(
+                        str(
+                            Path(__file__).parent.parent
+                            / "lambdas"
+                            / "processor"
+                            / "message_builder.py"
+                        )
+                    ),
+                    "processor/sqs_publisher.py": pulumi.FileAsset(
+                        str(
+                            Path(__file__).parent.parent
+                            / "lambdas"
+                            / "processor"
+                            / "sqs_publisher.py"
+                        )
+                    ),
                 }
             ),
             handler="stream_processor.lambda_handler",
             role=self.lambda_role.arn,
-            timeout=300,  # 5 minutes timeout
+            timeout=120,  # 2 minutes timeout (reduced from 5 to prevent long hangs)
             memory_size=256,  # Lightweight processing
+            # Removed reserved_concurrent_executions to allow parallel processing
+            # FIFO queue MessageGroupId already ensures proper ordering per image
+            # Stream processor can safely process multiple images in parallel
+            # No VPC config - stream processor only needs AWS service access (DynamoDB, SQS, CloudWatch)
             environment={
                 "variables": {
                     "LINES_QUEUE_URL": chromadb_queues.lines_queue_url,
@@ -226,6 +367,8 @@ class HybridLambdaDeployment(ComponentResource):
                 "Component": "StreamProcessor",
                 "Environment": stack,
                 "ManagedBy": "Pulumi",
+                # Required for the layer updater to auto-attach new versions
+                "environment": stack,
             },
             layers=[dynamo_layer.arn],
             opts=ResourceOptions(
@@ -238,56 +381,61 @@ class HybridLambdaDeployment(ComponentResource):
             ),
         )
 
-        # Create container-based Lambda for enhanced compaction
-        self.enhanced_compaction_function = aws.lambda_.Function(
-            f"{name}-enhanced-compaction",
-            package_type="Image",
-            image_uri=self.docker_image.image_uri,
-            role=self.lambda_role.arn,
-            timeout=900,  # 15 minutes for compaction operations
-            memory_size=2048,  # Increased memory for ChromaDB label operations (was failing with 1024MB)
-            ephemeral_storage={
-                "size": 5120
-            },  # 5GB for ChromaDB snapshots and temp files
-            reserved_concurrent_executions=10,  # Prevent throttling with batch processing
-            architectures=["arm64"],
-            environment={
-                "variables": {
-                    "DYNAMODB_TABLE_NAME": Output.all(
-                        dynamodb_table_arn
-                    ).apply(lambda args: args[0].split("/")[-1]),
-                    "CHROMADB_BUCKET": chromadb_buckets.bucket_name,
-                    "LINES_QUEUE_URL": chromadb_queues.lines_queue_url,
-                    "WORDS_QUEUE_URL": chromadb_queues.words_queue_url,
-                    "HEARTBEAT_INTERVAL_SECONDS": "30",
-                    "LOCK_DURATION_MINUTES": "3",
-                    "MAX_HEARTBEAT_FAILURES": "3",
-                    "LOG_LEVEL": "INFO",
-                }
-            },
-            description=(
-                "Enhanced ChromaDB compaction handler for stream and "
-                "delta message processing"
-            ),
-            tags={
-                "Project": "ChromaDB",
-                "Component": "EnhancedCompaction",
-                "Environment": stack,
-                "ManagedBy": "Pulumi",
-            },
-            opts=ResourceOptions(
-                parent=self,
-                depends_on=[
-                    self.lambda_role,
-                    self.docker_image,
-                    self.compaction_log_group,
-                ],
-            ),
-        )
+        # VPC and EFS configuration is now handled in lambda_config
+
+        # Use the Lambda function created by DockerImageComponent
+        self.enhanced_compaction_function = self.docker_image.docker_image.lambda_function
 
         # Create event source mappings
         self._create_event_source_mappings(
             name, dynamodb_stream_arn, chromadb_queues
+        )
+
+        # Diagnostic EFS listing Lambda (zip-based, same role/VPC/EFS)
+        diag_code = pulumi.AssetArchive(
+            {
+                "handler.py": pulumi.FileAsset(
+                    str(
+                        Path(__file__).parent.parent
+                        / "lambdas"
+                        / "efs_diag"
+                        / "handler.py"
+                    )
+                )
+            }
+        )
+
+        self.efs_diag_function = aws.lambda_.Function(
+            f"{name}-efs-diag",
+            runtime="python3.12",
+            architectures=["arm64"],
+            code=diag_code,
+            handler="handler.lambda_handler",
+            role=self.lambda_role.arn,
+            timeout=30,
+            memory_size=256,
+            environment={
+                "variables": {
+                    "CHROMA_ROOT": "/mnt/chroma" if efs_access_point_arn else "/tmp/chroma",
+                }
+            },
+            vpc_config=(
+                aws.lambda_.FunctionVpcConfigArgs(
+                    subnet_ids=vpc_subnet_ids,
+                    security_group_ids=[lambda_security_group_id],
+                )
+                if vpc_subnet_ids and lambda_security_group_id
+                else None
+            ),
+            file_system_config=(
+                aws.lambda_.FunctionFileSystemConfigArgs(
+                    arn=efs_access_point_arn,
+                    local_mount_path="/mnt/chroma",
+                )
+                if efs_access_point_arn
+                else None
+            ),
+            opts=ResourceOptions(parent=self, depends_on=[self.lambda_role]),
         )
 
         # Export useful properties
@@ -302,6 +450,7 @@ class HybridLambdaDeployment(ComponentResource):
                 "enhanced_compaction_arn": self.enhanced_compaction_arn,
                 "role_arn": self.role_arn,
                 "docker_image_uri": self.docker_image.image_uri,
+                "efs_diag_arn": self.efs_diag_function.arn,
             }
         )
 
@@ -449,6 +598,30 @@ class HybridLambdaDeployment(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
+        # ECR policy for container image Lambda functions
+        # Lambda service needs to pull images from ECR when code is updated
+        self.ecr_policy = aws.iam.RolePolicy(
+            f"{name}-ecr-policy",
+            role=self.lambda_role.id,
+            policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "ecr:GetAuthorizationToken",
+                                "ecr:BatchGetImage",
+                                "ecr:GetDownloadUrlForLayer",
+                            ],
+                            "Resource": "*",
+                        }
+                    ],
+                }
+            ),
+            opts=ResourceOptions(parent=self),
+        )
+
     def _create_event_source_mappings(
         self,
         name: str,
@@ -463,9 +636,9 @@ class HybridLambdaDeployment(ComponentResource):
             event_source_arn=dynamodb_stream_arn,
             function_name=self.stream_processor_function.arn,
             starting_position="LATEST",
-            batch_size=100,
-            maximum_batching_window_in_seconds=5,
-            parallelization_factor=1,
+            batch_size=10,  # Max batch size for DynamoDB streams
+            maximum_batching_window_in_seconds=5,  # Batch more records per invocation (up to 5 seconds)
+            parallelization_factor=5,  # Process up to 5 shards in parallel (increases throughput)
             maximum_retry_attempts=3,
             maximum_record_age_in_seconds=3600,
             bisect_batch_on_function_error=True,
@@ -500,7 +673,9 @@ def create_hybrid_lambda_deployment(
     chromadb_buckets: ChromaDBBuckets = None,
     dynamodb_table_arn: str = None,
     dynamodb_stream_arn: str = None,
-    base_images=None,
+    vpc_subnet_ids=None,
+    lambda_security_group_id: str | None = None,
+    efs_access_point_arn: str | None = None,
     opts: Optional[ResourceOptions] = None,
 ) -> HybridLambdaDeployment:
     """
@@ -512,7 +687,6 @@ def create_hybrid_lambda_deployment(
         chromadb_buckets: The ChromaDB S3 buckets component
         dynamodb_table_arn: ARN of the DynamoDB table
         dynamodb_stream_arn: ARN of the DynamoDB stream
-        base_images: Base images for container builds
         opts: Optional resource options
 
     Returns:
@@ -533,6 +707,8 @@ def create_hybrid_lambda_deployment(
         chromadb_buckets=chromadb_buckets,
         dynamodb_table_arn=dynamodb_table_arn,
         dynamodb_stream_arn=dynamodb_stream_arn,
-        base_images=base_images,
+        vpc_subnet_ids=vpc_subnet_ids,
+        lambda_security_group_id=lambda_security_group_id,
+        efs_access_point_arn=efs_access_point_arn,
         opts=opts,
     )

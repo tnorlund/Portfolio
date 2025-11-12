@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import Path
 
 import pulumi
 import pulumi_aws as aws
@@ -16,14 +17,25 @@ from pulumi import (
 from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
 from pulumi_aws.lambda_ import Function, FunctionEnvironmentArgs
 from pulumi_aws.s3 import Bucket
-from pulumi_aws.sfn import StateMachine
+# StateMachine import removed - no longer using Step Functions
+from pulumi_aws.ecr import (
+    Repository as EcrRepository,
+    RepositoryImageScanningConfigurationArgs as EcrRepoScanArgs,
+)
 from pulumi_aws.sqs import Queue
+
+# Import the CodeBuildDockerImage component
+from codebuild_docker_image import CodeBuildDockerImage
 
 config = Config("portfolio")
 openai_api_key = config.require_secret("OPENAI_API_KEY")
 pinecone_api_key = config.require_secret("PINECONE_API_KEY")
 pinecone_index_name = config.require("PINECONE_INDEX_NAME")
 pinecone_host = config.require("PINECONE_HOST")
+validate_receipt_lambda_arn_cfg = config.get("VALIDATE_RECEIPT_LAMBDA_ARN")
+google_places_api_key = config.require_secret("GOOGLE_PLACES_API_KEY")
+ollama_api_key = config.require_secret("OLLAMA_API_KEY")
+langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
 
 code = AssetArchive(
     {
@@ -50,11 +62,20 @@ class UploadImages(ComponentResource):
         name: str,
         raw_bucket: Bucket,
         site_bucket: Bucket,
+        chromadb_bucket_name: pulumi.Input[str] | None = None,
+        embed_ndjson_queue_url: pulumi.Input[str] | None = None,
+        vpc_subnet_ids: pulumi.Input[list[str]] | None = None,
+        security_group_id: pulumi.Input[str] | None = None,
+        chroma_http_endpoint: pulumi.Input[str] | None = None,
+        ecs_cluster_arn: pulumi.Input[str] | None = None,
+        ecs_service_arn: pulumi.Input[str] | None = None,
+        nat_instance_id: pulumi.Input[str] | None = None,
+        efs_access_point_arn: pulumi.Input[str] | None = None,
         opts: ResourceOptions = None,
     ):
         super().__init__(
             f"{__name__}-{name}",
-            "aws:stepfunctions:UploadImages",
+            "aws:lambda:UploadImages",
             {},
             opts,
         )
@@ -64,6 +85,14 @@ class UploadImages(ComponentResource):
             f"{name}-image-bucket",
             force_destroy=True,
             tags={"environment": stack},
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Dedicated artifacts bucket for NDJSON receipts (do not use site bucket)
+        artifacts_bucket = Bucket(
+            f"{name}-artifacts-bucket",
+            force_destroy=True,
+            tags={"environment": stack, "purpose": "ndjson-artifacts"},
             opts=ResourceOptions(parent=self),
         )
 
@@ -90,6 +119,7 @@ class UploadImages(ComponentResource):
         # Create SQS queue for OCR results
         self.ocr_queue = Queue(
             f"{name}-ocr-queue",
+            name=f"{name}-{stack}-ocr-queue",
             visibility_timeout_seconds=3600,
             message_retention_seconds=1209600,  # 14 days
             receive_wait_time_seconds=0,  # Short polling
@@ -105,7 +135,8 @@ class UploadImages(ComponentResource):
         # Create a second SQS queue for OCR JSON results (for Lambda trigger)
         self.ocr_results_queue = Queue(
             f"{name}-ocr-results-queue",
-            visibility_timeout_seconds=300,
+            name=f"{name}-{stack}-ocr-results-queue",
+            visibility_timeout_seconds=900,  # Must be >= Lambda timeout (600s for container-based process_ocr)
             message_retention_seconds=345600,  # 4 days
             receive_wait_time_seconds=0,  # Short polling
             redrive_policy=None,  # No DLQ for now
@@ -116,6 +147,10 @@ class UploadImages(ComponentResource):
             },
             opts=ResourceOptions(parent=self),
         )
+
+        # Store embed_ndjson_queue_url for use in Lambda environment
+        # If not provided, we'll use the internal queue created below
+        self._external_embed_ndjson_queue_url = embed_ndjson_queue_url
 
         # --- Combined upload_receipt Lambda (presign + job record) ---
 
@@ -200,6 +235,7 @@ class UploadImages(ComponentResource):
 
         upload_receipt_lambda = Function(
             f"{name}-upload-receipt-lambda",
+            name=f"{name}-{stack}-upload-receipt",
             role=upload_receipt_role.arn,
             runtime="python3.12",
             handler="upload_receipt.handler",
@@ -261,6 +297,15 @@ class UploadImages(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
+        # Attach VPC access policy if VPC is configured (required for EFS)
+        if vpc_subnet_ids and security_group_id:
+            RolePolicyAttachment(
+                f"{name}-process-ocr-vpc-exec",
+                role=process_ocr_role.name,
+                policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole",
+            opts=ResourceOptions(parent=self),
+        )
+
         # Add DynamoDB access for the process OCR Lambda
         RolePolicy(
             f"{name}-process-ocr-dynamo-policy",
@@ -271,6 +316,8 @@ class UploadImages(ComponentResource):
                 site_bucket.arn,
                 image_bucket.arn,
                 self.ocr_queue.arn,
+                artifacts_bucket.arn,
+                pulumi.Output.from_input(chromadb_bucket_name),
             ).apply(
                 lambda args: json.dumps(
                     {
@@ -300,14 +347,67 @@ class UploadImages(ComponentResource):
                                     args[1] + "/*",  # raw_bucket
                                     args[2] + "/*",  # site_bucket
                                     args[3] + "/*",  # image_bucket
+                                    args[5] + "/*",  # artifacts_bucket
+                                    f"arn:aws:s3:::{args[6]}/*" if args[6] else None,  # chromadb_bucket
+                                ],
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": "s3:ListBucket",
+                                "Resource": f"arn:aws:s3:::{args[6]}" if args[6] else None,
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": "sqs:SendMessage",
+                                "Resource": args[4],  # ocr_queue.arn
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": "cloudwatch:PutMetricData",
+                                "Resource": "*",
+                            },
+                        ],
+                    }
+                ) if args[6] else json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "dynamodb:DescribeTable",
+                                    "dynamodb:GetItem",
+                                    "dynamodb:BatchGetItem",
+                                    "dynamodb:Query",
+                                    "dynamodb:PutItem",
+                                    "dynamodb:UpdateItem",
+                                    "dynamodb:BatchWriteItem",
+                                ],
+                                "Resource": f"arn:aws:dynamodb:*:*:table/{args[0]}*",
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "s3:GetObject",
+                                    "s3:PutObject",
+                                    "s3:HeadObject",
+                                ],
+                                "Resource": [
+                                    args[1] + "/*",  # raw_bucket
+                                    args[2] + "/*",  # site_bucket
+                                    args[3] + "/*",  # image_bucket
+                                    args[5] + "/*",  # artifacts_bucket
                                 ],
                             },
                             {
                                 "Effect": "Allow",
                                 "Action": "sqs:SendMessage",
-                                "Resource": args[
-                                    4
-                                ],  # ocr_queue.arn (now args[4])
+                                "Resource": args[4],  # ocr_queue.arn
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": "cloudwatch:PutMetricData",
+                                "Resource": "*",
                             },
                         ],
                     }
@@ -364,49 +464,244 @@ class UploadImages(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        process_ocr_lambda = Function(
-            f"{name}-process-ocr-results-lambda",
-            role=process_ocr_role.arn,
-            runtime="python3.12",
-            handler="process_ocr_results.handler",
-            code=AssetArchive(
-                {
-                    "process_ocr_results.py": FileAsset(
-                        os.path.join(
-                            os.path.dirname(__file__), "process_ocr_results.py"
-                        )
-                    )
-                }
-            ),
-            environment=FunctionEnvironmentArgs(
-                variables={
-                    "DYNAMO_TABLE_NAME": dynamodb_table.name,
-                    "S3_BUCKET": image_bucket.bucket,
-                    "RAW_BUCKET": raw_bucket.bucket,
-                    "SITE_BUCKET": site_bucket.bucket,
-                    "OCR_JOB_QUEUE_URL": self.ocr_queue.url,
-                    "OCR_RESULTS_QUEUE_URL": self.ocr_results_queue.url,
-                }
-            ),
-            tags={"environment": stack},
-            timeout=300,  # 5 minutes
-            memory_size=1024,  # 1GB
-            architectures=["arm64"],
-            layers=[
-                label_layer.arn,
-                upload_layer.arn,
-            ],  # Both include receipt-dynamo
-            opts=ResourceOptions(parent=self, ignore_changes=["layers"]),
+        # (process_ocr_results Lambda defined later with complete environment)
+
+        # ---------------------------------------------
+        # Step Function removed - container Lambda handles everything directly
+        # The process_ocr_results container Lambda now handles:
+        # - OCR processing
+        # - Merchant validation
+        # - Embedding creation
+        # - S3 delta upload
+        # - Compaction trigger
+        # ---------------------------------------------
+
+        # Step Function removed - no longer need embed_ndjson_queue
+        # The container Lambda handles everything directly
+
+        # Create container-based process_ocr Lambda with merchant validation
+        # This replaces the old zip-based Lambda and integrates merchant validation + embedding
+        process_ocr_lambda_config = {
+            "role_arn": process_ocr_role.arn,
+            "timeout": 600,  # 10 minutes (longer for merchant validation + embedding)
+            "memory_size": 2048,  # More memory for ChromaDB operations
+            "environment": {
+                "DYNAMO_TABLE_NAME": dynamodb_table.name,
+                "S3_BUCKET": image_bucket.bucket,
+                "RAW_BUCKET": raw_bucket.bucket,
+                "SITE_BUCKET": site_bucket.bucket,
+                "ARTIFACTS_BUCKET": artifacts_bucket.bucket,
+                "OCR_JOB_QUEUE_URL": self.ocr_queue.url,
+                "OCR_RESULTS_QUEUE_URL": self.ocr_results_queue.url,
+                "CHROMADB_BUCKET": chromadb_bucket_name,
+                "CHROMA_HTTP_ENDPOINT": chroma_http_endpoint,
+                "GOOGLE_PLACES_API_KEY": google_places_api_key,
+                "OPENAI_API_KEY": openai_api_key,
+                # LangGraph validation with Ollama
+                "OLLAMA_API_KEY": ollama_api_key,
+                "LANGCHAIN_API_KEY": langchain_api_key,
+                # EFS configuration for ChromaDB read-only access
+                "CHROMA_ROOT": "/mnt/chroma" if efs_access_point_arn else "/tmp/chroma",
+                "CHROMADB_STORAGE_MODE": "auto",  # Use EFS if available, fallback to S3 (debugging EFS access)
+            },
+            "vpc_config": {
+                "subnet_ids": vpc_subnet_ids,
+                "security_group_ids": [security_group_id],
+            } if vpc_subnet_ids and security_group_id else None,
+            # EFS mount enabled for networking
+            "file_system_config": {
+                "arn": efs_access_point_arn,
+                "local_mount_path": "/mnt/chroma",
+            } if efs_access_point_arn else None,
+            }
+
+        # Use CodeBuildDockerImage for AWS-based builds
+        process_ocr_docker_image = CodeBuildDockerImage(
+            f"{name}-process-ocr-image",
+            dockerfile_path="infra/upload_images/container_ocr/Dockerfile",
+            build_context_path=".",  # Project root for monorepo access
+            source_paths=["receipt_upload"],  # Include receipt_upload package (only needed for this Lambda)
+            # lambda_function_name=f"{name}-{stack}-process-ocr-results",  # Let Pulumi manage Lambda config
+            lambda_config=process_ocr_lambda_config,
+            platform="linux/arm64",
+            opts=ResourceOptions(parent=self, depends_on=[process_ocr_role]),
         )
 
+        # Use the Lambda function created by CodeBuildDockerImage
+        process_ocr_lambda = process_ocr_docker_image.lambda_function
+
+        # Adopt existing mapping if already present to avoid ResourceConflict
+        existing_mapping_uuid = pulumi.Config("portfolio").get(
+            "ocr_results_mapping_uuid"
+        )
         aws.lambda_.EventSourceMapping(
-            f"{name}-ocr-results-event-mapping",
+            f"{name}-ocr-results-mapping",
             event_source_arn=self.ocr_results_queue.arn,
             function_name=process_ocr_lambda.name,
             batch_size=10,
             enabled=True,
+            opts=ResourceOptions(
+                parent=self,
+                import_=(
+                    existing_mapping_uuid if existing_mapping_uuid else None
+                ),
+            ),
+        )
+
+        # Create container-based embed_from_ndjson Lambda (processes NDJSON files from queue)
+        # This Lambda reads words/lines from NDJSON and creates embeddings
+        embed_ndjson_role = Role(
+            f"{name}-embed-ndjson-role",
+            assume_role_policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"Service": "lambda.amazonaws.com"},
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            ),
             opts=ResourceOptions(parent=self),
         )
+
+        # Attach basic execution policy
+        RolePolicyAttachment(
+            f"{name}-embed-ndjson-basic-exec",
+            role=embed_ndjson_role.name,
+            policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Attach SQS queue execution policy
+        RolePolicyAttachment(
+            f"{name}-embed-ndjson-sqs-exec",
+            role=embed_ndjson_role.name,
+            policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole",
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Attach VPC access policy if VPC is configured (required for EFS)
+        if vpc_subnet_ids and security_group_id:
+            RolePolicyAttachment(
+                f"{name}-embed-ndjson-vpc-exec",
+                role=embed_ndjson_role.name,
+                policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole",
+                opts=ResourceOptions(parent=self),
+            )
+
+        # Add DynamoDB, S3, and EFS access policies
+        RolePolicy(
+            f"{name}-embed-ndjson-policy",
+            role=embed_ndjson_role.id,
+            policy=Output.all(
+                dynamodb_table.name,
+                artifacts_bucket.arn,
+                pulumi.Output.from_input(chromadb_bucket_name),
+            ).apply(
+                lambda args: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "dynamodb:DescribeTable",
+                                    "dynamodb:GetItem",
+                                    "dynamodb:BatchGetItem",
+                                    "dynamodb:Query",
+                                    "dynamodb:PutItem",
+                                    "dynamodb:UpdateItem",
+                                    "dynamodb:BatchWriteItem",
+                                ],
+                                "Resource": f"arn:aws:dynamodb:*:*:table/{args[0]}*",
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "s3:GetObject",
+                                    "s3:PutObject",
+                                    "s3:HeadObject",
+                                ],
+                                "Resource": [
+                                    args[1] + "/*",  # artifacts_bucket
+                                    f"arn:aws:s3:::{args[2]}/*" if args[2] else None,  # chromadb_bucket
+                                ],
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": "s3:ListBucket",
+                                "Resource": f"arn:aws:s3:::{args[2]}" if args[2] else None,
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "elasticfilesystem:ClientMount",
+                                    "elasticfilesystem:ClientWrite",
+                                    "elasticfilesystem:ClientRootAccess",
+                                ],
+                                "Resource": "*",
+                            },
+                        ],
+                    }
+                )
+            ),
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Create embed_from_ndjson container Lambda config
+        embed_ndjson_lambda_config = {
+            "role_arn": embed_ndjson_role.arn,
+            "timeout": 600,  # 10 minutes
+            "memory_size": 2048,  # More memory for ChromaDB operations
+            "environment": {
+                "DYNAMO_TABLE_NAME": dynamodb_table.name,
+                "CHROMADB_BUCKET": chromadb_bucket_name,
+                "CHROMA_HTTP_ENDPOINT": chroma_http_endpoint,
+                "GOOGLE_PLACES_API_KEY": google_places_api_key,
+                "OPENAI_API_KEY": openai_api_key,
+                # LangGraph validation with Ollama
+                "OLLAMA_API_KEY": ollama_api_key,
+                "LANGCHAIN_API_KEY": langchain_api_key,
+                # EFS configuration for ChromaDB (optional, can use S3 for non-time-sensitive)
+                "CHROMA_ROOT": "/mnt/chroma" if efs_access_point_arn else "/tmp/chroma",
+                "CHROMADB_STORAGE_MODE": "auto",  # Use EFS if available, fallback to S3
+            },
+            "vpc_config": {
+                "subnet_ids": vpc_subnet_ids,
+                "security_group_ids": [security_group_id],
+            } if vpc_subnet_ids and security_group_id else None,
+            # EFS mount enabled (optional, can use S3 for non-time-sensitive processing)
+            "file_system_config": {
+                "arn": efs_access_point_arn,
+                "local_mount_path": "/mnt/chroma",
+            } if efs_access_point_arn else None,
+        }
+
+        # Use CodeBuildDockerImage for AWS-based builds
+        embed_ndjson_docker_image = CodeBuildDockerImage(
+            f"{name}-embed-ndjson-image",
+            dockerfile_path="infra/upload_images/container/Dockerfile",
+            build_context_path=".",  # Project root for monorepo access
+            source_paths=None,  # Use default rsync with exclusions
+            lambda_function_name=f"{name}-{stack}-embed-from-ndjson",
+            lambda_config=embed_ndjson_lambda_config,
+            platform="linux/arm64",
+            opts=ResourceOptions(
+                parent=self,
+                depends_on=[embed_ndjson_role],
+            ),
+        )
+
+        # Use the Lambda function created by CodeBuildDockerImage
+        embed_ndjson_lambda = embed_ndjson_docker_image.lambda_function
+
+        # Store for potential event source mapping (if queue is provided)
+        self.embed_ndjson_lambda = embed_ndjson_lambda
+
+        # Remove Step Function embedding path in favor of SQS batching
 
         log_group = aws.cloudwatch.LogGroup(
             f"{name}-api-gw-log-group",

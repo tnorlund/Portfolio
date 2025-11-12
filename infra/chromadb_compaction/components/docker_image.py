@@ -1,29 +1,21 @@
 """Docker image building component for ChromaDB compaction Lambda functions."""
 
 import json
-import os
 import hashlib
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any
 
 import pulumi
 from pulumi import ComponentResource, Output, ResourceOptions
 from pulumi_aws.ecr import (
     Repository,
     RepositoryImageScanningConfigurationArgs,
-    get_authorization_token_output,
     LifecyclePolicy,
-    RepositoryPolicy,
 )
 
-try:
-    import pulumi_docker_build as docker_build  # pylint: disable=import-error
-except ImportError:
-    # For testing environments, create a mock
-    from unittest.mock import MagicMock
-
-    docker_build = MagicMock()
+# Import the CodeBuildDockerImage component
+from codebuild_docker_image import CodeBuildDockerImage
 
 
 class DockerImageComponent(ComponentResource):
@@ -80,14 +72,14 @@ class DockerImageComponent(ComponentResource):
     def __init__(
         self,
         name: str,
-        base_images=None,
+        lambda_config: Optional[Dict[str, Any]] = None,
         opts: Optional[ResourceOptions] = None,
     ):
         """Initialize Docker image component.
 
         Args:
             name: Component name
-            base_images: Optional base images dependency
+            lambda_config: Optional Lambda configuration for CodeBuild to update
             opts: Pulumi resource options
         """
         super().__init__(
@@ -97,34 +89,33 @@ class DockerImageComponent(ComponentResource):
             opts,
         )
 
-        self.base_images = base_images
-
         # Get stack for naming
         stack = pulumi.get_stack()
 
-        # Get ECR auth token for pulling base images
-        ecr_auth_token = get_authorization_token_output()
+        # Generate content hash for versioning
+        handler_dir = Path(__file__).parent.parent / "lambdas"
+        content_tag = self.get_handler_content_hash(handler_dir)
 
-        # Create ECR repository
-        self.ecr_repo = Repository(
-            f"{name}-repo",
-            image_scanning_configuration=(
-                RepositoryImageScanningConfigurationArgs(
-                    scan_on_push=True,
-                )
-            ),
-            force_delete=True,  # Allow deletion in development
-            tags={
-                "Project": "ChromaDB",
-                "Component": "CompactionContainer",
-                "Environment": stack,
-                "ManagedBy": "Pulumi",
-            },
+        # Use CodeBuildDockerImage for AWS-based builds
+        self.docker_image = CodeBuildDockerImage(
+            f"{name}-image",
+            dockerfile_path="infra/chromadb_compaction/lambdas/Dockerfile",
+            build_context_path=".",  # Project root for monorepo access
+            source_paths=None,  # Use default rsync with exclusions
+            lambda_function_name=f"{name}-{stack}" if lambda_config else None,
+            lambda_config=lambda_config,
+            platform="linux/arm64",
             opts=ResourceOptions(parent=self),
         )
 
+        # Export ECR repository and image URI
+        self.ecr_repo = self.docker_image.ecr_repo
+        self.repository_url = self.docker_image.repository_url
+        self.image_uri = self.docker_image.image_uri
+
         # Attach ECR lifecycle policy (retain N, expire untagged older than X)
         portfolio_config = pulumi.Config("portfolio")
+        import os
 
         max_images = portfolio_config.get_int("ecr-max-images") or int(
             os.environ.get("ECR_MAX_IMAGES", "10")
@@ -182,6 +173,7 @@ class DockerImageComponent(ComponentResource):
         )
 
         # Add ECR repository policy to allow Lambda to pull images
+        from pulumi_aws.ecr import RepositoryPolicy
 
         RepositoryPolicy(
             f"{name}-repo-policy",
@@ -205,65 +197,11 @@ class DockerImageComponent(ComponentResource):
             opts=ResourceOptions(parent=self, depends_on=[self.ecr_repo]),
         )
 
-        # Generate content hash for versioning
-        handler_dir = Path(__file__).parent.parent / "lambdas"
-        content_tag = self.get_handler_content_hash(handler_dir)
-
-        # Build and push Docker image
-        self.docker_image = docker_build.Image(
-            f"{name}-image",
-            context=docker_build.BuildContextArgs(
-                location=str(handler_dir),  # Use lambdas dir as build context
-            ),
-            dockerfile=docker_build.DockerfileArgs(
-                location=str(handler_dir / "Dockerfile"),
-            ),
-            build_args={
-                "BASE_IMAGE": (
-                    base_images.label_base_image.tags[0]
-                    if base_images
-                    else "public.ecr.aws/lambda/python:3.12"
-                )
-            },
-            tags=[
-                self.ecr_repo.repository_url.apply(
-                    lambda url: f"{url}:latest"
-                ),
-                self.ecr_repo.repository_url.apply(
-                    lambda url: f"{url}:{content_tag}"
-                ),
-            ],
-            platforms=[docker_build.Platform.LINUX_ARM64],
-            push=True,
-            registries=[
-                {
-                    "address": self.ecr_repo.repository_url.apply(
-                        lambda url: url.split("/")[0]
-                    ),
-                    "password": ecr_auth_token.password,
-                    "username": ecr_auth_token.user_name,
-                }
-            ],
-            opts=ResourceOptions(
-                parent=self,
-                depends_on=[self.ecr_repo]
-                + ([base_images] if base_images else []),
-                replace_on_changes=["build_args", "dockerfile"],
-            ),
-        )
-
-        # Export image URI for Lambda function (match embedding infrastructure pattern)
-        self.image_uri = Output.all(
-            self.ecr_repo.repository_url,
-            self.docker_image.digest,
-        ).apply(lambda args: f"{args[0].split(':')[0]}@{args[1]}")
-
         # Register outputs
         self.register_outputs(
             {
-                "repository_url": self.ecr_repo.repository_url,
+                "repository_url": self.repository_url,
                 "image_uri": self.image_uri,
-                "digest": self.docker_image.digest,
                 "content_tag": content_tag,
             }
         )

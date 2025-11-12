@@ -4,7 +4,7 @@ Extracted from costco_label_discovery.py to improve modularity.
 """
 
 from enum import Enum
-from typing import List, Dict, Optional, Union
+from typing import List, Dict, Optional, Union, Any
 from dataclasses import dataclass
 from pydantic import BaseModel, Field
 
@@ -59,45 +59,71 @@ class SpatialMarker:
 
 
 class CurrencyLabel(BaseModel):
-    """A discovered currency label with LLM reasoning."""
+    """A discovered currency label with LLM reasoning.
+
+    Each currency amount found on the receipt must include all these fields.
+    """
 
     line_text: str = Field(
-        description="The exact text on the line of the receipt. This is the "
-        "text to the right of the line IDs and colon."
+        ...,
+        description="The exact text containing the currency amount as it appears on the receipt line (e.g., '15.02' or '$15.02')"
     )
     amount: float = Field(
-        description="The currency amount value. This amount is the number that "
-        "is the GRAND_TOTAL, TAX, LINE_TOTAL, or SUBTOTAL."
+        ...,
+        description="The numeric currency value as a float (e.g., 15.02 for $15.02, 24.01 for $24.01). Must be a number, not a string.",
+        json_schema_extra={"examples": [15.02, 24.01, 0.00]}
     )
     label_type: CurrencyLabelType = Field(
-        description="The classified label type"
+        ...,
+        description="One of: GRAND_TOTAL (final amount due), TAX (sales tax), SUBTOTAL (sum before tax), LINE_TOTAL (individual item total)"
     )
     line_ids: List[int] = Field(
         default_factory=list,
-        description="Underlying OCR line_id values contributing to this group",
+        description="Array of line IDs where this amount appears on the receipt (e.g., [16, 17])",
     )
     confidence: float = Field(
-        ge=0.0, le=1.0, description="Confidence in this classification"
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Confidence score from 0.0 (uncertain) to 1.0 (certain) for this classification"
     )
     reasoning: str = Field(
-        description="Explanation for why this classification was chosen"
+        ...,
+        description="Brief explanation of why this classification was chosen (e.g., 'Appears at bottom as AMOUNT', 'Explicitly labeled as TAX')"
+    )
+    cove_verified: bool = Field(
+        default=False,
+        description="Whether this label was verified by Chain of Verification (CoVe). If True, validation_status should be set to VALID."
     )
 
 
 class LineItemLabel(BaseModel):
-    """A discovered line-item label with LLM reasoning."""
+    """A discovered line-item label with LLM reasoning.
+
+    Each word in a line item that should be classified.
+    """
 
     word_text: str = Field(
-        description="The exact text of th specific word that's being labeled"
+        ...,
+        description="The exact text of the specific word being labeled (e.g., 'STUFFED', 'PEP', '2', '15.02')"
     )
     label_type: LineItemLabelType = Field(
-        description="The classified label type"
+        ...,
+        description="One of: PRODUCT_NAME (item name), QUANTITY (amount/weight), UNIT_PRICE (price per unit)"
     )
     confidence: float = Field(
-        ge=0.0, le=1.0, description="Confidence in this classification"
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Confidence score from 0.0 (uncertain) to 1.0 (certain) for this classification"
     )
     reasoning: str = Field(
-        description="Explanation for why this classification was chosen"
+        ...,
+        description="Brief explanation of why this word was classified this way (e.g., 'Product name comes before price', 'Appears with quantity indicators')"
+    )
+    cove_verified: bool = Field(
+        default=False,
+        description="Whether this label was verified by Chain of Verification (CoVe). If True, validation_status should be set to VALID."
     )
 
 
@@ -134,7 +160,7 @@ class ReceiptAnalysis(BaseModel):
 
     receipt_id: str
     known_total: float
-    discovered_labels: List[Union[CurrencyLabel, LineItemLabel]]
+    discovered_labels: List[Union[CurrencyLabel, LineItemLabel, Any]]  # Any includes TransactionLabel and others
     validation_results: (
         Dict  # Allow any values including None for missing validations
     )
@@ -144,6 +170,11 @@ class ReceiptAnalysis(BaseModel):
     processing_time: Optional[float] = Field(
         default=None, description="Processing time in seconds"
     )
+
+    # Additional fields for deferred writes (labels and metadata updates)
+    receipt_word_labels_to_add: Optional[List[Any]] = Field(default_factory=list)
+    receipt_word_labels_to_update: Optional[List[Any]] = Field(default_factory=list)
+    metadata_validation: Optional[Dict[str, Any]] = Field(default=None)
 
 
 class CurrencyItem(BaseModel):
@@ -196,15 +227,36 @@ class SimpleReceiptResponse(BaseModel):
 
 
 class Phase1Response(BaseModel):
-    """Response model for phase 1."""
+    """Response model for phase 1.
+
+    This model enforces that all currency amounts are returned as floats.
+    Pydantic will automatically parse string amounts to floats.
+    """
 
     currency_labels: List[CurrencyLabel] = Field(
-        description="Currency classifications"
+        description="Currency classifications with all amounts as floats (not strings)"
     )
     reasoning: str = Field(description="Overall analysis reasoning")
     confidence: float = Field(
         ge=0.0, le=1.0, description="Overall confidence score"
     )
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [{
+                "currency_labels": [{
+                    "line_text": "24.01",
+                    "amount": 24.01,  # float, not "24.01"
+                    "label_type": "GRAND_TOTAL",
+                    "line_ids": [29],
+                    "confidence": 0.95,
+                    "reasoning": "Final amount due"
+                }],
+                "reasoning": "Extracted all currency amounts",
+                "confidence": 0.93
+            }]
+        }
+    }
 
 
 class Phase2Response(BaseModel):
@@ -215,3 +267,103 @@ class Phase2Response(BaseModel):
     confidence: float = Field(
         ge=0.0, le=1.0, description="Overall confidence score"
     )
+
+
+# Transaction Context Labels (NEW)
+class TransactionLabelType(str, Enum):
+    """Transaction context labels from CORE_LABELS."""
+    # Transaction-specific
+    DATE = "DATE"
+    TIME = "TIME"
+    PAYMENT_METHOD = "PAYMENT_METHOD"
+    COUPON = "COUPON"
+    DISCOUNT = "DISCOUNT"
+    LOYALTY_ID = "LOYALTY_ID"
+    # Merchant info (needed for word labeling, even though in ReceiptMetadata)
+    MERCHANT_NAME = "MERCHANT_NAME"
+    PHONE_NUMBER = "PHONE_NUMBER"
+    ADDRESS_LINE = "ADDRESS_LINE"
+    # Store details
+    STORE_HOURS = "STORE_HOURS"
+    WEBSITE = "WEBSITE"
+
+
+class TransactionLabel(BaseModel):
+    """A discovered transaction context label with LLM reasoning."""
+
+    word_text: str = Field(
+        ...,
+        description="The exact text of the word being labeled (e.g., '12/25/2024', '14:30', 'VISA', 'SAVE10')"
+    )
+    label_type: TransactionLabelType = Field(
+        ...,
+        description="Transaction context label type - descriptions come from CORE_LABELS"
+    )
+    confidence: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Confidence score from 0.0 (uncertain) to 1.0 (certain) for this classification"
+    )
+    reasoning: str = Field(
+        ...,
+        description="Brief explanation of why this word was classified this way (e.g., 'Date format matches MM/DD/YYYY', 'Appears near payment section')"
+    )
+    cove_verified: bool = Field(
+        default=False,
+        description="Whether this label was verified by Chain of Verification (CoVe). If True, validation_status should be set to VALID."
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "word_text": "12/25/2024",
+                    "label_type": "DATE",
+                    "confidence": 0.95,
+                    "reasoning": "Date format"
+                },
+                {
+                    "word_text": "CASH",
+                    "label_type": "PAYMENT_METHOD",
+                    "confidence": 0.90,
+                    "reasoning": "Payment type indicator"
+                }
+            ]
+        }
+    }
+
+
+class PhaseContextResponse(BaseModel):
+    """Response model for transaction context analysis."""
+
+    transaction_labels: List[TransactionLabel] = Field(
+        description="Transaction context classifications (DATE, TIME, PAYMENT_METHOD, etc.)"
+    )
+    reasoning: str = Field(description="Overall analysis reasoning")
+    confidence: float = Field(
+        ge=0.0, le=1.0, description="Overall confidence score"
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [{
+                "transaction_labels": [
+                    {
+                        "word_text": "12/25/2024",
+                        "label_type": "DATE",
+                        "confidence": 0.95,
+                        "reasoning": "Date format"
+                    },
+                    {
+                        "word_text": "VISA",
+                        "label_type": "PAYMENT_METHOD",
+                        "confidence": 0.90,
+                        "reasoning": "Payment method"
+                    }
+                ],
+                "reasoning": "Extracted transaction context",
+                "confidence": 0.93
+            }]
+        }
+    }
