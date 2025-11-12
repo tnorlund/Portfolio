@@ -34,6 +34,11 @@ class MetadataCreationState(BaseModel):
     extracted_phone: Optional[str] = None
     extracted_merchant_words: List[str] = Field(default_factory=list)
 
+    # ChromaDB search results (optional fast path)
+    chroma_candidates: List[Dict[str, Any]] = Field(default_factory=list)
+    chroma_best: Optional[Dict[str, Any]] = None
+    use_chroma: bool = False
+
     # Google Places search results
     places_search_results: List[Dict[str, Any]] = Field(default_factory=list)
     selected_place: Optional[Dict[str, Any]] = None
@@ -68,6 +73,9 @@ class MetadataCreationState(BaseModel):
             extracted_address=state.get("extracted_address"),
             extracted_phone=state.get("extracted_phone"),
             extracted_merchant_words=state.get("extracted_merchant_words", []) or [],
+            chroma_candidates=state.get("chroma_candidates", []) or [],
+            chroma_best=state.get("chroma_best"),
+            use_chroma=state.get("use_chroma", False),
             places_search_results=state.get("places_search_results", []) or [],
             selected_place=state.get("selected_place"),
             receipt_metadata=state.get("receipt_metadata"),
@@ -91,6 +99,9 @@ class MetadataCreationState(BaseModel):
             "extracted_address": self.extracted_address,
             "extracted_phone": self.extracted_phone,
             "extracted_merchant_words": self.extracted_merchant_words,
+            "chroma_candidates": self.chroma_candidates,
+            "chroma_best": self.chroma_best,
+            "use_chroma": self.use_chroma,
             "places_search_results": self.places_search_results,
             "selected_place": self.selected_place,
             "receipt_metadata": self.receipt_metadata,

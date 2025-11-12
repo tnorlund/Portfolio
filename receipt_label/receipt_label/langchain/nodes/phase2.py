@@ -189,16 +189,23 @@ Analyze the snippet and extract line item components as JSON matching the schema
         target_snippet = send_data.get("target_line_text_compiled", "")
         verification_context = f"TARGET SNIPPET:\n{target_snippet}\n\nFULL RECEIPT:\n{receipt_text}"
 
+        cove_verified = False
         if enable_cove:
             print(f"   🔍 Applying Chain of Verification to Phase 2.{index} results...")
-            response = await apply_chain_of_verification(
-                initial_answer=initial_response,
-                receipt_text=verification_context,
-                task_description=f"Line item component extraction (PRODUCT_NAME, QUANTITY, UNIT_PRICE) for line with amount {line_total.amount}",
-                response_model=Phase2Response,
-                llm=llm,
-                enable_cove=True,
-            )
+            try:
+                response, cove_verified = await apply_chain_of_verification(
+                    initial_answer=initial_response,
+                    receipt_text=verification_context,
+                    task_description=f"Line item component extraction (PRODUCT_NAME, QUANTITY, UNIT_PRICE) for line with amount {line_total.amount}",
+                    response_model=Phase2Response,
+                    llm=llm,
+                    enable_cove=True,
+                )
+                print(f"   ✅ CoVe completed: cove_verified={cove_verified}")
+            except Exception as e:
+                print(f"   ⚠️ CoVe exception in phase2: {e}, using initial response")
+                response = initial_response
+                cove_verified = False
         else:
             response = initial_response
 
@@ -228,6 +235,7 @@ Analyze the snippet and extract line item components as JSON matching the schema
                     label_type=label_type,
                     confidence=item.confidence,
                     reasoning=item.reasoning,
+                    cove_verified=cove_verified,  # Mark as CoVe verified if CoVe ran successfully
                 )
                 line_item_labels.append(label)
             except AttributeError:

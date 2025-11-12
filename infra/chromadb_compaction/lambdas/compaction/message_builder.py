@@ -10,9 +10,9 @@ from .models import LambdaResponse, StreamMessage
 
 
 def process_sqs_messages(
-    records: List[Dict[str, Any]], 
-    logger: Any, 
-    metrics: Any = None, 
+    records: List[Dict[str, Any]],
+    logger: Any,
+    metrics: Any = None,
     OBSERVABILITY_AVAILABLE: bool = False,
     process_stream_messages_func: Any = None,
     process_delta_messages_func: Any = None
@@ -121,7 +121,7 @@ def process_sqs_messages(
 
     # Process stream messages if any
     if stream_messages and process_stream_messages_func:
-        result = process_stream_messages_func(stream_messages)
+        result = process_stream_messages_func(stream_messages, metrics=metrics)
         # If a collection returned partial-batch failures (due to lock),
         # propagate immediately so the Lambda runtime retries only those.
         if isinstance(result, dict) and "batchItemFailures" in result:
@@ -131,7 +131,7 @@ def process_sqs_messages(
     # Process delta messages if any - collect failed message IDs
     if delta_message_records and process_delta_messages_func:
         delta_bodies = [msg["body"] for msg in delta_message_records]
-        process_delta_messages_func(delta_bodies)
+        process_delta_messages_func(delta_bodies, metrics=metrics)
 
         # Since delta processing is not implemented, mark all delta messages as failed
         # to prevent data loss by forcing SQS to retry them
@@ -202,14 +202,14 @@ def categorize_stream_messages(
     stream_messages: List[StreamMessage]
 ) -> Tuple[List[StreamMessage], List[StreamMessage], List[StreamMessage]]:
     """Categorize stream messages by entity type.
-    
+
     Returns:
         Tuple of (metadata_updates, label_updates, compaction_runs)
     """
     metadata_updates = []
     label_updates = []
     compaction_runs = []
-    
+
     for message in stream_messages:
         if message.entity_type == "RECEIPT_METADATA":
             metadata_updates.append(message)
@@ -217,7 +217,7 @@ def categorize_stream_messages(
             label_updates.append(message)
         elif message.entity_type == "COMPACTION_RUN":
             compaction_runs.append(message)
-    
+
     return metadata_updates, label_updates, compaction_runs
 
 

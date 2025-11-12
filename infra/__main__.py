@@ -37,9 +37,10 @@ from pulumi import ResourceOptions
 from raw_bucket import raw_bucket  # Import the actual bucket instance
 from s3_website import site_bucket  # Import the site bucket instance
 from upload_images import UploadImages
-from validate_merchant_step_functions import ValidateMerchantStepFunctions
 from validation_by_merchant import ValidationByMerchantStepFunction
 from validation_pipeline import ValidationPipeline
+from validate_pending_labels import ValidatePendingLabelsStepFunction
+from validate_metadata import ValidateMetadataStepFunction
 
 from chromadb_compaction import (
     create_chromadb_compaction_infrastructure,
@@ -321,18 +322,12 @@ orchestrator = ChromaOrchestrator(
 
 pulumi.export("chroma_orchestrator_sfn_arn", orchestrator.state_machine.arn)
 
-# Now that Chroma service exists, wire merchant validation with warm-up and HTTP endpoint
-# TEMPORARILY DISABLED - ECR permissions issue
-# validate_merchant_step_functions = ValidateMerchantStepFunctions(
-#     "validate-merchant",
-#     vpc_subnet_ids=nat.private_subnet_ids,
-#     security_group_id=security.sg_lambda_id,
-#     chroma_http_endpoint=chroma_service.endpoint_dns,
-#     ecs_cluster_arn=chroma_service.cluster.arn,
-#     ecs_service_arn=chroma_service.svc.arn,
-#     nat_instance_id=nat.nat_instance_id,
-#     chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
-# )
+# ValidateMerchantStepFunctions removed - redundant with LangGraph metadata creation
+# Metadata is now created by:
+# - Upload OCR Handler (LangGraph)
+# - Upload Container Handler (LangGraph)
+# - Embedding polling handlers (LangGraph)
+# Consolidation and batch cleaning can be added as standalone Lambdas if needed
 
 # Wire upload-images after NAT and Chroma are available so it can reach OpenAI and Chroma
 # When using EFS, use only first private subnet to ensure Lambda is in subnet with EFS mount target
@@ -954,3 +949,53 @@ try:
 except ImportError:
     # Cache updater not available in this environment
     pass
+
+# Create validate pending labels Step Function
+# No VPC needed - downloads ChromaDB from S3, needs internet for Ollama API
+validate_pending_labels_sf = ValidatePendingLabelsStepFunction(
+    f"validate-pending-labels-{stack}",
+    dynamodb_table_name=dynamodb_table.name,
+    dynamodb_table_arn=dynamodb_table.arn,
+    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
+    chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
+    # No VPC - Lambda downloads ChromaDB from S3 and needs internet for Ollama API
+    # DynamoDB and S3 access via gateway endpoints work from anywhere
+)
+
+pulumi.export(
+    "validate_pending_labels_sf_arn",
+    validate_pending_labels_sf.state_machine_arn,
+)
+pulumi.export(
+    "validate_pending_labels_list_lambda_arn",
+    validate_pending_labels_sf.list_pending_labels_lambda_arn,
+)
+pulumi.export(
+    "validate_pending_labels_validate_lambda_arn",
+    validate_pending_labels_sf.validate_receipt_lambda_arn,
+)
+
+# Create validate metadata Step Function
+# No VPC needed - downloads ChromaDB from S3, needs internet for Ollama API
+validate_metadata_sf = ValidateMetadataStepFunction(
+    f"validate-metadata-{stack}",
+    dynamodb_table_name=dynamodb_table.name,
+    dynamodb_table_arn=dynamodb_table.arn,
+    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
+    chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
+    # No VPC - Lambda downloads ChromaDB from S3 and needs internet for Ollama API
+    # DynamoDB and S3 access via gateway endpoints work from anywhere
+)
+
+pulumi.export(
+    "validate_metadata_sf_arn",
+    validate_metadata_sf.state_machine_arn,
+)
+pulumi.export(
+    "validate_metadata_list_lambda_arn",
+    validate_metadata_sf.list_metadata_lambda_arn,
+)
+pulumi.export(
+    "validate_metadata_validate_lambda_arn",
+    validate_metadata_sf.validate_metadata_lambda_arn,
+)

@@ -8,9 +8,10 @@ Implements the CoVe pattern:
 4. Revise answer if needed
 """
 
-from typing import TypeVar, Type, Any, Dict, List
+from typing import TypeVar, Type, Any, Dict, List, Tuple
 from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage
+from langchain_core.utils.json import parse_json_markdown
 import json
 
 from receipt_label.langchain.models.cove import (
@@ -47,7 +48,19 @@ async def generate_verification_questions(
     else:
         answer_json = str(initial_answer)
 
-    llm_structured = llm.with_structured_output(VerificationQuestionsResponse)
+    # Get JSON schema for format parameter (more reliable with Ollama)
+    schema = VerificationQuestionsResponse.model_json_schema()
+    schema_json = json.dumps(schema, indent=2)
+
+    # Create LLM with JSON schema in format parameter (like extract_merchant_info.py)
+    llm_with_schema = ChatOllama(
+        model=llm.model,
+        base_url=llm.base_url,
+        client_kwargs=llm.client_kwargs,
+        format=schema,  # Pass schema directly, not "json" string
+        temperature=llm.temperature,
+    )
+    llm_structured = llm_with_schema.with_structured_output(VerificationQuestionsResponse)
 
     prompt = f"""You are a verification expert. Your task is to generate specific, answerable questions that can verify the accuracy of an initial analysis.
 
@@ -57,7 +70,13 @@ INITIAL ANSWER:
 {answer_json}
 
 RECEIPT TEXT (source material):
-{receipt_text[:2000]}  # Limit to first 2000 chars for context
+{receipt_text[:2000]}
+
+CRITICAL INSTRUCTIONS:
+1. You MUST respond with valid JSON ONLY - no markdown, no tables, no explanations
+2. Output must match this EXACT JSON structure:
+
+{schema_json}
 
 Generate 3-5 specific verification questions that can be answered by checking the receipt text. Each question should:
 1. Target a specific claim in the initial answer
@@ -70,10 +89,30 @@ Focus on:
 - Ensuring line_ids point to the correct locations
 - Validating that extracted text matches receipt content
 
-Return a list of verification questions with their importance scores."""
+Return ONLY valid JSON matching the schema above. Start your response with {{ and end with }}. No markdown formatting."""
 
-    response = await llm_structured.ainvoke([HumanMessage(content=prompt)])
-    return response
+    try:
+        response = await llm_structured.ainvoke([HumanMessage(content=prompt)])
+        return response
+    except Exception as e:
+        # If structured output fails, try to parse raw response
+        print(f"   ⚠️ Structured output failed, trying raw LLM call: {e}")
+        raw_llm = ChatOllama(
+            model=llm.model,
+            base_url=llm.base_url,
+            client_kwargs=llm.client_kwargs,
+            format="json",
+            temperature=llm.temperature,
+        )
+        raw_response = await raw_llm.ainvoke([HumanMessage(content=prompt)])
+        # Try to parse the content
+        try:
+            parsed = parse_json_markdown(raw_response.content)
+            return VerificationQuestionsResponse(**parsed)
+        except Exception:
+            # Last resort: return empty questions
+            print(f"   ⚠️ Could not parse response, skipping CoVe verification")
+            return VerificationQuestionsResponse(questions=[], reasoning="CoVe parsing failed")
 
 
 async def answer_verification_questions(
@@ -108,7 +147,19 @@ async def answer_verification_questions(
         for i, q in enumerate(questions)
     ])
 
-    llm_structured = llm.with_structured_output(VerificationAnswersResponse)
+    # Get JSON schema for format parameter
+    schema = VerificationAnswersResponse.model_json_schema()
+    schema_json = json.dumps(schema, indent=2)
+
+    # Create LLM with JSON schema in format parameter
+    llm_with_schema = ChatOllama(
+        model=llm.model,
+        base_url=llm.base_url,
+        client_kwargs=llm.client_kwargs,
+        format=schema,  # Pass schema directly
+        temperature=llm.temperature,
+    )
+    llm_structured = llm_with_schema.with_structured_output(VerificationAnswersResponse)
 
     prompt = f"""You are a fact-checker. Answer each verification question by carefully examining the receipt text.
 
@@ -121,16 +172,45 @@ VERIFICATION QUESTIONS:
 RECEIPT TEXT (source material - check this carefully):
 {receipt_text}
 
+CRITICAL INSTRUCTIONS:
+1. You MUST respond with valid JSON ONLY - no markdown, no tables, no explanations
+2. Output must match this EXACT JSON structure:
+
+{schema_json}
+
 For each question:
 1. Search the receipt text for relevant information
 2. Provide a clear answer with evidence
 3. Indicate if the original claim needs revision
 4. Give a confidence score for your answer
 
-Be thorough and precise. If you find discrepancies, clearly state what needs to be corrected."""
+Be thorough and precise. If you find discrepancies, clearly state what needs to be corrected.
 
-    response = await llm_structured.ainvoke([HumanMessage(content=prompt)])
-    return response
+Return ONLY valid JSON matching the schema above. Start your response with {{ and end with }}. No markdown formatting."""
+
+    try:
+        response = await llm_structured.ainvoke([HumanMessage(content=prompt)])
+        return response
+    except Exception as e:
+        print(f"   ⚠️ Structured output failed, trying raw LLM call: {e}")
+        raw_llm = ChatOllama(
+            model=llm.model,
+            base_url=llm.base_url,
+            client_kwargs=llm.client_kwargs,
+            format="json",
+            temperature=llm.temperature,
+        )
+        raw_response = await raw_llm.ainvoke([HumanMessage(content=prompt)])
+        try:
+            parsed = parse_json_markdown(raw_response.content)
+            return VerificationAnswersResponse(**parsed)
+        except Exception:
+            print(f"   ⚠️ Could not parse response, skipping verification")
+            return VerificationAnswersResponse(
+                answers=[],
+                overall_assessment="Verification parsing failed",
+                revision_needed=False
+            )
 
 
 async def revise_answer_with_verification(
@@ -176,7 +256,19 @@ Requires Revision: {answer.requires_revision}
 Confidence: {answer.confidence}
 """
 
-    llm_structured = llm.with_structured_output(response_model)
+    # Get JSON schema for format parameter
+    schema = response_model.model_json_schema()
+    schema_json = json.dumps(schema, indent=2)
+
+    # Create LLM with JSON schema in format parameter
+    llm_with_schema = ChatOllama(
+        model=llm.model,
+        base_url=llm.base_url,
+        client_kwargs=llm.client_kwargs,
+        format=schema,  # Pass schema directly
+        temperature=llm.temperature,
+    )
+    llm_structured = llm_with_schema.with_structured_output(response_model)
 
     prompt = f"""You are revising an initial answer based on verification results.
 
@@ -189,16 +281,27 @@ VERIFICATION RESULTS:
 RECEIPT TEXT:
 {receipt_text[:2000]}
 
+CRITICAL INSTRUCTIONS:
+1. You MUST respond with valid JSON ONLY - no markdown, no tables, no explanations
+2. Output must match this EXACT JSON structure:
+
+{schema_json}
+
 Revise the initial answer to correct any errors found during verification.
 - Keep correct parts unchanged
 - Fix any discrepancies identified
 - Update confidence scores if needed
 - Ensure all amounts, line_ids, and text match the receipt exactly
 
-Return the revised answer in the same format as the initial answer."""
+Return ONLY valid JSON matching the schema above. Start your response with {{ and end with }}. No markdown formatting."""
 
-    response = await llm_structured.ainvoke([HumanMessage(content=prompt)])
-    return response
+    try:
+        response = await llm_structured.ainvoke([HumanMessage(content=prompt)])
+        return response
+    except Exception as e:
+        print(f"   ⚠️ Structured output failed, using original answer: {e}")
+        # Return original answer if revision fails
+        return initial_answer
 
 
 async def apply_chain_of_verification(
@@ -208,7 +311,7 @@ async def apply_chain_of_verification(
     response_model: Type[T],
     llm: ChatOllama,
     enable_cove: bool = True,
-) -> T:
+) -> Tuple[T, bool]:
     """Apply chain of verification to an initial answer.
 
     This is the main entry point for CoVe. It:
@@ -225,11 +328,13 @@ async def apply_chain_of_verification(
         enable_cove: Whether to actually run CoVe (can be disabled for testing)
 
     Returns:
-        Final answer (revised if needed, or original if verification passed)
+        Tuple of (final_answer, cove_verified: bool)
+        - final_answer: Final answer (revised if needed, or original if verification passed)
+        - cove_verified: True if CoVe completed successfully, False if it failed or was disabled
     """
 
     if not enable_cove:
-        return initial_answer
+        return initial_answer, False
 
     try:
         # Step 1: Generate verification questions
@@ -243,7 +348,7 @@ async def apply_chain_of_verification(
 
         if not questions_response.questions:
             print("   ⚠️ No verification questions generated, using initial answer")
-            return initial_answer
+            return initial_answer, False
 
         print(f"   ✅ Generated {len(questions_response.questions)} verification questions")
 
@@ -270,12 +375,15 @@ async def apply_chain_of_verification(
                 llm=llm,
             )
             print("   ✅ Answer revised based on verification")
-            return revised_answer
+            # CoVe verified successfully (even though revision was needed, it was verified and corrected)
+            return revised_answer, True
         else:
             print("   ✅ Verification passed - no revision needed")
-            return initial_answer
+            # CoVe verified successfully (no issues found)
+            return initial_answer, True
 
     except Exception as e:
         print(f"   ⚠️ CoVe failed: {e}, using initial answer")
-        return initial_answer
+        # CoVe failed, so not verified
+        return initial_answer, False
 
