@@ -12,6 +12,7 @@ Simplified version of n_parallel_analyzer.py that:
 
 import os
 import time
+import logging
 from typing import Any, List, Optional
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
@@ -33,6 +34,7 @@ from receipt_label.langchain.nodes.load_data import load_receipt_data
 from receipt_label.langchain.nodes.phase1 import phase1_currency_analysis
 from receipt_label.langchain.nodes.phase1_context import phase1_context_analysis
 from receipt_label.langchain.nodes.phase1_validate import phase1_validate_metadata
+from receipt_label.langchain.nodes.phase1_validate_llm import phase1_validate_metadata_llm
 from receipt_label.langchain.nodes.phase2 import (
     dispatch_to_parallel_phase2,
     phase2_line_analysis,
@@ -43,13 +45,20 @@ from receipt_label.langchain.services.label_mapping import (
 
 
 def create_unified_analysis_graph(
-    ollama_api_key: str, save_dev_state: bool = False
+    ollama_api_key: str,
+    save_dev_state: bool = False,
+    google_places_api_key: Optional[str] = None,
+    update_metadata: bool = False,
+    chroma_client: Optional[Any] = None,  # VectorStoreInterface - using Any to avoid circular import
 ) -> CompiledStateGraph:
     """Create single unified graph with secure API key injection via closures.
 
     Args:
         ollama_api_key: API key injected via closure - never stored in state
         save_dev_state: Whether to save state at combine_results for development
+        google_places_api_key: Google Places API key (optional, for metadata updates)
+        update_metadata: Whether to update metadata via Google Places if validation fails
+        chroma_client: ChromaDB client for similarity search validation (optional)
     """
 
     workflow = StateGraph(CurrencyAnalysisState)
@@ -68,7 +77,7 @@ def create_unified_analysis_graph(
                 "last_error": str(e),
                 "partial_results": True,
             }
-    
+
     async def phase1_context_with_key(state):
         """Phase 1 Context node with API key from closure scope"""
         try:
@@ -82,6 +91,23 @@ def create_unified_analysis_graph(
                 "last_error": str(e),
                 "partial_results": True,
             }
+
+    async def validate_metadata_with_key(state):
+        """Metadata validation node with CoVe and optional Google Places update"""
+        import logging
+        logger = logging.getLogger(__name__)
+        try:
+            return await phase1_validate_metadata_llm(
+                state,
+                ollama_api_key=ollama_api_key,
+                enable_cove=True,
+                google_places_api_key=google_places_api_key,
+                update_metadata=update_metadata,
+            )
+        except Exception as e:
+            # Fall back to simple validation if LLM validation fails
+            logger.warning(f"LLM validation failed, falling back to simple validation: {e}")
+            return await phase1_validate_metadata(state)
 
     def dispatch_with_key(state):
         """Dispatcher with API key injected into Send data"""
@@ -102,40 +128,57 @@ def create_unified_analysis_graph(
     async def combine_with_dev_save(state):
         """Combine results with optional state saving for development"""
         return await combine_results(state, save_dev_state)
-    
+
+    async def validate_chromadb_with_client(state):
+        """ChromaDB validation node with client from closure scope"""
+        from receipt_label.langchain.nodes.validate_labels_chromadb import validate_labels_chromadb
+        try:
+            return await validate_labels_chromadb(state, chroma_client=chroma_client)
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.warning(f"ChromaDB validation failed: {e}")
+            return {
+                "chromadb_validation_stats": {
+                    "validated": 0,
+                    "invalidated": 0,
+                    "skipped": 0,
+                    "error": str(e),
+                }
+            }
+
     async def graph_error_handler(state):
         """Handle errors at graph level when node retries fail."""
         receipt_id = getattr(state, "receipt_id", "unknown")
         error_count = getattr(state, "error_count", 0)
         last_error = getattr(state, "last_error", "None")
-        
+
         print(f"⚠️ Graph-level error handler triggered for {receipt_id}")
         print(f"   Error count: {error_count}")
         print(f"   Last error: {last_error}")
-        
+
         return {
             "currency_labels": getattr(state, "currency_labels", []) or [],
             "line_item_labels": getattr(state, "line_item_labels", []) or [],
             "confidence_score": 0.0,
             "partial_results": True,
         }
-    
+
     def should_handle_error(state: CurrencyAnalysisState) -> str:
         """Determine if we should handle error or continue normally."""
         error_count = getattr(state, "error_count", 0)
         currency_labels = getattr(state, "currency_labels", []) or []
-        
+
         if error_count > 0 and not currency_labels:
             # Phase 1 completely failed
             return "error_handler"
-        
+
         return "continue"
 
     # Add nodes with secure key injection
     workflow.add_node("load_data", load_receipt_data)
     workflow.add_node("phase1_currency", phase1_with_key)
     workflow.add_node("phase1_context", phase1_context_with_key)  # NEW: Parallel context analysis
-    workflow.add_node("validate_metadata", phase1_validate_metadata)  # NEW: Validate ReceiptMetadata
+    workflow.add_node("validate_metadata", validate_metadata_with_key)  # NEW: Validate ReceiptMetadata with CoVe
     workflow.add_node("phase2_line_analysis", phase2_with_key)
     workflow.add_node("error_handler", graph_error_handler)
     workflow.add_node("combine_results", combine_with_dev_save)
@@ -143,21 +186,21 @@ def create_unified_analysis_graph(
     # Define the flow using Send API for dynamic dispatch
     workflow.add_edge(START, "load_data")
     workflow.add_edge("load_data", "phase1_currency")
-    
+
     # NEW: Run context analysis in parallel with Phase 1
     workflow.add_edge("load_data", "phase1_context")  # Parallel execution
-    
+
     # Check for errors after Phase 1 and route accordingly
     def route_after_phase1(state):
         """Route to error handler or Phase 2 based on error status."""
         error_decision = should_handle_error(state)
-        
+
         if error_decision == "error_handler":
             return "error_handler"
         else:
             # Continue to Phase 2 normally
             return dispatch_with_key(state)
-    
+
     # Conditional edge routing
     workflow.add_conditional_edges(
         "phase1_currency",
@@ -167,7 +210,7 @@ def create_unified_analysis_graph(
             "phase2_line_analysis": "phase2_line_analysis",
         },
     )
-    
+
     # Phase 1 Context goes to validation, then combine
     workflow.add_edge("phase1_context", "validate_metadata")
     workflow.add_edge("validate_metadata", "combine_results")
@@ -175,9 +218,21 @@ def create_unified_analysis_graph(
     # Error handler and Phase 2 both converge at combine
     workflow.add_edge("error_handler", "combine_results")
     workflow.add_edge("phase2_line_analysis", "combine_results")
-    workflow.add_edge("combine_results", END)
+
+    # Add ChromaDB validation after combine_results if client is provided
+    if chroma_client:
+        workflow.add_edge("combine_results", "validate_chromadb")
+        workflow.add_edge("validate_chromadb", END)
+    else:
+        workflow.add_edge("combine_results", END)
 
     return workflow.compile()
+
+
+def _chunk(iterable, n):
+    """Split an iterable into chunks of size n."""
+    for i in range(0, len(iterable), n):
+        yield iterable[i : i + n]
 
 
 async def save_receipt_word_labels(
@@ -205,45 +260,49 @@ async def save_receipt_word_labels(
     updated_count = 0
     failed_count = 0
 
-    # Adds (bulk then fallback)
+    # Adds (chunk into batches of 25, then bulk with fallback)
     if to_add:
         print(f"   💾 Adding {len(to_add)} ReceiptWordLabel entities...")
-        try:
-            client.add_receipt_word_labels(to_add)
-            saved_count += len(to_add)
-            print(f"   ✅ Added {len(to_add)} labels")
-        except Exception as e:
-            print(f"   ⚠️ Bulk add failed: {e}")
-            print("   🔄 Attempting individual adds...")
-            for label in to_add:
-                try:
-                    client.add_receipt_word_label(label)
-                    saved_count += 1
-                except Exception as individual_error:
-                    print(
-                        f"   ⚠️ Failed to add label {label.label} for word {label.word_id}: {individual_error}"
-                    )
-                    failed_count += 1
+        # Chunk into batches of 25 (DynamoDB limit)
+        for chunk in _chunk(to_add, 25):
+            try:
+                client.add_receipt_word_labels(chunk)
+                saved_count += len(chunk)
+            except Exception as e:
+                print(f"   ⚠️ Bulk add failed for chunk of {len(chunk)}: {e}")
+                print("   🔄 Attempting individual adds for this chunk...")
+                for label in chunk:
+                    try:
+                        client.add_receipt_word_label(label)
+                        saved_count += 1
+                    except Exception as individual_error:
+                        print(
+                            f"   ⚠️ Failed to add label {label.label} for word {label.word_id}: {individual_error}"
+                        )
+                        failed_count += 1
+        print(f"   ✅ Added {saved_count} labels")
 
-    # Updates (bulk-friendly API provided by client)
+    # Updates (chunk into batches of 25, then bulk with fallback)
     if to_update:
         print(f"   ♻️ Updating {len(to_update)} ReceiptWordLabel entities...")
-        try:
-            client.update_receipt_word_labels(to_update)
-            updated_count += len(to_update)
-            print(f"   ✅ Updated {len(to_update)} labels")
-        except Exception as e:
-            print(f"   ⚠️ Bulk update failed: {e}")
-            print("   🔄 Attempting individual updates...")
-            for label in to_update:
-                try:
-                    client.update_receipt_word_label(label)
-                    updated_count += 1
-                except Exception as individual_error:
-                    print(
-                        f"   ⚠️ Failed to update label {label.label} for word {label.word_id}: {individual_error}"
-                    )
-                    failed_count += 1
+        # Chunk into batches of 25 (DynamoDB limit)
+        for chunk in _chunk(to_update, 25):
+            try:
+                client.update_receipt_word_labels(chunk)
+                updated_count += len(chunk)
+            except Exception as e:
+                print(f"   ⚠️ Bulk update failed for chunk of {len(chunk)}: {e}")
+                print("   🔄 Attempting individual updates for this chunk...")
+                for label in chunk:
+                    try:
+                        client.update_receipt_word_label(label)
+                        updated_count += 1
+                    except Exception as individual_error:
+                        print(
+                            f"   ⚠️ Failed to update label {label.label} for word {label.word_id}: {individual_error}"
+                        )
+                        failed_count += 1
+        print(f"   ✅ Updated {updated_count} labels")
 
     print(
         f"   📊 Save Results → added: {saved_count}, updated: {updated_count}, failed: {failed_count}"
@@ -283,7 +342,7 @@ async def combine_results(
     # Add currency labels from Phase 1
     currency_labels = state.currency_labels
     discovered_labels.extend(currency_labels)
-    
+
     # Add transaction context labels from Phase 1 Context (NEW)
     transaction_labels = state.transaction_labels
     discovered_labels.extend(transaction_labels)
@@ -479,7 +538,20 @@ async def combine_results(
             lbl.label_consolidated_from or "simple_receipt_analyzer",
         )
 
-        # We preserve original timestamp_added and validation_status
+        # Determine new validation_status:
+        # - If new label is VALID (CoVe verified) and current is PENDING, upgrade to VALID
+        # - Otherwise preserve current status
+        current_status = str(current.validation_status or "").upper()
+        new_status = str(lbl.validation_status or "").upper()
+
+        # Upgrade PENDING to VALID if CoVe verified
+        if current_status in {"PENDING", "NONE", ""} and new_status == "VALID":
+            final_validation_status = "VALID"
+            needs_update = True  # Always update when upgrading to VALID
+        else:
+            final_validation_status = current.validation_status  # Preserve existing
+
+        # We preserve original timestamp_added
         updated = ReceiptWordLabel(
             image_id=current.image_id,
             receipt_id=current.receipt_id,
@@ -488,44 +560,38 @@ async def combine_results(
             label=current.label,
             reasoning=new_reasoning,
             timestamp_added=current.timestamp_added,
-            validation_status=current.validation_status,
+            validation_status=final_validation_status,
             label_proposed_by=current.label_proposed_by
             or lbl.label_proposed_by,
             label_consolidated_from=new_consolidated,
         )
 
         # Consider validation_status to avoid churn on validated items
-        is_pending = str(current.validation_status or "").upper() in {
-            "PENDING",
-            "NONE",
-            "",
-        }
+        is_pending = current_status in {"PENDING", "NONE", ""}
 
-        if not is_pending:
-            # Fully skip any updates for validated items (freeze state)
+        if not is_pending and not needs_update:
+            # Fully skip any updates for validated items (freeze state) unless upgrading
             print(
                 f"   ℹ️ Skipping update for validated label {current.label} on word {current.word_id}"
             )
             continue
 
-        # Decide if any meaningful change remains
-        if (
-            (updated.label_consolidated_from or "")
-            != (current.label_consolidated_from or "")
-        ) or (
-            is_pending
-            and (
-                (updated.reasoning != current.reasoning)
-                or (
-                    (updated.label_proposed_by or "")
-                    != (current.label_proposed_by or "")
+        # Decide if any meaningful change remains (if not already marked for update)
+        if not needs_update:
+            if (
+                (updated.label_consolidated_from or "")
+                != (current.label_consolidated_from or "")
+            ) or (
+                is_pending
+                and (
+                    (updated.reasoning != current.reasoning)
+                    or (
+                        (updated.label_proposed_by or "")
+                        != (current.label_proposed_by or "")
+                    )
                 )
-            )
-        ):
-            needs_update = True
-        else:
-            # No-op; validated labels are already handled above
-            pass
+            ):
+                needs_update = True
 
         if needs_update:
             to_update.append(updated)
@@ -623,6 +689,8 @@ async def analyze_receipt_simple(
     receipt_lines: Optional[List] = None,
     receipt_words: Optional[List] = None,
     receipt_metadata: Optional[Any] = None,
+    google_places_api_key: Optional[str] = None,
+    update_metadata: bool = False,
 ) -> ReceiptAnalysis:
     """Analyze a receipt using the unified single-trace graph with secure API
     key handling.
@@ -667,7 +735,7 @@ async def analyze_receipt_simple(
     print()
 
     start_time = time.time()
-    
+
     # Use pre-fetched data if provided, otherwise fetch from DynamoDB
     if receipt_lines is None:
         lines = client.list_receipt_lines_from_receipt(image_id, receipt_id)
@@ -675,7 +743,7 @@ async def analyze_receipt_simple(
     else:
         lines = receipt_lines
         print(f"   📊 Using {len(lines)} pre-fetched receipt lines")
-    
+
     # Load ReceiptMetadata for merchant context (if not provided)
     if receipt_metadata is None:
         try:
@@ -703,7 +771,7 @@ async def analyze_receipt_simple(
         "confidence_score": 0.0,
         "processing_time": 0.0,
     }
-    
+
     if receipt_words is None:
         print(f"   ℹ️ Words will be fetched by load_data node from DynamoDB")
     else:
@@ -711,7 +779,11 @@ async def analyze_receipt_simple(
 
     # Create and run the unified graph with secure API key injection
     unified_graph = create_unified_analysis_graph(
-        ollama_api_key, save_dev_state
+        ollama_api_key=ollama_api_key,
+        save_dev_state=save_dev_state,
+        google_places_api_key=google_places_api_key,
+        update_metadata=update_metadata,
+        chroma_client=None,  # ChromaDB validation happens separately if needed
     )  # ✅ Secure closure injection
     # Attach explicit LangSmith tracer to ensure emission
     tracer = LangChainTracer()
@@ -736,39 +808,43 @@ async def analyze_receipt_simple(
     processing_time = time.time() - start_time
     print(f"\n⚡ UNIFIED EXECUTION TIME: {processing_time:.2f}s")
 
-    # Optionally update ReceiptMetadata if validation found critical mismatch
+    # Optionally update ReceiptMetadata if validation found issues and Google Places updated it
     validation_results = result.get("metadata_validation")
-    if validation_results and validation_results.get("requires_metadata_update") and not dry_run:
-        print(f"\n💾 UPDATING RECEIPT METADATA")
-        
-        # Get the original metadata (stored in initial_state)
-        if receipt_metadata:
+    if validation_results and validation_results.get("google_places_updated") and not dry_run:
+        print(f"\n💾 UPDATING RECEIPT METADATA (from Google Places API)")
+
+        # Get the updated metadata from validation results
+        updated_metadata = result.get("updated_metadata")
+        if updated_metadata:
             original_name = validation_results.get("original_merchant_name", "")
-            corrected_name = validation_results.get("corrected_merchant_name", "")
-            
-            print(f"   🔄 Updating merchant_name: '{original_name}' → '{corrected_name}'")
-            
+            new_name = validation_results.get("new_merchant_name", "")
+
+            print(f"   🔄 Updating merchant_name: '{original_name}' → '{new_name}'")
+            print(f"   📍 New place_id: {updated_metadata.place_id}")
+
             try:
-                receipt_metadata.merchant_name = corrected_name
-                receipt_metadata.reasoning = (
-                    f"Auto-corrected by LangGraph validation. "
-                    f"Original: '{original_name}', Corrected: '{corrected_name}'. "
-                    f"Receipt text is authoritative source."
-                )
-                
-                client.update_receipt_metadata(receipt_metadata)
+                client.update_receipt_metadata(updated_metadata)
                 print(f"   ✅ Updated ReceiptMetadata in DynamoDB")
             except Exception as e:
                 print(f"   ❌ Failed to update ReceiptMetadata: {e}")
         else:
-            print(f"   ⚠️ No ReceiptMetadata found - cannot update")
-    
+            print(f"   ⚠️ No updated metadata found - cannot update")
+
+    # Fallback: Update with corrected name if Google Places didn't update but we have a correction
+    elif validation_results and not validation_results.get("is_valid") and validation_results.get("recommended_merchant_name") and not dry_run and not update_metadata:
+        print(f"\n💾 RECEIPT METADATA NEEDS UPDATE (but update_metadata=False)")
+        print(f"   Original: '{validation_results.get('original_merchant_name')}'")
+        print(f"   Recommended: '{validation_results.get('recommended_merchant_name')}'")
+        print(f"   Set update_metadata=True to auto-update via Google Places API")
+
     # Optionally save ReceiptWordLabels to DynamoDB
     if save_labels:
         adds = result.get(
             "receipt_word_labels_to_add", result.get("receipt_word_labels", [])
         )
         updates = result.get("receipt_word_labels_to_update", [])
+        print(f"\n🔍 DEBUG: save_labels={save_labels}, adds={len(adds) if adds else 0}, updates={len(updates) if updates else 0}")
+        print(f"   result keys: {list(result.keys())}")
         if adds or updates:
             print(f"\n💾 SAVING RECEIPT WORD LABELS (adds + updates)")
             save_results = await save_receipt_word_labels(
@@ -804,10 +880,10 @@ async def analyze_receipt_simple(
             else result["formatted_text"]
         ),
     )
-    
+
     # Attach label and validation data for deferred writes
     analysis.receipt_word_labels_to_add = result.get("receipt_word_labels_to_add", result.get("receipt_word_labels", []))
     analysis.receipt_word_labels_to_update = result.get("receipt_word_labels_to_update", [])
     analysis.metadata_validation = result.get("metadata_validation")
-    
+
     return analysis
