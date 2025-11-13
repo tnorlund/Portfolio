@@ -18,6 +18,8 @@ class LinePrediction:
     boxes: List[List[int]]
     labels: List[str]
     confidences: List[float]
+    # All class probabilities per word: List[Dict[label_name: str, probability: float]]
+    all_probabilities: Optional[List[Dict[str, float]]] = None
 
 
 @dataclass
@@ -238,12 +240,14 @@ class LayoutLMInference:
 
             labels_per_word: List[str] = []
             confidences_per_word: List[float] = []
+            all_probabilities_per_word: List[Dict[str, float]] = []
             for wid in range(len(word_boxes)):
                 token_idxs = word_to_token_indices.get(wid, [])
                 if not token_idxs:
                     # If tokenizer dropped the word (rare), fallback to zeros
                     labels_per_word.append("O")
                     confidences_per_word.append(0.0)
+                    all_probabilities_per_word.append({})
                     continue
                 # Average logits across subtokens of this word
                 stacked = self._torch.stack(
@@ -255,6 +259,12 @@ class LayoutLMInference:
                 labels_per_word.append(id2label.get(int(pred_id.item()), "O"))
                 confidences_per_word.append(float(conf.item()))
 
+                # Store all class probabilities
+                word_probs: Dict[str, float] = {}
+                for label_id, label_name in id2label.items():
+                    word_probs[label_name] = float(probs[label_id].item())
+                all_probabilities_per_word.append(word_probs)
+
             results.append(
                 LinePrediction(
                     line_id=(line_ids[idx] if line_ids else idx),
@@ -262,6 +272,7 @@ class LayoutLMInference:
                     boxes=word_boxes,
                     labels=labels_per_word,
                     confidences=confidences_per_word,
+                    all_probabilities=all_probabilities_per_word,
                 )
             )
 

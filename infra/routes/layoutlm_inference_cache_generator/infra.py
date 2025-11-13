@@ -222,11 +222,11 @@ class LayoutLMInferenceCacheGenerator(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # EventBridge schedule to run every 5 minutes
+        # EventBridge schedule to run every 2 minutes
         self.schedule = aws.cloudwatch.EventRule(
             f"{name}-schedule",
-            description="Trigger LayoutLM inference cache generation every 5 minutes",
-            schedule_expression="rate(5 minutes)",
+            description="Trigger LayoutLM inference cache generation every 2 minutes",
+            schedule_expression="rate(2 minutes)",
             opts=ResourceOptions(parent=self),
         )
 

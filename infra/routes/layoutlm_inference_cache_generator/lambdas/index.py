@@ -27,6 +27,54 @@ MODEL_DIR = "/tmp/layoutlm-model"  # Persists across warm invocations
 s3_client = boto3.client("s3")
 
 
+def _get_base_label(bio_label: str) -> str:
+    """Extract base label from BIO label.
+
+    Args:
+        bio_label: Label in BIO format (e.g., "B-MERCHANT_NAME", "I-DATE", "O")
+
+    Returns:
+        Base label without BIO prefix (e.g., "MERCHANT_NAME", "DATE", "O")
+    """
+    if not bio_label or bio_label == "O":
+        return "O"
+    if bio_label.startswith("B-") or bio_label.startswith("I-"):
+        return bio_label[2:]
+    return bio_label
+
+
+def _combine_bio_probabilities(all_probs: Dict[str, float]) -> Dict[str, float]:
+    """Combine B- and I- probabilities into base label probabilities.
+
+    Sums B-X and I-X probabilities for each base label X.
+    This represents the total probability that a word belongs to category X,
+    regardless of whether it's at the beginning or inside of an entity.
+
+    Since the original 9 classes sum to 1.0, the combined 5 base labels
+    will also sum to 1.0, preserving the probability distribution.
+
+    Args:
+        all_probs: Dictionary mapping BIO labels to probabilities
+                  (e.g., {"B-MERCHANT_NAME": 0.8, "I-MERCHANT_NAME": 0.1, "O": 0.05})
+
+    Returns:
+        Dictionary mapping base labels to probabilities
+        (e.g., {"MERCHANT_NAME": 0.9, "O": 0.05})
+        Note: All probabilities will sum to 1.0
+    """
+    base_probs: Dict[str, float] = {}
+
+    for bio_label, prob in all_probs.items():
+        base_label = _get_base_label(bio_label)
+        if base_label not in base_probs:
+            base_probs[base_label] = prob
+        else:
+            # Sum B and I probabilities
+            base_probs[base_label] += prob
+
+    return base_probs
+
+
 def _normalize_label_for_4label_setup(raw_label: str) -> str:
     """Normalize ground truth labels to match 4-label training setup.
 
@@ -228,14 +276,17 @@ def handler(_event, _context):
             dynamo_client, image_id, receipt_id
         )
 
-        # Step 4: Build ground truth mapping ((line_id, word_id) -> base label)
+        # Step 4: Build ground truth mapping ((line_id, word_id) -> original and normalized labels)
         # Only use VALID labels, and normalize them to match 4-label training setup
         # Note: We store base labels (AMOUNT, DATE, etc.) without BIO prefix
         # BIO prefix will be added per-line when matching to predictions (matching training)
         # IMPORTANT: word_id is only unique within a line, so we need (line_id, word_id) as key
         ground_truth_base: Dict[tuple[int, int], str] = {}
+        ground_truth_original: Dict[tuple[int, int], str] = {}  # Store original CORE_LABELS
         for label in receipt_details.labels:
             if label.validation_status == ValidationStatus.VALID:
+                # Store original label from database (e.g., PHONE_NUMBER, TIME, LINE_TOTAL)
+                ground_truth_original[(label.line_id, label.word_id)] = label.label
                 # Normalize label to base form (matches training normalization)
                 normalized = _normalize_label_for_4label_setup(label.label)
                 ground_truth_base[(label.line_id, label.word_id)] = normalized
@@ -328,7 +379,23 @@ def handler(_event, _context):
                     pred_label = "O"
                     confidence = 0.0
 
-                # Calculate correctness
+                # Get all class probabilities for this word
+                all_probs = {}
+                if line_pred.all_probabilities and token_idx < len(line_pred.all_probabilities):
+                    all_probs = line_pred.all_probabilities[token_idx]
+
+                # Combine B- and I- probabilities into base labels
+                base_probs = _combine_bio_probabilities(all_probs)
+
+                # Get base labels for display
+                predicted_label_base = _get_base_label(pred_label)
+                ground_truth_label_base = _get_base_label(ground_truth_bio) if ground_truth_bio != "O" else None
+
+                # Get original ground truth label (before normalization)
+                # This is the original CORE_LABEL from the database (e.g., PHONE_NUMBER, TIME, LINE_TOTAL)
+                ground_truth_label_original = ground_truth_original.get((line_id, word_id)) if word_id is not None else None
+
+                # Calculate correctness (using BIO labels for accuracy)
                 is_correct = pred_label == ground_truth_bio
 
                 predictions.append(
@@ -336,10 +403,22 @@ def handler(_event, _context):
                         "word_id": word_id,
                         "line_id": line_id,
                         "text": token,
+                        # BIO labels (for correctness checking)
                         "predicted_label": pred_label,
-                        "predicted_confidence": float(confidence),
                         "ground_truth_label": ground_truth_bio if ground_truth_bio != "O" else None,
+                        # Base labels (for display - normalized to 4-label system)
+                        "predicted_label_base": predicted_label_base,
+                        "ground_truth_label_base": ground_truth_label_base,
+                        # Original ground truth label (from CORE_LABELS before normalization)
+                        # This shows what was actually labeled in the database
+                        # Examples: PHONE_NUMBER, TIME, LINE_TOTAL, SUBTOTAL, TAX, GRAND_TOTAL
+                        "ground_truth_label_original": ground_truth_label_original,
+                        "predicted_confidence": float(confidence),
                         "is_correct": is_correct,
+                        # All probabilities (BIO format - for detailed analysis)
+                        "all_class_probabilities": all_probs,
+                        # Base probabilities (for clean display - 5 classes instead of 9)
+                        "all_class_probabilities_base": base_probs,
                     }
                 )
 

@@ -507,9 +507,31 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         LayoutLM is a transformer model that understands both text and layout
         information. By training it on my labeled receipts, it learns to
         identify entities like merchant names, dates, addresses, and amounts
-        with high accuracy. The model achieves 91.8% accuracy and can process
-        receipts much faster than the rule-based approach.
+        with high accuracy.
       </p>
+
+      <p>
+        After reading the research paper, I learned that the model works best
+        using evenly distributed labels. In order to do this, I had to
+        compromise with labeled data I'd know to be disproportionate: an
+        average receipt has more line item prices than it does totals and taxes.
+        Here is how I balanced the labels:
+      </p>
+
+      <ul>
+        <li>
+          <strong>Merchant Name</strong>: Merchant Name
+        </li>
+        <li>
+          <strong>Date</strong>: Date and Time
+        </li>
+        <li>
+          <strong>Address</strong>: Address and Phone Number
+        </li>
+        <li>
+          <strong>Amount</strong>: Line Total, Subtotal, Tax, and Grand Total
+        </li>
+      </ul>
 
       <ClientOnly>
         <LayoutLMInferenceVisualization />
