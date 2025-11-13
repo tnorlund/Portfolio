@@ -78,6 +78,22 @@ def main() -> None:
         ),
     )
     train_p.add_argument(
+        "--merge-date-time",
+        action="store_true",
+        help=(
+            "Map DATE and TIME to a single DATE label. "
+            "Useful for matching SROIE dataset structure (4 labels)."
+        ),
+    )
+    train_p.add_argument(
+        "--merge-address-phone",
+        action="store_true",
+        help=(
+            "Map ADDRESS_LINE and PHONE_NUMBER to a single ADDRESS label. "
+            "Useful for matching SROIE dataset structure (4 labels)."
+        ),
+    )
+    train_p.add_argument(
         "--dataset-snapshot-load",
         default=None,
         help=(
@@ -90,6 +106,15 @@ def main() -> None:
         default=None,
         help=(
             "Directory/URI to save the tokenized dataset after preprocessing."
+        ),
+    )
+    train_p.add_argument(
+        "--output-s3-path",
+        default=os.getenv("LAYOUTLM_TRAINING_BUCKET"),
+        help=(
+            "S3 bucket name or s3://bucket/prefix/ to sync trained model to. "
+            "If bucket name only, will use s3://{bucket}/runs/{job_name}/. "
+            "Defaults to LAYOUTLM_TRAINING_BUCKET env var."
         ),
     )
 
@@ -159,8 +184,14 @@ def main() -> None:
         )
 
         data_cfg.merge_amounts = bool(args.merge_amounts)
+        # Set environment variables for label merging
+        if args.merge_date_time:
+            os.environ["LAYOUTLM_MERGE_DATE_TIME"] = "1"
+        if args.merge_address_phone:
+            os.environ["LAYOUTLM_MERGE_ADDRESS_PHONE"] = "1"
         data_cfg.dataset_snapshot_load = args.dataset_snapshot_load
         data_cfg.dataset_snapshot_save = args.dataset_snapshot_save
+        train_cfg.output_s3_path = args.output_s3_path
         trainer = ReceiptLayoutLMTrainer(data_cfg, train_cfg)
         job_id = trainer.train(job_name=args.job_name)
         print(job_id)

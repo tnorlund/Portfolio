@@ -1,11 +1,13 @@
 from dataclasses import asdict
-from typing import Dict, List
+from typing import Any, Dict, List
 import json
 import inspect
 from functools import partial
+from urllib.parse import urlparse
 
 import importlib
 import os
+import subprocess
 from glob import glob
 
 from receipt_dynamo import DynamoClient
@@ -166,6 +168,9 @@ class ReceiptLayoutLMTrainer:
                 label2id=label2id,
             )
         )
+
+        # Initialize category-aware label embeddings if enabled
+        self._initialize_category_aware_embeddings(model, label2id)
 
         collator = self._transformers.DataCollatorForTokenClassification(
             tokenizer=self.tokenizer
@@ -491,6 +496,10 @@ class ReceiptLayoutLMTrainer:
             trainer.train()
         # Optionally, add a completion status when JobStatus write path is stable
 
+        # After training, sync model to S3 if configured
+        if self.training_config.output_s3_path:
+            self._sync_model_to_s3(output_dir, job_name)
+
         # After training, store epoch metrics snapshot to Dynamo
         try:
             from receipt_dynamo.data.shared_exceptions import (
@@ -525,3 +534,202 @@ class ReceiptLayoutLMTrainer:
             pass
 
         return job.job_id
+
+    def _initialize_category_aware_embeddings(
+        self, model: Any, label2id: Dict[str, int]
+    ) -> None:
+        """Initialize label embeddings with category information.
+
+        This method adjusts label embeddings to be closer to their category centroids,
+        helping the model learn relationships between labels in the same category.
+
+        Categories:
+        - merchant: MERCHANT_NAME, PHONE_NUMBER, ADDRESS_LINE
+        - transaction: DATE, TIME
+        - lineItems: PRODUCT_NAME
+        - totals: AMOUNT (merged from LINE_TOTAL, SUBTOTAL, TAX, GRAND_TOTAL)
+        """
+        # Define label-to-category mapping (matching UI grouping)
+        # Handle merged labels: ADDRESS (from ADDRESS_LINE+PHONE_NUMBER), DATE (from DATE+TIME)
+        LABEL_CATEGORIES = {
+            "merchant": ["MERCHANT_NAME", "PHONE_NUMBER", "ADDRESS_LINE", "ADDRESS"],
+            "transaction": ["DATE", "TIME"],  # DATE may be merged from DATE+TIME
+            "lineItems": ["PRODUCT_NAME"],
+            "totals": ["AMOUNT"],
+        }
+
+        # Build reverse mapping: label -> category
+        label_to_category: Dict[str, str] = {}
+        for category, labels in LABEL_CATEGORIES.items():
+            for label in labels:
+                label_to_category[label] = category
+
+        # Get label embeddings from the classifier layer
+        # The classifier is typically a linear layer: classifier.weight is [num_labels, hidden_size]
+        if not hasattr(model, "classifier") or not hasattr(model.classifier, "weight"):
+            print("⚠️  Model doesn't have classifier.weight, skipping category-aware initialization")
+            return
+
+        label_embeddings = model.classifier.weight.data  # Shape: [num_labels, hidden_size]
+
+        # Only process labels that exist in our label2id mapping
+        available_labels = set(label2id.keys())
+        category_labels: Dict[str, List[str]] = {}
+        for category, labels in LABEL_CATEGORIES.items():
+            category_labels[category] = [
+                label for label in labels
+                if label in available_labels and label != "O"
+            ]
+
+        # Calculate category centroids (average embedding for labels in each category)
+        category_centroids: Dict[str, Any] = {}
+        for category, labels in category_labels.items():
+            if len(labels) == 0:
+                continue
+
+            # Get embeddings for labels in this category
+            category_embs = []
+            for label in labels:
+                if label in label2id:
+                    label_idx = label2id[label]
+                    category_embs.append(label_embeddings[label_idx].clone())
+
+            if len(category_embs) > 0:
+                # Calculate centroid (mean of embeddings)
+                category_centroids[category] = self._torch.stack(category_embs).mean(dim=0)
+
+        # Adjust label embeddings to be closer to their category centroids
+        # Use a weighted average: 70% original embedding, 30% category centroid
+        # This preserves label-specific information while encouraging category relationships
+        adjusted_count = 0
+        for label, category in label_to_category.items():
+            if label not in label2id or label == "O":
+                continue
+            if category not in category_centroids:
+                continue
+
+            label_idx = label2id[label]
+            original_emb = label_embeddings[label_idx].clone()
+            centroid = category_centroids[category]
+
+            # Weighted average: 70% original, 30% centroid
+            # This moves the embedding closer to the category centroid while preserving
+            # label-specific information learned from pre-training
+            adjusted_emb = 0.7 * original_emb + 0.3 * centroid
+            label_embeddings[label_idx] = adjusted_emb
+            adjusted_count += 1
+
+        if adjusted_count > 0:
+            print(
+                f"✅ Initialized category-aware embeddings for {adjusted_count} labels "
+                f"across {len(category_centroids)} categories"
+            )
+        else:
+            print("⚠️  No labels found for category-aware initialization")
+
+    def _sync_model_to_s3(self, output_dir: str, job_name: str) -> None:
+        """Sync trained model to S3 after training completes.
+
+        Syncs:
+        1. Full run directory to s3://bucket/runs/{job_name}/
+        2. Best checkpoint to s3://bucket/runs/{job_name}/best/
+        """
+        s3_path = self.training_config.output_s3_path
+        if not s3_path:
+            return
+
+        # Parse S3 path - can be bucket name or full s3:// URI
+        if s3_path.startswith("s3://"):
+            # Full URI provided
+            parsed = urlparse(s3_path)
+            bucket = parsed.netloc
+            prefix = parsed.path.lstrip("/")
+            if not prefix.endswith("/"):
+                prefix += "/"
+            # Use provided prefix + job_name
+            run_prefix = f"{prefix}{job_name}/"
+        else:
+            # Just bucket name - use standard structure
+            bucket = s3_path
+            run_prefix = f"runs/{job_name}/"
+
+        try:
+            # Try using boto3 first (faster, more reliable)
+            try:
+                boto3 = importlib.import_module("boto3")
+                s3_client = boto3.client("s3")
+
+                # Sync full run directory
+                print(f"📤 Syncing run directory to s3://{bucket}/{run_prefix}")
+                for root, dirs, files in os.walk(output_dir):
+                    for file in files:
+                        local_path = os.path.join(root, file)
+                        # Get relative path from output_dir
+                        rel_path = os.path.relpath(local_path, output_dir)
+                        s3_key = f"{run_prefix}{rel_path}"
+                        s3_client.upload_file(local_path, bucket, s3_key)
+
+                # Find and sync best checkpoint
+                trainer_state_path = os.path.join(output_dir, "trainer_state.json")
+                if os.path.exists(trainer_state_path):
+                    with open(trainer_state_path, "r") as f:
+                        trainer_state = json.load(f)
+                    best_checkpoint = trainer_state.get("best_model_checkpoint")
+                    if best_checkpoint:
+                        # Handle relative paths (relative to output_dir)
+                        if not os.path.isabs(best_checkpoint):
+                            best_checkpoint = os.path.join(output_dir, best_checkpoint)
+                        if os.path.exists(best_checkpoint):
+                            print(f"📤 Syncing best checkpoint to s3://{bucket}/{run_prefix}best/")
+                            best_prefix = f"{run_prefix}best/"
+                            for root, dirs, files in os.walk(best_checkpoint):
+                                for file in files:
+                                    local_path = os.path.join(root, file)
+                                    rel_path = os.path.relpath(local_path, best_checkpoint)
+                                    s3_key = f"{best_prefix}{rel_path}"
+                                    s3_client.upload_file(local_path, bucket, s3_key)
+                            print(f"✅ Model synced to s3://{bucket}/{run_prefix}")
+                        else:
+                            print(f"⚠️  Best checkpoint path not found: {best_checkpoint}")
+                    else:
+                        print(f"⚠️  No best checkpoint recorded in trainer_state.json")
+                else:
+                    print(f"⚠️  trainer_state.json not found, synced full run directory only")
+
+            except ModuleNotFoundError:
+                # Fallback to AWS CLI
+                print(f"📤 Syncing run directory to s3://{bucket}/{run_prefix} (using AWS CLI)")
+                result = subprocess.run(
+                    ["aws", "s3", "sync", output_dir, f"s3://{bucket}/{run_prefix}"],
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode != 0:
+                    print(f"⚠️  Failed to sync to S3: {result.stderr}")
+                    return
+
+                # Find and sync best checkpoint
+                trainer_state_path = os.path.join(output_dir, "trainer_state.json")
+                if os.path.exists(trainer_state_path):
+                    with open(trainer_state_path, "r") as f:
+                        trainer_state = json.load(f)
+                    best_checkpoint = trainer_state.get("best_model_checkpoint")
+                    if best_checkpoint:
+                        # Handle relative paths (relative to output_dir)
+                        if not os.path.isabs(best_checkpoint):
+                            best_checkpoint = os.path.join(output_dir, best_checkpoint)
+                        if os.path.exists(best_checkpoint):
+                            print(f"📤 Syncing best checkpoint to s3://{bucket}/{run_prefix}best/")
+                            subprocess.run(
+                                ["aws", "s3", "sync", best_checkpoint, f"s3://{bucket}/{run_prefix}best/"],
+                                capture_output=True,
+                            )
+                            print(f"✅ Model synced to s3://{bucket}/{run_prefix}")
+                        else:
+                            print(f"⚠️  Best checkpoint path not found: {best_checkpoint}")
+                    else:
+                        print(f"⚠️  No best checkpoint recorded in trainer_state.json")
+        except Exception as e:
+            # Don't fail training if S3 sync fails
+            print(f"⚠️  Failed to sync model to S3: {e}")
+            print(f"   You can manually sync with: aws s3 sync {output_dir} s3://{bucket}/{run_prefix}")

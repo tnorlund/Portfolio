@@ -34,6 +34,7 @@ from embedding_step_functions import EmbeddingInfrastructure
 from notifications import NotificationSystem
 from billing_alerts import BillingAlerts
 from pulumi import ResourceOptions
+from typing import Optional
 from raw_bucket import raw_bucket  # Import the actual bucket instance
 from s3_website import site_bucket  # Import the site bucket instance
 from upload_images import UploadImages
@@ -359,14 +360,52 @@ from layoutlm_training.component import LayoutLMTrainingInfra
 ml_cfg = pulumi.Config("ml-training")
 enable_minimal = ml_cfg.get_bool("enable-minimal") or False
 
+# Training bucket - either from new training infra or existing bucket name
+layoutlm_training_bucket_name: Optional[Output[str]] = None
+
 if enable_minimal:
     training = LayoutLMTrainingInfra(
         "layoutlm",
         dynamodb_table_name=dynamodb_table.name,
     )
+    layoutlm_training_bucket_name = training.bucket.bucket
     pulumi.export("layoutlm_training_bucket", training.bucket.bucket)
     pulumi.export("layoutlm_training_queue_url", training.queue.url)
     pulumi.export("layoutlm_training_asg_name", training.asg.name)
+else:
+    # Check if training bucket name is provided as config (for inference-only usage)
+    training_bucket_config = ml_cfg.get("training-bucket-name")
+    if training_bucket_config:
+        layoutlm_training_bucket_name = Output.from_input(training_bucket_config)
+
+# Create LayoutLM inference API if we have a training bucket (either from training infra or config)
+if layoutlm_training_bucket_name is not None:
+    from routes.layoutlm_inference_cache_generator.infra import (
+        create_layoutlm_inference_cache_generator,
+    )
+
+    layoutlm_cache_generator = create_layoutlm_inference_cache_generator(
+        layoutlm_training_bucket=layoutlm_training_bucket_name,
+    )
+
+    # Set cache bucket name in the cache generator module for API Lambda
+    import routes.layoutlm_inference_cache_generator.infra as cache_gen_module
+    cache_gen_module.cache_bucket_name = layoutlm_cache_generator.cache_bucket.id
+
+    # Update the inference module's cache_bucket_name reference
+    import routes.layoutlm_inference.infra as inference_module
+    inference_module.cache_bucket_name = layoutlm_cache_generator.cache_bucket.id
+
+    # Update the IAM inline policy to use the actual cache bucket name
+    # By updating cache_bucket_name, the policy will automatically update
+    # because it uses _cache_bucket_name.apply() which references cache_bucket_name
+    # The replace_on_changes=["policy"] option ensures the policy is replaced
+    # when the bucket name changes from placeholder to actual bucket
+
+    pulumi.export(
+        "layoutlm_inference_cache_bucket",
+        layoutlm_cache_generator.cache_bucket.id,
+    )
 
 
 # Use stack-specific existing key pair from AWS console

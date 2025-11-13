@@ -172,10 +172,14 @@ def _normalize_word_label(
     raw: str,
     allowed: Optional[set[str]] = None,
     merge_amounts: bool = False,
+    merge_date_time: bool = False,
+    merge_address_phone: bool = False,
 ) -> str:
     lab = (raw or "").upper()
     if lab == "O":
         return "O"
+
+    # Merge currency labels into AMOUNT
     if merge_amounts and lab in {
         "LINE_TOTAL",
         "SUBTOTAL",
@@ -183,20 +187,35 @@ def _normalize_word_label(
         "GRAND_TOTAL",
     }:
         lab = "AMOUNT"
+
+    # Merge DATE and TIME into DATE
+    if merge_date_time and lab == "TIME":
+        lab = "DATE"
+
+    # Merge ADDRESS_LINE and PHONE_NUMBER into ADDRESS
+    if merge_address_phone and lab == "PHONE_NUMBER":
+        lab = "ADDRESS"
+    elif merge_address_phone and lab == "ADDRESS_LINE":
+        lab = "ADDRESS"
+
     if allowed is not None and lab not in allowed:
         return "O"
-    return lab if lab in _CORE_SET or lab == "AMOUNT" else "O"
+    return lab if lab in _CORE_SET or lab == "AMOUNT" or lab == "ADDRESS" else "O"
 
 
 def _raw_label(
     labels: List[str],
     allowed: Optional[set[str]] = None,
     merge_amounts: bool = False,
+    merge_date_time: bool = False,
+    merge_address_phone: bool = False,
 ) -> str:
     # Pick first label if present; else 'O'. Normalize to CORE set or 'O'
     if not labels:
         return "O"
-    return _normalize_word_label(labels[0], allowed, merge_amounts)
+    return _normalize_word_label(
+        labels[0], allowed, merge_amounts, merge_date_time, merge_address_phone
+    )
 
 
 def load_datasets(
@@ -238,10 +257,12 @@ def load_datasets(
             for s in allowed_labels_env.split(",")
             if s.strip()
         }
-        # Only keep labels that are in core set or special 'AMOUNT'
-        allowed = {l for l in allowed if l in _CORE_SET or l == "AMOUNT"}
+        # Only keep labels that are in core set or special merged labels ('AMOUNT', 'ADDRESS')
+        allowed = {l for l in allowed if l in _CORE_SET or l == "AMOUNT" or l == "ADDRESS"}
 
     merge_amounts = os.getenv("LAYOUTLM_MERGE_AMOUNTS", "0") == "1"
+    merge_date_time = os.getenv("LAYOUTLM_MERGE_DATE_TIME", "0") == "1"
+    merge_address_phone = os.getenv("LAYOUTLM_MERGE_ADDRESS_PHONE", "0") == "1"
 
     # Group by line so each example is a sequence of tokens
     seq_map: Dict[
@@ -252,7 +273,13 @@ def load_datasets(
     for w in words:
         word_key = (w.image_id, w.receipt_id, w.line_id, w.word_id)
         line_key = (w.image_id, w.receipt_id, w.line_id)
-        label = _raw_label(label_map.get(word_key, []), allowed, merge_amounts)
+        label = _raw_label(
+            label_map.get(word_key, []),
+            allowed,
+            merge_amounts,
+            merge_date_time,
+            merge_address_phone,
+        )
         max_x, max_y = image_extents.get(w.image_id, (1.0, 1.0))
         x0, y0, x1, y1 = _box_from_word(w)
         norm_box = _normalize_box_from_extents(x0, y0, x1, y1, max_x, max_y)

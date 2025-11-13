@@ -155,7 +155,43 @@ Based on the training notes, the main issues were:
 
 Consider implementing the subtoken fix in `receipt_layoutlm/receipt_layoutlm/data_loader.py` before training again.
 
-## Scale Down
+## Step 6: Sync Model to S3 (After Training Completes)
+
+After training finishes, sync the model checkpoints to S3 so the inference API can use them:
+
+```bash
+# On EC2 instance, find the job name
+ls -lt /tmp/receipt_layoutlm/ | head -5
+
+# Set variables (replace with your actual job name)
+JOB="receipts-2025-11-13-XXXX-full"  # Your actual job name
+BUCKET="layoutlm-models-1c8f680"     # From pulumi stack output
+
+# Sync entire run directory
+/usr/bin/aws s3 sync /tmp/receipt_layoutlm/$JOB s3://$BUCKET/runs/$JOB/
+
+# Also sync the best checkpoint to a "best/" subdirectory (for easy discovery)
+if [ -f /tmp/receipt_layoutlm/$JOB/trainer_state.json ]; then
+  BEST=$(python3 - <<'PY'
+import json,sys
+p=f"/tmp/receipt_layoutlm/{sys.argv[1]}/trainer_state.json"
+with open(p) as f:
+    data = json.load(f)
+    print(data.get("best_model_checkpoint",""))
+PY
+"$JOB")
+  if [ -n "$BEST" ]; then
+    echo "Best checkpoint: $BEST"
+    /usr/bin/aws s3 sync "$BEST" s3://$BUCKET/runs/$JOB/best/
+  fi
+fi
+
+echo "✅ Model synced to s3://$BUCKET/runs/$JOB/"
+```
+
+The inference API cache generator will automatically discover the latest model from `s3://$BUCKET/runs/*/best/` when it runs.
+
+## Step 7: Scale Down
 
 When done training, scale the ASG back to 0:
 

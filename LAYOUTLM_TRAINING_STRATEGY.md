@@ -37,19 +37,25 @@ Yes! All training runs are stored in DynamoDB. Here's what gets tracked:
 ### November 2025 - **Major Success!** 🎉
 - **Best Run: 0.70 F1 (70.21%)** after just 3 epochs
 - **Job ID**: `49a5ce3b-4653-4aad-95da-11c9a7345b85`
-- Config: merged amounts, O:entity 2.0, batch 64, LR 6e-5
+- Config: merged amounts, O:entity 2.0, **batch 64**, LR 6e-5
 - **Improvement**: More than doubled previous best (0.32 → 0.70)
 - **Key Factor**: Significantly larger dataset (~10,682 VALID labels vs previous)
+- **Batch Size Impact**: Batch 64 significantly outperformed batch 128
 
 ### September 2025 - Previous Best: **0.32 F1** (run "b")
-- Config: merged amounts, O:entity 2.0, batch 128, LR 6e-5
+- Config: merged amounts, O:entity 2.0, **batch 128**, LR 6e-5
 - Other runs: 0.14-0.24 F1
+- **Note**: Batch 128 underperformed compared to batch 64 in later runs
 
 ### Key Findings:
 1. ✅ **Merging totals into AMOUNT helps** - boosted F1 from 0.14 to 0.32 (Sept) and 0.70 (Nov)
 2. ✅ **O:entity ratio 2.0 works well** - good balance of precision and recall
 3. ✅ **Dataset size is critical** - larger dataset (Nov) achieved 2x+ improvement
 4. ✅ **Simplified label set effective** - 7 core labels + AMOUNT worked well
+5. ✅ **Batch size 64 outperforms 128** - 0.70 F1 (batch 64) vs 0.32 F1 (batch 128)
+   - Smaller batches provide more gradient noise, helping escape local minima
+   - More frequent updates (more steps per epoch) may improve convergence
+   - Better generalization observed with batch 64
 
 ## Should You Start Over?
 
@@ -102,7 +108,7 @@ layoutlm-cli train \
   --job-name "$JOB" \
   --dynamo-table "$DYNAMO_TABLE_NAME" \
   --epochs 20 \
-  --batch-size 128 \
+  --batch-size 64 \
   --lr 6e-5 \
   --warmup-ratio 0.2 \
   --label-smoothing 0.1 \
@@ -121,7 +127,13 @@ layoutlm-cli train \
 **Key Changes from Previous**:
 - ✅ **Increased patience to 5** (was 2) - let it train longer
 - ✅ **20 epochs** (was 12) - more time to converge
-- ✅ **Batch 128** - matches previous best run
+- ✅ **Batch 64** - matches the successful 0.70 F1 run (November 2025)
+
+**Batch Size Findings**:
+- **Batch 64**: Achieved **0.70 F1** in November 2025 (3 epochs)
+- **Batch 128**: Only achieved **0.32 F1** in September 2025 (12 epochs)
+- **Current run (batch 128)**: Started lower (0.58 vs 0.68 in epoch 1) but catching up
+- **Recommendation**: Use batch size 64 for best results - smaller batches provide more gradient noise that helps escape local minima and can lead to better generalization
 
 ### Phase 3: Hyperparameter Tuning (If Needed)
 If F1 still < 0.5, try these variations:

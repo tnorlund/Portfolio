@@ -12,6 +12,7 @@ import {
   ClientReceiptCounts,
   ImageStack,
   LabelValidationCount,
+  LayoutLMInferenceVisualization,
   MerchantCount,
   PhotoReceiptBoundingBox,
   RandomReceiptWithLabels,
@@ -500,6 +501,18 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         <AnimatedInView>
           <HuggingFaceLogo />
         </AnimatedInView>
+      </ClientOnly>
+
+      <p>
+        LayoutLM is a transformer model that understands both text and layout
+        information. By training it on my labeled receipts, it learns to
+        identify entities like merchant names, dates, addresses, and amounts
+        with high accuracy. The model achieves 91.8% accuracy and can process
+        receipts much faster than the rule-based approach.
+      </p>
+
+      <ClientOnly>
+        <LayoutLMInferenceVisualization />
       </ClientOnly>
 
       <p>

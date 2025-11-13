@@ -1,0 +1,99 @@
+Requirement already satisfied: transformers in ./lambda-venv/lib/python3.14/site-packages (4.57.1)
+Requirement already satisfied: datasets in ./lambda-venv/lib/python3.14/site-packages (4.4.1)
+Requirement already satisfied: boto3 in ./lambda-venv/lib/python3.14/site-packages (1.40.72)
+Requirement already satisfied: pillow in ./lambda-venv/lib/python3.14/site-packages (12.0.0)
+Requirement already satisfied: tqdm in ./lambda-venv/lib/python3.14/site-packages (4.67.1)
+Requirement already satisfied: filelock in ./lambda-venv/lib/python3.14/site-packages (3.20.0)
+Requirement already satisfied: pydantic>=2.10.6 in ./lambda-venv/lib/python3.14/site-packages (2.12.4)
+Collecting accelerate>=0.21.0
+  Downloading accelerate-1.11.0-py3-none-any.whl.metadata (19 kB)
+Collecting seqeval
+  Downloading seqeval-1.2.2.tar.gz (43 kB)
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Getting requirements to build wheel: started
+  Getting requirements to build wheel: finished with status 'done'
+  Installing backend dependencies: started
+  Installing backend dependencies: finished with status 'done'
+  Preparing metadata (pyproject.toml): started
+  Preparing metadata (pyproject.toml): finished with status 'done'
+Requirement already satisfied: huggingface-hub<1.0,>=0.34.0 in ./lambda-venv/lib/python3.14/site-packages (from transformers) (0.36.0)
+Requirement already satisfied: numpy>=1.17 in ./lambda-venv/lib/python3.14/site-packages (from transformers) (2.3.4)
+Requirement already satisfied: packaging>=20.0 in ./lambda-venv/lib/python3.14/site-packages (from transformers) (25.0)
+Requirement already satisfied: pyyaml>=5.1 in ./lambda-venv/lib/python3.14/site-packages (from transformers) (6.0.3)
+Requirement already satisfied: regex!=2019.12.17 in ./lambda-venv/lib/python3.14/site-packages (from transformers) (2025.11.3)
+Requirement already satisfied: requests in ./lambda-venv/lib/python3.14/site-packages (from transformers) (2.32.5)
+Requirement already satisfied: tokenizers<=0.23.0,>=0.22.0 in ./lambda-venv/lib/python3.14/site-packages (from transformers) (0.22.1)
+Requirement already satisfied: safetensors>=0.4.3 in ./lambda-venv/lib/python3.14/site-packages (from transformers) (0.6.2)
+Requirement already satisfied: fsspec>=2023.5.0 in ./lambda-venv/lib/python3.14/site-packages (from huggingface-hub<1.0,>=0.34.0->transformers) (2025.10.0)
+Requirement already satisfied: typing-extensions>=3.7.4.3 in ./lambda-venv/lib/python3.14/site-packages (from huggingface-hub<1.0,>=0.34.0->transformers) (4.15.0)
+Requirement already satisfied: hf-xet<2.0.0,>=1.1.3 in ./lambda-venv/lib/python3.14/site-packages (from huggingface-hub<1.0,>=0.34.0->transformers) (1.2.0)
+Requirement already satisfied: pyarrow>=21.0.0 in ./lambda-venv/lib/python3.14/site-packages (from datasets) (22.0.0)
+Requirement already satisfied: dill<0.4.1,>=0.3.0 in ./lambda-venv/lib/python3.14/site-packages (from datasets) (0.4.0)
+Requirement already satisfied: pandas in ./lambda-venv/lib/python3.14/site-packages (from datasets) (2.3.3)
+Requirement already satisfied: httpx<1.0.0 in ./lambda-venv/lib/python3.14/site-packages (from datasets) (0.28.1)
+Requirement already satisfied: xxhash in ./lambda-venv/lib/python3.14/site-packages (from datasets) (3.6.0)
+Requirement already satisfied: multiprocess<0.70.19 in ./lambda-venv/lib/python3.14/site-packages (from datasets) (0.70.18)
+Requirement already satisfied: aiohttp!=4.0.0a0,!=4.0.0a1 in ./lambda-venv/lib/python3.14/site-packages (from fsspec[http]<=2025.10.0,>=2023.1.0->datasets) (3.13.2)
+Requirement already satisfied: anyio in ./lambda-venv/lib/python3.14/site-packages (from httpx<1.0.0->datasets) (4.11.0)
+Requirement already satisfied: certifi in ./lambda-venv/lib/python3.14/site-packages (from httpx<1.0.0->datasets) (2025.11.12)
+Requirement already satisfied: httpcore==1.* in ./lambda-venv/lib/python3.14/site-packages (from httpx<1.0.0->datasets) (1.0.9)
+Requirement already satisfied: idna in ./lambda-venv/lib/python3.14/site-packages (from httpx<1.0.0->datasets) (3.11)
+Requirement already satisfied: h11>=0.16 in ./lambda-venv/lib/python3.14/site-packages (from httpcore==1.*->httpx<1.0.0->datasets) (0.16.0)
+Requirement already satisfied: botocore<1.41.0,>=1.40.72 in ./lambda-venv/lib/python3.14/site-packages (from boto3) (1.40.72)
+Requirement already satisfied: jmespath<2.0.0,>=0.7.1 in ./lambda-venv/lib/python3.14/site-packages (from boto3) (1.0.1)
+Requirement already satisfied: s3transfer<0.15.0,>=0.14.0 in ./lambda-venv/lib/python3.14/site-packages (from boto3) (0.14.0)
+Requirement already satisfied: python-dateutil<3.0.0,>=2.1 in ./lambda-venv/lib/python3.14/site-packages (from botocore<1.41.0,>=1.40.72->boto3) (2.9.0.post0)
+Requirement already satisfied: urllib3!=2.2.0,<3,>=1.25.4 in ./lambda-venv/lib/python3.14/site-packages (from botocore<1.41.0,>=1.40.72->boto3) (2.5.0)
+Requirement already satisfied: six>=1.5 in ./lambda-venv/lib/python3.14/site-packages (from python-dateutil<3.0.0,>=2.1->botocore<1.41.0,>=1.40.72->boto3) (1.17.0)
+Requirement already satisfied: annotated-types>=0.6.0 in ./lambda-venv/lib/python3.14/site-packages (from pydantic>=2.10.6) (0.7.0)
+Requirement already satisfied: pydantic-core==2.41.5 in ./lambda-venv/lib/python3.14/site-packages (from pydantic>=2.10.6) (2.41.5)
+Requirement already satisfied: typing-inspection>=0.4.2 in ./lambda-venv/lib/python3.14/site-packages (from pydantic>=2.10.6) (0.4.2)
+Collecting psutil (from accelerate>=0.21.0)
+  Downloading psutil-7.1.3-cp36-abi3-macosx_11_0_arm64.whl.metadata (23 kB)
+Requirement already satisfied: torch>=2.0.0 in ./lambda-venv/lib/python3.14/site-packages (from accelerate>=0.21.0) (2.9.1)
+Collecting scikit-learn>=0.21.3 (from seqeval)
+  Downloading scikit_learn-1.7.2-cp314-cp314-macosx_12_0_arm64.whl.metadata (11 kB)
+Requirement already satisfied: aiohappyeyeballs>=2.5.0 in ./lambda-venv/lib/python3.14/site-packages (from aiohttp!=4.0.0a0,!=4.0.0a1->fsspec[http]<=2025.10.0,>=2023.1.0->datasets) (2.6.1)
+Requirement already satisfied: aiosignal>=1.4.0 in ./lambda-venv/lib/python3.14/site-packages (from aiohttp!=4.0.0a0,!=4.0.0a1->fsspec[http]<=2025.10.0,>=2023.1.0->datasets) (1.4.0)
+Requirement already satisfied: attrs>=17.3.0 in ./lambda-venv/lib/python3.14/site-packages (from aiohttp!=4.0.0a0,!=4.0.0a1->fsspec[http]<=2025.10.0,>=2023.1.0->datasets) (25.4.0)
+Requirement already satisfied: frozenlist>=1.1.1 in ./lambda-venv/lib/python3.14/site-packages (from aiohttp!=4.0.0a0,!=4.0.0a1->fsspec[http]<=2025.10.0,>=2023.1.0->datasets) (1.8.0)
+Requirement already satisfied: multidict<7.0,>=4.5 in ./lambda-venv/lib/python3.14/site-packages (from aiohttp!=4.0.0a0,!=4.0.0a1->fsspec[http]<=2025.10.0,>=2023.1.0->datasets) (6.7.0)
+Requirement already satisfied: propcache>=0.2.0 in ./lambda-venv/lib/python3.14/site-packages (from aiohttp!=4.0.0a0,!=4.0.0a1->fsspec[http]<=2025.10.0,>=2023.1.0->datasets) (0.4.1)
+Requirement already satisfied: yarl<2.0,>=1.17.0 in ./lambda-venv/lib/python3.14/site-packages (from aiohttp!=4.0.0a0,!=4.0.0a1->fsspec[http]<=2025.10.0,>=2023.1.0->datasets) (1.22.0)
+Requirement already satisfied: charset_normalizer<4,>=2 in ./lambda-venv/lib/python3.14/site-packages (from requests->transformers) (3.4.4)
+Collecting scipy>=1.8.0 (from scikit-learn>=0.21.3->seqeval)
+  Downloading scipy-1.16.3-cp314-cp314-macosx_14_0_arm64.whl.metadata (62 kB)
+Collecting joblib>=1.2.0 (from scikit-learn>=0.21.3->seqeval)
+  Downloading joblib-1.5.2-py3-none-any.whl.metadata (5.6 kB)
+Collecting threadpoolctl>=3.1.0 (from scikit-learn>=0.21.3->seqeval)
+  Downloading threadpoolctl-3.6.0-py3-none-any.whl.metadata (13 kB)
+Requirement already satisfied: setuptools in ./lambda-venv/lib/python3.14/site-packages (from torch>=2.0.0->accelerate>=0.21.0) (80.9.0)
+Requirement already satisfied: sympy>=1.13.3 in ./lambda-venv/lib/python3.14/site-packages (from torch>=2.0.0->accelerate>=0.21.0) (1.14.0)
+Requirement already satisfied: networkx>=2.5.1 in ./lambda-venv/lib/python3.14/site-packages (from torch>=2.0.0->accelerate>=0.21.0) (3.5)
+Requirement already satisfied: jinja2 in ./lambda-venv/lib/python3.14/site-packages (from torch>=2.0.0->accelerate>=0.21.0) (3.1.6)
+Requirement already satisfied: mpmath<1.4,>=1.1.0 in ./lambda-venv/lib/python3.14/site-packages (from sympy>=1.13.3->torch>=2.0.0->accelerate>=0.21.0) (1.3.0)
+Requirement already satisfied: sniffio>=1.1 in ./lambda-venv/lib/python3.14/site-packages (from anyio->httpx<1.0.0->datasets) (1.3.1)
+Requirement already satisfied: MarkupSafe>=2.0 in ./lambda-venv/lib/python3.14/site-packages (from jinja2->torch>=2.0.0->accelerate>=0.21.0) (3.0.3)
+Requirement already satisfied: pytz>=2020.1 in ./lambda-venv/lib/python3.14/site-packages (from pandas->datasets) (2025.2)
+Requirement already satisfied: tzdata>=2022.7 in ./lambda-venv/lib/python3.14/site-packages (from pandas->datasets) (2025.2)
+Downloading accelerate-1.11.0-py3-none-any.whl (375 kB)
+Downloading scikit_learn-1.7.2-cp314-cp314-macosx_12_0_arm64.whl (8.6 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 8.6/8.6 MB 46.7 MB/s  0:00:00
+
+Downloading joblib-1.5.2-py3-none-any.whl (308 kB)
+Downloading scipy-1.16.3-cp314-cp314-macosx_14_0_arm64.whl (20.9 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 20.9/20.9 MB 62.9 MB/s  0:00:00
+
+Downloading threadpoolctl-3.6.0-py3-none-any.whl (18 kB)
+Downloading psutil-7.1.3-cp36-abi3-macosx_11_0_arm64.whl (239 kB)
+Building wheels for collected packages: seqeval
+  Building wheel for seqeval (pyproject.toml): started
+  Building wheel for seqeval (pyproject.toml): finished with status 'done'
+  Created wheel for seqeval: filename=seqeval-1.2.2-py3-none-any.whl size=16250 sha256=40f34730ab9a323d19db94a80c2e769519b3d3d55547951e76090b6549615938
+  Stored in directory: /Users/tnorlund/Library/Caches/pip/wheels/76/e3/05/fef3acd0f9fab38ae87b300f0fec8c023d1d8e13f8d3aad087
+Successfully built seqeval
+Installing collected packages: threadpoolctl, scipy, psutil, joblib, scikit-learn, seqeval, accelerate
+
+
+Successfully installed accelerate-1.11.0 joblib-1.5.2 psutil-7.1.3 scikit-learn-1.7.2 scipy-1.16.3 seqeval-1.2.2 threadpoolctl-3.6.0
