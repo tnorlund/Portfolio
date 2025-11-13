@@ -248,7 +248,7 @@ PY
                 ],
             ).id,
             instance_type="g5.xlarge",
-            key_name="training_key",
+            key_name="Nov2025MacBookPro",
             iam_instance_profile=aws.ec2.LaunchTemplateIamInstanceProfileArgs(
                 name=self.instance_profile.name
             ),
