@@ -108,12 +108,13 @@ class CodeBuildDockerImage(ComponentResource):
             upload_cmd,
             pipeline,
             codebuild_project,
+            pipeline_trigger_cmd,
         ) = self._setup_pipeline(content_hash)
 
         # Push bootstrap image and create Lambda function if config provided
         if self.lambda_config:
             bootstrap_cmd = self._push_bootstrap_image()
-            self._create_lambda_function(bootstrap_cmd, pipeline)
+            self._create_lambda_function(bootstrap_cmd, pipeline, pipeline_trigger_cmd)
         else:
             self.lambda_function = None
 
@@ -749,7 +750,7 @@ echo "✅ Pipeline triggered: $EXEC_ID"
 echo "   View logs: https://console.aws.amazon.com/codesuite/codepipeline/pipelines/{pn}/view"
 """
             )
-            command.local.Command(
+            pipeline_trigger_cmd = command.local.Command(
                 f"{self.name}-trigger-pipeline",
                 create=trigger_script,
                 update=trigger_script,
@@ -779,7 +780,7 @@ while true; do
 done
 """
             )
-            command.local.Command(
+            pipeline_trigger_cmd = command.local.Command(
                 f"{self.name}-sync-pipeline",
                 create=sync_script,
                 update=sync_script,
@@ -787,7 +788,7 @@ done
                 opts=ResourceOptions(parent=self, depends_on=[upload_cmd, pipeline]),
             )
 
-        return build_bucket, upload_cmd, pipeline, codebuild_project
+        return build_bucket, upload_cmd, pipeline, codebuild_project, pipeline_trigger_cmd
 
     def _push_bootstrap_image(self):
         """Push a minimal bootstrap image to ECR so Lambda can be created."""
@@ -850,7 +851,7 @@ echo "✅ Bootstrap image pushed to $REPO_URL:latest"
             ),
         )
 
-    def _create_lambda_function(self, bootstrap_cmd, pipeline):
+    def _create_lambda_function(self, bootstrap_cmd, pipeline, pipeline_trigger_cmd):
         """Create Lambda function that will be updated by CodeBuild."""
 
         # Use our ECR repo with :latest tag as initial image
@@ -911,7 +912,14 @@ echo "✅ Bootstrap image pushed to $REPO_URL:latest"
             )
 
         # Create Lambda function after bootstrap image is pushed
-        depends_on_list = [bootstrap_cmd] if bootstrap_cmd else []
+        # In sync mode (CI/CD), skip bootstrap dependency and wait for pipeline instead
+        # Bootstrap may exit early without pushing if Docker isn't available
+        if self.sync_mode and pipeline_trigger_cmd:
+            # In sync mode: wait for pipeline to build and push the image
+            depends_on_list = [pipeline_trigger_cmd]
+        else:
+            # In async mode: use bootstrap image (if available) for fast Lambda creation
+            depends_on_list = [bootstrap_cmd] if bootstrap_cmd else []
 
         self.lambda_function = aws.lambda_.Function(
             f"{self.name}-function",
