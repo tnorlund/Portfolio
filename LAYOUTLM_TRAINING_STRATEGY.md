@@ -32,17 +32,24 @@ Yes! All training runs are stored in DynamoDB. Here's what gets tracked:
 - `/tmp/receipt_layoutlm/{job_name}/checkpoint-*/` - Model checkpoints
 - Can be synced to S3 manually or via script
 
-## Previous Training Results (Sept 2025)
+## Previous Training Results
 
-### Best Run: **0.32 F1** (run "b")
+### November 2025 - **Major Success!** 🎉
+- **Best Run: 0.70 F1 (70.21%)** after just 3 epochs
+- **Job ID**: `49a5ce3b-4653-4aad-95da-11c9a7345b85`
+- Config: merged amounts, O:entity 2.0, batch 64, LR 6e-5
+- **Improvement**: More than doubled previous best (0.32 → 0.70)
+- **Key Factor**: Significantly larger dataset (~10,682 VALID labels vs previous)
+
+### September 2025 - Previous Best: **0.32 F1** (run "b")
 - Config: merged amounts, O:entity 2.0, batch 128, LR 6e-5
 - Other runs: 0.14-0.24 F1
 
 ### Key Findings:
-1. ✅ **Merging totals into AMOUNT helps** - boosted F1 from 0.14 to 0.32
-2. ✅ **O:entity ratio 2.0 better than 1.5** - improved precision without hurting recall
-3. ⚠️ **Still below target** - goal was >0.5 F1, achieved ~0.32
-4. ⚠️ **Early stopping too aggressive** - patience=2 may have stopped too early
+1. ✅ **Merging totals into AMOUNT helps** - boosted F1 from 0.14 to 0.32 (Sept) and 0.70 (Nov)
+2. ✅ **O:entity ratio 2.0 works well** - good balance of precision and recall
+3. ✅ **Dataset size is critical** - larger dataset (Nov) achieved 2x+ improvement
+4. ✅ **Simplified label set effective** - 7 core labels + AMOUNT worked well
 
 ## Should You Start Over?
 
