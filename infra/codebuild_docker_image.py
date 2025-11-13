@@ -912,10 +912,14 @@ echo "✅ Bootstrap image pushed to $REPO_URL:latest"
             )
 
         # Create Lambda function after bootstrap image is pushed
-        # In sync mode, also wait for the pipeline to complete so the image exists
-        depends_on_list = [bootstrap_cmd] if bootstrap_cmd else []
+        # In sync mode (CI/CD), skip bootstrap dependency and wait for pipeline instead
+        # Bootstrap may exit early without pushing if Docker isn't available
         if self.sync_mode and pipeline_trigger_cmd:
-            depends_on_list.append(pipeline_trigger_cmd)
+            # In sync mode: wait for pipeline to build and push the image
+            depends_on_list = [pipeline_trigger_cmd]
+        else:
+            # In async mode: use bootstrap image (if available) for fast Lambda creation
+            depends_on_list = [bootstrap_cmd] if bootstrap_cmd else []
 
         self.lambda_function = aws.lambda_.Function(
             f"{self.name}-function",
