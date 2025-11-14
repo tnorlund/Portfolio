@@ -46,21 +46,50 @@ def handler(event, _):
     http_method = event["requestContext"]["http"]["method"].upper()
 
     if http_method == "GET":
-        merchant_counts = fetch_merchant_counts()
-        # Sort the merchant counts by count in descending order
-        sorted_merchant_counts = sorted(
-            merchant_counts.items(), key=lambda x: x[1], reverse=True
-        )
-        # Convert back to JSON
-        sorted_merchant_counts = [
-            {name: count} for name, count in sorted_merchant_counts
-        ]
-        return {
-            "statusCode": 200,
-            "body": json.dumps(sorted_merchant_counts),
-        }
+        try:
+            merchant_counts = fetch_merchant_counts()
+            # Sort the merchant counts by count in descending order
+            sorted_merchant_counts = sorted(
+                merchant_counts.items(), key=lambda x: x[1], reverse=True
+            )
+            # Convert back to JSON
+            sorted_merchant_counts = [
+                {name: count} for name, count in sorted_merchant_counts
+            ]
+            return {
+                "statusCode": 200,
+                "headers": {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                },
+                "body": json.dumps(sorted_merchant_counts),
+            }
+        except Exception as e:
+            logger.error("Error fetching merchant counts: %s", e, exc_info=True)
+            return {
+                "statusCode": 500,
+                "headers": {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                },
+                "body": json.dumps({"error": str(e)}),
+            }
 
     elif http_method == "POST":
-        return {"statusCode": 405, "body": "Method not allowed"}
+        return {
+            "statusCode": 405,
+            "headers": {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+            },
+            "body": json.dumps({"error": "Method not allowed"}),
+        }
     else:
-        return {"statusCode": 405, "body": f"Method {http_method} not allowed"}
+        return {
+            "statusCode": 405,
+            "headers": {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+            },
+            "body": json.dumps({"error": f"Method {http_method} not allowed"}),
+        }
