@@ -250,9 +250,12 @@ const RandomReceiptWithLabels: React.FC = () => {
   }
 
   // Don't render if we don't have data or format support yet
+  // Reserve space to prevent layout shift - match expected final height
   if (!data || !formatSupport) {
+    const reservedHeight = isMobile ? 400 : 500; // Match imageWrapper max-height
     return (
       <div ref={ref} className={styles.container}>
+        <div style={{ minHeight: `${reservedHeight}px` }} />
       </div>
     );
   }
