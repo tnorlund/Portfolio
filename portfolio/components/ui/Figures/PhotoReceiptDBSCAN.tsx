@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { type Point as ApiPoint } from "../../../types/api";
 import { useTransition, animated } from "@react-spring/web";
 import useOptimizedInView from "../../../hooks/useOptimizedInView";
@@ -72,7 +72,7 @@ const PhotoReceiptDBSCAN: React.FC = () => {
   const [resetKey, setResetKey] = useState(0);
   const [ref, inView] = useOptimizedInView({ threshold: 0.3 });
   
-  const lines = imageDetails?.lines ?? [];
+  const lines = useMemo(() => imageDetails?.lines ?? [], [imageDetails?.lines]);
   const calculatedEpsilon = calculateEpsilonFromLines(lines);
   
   const [epsilon, setEpsilon] = useState(calculatedEpsilon);

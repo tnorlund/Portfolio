@@ -284,6 +284,7 @@ const CroppedAddressImage: React.FC<CroppedAddressImageProps> = ({
           - Negative translate offsets move the image so the crop region is visible
           - Container's overflow: hidden then clips to show only the crop region
         */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={imageSrc}
           alt="Cropped address"

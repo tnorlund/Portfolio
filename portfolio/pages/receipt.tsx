@@ -513,7 +513,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       <p>
         After reading the research paper, I learned that the model works best
         using evenly distributed labels. In order to do this, I had to
-        compromise with labeled data I'd know to be disproportionate: an
+        compromise with labeled data I&apos;d know to be disproportionate: an
         average receipt has more line item prices than it does totals and taxes.
         Here is how I balanced the labels:
       </p>
