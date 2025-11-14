@@ -318,6 +318,65 @@ def test_job_init_invalid_tags():
 
 
 @pytest.mark.unit
+def test_job_storage_invalid_types():
+    """Validate storage must be a dict with string keys/values."""
+    # storage must be dict
+    with pytest.raises(ValueError, match="storage must be a dictionary"):
+        Job(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            "Training Job",
+            "Example description",
+            "2021-01-01T00:00:00",
+            "user123",
+            "pending",
+            "medium",
+            {"model": "layoutlm"},
+            storage="not-a-dict",
+        )
+
+    # storage values must be strings
+    with pytest.raises(
+        ValueError, match="storage keys and values must be strings"
+    ):
+        Job(
+            "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+            "Training Job",
+            "Example description",
+            "2021-01-01T00:00:00",
+            "user123",
+            "pending",
+            "medium",
+            {"model": "layoutlm"},
+            storage={"bucket": 123},
+        )
+
+
+@pytest.mark.unit
+def test_job_storage_normalization():
+    """Ensure *_prefix entries are normalized with trailing slash."""
+    job = Job(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "Training Job",
+        "Example",
+        "2021-01-01T00:00:00",
+        "user123",
+        "pending",
+        "medium",
+        {"model": "layoutlm"},
+        storage={
+            "bucket": "layoutlm-models-571631d",
+            "run_root_prefix": "runs/2025-09-20/receipts-abc",
+            "best_prefix": "runs/2025-09-20/receipts-abc/best",
+            "publish_model_prefix": "models/layoutlm/0.1.0/abc",
+        },
+    )
+    assert job.storage["bucket"] == "layoutlm-models-571631d"
+    assert job.storage["run_root_prefix"].endswith("/")
+    assert job.storage["best_prefix"].endswith("/")
+    assert job.storage["publish_model_prefix"].endswith("/")
+
+
+@pytest.mark.unit
 def test_job_key(example_job):
     """Test the Job.key method."""
     assert example_job.key == {
@@ -364,6 +423,101 @@ def test_job_to_item(example_job, example_job_minimal):
     assert "tags" not in item
     assert item["job_config"]["M"]["model"] == {"S": "layoutlm"}
     assert len(item["job_config"]["M"]) == 1
+
+
+@pytest.mark.unit
+def test_job_to_item_and_back_with_storage():
+    """Roundtrip to_item/item_to_job should preserve normalized storage."""
+    storage = {
+        "bucket": "layoutlm-models-571631d",
+        "run_root_prefix": "runs/2025-09-20/receipts-xyz",
+        "checkpoints_prefix": "runs/2025-09-20/receipts-xyz/checkpoints",
+        "logs_prefix": "runs/2025-09-20/receipts-xyz/logs",
+        "config_prefix": "runs/2025-09-20/receipts-xyz/config",
+        "publish_model_prefix": "models/layoutlm/0.1.0/xyz",
+    }
+    job = Job(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "Training Job",
+        "Example",
+        "2021-01-01T00:00:00",
+        "user123",
+        "pending",
+        "medium",
+        {"model": "layoutlm"},
+        storage=storage,
+    )
+
+    item = job.to_item()
+    assert "storage" in item and "M" in item["storage"]
+    stored = parse_dynamodb_map(item["storage"]["M"])
+    # All *_prefix entries end with '/'
+    for k, v in stored.items():
+        if k.endswith("_prefix"):
+            assert v.endswith("/")
+
+    job2 = item_to_job(item)
+    assert job2 == job
+    # Ensure normalization persisted
+    for k, v in job2.storage.items():
+        if k.endswith("_prefix"):
+            assert v.endswith("/")
+
+
+@pytest.mark.unit
+def test_job_s3_helper_methods():
+    """Validate S3 helper URI builders."""
+    job = Job(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "Training Job",
+        "Example",
+        "2021-01-01T00:00:00",
+        "user123",
+        "pending",
+        "medium",
+        {"model": "layoutlm"},
+        storage={
+            "bucket": "layoutlm-models-571631d",
+            "run_root_prefix": "runs/2025-09-20/receipts-xyz/",
+            # no explicit best_prefix to test derivation
+            "publish_model_prefix": "models/layoutlm/0.1.0/xyz/",
+        },
+    )
+
+    assert job.storage_bucket() == "layoutlm-models-571631d"
+    assert (
+        job.s3_uri_for_prefix("run_root_prefix")
+        == "s3://layoutlm-models-571631d/runs/2025-09-20/receipts-xyz/"
+    )
+    # Derived best dir from run_root_prefix
+    assert (
+        job.best_dir_uri()
+        == "s3://layoutlm-models-571631d/runs/2025-09-20/receipts-xyz/best/"
+    )
+    assert (
+        job.publish_dir_uri()
+        == "s3://layoutlm-models-571631d/models/layoutlm/0.1.0/xyz/"
+    )
+
+    # Now with explicit best_prefix
+    job_explicit = Job(
+        "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        "Training Job",
+        "Example",
+        "2021-01-01T00:00:00",
+        "user123",
+        "pending",
+        "medium",
+        {"model": "layoutlm"},
+        storage={
+            "bucket": "layoutlm-models-571631d",
+            "best_prefix": "runs/2025-09-20/receipts-xyz/best/",
+        },
+    )
+    assert (
+        job_explicit.best_dir_uri()
+        == "s3://layoutlm-models-571631d/runs/2025-09-20/receipts-xyz/best/"
+    )
 
 
 @pytest.mark.unit
