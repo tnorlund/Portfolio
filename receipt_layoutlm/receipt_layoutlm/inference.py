@@ -229,7 +229,6 @@ class LayoutLMInference:
 
             # Aggregate logits per word (average over subtokens), compute softmax
             seq_logits = logits[0]  # [seq_len, num_labels]
-            num_labels = seq_logits.shape[-1]
 
             # Collect token indices per word id
             word_to_token_indices: Dict[int, List[int]] = {}

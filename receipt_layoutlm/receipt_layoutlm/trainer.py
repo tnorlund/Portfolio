@@ -64,11 +64,10 @@ class ReceiptLayoutLMTrainer:
         tags = set()
         # dataset["ner_tags"] is a list of lists (per-line sequences)
         for seq in dataset["ner_tags"]:
-            for tag in seq:
-                tags.add(tag)
+            tags.update(seq)
         # Ensure 'O' exists and index 0 is allowed by Trainer
         labels = sorted(tags - {"O"})
-        return ["O"] + labels
+        return ["O", *labels]
 
     def train(self, job_name: str, created_by: str = "system") -> str:
         # Derive output directory early for run logging
@@ -489,9 +488,18 @@ class ReceiptLayoutLMTrainer:
         )
 
         # Resume only if a checkpoint exists in output_dir; otherwise start fresh
-        checkpoints = sorted(glob(f"{output_dir}/checkpoint-*/"))
+        # Sort checkpoints numerically (not lexicographically) to handle checkpoint-10, checkpoint-100, etc.
+        def _step_from_path(p: str) -> int:
+            name = os.path.basename(os.path.dirname(p.rstrip("/")))
+            try:
+                return int(name.split("-")[-1])
+            except ValueError:
+                return -1
+
+        checkpoints = glob(f"{output_dir}/checkpoint-*/")
         if checkpoints:
-            trainer.train(resume_from_checkpoint=checkpoints[-1])
+            latest = max(checkpoints, key=_step_from_path)
+            trainer.train(resume_from_checkpoint=latest)
         else:
             trainer.train()
         # Optionally, add a completion status when JobStatus write path is stable
