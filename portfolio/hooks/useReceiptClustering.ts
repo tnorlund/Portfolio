@@ -224,7 +224,7 @@ export const useReceiptClustering = (
         noise: noisePoints,
       },
     };
-  }, [lines, epsilon, minPoints, useNormalization, imageWidth, imageHeight]);
+  }, [lines, epsilon, minPoints, useNormalization, imageWidth, imageHeight, usePixelClustering]);
 };
 
 export default useReceiptClustering;

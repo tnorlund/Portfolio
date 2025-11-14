@@ -391,6 +391,7 @@ const AddressSimilaritySideBySide: React.FC = () => {
             backgroundColor: "#f0f0f0",
           }}
         >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={imageSrc}
             alt={label || "Cropped receipt"}
