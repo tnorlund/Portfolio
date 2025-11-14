@@ -28,7 +28,7 @@ config:
   portfolio:use-static-base-image: "false" # Use content-based tags for production
   portfolio:docker-buildkit: "true" # Enable Docker BuildKit for caching
   portfolio:OLLAMA_API_KEY:
-    secure: AAABAGduWcFkT1+/496Ni1IoINBIEsDmtQvuV9BQPpHXZJ+VW3sz1VgbUX0Fhdhkr4W5zgAIOybOqWHr5VR1YiWiLuX0BxnzDu4XmDqnFH3XUpJ9Yy1oSSk=
+    secure: AAABAMmOOSI8mRyu8EwZfrOEcbxBG8xk7vGg4OWuJ3mgRDfXAm9tyiGFbT1gY1W3v9M4ynDQwnO3vWox+t3Ow07L9qcjzz7+sFPcVzRa2KWS55v6vHrisgM=
   portfolio:LANGCHAIN_API_KEY:
     secure: AAABAE4K3AaVrtBdO8r3+ooYvm3vIBvWIkXebe3gIY3SqhFlUfHP+6GOIp8+Bb8YG82KuGLhpNS9s8GTIldJQ4azObv9qXN1p1INBhHL3cBbmBw=
   portfolio:ecr-max-images: "4"
