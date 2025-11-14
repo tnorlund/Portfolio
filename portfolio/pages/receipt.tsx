@@ -643,9 +643,9 @@ export default function ReceiptPage({
       <p>
         This was also my first time using vector embeddings. I started with
         Pinecone, but found it too expensive for my use case. They market their
-        service as "serverless", but there's no scale to zero option which
-        means you're always paying for it, even when you're not using it. After
-        deciding Pinecone wasn't the right fit, I found Chroma, an open-source
+        service as &ldquo;serverless&rdquo;, but there&apos;s no scale to zero option which
+        means you&apos;re always paying for it, even when you&apos;re not using it. After
+        deciding Pinecone wasn&apos;t the right fit, I found Chroma, an open-source
         vector database.
       </p>
 
@@ -677,13 +677,13 @@ export default function ReceiptPage({
         This distributed system allows me to write 1,000+ receipts per second
         while not having to pay the $200+ Pinecone is asking for. Keeping the
         data in AWS also means that my query times are 10 times faster than
-        querying from Pinecone's servers.
+        querying from Pinecone&apos;s servers.
       </p>
 
       <h2>Large Language Models</h2>
       <p>
         Running Large Language Models (LLMs) is incredibly expensive. I started
-        with OpenAI's batch API, but it didn't provide me with the fast feedback
+        with OpenAI&apos;s batch API, but it didn&apos;t provide me with the fast feedback
         I needed.
       </p>
       <ClientOnly>
@@ -706,8 +706,8 @@ export default function ReceiptPage({
 
       <p>
         Not only was I able to start testing different agentic workflows, but I
-        was able to save each agent's answers and compare them to other
-        agents's answers. Again, this got expensive quickly, and I had to find
+        was able to save each agent&apos;s answers and compare them to other
+        agents&apos;s answers. Again, this got expensive quickly, and I had to find
         a cheaper way to run LLMs. I found Ollama, an open-source LLM server,
         that I could run locally.
       </p>
@@ -719,11 +719,11 @@ export default function ReceiptPage({
       </ClientOnly>
 
       <p>
-        Ollama is a great way to run LLMs locally. It's free and easy to use.
+        Ollama is a great way to run LLMs locally. It&apos;s free and easy to use.
         I was able to run small models locally, but my MacBook was
         definitely a limiting factor. Thankfully, Ollama
         released a new cloud service that allows me to run larger models in the
-        cloud. I'm still writing new agents. This is definitely the largest
+        cloud. I&apos;m still writing new agents. This is definitely the largest
         place to grow for this project.
       </p>
 
@@ -749,7 +749,7 @@ export default function ReceiptPage({
       <h1>Conclusion</h1>
 
       <p>
-        Building with AI isn't about finding the perfect tool. It's about
+        Building with AI isn&apos;t about finding the perfect tool. It&apos;s about
         moving fast enough to learn what actually works. The process is simple:
         build quickly, test, and iterate. The best way to learn is to build
         something. Please look at the
