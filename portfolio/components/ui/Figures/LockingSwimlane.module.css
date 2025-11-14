@@ -1,0 +1,16 @@
+.container {
+  width: 100%;
+  max-width: 650px;
+}
+
+.svg {
+  width: 100%;
+  height: auto;
+}
+
+@media (max-width: 768px) {
+  .container {
+    max-width: 100%;
+  }
+}
+
