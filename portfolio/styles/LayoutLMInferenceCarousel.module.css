@@ -1,0 +1,224 @@
+.container {
+  width: 100%;
+  margin: 3rem 0;
+  padding: 2rem 0;
+}
+
+.wrapper {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.imageContainer {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+}
+
+.reloadButton {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 10;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  background: var(--button-background);
+  color: var(--button-text);
+  border: 1px solid var(--text-color);
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 1.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.reloadButton:hover:not(:disabled) {
+  transform: scale(1.1);
+  background: var(--button-background-hover);
+  color: var(--button-text-hover);
+}
+
+.reloadButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.reloadButton:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.imageWrapper {
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  max-height: 500px;
+}
+
+.imageWrapper img {
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
+.overlay {
+  pointer-events: none;
+}
+
+/* Desktop: Show labels inline with image */
+@media (min-width: 769px) {
+  .wrapper {
+    flex-direction: row;
+    align-items: stretch;
+    gap: 2rem;
+  }
+
+  .imageContainer {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .imageWrapper {
+    max-height: 500px;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .labelsList {
+    flex: 1;
+    display: flex;
+    align-items: flex-start;
+    padding: 1rem;
+    background: none;
+    border: none;
+  }
+
+  .wordInfo {
+    width: 100%;
+  }
+}
+
+/* Mobile layout */
+.mobileContainer {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.labelsList {
+  width: 100%;
+}
+
+.wordInfo {
+  padding: 0;
+  width: 100%;
+}
+
+.wordHeader {
+  margin-bottom: 0.75rem;
+}
+
+.wordControls {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  justify-content: center;
+}
+
+.wordText {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-color);
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+}
+
+.wordControls {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.controlButton {
+  padding: 0.5rem 0.75rem;
+  background: var(--button-background);
+  color: var(--button-text);
+  border: 1px solid var(--text-color);
+  border-opacity: 0.2;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.2s;
+  min-width: 40px;
+}
+
+.controlButton:hover {
+  background: var(--button-background-hover);
+  transform: scale(1.05);
+}
+
+.wordCounter {
+  font-size: 0.85rem;
+  color: var(--text-color);
+  opacity: 0.6;
+  margin-bottom: 1.5rem;
+}
+
+
+.barChart {
+  display: grid;
+  grid-template-columns: max-content auto max-content;
+  column-gap: 8px;
+  row-gap: 6px;
+  alignItems: center;
+  margin-top: 1.5rem;
+}
+
+.barLabel {
+  font-weight: 500;
+  justify-self: end;
+  color: var(--text-color);
+  font-size: 0.9rem;
+}
+
+.barContainer {
+  min-width: 100px;
+}
+
+.bar {
+  height: 20px;
+  border-radius: 6px;
+  transition: width 0.3s ease;
+}
+
+.barValue {
+  text-align: right;
+  color: var(--text-color);
+  font-size: 0.85rem;
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+  min-width: 50px;
+}
+
+.loading,
+.error {
+  text-align: center;
+  padding: 3rem;
+  font-size: 1.1rem;
+  color: var(--text-color);
+}
+
+.error {
+  color: var(--color-red);
+}

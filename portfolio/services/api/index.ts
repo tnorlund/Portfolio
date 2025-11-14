@@ -189,9 +189,23 @@ const baseApi = {
     }
     return response.json();
   },
+
+  async fetchLayoutLMInference(): Promise<any> {
+    const apiUrl = getAPIUrl();
+    const response = await fetch(
+      `${apiUrl}/layoutlm_inference`,
+      fetchConfig
+    );
+    if (!response.ok) {
+      throw new Error(
+        `Network response was not ok (status: ${response.status})`
+      );
+    }
+    return response.json();
+  },
 };
 
 // Export the API with performance tracking in development
-export const api = process.env.NODE_ENV === 'development' 
+export const api = process.env.NODE_ENV === 'development'
   ? withPerformanceTrackingForAPI(baseApi, 'api')
   : baseApi;
