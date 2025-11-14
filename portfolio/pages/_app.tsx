@@ -49,7 +49,7 @@ export default function App({ Component, pageProps }: AppProps) {
   useEffect(() => {
     // Report Web Vitals for Real User Monitoring
     if (typeof window !== 'undefined') {
-      import('web-vitals').then(({ getCLS, getFID, getFCP, getLCP, getTTFB }) => {
+      import('web-vitals').then(({ onCLS, onINP, onFCP, onLCP, onTTFB }) => {
         const reportWebVitals = (metric: any) => {
           // Log to console in development
           if (process.env.NODE_ENV === 'development') {
@@ -85,11 +85,11 @@ export default function App({ Component, pageProps }: AppProps) {
           }
         };
         
-        getCLS(reportWebVitals);
-        getFID(reportWebVitals);
-        getFCP(reportWebVitals);
-        getLCP(reportWebVitals);
-        getTTFB(reportWebVitals);
+        onCLS(reportWebVitals);
+        onINP(reportWebVitals); // INP replaces FID in web-vitals v5
+        onFCP(reportWebVitals);
+        onLCP(reportWebVitals);
+        onTTFB(reportWebVitals);
       });
     }
   }, []);
