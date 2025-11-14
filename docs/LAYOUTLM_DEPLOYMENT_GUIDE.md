@@ -5,7 +5,7 @@
 Run the deployment script from the repo root:
 
 ```bash
-./deploy_layoutlm_cli.sh
+./scripts/deploy_layoutlm_cli.sh
 ```
 
 This will:
