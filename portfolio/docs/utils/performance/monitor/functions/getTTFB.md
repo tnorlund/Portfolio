@@ -8,7 +8,7 @@
 
 > **getTTFB**(): `undefined` \| `number`
 
-Defined in: [utils/performance/monitor.ts:245](https://github.com/tnorlund/Portfolio/blob/d8fa9e16e3ab0ba019b72b7825615ffb781391c7/portfolio/utils/performance/monitor.ts#L245)
+Defined in: [utils/performance/monitor.ts:245](https://github.com/tnorlund/Portfolio/blob/a7b9c4233776f71217d2f0bc5cecf159f62481fb/portfolio/utils/performance/monitor.ts#L245)
 
 ## Returns
 
