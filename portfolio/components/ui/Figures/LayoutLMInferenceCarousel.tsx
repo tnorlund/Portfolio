@@ -283,10 +283,16 @@ const LayoutLMInferenceCarousel: React.FC = () => {
   );
 
 
+  // Determine if mobile for height reservation
+  const isMobileForHeight = isMounted && windowWidth !== null && windowWidth <= 768;
+  const reservedHeight = isMobileForHeight ? 400 : 500; // Match imageWrapper max-height
+
   if (loading && !data) {
     return (
       <div ref={ref} className={styles.container}>
-        <div className={styles.loading}>Loading LayoutLM inference results...</div>
+        <div className={styles.loading} style={{ minHeight: `${reservedHeight}px`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          Loading LayoutLM inference results...
+        </div>
       </div>
     );
   }
@@ -294,7 +300,9 @@ const LayoutLMInferenceCarousel: React.FC = () => {
   if (error && !data) {
     return (
       <div ref={ref} className={styles.container}>
-        <div className={styles.error}>Error: {error}</div>
+        <div className={styles.error} style={{ minHeight: `${reservedHeight}px`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          Error: {error}
+        </div>
       </div>
     );
   }
@@ -302,7 +310,9 @@ const LayoutLMInferenceCarousel: React.FC = () => {
   if (!data || !formatSupport || !imageUrl || labeledWords.length === 0) {
     return (
       <div ref={ref} className={styles.container}>
-        <div className={styles.loading}>No labeled words found</div>
+        <div className={styles.loading} style={{ minHeight: `${reservedHeight}px`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          No labeled words found
+        </div>
       </div>
     );
   }
