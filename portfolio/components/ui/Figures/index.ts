@@ -20,6 +20,7 @@ export { default as ReceiptStack } from "./ReceiptStack";
 export { default as ScanReceiptBoundingBox } from "./ScanReceiptBoundingBox";
 export { default as UploadDiagram } from "./UploadDiagram";
 export { default as CodeBuildDiagram } from "./CodeBuildDiagram";
+export { default as LockingSwimlane } from "./LockingSwimlane";
 export { default as ZDepthConstrained } from "./ZDepthConstrained";
 export { default as ZDepthUnconstrained } from "./ZDepthUnconstrained";
 export { ClientLabelValidationCount as LabelValidationCount, ClientMerchantCount as MerchantCount };
