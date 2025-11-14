@@ -95,7 +95,7 @@ ollama = [
   "httpx[http2]>=0.25.0",  # HTTP/2 support for better streaming
 ]
 test = [
-    "pytest>=8.3.0,<9.0.0",
+    "pytest>=8.3.0,<10.0.0",
     "pytest-mock>=3.14.0,<4.0.0",
     "pytest-cov>=6.1.0,<7.0.0",
     "pytest-xdist>=3.6.0,<4.0.0",
