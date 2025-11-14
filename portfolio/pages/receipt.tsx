@@ -10,9 +10,11 @@ import {
   AddressSimilaritySideBySide,
   ClientImageCounts,
   ClientReceiptCounts,
+  CodeBuildDiagram,
   ImageStack,
   LabelValidationCount,
   LayoutLMInferenceVisualization,
+  LockingSwimlane,
   MerchantCount,
   PhotoReceiptBoundingBox,
   RandomReceiptWithLabels,
@@ -24,15 +26,23 @@ import {
 } from "../components/ui/Figures";
 import {
   ChromaLogo,
+  DockerLogo,
   GithubActionsLogo,
   GithubLogo,
   GoogleMapsLogo,
   HuggingFaceLogo,
+  LangChainLogo,
+  OllamaLogo,
+  OpenAILogo,
+  PineconeLogo,
   PulumiLogo,
+  TerraformLogo,
 } from "../components/ui/Logos";
 
 interface ReceiptPageProps {
   uploadDiagramChars: string[];
+  codeBuildDiagramChars: string[];
+  lockingSwimlaneChars: string[];
 }
 
 // Use getStaticProps for static generation - this runs at build time
@@ -44,14 +54,30 @@ export const getStaticProps: GetStaticProps<ReceiptPageProps> = async () => {
     Math.random() > 0.5 ? "1" : "0",
   );
 
+  // Generate chars for CodeBuildDiagram (3 phases, similar bit count)
+  const codeBuildDiagramChars = Array.from({ length: 120 }, () =>
+    Math.random() > 0.5 ? "1" : "0",
+  );
+
+  // Generate chars for LockingSwimlane (8 phases)
+  const lockingSwimlaneChars = Array.from({ length: 120 }, () =>
+    Math.random() > 0.5 ? "1" : "0",
+  );
+
   return {
     props: {
       uploadDiagramChars,
+      codeBuildDiagramChars,
+      lockingSwimlaneChars,
     },
   };
 };
 
-export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
+export default function ReceiptPage({
+  uploadDiagramChars,
+  codeBuildDiagramChars,
+  lockingSwimlaneChars,
+}: ReceiptPageProps) {
   // Remove client-side generation - now passed as prop from getStaticProps
   // const [uploadDiagramChars, setUploadDiagramChars] = useState<string[]>([]);
 
@@ -552,29 +578,58 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         labeling including product names, quantities, and unit prices.
       </p>
 
-      <h1>Conclusion</h1>
+      <h1>What I Learned</h1>
 
       <p>
         AI has made <i>typing</i> cheap, but the bottlenecks remain{" "}
         <i>understanding</i>, <i>testing</i>, <i>reviewing</i>, and{" "}
         <i>trusting</i>. By shifting my focus from typing code to testing,
         understanding, and architecting solutions, I prototype and experiment
-        faster. I can talk to AI, try a new approach, and see my changes in the
-        cloud. With a 10-second feedback loop and tests gating production
-        deploys, I meet the no-downtime requirement while iterating quickly. I
-        no longer spend most of my time researching how to accomplish the task,
-        I just build it.
+        faster.
       </p>
+
+      <h2>Pulumi</h2>
 
       <p>
         I&apos;ve been able to iterate quickly using Pulumi&apos;s
-        Infrastructure as Code (IaC).
+        Infrastructure as Code (IaC). Before, I would strictly use Terraform.
+      </p>
+
+      <ClientOnly>
+        <div className={styles["logos-container"]}>
+          <AnimatedInView>
+            <PulumiLogo />
+          </AnimatedInView>
+          <AnimatedInView>
+            <TerraformLogo />
+          </AnimatedInView>
+        </div>
+      </ClientOnly>
+
+      <p>
+        Pulumi allows me to write my infrastructure in Python. Not only am I
+        more comfortable with Python, but I can hack my way into making Pulumi
+        my own. My docker builds were killing me with their 7 minute deploy
+        times.
       </p>
 
       <ClientOnly>
         <AnimatedInView>
-          <PulumiLogo />
+          <DockerLogo />
         </AnimatedInView>
+      </ClientOnly>
+
+      <p>
+        After asking around, I learned that the real pros are building and
+        deploying their containers in the cloud. I looked into CodeBuild and
+        CodePipeline, and wrote a new component that manages the
+        container-based lambda functions entirely in AWS. This allows me to
+        quickly iterate the infrastructure while not waiting on builds to
+        deploy.
+      </p>
+
+      <ClientOnly>
+        <CodeBuildDiagram chars={codeBuildDiagramChars} />
       </ClientOnly>
 
       <p>
@@ -583,32 +638,123 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
         expertise.
       </p>
 
+      <h2>Vector Embeddings</h2>
+
+      <p>
+        This was also my first time using vector embeddings. I started with
+        Pinecone, but found it too expensive for my use case. They market their
+        service as &ldquo;serverless&rdquo;, but there&apos;s no scale to zero option which
+        means you&apos;re always paying for it, even when you&apos;re not using it. After
+        deciding Pinecone wasn&apos;t the right fit, I found Chroma, an open-source
+        vector database.
+      </p>
+
+      <ClientOnly>
+        <div className={styles["logos-container"]}>
+          <AnimatedInView>
+            <PineconeLogo />
+          </AnimatedInView>
+          <AnimatedInView>
+            <ChromaLogo />
+          </AnimatedInView>
+        </div>
+      </ClientOnly>
+
+      <p>
+        Since Chroma is open-source, I was able to hack it to work with my
+        existing DynamoDB infrastructure. I continue my serverless approach by
+        using Dynamo Streams to trigger compaction Lambda functions. This
+        allows me to scale to zero and only pay for what I use. The problem is
+        that I need to coordinate the writing of the new receipts. I developed
+        a distributed locking mechanism that queues writes.
+      </p>
+
+      <ClientOnly>
+        <LockingSwimlane chars={lockingSwimlaneChars} />
+      </ClientOnly>
+
+      <p>
+        This distributed system allows me to write 1,000+ receipts per second
+        while not having to pay the $200+ Pinecone is asking for. Keeping the
+        data in AWS also means that my query times are 10 times faster than
+        querying from Pinecone&apos;s servers.
+      </p>
+
+      <h2>Large Language Models</h2>
+      <p>
+        Running Large Language Models (LLMs) is incredibly expensive. I started
+        with OpenAI&apos;s batch API, but it didn&apos;t provide me with the fast feedback
+        I needed.
+      </p>
+      <ClientOnly>
+        <AnimatedInView>
+          <OpenAILogo />
+        </AnimatedInView>
+      </ClientOnly>
+
+      <p>
+        After asking around, I learned about graph RAG (Retrieval-Augmented
+        Generation) and agents. More specifically, I learned about LangChain, a
+        framework for building chain-of-thought LLM applications.
+      </p>
+
+      <ClientOnly>
+        <AnimatedInView>
+          <LangChainLogo />
+        </AnimatedInView>
+      </ClientOnly>
+
+      <p>
+        Not only was I able to start testing different agentic workflows, but I
+        was able to save each agent&apos;s answers and compare them to other
+        agents&apos;s answers. Again, this got expensive quickly, and I had to find
+        a cheaper way to run LLMs. I found Ollama, an open-source LLM server,
+        that I could run locally.
+      </p>
+
+      <ClientOnly>
+        <AnimatedInView>
+          <OllamaLogo />
+        </AnimatedInView>
+      </ClientOnly>
+
+      <p>
+        Ollama is a great way to run LLMs locally. It&apos;s free and easy to use.
+        I was able to run small models locally, but my MacBook was
+        definitely a limiting factor. Thankfully, Ollama
+        released a new cloud service that allows me to run larger models in the
+        cloud. I&apos;m still writing new agents. This is definitely the largest
+        place to grow for this project.
+      </p>
+
+      <h2>GitHub</h2>
       <p>
         This rapid iteration with developer best practices allows me to
         prototype in a safe environment, review and test my changes, and ship
         with confidence using GitHub and Pulumi.
       </p>
 
-      <div className={styles.logosContainer}>
-        <ClientOnly>
+
+      <ClientOnly>
+        <div className={styles["logos-container"]}>
           <AnimatedInView>
             <GithubLogo />
           </AnimatedInView>
-        </ClientOnly>
-        <ClientOnly>
           <AnimatedInView>
             <GithubActionsLogo />
           </AnimatedInView>
-        </ClientOnly>
-      </div>
+        </div>
+      </ClientOnly>
+
+      <h1>Conclusion</h1>
 
       <p>
-        Understanding how software works, testing to make sure it works, and
-        trusting that changes don&apos;t break things still takes a long time.
-        Prototyping and shipping to cloud to test new features in seconds speeds
-        up development, makes learning fun, and allows me to focus on trying
-        something new without being afraid of breaking things. I now optimize
-        development loop speed, not keystrokes.
+        Building with AI isn&apos;t about finding the perfect tool. It&apos;s about
+        moving fast enough to learn what actually works. The process is simple:
+        build quickly, test, and iterate. The best way to learn is to build
+        something. Please look at the
+        <a href="https://github.com/tnorlund/Portfolio" target="_blank" rel="noopener noreferrer">GitHub repository</a> for the full
+        code and documentation.
       </p>
 
       <div style={{ marginBottom: "2rem", textAlign: "center" }}>
