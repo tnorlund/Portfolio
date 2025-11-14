@@ -5,6 +5,7 @@ export { default as PineconeLogo } from "./PineconeLogo";
 export { default as GoogleMapsLogo } from "./GoogleMapsLogo";
 export { default as GithubLogo } from "./GithubLogo";
 export { default as PulumiLogo } from "./PulumiLogo";
+export { default as TerraformLogo } from "./TerraformLogo";
 export { default as HuggingFaceLogo } from "./HuggingFaceLogo";
 export { default as PyTorchLogo } from "./PyTorchLogo";
 export { default as NextJSLogo } from "./NextJSLogo";
