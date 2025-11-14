@@ -291,7 +291,7 @@ const LayoutLMInferenceCarousel: React.FC = () => {
     return (
       <div ref={ref} className={styles.container}>
         <div className={styles.loading} style={{ minHeight: `${reservedHeight}px`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          Loading LayoutLM inference results...
+          Loading...
         </div>
       </div>
     );
