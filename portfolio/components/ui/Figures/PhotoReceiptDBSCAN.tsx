@@ -71,13 +71,13 @@ const PhotoReceiptDBSCAN: React.FC = () => {
   const [isClient, setIsClient] = useState(false);
   const [resetKey, setResetKey] = useState(0);
   const [ref, inView] = useOptimizedInView({ threshold: 0.3 });
-  
+
   const lines = useMemo(() => imageDetails?.lines ?? [], [imageDetails?.lines]);
   const calculatedEpsilon = calculateEpsilonFromLines(lines);
-  
+
   const [epsilon, setEpsilon] = useState(calculatedEpsilon);
   const [minPoints, setMinPoints] = useState(3);
-  
+
   // Update epsilon when lines change
   useEffect(() => {
     if (lines.length > 0) {
@@ -91,7 +91,7 @@ const PhotoReceiptDBSCAN: React.FC = () => {
 
   const defaultSvgWidth = 400;
   const defaultSvgHeight = 565.806;
-  
+
   const { clusters, noiseLines } = useReceiptClustering(lines, {
     epsilon,
     minPoints,
@@ -113,7 +113,7 @@ const PhotoReceiptDBSCAN: React.FC = () => {
     ...cluster,
     key: `${resetKey}-cluster-${index}`
   })) : [];
-  
+
   const clusterTransitions = useTransition(clustersWithKeys, {
     from: { opacity: 0 },
     enter: (item, index) => ({
@@ -252,7 +252,7 @@ const PhotoReceiptDBSCAN: React.FC = () => {
                         />
                       );
                     })}
-                    
+
                     <rect
                       x={cluster.boundingBox.topLeft.x * svgWidth}
                       y={(1 - cluster.boundingBox.topLeft.y) * svgHeight}
