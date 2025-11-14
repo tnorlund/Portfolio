@@ -386,22 +386,12 @@ const LockingSwimlane: React.FC<LockingSwimlaneProps> = ({ chars }) => {
         setTimeout(() => {
           const el = labelElementsRef.current[jobIndex];
           if (el) {
-            el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300" style="width: 32px; height: 32px; display: block;">
-              <defs>
-                <style>
-                  .download-icon-stroke {
-                    fill: none;
-                    stroke: var(--text-color);
-                    stroke-miterlimit: 10;
-                    stroke-width: 20px;
-                  }
-                </style>
-              </defs>
-              <circle class="download-icon-stroke" cx="150" cy="150" r="136.82"/>
+            el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300" style="display: block;">
+              <circle cx="150" cy="150" r="136.82" fill="none" stroke="var(--text-color)" stroke-miterlimit="10" stroke-width="20"/>
               <g>
-                <path class="download-icon-stroke" d="M150,75.43l.38,121.09"/>
-                <polyline class="download-icon-stroke" points="196.26 150.26 150.38 196.52 103.74 150.26"/>
-                <line class="download-icon-stroke" x1="214.4" y1="224.57" x2="85.6" y2="224.57"/>
+                <path d="M150,75.43l.38,121.09" fill="none" stroke="var(--text-color)" stroke-miterlimit="10" stroke-width="20"/>
+                <polyline points="196.26 150.26 150.38 196.52 103.74 150.26" fill="none" stroke="var(--text-color)" stroke-miterlimit="10" stroke-width="20"/>
+                <line x1="214.4" y1="224.57" x2="85.6" y2="224.57" fill="none" stroke="var(--text-color)" stroke-miterlimit="10" stroke-width="20"/>
               </g>
             </svg>`;
             el.style.transition = `opacity ${fadeDuration}ms`;
@@ -426,22 +416,12 @@ const LockingSwimlane: React.FC<LockingSwimlaneProps> = ({ chars }) => {
         setTimeout(() => {
           const el = labelElementsRef.current[jobIndex];
           if (el) {
-            el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300" style="width: 32px; height: 32px; display: block;">
-              <defs>
-                <style>
-                  .upload-icon-stroke {
-                    fill: none;
-                    stroke: var(--text-color);
-                    stroke-miterlimit: 10;
-                    stroke-width: 20px;
-                  }
-                </style>
-              </defs>
-              <circle class="upload-icon-stroke" cx="150" cy="150" r="136.82"/>
+            el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300" style="display: block;">
+              <circle cx="150" cy="150" r="136.82" fill="none" stroke="var(--text-color)" stroke-miterlimit="10" stroke-width="20"/>
               <g>
-                <path class="upload-icon-stroke" d="M150,203.98l.38-128.55"/>
-                <polyline class="upload-icon-stroke" points="196.26 121.69 150.38 75.43 103.74 121.69"/>
-                <line class="upload-icon-stroke" x1="214.4" y1="224.57" x2="85.6" y2="224.57"/>
+                <path d="M150,203.98l.38-128.55" fill="none" stroke="var(--text-color)" stroke-miterlimit="10" stroke-width="20"/>
+                <polyline points="196.26 121.69 150.38 75.43 103.74 121.69" fill="none" stroke="var(--text-color)" stroke-miterlimit="10" stroke-width="20"/>
+                <line x1="214.4" y1="224.57" x2="85.6" y2="224.57" fill="none" stroke="var(--text-color)" stroke-miterlimit="10" stroke-width="20"/>
               </g>
             </svg>`;
             el.style.transition = `opacity ${fadeDuration}ms`;
