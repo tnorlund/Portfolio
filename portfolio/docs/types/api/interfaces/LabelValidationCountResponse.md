@@ -6,7 +6,7 @@
 
 # Interface: LabelValidationCountResponse
 
-Defined in: [types/api.ts:1](https://github.com/tnorlund/Portfolio/blob/a7b9c4233776f71217d2f0bc5cecf159f62481fb/portfolio/types/api.ts#L1)
+Defined in: [types/api.ts:1](https://github.com/tnorlund/Portfolio/blob/a9c8182b37cae34b7d51b801d469bd8f25e60fa1/portfolio/types/api.ts#L1)
 
 ## Indexable
 
