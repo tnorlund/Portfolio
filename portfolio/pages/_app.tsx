@@ -55,7 +55,7 @@ export default function App({ Component, pageProps }: AppProps) {
           if (process.env.NODE_ENV === 'development') {
             console.log(metric);
           }
-          
+
           // Send to analytics endpoint in production
           if (process.env.NODE_ENV === 'production') {
             const body = JSON.stringify({
@@ -67,7 +67,7 @@ export default function App({ Component, pageProps }: AppProps) {
               url: window.location.href,
               timestamp: new Date().toISOString(),
             });
-            
+
             // Use sendBeacon if available for reliability
             if (navigator.sendBeacon) {
               navigator.sendBeacon('/api/analytics', body);
@@ -84,7 +84,7 @@ export default function App({ Component, pageProps }: AppProps) {
             }
           }
         };
-        
+
         onCLS(reportWebVitals);
         onINP(reportWebVitals); // INP replaces FID in web-vitals v5
         onFCP(reportWebVitals);
