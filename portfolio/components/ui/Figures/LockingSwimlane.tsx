@@ -94,11 +94,33 @@ const LockingSwimlane: React.FC<LockingSwimlaneProps> = ({ chars }) => {
     Math.max(...TIMELINE.map((t) => t.start + t.duration)) + CYCLE_PAUSE;
 
   const [cycle, setCycle] = React.useState(0);
+  const svgRef = React.useRef<SVGSVGElement>(null);
+  const [fontSize, setFontSize] = React.useState("1rem");
 
+  // Calculate font size based on SVG's rendered size to match body text
   React.useEffect(() => {
-    const id = setTimeout(() => setCycle((c) => c + 1), totalCycleTime);
-    return () => clearTimeout(id);
-  }, [cycle, totalCycleTime]);
+    const updateFontSize = () => {
+      if (!svgRef.current) return;
+
+      // Get the SVG's rendered dimensions
+      const rect = svgRef.current.getBoundingClientRect();
+      const scaleFactor = rect.width / SVG_WIDTH;
+
+      // Body text is 16px (1rem). We want the SVG text to render at the same visual size
+      // So we need to account for the SVG's scale factor
+      // If SVG is scaled to 50% width, we need 2x the font size in SVG units
+      const bodyFontSizePx = 16; // 1rem = 16px at default browser size
+      const svgFontSizePx = bodyFontSizePx / scaleFactor;
+
+      // Convert to rem for consistency, but adjust for SVG scaling
+      // Since SVG text is in SVG coordinate space, we use the calculated pixel size
+      setFontSize(`${svgFontSizePx}px`);
+    };
+
+    updateFontSize();
+    window.addEventListener("resize", updateFontSize);
+    return () => window.removeEventListener("resize", updateFontSize);
+  }, []);
 
   // Get lane Y position for a job
   const getLaneY = (job: number) => {
@@ -363,6 +385,7 @@ const LockingSwimlane: React.FC<LockingSwimlaneProps> = ({ chars }) => {
     >
       <div className={styles.container}>
         <svg
+          ref={svgRef}
           height={SVG_HEIGHT}
           width={SVG_WIDTH}
           viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
@@ -401,7 +424,7 @@ const LockingSwimlane: React.FC<LockingSwimlaneProps> = ({ chars }) => {
               x="20"
               y={getLaneY(job) + 5}
               fill="var(--text-color)"
-              fontSize="16"
+              fontSize={fontSize}
               fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
               fontWeight="normal"
             >
