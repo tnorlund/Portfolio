@@ -547,7 +547,7 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
 
       <p>
         The custom model processes receipts in about 5 seconds, compared to
-        20-30 seconds with the AI Agent. The tradeoff is coverage: the model
+        30-60 seconds with the AI Agent. The tradeoff is coverage: the model
         focuses on 4 core labels, while the AI Agent provides comprehensive
         labeling including product names, quantities, and unit prices.
       </p>
