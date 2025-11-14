@@ -151,7 +151,7 @@ const LockingSwimlane: React.FC<LockingSwimlaneProps> = ({ chars }) => {
           progressApi.start((i) => {
             if (i === jobIndex) {
               return {
-                width: workWidth,
+                width: 100, // Animate from 0 to 100 (percentage)
                 config: { duration: fillDuration, easing: (t: number) => t },
               };
             }
@@ -564,7 +564,7 @@ const LockingSwimlane: React.FC<LockingSwimlaneProps> = ({ chars }) => {
                 <animated.div
                   className={styles.progressBar}
                   style={{
-                    width: progressSprings[job - 1].width,
+                    width: progressSprings[job - 1].width.to((w) => `${w}%`),
                   }}
                 />
               </animated.div>
