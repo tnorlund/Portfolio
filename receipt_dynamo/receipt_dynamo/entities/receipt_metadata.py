@@ -472,6 +472,9 @@ def item_to_receipt_metadata(item: Dict[str, Any]) -> ReceiptMetadata:
         "canonical_phone_number": EntityFactory.extract_string_field(
             "canonical_phone_number", ""
         ),
+        "validation_status": EntityFactory.extract_string_field(
+            "validation_status", ""
+        ),  # Default to empty string if missing/NULL
     }
 
     return EntityFactory.create_entity(
