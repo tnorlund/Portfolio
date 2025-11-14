@@ -12,15 +12,15 @@ const ClientLabelValidationCount = dynamic(
   }
 );
 
+export { default as CodeBuildDiagram } from "./CodeBuildDiagram";
 export { ClientImageCounts, ClientReceiptCounts } from "./DataCounts";
 export { default as EmbeddingCoordinate } from "./EmbeddingCoordinate";
 export { default as EmbeddingExample } from "./EmbeddingExample";
+export { default as LockingSwimlane } from "./LockingSwimlane";
 export { default as PhotoReceiptBoundingBox } from "./PhotoReceiptBoundingBox";
 export { default as ReceiptStack } from "./ReceiptStack";
 export { default as ScanReceiptBoundingBox } from "./ScanReceiptBoundingBox";
 export { default as UploadDiagram } from "./UploadDiagram";
-export { default as CodeBuildDiagram } from "./CodeBuildDiagram";
-export { default as LockingSwimlane } from "./LockingSwimlane";
 export { default as ZDepthConstrained } from "./ZDepthConstrained";
 export { default as ZDepthUnconstrained } from "./ZDepthUnconstrained";
 export { ClientLabelValidationCount as LabelValidationCount, ClientMerchantCount as MerchantCount };
@@ -36,6 +36,6 @@ export { default as AddressSimilarity } from "./AddressSimilarity";
 export { default as AddressSimilaritySideBySide } from "./AddressSimilaritySideBySide";
 export { default as CroppedAddressImage } from "./CroppedAddressImage";
 export { default as ImageStack } from "./ImageStack";
-export { default as RandomReceiptWithLabels } from "./RandomReceiptWithLabels";
 export { default as LayoutLMInferenceVisualization } from "./LayoutLMInferenceCarousel";
+export { default as RandomReceiptWithLabels } from "./RandomReceiptWithLabels";
 
