@@ -393,8 +393,13 @@ if layoutlm_training_bucket_name is not None:
     cache_gen_module.cache_bucket_name = layoutlm_cache_generator.cache_bucket.id
 
     # Update the inference module's cache_bucket_name reference
+    # This will cause the Lambda function to be replaced with the correct bucket name
     import routes.layoutlm_inference.infra as inference_module
     inference_module.cache_bucket_name = layoutlm_cache_generator.cache_bucket.id
+
+    # The Lambda function will be automatically updated because it uses _cache_bucket_name
+    # which references cache_bucket_name. When cache_bucket_name changes from None to
+    # the actual bucket Output, Pulumi will detect the change and update the Lambda.
 
     # Update the IAM inline policy to use the actual cache bucket name
     # By updating cache_bucket_name, the policy will automatically update
