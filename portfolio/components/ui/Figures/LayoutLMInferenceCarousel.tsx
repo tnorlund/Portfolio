@@ -31,8 +31,18 @@ const LAYOUTLM_LABELS = {
   },
 } as const;
 
+// Consistent order for bar chart display
+const LABEL_ORDER = ["MERCHANT_NAME", "DATE", "ADDRESS", "AMOUNT", "O"] as const;
+
+// Get display name for a label
+const getLabelDisplayName = (label: string): string => {
+  if (label === "O") return "No Label";
+  return LAYOUTLM_LABELS[label as keyof typeof LAYOUTLM_LABELS]?.name || label;
+};
+
 // Get color for a label
 const getLabelColor = (label: string): string => {
+  if (label === "O") return "var(--text-color)";
   return LAYOUTLM_LABELS[label as keyof typeof LAYOUTLM_LABELS]?.color || "var(--color-blue)";
 };
 
@@ -272,12 +282,6 @@ const LayoutLMInferenceCarousel: React.FC = () => {
     }
   );
 
-  // Animation for current word highlight
-  const highlightAnimation = useSpring({
-    opacity: currentWord ? 1 : 0,
-    scale: currentWord ? 1.05 : 1,
-    config: { tension: 300, friction: 30 },
-  });
 
   if (loading && !data) {
     return (
@@ -320,10 +324,6 @@ const LayoutLMInferenceCarousel: React.FC = () => {
     displayWidth = maxDisplayHeight * aspectRatio;
   }
 
-  const allProbs = currentWord?.prediction.all_class_probabilities_base || {};
-  const sortedProbs = Object.entries(allProbs)
-    .filter(([label]) => label !== "O")
-    .sort(([, a], [, b]) => b - a);
 
   return (
     <div ref={ref} className={styles.container}>
@@ -389,21 +389,11 @@ const LayoutLMInferenceCarousel: React.FC = () => {
                       <animated.polygon
                         key={`${word.receipt_id}-${word.line_id}-${word.word_id}`}
                         points={points}
-                        fill={labelColor}
-                        fillOpacity={isCurrent ? 0.3 : 0.15}
-                        stroke={labelColor}
+                        fill={isCurrent ? labelColor : "black"}
+                        fillOpacity={isCurrent ? 0.3 : 0.1}
+                        stroke={isCurrent ? labelColor : "black"}
                         strokeWidth={isCurrent ? 3 : 2}
-                        style={{
-                          ...style,
-                          ...(isCurrent
-                            ? {
-                                transform: highlightAnimation.scale.to(
-                                  (s) => `scale(${s})`
-                                ),
-                                transformOrigin: "center",
-                              }
-                            : {}),
-                        }}
+                        style={style}
                       />
                     );
                   })}
@@ -415,148 +405,75 @@ const LayoutLMInferenceCarousel: React.FC = () => {
                 <div className={styles.wordInfo}>
                   <div className={styles.wordHeader}>
                     <h4 className={styles.wordText}>{currentWord.word.text}</h4>
-                    <div className={styles.wordControls}>
-                      <button
-                        onClick={() => setIsPaused(!isPaused)}
-                        className={styles.controlButton}
-                        title={isPaused ? "Resume" : "Pause"}
-                      >
-                        {isPaused ? "▶" : "⏸"}
-                      </button>
-                      <button
-                        onClick={() =>
-                          setCurrentIndex((prev) => (prev - 1 + labeledWords.length) % labeledWords.length)
-                        }
-                        className={styles.controlButton}
-                        title="Previous"
-                      >
-                        ←
-                      </button>
-                      <button
-                        onClick={() => setCurrentIndex((prev) => (prev + 1) % labeledWords.length)}
-                        className={styles.controlButton}
-                        title="Next"
-                      >
-                        →
-                      </button>
-                    </div>
+                  </div>
+                  <div className={styles.wordControls}>
+                    <button
+                      onClick={() => setIsPaused(!isPaused)}
+                      className={styles.controlButton}
+                      title={isPaused ? "Resume" : "Pause"}
+                    >
+                      {isPaused ? "▶" : "⏸"}
+                    </button>
+                    <button
+                      onClick={() =>
+                        setCurrentIndex((prev) => (prev - 1 + labeledWords.length) % labeledWords.length)
+                      }
+                      className={styles.controlButton}
+                      title="Previous"
+                    >
+                      ←
+                    </button>
+                    <button
+                      onClick={() => setCurrentIndex((prev) => (prev + 1) % labeledWords.length)}
+                      className={styles.controlButton}
+                      title="Next"
+                    >
+                      →
+                    </button>
                   </div>
 
                   <div className={styles.wordCounter}>
                     Word {currentIndex + 1} of {labeledWords.length}
                   </div>
 
-                  {/* Ground Truth */}
-                  {currentWord.prediction.ground_truth_label_base && (
-                    <div className={styles.groundTruth}>
-                      <span className={styles.label}>Ground Truth:</span>
-                      <div className={styles.groundTruthLabels}>
-                        {currentWord.prediction.ground_truth_label_original &&
-                        currentWord.prediction.ground_truth_label_original !==
-                          currentWord.prediction.ground_truth_label_base ? (
-                          <>
-                            <span
-                              className={styles.badge}
-                              style={{
-                                backgroundColor: getLabelColor(
-                                  currentWord.prediction.ground_truth_label_base
-                                ),
-                              }}
-                              title={`Original: ${currentWord.prediction.ground_truth_label_original} → Normalized: ${currentWord.prediction.ground_truth_label_base}`}
-                            >
-                              {currentWord.prediction.ground_truth_label_original}
-                            </span>
-                            <span className={styles.arrow}>→</span>
-                            <span
-                              className={styles.badge}
-                              style={{
-                                backgroundColor: getLabelColor(
-                                  currentWord.prediction.ground_truth_label_base
-                                ),
-                              }}
-                            >
-                              {currentWord.prediction.ground_truth_label_base}
-                            </span>
-                          </>
-                        ) : (
-                          <span
-                            className={styles.badge}
-                            style={{
-                              backgroundColor: getLabelColor(
-                                currentWord.prediction.ground_truth_label_base
-                              ),
-                            }}
-                          >
-                            {currentWord.prediction.ground_truth_label_base}
-                          </span>
-                        )}
+                  {/* Bar Chart - All 5 classes (4 labels + O) */}
+                  {currentWord.prediction.all_class_probabilities_base &&
+                    Object.keys(currentWord.prediction.all_class_probabilities_base).length > 0 && (
+                      <div className={styles.barChart}>
+                        {LABEL_ORDER.map((labelKey) => {
+                          const prob = currentWord.prediction.all_class_probabilities_base?.[labelKey];
+                          if (prob === undefined) return null;
+
+                          const labelColor = getLabelColor(labelKey);
+                          const maxProb = Math.max(
+                            ...Object.values(currentWord.prediction.all_class_probabilities_base || {})
+                          );
+                          const isTopPrediction = labelKey === currentWord.prediction.predicted_label_base;
+                          const displayName = getLabelDisplayName(labelKey);
+
+                          return (
+                            <React.Fragment key={labelKey}>
+                              <div
+                                className={styles.barLabel}
+                                style={isTopPrediction ? { fontWeight: 600 } : {}}
+                              >
+                                {displayName}
+                              </div>
+                              <div className={styles.barContainer}>
+                                <div
+                                  className={styles.bar}
+                                  style={{
+                                    width: `${(prob / maxProb) * 100}%`,
+                                    backgroundColor: labelColor,
+                                  }}
+                                />
+                              </div>
+                              <div className={styles.barValue}>{formatConfidence(prob)}</div>
+                            </React.Fragment>
+                          );
+                        })}
                       </div>
-                    </div>
-                  )}
-
-                  {/* Predicted Label */}
-                  <div className={styles.prediction}>
-                    <span className={styles.label}>Predicted:</span>
-                    <span
-                      className={styles.badge}
-                      style={{
-                        backgroundColor: getLabelColor(currentWord.prediction.predicted_label_base),
-                      }}
-                    >
-                      {currentWord.prediction.predicted_label_base}
-                    </span>
-                    <span className={styles.confidence}>
-                      {formatConfidence(currentWord.prediction.predicted_confidence)}
-                    </span>
-                    {currentWord.prediction.is_correct !== undefined && (
-                      <span
-                        className={
-                          currentWord.prediction.is_correct ? styles.correct : styles.incorrect
-                        }
-                      >
-                        {currentWord.prediction.is_correct ? "✓" : "✗"}
-                      </span>
                     )}
-                  </div>
-
-                  {/* Probabilities */}
-                  {sortedProbs.length > 0 && (
-                    <div className={styles.probabilities}>
-                      <div className={styles.probabilitiesTitle}>Class Probabilities:</div>
-                      {sortedProbs.map(([label, prob]) => {
-                        const labelColor = getLabelColor(label);
-                        const isTopPrediction = label === currentWord.prediction.predicted_label_base;
-                        return (
-                          <div
-                            key={label}
-                            className={`${styles.probabilityItem} ${
-                              isTopPrediction ? styles.topPrediction : ""
-                            }`}
-                          >
-                            <div className={styles.probabilityLabel}>
-                              <div
-                                className={styles.probabilityColorDot}
-                                style={{ backgroundColor: labelColor }}
-                              />
-                              <span>{label}</span>
-                            </div>
-                            <div className={styles.probabilityBar}>
-                              <div
-                                className={styles.probabilityBarFill}
-                                style={{
-                                  width: `${prob * 100}%`,
-                                  backgroundColor: labelColor,
-                                }}
-                              />
-                            </div>
-                            <span className={styles.probabilityValue}>
-                              {formatConfidence(prob)}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
                 </div>
               )}
             </div>
@@ -622,9 +539,9 @@ const LayoutLMInferenceCarousel: React.FC = () => {
                       <animated.polygon
                         key={`${word.receipt_id}-${word.line_id}-${word.word_id}`}
                         points={points}
-                        fill={labelColor}
-                        fillOpacity={isCurrent ? 0.3 : 0.15}
-                        stroke={labelColor}
+                        fill={isCurrent ? labelColor : "black"}
+                        fillOpacity={isCurrent ? 0.3 : 0.1}
+                        stroke={isCurrent ? labelColor : "black"}
                         strokeWidth={isCurrent ? 3 : 2}
                         style={style}
                       />
@@ -638,144 +555,75 @@ const LayoutLMInferenceCarousel: React.FC = () => {
                 <div className={styles.wordInfo}>
                   <div className={styles.wordHeader}>
                     <h4 className={styles.wordText}>{currentWord.word.text}</h4>
-                    <div className={styles.wordControls}>
-                      <button
-                        onClick={() => setIsPaused(!isPaused)}
-                        className={styles.controlButton}
-                        title={isPaused ? "Resume" : "Pause"}
-                      >
-                        {isPaused ? "▶" : "⏸"}
-                      </button>
-                      <button
-                        onClick={() =>
-                          setCurrentIndex((prev) => (prev - 1 + labeledWords.length) % labeledWords.length)
-                        }
-                        className={styles.controlButton}
-                        title="Previous"
-                      >
-                        ←
-                      </button>
-                      <button
-                        onClick={() => setCurrentIndex((prev) => (prev + 1) % labeledWords.length)}
-                        className={styles.controlButton}
-                        title="Next"
-                      >
-                        →
-                      </button>
-                    </div>
+                  </div>
+                  <div className={styles.wordControls}>
+                    <button
+                      onClick={() => setIsPaused(!isPaused)}
+                      className={styles.controlButton}
+                      title={isPaused ? "Resume" : "Pause"}
+                    >
+                      {isPaused ? "▶" : "⏸"}
+                    </button>
+                    <button
+                      onClick={() =>
+                        setCurrentIndex((prev) => (prev - 1 + labeledWords.length) % labeledWords.length)
+                      }
+                      className={styles.controlButton}
+                      title="Previous"
+                    >
+                      ←
+                    </button>
+                    <button
+                      onClick={() => setCurrentIndex((prev) => (prev + 1) % labeledWords.length)}
+                      className={styles.controlButton}
+                      title="Next"
+                    >
+                      →
+                    </button>
                   </div>
 
                   <div className={styles.wordCounter}>
                     Word {currentIndex + 1} of {labeledWords.length}
                   </div>
 
-                  {currentWord.prediction.ground_truth_label_base && (
-                    <div className={styles.groundTruth}>
-                      <span className={styles.label}>Ground Truth:</span>
-                      <div className={styles.groundTruthLabels}>
-                        {currentWord.prediction.ground_truth_label_original &&
-                        currentWord.prediction.ground_truth_label_original !==
-                          currentWord.prediction.ground_truth_label_base ? (
-                          <>
-                            <span
-                              className={styles.badge}
-                              style={{
-                                backgroundColor: getLabelColor(
-                                  currentWord.prediction.ground_truth_label_base
-                                ),
-                              }}
-                            >
-                              {currentWord.prediction.ground_truth_label_original}
-                            </span>
-                            <span className={styles.arrow}>→</span>
-                            <span
-                              className={styles.badge}
-                              style={{
-                                backgroundColor: getLabelColor(
-                                  currentWord.prediction.ground_truth_label_base
-                                ),
-                              }}
-                            >
-                              {currentWord.prediction.ground_truth_label_base}
-                            </span>
-                          </>
-                        ) : (
-                          <span
-                            className={styles.badge}
-                            style={{
-                              backgroundColor: getLabelColor(
-                                currentWord.prediction.ground_truth_label_base
-                              ),
-                            }}
-                          >
-                            {currentWord.prediction.ground_truth_label_base}
-                          </span>
-                        )}
+                  {/* Bar Chart - All 5 classes (4 labels + O) */}
+                  {currentWord.prediction.all_class_probabilities_base &&
+                    Object.keys(currentWord.prediction.all_class_probabilities_base).length > 0 && (
+                      <div className={styles.barChart}>
+                        {LABEL_ORDER.map((labelKey) => {
+                          const prob = currentWord.prediction.all_class_probabilities_base?.[labelKey];
+                          if (prob === undefined) return null;
+
+                          const labelColor = getLabelColor(labelKey);
+                          const maxProb = Math.max(
+                            ...Object.values(currentWord.prediction.all_class_probabilities_base || {})
+                          );
+                          const isTopPrediction = labelKey === currentWord.prediction.predicted_label_base;
+                          const displayName = getLabelDisplayName(labelKey);
+
+                          return (
+                            <React.Fragment key={labelKey}>
+                              <div
+                                className={styles.barLabel}
+                                style={isTopPrediction ? { fontWeight: 600 } : {}}
+                              >
+                                {displayName}
+                              </div>
+                              <div className={styles.barContainer}>
+                                <div
+                                  className={styles.bar}
+                                  style={{
+                                    width: `${(prob / maxProb) * 100}%`,
+                                    backgroundColor: labelColor,
+                                  }}
+                                />
+                              </div>
+                              <div className={styles.barValue}>{formatConfidence(prob)}</div>
+                            </React.Fragment>
+                          );
+                        })}
                       </div>
-                    </div>
-                  )}
-
-                  <div className={styles.prediction}>
-                    <span className={styles.label}>Predicted:</span>
-                    <span
-                      className={styles.badge}
-                      style={{
-                        backgroundColor: getLabelColor(currentWord.prediction.predicted_label_base),
-                      }}
-                    >
-                      {currentWord.prediction.predicted_label_base}
-                    </span>
-                    <span className={styles.confidence}>
-                      {formatConfidence(currentWord.prediction.predicted_confidence)}
-                    </span>
-                    {currentWord.prediction.is_correct !== undefined && (
-                      <span
-                        className={
-                          currentWord.prediction.is_correct ? styles.correct : styles.incorrect
-                        }
-                      >
-                        {currentWord.prediction.is_correct ? "✓" : "✗"}
-                      </span>
                     )}
-                  </div>
-
-                  {sortedProbs.length > 0 && (
-                    <div className={styles.probabilities}>
-                      <div className={styles.probabilitiesTitle}>Class Probabilities:</div>
-                      {sortedProbs.map(([label, prob]) => {
-                        const labelColor = getLabelColor(label);
-                        const isTopPrediction = label === currentWord.prediction.predicted_label_base;
-                        return (
-                          <div
-                            key={label}
-                            className={`${styles.probabilityItem} ${
-                              isTopPrediction ? styles.topPrediction : ""
-                            }`}
-                          >
-                            <div className={styles.probabilityLabel}>
-                              <div
-                                className={styles.probabilityColorDot}
-                                style={{ backgroundColor: labelColor }}
-                              />
-                              <span>{label}</span>
-                            </div>
-                            <div className={styles.probabilityBar}>
-                              <div
-                                className={styles.probabilityBarFill}
-                                style={{
-                                  width: `${prob * 100}%`,
-                                  backgroundColor: labelColor,
-                                }}
-                              />
-                            </div>
-                            <span className={styles.probabilityValue}>
-                              {formatConfidence(prob)}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
                 </div>
               </div>
             )}

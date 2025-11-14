@@ -84,23 +84,28 @@
 
   .imageContainer {
     flex: 1;
-    max-width: 600px;
     display: flex;
     align-items: center;
+    justify-content: center;
   }
 
   .imageWrapper {
     max-height: 500px;
     width: 100%;
+    max-width: 100%;
   }
 
   .labelsList {
-    flex: 0 0 350px;
+    flex: 1;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     padding: 1rem;
     background: none;
     border: none;
+  }
+
+  .wordInfo {
+    width: 100%;
   }
 }
 
@@ -118,20 +123,19 @@
 }
 
 .wordInfo {
-  padding: 1.5rem;
-  background: var(--code-background);
-  border-radius: 8px;
-  border: 1px solid var(--text-color);
-  border-opacity: 0.1;
+  padding: 0;
+  width: 100%;
 }
 
 .wordHeader {
+  margin-bottom: 0.75rem;
+}
+
+.wordControls {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  gap: 0.5rem;
   margin-bottom: 1rem;
-  gap: 1rem;
-  flex-wrap: wrap;
+  justify-content: center;
 }
 
 .wordText {
@@ -172,133 +176,39 @@
   margin-bottom: 1.5rem;
 }
 
-.groundTruth,
-.prediction {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-  flex-wrap: wrap;
-}
 
-.groundTruthLabels {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.arrow {
-  color: var(--text-color);
-  opacity: 0.5;
-  font-size: 0.9rem;
-}
-
-.label {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--text-color);
-  opacity: 0.8;
-}
-
-.badge {
-  padding: 0.4rem 0.75rem;
-  border-radius: 6px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: white;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.confidence {
-  font-size: 0.9rem;
-  color: var(--text-color);
-  opacity: 0.7;
-  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
-}
-
-.correct {
-  color: var(--color-green);
-  font-weight: bold;
-  font-size: 1.2rem;
-}
-
-.incorrect {
-  color: var(--color-red);
-  font-weight: bold;
-  font-size: 1.2rem;
-}
-
-.probabilities {
+.barChart {
+  display: grid;
+  grid-template-columns: max-content auto max-content;
+  column-gap: 8px;
+  row-gap: 6px;
+  alignItems: center;
   margin-top: 1.5rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--text-color);
-  border-opacity: 0.1;
 }
 
-.probabilitiesTitle {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--text-color);
-  margin-bottom: 1rem;
-  opacity: 0.8;
-}
-
-.probabilityItem {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 0.75rem;
-  padding: 0.5rem;
-  border-radius: 6px;
-  transition: background-color 0.2s;
-}
-
-.probabilityItem.topPrediction {
-  background: rgba(var(--color-blue-rgb, 0, 100, 200), 0.1);
-  border-left: 3px solid var(--color-blue);
-}
-
-.probabilityLabel {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-width: 140px;
-  font-size: 0.9rem;
-  color: var(--text-color);
+.barLabel {
   font-weight: 500;
-}
-
-.probabilityColorDot {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.probabilityBar {
-  flex: 1;
-  height: 10px;
-  background: var(--background-color);
-  border-radius: 5px;
-  overflow: hidden;
-  position: relative;
-}
-
-.probabilityBarFill {
-  height: 100%;
-  border-radius: 5px;
-  transition: width 0.5s ease;
-}
-
-.probabilityValue {
-  min-width: 60px;
-  text-align: right;
-  font-size: 0.85rem;
+  justify-self: end;
   color: var(--text-color);
-  opacity: 0.7;
+  font-size: 0.9rem;
+}
+
+.barContainer {
+  min-width: 100px;
+}
+
+.bar {
+  height: 20px;
+  border-radius: 6px;
+  transition: width 0.3s ease;
+}
+
+.barValue {
+  text-align: right;
+  color: var(--text-color);
+  font-size: 0.85rem;
   font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+  min-width: 50px;
 }
 
 .loading,
