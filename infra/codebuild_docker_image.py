@@ -815,8 +815,12 @@ if aws ecr describe-images --repository-name $(echo "$REPO_URL" | cut -d'/' -f2)
 fi
 
 echo "📦 Pushing minimal bootstrap image to ECR..."
-# Pull public Lambda base image
-docker pull public.ecr.aws/lambda/python:3.12-arm64
+# Pull public Lambda base image (with error handling)
+if ! docker pull public.ecr.aws/lambda/python:3.12-arm64; then
+  echo "⚠️  Failed to pull base image. Skipping bootstrap image push."
+  echo "   The Lambda function will be created after CodeBuild completes the first build."
+  exit 0
+fi
 
 # Tag it for our ECR repo
 docker tag public.ecr.aws/lambda/python:3.12-arm64 "$REPO_URL:latest"
@@ -833,8 +837,12 @@ else
   exit 1
 fi
 
-# Push to our ECR
-docker push "$REPO_URL:latest"
+# Push to our ECR (with error handling)
+if ! docker push "$REPO_URL:latest"; then
+  echo "⚠️  Failed to push bootstrap image. Skipping."
+  echo "   The Lambda function will be created after CodeBuild completes the first build."
+  exit 0
+fi
 
 echo "✅ Bootstrap image pushed to $REPO_URL:latest"
 """
@@ -909,6 +917,15 @@ echo "✅ Bootstrap image pushed to $REPO_URL:latest"
             lambda_args["file_system_config"] = aws.lambda_.FunctionFileSystemConfigArgs(
                 arn=fs_cfg.get("arn"),
                 local_mount_path=fs_cfg.get("local_mount_path"),
+            )
+
+        # Add image config if provided (for container-based Lambda handler)
+        if self.lambda_config.get("image_config"):
+            img_cfg = self.lambda_config.get("image_config")
+            lambda_args["image_config"] = aws.lambda_.FunctionImageConfigArgs(
+                command=img_cfg.get("command"),
+                entry_point=img_cfg.get("entry_point"),
+                working_directory=img_cfg.get("working_directory"),
             )
 
         # Create Lambda function after bootstrap image is pushed
