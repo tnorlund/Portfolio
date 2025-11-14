@@ -182,12 +182,18 @@ const AddressSimilaritySideBySide: React.FC = () => {
   }, []);
 
   if (loading) {
+    // Reserve space to prevent layout shift - match final component height
+    const reservedHeight = windowWidth <= 768 ? 400 : 700;
     return (
       <div
         style={{
           padding: "2rem",
           textAlign: "center",
           color: "#666",
+          minHeight: `${reservedHeight}px`,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
         }}
       >
         Loading address similarity...
