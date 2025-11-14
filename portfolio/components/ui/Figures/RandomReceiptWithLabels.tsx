@@ -231,20 +231,44 @@ const RandomReceiptWithLabels: React.FC = () => {
   );
 
   // Show loading state - only show if we don't have existing data
+  // Reserve space to prevent layout shift - match expected final height
   if (loading && !data) {
+    const reservedHeight = isMobile ? 400 : 500; // Match imageWrapper max-height
     return (
       <div ref={ref} className={styles.container}>
-        <div className={styles.loading}>Loading receipt with labels...</div>
+        <div
+          className={styles.loading}
+          style={{
+            minHeight: `${reservedHeight}px`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center"
+          }}
+        >
+          Loading...
+        </div>
       </div>
     );
   }
 
 
   // Show error state
+  // Reserve space to prevent layout shift - match expected final height
   if (error && !data) {
+    const reservedHeight = isMobile ? 400 : 500; // Match imageWrapper max-height
     return (
       <div ref={ref} className={styles.container}>
-        <div className={styles.error}>Error: {error}</div>
+        <div
+          className={styles.error}
+          style={{
+            minHeight: `${reservedHeight}px`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center"
+          }}
+        >
+          Error: {error}
+        </div>
       </div>
     );
   }
