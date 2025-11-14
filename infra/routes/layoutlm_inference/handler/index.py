@@ -1,4 +1,7 @@
-"""Lambda handler for serving LayoutLM inference cache."""
+"""Lambda handler for serving LayoutLM inference cache.
+
+This Lambda function serves the cached LayoutLM inference results from S3.
+"""
 
 import json
 import logging
