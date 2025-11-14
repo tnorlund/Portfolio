@@ -48,6 +48,10 @@ class Job:
     job_config: Dict[str, Any]
     estimated_duration: Optional[int] = None
     tags: Optional[Dict[str, str]] = None
+    # Optional S3 storage metadata for this job. Expected keys (all optional):
+    #   bucket, run_root_prefix, checkpoints_prefix, best_prefix, logs_prefix,
+    #   config_prefix, publish_model_prefix
+    storage: Optional[Dict[str, str]] = None
 
     def __post_init__(self):
         """Validates fields after dataclass initialization.
@@ -115,6 +119,22 @@ class Job:
         if self.tags is None:
             self.tags = {}
 
+        # Validate optional storage map
+        if self.storage is not None:
+            if not isinstance(self.storage, dict):
+                raise ValueError("storage must be a dictionary when provided")
+            # Normalize prefixes to have trailing '/'
+            normalized: Dict[str, str] = {}
+            for k, v in self.storage.items():
+                if not isinstance(k, str) or not isinstance(v, str):
+                    raise ValueError("storage keys and values must be strings")
+                if k.endswith("_prefix") and v and not v.endswith("/"):
+                    normalized[k] = v + "/"
+                else:
+                    normalized[k] = v
+            # Replace with normalized copy to avoid mutating the input dict elsewhere
+            self.storage = normalized
+
     @property
     def key(self) -> Dict[str, Any]:
         """Generates the primary key for the job.
@@ -160,6 +180,9 @@ class Job:
         if self.tags:
             item["tags"] = {"M": {k: {"S": v} for k, v in self.tags.items()}}
 
+        if self.storage:
+            item["storage"] = {"M": dict_to_dynamodb_map(self.storage)}
+
         return item
 
     def __repr__(self) -> str:
@@ -200,6 +223,7 @@ class Job:
         yield "job_config", self.job_config
         yield "estimated_duration", self.estimated_duration
         yield "tags", self.tags
+        yield "storage", self.storage
 
     def __hash__(self) -> int:
         """Returns the hash value of the Job object.
@@ -221,8 +245,53 @@ class Job:
                 self.estimated_duration,
                 # Can't hash dictionaries, so convert to tuple of sorted items
                 tuple(sorted(self.tags.items())) if self.tags else None,
+                # Include storage map in hash if present
+                (
+                    tuple(sorted((k, str(v)) for k, v in self.storage.items()))
+                    if self.storage
+                    else None
+                ),
             )
         )
+
+    # ----- S3 Storage helper methods -----
+    def storage_bucket(self) -> Optional[str]:
+        """Returns the S3 bucket associated with this job, if provided."""
+        return (
+            (self.storage or {}).get("bucket")
+            if self.storage is not None
+            else None
+        )
+
+    def storage_prefix(self, key: str) -> Optional[str]:
+        """Returns a storage prefix by key (e.g., 'run_root_prefix', 'best_prefix')."""
+        return (
+            (self.storage or {}).get(key) if self.storage is not None else None
+        )
+
+    def s3_uri_for_prefix(self, key: str) -> Optional[str]:
+        """Builds an s3:// URI for a named prefix if bucket and prefix are set."""
+        bucket = self.storage_bucket()
+        prefix = self.storage_prefix(key)
+        if bucket and prefix:
+            return f"s3://{bucket}/{prefix}"
+        return None
+
+    def best_dir_uri(self) -> Optional[str]:
+        """Returns the s3:// URI to the best checkpoint directory if known."""
+        # Prefer explicit best_prefix; otherwise derive from run_root_prefix if available
+        explicit = self.s3_uri_for_prefix("best_prefix")
+        if explicit:
+            return explicit
+        bucket = self.storage_bucket()
+        run_root = self.storage_prefix("run_root_prefix")
+        if bucket and run_root:
+            return f"s3://{bucket}/{run_root}best/"
+        return None
+
+    def publish_dir_uri(self) -> Optional[str]:
+        """Returns the s3:// URI where the publishable model bundle should live, if set."""
+        return self.s3_uri_for_prefix("publish_model_prefix")
 
 
 def item_to_job(item: Dict[str, Any]) -> Job:
@@ -284,6 +353,11 @@ def item_to_job(item: Dict[str, Any]) -> Job:
         if "tags" in item and "M" in item["tags"]:
             tags = {k: v["S"] for k, v in item["tags"]["M"].items()}
 
+        # Parse optional storage map
+        storage: Optional[Dict[str, Any]] = None
+        if "storage" in item and "M" in item["storage"]:
+            storage = parse_dynamodb_map(item["storage"]["M"])
+
         return Job(
             job_id=job_id,
             name=name,
@@ -295,6 +369,7 @@ def item_to_job(item: Dict[str, Any]) -> Job:
             job_config=job_config,
             estimated_duration=estimated_duration,
             tags=tags,
+            storage=storage,
         )
     except KeyError as e:
         raise ValueError(f"Error converting item to Job: {e}") from e
