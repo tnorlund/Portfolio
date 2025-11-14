@@ -752,7 +752,7 @@ export default function ReceiptPage({
         Building with AI isn&apos;t about finding the perfect tool. It&apos;s about
         moving fast enough to learn what actually works. The process is simple:
         build quickly, test, and iterate. The best way to learn is to build
-        something. Please look at the
+        something. Please look at the{" "}
         <a href="https://github.com/tnorlund/Portfolio" target="_blank" rel="noopener noreferrer">GitHub repository</a> for the full
         code and documentation.
       </p>
