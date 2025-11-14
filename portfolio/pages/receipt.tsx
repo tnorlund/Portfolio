@@ -10,6 +10,7 @@ import {
   AddressSimilaritySideBySide,
   ClientImageCounts,
   ClientReceiptCounts,
+  CodeBuildDiagram,
   ImageStack,
   LabelValidationCount,
   LayoutLMInferenceVisualization,
@@ -29,10 +30,12 @@ import {
   GoogleMapsLogo,
   HuggingFaceLogo,
   PulumiLogo,
+  TerraformLogo,
 } from "../components/ui/Logos";
 
 interface ReceiptPageProps {
   uploadDiagramChars: string[];
+  codeBuildDiagramChars: string[];
 }
 
 // Use getStaticProps for static generation - this runs at build time
@@ -44,14 +47,23 @@ export const getStaticProps: GetStaticProps<ReceiptPageProps> = async () => {
     Math.random() > 0.5 ? "1" : "0",
   );
 
+  // Generate chars for CodeBuildDiagram (3 phases, similar bit count)
+  const codeBuildDiagramChars = Array.from({ length: 120 }, () =>
+    Math.random() > 0.5 ? "1" : "0",
+  );
+
   return {
     props: {
       uploadDiagramChars,
+      codeBuildDiagramChars,
     },
   };
 };
 
-export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
+export default function ReceiptPage({
+  uploadDiagramChars,
+  codeBuildDiagramChars,
+}: ReceiptPageProps) {
   // Remove client-side generation - now passed as prop from getStaticProps
   // const [uploadDiagramChars, setUploadDiagramChars] = useState<string[]>([]);
 
@@ -572,9 +584,15 @@ export default function ReceiptPage({ uploadDiagramChars }: ReceiptPageProps) {
       </p>
 
       <ClientOnly>
-        <AnimatedInView>
-          <PulumiLogo />
-        </AnimatedInView>
+        <div className={styles["logos-container"]}>
+          <AnimatedInView>
+            <PulumiLogo />
+          </AnimatedInView>
+          <AnimatedInView>
+            <TerraformLogo />
+          </AnimatedInView>
+        </div>
+        <CodeBuildDiagram chars={codeBuildDiagramChars} />
       </ClientOnly>
 
       <p>
