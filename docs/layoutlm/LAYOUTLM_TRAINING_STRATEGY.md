@@ -216,7 +216,7 @@ else:
 ## Next Steps
 
 1. ✅ **Infrastructure deployed** - Ready to train
-2. ⏭️ **Build and upload wheels** - See LAYOUTLM_GETTING_STARTED.md
+2. ⏭️ **Build and upload wheels** - See ../LAYOUTLM_GETTING_STARTED.md
 3. ⏭️ **Launch EC2 instance** - Scale ASG to 1
 4. ⏭️ **Run validation run** - Quick 3-epoch test
 5. ⏭️ **Review results** - Check DynamoDB metrics
