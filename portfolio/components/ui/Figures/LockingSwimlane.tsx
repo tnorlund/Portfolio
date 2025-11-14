@@ -20,14 +20,16 @@ const LockingSwimlane: React.FC<LockingSwimlaneProps> = ({ chars }) => {
 
   // Layout constants
   const LANE_HEIGHT = 100;
-  const LANE_1_Y = 50; // Reduced from 120 since we removed top labels
-  const LANE_2_Y = LANE_1_Y + LANE_HEIGHT;
-  const LANE_3_Y = LANE_2_Y + LANE_HEIGHT;
-  const LOCK_X = 200; // Single lock position (shared resource)
-  const WORK_START_X = 300;
-  const WORK_END_X = 500;
-  const SVG_WIDTH = 650;
-  const SVG_HEIGHT = 350; // Reduced from 420 since we removed top padding
+  const LOCK_X = 160; // Single lock position (shared resource) - spaced to match job name distance from vertical line
+  const LOCK_WIDTH = 32; // Lock icon width
+  const SPACING = 50; // Consistent spacing between elements
+  const WORK_START_X = LOCK_X + LOCK_WIDTH + SPACING; // 160 + 32 + 50 = 242
+  const WORK_WIDTH = 200; // Progress bar width
+  const WORK_END_X = WORK_START_X + WORK_WIDTH; // 242 + 200 = 442
+  const LABEL_X = WORK_END_X + SPACING; // 442 + 50 = 492
+  const LABEL_MAX_WIDTH = 70; // Approximate max width for labels like "Validate", "Upload"
+  const CONTAINER_WIDTH = LABEL_X + LABEL_MAX_WIDTH; // 492 + 70 = 562
+  const CONTAINER_HEIGHT = 350;
 
   // Timeline: Each job goes through Lock (quick validation) → Work (long, off-lock) → Lock (medium, upload)
   // Jobs compete for the SAME lock - only one can hold it at a time
@@ -94,48 +96,33 @@ const LockingSwimlane: React.FC<LockingSwimlaneProps> = ({ chars }) => {
     Math.max(...TIMELINE.map((t) => t.start + t.duration)) + CYCLE_PAUSE;
 
   const [cycle, setCycle] = React.useState(0);
-  const svgRef = React.useRef<SVGSVGElement>(null);
-  const [fontSize, setFontSize] = React.useState("1rem");
 
-  // Calculate font size based on SVG's rendered size to match body text
   React.useEffect(() => {
-    const updateFontSize = () => {
-      if (!svgRef.current) return;
-
-      // Get the SVG's rendered dimensions
-      const rect = svgRef.current.getBoundingClientRect();
-      const scaleFactor = rect.width / SVG_WIDTH;
-
-      // Body text is 16px (1rem). We want the SVG text to render at the same visual size
-      // So we need to account for the SVG's scale factor
-      // If SVG is scaled to 50% width, we need 2x the font size in SVG units
-      const bodyFontSizePx = 16; // 1rem = 16px at default browser size
-      const svgFontSizePx = bodyFontSizePx / scaleFactor;
-
-      // Convert to rem for consistency, but adjust for SVG scaling
-      // Since SVG text is in SVG coordinate space, we use the calculated pixel size
-      setFontSize(`${svgFontSizePx}px`);
-    };
-
-    updateFontSize();
-    window.addEventListener("resize", updateFontSize);
-    return () => window.removeEventListener("resize", updateFontSize);
-  }, []);
-
-  // Get lane Y position for a job
-  const getLaneY = (job: number) => {
-    if (job === 1) return LANE_1_Y;
-    if (job === 2) return LANE_2_Y;
-    return LANE_3_Y;
-  };
+    // Start the cycle timer
+    const id = setTimeout(() => {
+      setCycle((c) => c + 1);
+    }, totalCycleTime);
+    return () => clearTimeout(id);
+  }, [cycle, totalCycleTime]);
 
   // Animate progress bars (show during work phase)
   // Use explicit API control for precise timing
-  const workWidth = WORK_END_X - WORK_START_X;
+  const workWidth = WORK_WIDTH;
   const [progressSprings, progressApi] = useSprings(3, () => ({ width: 0, opacity: 0 }));
 
   React.useEffect(() => {
     const timeouts: NodeJS.Timeout[] = [];
+
+    // Reset all animations immediately at cycle start (use setTimeout 0 to avoid blocking)
+    timeouts.push(
+      setTimeout(() => {
+        progressApi.start((i) => ({
+          width: 0,
+          opacity: 0,
+          immediate: true,
+        }));
+      }, 0)
+    );
 
     [1, 2, 3].forEach((job) => {
       const workPhase = TIMELINE.find((t) => t.job === job && t.phase === "work");
@@ -145,14 +132,6 @@ const LockingSwimlane: React.FC<LockingSwimlaneProps> = ({ chars }) => {
       const fadeInDuration = 200;
       const fillDuration = workPhase.duration;
       const fadeOutDuration = 200;
-
-      // Reset at cycle start
-      progressApi.start((i) => {
-        if (i === jobIndex) {
-          return { width: 0, opacity: 0, immediate: true };
-        }
-        return false;
-      });
 
       // Wait until work phase starts, then fade in
       timeouts.push(
@@ -172,7 +151,7 @@ const LockingSwimlane: React.FC<LockingSwimlaneProps> = ({ chars }) => {
           progressApi.start((i) => {
             if (i === jobIndex) {
               return {
-                width: workWidth,
+                width: 100, // Animate from 0 to 100 (percentage)
                 config: { duration: fillDuration, easing: (t: number) => t },
               };
             }
@@ -217,6 +196,16 @@ const LockingSwimlane: React.FC<LockingSwimlaneProps> = ({ chars }) => {
   React.useEffect(() => {
     const timeouts: NodeJS.Timeout[] = [];
 
+    // Reset all animations immediately at cycle start (use setTimeout 0 to avoid blocking)
+    timeouts.push(
+      setTimeout(() => {
+        lockApi.start((i) => ({
+          opacity: 0,
+          immediate: true,
+        }));
+      }, 0)
+    );
+
     [1, 2, 3].forEach((job) => {
       const lock1Phase = TIMELINE.find((t) => t.job === job && t.phase === "lock1");
       const lock2Phase = TIMELINE.find((t) => t.job === job && t.phase === "lock2");
@@ -229,14 +218,6 @@ const LockingSwimlane: React.FC<LockingSwimlaneProps> = ({ chars }) => {
       const lock1End = lock1Phase.start + lock1Phase.duration;
       const lock2Start = lock2Phase.start;
       const lock2End = lock2Start + lock2Phase.duration;
-
-      // Reset at cycle start
-      lockApi.start((i) => {
-        if (i === jobIndex) {
-          return { opacity: 0, immediate: true };
-        }
-        return false;
-      });
 
       // Lock 1 phase - fade in
       timeouts.push(
@@ -310,6 +291,16 @@ const LockingSwimlane: React.FC<LockingSwimlaneProps> = ({ chars }) => {
   React.useEffect(() => {
     const timeouts: NodeJS.Timeout[] = [];
 
+    // Reset all animations immediately at cycle start (use setTimeout 0 to avoid blocking)
+    timeouts.push(
+      setTimeout(() => {
+        waitingApi.start((i) => ({
+          opacity: 0,
+          immediate: true,
+        }));
+      }, 0)
+    );
+
     [1, 2, 3].forEach((job) => {
       const waitingPhase = TIMELINE.find((t) => t.job === job && t.phase === "waiting");
       const lock1Phase = TIMELINE.find((t) => t.job === job && t.phase === "lock1");
@@ -323,14 +314,6 @@ const LockingSwimlane: React.FC<LockingSwimlaneProps> = ({ chars }) => {
       // Clock should disappear 100ms before lock1 starts (or at end of waiting phase if no lock1)
       const clockEndTime = lock1Phase ? lock1Phase.start - 100 : waitingPhase.start + waitingPhase.duration;
       const fadeOutStart = clockEndTime - fadeOutDuration; // Start fade out so it completes at clockEndTime
-
-      // Reset at cycle start
-      waitingApi.start((i) => {
-        if (i === jobIndex) {
-          return { opacity: 0, immediate: true };
-        }
-        return false;
-      });
 
       // Wait until waiting phase starts, then fade in
       timeouts.push(
@@ -374,6 +357,115 @@ const LockingSwimlane: React.FC<LockingSwimlaneProps> = ({ chars }) => {
     };
   }, [cycle, waitingApi, TIMELINE, totalCycleTime]);
 
+  // Track label DOM elements using refs to avoid re-renders
+  const labelElementsRef = React.useRef<[HTMLDivElement | null, HTMLDivElement | null, HTMLDivElement | null]>([null, null, null]);
+
+  React.useEffect(() => {
+    const timeouts: NodeJS.Timeout[] = [];
+
+    // Reset all labels immediately at cycle start
+    labelElementsRef.current.forEach((el) => {
+      if (el) {
+        el.textContent = "";
+        el.style.opacity = "0";
+      }
+    });
+
+    [1, 2, 3].forEach((job) => {
+      const lock1Phase = TIMELINE.find((t) => t.job === job && t.phase === "lock1");
+      const workPhase = TIMELINE.find((t) => t.job === job && t.phase === "work");
+      const lock2Phase = TIMELINE.find((t) => t.job === job && t.phase === "lock2");
+
+      if (!lock1Phase || !workPhase || !lock2Phase) return;
+
+      const jobIndex = job - 1;
+      const fadeDuration = 200;
+
+      // Show "Validate" (Download icon) during lock1
+      timeouts.push(
+        setTimeout(() => {
+          const el = labelElementsRef.current[jobIndex];
+          if (el) {
+            el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300" style="width: 32px; height: 32px; display: block;">
+              <defs>
+                <style>
+                  .download-icon-stroke {
+                    fill: none;
+                    stroke: var(--text-color);
+                    stroke-miterlimit: 10;
+                    stroke-width: 20px;
+                  }
+                </style>
+              </defs>
+              <circle class="download-icon-stroke" cx="150" cy="150" r="136.82"/>
+              <g>
+                <path class="download-icon-stroke" d="M150,75.43l.38,121.09"/>
+                <polyline class="download-icon-stroke" points="196.26 150.26 150.38 196.52 103.74 150.26"/>
+                <line class="download-icon-stroke" x1="214.4" y1="224.57" x2="85.6" y2="224.57"/>
+              </g>
+            </svg>`;
+            el.style.transition = `opacity ${fadeDuration}ms`;
+            el.style.opacity = "1";
+          }
+        }, lock1Phase.start)
+      );
+
+      timeouts.push(
+        setTimeout(() => {
+          const el = labelElementsRef.current[jobIndex];
+          if (el) {
+            el.style.transition = `opacity ${fadeDuration}ms`;
+            el.style.opacity = "0";
+          }
+        }, lock1Phase.start + lock1Phase.duration - fadeDuration)
+      );
+
+
+      // Show "Upload" icon during lock2
+      timeouts.push(
+        setTimeout(() => {
+          const el = labelElementsRef.current[jobIndex];
+          if (el) {
+            el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300" style="width: 32px; height: 32px; display: block;">
+              <defs>
+                <style>
+                  .upload-icon-stroke {
+                    fill: none;
+                    stroke: var(--text-color);
+                    stroke-miterlimit: 10;
+                    stroke-width: 20px;
+                  }
+                </style>
+              </defs>
+              <circle class="upload-icon-stroke" cx="150" cy="150" r="136.82"/>
+              <g>
+                <path class="upload-icon-stroke" d="M150,203.98l.38-128.55"/>
+                <polyline class="upload-icon-stroke" points="196.26 121.69 150.38 75.43 103.74 121.69"/>
+                <line class="upload-icon-stroke" x1="214.4" y1="224.57" x2="85.6" y2="224.57"/>
+              </g>
+            </svg>`;
+            el.style.transition = `opacity ${fadeDuration}ms`;
+            el.style.opacity = "1";
+          }
+        }, lock2Phase.start)
+      );
+
+      timeouts.push(
+        setTimeout(() => {
+          const el = labelElementsRef.current[jobIndex];
+          if (el) {
+            el.style.transition = `opacity ${fadeDuration}ms`;
+            el.style.opacity = "0";
+          }
+        }, lock2Phase.start + lock2Phase.duration - fadeDuration)
+      );
+    });
+
+    return () => {
+      timeouts.forEach(clearTimeout);
+    };
+  }, [cycle, TIMELINE, totalCycleTime]);
+
   return (
     <div
       style={{
@@ -384,132 +476,113 @@ const LockingSwimlane: React.FC<LockingSwimlaneProps> = ({ chars }) => {
       }}
     >
       <div className={styles.container}>
-        <svg
-          ref={svgRef}
-          height={SVG_HEIGHT}
-          width={SVG_WIDTH}
-          viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
-          className={styles.svg}
-        >
-          <defs>
-            <style>
-              {`.lock-icon { fill: var(--text-color); stroke: var(--text-color); stroke-width: 2; }`}
-            </style>
-          </defs>
-
-          {/* Lane dividers */}
-          <line
-            x1="0"
-            y1={LANE_1_Y + LANE_HEIGHT / 2}
-            x2={SVG_WIDTH}
-            y2={LANE_1_Y + LANE_HEIGHT / 2}
-            stroke="var(--text-color)"
-            strokeWidth="1"
-            opacity="0.15"
-          />
-          <line
-            x1="0"
-            y1={LANE_2_Y + LANE_HEIGHT / 2}
-            x2={SVG_WIDTH}
-            y2={LANE_2_Y + LANE_HEIGHT / 2}
-            stroke="var(--text-color)"
-            strokeWidth="1"
-            opacity="0.15"
-          />
-
-          {/* Job labels */}
+        <div className={styles.swimlane}>
+          {/* Job lanes */}
           {[1, 2, 3].map((job) => (
-            <text
-              key={`job-label-${job}`}
-              x="20"
-              y={getLaneY(job) + 5}
-              fill="var(--text-color)"
-              fontSize={fontSize}
-              fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
-              fontWeight="normal"
-            >
-              Job {job}
-            </text>
-          ))}
+            <div key={`job-${job}`} className={styles.lane}>
+              {/* Job label */}
+              <div className={styles.jobLabel}>Job {job}</div>
 
+              {/* Lock position */}
+              <div className={styles.lockPosition}>
+                {/* Lock icon */}
+                <animated.div
+                  className={styles.lockIcon}
+                  style={{
+                    ...lockSprings[job - 1],
+                    pointerEvents: "none",
+                  }}
+                >
+                  <svg
+                    width="32"
+                    height="32"
+                    viewBox="0 0 300 300"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="M150,293.04c55.3-.04,100.1-44.9,100.06-100.2-.02-26.14-10.26-51.24-28.54-69.94v-44.43c0-39.5-32.02-71.52-71.52-71.52s-71.52,32.02-71.52,71.52v44.43c-38.66,39.54-37.95,102.93,1.59,141.6,18.69,18.28,43.79,28.52,69.94,28.54ZM164.3,203.25v32.57c0,7.9-6.4,14.3-14.3,14.3s-14.3-6.4-14.3-14.3v-32.57c-13.68-7.9-18.37-25.4-10.47-39.08,7.9-13.68,25.4-18.37,39.08-10.47,13.68,7.9,18.37,25.4,10.47,39.08-2.51,4.35-6.12,7.96-10.47,10.47ZM107.09,78.48c0-23.7,19.21-42.91,42.91-42.91s42.91,19.21,42.91,42.91v24.07c-27.13-13.03-58.7-13.03-85.83,0v-24.07Z"
+                      fill="var(--text-color)"
+                    />
+                  </svg>
+                </animated.div>
 
-          {/* Waiting indicators (clock icons) - positioned at same Y as lock to replace it */}
-          {[1, 2, 3].map((job) => (
-            <animated.g
-              key={`waiting-${job}`}
-              transform={`translate(${LOCK_X}, ${getLaneY(job)})`}
-              style={waitingSprings[job - 1]}
-            >
-              {/* Clock icon showing waiting state - same position as lock */}
-              <circle
-                r="14"
-                fill="var(--code-background)"
-                stroke="var(--text-color)"
-                strokeWidth="1.5"
-              />
-              <path
-                d="M0,0 L0,-8"
-                stroke="var(--text-color)"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
-              <path
-                d="M0,0 L5,0"
-                stroke="var(--text-color)"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
-            </animated.g>
-          ))}
+                {/* Clock icon (waiting) */}
+                <animated.div
+                  className={styles.clockIcon}
+                  style={{
+                    ...waitingSprings[job - 1],
+                    pointerEvents: "none",
+                  }}
+                >
+                  <svg
+                    width="32"
+                    height="32"
+                    viewBox="0 0 300 300"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <circle
+                      cx="150"
+                      cy="150"
+                      r="136.82"
+                      fill="none"
+                      stroke="var(--text-color)"
+                      strokeMiterlimit="10"
+                      strokeWidth="20"
+                    />
+                    <path
+                      d="M149.82,42.06l.18,107.94"
+                      fill="none"
+                      stroke="var(--text-color)"
+                      strokeMiterlimit="10"
+                      strokeWidth="20"
+                    />
+                    <line
+                      x1="203.8"
+                      y1="150"
+                      x2="150"
+                      y2="150"
+                      fill="none"
+                      stroke="var(--text-color)"
+                      strokeMiterlimit="10"
+                      strokeWidth="20"
+                      strokeLinecap="square"
+                    />
+                  </svg>
+                </animated.div>
+              </div>
 
-          {/* Active lock indicators (full opacity when job has the lock) */}
-          {[1, 2, 3].map((job) => (
-            <animated.g
-              key={`lock-${job}`}
-              transform={`translate(${LOCK_X}, ${getLaneY(job)}) scale(1.5)`}
-              style={lockSprings[job - 1]}
-            >
-              {/* Lock icon from SVG */}
-              <path
-                d="M12,22a7,7,0,0,0,5-11.894V7A5,5,0,0,0,7,7v3.106A7,7,0,0,0,12,22Zm1-6.277V18a1,1,0,0,1-2,0V15.723a2,2,0,1,1,2,0ZM9,7a3,3,0,0,1,6,0V8.683a6.93,6.93,0,0,0-6,0Z"
-                fill="var(--text-color)"
-                transform="translate(-12, -12)"
-              />
-            </animated.g>
-          ))}
-
-
-          {/* Progress bars during work phase */}
-          {[1, 2, 3].map((job) => {
-            const spring = progressSprings[job - 1];
-            return (
-              <g key={`progress-${job}`}>
-                {/* Background track - only visible when progress bar is active */}
-                <animated.rect
-                  x={WORK_START_X}
-                  y={getLaneY(job) - 8}
-                  width={WORK_END_X - WORK_START_X}
-                  height="16"
-                  fill="var(--code-background)"
-                  stroke="var(--text-color)"
-                  strokeWidth="1"
-                  opacity={spring.opacity.to((o) => o * 0.3)}
-                  rx="8"
+              {/* Work area with progress bar */}
+              <animated.div
+                className={styles.workArea}
+                style={{
+                  opacity: progressSprings[job - 1].opacity,
+                }}
+              >
+                <div className={styles.progressBarTrack} />
+                <animated.div
+                  className={styles.progressBar}
+                  style={{
+                    width: progressSprings[job - 1].width.to((w) => `${w}%`),
+                  }}
                 />
-                {/* Animated progress bar */}
-                <animated.rect
-                  x={WORK_START_X}
-                  y={getLaneY(job) - 8}
-                  width={spring.width}
-                  height="16"
-                  fill="var(--text-color)"
-                  opacity={spring.opacity}
-                  rx="8"
-                />
-              </g>
-            );
-          })}
-        </svg>
+              </animated.div>
+
+              {/* Phase label */}
+              <div
+                ref={(el) => {
+                  labelElementsRef.current[job - 1] = el;
+                }}
+                className={styles.phaseLabel}
+                style={{
+                  opacity: 0,
+                  transition: "opacity 200ms",
+                }}
+              />
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
