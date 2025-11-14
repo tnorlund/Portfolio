@@ -196,7 +196,7 @@ const AddressSimilaritySideBySide: React.FC = () => {
           justifyContent: "center",
         }}
       >
-        Loading address similarity...
+        Loading...
       </div>
     );
   }
