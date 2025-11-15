@@ -70,21 +70,10 @@ lock_duration_minutes = int(os.environ.get("LOCK_DURATION_MINUTES", "5"))
 
 def close_chromadb_client(client: Any, collection_name: Optional[str] = None) -> None:
     """
-    Properly close ChromaDB client to ensure SQLite files are flushed and unlocked.
+    Simple client cleanup for ChromaDB 1.0.21.
 
-    NOTE: ChromaDB's PersistentClient doesn't expose a close() method, so we use
-    a workaround: clear references, try to close SQLite connections directly, and
-    force garbage collection. This is necessary to prevent SQLite file locking
-    issues when uploading/copying SQLite files.
-
-    RESEARCH CONFIRMED: After extensive searching of official ChromaDB documentation,
-    GitHub repository, and community forums, there is NO official method to close
-    PersistentClient instances. ChromaDB does not provide:
-    - A close() method
-    - Context manager support (__enter__/__exit__)
-    - Any documented way to explicitly release SQLite connections
-
-    This workaround represents the best available solution given ChromaDB's API limitations.
+    Testing if 1.0.21 handles cleanup better than 1.3.x, so using minimal cleanup.
+    If issues persist, we can restore the more aggressive workarounds.
 
     Args:
         client: ChromaDB PersistentClient instance (or wrapper with _client attribute)
@@ -94,81 +83,27 @@ def close_chromadb_client(client: Any, collection_name: Optional[str] = None) ->
         return
 
     try:
-        logger.info(
-            "Closing ChromaDB client",
+        logger.debug(
+            "Cleaning up ChromaDB client",
             collection=collection_name or "unknown",
-            client_type=type(client).__name__,
         )
 
-        # For wrapper classes (like ChromaDBClient), clear collections cache first
+        # Simple cleanup - clear references
         if hasattr(client, '_collections'):
             client._collections.clear()
-
-        # Try to access and close underlying SQLite connections directly
-        # ChromaDB uses SQLite under the hood, and we can try to close connections
-        # through the admin API if available
-        try:
-            # Try to get the admin API which has access to the SQLite connection
-            if hasattr(client, '_admin_client'):
-                admin_client = client._admin_client
-                if hasattr(admin_client, '_db'):
-                    db = admin_client._db
-                    if hasattr(db, 'close'):
-                        db.close()
-                        logger.debug("Closed SQLite connection via admin client")
-        except Exception:
-            # If we can't access the connection directly, that's okay
-            pass
-
-        # Clear the underlying client reference
-        # For direct PersistentClient instances, this is the client itself
-        # For wrapper classes, clear the _client attribute
         if hasattr(client, '_client') and client._client is not None:
-            # ChromaDB PersistentClient doesn't have explicit close(), but clearing
-            # the reference allows Python GC to close SQLite connections
             client._client = None
 
-        # Try to access internal SQLite connection for direct PersistentClient instances
-        # Use type name check instead of isinstance to avoid import issues
-        try:
-            client_type_name = type(client).__name__
-            if client_type_name == 'PersistentClient' or 'PersistentClient' in str(type(client)):
-                # Direct PersistentClient - try to access internal SQLite connection
-                try:
-                    # ChromaDB stores the admin client which has the SQLite connection
-                    if hasattr(client, '_admin_client') and client._admin_client is not None:
-                        admin = client._admin_client
-                        if hasattr(admin, '_db') and admin._db is not None:
-                            # Try to close the SQLite connection
-                            sqlite_db = admin._db
-                            if hasattr(sqlite_db, 'close'):
-                                sqlite_db.close()
-                                logger.debug("Closed SQLite connection directly")
-                except Exception:
-                    # If we can't access it, that's okay - GC will handle it
-                    pass
-        except Exception:
-            # If type checking fails, that's okay - continue with GC cleanup
-            pass
+        # Let Python GC handle the rest - 1.0.21 may handle this better
+        client = None
 
-        # Force garbage collection multiple times to ensure cleanup
-        # This is necessary because ChromaDB doesn't expose a close() method
-        import gc
-        gc.collect()  # First pass
-        gc.collect()  # Second pass to catch any circular references
-
-        # Longer delay to ensure file handles are released by OS
-        # SQLite file handles can take time to be released, especially under load
-        import time as _time
-        _time.sleep(0.5)  # Increased from 0.1 to 0.5 seconds
-
-        logger.info(
-            "ChromaDB client closed successfully",
+        logger.debug(
+            "ChromaDB client cleaned up",
             collection=collection_name or "unknown",
         )
     except Exception as e:
-        logger.warning(
-            "Error closing ChromaDB client (non-critical)",
+        logger.debug(
+            "Error cleaning up ChromaDB client (non-critical)",
             error=str(e),
             collection=collection_name or "unknown",
         )
@@ -912,133 +847,9 @@ def process_chunk_deltas(
             total_embeddings=total_embeddings,
         )
 
-        # CRITICAL: Close ChromaDB client BEFORE uploading to ensure SQLite files are flushed and unlocked
-        # This prevents corruption when uploading files that are still being written to
+        # Simple cleanup for ChromaDB 1.0.21 (testing if workarounds are needed)
         close_chromadb_client(chroma_client, collection_name="chunk_processing")
         chroma_client = None
-
-        # Add delay after closing to ensure file handles are fully released
-        import time as _time
-        _time.sleep(0.3)  # 300ms delay after closing
-
-        # DEBUG: Verify critical ChromaDB files are accessible before upload
-        # This includes SQLite files AND HNSW index files to prevent corruption
-        sqlite_files_found = []
-        hnsw_files_found = []
-        other_critical_files = []
-
-        for root, dirs, files in os.walk(temp_dir):
-            for file in files:
-                file_path = os.path.join(root, file)
-                file_rel_path = os.path.relpath(file_path, temp_dir)
-
-                # Check SQLite files
-                if file.endswith('.sqlite3') or file.endswith('.sqlite'):
-                    try:
-                        file_stat = os.stat(file_path)
-                        # Try to open it read-only to verify it's not locked
-                        with open(file_path, 'rb') as f:
-                            f.read(1)  # Read 1 byte to verify file is accessible
-                        sqlite_files_found.append({
-                            "path": file_rel_path,
-                            "size": file_stat.st_size,
-                            "accessible": True,
-                        })
-                    except Exception as verify_error:
-                        logger.warning(
-                            "SQLite file not accessible before upload",
-                            file_path=file_rel_path,
-                            error=str(verify_error),
-                        )
-                        sqlite_files_found.append({
-                            "path": file_rel_path,
-                            "accessible": False,
-                            "error": str(verify_error),
-                        })
-
-                # Check HNSW index files (ChromaDB creates these for vector search)
-                # HNSW files are typically in subdirectories and may have various extensions
-                elif 'index' in file.lower() or file.endswith('.index') or 'hnsw' in file.lower():
-                    try:
-                        file_stat = os.stat(file_path)
-                        # Verify file is complete (not being written to)
-                        # Check if file size is stable (read twice with small delay)
-                        size1 = file_stat.st_size
-                        import time as _time
-                        _time.sleep(0.05)  # 50ms delay
-                        size2 = os.stat(file_path).st_size
-                        if size1 == size2:
-                            # File size is stable, likely complete
-                            with open(file_path, 'rb') as f:
-                                f.read(1)  # Verify readable
-                            hnsw_files_found.append({
-                                "path": file_rel_path,
-                                "size": file_stat.st_size,
-                                "accessible": True,
-                                "stable": True,
-                            })
-                        else:
-                            logger.warning(
-                                "HNSW index file still being written",
-                                file_path=file_rel_path,
-                                size1=size1,
-                                size2=size2,
-                            )
-                            hnsw_files_found.append({
-                                "path": file_rel_path,
-                                "accessible": False,
-                                "error": "File size changed during verification",
-                            })
-                    except Exception as verify_error:
-                        logger.warning(
-                            "HNSW index file not accessible before upload",
-                            file_path=file_rel_path,
-                            error=str(verify_error),
-                        )
-                        hnsw_files_found.append({
-                            "path": file_rel_path,
-                            "accessible": False,
-                            "error": str(verify_error),
-                        })
-
-                # Check for other critical ChromaDB files (parquet, metadata, etc.)
-                elif file.endswith('.parquet') or file.endswith('.metadata'):
-                    try:
-                        file_stat = os.stat(file_path)
-                        with open(file_path, 'rb') as f:
-                            f.read(1)
-                        other_critical_files.append({
-                            "path": file_rel_path,
-                            "size": file_stat.st_size,
-                            "accessible": True,
-                        })
-                    except Exception as verify_error:
-                        logger.warning(
-                            "Critical file not accessible before upload",
-                            file_path=file_rel_path,
-                            error=str(verify_error),
-                        )
-
-        logger.info(
-            "ChromaDB file verification before upload",
-            chunk_index=chunk_index,
-            sqlite_files=sqlite_files_found,
-            hnsw_files=hnsw_files_found,
-            other_critical_files=other_critical_files,
-            total_files_verified=len(sqlite_files_found) + len(hnsw_files_found) + len(other_critical_files),
-        )
-
-        # Warn if any critical files are not accessible
-        inaccessible_files = (
-            [f for f in sqlite_files_found if not f.get("accessible", False)] +
-            [f for f in hnsw_files_found if not f.get("accessible", False)]
-        )
-        if inaccessible_files:
-            logger.warning(
-                "Some critical files are not accessible before upload - upload may cause corruption",
-                chunk_index=chunk_index,
-                inaccessible_files=inaccessible_files,
-            )
 
         # Upload intermediate chunk to S3
         intermediate_key = f"intermediate/{batch_id}/chunk-{chunk_index}/"
@@ -1230,56 +1041,8 @@ def perform_intermediate_merge(
                     chunk_key=chunk_key,
                 )
 
-                # DEBUG: Verify chunk files exist and check for SQLite files
-                chunk_files = []
-                sqlite_files = []
-                for root, dirs, files in os.walk(chunk_temp):
-                    for file in files:
-                        file_path = os.path.join(root, file)
-                        chunk_files.append(file_path)
-                        if file.endswith('.sqlite3') or file.endswith('.sqlite'):
-                            sqlite_files.append(file_path)
-                            # Check file size and permissions
-                            try:
-                                file_stat = os.stat(file_path)
-                                logger.info(
-                                    "Found SQLite file in chunk",
-                                    file_path=file_path,
-                                    file_size=file_stat.st_size,
-                                    readable=os.access(file_path, os.R_OK),
-                                    writable=os.access(file_path, os.W_OK),
-                                )
-                            except Exception as stat_error:
-                                logger.warning(
-                                    "Error checking SQLite file",
-                                    file_path=file_path,
-                                    error=str(stat_error),
-                                )
-
-                logger.info(
-                    "Chunk file verification",
-                    chunk_index=i,
-                    total_files=len(chunk_files),
-                    sqlite_files=len(sqlite_files),
-                    sqlite_file_paths=sqlite_files,
-                )
-
-                # Add a small delay before opening to ensure any previous file handles are released
-                # This helps prevent "unable to open database file" errors
-                import time as _time
-                _time.sleep(0.2)  # 200ms delay
-
-                # Load chunk ChromaDB
-                logger.info(
-                    "Creating ChromaDB client for chunk",
-                    chunk_index=i,
-                    chunk_temp=chunk_temp,
-                )
+                # Load chunk ChromaDB (simple for 1.0.21 testing)
                 chunk_client = chromadb.PersistentClient(path=chunk_temp)
-                logger.info(
-                    "Successfully created ChromaDB client for chunk",
-                    chunk_index=i,
-                )
 
                 # Merge all collections from this chunk
                 for collection_meta in chunk_client.list_collections():
@@ -1334,39 +1097,6 @@ def perform_intermediate_merge(
                             total_embeddings=total_embeddings,
                         )
 
-                # CRITICAL: Flush main client after processing each chunk to ensure SQLite writes are complete
-                # This prevents file locking conflicts when opening the next chunk's SQLite file
-                # We don't fully close the main client (we need it for the next chunk), but we flush it
-                logger.debug(
-                    "Flushing main client after chunk merge",
-                    chunk_index=i,
-                )
-                try:
-                    # Force a flush by accessing the admin client and syncing
-                    # ChromaDB doesn't expose explicit flush, but we can trigger a sync
-                    if hasattr(chroma_client, '_admin_client') and chroma_client._admin_client is not None:
-                        admin = chroma_client._admin_client
-                        if hasattr(admin, '_db') and admin._db is not None:
-                            # SQLite commit/flush
-                            admin._db.execute("PRAGMA synchronous = NORMAL")
-                            admin._db.commit()
-                    # Force garbage collection to ensure file handles are released
-                    import gc
-                    gc.collect()
-                    # Small delay to ensure OS releases file handles
-                    import time as _time
-                    _time.sleep(0.2)  # 200ms delay after flush
-                    logger.debug(
-                        "Main client flushed successfully",
-                        chunk_index=i,
-                    )
-                except Exception as flush_error:
-                    logger.warning(
-                        "Error flushing main client (non-critical)",
-                        chunk_index=i,
-                        error=str(flush_error),
-                    )
-
             except Exception as e:
                 logger.error(
                     "Failed to process intermediate chunk",
@@ -1389,9 +1119,6 @@ def perform_intermediate_merge(
                         )
                         close_chromadb_client(chunk_client, collection_name="group_merge")
                         chunk_client = None
-                        # Add delay after closing to ensure file handles are released
-                        import time as _time
-                        _time.sleep(0.3)  # 300ms delay after closing
                 except Exception as close_error:
                     logger.warning(
                         "Error closing chunk client",
@@ -1399,36 +1126,6 @@ def perform_intermediate_merge(
                         error=str(close_error),
                     )
                 finally:
-                    # CRITICAL: Flush main client after closing chunk client to ensure all writes are synced
-                    # This prevents file locking conflicts when opening the next chunk
-                    if i < len(intermediate_keys) - 1:  # Don't flush on last chunk
-                        try:
-                            logger.debug(
-                                "Flushing main client after chunk client closed",
-                                chunk_index=i,
-                                next_chunk=i + 1,
-                            )
-                            if hasattr(chroma_client, '_admin_client') and chroma_client._admin_client is not None:
-                                admin = chroma_client._admin_client
-                                if hasattr(admin, '_db') and admin._db is not None:
-                                    # Force SQLite to sync and commit all pending writes
-                                    admin._db.execute("PRAGMA synchronous = FULL")
-                                    admin._db.commit()
-                                    # Reset to normal after sync
-                                    admin._db.execute("PRAGMA synchronous = NORMAL")
-                            # Force garbage collection
-                            import gc
-                            gc.collect()
-                            # Additional delay to ensure OS releases all file handles
-                            import time as _time
-                            _time.sleep(0.3)  # 300ms delay before next chunk
-                        except Exception as flush_error:
-                            logger.warning(
-                                "Error flushing main client after chunk close (non-critical)",
-                                chunk_index=i,
-                                error=str(flush_error),
-                            )
-
                     # Clean up temp directory
                     try:
                         shutil.rmtree(chunk_temp, ignore_errors=True)
