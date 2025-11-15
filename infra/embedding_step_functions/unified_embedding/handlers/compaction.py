@@ -2,6 +2,10 @@
 
 This handler efficiently compacts multiple ChromaDB deltas created during
 parallel embedding processing, with support for collection-aware processing.
+
+Note: Each Lambda function (compaction, line-poll, word-poll) has its own
+CodeBuildDockerImage instance and CodePipeline. This ensures each Lambda
+is automatically updated when code changes.
 """
 
 import json
