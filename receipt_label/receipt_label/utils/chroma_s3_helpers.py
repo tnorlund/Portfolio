@@ -1704,6 +1704,41 @@ def download_snapshot_atomic(
         )
 
         if download_result.get("status") != "downloaded":
+            # Check if snapshot doesn't exist - initialize empty snapshot
+            error_msg = download_result.get("error", "")
+            if "NoSuchKey" in error_msg or "does not exist" in error_msg.lower():
+                logger.info(
+                    "Snapshot not found, initializing empty snapshot",
+                    collection=collection,
+                    snapshot_key=versioned_key,
+                )
+                init_result = initialize_empty_snapshot(
+                    bucket=bucket,
+                    collection=collection,
+                    local_path=local_path,
+                )
+
+                if init_result.get("status") == "initialized":
+                    logger.info(
+                        "Successfully initialized empty snapshot",
+                        collection=collection,
+                        version_id=init_result.get("version_id"),
+                    )
+                    return {
+                        "status": "downloaded",
+                        "collection": collection,
+                        "version_id": init_result.get("version_id"),
+                        "versioned_key": init_result.get("versioned_key"),
+                        "local_path": local_path,
+                        "initialized": True,
+                    }
+                else:
+                    logger.error(
+                        "Failed to initialize empty snapshot",
+                        collection=collection,
+                        error=init_result.get("error"),
+                    )
+
             return {
                 "status": "error",
                 "error": f"Failed to download snapshot: {download_result}",
@@ -1727,6 +1762,137 @@ def download_snapshot_atomic(
     except Exception as e:
         logger.error("Error during atomic snapshot download: %s", e)
         return {"status": "error", "error": str(e), "collection": collection}
+
+
+def initialize_empty_snapshot(
+    bucket: str,
+    collection: str,  # "lines" or "words"
+    local_path: Optional[str] = None,
+    lock_manager: Optional[object] = None,
+    metadata: Optional[Dict[str, str]] = None,
+) -> Dict[str, Any]:
+    """
+    Initialize an empty ChromaDB snapshot with the specified collection.
+
+    Creates a new empty ChromaDB database with the collection initialized,
+    then uploads it to S3 using atomic snapshot upload pattern.
+
+    Args:
+        bucket: S3 bucket name
+        collection: ChromaDB collection name ("lines" or "words")
+        local_path: Optional local directory path (creates temp dir if not provided)
+        lock_manager: Optional lock manager for atomic upload
+        metadata: Optional metadata for the snapshot
+
+    Returns:
+        Dict with status, version_id, and upload information
+    """
+    if not CHROMADB_AVAILABLE or ChromaDBClient is None:
+        return {
+            "status": "error",
+            "error": "ChromaDB not available - cannot create empty snapshot",
+            "collection": collection,
+        }
+
+    temp_dir = local_path or tempfile.mkdtemp()
+    cleanup_temp = local_path is None
+
+    try:
+        logger.info(
+            "Initializing empty snapshot",
+            collection=collection,
+            local_path=temp_dir,
+        )
+
+        # Create ChromaDB client in write mode
+        chroma_client = ChromaDBClient(
+            persist_directory=temp_dir,
+            mode="write",
+        )
+
+        # Create the collection (will be empty)
+        # get_collection automatically creates if missing, but we can pass metadata
+        collection_obj = chroma_client.get_collection(
+            collection,
+            metadata={
+                "created_by": "empty_snapshot_initializer",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "collection_type": collection,
+                **(metadata or {}),
+            },
+        )
+
+        # Verify collection was created
+        collection_count = collection_obj.count()
+        logger.info(
+            "Created empty collection",
+            collection=collection,
+            count=collection_count,
+            local_path=temp_dir,
+        )
+
+        # Close client to ensure SQLite files are flushed
+        chroma_client = None
+        import gc
+        gc.collect()
+        import time as _time
+        _time.sleep(0.1)  # Small delay to ensure file handles are released
+
+        # Upload to S3 using atomic upload pattern
+        upload_result = upload_snapshot_atomic(
+            local_path=temp_dir,
+            bucket=bucket,
+            collection=collection,
+            lock_manager=lock_manager,
+            metadata={
+                "initialized": "true",
+                "collection": collection,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                **(metadata or {}),
+            },
+        )
+
+        if upload_result.get("status") != "uploaded":
+            return {
+                "status": "error",
+                "error": f"Failed to upload empty snapshot: {upload_result}",
+                "collection": collection,
+            }
+
+        logger.info(
+            "Successfully initialized and uploaded empty snapshot",
+            collection=collection,
+            version_id=upload_result.get("version_id"),
+        )
+
+        return {
+            "status": "initialized",
+            "collection": collection,
+            "version_id": upload_result.get("version_id"),
+            "versioned_key": upload_result.get("versioned_key"),
+            "pointer_key": upload_result.get("pointer_key"),
+            "local_path": temp_dir,
+        }
+
+    except Exception as e:
+        logger.error(
+            "Error initializing empty snapshot: %s",
+            e,
+            collection=collection,
+            exc_info=True,
+        )
+        return {
+            "status": "error",
+            "error": str(e),
+            "collection": collection,
+        }
+    finally:
+        # Clean up temp directory if we created it
+        if cleanup_temp:
+            try:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            except Exception:
+                pass
 
 
 def _cleanup_s3_prefix(s3_client, bucket: str, prefix: str) -> None:
