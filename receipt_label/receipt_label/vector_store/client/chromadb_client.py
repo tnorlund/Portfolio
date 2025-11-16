@@ -12,6 +12,9 @@ the VectorStoreInterface for consistency and extensibility.
 
 import logging
 import os
+import shutil
+import tempfile
+import time
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
@@ -376,6 +379,154 @@ class ChromaDBClient(VectorStoreInterface):
             self._client = None
             logger.debug("Reset ChromaDB client")
 
+    def _close_client_for_upload(self) -> None:
+        """
+        Close ChromaDB client to ensure SQLite files are flushed and unlocked.
+
+        This is a workaround because ChromaDB's PersistentClient doesn't expose a close() method.
+        We clear references, force garbage collection, and add a small delay to ensure
+        SQLite connections are closed before uploading files to S3.
+
+        See: docs/CHROMADB_CLIENT_CLOSING_WORKAROUND.md
+        """
+        if self._client is None:
+            return
+
+        try:
+            logger.info(
+                "Closing ChromaDB client before upload: %s",
+                self.persist_directory,
+            )
+
+            # Clear collections cache
+            if hasattr(self, "_collections"):
+                self._collections.clear()
+
+            # Clear the underlying client reference
+            if hasattr(self._client, "_client") and self._client._client is not None:
+                self._client._client = None
+
+            # Force garbage collection to ensure SQLite connections are closed
+            import gc
+
+            gc.collect()
+
+            # Small delay to ensure file handles are released by OS
+            import time as _time
+
+            _time.sleep(0.1)
+
+            logger.info("ChromaDB client closed successfully")
+        except Exception as e:
+            logger.warning(
+                "Error closing ChromaDB client (non-critical): %s", e
+            )
+
+    def _validate_delta_after_upload(
+        self, bucket: str, s3_prefix: str, s3_client: Optional[Any] = None
+    ) -> bool:
+        """
+        Validate that a delta uploaded to S3 can be opened and read by ChromaDB.
+
+        Downloads the delta from S3 to a temporary directory and attempts to open it
+        with ChromaDB to verify it's not corrupted.
+
+        Args:
+            bucket: S3 bucket name
+            s3_prefix: S3 prefix where delta was uploaded
+            s3_client: Optional boto3 S3 client (creates one if not provided)
+
+        Returns:
+            True if delta can be opened successfully, False otherwise
+        """
+        if s3_client is None:
+            s3_client = boto3.client("s3")
+
+        temp_dir = None
+        try:
+            temp_dir = tempfile.mkdtemp()
+            logger.info("Validating delta by downloading from S3: %s", s3_prefix)
+
+            # Download delta from S3
+            paginator = s3_client.get_paginator("list_objects_v2")
+            pages = paginator.paginate(Bucket=bucket, Prefix=s3_prefix)
+
+            downloaded_files = 0
+            for page in pages:
+                if "Contents" not in page:
+                    continue
+
+                for obj in page["Contents"]:
+                    key = obj["Key"]
+                    relative_path = key[len(s3_prefix) :]
+                    if not relative_path:
+                        continue
+
+                    local_file = os.path.join(temp_dir, relative_path)
+                    os.makedirs(os.path.dirname(local_file), exist_ok=True)
+                    s3_client.download_file(bucket, key, local_file)
+                    downloaded_files += 1
+
+            if downloaded_files == 0:
+                logger.error("No files found in S3 prefix: %s", s3_prefix)
+                return False
+
+            logger.info("Downloaded %d files for validation", downloaded_files)
+
+            # Check for SQLite files
+            temp_path = Path(temp_dir)
+            sqlite_files = list(temp_path.rglob("*.sqlite*"))
+            if not sqlite_files:
+                logger.error("No SQLite files found in downloaded delta")
+                return False
+
+            # Try to open with ChromaDB
+            logger.info("Attempting to open delta with ChromaDB for validation")
+            try:
+                # Create a new client to test the downloaded delta
+                test_client = chromadb.PersistentClient(path=temp_dir)
+                collections = test_client.list_collections()
+
+                if not collections:
+                    logger.error("No collections found in delta")
+                    return False
+
+                # Try to read from each collection
+                for collection_meta in collections:
+                    collection = test_client.get_collection(collection_meta.name)
+                    count = collection.count()
+                    logger.info(
+                        "Collection '%s' validated: %d embeddings",
+                        collection_meta.name,
+                        count,
+                    )
+
+                # Clean up test client
+                del test_client
+                import gc
+
+                gc.collect()
+
+                logger.info("Delta validation successful")
+                return True
+
+            except Exception as e:
+                logger.error(
+                    "Failed to open delta with ChromaDB during validation: %s", e
+                )
+                return False
+
+        except Exception as e:
+            logger.error("Error during delta validation: %s", e)
+            return False
+        finally:
+            # Clean up temp directory
+            if temp_dir:
+                try:
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                except Exception:
+                    pass
+
     # Additional ChromaDB-specific methods for backward compatibility
 
     def persist_and_upload_delta(
@@ -383,20 +534,28 @@ class ChromaDBClient(VectorStoreInterface):
         bucket: str,
         s3_prefix: str,
         s3_client: Optional[Any] = None,
+        max_retries: int = 3,
+        validate_after_upload: bool = True,
     ) -> str:
         """
-        Flush the local DB to disk, upload to S3, and return the key prefix.
+        Flush the local DB to disk, upload to S3, validate, and return the key prefix.
 
         This method is used by producer lambdas to create delta files that
-        will be processed by the compactor.
+        will be processed by the compactor. It includes validation to ensure
+        the delta can be opened after upload, with retry logic if validation fails.
 
         Args:
             bucket: S3 bucket name
             s3_prefix: S3 prefix for delta files
             s3_client: Optional boto3 S3 client (creates one if not provided)
+            max_retries: Maximum number of retry attempts if validation fails (default: 3)
+            validate_after_upload: Whether to validate the delta after upload (default: True)
 
         Returns:
             S3 prefix where the delta was uploaded
+
+        Raises:
+            RuntimeError: If upload or validation fails after all retries
         """
         if self.mode not in ("delta", "write"):
             raise RuntimeError(
@@ -409,55 +568,138 @@ class ChromaDBClient(VectorStoreInterface):
         if s3_client is None:
             s3_client = boto3.client("s3")
 
-        # Force ChromaDB to persist data to disk
-        logger.info("Persisting ChromaDB data to %s", self.persist_directory)
-
-        # Try to explicitly persist if the method exists
-        if hasattr(self._client, "persist"):
+        for attempt in range(max_retries):
             try:
-                self._client.persist()
-                logger.info("Explicitly called client.persist()")
-            except Exception as e:
-                logger.warning("Could not call persist(): %s", e)
+                if attempt > 0:
+                    logger.info(
+                        "Retry attempt %d/%d for delta upload",
+                        attempt + 1,
+                        max_retries,
+                    )
+                    # Small delay before retry
+                    time.sleep(0.5 * attempt)
 
-        # Check if any files exist in the persist directory
-        persist_path = Path(self.persist_directory)
-        files_to_upload = list(persist_path.rglob("*"))
-        files_to_upload = [f for f in files_to_upload if f.is_file()]
+                # Force ChromaDB to persist data to disk
+                logger.info("Persisting ChromaDB data to %s", self.persist_directory)
 
-        if not files_to_upload:
-            logger.error(
-                "No files found in persist directory: %s",
-                self.persist_directory,
-            )
-            raise RuntimeError(
-                f"No ChromaDB files found to upload in {self.persist_directory}"
-            )
+                # Try to explicitly persist if the method exists
+                if hasattr(self._client, "persist"):
+                    try:
+                        self._client.persist()
+                        logger.info("Explicitly called client.persist()")
+                    except Exception as e:
+                        logger.warning("Could not call persist(): %s", e)
 
-        logger.info("Found %d files to upload to S3", len(files_to_upload))
+                # CRITICAL: Close ChromaDB client BEFORE uploading to ensure SQLite files are flushed and unlocked
+                # This prevents corruption when uploading files that are still being written to
+                # See: docs/CHROMADB_CLIENT_CLOSING_WORKAROUND.md
+                self._close_client_for_upload()
 
-        # Create unique prefix for this delta
-        prefix = f"{s3_prefix.rstrip('/')}/{uuid.uuid4().hex}/"
-        logger.info("Uploading delta to S3 with prefix: %s", prefix)
+                # Check if any files exist in the persist directory
+                persist_path = Path(self.persist_directory)
+                files_to_upload = list(persist_path.rglob("*"))
+                files_to_upload = [f for f in files_to_upload if f.is_file()]
 
-        # Upload all files in the persist directory
-        uploaded_count = 0
-        for file_path in files_to_upload:
-            try:
-                relative_path = file_path.relative_to(persist_path)
-                s3_key = f"{prefix}{relative_path}"
-                logger.debug(
-                    "Uploading %s to s3://%s/%s", file_path, bucket, s3_key
+                if not files_to_upload:
+                    logger.error(
+                        "No files found in persist directory: %s",
+                        self.persist_directory,
+                    )
+                    raise RuntimeError(
+                        f"No ChromaDB files found to upload in {self.persist_directory}"
+                    )
+
+                logger.info("Found %d files to upload to S3", len(files_to_upload))
+
+                # Create unique prefix for this delta
+                prefix = f"{s3_prefix.rstrip('/')}/{uuid.uuid4().hex}/"
+                logger.info("Uploading delta to S3 with prefix: %s", prefix)
+
+                # Upload all files in the persist directory
+                uploaded_count = 0
+                for file_path in files_to_upload:
+                    try:
+                        relative_path = file_path.relative_to(persist_path)
+                        s3_key = f"{prefix}{relative_path}"
+                        logger.debug(
+                            "Uploading %s to s3://%s/%s", file_path, bucket, s3_key
+                        )
+                        s3_client.upload_file(str(file_path), bucket, s3_key)
+                        uploaded_count += 1
+                    except Exception as e:
+                        logger.error("Failed to upload %s to S3: %s", file_path, e)
+                        raise RuntimeError(f"S3 upload failed for {file_path}: {e}")
+
+                logger.info(
+                    "Successfully uploaded %d files to S3 at %s",
+                    uploaded_count,
+                    prefix,
                 )
-                s3_client.upload_file(str(file_path), bucket, s3_key)
-                uploaded_count += 1
-            except Exception as e:
-                logger.error("Failed to upload %s to S3: %s", file_path, e)
-                raise RuntimeError(f"S3 upload failed for {file_path}: {e}")
 
-        logger.info(
-            "Successfully uploaded %d files to S3 at %s",
-            uploaded_count,
-            prefix,
-        )
-        return prefix
+                # Validate the uploaded delta if requested
+                if validate_after_upload:
+                    logger.info("Validating uploaded delta...")
+                    if self._validate_delta_after_upload(bucket, prefix, s3_client):
+                        logger.info("Delta validation successful: %s", prefix)
+                        return prefix
+                    else:
+                        logger.warning(
+                            "Delta validation failed for %s (attempt %d/%d)",
+                            prefix,
+                            attempt + 1,
+                            max_retries,
+                        )
+                        # Delete the failed upload to avoid leaving corrupted deltas
+                        try:
+                            logger.info("Cleaning up failed delta upload: %s", prefix)
+                            paginator = s3_client.get_paginator("list_objects_v2")
+                            pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
+                            objects_to_delete = []
+                            for page in pages:
+                                if "Contents" in page:
+                                    for obj in page["Contents"]:
+                                        objects_to_delete.append({"Key": obj["Key"]})
+                            if objects_to_delete:
+                                s3_client.delete_objects(
+                                    Bucket=bucket,
+                                    Delete={"Objects": objects_to_delete},
+                                )
+                                logger.info(
+                                    "Deleted %d objects from failed upload",
+                                    len(objects_to_delete),
+                                )
+                        except Exception as cleanup_error:
+                            logger.warning(
+                                "Failed to cleanup failed upload: %s", cleanup_error
+                            )
+
+                        # If this was the last attempt, raise an error
+                        if attempt == max_retries - 1:
+                            raise RuntimeError(
+                                f"Delta validation failed after {max_retries} attempts. "
+                                f"Last prefix: {prefix}"
+                            )
+                        # Otherwise, continue to retry
+                        continue
+                else:
+                    # No validation requested, return immediately
+                    return prefix
+
+            except RuntimeError:
+                # Re-raise RuntimeError (includes validation failures on last attempt)
+                raise
+            except Exception as e:
+                logger.error(
+                    "Error during delta upload (attempt %d/%d): %s",
+                    attempt + 1,
+                    max_retries,
+                    e,
+                )
+                if attempt == max_retries - 1:
+                    raise RuntimeError(
+                        f"Delta upload failed after {max_retries} attempts: {e}"
+                    ) from e
+                # Continue to retry for other exceptions
+
+        # Should never reach here, but just in case
+        raise RuntimeError(f"Delta upload failed after {max_retries} attempts")
