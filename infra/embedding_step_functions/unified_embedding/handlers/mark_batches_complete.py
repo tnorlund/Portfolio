@@ -47,8 +47,38 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         poll_results = event.get("poll_results", [])
 
         # Load poll_results from S3 if it's stored there
-        poll_results_s3_key = event.get("poll_results_s3_key")
-        poll_results_s3_bucket = event.get("poll_results_s3_bucket")
+        # Check multiple possible locations (from different step function paths)
+        # Priority: final_merge_result > root level > chunked_data
+        poll_results_s3_key_primary = event.get("poll_results_s3_key")  # From final_merge_result
+        poll_results_s3_key_fallback = event.get("poll_results_s3_key_fallback")  # From root level
+        poll_results_s3_key_chunked = event.get("poll_results_s3_key_chunked")  # From chunked_data
+
+        poll_results_s3_key = (
+            poll_results_s3_key_primary
+            or poll_results_s3_key_fallback
+            or poll_results_s3_key_chunked
+        )
+
+        poll_results_s3_bucket_primary = event.get("poll_results_s3_bucket")  # From final_merge_result
+        poll_results_s3_bucket_fallback = event.get("poll_results_s3_bucket_fallback")  # From root level
+        poll_results_s3_bucket_chunked = event.get("poll_results_s3_bucket_chunked")  # From chunked_data
+
+        poll_results_s3_bucket = (
+            poll_results_s3_bucket_primary
+            or poll_results_s3_bucket_fallback
+            or poll_results_s3_bucket_chunked
+        )
+
+        # Log which path was used for debugging
+        if poll_results_s3_key:
+            source = "final_merge_result" if poll_results_s3_key_primary else (
+                "root_level" if poll_results_s3_key_fallback else "chunked_data"
+            )
+            logger.info(
+                "Found poll_results_s3_key from %s: %s",
+                source,
+                poll_results_s3_key,
+            )
 
         if (not poll_results or poll_results is None) and poll_results_s3_key and poll_results_s3_bucket:
             logger.info(
@@ -67,6 +97,14 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     "Loaded poll_results from S3 (%d items)",
                     len(poll_results),
                 )
+            except Exception as e:
+                logger.error(
+                    "Failed to load poll_results from S3",
+                    bucket=poll_results_s3_bucket,
+                    key=poll_results_s3_key,
+                    error=str(e),
+                )
+                # poll_results will remain empty, handler will return early below
             finally:
                 try:
                     os.unlink(tmp_file_path)
