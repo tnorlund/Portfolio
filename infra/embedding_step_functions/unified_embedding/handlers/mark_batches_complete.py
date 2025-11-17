@@ -130,18 +130,50 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             }
 
         # Extract unique batch_ids from poll_results
+        # CRITICAL: Only mark batches as COMPLETED if they actually completed
+        # Filter out batches that are still processing (action: "wait") or failed
         batch_ids = []
+        skipped_batches = []
         for result in poll_results:
             if isinstance(result, dict) and "batch_id" in result:
                 batch_id = result["batch_id"]
-                if batch_id and batch_id not in batch_ids:
-                    batch_ids.append(batch_id)
+                batch_status = result.get("batch_status", "").lower()
+                action = result.get("action", "")
+
+                # Only mark batches as COMPLETED if:
+                # 1. batch_status is "completed" AND
+                # 2. action is "process_results" (not "wait", "handle_failure", etc.)
+                if batch_id and batch_status == "completed" and action == "process_results":
+                    if batch_id not in batch_ids:
+                        batch_ids.append(batch_id)
+                else:
+                    # Track skipped batches for logging
+                    if batch_id:
+                        skipped_batches.append({
+                            "batch_id": batch_id,
+                            "batch_status": batch_status,
+                            "action": action,
+                        })
+
+        if skipped_batches:
+            logger.info(
+                "Skipping batches that are not completed",
+                skipped_count=len(skipped_batches),
+                sample_skipped=skipped_batches[:5],  # Log first 5
+            )
 
         if not batch_ids:
-            logger.warning("No batch_ids found in poll_results")
+            if skipped_batches:
+                logger.info(
+                    "No completed batches to mark - all batches are still processing or failed",
+                    total_batches=len(skipped_batches),
+                )
+            else:
+                logger.warning("No batch_ids found in poll_results")
             return {
                 "batches_marked": 0,
                 "batch_ids": [],
+                "skipped_batches": len(skipped_batches) if skipped_batches else 0,
             }
 
         logger.info(
