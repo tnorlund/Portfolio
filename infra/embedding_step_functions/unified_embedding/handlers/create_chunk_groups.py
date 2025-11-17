@@ -153,6 +153,9 @@ def _create_chunk_groups(event: Dict[str, Any]) -> Dict[str, Any]:
         batch_id = event.get("batch_id")
         group_size = event.get("group_size", 10)
         poll_results = event.get("poll_results", [])
+        # Receive poll_results_s3_key/bucket from chunked_data (if already in S3)
+        poll_results_s3_key = event.get("poll_results_s3_key")
+        poll_results_s3_bucket = event.get("poll_results_s3_bucket")
 
         if not batch_id:
             raise ValueError("batch_id is required")
@@ -216,49 +219,66 @@ def _create_chunk_groups(event: Dict[str, Any]) -> Dict[str, Any]:
                 pass
 
         # Check if poll_results is too large - if so, also store it in S3
-        poll_results_payload = json.dumps(poll_results)
-        poll_results_size = len(poll_results_payload.encode("utf-8"))
+        # But first check if it's already in S3 (from NormalizePollBatchesData)
+        if not poll_results_s3_key:
+            # poll_results is not already in S3, check if we need to upload it
+            poll_results_payload = json.dumps(poll_results)
+            poll_results_size = len(poll_results_payload.encode("utf-8"))
 
-        # If poll_results is large, also store it in S3
-        poll_results_s3_key = None
-        if poll_results_size > 100 * 1024:  # If poll_results > 100KB, store in S3
-            logger.info(
-                "poll_results is large, also storing in S3",
-                size_kb=poll_results_size // 1024,
-            )
-            poll_results_s3_key = f"chunk_groups/{batch_id}/poll_results.json"
-
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp_file:
-                json.dump(poll_results, tmp_file, indent=2)
-                tmp_file_path = tmp_file.name
-
-            try:
-                s3_client.upload_file(
-                    tmp_file_path,
-                    bucket,
-                    poll_results_s3_key,
-                )
+            # If poll_results is large, also store it in S3
+            if poll_results_size > 100 * 1024:  # If poll_results > 100KB, store in S3
                 logger.info(
-                    "Uploaded poll_results to S3",
-                    bucket=bucket,
-                    s3_key=poll_results_s3_key,
+                    "poll_results is large, also storing in S3",
+                    size_kb=poll_results_size // 1024,
                 )
-            finally:
+                poll_results_s3_key = f"chunk_groups/{batch_id}/poll_results.json"
+
+                with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp_file:
+                    json.dump(poll_results, tmp_file, indent=2)
+                    tmp_file_path = tmp_file.name
+
                 try:
-                    os.unlink(tmp_file_path)
-                except Exception:
-                    pass
+                    s3_client.upload_file(
+                        tmp_file_path,
+                        bucket,
+                        poll_results_s3_key,
+                    )
+                    logger.info(
+                        "Uploaded poll_results to S3",
+                        bucket=bucket,
+                        s3_key=poll_results_s3_key,
+                    )
+                finally:
+                    try:
+                        os.unlink(tmp_file_path)
+                    except Exception:
+                        pass
+            else:
+                # poll_results is small and not in S3 - keep it inline
+                poll_results_s3_key = None
+                poll_results_s3_bucket = None
+        else:
+            # poll_results is already in S3 - use existing S3 key/bucket
+            logger.info(
+                "poll_results already in S3, using existing S3 reference",
+                s3_key=poll_results_s3_key,
+                bucket=poll_results_s3_bucket,
+            )
+            # Use the bucket from environment if not provided
+            if not poll_results_s3_bucket:
+                poll_results_s3_bucket = bucket
 
         # Return response - always include all fields (even if null) for JSONPath compatibility
         # Step Functions JSONPath fails if a field doesn't exist, so we must always include these
+        # Pass through poll_results_s3_key/bucket for MarkBatchesComplete
         response = {
             "batch_id": batch_id,
             "groups_s3_key": groups_s3_key,
             "groups_s3_bucket": bucket,
             "total_groups": len(groups),
             "use_s3": True,
-            "poll_results_s3_key": poll_results_s3_key,  # Always include, even if None
-            "poll_results_s3_bucket": bucket if poll_results_s3_key else None,  # Always include, even if None
+            "poll_results_s3_key": poll_results_s3_key,  # Pass through for MarkBatchesComplete
+            "poll_results_s3_bucket": poll_results_s3_bucket if poll_results_s3_key else None,  # Pass through for MarkBatchesComplete
         }
 
         if poll_results_s3_key:

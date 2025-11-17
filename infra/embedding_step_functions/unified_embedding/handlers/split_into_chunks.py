@@ -73,6 +73,9 @@ def _load_chunks_from_s3(event: Dict[str, Any]) -> Dict[str, Any]:
     chunks_s3_bucket = event.get("chunks_s3_bucket")
     batch_id = event.get("batch_id")
     total_chunks = event.get("total_chunks")
+    # Pass through poll_results_s3_key/bucket for MarkBatchesComplete
+    poll_results_s3_key = event.get("poll_results_s3_key")
+    poll_results_s3_bucket = event.get("poll_results_s3_bucket")
 
     if not chunks_s3_key or not chunks_s3_bucket:
         raise ValueError("chunks_s3_key and chunks_s3_bucket are required for load_chunks_from_s3 operation")
@@ -130,6 +133,8 @@ def _load_chunks_from_s3(event: Dict[str, Any]) -> Dict[str, Any]:
         "use_s3": True,  # Chunks still in S3 - each Lambda will fetch its own
         "chunks_s3_key": chunks_s3_key,
         "chunks_s3_bucket": chunks_s3_bucket,
+        "poll_results_s3_key": poll_results_s3_key,  # Pass through for MarkBatchesComplete
+        "poll_results_s3_bucket": poll_results_s3_bucket,  # Pass through for MarkBatchesComplete
     }
 
 
@@ -141,6 +146,33 @@ def _split_into_chunks(event: Dict[str, Any]) -> Dict[str, Any]:
         # Extract parameters
         batch_id = event.get("batch_id")
         poll_results = event.get("poll_results", [])
+
+        # Load poll_results from S3 if it's stored there
+        poll_results_s3_key = event.get("poll_results_s3_key")
+        poll_results_s3_bucket = event.get("poll_results_s3_bucket")
+
+        if (not poll_results or poll_results is None) and poll_results_s3_key and poll_results_s3_bucket:
+            logger.info(
+                "Loading poll_results from S3: %s/%s",
+                poll_results_s3_bucket,
+                poll_results_s3_key,
+            )
+            with tempfile.NamedTemporaryFile(mode="r", suffix=".json", delete=False) as tmp_file:
+                tmp_file_path = tmp_file.name
+
+            try:
+                s3_client.download_file(poll_results_s3_bucket, poll_results_s3_key, tmp_file_path)
+                with open(tmp_file_path, "r", encoding="utf-8") as f:
+                    poll_results = json.load(f)
+                logger.info(
+                    "Loaded poll_results from S3 (%d items)",
+                    len(poll_results),
+                )
+            finally:
+                try:
+                    os.unlink(tmp_file_path)
+                except Exception:
+                    pass
 
         if not batch_id:
             raise ValueError("batch_id is required")
@@ -173,6 +205,8 @@ def _split_into_chunks(event: Dict[str, Any]) -> Dict[str, Any]:
                 "use_s3": False,
                 "chunks_s3_key": None,  # Always include these fields for consistency
                 "chunks_s3_bucket": None,
+                "poll_results_s3_key": poll_results_s3_key,  # Pass through for MarkBatchesComplete
+                "poll_results_s3_bucket": poll_results_s3_bucket,  # Pass through for MarkBatchesComplete
             }
 
         # Estimate if we'll need S3 based on number of deltas
@@ -289,12 +323,15 @@ def _split_into_chunks(event: Dict[str, Any]) -> Dict[str, Any]:
                     pass
 
             # Return S3 reference instead of full chunks
+            # Pass through poll_results_s3_key/bucket for MarkBatchesComplete
             return {
                 "batch_id": batch_id,
                 "chunks_s3_key": chunks_s3_key,
                 "chunks_s3_bucket": bucket,
                 "total_chunks": len(chunks),
                 "use_s3": True,
+                "poll_results_s3_key": poll_results_s3_key,  # Pass through for MarkBatchesComplete
+                "poll_results_s3_bucket": poll_results_s3_bucket,  # Pass through for MarkBatchesComplete
             }
         else:
             # Response is small enough, return chunks directly
@@ -306,7 +343,9 @@ def _split_into_chunks(event: Dict[str, Any]) -> Dict[str, Any]:
                 "use_s3": False,
                 "chunks_s3_key": None,  # Always include these fields for consistency
                 "chunks_s3_bucket": None,
-        }
+                "poll_results_s3_key": poll_results_s3_key,  # Pass through for MarkBatchesComplete
+                "poll_results_s3_bucket": poll_results_s3_bucket,  # Pass through for MarkBatchesComplete
+            }
 
     except ValueError as e:
         logger.error("Validation error", error=str(e))
