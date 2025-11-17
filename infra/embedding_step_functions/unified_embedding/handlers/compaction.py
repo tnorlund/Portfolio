@@ -2,10 +2,6 @@
 
 This handler efficiently compacts multiple ChromaDB deltas created during
 parallel embedding processing, with support for collection-aware processing.
-
-Note: Each Lambda function (compaction, line-poll, word-poll) has its own
-CodeBuildDockerImage instance and CodePipeline. This ensures each Lambda
-is automatically updated when code changes.
 """
 
 import json
@@ -14,6 +10,7 @@ import shutil
 import tempfile
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import utils.logging # pylint: disable=import-error
@@ -72,240 +69,50 @@ heartbeat_interval = int(os.environ.get("HEARTBEAT_INTERVAL_SECONDS", "60"))
 lock_duration_minutes = int(os.environ.get("LOCK_DURATION_MINUTES", "5"))
 
 
-def wait_for_file_unlock(file_path: str, max_wait: float = 2.0, check_interval: float = 0.05) -> bool:
+def close_chromadb_client(client: Any, collection_name: Optional[str] = None) -> None:
     """
-    Wait for a file to be unlocked by polling, with timeout.
+    Properly close ChromaDB client to ensure SQLite files are flushed and unlocked.
 
-    Attempts to open the file exclusively to check if it's unlocked.
-    Returns True if file becomes unlocked, False if timeout.
-
-    Args:
-        file_path: Path to file to check
-        max_wait: Maximum time to wait in seconds (default: 2.0s)
-        check_interval: Time between checks in seconds (default: 0.05s = 50ms)
-
-    Returns:
-        True if file is unlocked, False if timeout
-    """
-
-    if not os.path.exists(file_path):
-        # File doesn't exist, consider it "unlocked" (nothing to lock)
-        return True
-
-    start_time = time.time()
-    check_count = 0
-
-    while time.time() - start_time < max_wait:
-        try:
-            # Try to open file exclusively (r+b mode)
-            # This will fail if file is locked by another process
-            with open(file_path, 'r+b') as f:
-                f.flush()  # Ensure any buffered writes are flushed
-            # File is unlocked!
-            elapsed = time.time() - start_time
-            if check_count > 0:  # Only log if we had to wait
-                logger.debug(
-                    "File unlocked after polling",
-                    file_path=file_path,
-                    elapsed_ms=elapsed * 1000,
-                    checks=check_count,
-                )
-            return True
-        except (IOError, PermissionError, OSError):
-            # File is still locked, wait and retry
-            check_count += 1
-            time.sleep(check_interval)
-
-    # Timeout - file still locked
-    elapsed = time.time() - start_time
-    logger.warning(
-        "File unlock timeout",
-        file_path=file_path,
-        elapsed_ms=elapsed * 1000,
-        checks=check_count,
-        max_wait_ms=max_wait * 1000,
-    )
-    return False
-
-
-def wait_for_chromadb_files_unlocked(persist_directory: str, max_wait: float = 2.0) -> bool:
-    """
-    Wait for ChromaDB files (SQLite and HNSW) to be unlocked.
-
-    Checks the main SQLite file and waits for it to unlock.
-    Also checks for HNSW index files if they exist.
-
-    Args:
-        persist_directory: ChromaDB persist directory path
-        max_wait: Maximum time to wait in seconds (default: 2.0s)
-
-    Returns:
-        True if all files are unlocked, False if timeout
-    """
-    from pathlib import Path
-
-    if not persist_directory or not os.path.exists(persist_directory):
-        return True  # Directory doesn't exist, nothing to check
-
-    # Primary file to check: chroma.sqlite3
-    sqlite_file = os.path.join(persist_directory, "chroma.sqlite3")
-
-    # Wait for SQLite file to unlock (most critical)
-    sqlite_unlocked = wait_for_file_unlock(sqlite_file, max_wait=max_wait)
-
-    if not sqlite_unlocked:
-        return False
-
-    # Check for HNSW index files in collection subdirectories
-    # ChromaDB stores HNSW files in collection-specific directories
-    persist_path = Path(persist_directory)
-
-    # Look for collection directories (UUID-named directories)
-    collection_dirs = [d for d in persist_path.iterdir() if d.is_dir() and len(d.name) == 36]
-
-    for collection_dir in collection_dirs[:5]:  # Limit to first 5 collections to avoid excessive checks
-        # Check for HNSW index files
-        hnsw_files = list(collection_dir.glob("*.bin")) + list(collection_dir.glob("*.pickle"))
-
-        for hnsw_file in hnsw_files[:3]:  # Limit to first 3 files per collection
-            if not wait_for_file_unlock(str(hnsw_file), max_wait=0.5):  # Shorter wait for HNSW files
-                logger.debug(
-                    "HNSW file still locked (non-critical)",
-                    file_path=str(hnsw_file),
-                )
-                # Don't fail on HNSW files - they're less critical than SQLite
-
-    return True
-
-
-def close_chromadb_client(
-    client: Any,
-    collection_name: Optional[str] = None,
-    persist_directory: Optional[str] = None,
-    max_wait: float = 2.0,
-) -> None:
-    """
-    Properly close ChromaDB client using file polling instead of fixed delays.
-
-    Uses file polling to wait only as long as necessary for files to unlock,
-    up to a maximum timeout. This is more efficient than fixed delays.
-
-    NOTE: ChromaDB's PersistentClient doesn't expose a close() method, so we use
-    a workaround: clear references, force garbage collection, and poll for file
-    unlock status.
+    This is critical to prevent corruption when uploading/copying SQLite files
+    that are still being written to by an active ChromaDB connection.
 
     Args:
         client: ChromaDB PersistentClient instance (or wrapper with _client attribute)
         collection_name: Optional collection name for logging
-        persist_directory: Optional persist directory path (auto-detected if not provided)
-        max_wait: Maximum time to wait for files to unlock in seconds (default: 2.0s)
     """
     if client is None:
         return
 
     try:
-        logger.info(
-            "Closing ChromaDB client",
+        logger.debug(
+            "Cleaning up ChromaDB client",
             collection=collection_name or "unknown",
-            client_type=type(client).__name__,
         )
 
-        # Get persist directory if not provided
-        if not persist_directory:
-            persist_directory = getattr(client, 'persist_directory', None)
-            if not persist_directory and hasattr(client, '_client') and client._client is not None:
-                persist_directory = getattr(client._client, 'persist_directory', None)
-
-        # For wrapper classes (like ChromaDBClient), clear collections cache first
+        # Clear collections cache
         if hasattr(client, '_collections'):
             client._collections.clear()
 
-        # Try to access and close underlying SQLite connections directly
-        # ChromaDB uses SQLite under the hood, and we can try to close connections
-        # through the admin API if available
-        try:
-            # Try to get the admin API which has access to the SQLite connection
-            if hasattr(client, '_admin_client'):
-                admin_client = client._admin_client
-                if hasattr(admin_client, '_db'):
-                    db = admin_client._db
-                    if hasattr(db, 'close'):
-                        db.close()
-                        logger.debug("Closed SQLite connection via admin client")
-        except Exception:
-            # If we can't access the connection directly, that's okay
-            pass
-
         # Clear the underlying client reference
-        # For direct PersistentClient instances, this is the client itself
-        # For wrapper classes, clear the _client attribute
         if hasattr(client, '_client') and client._client is not None:
-            # ChromaDB PersistentClient doesn't have explicit close(), but clearing
-            # the reference allows Python GC to close SQLite connections
             client._client = None
 
-        # Try to access internal SQLite connection for direct PersistentClient instances
-        # Use type name check instead of isinstance to avoid import issues
-        try:
-            client_type_name = type(client).__name__
-            if client_type_name == 'PersistentClient' or 'PersistentClient' in str(type(client)):
-                # Direct PersistentClient - try to access internal SQLite connection
-                try:
-                    # ChromaDB stores the admin client which has the SQLite connection
-                    if hasattr(client, '_admin_client') and client._admin_client is not None:
-                        admin = client._admin_client
-                        if hasattr(admin, '_db') and admin._db is not None:
-                            # Try to close the SQLite connection
-                            sqlite_db = admin._db
-                            if hasattr(sqlite_db, 'close'):
-                                sqlite_db.close()
-                                logger.debug("Closed SQLite connection directly")
-                except Exception:
-                    # If we can't access it, that's okay - GC will handle it
-                    pass
-        except Exception:
-            # If type checking fails, that's okay - continue with GC cleanup
-            pass
-
-        # Force garbage collection multiple times to ensure cleanup
+        # Force garbage collection to ensure SQLite connections are closed
         # This is necessary because ChromaDB doesn't expose a close() method
         import gc
-        gc.collect()  # First pass
-        gc.collect()  # Second pass to catch any circular references
+        gc.collect()
 
-        # Clear client reference
-        client = None
+        # Small delay to ensure file handles are released by OS
+        import time as _time
+        _time.sleep(0.1)
 
-        # Use file polling instead of fixed delay
-        # This waits only as long as necessary (up to max_wait)
-        if persist_directory:
-            files_unlocked = wait_for_chromadb_files_unlocked(
-                persist_directory,
-                max_wait=max_wait
-            )
-            if not files_unlocked:
-                logger.warning(
-                    "Files still locked after max wait time",
-                    persist_directory=persist_directory,
-                    max_wait_seconds=max_wait,
-                    collection=collection_name or "unknown",
-                )
-        else:
-            # If we can't determine persist directory, use a small delay as fallback
-            time.sleep(0.1)
-            logger.debug(
-                "Could not determine persist directory, used fallback delay",
-                collection=collection_name or "unknown",
-            )
-
-        logger.info(
-            "ChromaDB client closed successfully",
+        logger.debug(
+            "ChromaDB client cleaned up",
             collection=collection_name or "unknown",
-            persist_directory=persist_directory or "unknown",
         )
     except Exception as e:
-        logger.warning(
-            "Error closing ChromaDB client (non-critical)",
+        logger.debug(
+            "Error cleaning up ChromaDB client (non-critical)",
             error=str(e),
             collection=collection_name or "unknown",
         )
@@ -431,7 +238,7 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             s3_client = boto3.client("s3")
 
             # Download chunks file from S3
-            # Use mktemp to avoid file handle leak (NamedTemporaryFile opens file immediately)
+            # Use mktemp instead of NamedTemporaryFile to avoid file handle leaks
             tmp_file_path = tempfile.mktemp(suffix=".json")
 
             try:
@@ -543,13 +350,9 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         logger.error(
             "Chunk processing failed", chunk_index=chunk_index, error=str(e)
         )
-        return {
-            "statusCode": 500,
-            "error": str(e),
-            "batch_id": batch_id,
-            "chunk_index": chunk_index,
-            "message": "Chunk processing failed",
-        }
+        # Raise exception instead of returning error object
+        # This allows Step Functions to properly handle the failure with retry logic
+        raise
 
 
 def merge_chunk_group_handler(event: Dict[str, Any]) -> Dict[str, Any]:
@@ -628,7 +431,7 @@ def merge_chunk_group_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         )
         try:
             # Download groups file from S3
-            # Use mktemp to avoid file handle leak (NamedTemporaryFile opens file immediately)
+            # Use mktemp instead of NamedTemporaryFile to avoid file handle leaks
             tmp_file_path = tempfile.mktemp(suffix=".json")
 
             try:
@@ -696,12 +499,9 @@ def merge_chunk_group_handler(event: Dict[str, Any]) -> Dict[str, Any]:
                 error_type=type(e).__name__,
                 exc_info=True,
             )
-            return {
-                "statusCode": 500,
-                "error": f"Failed to download group from S3: {str(e)}",
-                "batch_id": batch_id,
-                "group_index": group_index,
-            }
+            # Raise exception instead of returning error object
+            # This allows Step Functions to properly handle the failure with retry logic
+            raise
 
     # Ensure chunk_group is a list after S3 download (or handle None/empty cases)
     if chunk_group is None:
@@ -828,6 +628,9 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     batch_id = event.get("batch_id")
     chunk_results = event.get("chunk_results", [])
     database_name = event.get("database", "lines")
+    # Pass through poll_results_s3_key/bucket for MarkBatchesComplete
+    poll_results_s3_key = event.get("poll_results_s3_key")
+    poll_results_s3_bucket = event.get("poll_results_s3_bucket")
 
     if not batch_id:
         return {
@@ -950,6 +753,7 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         cleanup_intermediate_chunks_by_keys(intermediate_keys)
 
         # Always return full format for final merge
+        # Pass through poll_results_s3_key/bucket for MarkBatchesComplete
         return {
             "statusCode": 200,
             "batch_id": batch_id,
@@ -957,6 +761,8 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             "total_embeddings": merge_result["total_embeddings"],
             "processing_time_seconds": merge_result["processing_time"],
             "message": "Final merge completed successfully",
+            "poll_results_s3_key": poll_results_s3_key,  # Pass through for MarkBatchesComplete
+            "poll_results_s3_bucket": poll_results_s3_bucket,  # Pass through for MarkBatchesComplete
         }
 
     except Exception as e:  # pylint: disable=broad-exception-caught
@@ -983,6 +789,10 @@ def process_chunk_deltas(
     Process a chunk of deltas and save to intermediate storage.
 
     Supports collection-aware processing to handle both words and lines.
+
+    If any delta fails to process (e.g., corrupted), the entire chunk fails.
+    This ensures all-or-nothing behavior - either all deltas are processed
+    successfully or the chunk fails completely.
     """
     start_time = time.time()
     bucket = os.environ["CHROMADB_BUCKET"]
@@ -1015,10 +825,12 @@ def process_chunk_deltas(
                 )
 
             # Process deltas for this collection
+            # If any delta fails, the entire chunk fails (all-or-nothing behavior)
             for i, delta in enumerate(collection_deltas):
                 delta_key = delta["delta_key"]
 
                 # Download and merge delta
+                # If this fails, the exception will propagate and fail the entire chunk
                 embeddings_added = download_and_merge_delta(
                     bucket, delta_key, collection, temp_dir
                 )
@@ -1049,13 +861,8 @@ def process_chunk_deltas(
             total_embeddings=total_embeddings,
         )
 
-        # Close ChromaDB client using file polling (waits only as long as needed)
-        close_chromadb_client(
-            chroma_client,
-            collection_name="chunk_processing",
-            persist_directory=temp_dir,
-            max_wait=2.0,  # Max 2 seconds wait for files to unlock
-        )
+        # Simple cleanup for ChromaDB 1.0.21 (testing if workarounds are needed)
+        close_chromadb_client(chroma_client, collection_name="chunk_processing")
         chroma_client = None
 
         # Upload intermediate chunk to S3
@@ -1112,8 +919,39 @@ def download_and_merge_delta(
         # Download delta from S3
         download_from_s3(bucket, delta_key, delta_temp)
 
+        # Validate delta directory has required files before opening
+        # ChromaDB requires at least a SQLite database file
+        delta_path = Path(delta_temp)
+        sqlite_files = list(delta_path.rglob("*.sqlite*"))
+        if not sqlite_files:
+            logger.error(
+                "No SQLite files found in delta",
+                delta_key=delta_key,
+                delta_temp=delta_temp,
+                files=list(delta_path.rglob("*")),
+            )
+            raise RuntimeError(
+                f"Delta {delta_key} appears to be corrupted: no SQLite files found"
+            )
+
         # Load delta into temporary ChromaDB instance
-        delta_client = chromadb.PersistentClient(path=delta_temp)
+        # Wrap in try-except to provide better error messages for corrupted deltas
+        try:
+            delta_client = chromadb.PersistentClient(path=delta_temp)
+        except Exception as e:
+            logger.error(
+                "Failed to open delta ChromaDB client",
+                delta_key=delta_key,
+                delta_temp=delta_temp,
+                error=str(e),
+                error_type=type(e).__name__,
+                sqlite_files=[str(f) for f in sqlite_files],
+            )
+            # Re-raise with more context
+            raise RuntimeError(
+                f"Failed to open delta {delta_key}: {str(e)}. "
+                f"This may indicate the delta was corrupted during upload or download."
+            ) from e
 
         # Get the first (and typically only) collection from the delta
         # The delta should contain exactly one collection with all embeddings
@@ -1176,16 +1014,21 @@ def download_and_merge_delta(
         )
         return total_processed
 
+    except Exception as e:
+        # Log the error with context before re-raising
+        logger.error(
+            "Error processing delta",
+            delta_key=delta_key,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
     finally:
         # CRITICAL: Close delta client before cleanup to ensure SQLite files are flushed
         try:
-            close_chromadb_client(
-                delta_client,
-                collection_name="delta_processing",
-                persist_directory=delta_temp,
-                max_wait=1.0,  # Shorter wait for delta cleanup (less critical)
-            )
-            delta_client = None
+            if 'delta_client' in locals() and delta_client is not None:
+                close_chromadb_client(delta_client, collection_name="delta_processing")
+                delta_client = None
         except Exception:
             pass
 
@@ -1329,12 +1172,7 @@ def perform_intermediate_merge(
                             "Closing chunk client before cleanup",
                             chunk_index=i,
                         )
-                        close_chromadb_client(
-                            chunk_client,
-                            collection_name="group_merge",
-                            persist_directory=chunk_temp,
-                            max_wait=1.0,  # Shorter wait for chunk cleanup
-                        )
+                        close_chromadb_client(chunk_client, collection_name="group_merge")
                         chunk_client = None
                 except Exception as close_error:
                     logger.warning(
@@ -1360,13 +1198,7 @@ def perform_intermediate_merge(
         )
 
         # CRITICAL: Close ChromaDB client BEFORE uploading to ensure SQLite files are flushed and unlocked
-        # Use longer wait before uploads (critical operation)
-        close_chromadb_client(
-            chroma_client,
-            collection_name="intermediate_merge",
-            persist_directory=temp_dir,
-            max_wait=2.0,  # Full wait before uploads
-        )
+        close_chromadb_client(chroma_client, collection_name="intermediate_merge")
         chroma_client = None
 
         # Upload merged intermediate snapshot
@@ -1726,32 +1558,17 @@ def perform_final_merge(
                                 total_embeddings += len(results["ids"])
 
             finally:
-                # Close chunk client before cleanup
-                if 'chunk_client' in locals() and chunk_client is not None:
-                    try:
-                        close_chromadb_client(
-                            chunk_client,
-                            collection_name="final_merge_chunk",
-                            persist_directory=chunk_temp,
-                            max_wait=1.0,  # Shorter wait for chunk cleanup
-                        )
+                # CRITICAL: Close chunk client before cleanup to ensure SQLite files are flushed
+                try:
+                    if 'chunk_client' in locals() and chunk_client is not None:
+                        close_chromadb_client(chunk_client, collection_name="final_merge_chunk")
                         chunk_client = None
-                    except Exception as close_error:
-                        logger.warning(
-                            "Error closing chunk client in final merge",
-                            chunk_index=i,
-                            error=str(close_error),
-                        )
+                except Exception:
+                    pass
                 shutil.rmtree(chunk_temp, ignore_errors=True)
 
-        # CRITICAL: Close ChromaDB client BEFORE uploading final snapshot
-        # Use longer wait before uploads (critical operation)
-        close_chromadb_client(
-            chroma_client,
-            collection_name="final_merge",
-            persist_directory=temp_dir,
-            max_wait=2.0,  # Full wait before final upload
-        )
+        # CRITICAL: Close ChromaDB client BEFORE uploading to ensure SQLite files are flushed and unlocked
+        close_chromadb_client(chroma_client, collection_name="final_merge")
         chroma_client = None
 
         # Use atomic upload pattern if available, fallback to legacy method
