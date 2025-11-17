@@ -67,7 +67,7 @@ dynamo_client = DynamoClient(os.environ["DYNAMODB_TABLE_NAME"])
 
 # Get configuration from environment
 heartbeat_interval = int(os.environ.get("HEARTBEAT_INTERVAL_SECONDS", "60"))
-lock_duration_minutes = int(os.environ.get("LOCK_DURATION_MINUTES", "5"))
+lock_duration_minutes = int(os.environ.get("LOCK_DURATION_MINUTES", "16"))  # 16 minutes to match Lambda timeout (15 min) with buffer
 
 
 def close_chromadb_client(client: Any, collection_name: Optional[str] = None) -> None:
@@ -840,6 +840,24 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             "poll_results_s3_bucket": poll_results_s3_bucket,  # Pass through for MarkBatchesComplete
         }
 
+    except RuntimeError as e:
+        # Re-raise lock acquisition failures so Step Functions can retry
+        # Check if this is a lock failure by looking at the error message
+        error_msg = str(e)
+        if "Could not acquire lock" in error_msg:
+            logger.warning("Lock acquisition failed - re-raising for Step Functions retry", error=error_msg)
+            raise  # Re-raise so Step Functions treats it as a task failure and retries
+
+        # For other RuntimeErrors, log and return error response
+        logger.error("Final merge failed with RuntimeError", error=error_msg)
+        return {
+            "statusCode": 500,
+            "error": error_msg,
+            "batch_id": batch_id,
+            "message": "Final merge failed",
+            "poll_results_s3_key": poll_results_s3_key,  # Pass through for MarkBatchesComplete
+            "poll_results_s3_bucket": poll_results_s3_bucket,  # Pass through for MarkBatchesComplete
+        }
     except Exception as e:  # pylint: disable=broad-exception-caught
         logger.error("Final merge failed", error=str(e))
         return {
