@@ -1689,11 +1689,56 @@ def perform_final_merge(
                 },
                 keep_versions=4,
             )
+
+            # Log snapshot validation metrics
+            validation_success = atomic_result.get("status") == "uploaded"
+            validation_duration = atomic_result.get("validation_duration", 0.0)
+
+            emf_metrics.log_metrics(
+                {
+                    "SnapshotValidationSuccess": 1 if validation_success else 0,
+                    "SnapshotValidationAttempts": 1,
+                    "SnapshotValidationDuration": validation_duration,
+                },
+                dimensions={
+                    "validation_stage": "final_merge",
+                    "collection": collection_name,
+                },
+                properties={
+                    "batch_id": batch_id,
+                    "version_id": atomic_result.get("version_id"),
+                    "total_embeddings": total_embeddings,
+                },
+            )
+
+            if not validation_success:
+                # Log failure metric
+                emf_metrics.log_metrics(
+                    {
+                        "SnapshotValidationFailures": 1,
+                    },
+                    dimensions={
+                        "validation_stage": "final_merge",
+                        "collection": collection_name,
+                        "error_type": atomic_result.get("error", "unknown"),
+                    },
+                    properties={
+                        "batch_id": batch_id,
+                        "version_id": atomic_result.get("version_id"),
+                        "error": atomic_result.get("error", "unknown"),
+                    },
+                )
+                # Raise error if validation failed
+                raise RuntimeError(
+                    f"Snapshot validation failed: {atomic_result.get('error', 'unknown error')}"
+                )
+
             logger.info(
                 "Uploaded snapshot using atomic pattern",
                 version_id=atomic_result.get("version_id"),
                 collection=collection_name,
                 total_embeddings=total_embeddings,
+                validation_duration=validation_duration,
             )
 
             # Update EFS cache if EFS was used
