@@ -670,12 +670,13 @@ class WordEmbeddingWorkflow(ComponentResource):
                             "chunk_results.$": "$.merged_groups",
                             # poll_results is always None after NormalizePollWordBatchesData (it's in S3)
                             # WordFinalMerge just needs to pass through the S3 keys for MarkWordBatchesComplete
-                            # Try chunk_groups first, fallback to root level (set by GroupChunksForMerge)
-                            "poll_results_s3_key.$": "$.chunk_groups.poll_results_s3_key",
-                            "poll_results_s3_bucket.$": "$.chunk_groups.poll_results_s3_bucket",
-                            # Fallback to root level (GroupChunksForMerge copies from poll_results_data to root)
-                            "poll_results_s3_key_fallback.$": "$.poll_results_s3_key",
-                            "poll_results_s3_bucket_fallback.$": "$.poll_results_s3_bucket",
+                            # Use root level as primary (GroupChunksForMerge copies from poll_results_data to root)
+                            # chunk_groups.poll_results_s3_key may be null if CreateChunkGroups didn't preserve it
+                            "poll_results_s3_key.$": "$.poll_results_s3_key",
+                            "poll_results_s3_bucket.$": "$.poll_results_s3_bucket",
+                            # Fallback to chunk_groups in case root level is missing
+                            "poll_results_s3_key_fallback.$": "$.chunk_groups.poll_results_s3_key",
+                            "poll_results_s3_bucket_fallback.$": "$.chunk_groups.poll_results_s3_bucket",
                         },
                         "Next": "WordFinalMerge",
                     },
