@@ -445,7 +445,11 @@ class ChromaDBClient(VectorStoreInterface):
         temp_dir = None
         try:
             temp_dir = tempfile.mkdtemp()
-            logger.info("Validating delta by downloading from S3: %s", s3_prefix)
+            logger.info(
+                "Validating delta by downloading from S3: %s (temp_dir: %s)",
+                s3_prefix,
+                temp_dir,
+            )
 
             # Download delta from S3
             paginator = s3_client.get_paginator("list_objects_v2")
@@ -507,17 +511,31 @@ class ChromaDBClient(VectorStoreInterface):
 
                 gc.collect()
 
-                logger.info("Delta validation successful")
+                logger.info(
+                    "Delta validation successful: %s (collections: %d)",
+                    s3_prefix,
+                    len(collections),
+                )
                 return True
 
             except Exception as e:
                 logger.error(
-                    "Failed to open delta with ChromaDB during validation: %s", e
+                    "Failed to open delta with ChromaDB during validation %s: %s (type: %s)",
+                    s3_prefix,
+                    e,
+                    type(e).__name__,
+                    exc_info=True,
                 )
                 return False
 
         except Exception as e:
-            logger.error("Error during delta validation: %s", e)
+            logger.error(
+                "Error during delta validation %s: %s (type: %s)",
+                s3_prefix,
+                e,
+                type(e).__name__,
+                exc_info=True,
+            )
             return False
         finally:
             # Clean up temp directory
@@ -638,9 +656,22 @@ class ChromaDBClient(VectorStoreInterface):
 
                 # Validate the uploaded delta if requested
                 if validate_after_upload:
-                    logger.info("Validating uploaded delta...")
-                    if self._validate_delta_after_upload(bucket, prefix, s3_client):
-                        logger.info("Delta validation successful: %s", prefix)
+                    logger.info(
+                        "Starting delta validation (attempt %d/%d) for prefix: %s",
+                        attempt + 1,
+                        max_retries,
+                        prefix,
+                    )
+                    validation_result = self._validate_delta_after_upload(
+                        bucket, prefix, s3_client
+                    )
+                    if validation_result:
+                        logger.info(
+                            "Delta validation successful: %s (attempt %d/%d)",
+                            prefix,
+                            attempt + 1,
+                            max_retries,
+                        )
                         return prefix
                     else:
                         logger.warning(
@@ -683,17 +714,30 @@ class ChromaDBClient(VectorStoreInterface):
                         continue
                 else:
                     # No validation requested, return immediately
+                    logger.info(
+                        "Skipping validation (validate_after_upload=False) for prefix: %s",
+                        prefix,
+                    )
                     return prefix
 
-            except RuntimeError:
+            except RuntimeError as e:
                 # Re-raise RuntimeError (includes validation failures on last attempt)
-                raise
-            except Exception as e:
                 logger.error(
-                    "Error during delta upload (attempt %d/%d): %s",
+                    "RuntimeError during delta upload/validation (attempt %d/%d): %s",
                     attempt + 1,
                     max_retries,
                     e,
+                    exc_info=True,
+                )
+                raise
+            except Exception as e:
+                logger.error(
+                    "Unexpected error during delta upload (attempt %d/%d): %s (type: %s)",
+                    attempt + 1,
+                    max_retries,
+                    e,
+                    type(e).__name__,
+                    exc_info=True,
                 )
                 if attempt == max_retries - 1:
                     raise RuntimeError(
