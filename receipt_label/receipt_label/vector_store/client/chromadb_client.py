@@ -424,7 +424,7 @@ class ChromaDBClient(VectorStoreInterface):
 
     def _validate_delta_after_upload(
         self, bucket: str, s3_prefix: str, s3_client: Optional[Any] = None
-    ) -> bool:
+    ) -> tuple[bool, float]:
         """
         Validate that a delta uploaded to S3 can be opened and read by ChromaDB.
 
@@ -437,8 +437,10 @@ class ChromaDBClient(VectorStoreInterface):
             s3_client: Optional boto3 S3 client (creates one if not provided)
 
         Returns:
-            True if delta can be opened successfully, False otherwise
+            Tuple of (success: bool, duration_seconds: float)
         """
+        validation_start_time = time.time()
+
         if s3_client is None:
             s3_client = boto3.client("s3")
 
@@ -472,8 +474,9 @@ class ChromaDBClient(VectorStoreInterface):
                     downloaded_files += 1
 
             if downloaded_files == 0:
-                logger.error("No files found in S3 prefix: %s", s3_prefix)
-                return False
+                validation_duration = time.time() - validation_start_time
+                logger.error("No files found in S3 prefix: %s (duration: %.2fs)", s3_prefix, validation_duration)
+                return False, validation_duration
 
             logger.info("Downloaded %d files for validation", downloaded_files)
 
@@ -481,8 +484,9 @@ class ChromaDBClient(VectorStoreInterface):
             temp_path = Path(temp_dir)
             sqlite_files = list(temp_path.rglob("*.sqlite*"))
             if not sqlite_files:
-                logger.error("No SQLite files found in downloaded delta")
-                return False
+                validation_duration = time.time() - validation_start_time
+                logger.error("No SQLite files found in downloaded delta (duration: %.2fs)", validation_duration)
+                return False, validation_duration
 
             # Try to open with ChromaDB
             logger.info("Attempting to open delta with ChromaDB for validation")
@@ -492,8 +496,9 @@ class ChromaDBClient(VectorStoreInterface):
                 collections = test_client.list_collections()
 
                 if not collections:
-                    logger.error("No collections found in delta")
-                    return False
+                    validation_duration = time.time() - validation_start_time
+                    logger.error("No collections found in delta (duration: %.2fs)", validation_duration)
+                    return False, validation_duration
 
                 # Try to read from each collection
                 for collection_meta in collections:
@@ -511,32 +516,38 @@ class ChromaDBClient(VectorStoreInterface):
 
                 gc.collect()
 
+                validation_duration = time.time() - validation_start_time
                 logger.info(
-                    "Delta validation successful: %s (collections: %d)",
+                    "Delta validation successful: %s (collections: %d, duration: %.2fs)",
                     s3_prefix,
                     len(collections),
+                    validation_duration,
                 )
-                return True
+                return True, validation_duration
 
             except Exception as e:
+                validation_duration = time.time() - validation_start_time
                 logger.error(
-                    "Failed to open delta with ChromaDB during validation %s: %s (type: %s)",
+                    "Failed to open delta with ChromaDB during validation %s: %s (type: %s, duration: %.2fs)",
                     s3_prefix,
                     e,
                     type(e).__name__,
+                    validation_duration,
                     exc_info=True,
                 )
-                return False
+                return False, validation_duration
 
         except Exception as e:
+            validation_duration = time.time() - validation_start_time
             logger.error(
-                "Error during delta validation %s: %s (type: %s)",
+                "Error during delta validation %s: %s (type: %s, duration: %.2fs)",
                 s3_prefix,
                 e,
                 type(e).__name__,
+                validation_duration,
                 exc_info=True,
             )
-            return False
+            return False, validation_duration
         finally:
             # Clean up temp directory
             if temp_dir:
@@ -662,23 +673,25 @@ class ChromaDBClient(VectorStoreInterface):
                         max_retries,
                         prefix,
                     )
-                    validation_result = self._validate_delta_after_upload(
+                    validation_result, validation_duration = self._validate_delta_after_upload(
                         bucket, prefix, s3_client
                     )
                     if validation_result:
                         logger.info(
-                            "Delta validation successful: %s (attempt %d/%d)",
+                            "Delta validation successful: %s (attempt %d/%d, duration: %.2fs)",
                             prefix,
                             attempt + 1,
                             max_retries,
+                            validation_duration,
                         )
                         return prefix
                     else:
                         logger.warning(
-                            "Delta validation failed for %s (attempt %d/%d)",
+                            "Delta validation failed for %s (attempt %d/%d, duration: %.2fs)",
                             prefix,
                             attempt + 1,
                             max_retries,
+                            validation_duration,
                         )
                         # Delete the failed upload to avoid leaving corrupted deltas
                         try:

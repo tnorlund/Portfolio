@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import tempfile
+import time
 from typing import Any, Dict, Optional, Tuple
 
 import boto3
@@ -649,6 +650,11 @@ def _handle_internal_core(
             raise TimeoutError("Lambda timeout detected before delta save")
 
         # Save embeddings as delta with comprehensive monitoring and circuit breaker protection
+        validation_attempts = 0
+        validation_retries = 0
+        validation_success = False
+        delta_save_start_time = time.time()
+
         with trace_chromadb_delta_save("words", result_count):
             with operation_with_timeout(
                 "save_word_embeddings_as_delta", max_duration=300
@@ -666,13 +672,28 @@ def _handle_internal_core(
                                 "Operation cancelled during graceful shutdown"
                             )
 
-                        delta_result = save_word_embeddings_as_delta(
-                            results,
-                            descriptions,
-                            batch_id,
-                            bucket_name,
-                            sqs_queue_url,
-                        )
+                        try:
+                            delta_result = save_word_embeddings_as_delta(
+                                results,
+                                descriptions,
+                                batch_id,
+                                bucket_name,
+                                sqs_queue_url,
+                            )
+                            # If we get here, validation succeeded (or was skipped)
+                            validation_success = True
+                            validation_attempts = 1
+                        except RuntimeError as e:
+                            # Check if this is a validation failure
+                            error_msg = str(e).lower()
+                            if "validation failed" in error_msg or "delta validation" in error_msg:
+                                # Validation failed after retries
+                                validation_success = False
+                                validation_attempts = 3  # max_retries default
+                                validation_retries = 2  # retries = attempts - 1
+                            raise
+
+        delta_save_duration = time.time() - delta_save_start_time
 
         delta_id = delta_result["delta_id"]
         embedding_count = delta_result["embedding_count"]
@@ -687,6 +708,11 @@ def _handle_internal_core(
         # Collect metrics (aggregated, not per-call)
         collected_metrics["SavedEmbeddings"] = embedding_count
         collected_metrics["DeltasSaved"] = collected_metrics.get("DeltasSaved", 0) + 1
+        collected_metrics["DeltaValidationAttempts"] = validation_attempts
+        if validation_retries > 0:
+            collected_metrics["DeltaValidationRetries"] = validation_retries
+        collected_metrics["DeltaValidationSuccess"] = 1 if validation_success else 0
+        collected_metrics["DeltaSaveDuration"] = delta_save_duration  # Includes upload + validation
         metric_dimensions["collection"] = "words"
 
         # Add to trace

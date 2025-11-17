@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import utils.logging # pylint: disable=import-error
+from utils.metrics import emf_metrics
 
 import boto3
 import chromadb
@@ -826,23 +827,47 @@ def process_chunk_deltas(
 
             # Process deltas for this collection
             # If any delta fails, the entire chunk fails (all-or-nothing behavior)
+            deltas_processed = 0
+            deltas_failed = 0
             for i, delta in enumerate(collection_deltas):
                 delta_key = delta["delta_key"]
 
-                # Download and merge delta
-                # If this fails, the exception will propagate and fail the entire chunk
-                embeddings_added = download_and_merge_delta(
-                    bucket, delta_key, collection, temp_dir
-                )
-                total_embeddings += embeddings_added
-                logger.info(
-                    "Merged embeddings from delta into collection",
-                    embeddings_added=embeddings_added,
-                    delta_key=delta_key,
-                    collection_name=collection_name,
-                    current=i + 1,
-                    total=len(collection_deltas),
-                )
+                try:
+                    # Download and merge delta
+                    # If this fails, the exception will propagate and fail the entire chunk
+                    embeddings_added = download_and_merge_delta(
+                        bucket, delta_key, collection, temp_dir
+                    )
+                    total_embeddings += embeddings_added
+                    deltas_processed += 1
+                    logger.info(
+                        "Merged embeddings from delta into collection",
+                        embeddings_added=embeddings_added,
+                        delta_key=delta_key,
+                        collection_name=collection_name,
+                        current=i + 1,
+                        total=len(collection_deltas),
+                    )
+                except Exception as e:
+                    deltas_failed += 1
+                    # Log chunk-level validation metrics
+                    emf_metrics.log_metrics(
+                        {
+                            "ChunkDeltaValidationFailures": 1,
+                        },
+                        dimensions={
+                            "validation_stage": "process_chunks",
+                            "collection": collection_name,
+                        },
+                        properties={
+                            "batch_id": batch_id,
+                            "chunk_index": chunk_index,
+                            "delta_key": delta_key,
+                            "error": str(e),
+                        },
+                    )
+                    # Re-raise to fail the entire chunk
+                    raise
 
                 # Memory usage available in CloudWatch metrics
 
@@ -914,6 +939,9 @@ def download_and_merge_delta(
     Returns the number of embeddings added.
     """
     delta_temp = tempfile.mkdtemp(dir=temp_dir)
+    validation_success = False
+    validation_error_type = None
+    validation_start_time = time.time()
 
     try:
         # Download delta from S3
@@ -924,12 +952,15 @@ def download_and_merge_delta(
         delta_path = Path(delta_temp)
         sqlite_files = list(delta_path.rglob("*.sqlite*"))
         if not sqlite_files:
+            validation_duration = time.time() - validation_start_time
             logger.error(
                 "No SQLite files found in delta",
                 delta_key=delta_key,
                 delta_temp=delta_temp,
                 files=list(delta_path.rglob("*")),
+                validation_duration=validation_duration,
             )
+            validation_error_type = "no_sqlite_files"
             raise RuntimeError(
                 f"Delta {delta_key} appears to be corrupted: no SQLite files found"
             )
@@ -938,7 +969,10 @@ def download_and_merge_delta(
         # Wrap in try-except to provide better error messages for corrupted deltas
         try:
             delta_client = chromadb.PersistentClient(path=delta_temp)
+            validation_success = True
+            validation_duration = time.time() - validation_start_time
         except Exception as e:
+            validation_duration = time.time() - validation_start_time
             logger.error(
                 "Failed to open delta ChromaDB client",
                 delta_key=delta_key,
@@ -947,6 +981,7 @@ def download_and_merge_delta(
                 error_type=type(e).__name__,
                 sqlite_files=[str(f) for f in sqlite_files],
             )
+            validation_error_type = f"chromadb_open_failed_{type(e).__name__}"
             # Re-raise with more context
             raise RuntimeError(
                 f"Failed to open delta {delta_key}: {str(e)}. "
@@ -960,6 +995,7 @@ def download_and_merge_delta(
             logger.warning(
                 "No collections found in delta", delta_key=delta_key
             )
+            validation_error_type = "no_collections"
             return 0
 
         # Use the first collection from the delta (there should only be one)
@@ -1012,6 +1048,31 @@ def download_and_merge_delta(
             "Successfully processed embeddings from delta",
             count=total_processed,
         )
+
+        # Log validation metrics for successful delta processing
+        collection_name = "unknown"
+        try:
+            if hasattr(collection, 'name'):
+                collection_name = collection.name
+        except Exception:
+            pass
+
+        emf_metrics.log_metrics(
+            {
+                "DeltaValidationSuccess": 1,
+                "DeltaValidationAttempts": 1,
+                "DeltaValidationDuration": validation_duration,
+            },
+            dimensions={
+                "validation_stage": "process_chunks",
+                "collection": collection_name,
+            },
+            properties={
+                "delta_key": delta_key,
+                "embeddings_processed": total_processed,
+            },
+        )
+
         return total_processed
 
     except Exception as e:
@@ -1022,6 +1083,43 @@ def download_and_merge_delta(
             error=str(e),
             error_type=type(e).__name__,
         )
+
+        # Log validation failure metrics
+        collection_name = "unknown"
+        try:
+            if 'collection' in locals() and hasattr(collection, 'name'):
+                collection_name = collection.name
+        except Exception:
+            pass
+
+        # Get validation duration if available
+        validation_duration = 0.0
+        try:
+            if 'validation_duration' in locals():
+                validation_duration = validation_duration
+            else:
+                validation_duration = time.time() - validation_start_time
+        except Exception:
+            pass
+
+        emf_metrics.log_metrics(
+            {
+                "DeltaValidationSuccess": 0,
+                "DeltaValidationAttempts": 1,
+                "DeltaValidationFailures": 1,
+                "DeltaValidationDuration": validation_duration,
+            },
+            dimensions={
+                "validation_stage": "process_chunks",
+                "error_type": validation_error_type or type(e).__name__,
+                "collection": collection_name,
+            },
+            properties={
+                "delta_key": delta_key,
+                "error": str(e),
+            },
+        )
+
         raise
     finally:
         # CRITICAL: Close delta client before cleanup to ensure SQLite files are flushed
