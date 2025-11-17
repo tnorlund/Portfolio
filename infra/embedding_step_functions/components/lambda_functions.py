@@ -437,7 +437,9 @@ class LambdaFunctionsComponent(ComponentResource):
                 "handler_type": "word_polling",
             },
             "embedding-vector-compact": {
-                "memory": GiB(2),  # Reduced from 8GB, peak usage was 1402MB (17%)
+                "memory": GiB(4),  # Increased from 2GB to ensure heartbeat thread gets CPU time
+                # Final merge operations are CPU-intensive and need sufficient resources
+                # for both main processing and heartbeat thread
                 "timeout": MINUTE * 15,
                 "ephemeral_storage": GiB(6),  # Increased - compaction downloads/uploads large snapshots
                 "handler_type": "compaction",
