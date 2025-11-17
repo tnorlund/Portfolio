@@ -48,36 +48,47 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Load poll_results from S3 if it's stored there
         # Check multiple possible locations (from different step function paths)
-        # Priority: final_merge_result > root level > chunked_data
-        poll_results_s3_key_primary = event.get("poll_results_s3_key")  # From final_merge_result
-        poll_results_s3_key_fallback = event.get("poll_results_s3_key_fallback")  # From root level
+        # Priority: primary > fallback > poll_data (source of truth from NormalizePollBatchesData)
+        poll_results_s3_key_primary = event.get("poll_results_s3_key")  # From final_merge_result or root level
+        poll_results_s3_key_fallback = event.get("poll_results_s3_key_fallback")  # From root level or intermediate steps
+        poll_results_s3_key_poll_data = event.get("poll_results_s3_key_poll_data")  # From poll_results_data (guaranteed to exist)
         poll_results_s3_key_chunked = event.get("poll_results_s3_key_chunked")  # From chunked_data
 
         poll_results_s3_key = (
             poll_results_s3_key_primary
             or poll_results_s3_key_fallback
+            or poll_results_s3_key_poll_data
             or poll_results_s3_key_chunked
         )
 
-        poll_results_s3_bucket_primary = event.get("poll_results_s3_bucket")  # From final_merge_result
-        poll_results_s3_bucket_fallback = event.get("poll_results_s3_bucket_fallback")  # From root level
+        poll_results_s3_bucket_primary = event.get("poll_results_s3_bucket")  # From final_merge_result or root level
+        poll_results_s3_bucket_fallback = event.get("poll_results_s3_bucket_fallback")  # From root level or intermediate steps
+        poll_results_s3_bucket_poll_data = event.get("poll_results_s3_bucket_poll_data")  # From poll_results_data (guaranteed to exist)
         poll_results_s3_bucket_chunked = event.get("poll_results_s3_bucket_chunked")  # From chunked_data
 
         poll_results_s3_bucket = (
             poll_results_s3_bucket_primary
             or poll_results_s3_bucket_fallback
+            or poll_results_s3_bucket_poll_data
             or poll_results_s3_bucket_chunked
         )
 
         # Log which path was used for debugging
         if poll_results_s3_key:
-            source = "final_merge_result" if poll_results_s3_key_primary else (
-                "root_level" if poll_results_s3_key_fallback else "chunked_data"
+            source = "primary" if poll_results_s3_key_primary else (
+                "fallback" if poll_results_s3_key_fallback else (
+                    "poll_data" if poll_results_s3_key_poll_data else "chunked_data"
+                )
             )
             logger.info(
                 "Found poll_results_s3_key from %s: %s",
                 source,
                 poll_results_s3_key,
+            )
+        else:
+            logger.warning(
+                "No poll_results_s3_key found in any location",
+                available_keys=list(event.keys()),
             )
 
         if (not poll_results or poll_results is None) and poll_results_s3_key and poll_results_s3_bucket:

@@ -670,8 +670,12 @@ class WordEmbeddingWorkflow(ComponentResource):
                             "chunk_results.$": "$.merged_groups",
                             # poll_results is always None after NormalizePollWordBatchesData (it's in S3)
                             # WordFinalMerge just needs to pass through the S3 keys for MarkWordBatchesComplete
+                            # Try chunk_groups first, fallback to root level (set by GroupChunksForMerge)
                             "poll_results_s3_key.$": "$.chunk_groups.poll_results_s3_key",
                             "poll_results_s3_bucket.$": "$.chunk_groups.poll_results_s3_bucket",
+                            # Fallback to root level (GroupChunksForMerge copies from poll_results_data to root)
+                            "poll_results_s3_key_fallback.$": "$.poll_results_s3_key",
+                            "poll_results_s3_bucket_fallback.$": "$.poll_results_s3_bucket",
                         },
                         "Next": "WordFinalMerge",
                     },
@@ -689,8 +693,12 @@ class WordEmbeddingWorkflow(ComponentResource):
                             "operation": "final_merge",
                             # poll_results is always None after NormalizePollWordBatchesData (it's in S3)
                             # WordFinalMerge just needs to pass through the S3 keys for MarkWordBatchesComplete
+                            # Try chunked_data first, fallback to poll_results_data (source of truth)
                             "poll_results_s3_key.$": "$.chunked_data.poll_results_s3_key",
                             "poll_results_s3_bucket.$": "$.chunked_data.poll_results_s3_bucket",
+                            # Always include poll_results_data as fallback (guaranteed to exist)
+                            "poll_results_s3_key_fallback.$": "$.poll_results_data.poll_results_s3_key",
+                            "poll_results_s3_bucket_fallback.$": "$.poll_results_data.poll_results_s3_bucket",
                         },
                         "Next": "WordFinalMerge",
                     },
@@ -700,8 +708,9 @@ class WordEmbeddingWorkflow(ComponentResource):
                         "Parameters": {
                             # poll_results is always None after NormalizePollWordBatchesData (it's in S3)
                             # MarkWordBatchesComplete handler will load from S3 using poll_results_s3_key
-                            "poll_results_s3_key": None,
-                            "poll_results_s3_bucket": None,
+                            # Use poll_results_data as source of truth (guaranteed to exist)
+                            "poll_results_s3_key.$": "$.poll_results_data.poll_results_s3_key",
+                            "poll_results_s3_bucket.$": "$.poll_results_data.poll_results_s3_bucket",
                             "poll_results_s3_key_fallback.$": "$.chunked_data.poll_results_s3_key",
                             "poll_results_s3_bucket_fallback.$": "$.chunked_data.poll_results_s3_bucket",
                             "poll_results_s3_key_chunked.$": "$.chunked_data.poll_results_s3_key",
@@ -715,12 +724,16 @@ class WordEmbeddingWorkflow(ComponentResource):
                         "Parameters": {
                             # poll_results is always None after NormalizePollWordBatchesData (it's in S3)
                             # MarkWordBatchesComplete handler will load from S3 using poll_results_s3_key
-                            "poll_results_s3_key": None,
-                            "poll_results_s3_bucket": None,
+                            # Pass through from NoWordChunksToProcess (which gets from poll_results_data)
+                            "poll_results_s3_key.$": "$.poll_results_s3_key",
+                            "poll_results_s3_bucket.$": "$.poll_results_s3_bucket",
                             "poll_results_s3_key_fallback.$": "$.poll_results_s3_key_fallback",
                             "poll_results_s3_bucket_fallback.$": "$.poll_results_s3_bucket_fallback",
                             "poll_results_s3_key_chunked.$": "$.poll_results_s3_key_chunked",
                             "poll_results_s3_bucket_chunked.$": "$.poll_results_s3_bucket_chunked",
+                            # Also include poll_results_data as ultimate fallback
+                            "poll_results_s3_key_poll_data.$": "$.poll_results_data.poll_results_s3_key",
+                            "poll_results_s3_bucket_poll_data.$": "$.poll_results_data.poll_results_s3_bucket",
                         },
                         "Next": "MarkWordBatchesComplete",
                     },
@@ -766,10 +779,16 @@ class WordEmbeddingWorkflow(ComponentResource):
                         "Parameters": {
                             # poll_results is always None after NormalizePollWordBatchesData (it's in S3)
                             # MarkWordBatchesComplete handler will load from S3 using poll_results_s3_key
+                            # Priority: final_merge_result > root level
+                            # Note: poll_results_data might not exist in hierarchical merge path, so we set poll_data to null
+                            # The Lambda handler will check multiple locations including poll_results_s3_key_poll_data if passed
                             "poll_results_s3_key.$": "$.final_merge_result.poll_results_s3_key",
                             "poll_results_s3_bucket.$": "$.final_merge_result.poll_results_s3_bucket",
                             "poll_results_s3_key_fallback.$": "$.poll_results_s3_key",
                             "poll_results_s3_bucket_fallback.$": "$.poll_results_s3_bucket",
+                            # Set to null since poll_results_data might not exist in hierarchical merge path
+                            "poll_results_s3_key_poll_data": None,
+                            "poll_results_s3_bucket_poll_data": None,
                         },
                         "Next": "MarkWordBatchesComplete",
                     },
@@ -780,10 +799,14 @@ class WordEmbeddingWorkflow(ComponentResource):
                         "Parameters": {
                             # poll_results is always None after NormalizePollWordBatchesData (it's in S3)
                             # Handler will load from S3 using poll_results_s3_key when poll_results is null/empty
+                            # Priority: primary > fallback > poll_data (source of truth)
                             "poll_results_s3_key.$": "$.poll_results_s3_key",
                             "poll_results_s3_bucket.$": "$.poll_results_s3_bucket",
                             "poll_results_s3_key_fallback.$": "$.poll_results_s3_key_fallback",
                             "poll_results_s3_bucket_fallback.$": "$.poll_results_s3_bucket_fallback",
+                            # poll_results_s3_key_poll_data is set by PrepareMarkWordBatchesComplete if available
+                            "poll_results_s3_key_poll_data.$": "$.poll_results_s3_key_poll_data",
+                            "poll_results_s3_bucket_poll_data.$": "$.poll_results_s3_bucket_poll_data",
                             "poll_results_s3_key_chunked": None,
                             "poll_results_s3_bucket_chunked": None,
                         },
