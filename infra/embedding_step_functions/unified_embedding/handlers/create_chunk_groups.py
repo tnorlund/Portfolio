@@ -157,6 +157,14 @@ def _create_chunk_groups(event: Dict[str, Any]) -> Dict[str, Any]:
         poll_results_s3_key = event.get("poll_results_s3_key")
         poll_results_s3_bucket = event.get("poll_results_s3_bucket")
 
+        logger.info(
+            "CreateChunkGroups received poll_results_s3_key",
+            poll_results_s3_key=poll_results_s3_key,
+            poll_results_s3_bucket=poll_results_s3_bucket,
+            poll_results_type=type(poll_results).__name__,
+            poll_results_length=len(poll_results) if isinstance(poll_results, list) else 0,
+        )
+
         if not batch_id:
             raise ValueError("batch_id is required")
 
@@ -220,6 +228,12 @@ def _create_chunk_groups(event: Dict[str, Any]) -> Dict[str, Any]:
 
         # Check if poll_results is too large - if so, also store it in S3
         # But first check if it's already in S3 (from NormalizePollBatchesData)
+        logger.info(
+            "Checking poll_results_s3_key before processing",
+            poll_results_s3_key=poll_results_s3_key,
+            poll_results_s3_key_type=type(poll_results_s3_key).__name__,
+            poll_results_s3_key_bool=bool(poll_results_s3_key),
+        )
         if not poll_results_s3_key:
             # poll_results is not already in S3, check if we need to upload it
             poll_results_payload = json.dumps(poll_results)
@@ -267,10 +281,18 @@ def _create_chunk_groups(event: Dict[str, Any]) -> Dict[str, Any]:
             # Use the bucket from environment if not provided
             if not poll_results_s3_bucket:
                 poll_results_s3_bucket = bucket
+            # IMPORTANT: Preserve the existing poll_results_s3_key - do NOT overwrite it
+            # The poll_results array here is just S3 references, not the actual data
+            # The actual data is already in S3 at poll_results_s3_key
 
         # Return response - always include all fields (even if null) for JSONPath compatibility
         # Step Functions JSONPath fails if a field doesn't exist, so we must always include these
         # Pass through poll_results_s3_key/bucket for MarkBatchesComplete
+        logger.info(
+            "CreateChunkGroups returning response",
+            poll_results_s3_key=poll_results_s3_key,
+            poll_results_s3_bucket=poll_results_s3_bucket,
+        )
         response = {
             "batch_id": batch_id,
             "groups_s3_key": groups_s3_key,
