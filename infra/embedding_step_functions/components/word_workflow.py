@@ -21,6 +21,7 @@ class WordEmbeddingWorkflow(ComponentResource):
         self,
         name: str,
         lambda_functions,
+        batch_bucket,
         opts: Optional[ResourceOptions] = None,
     ):
         """Initialize word embedding workflow component.
@@ -28,6 +29,7 @@ class WordEmbeddingWorkflow(ComponentResource):
         Args:
             name: Component name
             lambda_functions: Dictionary of Lambda functions
+            batch_bucket: S3 bucket for batch files and poll results
             opts: Pulumi resource options
         """
         super().__init__(
@@ -38,6 +40,7 @@ class WordEmbeddingWorkflow(ComponentResource):
         )
 
         self.lambda_functions = lambda_functions
+        self.batch_bucket = batch_bucket
 
         # Create IAM role for Step Functions
         self._create_step_function_role()
@@ -76,22 +79,32 @@ class WordEmbeddingWorkflow(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Add permissions to invoke Lambda functions
+        # Add permissions to invoke Lambda functions and write to S3 (for normalize handler to upload poll results)
         lambda_arns = [func.arn for func in self.lambda_functions.values()]
 
         RolePolicy(
             f"word-sf-lambda-invoke-{stack}",
             role=self.sf_role.id,
-            policy=Output.all(*lambda_arns).apply(
-                lambda arns: json.dumps(
+            policy=Output.all(*lambda_arns, self.batch_bucket.bucket).apply(
+                lambda args: json.dumps(
                     {
                         "Version": "2012-10-17",
                         "Statement": [
                             {
                                 "Effect": "Allow",
                                 "Action": ["lambda:InvokeFunction"],
-                                "Resource": arns,
-                            }
+                                "Resource": args[:-1],
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "s3:PutObject",
+                                    "s3:GetObject",
+                                ],
+                                "Resource": [
+                                    f"arn:aws:s3:::{args[-1]}/*",
+                                ],
+                            },
                         ],
                     }
                 )
@@ -154,23 +167,29 @@ class WordEmbeddingWorkflow(ComponentResource):
                 self.lambda_functions["embedding-list-pending"].arn,
                 self.lambda_functions["embedding-word-poll"].arn,
                 self.lambda_functions["embedding-vector-compact"].arn,
+                self.lambda_functions["embedding-normalize-poll-batches"].arn,
                 self.lambda_functions["embedding-split-chunks"].arn,
                 self.lambda_functions["embedding-create-chunk-groups"].arn,
                 self.lambda_functions["embedding-mark-batches-complete"].arn,
+                self.batch_bucket.bucket,
             ).apply(self._create_ingest_definition),
             opts=ResourceOptions(parent=self),
         )
 
-    def _create_ingest_definition(self, arns: list) -> str:
+    def _create_ingest_definition(self, arns_and_bucket: list) -> str:
         """Create ingestion workflow definition.
 
-        arns[0] = embedding-list-pending
-        arns[1] = embedding-word-poll
-        arns[2] = embedding-vector-compact
-        arns[3] = embedding-split-chunks
-        arns[4] = embedding-create-chunk-groups
-        arns[5] = embedding-mark-batches-complete
+        arns_and_bucket[0] = embedding-list-pending
+        arns_and_bucket[1] = embedding-word-poll
+        arns_and_bucket[2] = embedding-vector-compact
+        arns_and_bucket[3] = embedding-normalize-poll-batches
+        arns_and_bucket[4] = embedding-split-chunks
+        arns_and_bucket[5] = embedding-create-chunk-groups
+        arns_and_bucket[6] = embedding-mark-batches-complete
+        arns_and_bucket[7] = batch_bucket_name
         """
+        arns = arns_and_bucket[:-1]
+        batch_bucket_name = arns_and_bucket[-1]
         return json.dumps(
             {
                 "Comment": "Poll and ingest word embeddings",
@@ -179,30 +198,50 @@ class WordEmbeddingWorkflow(ComponentResource):
                     "ListPendingWordBatches": {
                         "Type": "Task",
                         "Resource": arns[0],
-                        "Parameters": {"batch_type": "word"},
-                        "ResultPath": "$.pending_batches",
+                        "Parameters": {
+                            "batch_type": "word",
+                            "execution_id.$": "$$.Execution.Name",
+                        },
+                        "ResultPath": "$.list_result",
                         "Next": "CheckPendingWordBatches",
                     },
                     "CheckPendingWordBatches": {
                         "Type": "Choice",
+                        "Comment": "Check if there are any pending batches",
                         "Choices": [
                             {
-                                "Variable": "$.pending_batches[0]",
-                                "IsPresent": True,
-                                "Next": "PollWordBatches",
+                                "Variable": "$.list_result.total_batches",
+                                "NumericGreaterThan": 0,
+                                "Next": "NormalizePendingWordBatches",
                             },
                         ],
                         "Default": "NoWordBatchesPending",
                     },
+                    "NormalizePendingWordBatches": {
+                        "Type": "Pass",
+                        "Comment": "Normalize batches data structure for PollWordBatches Map state",
+                        "Parameters": {
+                            "batch_indices.$": "$.list_result.batch_indices",
+                            "pending_batches.$": "$.list_result.pending_batches",
+                            "manifest_s3_key.$": "$.list_result.manifest_s3_key",
+                            "manifest_s3_bucket.$": "$.list_result.manifest_s3_bucket",
+                            "use_s3.$": "$.list_result.use_s3",
+                            "execution_id.$": "$.list_result.execution_id",
+                            "total_batches.$": "$.list_result.total_batches",
+                        },
+                        "ResultPath": "$.poll_batches_data",
+                        "Next": "PollWordBatches",
+                    },
                     "PollWordBatches": {
                         "Type": "Map",
-                        "ItemsPath": "$.pending_batches",
-                        "MaxConcurrency": 50,
+                        "Comment": "Poll batches in parallel - supports both inline and S3 manifest modes. Results are normalized and uploaded to S3 by NormalizePollWordBatchesData handler.",
+                        "ItemsPath": "$.poll_batches_data.batch_indices",
+                        "MaxConcurrency": 100,
                         "Parameters": {
-                            "batch_id.$": "$$.Map.Item.Value.batch_id",
-                            "openai_batch_id.$": (
-                                "$$.Map.Item.Value.openai_batch_id"
-                            ),
+                            "batch_index.$": "$$.Map.Item.Value",
+                            "manifest_s3_key.$": "$.poll_batches_data.manifest_s3_key",
+                            "manifest_s3_bucket.$": "$.poll_batches_data.manifest_s3_bucket",
+                            "pending_batches.$": "$.poll_batches_data.pending_batches",
                             "skip_sqs_notification": True,
                         },
                         "Iterator": {
@@ -238,15 +277,48 @@ class WordEmbeddingWorkflow(ComponentResource):
                             },
                         },
                         "ResultPath": "$.poll_results",
-                        "Next": "SplitWordIntoChunks",
+                        "Next": "NormalizePollWordBatchesData",
                     },
-                    "SplitWordIntoChunks": {
+                    "NormalizePollWordBatchesData": {
                         "Type": "Task",
                         "Resource": arns[3],
-                        "Comment": "Split word delta results",
+                        "Comment": "Normalize poll_results structure and upload to S3 if payload is too large",
                         "Parameters": {
                             "batch_id.$": "$$.Execution.Name",
                             "poll_results.$": "$.poll_results",
+                        },
+                        "ResultPath": "$.poll_results_data",
+                        "Next": "SplitWordIntoChunks",
+                        "Retry": [
+                            {
+                                "ErrorEquals": [
+                                    "Lambda.ServiceException",
+                                    "Lambda.AWSLambdaException",
+                                    "Lambda.ResourceConflictException",
+                                ],
+                                "IntervalSeconds": 5,
+                                "MaxAttempts": 5,
+                                "BackoffRate": 2.0,
+                                "JitterStrategy": "FULL",
+                            }
+                        ],
+                        "Catch": [
+                            {
+                                "ErrorEquals": ["States.ALL"],
+                                "Next": "WordCompactionFailed",
+                                "ResultPath": "$.error",
+                            }
+                        ],
+                    },
+                    "SplitWordIntoChunks": {
+                        "Type": "Task",
+                        "Resource": arns[4],
+                        "Comment": "Split word delta results",
+                        "Parameters": {
+                            "batch_id.$": "$$.Execution.Name",
+                            "poll_results.$": "$.poll_results_data.poll_results",
+                            "poll_results_s3_key.$": "$.poll_results_data.poll_results_s3_key",
+                            "poll_results_s3_bucket.$": "$.poll_results_data.poll_results_s3_bucket",
                         },
                         "ResultPath": "$.chunked_data",
                         "Next": "CheckWordChunksSource",
@@ -285,13 +357,15 @@ class WordEmbeddingWorkflow(ComponentResource):
                     },
                     "LoadWordChunksFromS3": {
                         "Type": "Task",
-                        "Resource": arns[3],
+                        "Resource": arns[4],
                         "Comment": "Load chunks from S3 when payload is too large",
                         "Parameters": {
                             "operation": "load_chunks_from_s3",
                             "chunks_s3_key.$": "$.chunked_data.chunks_s3_key",
                             "chunks_s3_bucket.$": "$.chunked_data.chunks_s3_bucket",
                             "batch_id.$": "$.chunked_data.batch_id",
+                            "poll_results_s3_key.$": "$.chunked_data.poll_results_s3_key",
+                            "poll_results_s3_bucket.$": "$.chunked_data.poll_results_s3_bucket",
                         },
                         "ResultPath": "$.chunked_data",
                         "Next": "CheckForWordChunks",
@@ -346,7 +420,7 @@ class WordEmbeddingWorkflow(ComponentResource):
                         "Type": "Map",
                         "Comment": "Process word chunks in parallel",
                         "ItemsPath": "$.chunked_data.chunks",
-                        "MaxConcurrency": 5,
+                        "MaxConcurrency": 20,
                         "Parameters": {
                             "chunk.$": "$$.Map.Item.Value",
                             "chunks_s3_key.$": "$.chunked_data.chunks_s3_key",
@@ -421,6 +495,10 @@ class WordEmbeddingWorkflow(ComponentResource):
                             "chunk_results.$": "$.chunk_results",
                             "group_size": 10,
                             "poll_results.$": "$.poll_results",
+                            # Use poll_results_data as source of truth for poll_results_s3_key/bucket
+                            # SplitIntoChunks should include these in chunked_data, but poll_results_data is guaranteed to have them
+                            "poll_results_s3_key.$": "$.poll_results_data.poll_results_s3_key",
+                            "poll_results_s3_bucket.$": "$.poll_results_data.poll_results_s3_bucket",
                         },
                         "Next": "CheckChunkGroupCount",
                     },
@@ -438,13 +516,15 @@ class WordEmbeddingWorkflow(ComponentResource):
                     },
                     "CreateChunkGroups": {
                         "Type": "Task",
-                        "Resource": arns[4],
+                        "Resource": arns[5],
                         "Comment": "Create chunk groups for parallel merging",
                         "Parameters": {
                             "batch_id.$": "$.batch_id",
                             "chunk_results.$": "$.chunk_results",
                             "group_size": 10,
                             "poll_results.$": "$.poll_results",
+                            "poll_results_s3_key.$": "$.poll_results_s3_key",
+                            "poll_results_s3_bucket.$": "$.poll_results_s3_bucket",
                         },
                         "ResultPath": "$.chunk_groups",
                         "Next": "CheckChunkGroupsSource",
@@ -483,7 +563,7 @@ class WordEmbeddingWorkflow(ComponentResource):
                     },
                     "LoadChunkGroupsFromS3": {
                         "Type": "Task",
-                        "Resource": arns[4],
+                        "Resource": arns[5],
                         "Comment": "Load chunk groups from S3 when payload is too large",
                         "Parameters": {
                             "operation": "load_groups_from_s3",
@@ -604,6 +684,8 @@ class WordEmbeddingWorkflow(ComponentResource):
                             "chunk_results.$": "$.chunk_results",
                             "operation": "final_merge",
                             "poll_results.$": "$.poll_results",
+                            "poll_results_s3_key.$": "$.chunked_data.poll_results_s3_key",
+                            "poll_results_s3_bucket.$": "$.chunked_data.poll_results_s3_bucket",
                         },
                         "Next": "WordFinalMerge",
                     },
@@ -620,6 +702,8 @@ class WordEmbeddingWorkflow(ComponentResource):
                             "batch_id.$": "$.batch_id",
                             "chunk_results.$": "$.chunk_results",
                             "database": "words",
+                            "poll_results_s3_key.$": "$.poll_results_s3_key",
+                            "poll_results_s3_bucket.$": "$.poll_results_s3_bucket",
                         },
                         "ResultPath": "$.final_merge_result",
                         "OutputPath": "$",
@@ -647,7 +731,7 @@ class WordEmbeddingWorkflow(ComponentResource):
                     },
                     "MarkWordBatchesComplete": {
                         "Type": "Task",
-                        "Resource": arns[5],
+                        "Resource": arns[6],
                         "Comment": "Mark batch summaries as COMPLETED after successful compaction",
                         "Parameters": {
                             "poll_results.$": "$.poll_results",
