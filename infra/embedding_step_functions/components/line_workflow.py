@@ -733,9 +733,10 @@ class LineEmbeddingWorkflow(ComponentResource):
                             "poll_results_s3_bucket_fallback.$": "$.poll_results_s3_bucket_fallback",
                             "poll_results_s3_key_chunked.$": "$.poll_results_s3_key_chunked",
                             "poll_results_s3_bucket_chunked.$": "$.poll_results_s3_bucket_chunked",
-                            # Also include poll_results_data as ultimate fallback
-                            "poll_results_s3_key_poll_data.$": "$.poll_results_data.poll_results_s3_key",
-                            "poll_results_s3_bucket_poll_data.$": "$.poll_results_data.poll_results_s3_bucket",
+                            # poll_results_data doesn't exist in no-chunks path, so set to null
+                            # The handler will use the root-level poll_results_s3_key instead
+                            "poll_results_s3_key_poll_data": None,
+                            "poll_results_s3_bucket_poll_data": None,
                         },
                         "Next": "MarkBatchesComplete",
                     },
