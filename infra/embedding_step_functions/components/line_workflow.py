@@ -770,9 +770,9 @@ class LineEmbeddingWorkflow(ComponentResource):
                             },
                             {
                                 "ErrorEquals": ["States.TaskFailed"],
-                                "IntervalSeconds": 1020,  # 17 minutes - wait for lock to expire (16 min lock duration + buffer)
-                                "MaxAttempts": 1,  # Only retry once after lock expires
-                                "BackoffRate": 1.0,
+                                "IntervalSeconds": 30,  # 30 seconds - retry frequently since add_compaction_lock validates expired locks
+                                "MaxAttempts": 40,  # Allow up to 20 minutes of retries (40 * 30s = 1200s) to cover 16 min lock duration + buffer
+                                "BackoffRate": 1.0,  # No backoff - retry at fixed interval
                             },
                         ],
                     },
