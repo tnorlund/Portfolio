@@ -9,7 +9,7 @@ import os
 import shutil
 import tempfile
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -637,12 +637,16 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         return {
             "statusCode": 400,
             "error": "batch_id is required for final merge",
+            "poll_results_s3_key": poll_results_s3_key,  # Pass through for MarkBatchesComplete
+            "poll_results_s3_bucket": poll_results_s3_bucket,  # Pass through for MarkBatchesComplete
         }
 
     if not chunk_results:
         return {
             "statusCode": 400,
             "error": "chunk_results is required for final merge",
+            "poll_results_s3_key": poll_results_s3_key,  # Pass through for MarkBatchesComplete
+            "poll_results_s3_bucket": poll_results_s3_bucket,  # Pass through for MarkBatchesComplete
         }
 
     # Filter out empty groups and error responses before processing
@@ -680,6 +684,8 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             "error": error_msg,
             "batch_id": batch_id,
             "message": "Final merge failed - no valid intermediate snapshots to merge",
+            "poll_results_s3_key": poll_results_s3_key,  # Pass through for MarkBatchesComplete
+            "poll_results_s3_bucket": poll_results_s3_bucket,  # Pass through for MarkBatchesComplete
         }
 
     # Use filtered results
@@ -703,21 +709,89 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     )
 
     # Acquire lock for final merge
+    lock_id = f"chroma-final-merge-{batch_id}"
     lock_manager = LockManager(
         dynamo_client,
         collection=collection,
         heartbeat_interval=heartbeat_interval,
         lock_duration_minutes=lock_duration_minutes,
     )
+
+    logger.info(
+        "Attempting to acquire final merge lock",
+        batch_id=batch_id,
+        lock_id=lock_id,
+        collection=collection.value,
+        database=database_name,
+        chunk_count=len(chunk_results),
+        lock_duration_minutes=lock_duration_minutes,
+    )
+
     try:
-        lock_acquired = lock_manager.acquire(f"chroma-final-merge-{batch_id}")
+        lock_acquired = lock_manager.acquire(lock_id)
         if not lock_acquired:
-            logger.warning("Could not acquire lock for final merge")
-            return {
-                "statusCode": 423,
-                "error": "Could not acquire lock",
-                "message": "Another process is performing final merge",
-            }
+            # Try to get details about the existing lock for better debugging
+            existing_lock = None
+            try:
+                existing_lock = dynamo_client.get_compaction_lock(lock_id, collection)
+            except Exception as e:
+                logger.debug(
+                    "Could not query existing lock details",
+                    lock_id=lock_id,
+                    error=str(e),
+                )
+
+            if existing_lock:
+                now = datetime.now(timezone.utc)
+                expires = (
+                    existing_lock.expires
+                    if isinstance(existing_lock.expires, datetime)
+                    else datetime.fromisoformat(existing_lock.expires.replace("Z", "+00:00"))
+                )
+                time_until_expiry = (expires - now).total_seconds()
+
+                logger.warning(
+                    "Could not acquire lock for final merge - lock is held by another process",
+                    batch_id=batch_id,
+                    lock_id=lock_id,
+                    collection=collection.value,
+                    existing_lock_owner=existing_lock.owner,
+                    existing_lock_expires=existing_lock.expires,
+                    existing_lock_heartbeat=existing_lock.heartbeat,
+                    time_until_expiry_seconds=time_until_expiry,
+                    chunk_count=len(chunk_results),
+                )
+                error_msg = (
+                    f"Could not acquire lock {lock_id} for final merge. "
+                    f"Lock is held by owner {existing_lock.owner} "
+                    f"(expires: {existing_lock.expires}, "
+                    f"heartbeat: {existing_lock.heartbeat}). "
+                    f"Time until expiry: {time_until_expiry:.1f} seconds."
+                )
+            else:
+                logger.warning(
+                    "Could not acquire lock for final merge - lock may be held by another process",
+                    batch_id=batch_id,
+                    lock_id=lock_id,
+                    collection=collection.value,
+                    chunk_count=len(chunk_results),
+                )
+                error_msg = (
+                    f"Could not acquire lock {lock_id} for final merge. "
+                    "Another process is performing final merge."
+                )
+
+            # Raise exception so Step Functions treats this as a failure and can retry
+            raise RuntimeError(error_msg)
+
+        logger.info(
+            "Successfully acquired final merge lock",
+            batch_id=batch_id,
+            lock_id=lock_id,
+            collection=collection.value,
+            lock_owner=lock_manager.lock_owner,
+            chunk_count=len(chunk_results),
+        )
 
         # Start heartbeat
         lock_manager.start_heartbeat()
@@ -773,6 +847,8 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             "error": str(e),
             "batch_id": batch_id,
             "message": "Final merge failed",
+            "poll_results_s3_key": poll_results_s3_key,  # Pass through for MarkBatchesComplete
+            "poll_results_s3_bucket": poll_results_s3_bucket,  # Pass through for MarkBatchesComplete
         }
     finally:
         # Stop heartbeat and release lock
