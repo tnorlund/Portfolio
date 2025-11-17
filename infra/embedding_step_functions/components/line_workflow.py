@@ -496,7 +496,7 @@ class LineEmbeddingWorkflow(ComponentResource):
                             "batch_id.$": "$.chunked_data.batch_id",
                             "total_chunks.$": "$.chunked_data.total_chunks",
                             "chunk_results.$": "$.chunk_results",
-                            "group_size": 10,
+                            "group_size": 20,  # Increased from 10 for faster final merge
                             # poll_results is always None after NormalizePollBatchesData (it's in S3)
                             # Use poll_results_data as source of truth for poll_results_s3_key/bucket
                             # SplitIntoChunks should include these in chunked_data, but poll_results_data is guaranteed to have them
@@ -524,7 +524,7 @@ class LineEmbeddingWorkflow(ComponentResource):
                         "Parameters": {
                             "batch_id.$": "$.batch_id",
                             "chunk_results.$": "$.chunk_results",
-                            "group_size": 10,
+                            "group_size": 20,  # Increased from 10 for faster final merge
                             # poll_results is always None after NormalizePollBatchesData (it's in S3)
                             # Handler doesn't need poll_results, just needs to pass through S3 keys
                             "poll_results_s3_key.$": "$.poll_results_s3_key",

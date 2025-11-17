@@ -23,13 +23,13 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Configuration with dynamic chunk sizing
-DEFAULT_CHUNK_SIZE = 10  # Default for backward compatibility
+DEFAULT_CHUNK_SIZE = 25  # Default for backward compatibility (increased from 10)
 CHUNK_SIZE_WORDS = int(
-    os.environ.get("CHUNK_SIZE_WORDS", "5")
-)  # Smaller for words
+    os.environ.get("CHUNK_SIZE_WORDS", "15")
+)  # Increased from 5 for faster final merge
 CHUNK_SIZE_LINES = int(
-    os.environ.get("CHUNK_SIZE_LINES", "10")
-)  # Standard for lines
+    os.environ.get("CHUNK_SIZE_LINES", "25")
+)  # Increased from 10 for faster final merge
 
 # Step Functions payload limit is 256KB (262,144 bytes)
 # We'll use S3 if the response would exceed 150KB to leave a large buffer
