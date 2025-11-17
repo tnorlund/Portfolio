@@ -542,15 +542,9 @@ def merge_chunk_group_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             "empty": True,  # Flag for filtering
         }
 
-    # Limit to 10 chunks per group for consistent processing
-    original_count = len(chunk_group)
-    chunk_group = chunk_group[:10]
-    if original_count > 10:
-        logger.warning(
-            "Chunk group has more than 10 chunks, processing first 10",
-            group_index=group_index,
-            chunk_count=original_count,
-        )
+    # Process all chunks in the group (no limit - group_size is controlled by Step Function)
+    # Previously had a hardcoded limit of 10, but this was causing chunks to be dropped
+    # when group_size was increased to 20. Now we process all chunks in the group.
 
     # Extract intermediate keys
     intermediate_keys = []

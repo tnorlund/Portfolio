@@ -779,6 +779,9 @@ class WordEmbeddingWorkflow(ComponentResource):
                         "Type": "Pass",
                         "Comment": "Prepare data for MarkWordBatchesComplete - normalize poll_results_s3_key from various possible locations",
                         "Parameters": {
+                            # Preserve final_merge_result so it's available in execution output
+                            # final_merge_result is small (~200-300 bytes) so we can keep it inline
+                            "final_merge_result.$": "$.final_merge_result",
                             # poll_results is always None after NormalizePollWordBatchesData (it's in S3)
                             # MarkWordBatchesComplete handler will load from S3 using poll_results_s3_key
                             # Priority: final_merge_result > fallback (from PrepareWordHierarchicalFinalMerge) > root level
