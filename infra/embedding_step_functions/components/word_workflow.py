@@ -780,13 +780,17 @@ class WordEmbeddingWorkflow(ComponentResource):
                         "Parameters": {
                             # poll_results is always None after NormalizePollWordBatchesData (it's in S3)
                             # MarkWordBatchesComplete handler will load from S3 using poll_results_s3_key
-                            # Priority: final_merge_result > root level
+                            # Priority: final_merge_result > fallback (from PrepareWordHierarchicalFinalMerge) > root level
                             # Note: poll_results_data might not exist in hierarchical merge path, so we set poll_data to null
                             # The Lambda handler will check multiple locations including poll_results_s3_key_poll_data if passed
                             "poll_results_s3_key.$": "$.final_merge_result.poll_results_s3_key",
                             "poll_results_s3_bucket.$": "$.final_merge_result.poll_results_s3_bucket",
-                            "poll_results_s3_key_fallback.$": "$.poll_results_s3_key",
-                            "poll_results_s3_bucket_fallback.$": "$.poll_results_s3_bucket",
+                            # Use fallback from PrepareWordHierarchicalFinalMerge (more reliable than root level)
+                            "poll_results_s3_key_fallback.$": "$.poll_results_s3_key_fallback",
+                            "poll_results_s3_bucket_fallback.$": "$.poll_results_s3_bucket_fallback",
+                            # Also check root level as secondary fallback
+                            "poll_results_s3_key_root.$": "$.poll_results_s3_key",
+                            "poll_results_s3_bucket_root.$": "$.poll_results_s3_bucket",
                             # Set to null since poll_results_data might not exist in hierarchical merge path
                             "poll_results_s3_key_poll_data": None,
                             "poll_results_s3_bucket_poll_data": None,
