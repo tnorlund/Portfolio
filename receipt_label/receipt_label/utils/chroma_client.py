@@ -341,6 +341,49 @@ class ChromaDBClient:
         collection = self.get_collection(collection_name)
         return collection.count()
 
+    def _close_client_for_upload(self) -> None:
+        """
+        Close ChromaDB client to ensure SQLite files are flushed and unlocked.
+
+        This is a workaround because ChromaDB's PersistentClient doesn't expose a close() method.
+        We clear references, force garbage collection, and add a small delay to ensure
+        SQLite connections are closed before uploading files to S3.
+
+        See: docs/CHROMADB_CLIENT_CLOSING_WORKAROUND.md
+        """
+        if self._client is None:
+            return
+
+        try:
+            logger.info(
+                "Closing ChromaDB client before upload: %s",
+                self.persist_directory,
+            )
+
+            # Clear collections cache
+            if hasattr(self, "_collections"):
+                self._collections.clear()
+
+            # Clear the underlying client reference
+            if hasattr(self._client, "_client") and self._client._client is not None:
+                self._client._client = None
+
+            # Force garbage collection to ensure SQLite connections are closed
+            import gc
+
+            gc.collect()
+
+            # Small delay to ensure file handles are released by OS
+            import time as _time
+
+            _time.sleep(0.1)
+
+            logger.info("ChromaDB client closed successfully")
+        except Exception as e:
+            logger.warning(
+                "Error closing ChromaDB client (non-critical): %s", e
+            )
+
     def persist_and_upload_delta(
         self,
         bucket: str,
@@ -387,6 +430,11 @@ class ChromaDBClient:
                 logger.info("Explicitly called client.persist()")
             except Exception as e:
                 logger.warning(f"Could not call persist(): {e}")
+
+        # CRITICAL: Close ChromaDB client BEFORE uploading to ensure SQLite files are flushed and unlocked
+        # This prevents corruption when uploading files that are still being written to
+        # See: docs/CHROMADB_CLIENT_CLOSING_WORKAROUND.md
+        self._close_client_for_upload()
 
         # Check if any files exist in the persist directory
         persist_path = Path(self.persist_directory)

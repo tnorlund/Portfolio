@@ -50,6 +50,9 @@ from chromadb_compaction import (
 from currency_validation_step_functions import (
     create_currency_validation_state_machine,
 )
+from create_labels_step_functions import (
+    CreateLabelsStepFunction,
+)
 
 # Using the optimized docker-build based base images with scoped contexts
 from networking import PublicVpc
@@ -135,6 +138,15 @@ from chromadb_buckets import shared_chromadb_buckets
 # Create currency validation state machine
 currency_validation_state_machine = create_currency_validation_state_machine(
     notification_system
+)
+
+# Create labels state machine (creates/updates labels with PENDING status)
+# No VPC needed - downloads from DynamoDB, needs internet for Ollama API
+create_labels_sf = CreateLabelsStepFunction(
+    f"create-labels-{pulumi.get_stack()}",
+    dynamodb_table_name=dynamodb_table.name,
+    dynamodb_table_arn=dynamodb_table.arn,
+    max_concurrency=3,  # Reduced to avoid Ollama rate limiting (matches validate_pending_labels)
 )
 
 validation_by_merchant_step_functions = ValidationByMerchantStepFunction(
@@ -1032,6 +1044,20 @@ pulumi.export(
 pulumi.export(
     "validate_pending_labels_validate_lambda_arn",
     validate_pending_labels_sf.validate_receipt_lambda_arn,
+)
+
+# Export create labels step function
+pulumi.export(
+    "create_labels_sf_arn",
+    create_labels_sf.state_machine_arn,
+)
+pulumi.export(
+    "create_labels_list_lambda_arn",
+    create_labels_sf.list_receipts_lambda_arn,
+)
+pulumi.export(
+    "create_labels_create_lambda_arn",
+    create_labels_sf.create_labels_lambda_arn,
 )
 
 # Create validate metadata Step Function
