@@ -748,9 +748,9 @@ export default function ReceiptPage({
 
       <p>
         GitHub allows me to separate and structure my work into manageable
-        chunks. I can ask AI "what if I do X?" try it out, debug it, and review
+        chunks. I can ask AI &quot;what if I do X?&quot; try it out, debug it, and review
         it before adding it to what I know works. This is a great way to learn
-        and iterate quickly. Action produces information. Even when I'm unsure
+        and iterate quickly. Action produces information. Even when I&apos;m unsure
         what to do, I just <i>do anything</i> and see what happens. This gives
         me the information about what I should actually be doing.
       </p>
