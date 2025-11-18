@@ -258,7 +258,13 @@ class ReceiptLayoutLMTrainer:
         if "load_best_model_at_end" in ta_params:
             args_kwargs["load_best_model_at_end"] = True
         if "metric_for_best_model" in ta_params:
-            args_kwargs["metric_for_best_model"] = "f1"
+            # Check if seqeval is available to determine which metric to use
+            try:
+                importlib.import_module("seqeval.metrics")
+                args_kwargs["metric_for_best_model"] = "eval_f1"
+            except ModuleNotFoundError:
+                # Fallback to accuracy if seqeval not available
+                args_kwargs["metric_for_best_model"] = "eval_accuracy"
         if "save_total_limit" in ta_params:
             args_kwargs["save_total_limit"] = 1
         if "save_safetensors" in ta_params:
@@ -281,14 +287,16 @@ class ReceiptLayoutLMTrainer:
         if "optim" in ta_params:
             args_kwargs["optim"] = "adamw_torch"
         # Enable torch.compile only if Triton backend is available
+        # Disabled due to triton version compatibility issues
         if "torch_compile" in ta_params:
             enable_compile = False
-            try:
-                importlib.import_module("triton")
-                importlib.import_module("torch._inductor")
-                enable_compile = True
-            except (ModuleNotFoundError, ImportError):
-                enable_compile = False
+            # Temporarily disabled - triton version conflicts
+            # try:
+            #     importlib.import_module("triton")
+            #     importlib.import_module("torch._inductor")
+            #     enable_compile = True
+            # except (ModuleNotFoundError, ImportError):
+            #     enable_compile = False
             args_kwargs["torch_compile"] = enable_compile
         if "fp16_full_eval" in ta_params:
             args_kwargs["fp16_full_eval"] = True

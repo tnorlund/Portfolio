@@ -129,8 +129,14 @@ class LayoutLMTrainingInfra(ComponentResource):
                 set -euxo pipefail
                 # Log all output to cloud-init output and our own log file
                 exec > /var/log/user-data.log 2>&1
-                yum update -y || true
-                yum install -y awscli curl tar gzip || true
+                # Install packages - try apt (Ubuntu) first, then yum (Amazon Linux)
+                if command -v apt-get &>/dev/null; then
+                    apt-get update -y || true
+                    apt-get install -y awscli curl tar gzip || true
+                elif command -v yum &>/dev/null; then
+                    yum update -y || true
+                    yum install -y awscli curl tar gzip || true
+                fi
 
                 # Set region for AWS CLI from instance metadata
                 REGION=$$(curl -s http://169.254.169.254/latest/meta-data/placement/region || echo "us-east-1")
@@ -166,9 +172,19 @@ class LayoutLMTrainingInfra(ComponentResource):
                 chmod 0755 /etc/profile.d/layoutlm.sh
 
                 # Download any published wheels and install (dynamo first)
-                install -d -m 0775 -o ec2-user -g ec2-user /opt/wheels
+                # Detect the default user (ubuntu on Ubuntu AMI, ec2-user on Amazon Linux)
+                # Check for ubuntu user first (Ubuntu AMI), then ec2-user (Amazon Linux)
+                if id "ubuntu" &>/dev/null; then
+                    DEFAULT_USER="ubuntu"
+                elif id "ec2-user" &>/dev/null; then
+                    DEFAULT_USER="ec2-user"
+                else
+                    # Fallback: get first non-root user with a home directory
+                    DEFAULT_USER=$$(getent passwd | awk -F: '$$3 >= 1000 && $$1 != "nobody" {print $$1; exit}')
+                fi
+                install -d -m 0775 -o $$DEFAULT_USER -g $$DEFAULT_USER /opt/wheels
                 /usr/bin/aws s3 cp s3://${bucket}/wheels/ /opt/wheels/ --recursive || true
-                chown -R ec2-user:ec2-user /opt/wheels || true
+                chown -R $$DEFAULT_USER:$$DEFAULT_USER /opt/wheels || true
                 chmod -R a+r /opt/wheels || true
                 DYNAMO_WHEEL=$$(ls -t /opt/wheels/receipt_dynamo-*.whl 2>/dev/null | head -n1 || true)
                 LAYOUTLM_WHEEL=$$(ls -t /opt/wheels/receipt_layoutlm-*.whl 2>/dev/null | head -n1 || true)
