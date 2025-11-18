@@ -4,9 +4,13 @@ Pure business logic - no Lambda-specific code.
 """
 
 import json
+import logging
 import os
+import tempfile
+import time
 from typing import Any, Dict, Optional
 
+import boto3
 from receipt_label.embedding.common import (
     handle_batch_status,
     mark_items_for_retry,
@@ -57,6 +61,8 @@ get_logger = utils.logging.get_logger
 get_operation_logger = utils.logging.get_operation_logger
 
 logger = get_operation_logger(__name__)
+
+s3_client = boto3.client("s3")
 
 
 async def _ensure_receipt_metadata_async(
@@ -258,6 +264,33 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     Returns:
         Dictionary with status, action taken, and next steps
     """
+    # CRITICAL: Configure receipt_label loggers to output to CloudWatch
+    # This ensures validation messages from legacy_helpers.py and chromadb_client.py appear in logs
+    receipt_label_logger = logging.getLogger("receipt_label")
+    log_level = os.environ.get("LOG_LEVEL", "INFO")
+    receipt_label_logger.setLevel(log_level)
+
+    if not receipt_label_logger.handlers:
+        # Create a handler that outputs to stdout (CloudWatch captures this)
+        handler = logging.StreamHandler()
+
+        # Use the same JSON formatter as the handler logger if available
+        try:
+            from utils.logging import StructuredFormatter
+            formatter = StructuredFormatter()
+        except ImportError:
+            # Fallback to simple format
+            formatter = logging.Formatter(
+                "[%(levelname)s] %(asctime)s.%(msecs)03dZ %(name)s - %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+
+        handler.setFormatter(formatter)
+        receipt_label_logger.addHandler(handler)
+
+        # Prevent propagation to avoid duplicate logs
+        receipt_label_logger.propagate = False
+
     # Start monitoring and timeout protection
     start_lambda_monitoring(context)
 
@@ -349,12 +382,92 @@ def _handle_internal_core(
         "Starting line embedding batch polling",
         batch_id=event.get("batch_id"),
         openai_batch_id=event.get("openai_batch_id"),
+        batch_index=event.get("batch_index"),
+        manifest_s3_key=event.get("manifest_s3_key"),
         skip_sqs_notification=event.get("skip_sqs_notification", False),
     )
 
-    # Extract event parameters
-    batch_id = event["batch_id"]
-    openai_batch_id = event["openai_batch_id"]
+    # Check if we need to load batch info from S3 manifest
+    manifest_s3_key = event.get("manifest_s3_key")
+    manifest_s3_bucket = event.get("manifest_s3_bucket")
+    batch_index = event.get("batch_index")
+    pending_batches = event.get("pending_batches")
+
+    if manifest_s3_key and manifest_s3_bucket is not None and batch_index is not None:
+        # Download manifest from S3 and look up batch info
+        logger.info(
+            "Loading batch info from S3 manifest",
+            manifest_s3_key=manifest_s3_key,
+            manifest_s3_bucket=manifest_s3_bucket,
+            batch_index=batch_index,
+        )
+
+        with tempfile.NamedTemporaryFile(mode="r", suffix=".json", delete=False) as tmp_file:
+            tmp_file_path = tmp_file.name
+
+        try:
+            s3_client.download_file(manifest_s3_bucket, manifest_s3_key, tmp_file_path)
+            with open(tmp_file_path, "r", encoding="utf-8") as f:
+                manifest = json.load(f)
+
+            # Look up batch info using batch_index
+            if not isinstance(manifest, dict) or "batches" not in manifest:
+                raise ValueError(f"Invalid manifest format: expected dict with 'batches' key")
+
+            batches = manifest.get("batches", [])
+            if not isinstance(batches, list):
+                raise ValueError(f"Invalid manifest format: 'batches' must be a list")
+
+            if batch_index < 0 or batch_index >= len(batches):
+                raise ValueError(
+                    f"batch_index {batch_index} out of range (0-{len(batches)-1})"
+                )
+
+            batch_info = batches[batch_index]
+            batch_id = batch_info["batch_id"]
+            openai_batch_id = batch_info["openai_batch_id"]
+
+            logger.info(
+                "Loaded batch info from manifest",
+                batch_id=batch_id,
+                openai_batch_id=openai_batch_id,
+                batch_index=batch_index,
+            )
+        finally:
+            try:
+                os.unlink(tmp_file_path)
+            except Exception:
+                pass
+    elif pending_batches is not None and batch_index is not None:
+        # Use inline pending_batches array
+        if not isinstance(pending_batches, list):
+            raise ValueError(f"pending_batches must be a list, got {type(pending_batches).__name__}")
+
+        if batch_index < 0 or batch_index >= len(pending_batches):
+            raise ValueError(
+                f"batch_index {batch_index} out of range (0-{len(pending_batches)-1})"
+            )
+
+        batch_info = pending_batches[batch_index]
+        batch_id = batch_info["batch_id"]
+        openai_batch_id = batch_info["openai_batch_id"]
+
+        logger.info(
+            "Using batch info from inline pending_batches",
+            batch_id=batch_id,
+            openai_batch_id=openai_batch_id,
+            batch_index=batch_index,
+        )
+    else:
+        # Backward compatible: direct batch_id and openai_batch_id in event
+        batch_id = event["batch_id"]
+        openai_batch_id = event["openai_batch_id"]
+        logger.info(
+            "Using batch info directly from event (backward compatible)",
+            batch_id=batch_id,
+            openai_batch_id=openai_batch_id,
+        )
+
     skip_sqs = event.get("skip_sqs_notification", False)
 
     # Add trace annotations
@@ -538,6 +651,11 @@ def _handle_internal_core(
             raise TimeoutError("Lambda timeout detected before delta save")
 
         # Save embeddings as delta with comprehensive monitoring and circuit breaker protection
+        validation_attempts = 0
+        validation_retries = 0
+        validation_success = False
+        delta_save_start_time = time.time()
+
         with trace_chromadb_delta_save("lines", result_count):
             with operation_with_timeout(
                 "save_line_embeddings_as_delta", max_duration=300
@@ -555,13 +673,28 @@ def _handle_internal_core(
                                 "Operation cancelled during graceful shutdown"
                             )
 
-                        delta_result = save_line_embeddings_as_delta(
-                            results,
-                            descriptions,
-                            batch_id,
-                            bucket_name,
-                            sqs_queue_url,
-                        )
+                        try:
+                            delta_result = save_line_embeddings_as_delta(
+                                results,
+                                descriptions,
+                                batch_id,
+                                bucket_name,
+                                sqs_queue_url,
+                            )
+                            # If we get here, validation succeeded (or was skipped)
+                            validation_success = True
+                            validation_attempts = 1
+                        except RuntimeError as e:
+                            # Check if this is a validation failure
+                            error_msg = str(e).lower()
+                            if "validation failed" in error_msg or "delta validation" in error_msg:
+                                # Validation failed after retries
+                                validation_success = False
+                                validation_attempts = 3  # max_retries default
+                                validation_retries = 2  # retries = attempts - 1
+                            raise
+
+        delta_save_duration = time.time() - delta_save_start_time
 
         # Check if delta creation failed
         if delta_result.get("status") == "failed":
@@ -605,6 +738,11 @@ def _handle_internal_core(
         # Collect metrics (aggregated, not per-call)
         collected_metrics["SavedEmbeddings"] = embedding_count
         collected_metrics["DeltasSaved"] = collected_metrics.get("DeltasSaved", 0) + 1
+        collected_metrics["DeltaValidationAttempts"] = validation_attempts
+        if validation_retries > 0:
+            collected_metrics["DeltaValidationRetries"] = validation_retries
+        collected_metrics["DeltaValidationSuccess"] = 1 if validation_success else 0
+        collected_metrics["DeltaSaveDuration"] = delta_save_duration  # Includes upload + validation
         metric_dimensions["collection"] = "lines"
 
         # Add to trace
@@ -630,8 +768,8 @@ def _handle_internal_core(
                 batch_id=batch_id,
             )
 
-        # Successful completion
-        result = {
+        # Successful completion - build full result first
+        full_result = {
             "batch_id": batch_id,
             "openai_batch_id": openai_batch_id,
             "batch_status": batch_status,
@@ -645,7 +783,7 @@ def _handle_internal_core(
             "database": "lines",  # Database for line embeddings
         }
 
-        logger.info("Successfully completed line polling", **result)
+        logger.info("Successfully completed line polling", **full_result)
         collected_metrics["LinePollingSuccess"] = 1
         tracer.add_annotation("success", "true")
 
@@ -660,7 +798,43 @@ def _handle_internal_core(
             },
         )
 
-        return result
+        # Upload result to S3 and return only a small reference
+        # This prevents the Map state from exceeding 256KB when aggregating results
+        bucket = os.environ.get("S3_BUCKET")
+        if not bucket:
+            raise ValueError("S3_BUCKET environment variable not set")
+
+        result_s3_key = f"poll_results/{batch_id}/result.json"
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp_file:
+            json.dump(full_result, tmp_file, indent=2)
+            tmp_file_path = tmp_file.name
+
+        try:
+            s3_client.upload_file(
+                tmp_file_path,
+                bucket,
+                result_s3_key,
+            )
+            logger.info(
+                "Uploaded poll result to S3",
+                s3_key=result_s3_key,
+                bucket=bucket,
+                batch_id=batch_id,
+            )
+        finally:
+            try:
+                os.unlink(tmp_file_path)
+            except Exception:
+                pass
+
+        # Return only a small S3 reference instead of full result
+        # This keeps the Map state output small (~100 bytes per batch vs ~408 bytes)
+        return {
+            "batch_id": batch_id,
+            "result_s3_key": result_s3_key,
+            "result_s3_bucket": bucket,
+        }
 
     elif (
         status_result["action"] == "process_partial"
