@@ -211,11 +211,12 @@ poll_results
 **Input**:
 ```json
 {
-  "batch_type": "line"  // or "word"
+  "batch_type": "line",  // or "word"
+  "execution_id": "{execution_name}"  // Step Functions execution name
 }
 ```
 
-**Output**:
+**Output** (small payload - inline mode):
 ```json
 {
   "pending_batches": [
@@ -223,9 +224,51 @@ poll_results
       "batch_id": "uuid",
       "openai_batch_id": "batch_xxx"
     }
+  ],
+  "batch_indices": [0, 1, 2, ...],
+  "use_s3": false,
+  "manifest_s3_key": null,
+  "manifest_s3_bucket": null,
+  "execution_id": "{execution_name}",
+  "total_batches": 10
+}
+```
+
+**Output** (large payload - S3 manifest mode):
+```json
+{
+  "pending_batches": null,
+  "batch_indices": [0, 1, 2, ..., 99],
+  "use_s3": true,
+  "manifest_s3_key": "poll_manifests/{execution_id}/manifest.json",
+  "manifest_s3_bucket": "chromadb-dev-...",
+  "execution_id": "{execution_name}",
+  "total_batches": 100
+}
+```
+
+**Manifest Structure** (stored in S3):
+```json
+{
+  "execution_id": "{execution_name}",
+  "created_at": "2024-01-15T10:30:00Z",
+  "total_batches": 100,
+  "batch_type": "line",
+  "batches": [
+    {
+      "index": 0,
+      "batch_id": "uuid",
+      "openai_batch_id": "batch_xxx"
+    },
+    ...
   ]
 }
 ```
+
+**Behavior**:
+- If payload size > 150KB OR batch count > 50 → Creates S3 manifest
+- Otherwise → Returns batches inline (backward compatible)
+- Always returns consistent structure with `use_s3` flag
 
 **Differences**:
 - Line workflow uses `ListPendingBatches`, word workflow uses `ListPendingWordBatches`
@@ -241,14 +284,42 @@ poll_results
 
 **Type**: Map state (processes batches in parallel, max concurrency: 50)
 
-**Input** (per batch):
+**Step Function Flow**:
+1. `ListPendingBatches` → Returns batches (inline or S3 manifest)
+2. `CheckPendingBatches` → Checks if `total_batches > 0`
+3. `NormalizePendingBatches` → Normalizes data structure
+4. `PollBatches` → Map state iterates over `batch_indices`
+
+**Input** (per batch iteration - S3 manifest mode):
 ```json
 {
-  "batch_id": "uuid",
-  "openai_batch_id": "batch_xxx",
+  "batch_index": 0,
+  "manifest_s3_key": "poll_manifests/{execution_id}/manifest.json",
+  "manifest_s3_bucket": "chromadb-dev-...",
+  "pending_batches": null,
   "skip_sqs_notification": true
 }
 ```
+
+**Input** (per batch iteration - inline mode):
+```json
+{
+  "batch_index": 0,
+  "manifest_s3_key": null,
+  "manifest_s3_bucket": null,
+  "pending_batches": [
+    { "batch_id": "uuid1", "openai_batch_id": "batch_xxx1" },
+    { "batch_id": "uuid2", "openai_batch_id": "batch_xxx2" },
+    ...
+  ],
+  "skip_sqs_notification": true
+}
+```
+
+**Lambda Processing**:
+- If `manifest_s3_key` provided: Downloads manifest from S3, looks up batch info using `batch_index`
+- If `pending_batches` provided: Uses `pending_batches[batch_index]` to get batch info
+- Otherwise (backward compatible): Uses `batch_id` and `openai_batch_id` directly from event
 
 **Output** (per batch):
 ```json
