@@ -108,29 +108,61 @@ def produce_embedding_delta(
             "Successfully upserted vectors to collection '%s'", collection_name
         )
 
-        # Upload to S3 using new S3Operations
-        s3_ops = S3Operations(bucket_name)
+        # Upload to S3 using persist_and_upload_delta which includes validation and retry logic
+        # This ensures deltas are validated after upload and retried if corrupted
+        # See: docs/DELTA_VALIDATION_AND_RETRY_IMPLEMENTATION.md
 
-        # Adjust delta prefix to include database name if provided
+        # Build S3 prefix to match the format created by S3Operations.upload_delta()
+        # S3Operations.upload_delta() creates: {delta_prefix}/{database_name}/{collection_name}/{unique_id}/
+        # So we need: {delta_prefix}/{database_name}/{collection_name}/ (unique ID added by persist_and_upload_delta)
+        # First, adjust delta prefix to include database name if provided (matches old behavior)
         if database_name:
-            full_delta_prefix = f"{database_name}/{delta_prefix}"
-            logger.info("S3 delta prefix will be: %s", full_delta_prefix)
+            # Prepend database name: "delta/" -> "lines/delta/"
+            base_prefix = f"{database_name}/{delta_prefix.rstrip('/')}"
         else:
-            full_delta_prefix = delta_prefix
+            base_prefix = delta_prefix.rstrip('/')
+
+        # Then add database_name and collection_name to match S3Operations format
+        if database_name:
+            # Format: "lines/delta/lines/receipt_lines/" (persist_and_upload_delta adds unique_id)
+            full_delta_prefix = f"{base_prefix}/{database_name}/{collection_name}/"
+        else:
+            # Format: "delta/receipt_lines/" (persist_and_upload_delta adds unique_id)
+            full_delta_prefix = f"{base_prefix}/{collection_name}/"
+
+        logger.info(
+            "Uploading delta to S3 with validation (bucket: %s, prefix: %s)",
+            bucket_name,
+            full_delta_prefix,
+        )
+
+        # VectorClient.create_chromadb_client() returns ChromaDBClient directly
+        # which has persist_and_upload_delta method
+        # Check if client has the persist_and_upload_delta method (it should)
+        if hasattr(client, 'persist_and_upload_delta'):
+            actual_client = client
+        elif hasattr(client, '_client') and client._client is not None and hasattr(client._client, 'persist_and_upload_delta'):
+            # If client is wrapped, try to get the underlying ChromaDBClient
+            actual_client = client._client  # type: ignore
+        else:
+            raise RuntimeError(
+                f"Client does not have persist_and_upload_delta method. Got {type(client)}. "
+                "Expected ChromaDBClient instance from VectorClient.create_chromadb_client()."
+            )
 
         try:
-            logger.info(
-                "Starting S3 upload to bucket '%s' with prefix '%s'",
-                bucket_name,
-                full_delta_prefix,
+            # Use persist_and_upload_delta which includes:
+            # - Client closing (handled internally via _close_client_for_upload)
+            # - S3 upload
+            # - Post-upload validation
+            # - Retry logic if validation fails (up to 3 retries)
+            s3_key = actual_client.persist_and_upload_delta(
+                bucket=bucket_name,
+                s3_prefix=full_delta_prefix,
+                max_retries=3,
+                validate_after_upload=True,
             )
-            s3_key = s3_ops.upload_delta(
-                local_directory=delta_dir,
-                delta_prefix=full_delta_prefix,
-                collection_name=collection_name,
-                database_name=database_name,
-            )
-            logger.info("Successfully uploaded delta to S3: %s", s3_key)
+            logger.info("Successfully uploaded and validated delta to S3: %s", s3_key)
         except Exception as e:
             logger.error("Failed to upload delta to S3: %s", e)
             logger.error("Delta directory was: %s", delta_dir)

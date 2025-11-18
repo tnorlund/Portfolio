@@ -364,13 +364,29 @@ def update_line_embedding_status_to_success(
                 f"from image {image_id}"
             )
 
-    # Update lines in DynamoDB by receipt
+    # Update lines individually to avoid transaction conflicts when multiple
+    # batches are processed concurrently. Each line update is independent,
+    # so we avoid TransactionConflict errors that occur when multiple batches
+    # try to update the same receipt's lines simultaneously.
+    if client_manager is None:
+        client_manager = get_client_manager()
+
+    # Collect all unique lines (deduplicate by hash)
+    all_lines = []
+    seen_lines = set()
     for image_id, receipt_dict in lines_by_receipt.items():
         for receipt_id, lines in receipt_dict.items():
-            if lines:
-                if client_manager is None:
-                    client_manager = get_client_manager()
-                client_manager.dynamo.update_receipt_lines(lines)
+            for line in lines:
+                # Use hash to deduplicate (ReceiptLine is hashable)
+                line_hash = hash(line)
+                if line_hash not in seen_lines:
+                    seen_lines.add(line_hash)
+                    all_lines.append(line)
+
+    # Update each line individually using PutItem (non-transactional)
+    # This avoids TransactionConflict errors in concurrent scenarios
+    for line in all_lines:
+        client_manager.dynamo.update_receipt_line(line)
 
 
 def save_line_embeddings_as_delta(

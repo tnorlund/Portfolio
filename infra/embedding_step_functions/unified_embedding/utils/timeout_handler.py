@@ -54,6 +54,9 @@ class TimeoutProtection:
             self.lambda_timeout = int(
                 context.get_remaining_time_in_millis() / 1000
             )
+            # CRITICAL: Reset start_time when context is set to ensure accurate timing
+            # This prevents timeouts caused by module import time vs Lambda execution time mismatch
+            self.start_time = time.time()
 
     def get_remaining_time(self) -> float:
         """Get remaining execution time in seconds."""
@@ -357,6 +360,10 @@ def start_lambda_monitoring(context=None):
     Args:
         context: AWS Lambda context object
     """
+    # CRITICAL: Reset start_time before setting context to ensure accurate timing
+    # This prevents timeouts caused by module import time vs Lambda execution time mismatch
+    timeout_protection.start_time = time.time()
+
     if context:
         timeout_protection.set_lambda_context(context)
 

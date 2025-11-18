@@ -620,11 +620,21 @@ def process_stream_messages(
                 verify_integrity=True,
             )
             if dl.get("status") != "downloaded":
-                logger.error("Failed to download snapshot", result=dl)
+                # download_snapshot_atomic will now automatically initialize empty snapshot
+                # if none exists, so if it still fails, it's a real error
+                logger.error("Failed to download or initialize snapshot", result=dl)
                 failed_receipt_handles.extend(
                     [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
                 )
                 continue
+
+            # Log if snapshot was initialized (new empty snapshot)
+            if dl.get("initialized"):
+                logger.info(
+                    "Empty snapshot was initialized",
+                    collection=collection.value,
+                    version_id=dl.get("version_id"),
+                )
 
             snapshot_path = temp_dir
             expected_pointer = dl.get("version_id")
@@ -638,6 +648,52 @@ def process_stream_messages(
 
         # Initialize ChromaDB client
         chroma_client = ChromaDBClient(persist_directory=snapshot_path, mode="snapshot")
+
+        def close_chromadb_client(client: Any, collection_name: str) -> None:
+            """
+            Properly close ChromaDB client to ensure SQLite files are flushed and unlocked.
+
+            This is critical to prevent corruption when uploading/copying SQLite files
+            that are still being written to by an active ChromaDB connection.
+            """
+            if client is None:
+                return
+
+            try:
+                logger.info(
+                    "Closing ChromaDB client",
+                    collection=collection_name,
+                    persist_directory=getattr(client, 'persist_directory', None)
+                )
+
+                # Clear collections cache
+                if hasattr(client, '_collections'):
+                    client._collections.clear()
+
+                # Clear client reference
+                if hasattr(client, '_client') and client._client is not None:
+                    # ChromaDB PersistentClient doesn't have explicit close(), but clearing
+                    # the reference allows Python GC to close SQLite connections
+                    client._client = None
+
+                # Force garbage collection to ensure SQLite connections are closed
+                import gc
+                gc.collect()
+
+                # Small delay to ensure file handles are released by OS
+                import time as _time
+                _time.sleep(0.1)
+
+                logger.info(
+                    "ChromaDB client closed successfully",
+                    collection=collection_name
+                )
+            except Exception as e:
+                logger.warning(
+                    "Error closing ChromaDB client (non-critical)",
+                    error=str(e),
+                    collection=collection_name
+                )
 
         try:
             # Merge deltas first
@@ -683,6 +739,11 @@ def process_stream_messages(
                 )
 
             # Phase B: Optimized upload with minimal lock time
+            # CRITICAL: Close ChromaDB client BEFORE acquiring lock to ensure SQLite files are flushed and unlocked
+            # This prevents corruption when uploading files that are still being written to
+            close_chromadb_client(chroma_client, collection.value)
+            chroma_client = None
+
             published = False
             import boto3 as _boto
             s3_client = _boto.client("s3")
@@ -978,6 +1039,18 @@ def process_stream_messages(
                 )
                 continue
         finally:
+            # CRITICAL: Ensure ChromaDB client is closed even if errors occurred
+            # This prevents SQLite file locks from persisting
+            if 'chroma_client' in locals() and chroma_client is not None:
+                try:
+                    close_chromadb_client(chroma_client, collection.value)
+                except Exception as e:
+                    logger.warning(
+                        "Error closing ChromaDB client in finally block",
+                        error=str(e),
+                        collection=collection.value
+                    )
+
             # Cleanup temp directories
             if use_efs and 'local_snapshot_path' in locals():
                 shutil.rmtree(local_snapshot_path, ignore_errors=True)
