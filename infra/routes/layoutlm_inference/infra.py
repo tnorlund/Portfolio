@@ -132,6 +132,13 @@ def create_layoutlm_inference_lambda(
 # The placeholder will be replaced when the cache generator is created
 # Note: The Lambda will be updated when cache_bucket_name is set in __main__.py
 # because _cache_bucket_name uses Output which will trigger an update
+#
+# IMPORTANT: This Lambda is created at module import time, but the cache_bucket_name
+# is set later in __main__.py. The Lambda will be replaced when pulumi up runs
+# because of replace_on_changes=["environment"] in the Lambda definition.
+#
+# If cache_bucket_name is None, we'll use a placeholder that will be updated
+# on the next pulumi up after the cache generator is created.
 layoutlm_inference_lambda = create_layoutlm_inference_lambda(
     cache_bucket_name=_get_cache_bucket_name(),
 )
