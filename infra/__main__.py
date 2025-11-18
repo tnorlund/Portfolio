@@ -231,8 +231,8 @@ pulumi.export("nat_private_subnet_ids", nat.private_subnet_ids)
 
 # Strategy: Select first public subnet + first private subnet
 # Based on subnet query: public subnets are in us-east-1a and us-east-1b
-# Both private subnets are in us-east-1b
-# So we need: first public (us-east-1a) + first private (us-east-1b) = 2 unique AZs
+# Both private subnets are in us-east-1f
+# So we need: first public (us-east-1a) + first private (us-east-1f) = 2 unique AZs
 unique_efs_subnets = Output.all(public_vpc.public_subnet_ids, nat.private_subnet_ids).apply(
     lambda args: [args[0][0], args[1][0]]  # First public + first private
 )
