@@ -229,6 +229,8 @@ receipt_label/receipt_data/
 receipt_label/receipt_data_*/
 receipt_label/test_results/
 .venv_test/
+.venv_test_chromadb/
+venv_chromadb/
 # Local ChromaDB databases
 chroma_words_local_words_specific/
 
