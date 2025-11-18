@@ -104,12 +104,14 @@ class EmbeddingInfrastructure(ComponentResource):
         self.line_workflow = LineEmbeddingWorkflow(
             f"{name}-line",
             lambda_functions=self.lambdas.all_functions,
+            batch_bucket=self.lambdas.batch_bucket,
             opts=ResourceOptions(parent=self),
         )
 
         self.word_workflow = WordEmbeddingWorkflow(
             f"{name}-word",
             lambda_functions=self.lambdas.all_functions,
+            batch_bucket=self.lambdas.batch_bucket,
             opts=ResourceOptions(parent=self),
         )
 

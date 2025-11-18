@@ -2,6 +2,8 @@
 
 This is the main entry point that AWS Lambda invokes.
 All routing logic is delegated to the router module.
+
+Force rebuild: 2025-11-16 - Added delta validation and retry logic.
 """
 
 from typing import Any, Dict
