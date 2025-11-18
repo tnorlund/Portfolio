@@ -11,7 +11,7 @@ This document summarizes how we train and evaluate the LayoutLM model in this re
 
 ### Quick local evaluation (against Dynamo VALID labels)
 
-Use `dev.layout_lm_inference.py`:
+Use `dev.layoutlm_inference.py` (in project root):
 
 1. Model resolution and download
 

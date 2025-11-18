@@ -27,6 +27,7 @@ dependencies = [
   "filelock>=3.13.0",
   "Pillow>=10.0.0",
   "sentencepiece>=0.1.99",
+  "seqeval>=1.2.2",
 ]
 
 [project.optional-dependencies]
@@ -37,9 +38,6 @@ dev = [
   "isort==6.0.1",
   "mypy>=1.16.1",
   "flake8>=6.0.0",
-]
-eval = [
-  "seqeval>=1.2.2",
 ]
 
 [project.scripts]
