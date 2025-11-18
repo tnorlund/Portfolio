@@ -102,21 +102,111 @@ class CodeBuildDockerImage(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Setup build pipeline
+        # Setup build pipeline (without trigger command if Lambda needs to be created first)
         (
             build_bucket,
             upload_cmd,
             pipeline,
             codebuild_project,
-            pipeline_trigger_cmd,
+            pipeline_trigger_cmd_placeholder,
         ) = self._setup_pipeline(content_hash)
 
         # Push bootstrap image and create Lambda function if config provided
+        # Lambda must be created BEFORE pipeline trigger so trigger can depend on it
         if self.lambda_config:
             bootstrap_cmd = self._push_bootstrap_image()
-            self._create_lambda_function(bootstrap_cmd, pipeline, pipeline_trigger_cmd)
+            self._create_lambda_function(bootstrap_cmd, pipeline, pipeline_trigger_cmd_placeholder)
+
+            # Now create the trigger command that depends on Lambda function
+            # This ensures proper ordering: Lambda created -> trigger waits -> pipeline starts
+            if not self.sync_mode:
+                lambda_wait_logic = f"""
+# Wait for Lambda function to be Active before triggering pipeline
+# Reduced wait time since Lambda should be Active quickly after creation
+LAMBDA_FUNCTION_NAME="{self.lambda_function_name}"
+if [ -n "$LAMBDA_FUNCTION_NAME" ]; then
+  echo "⏳ Checking Lambda function $LAMBDA_FUNCTION_NAME state..."
+  MAX_WAIT=60  # 1 minute max (Lambda creation is usually < 30 seconds)
+  ELAPSED=0
+  while [ $ELAPSED -lt $MAX_WAIT ]; do
+    if aws lambda get-function --function-name "$LAMBDA_FUNCTION_NAME" >/dev/null 2>&1; then
+      STATE=$(aws lambda get-function --function-name "$LAMBDA_FUNCTION_NAME" --query "Configuration.State" --output text 2>/dev/null || echo "Unknown")
+      if [ "$STATE" = "Active" ]; then
+        echo "✅ Lambda function is Active"
+        break
+      else
+        echo "   Lambda state: $STATE (waiting...)"
+      fi
+    else
+      echo "   Lambda function not found yet (waiting...)"
+    fi
+    sleep 2  # Check every 2 seconds instead of 5
+    ELAPSED=$((ELAPSED + 2))
+  done
+  if [ $ELAPSED -ge $MAX_WAIT ]; then
+    echo "⚠️  Timeout waiting for Lambda to be Active, proceeding anyway (CodeBuild will handle race condition)"
+  fi
+fi
+"""
+                trigger_script = pipeline.name.apply(
+                    lambda pn: f"""#!/usr/bin/env bash
+set -e
+{lambda_wait_logic}
+echo "🔄 Triggering Docker build pipeline for {self.name}"
+EXEC_ID=$(aws codepipeline start-pipeline-execution --name {pn} --query pipelineExecutionId --output text)
+echo "✅ Pipeline triggered: $EXEC_ID"
+echo "   View logs: https://console.aws.amazon.com/codesuite/codepipeline/pipelines/{pn}/view"
+"""
+                )
+                # Create new trigger command that depends on Lambda function
+                # This ensures Lambda is created before pipeline is triggered
+                pipeline_trigger_cmd = command.local.Command(
+                    f"{self.name}-trigger-pipeline",
+                    create=trigger_script,
+                    update=trigger_script,
+                    triggers=[content_hash],
+                    opts=ResourceOptions(
+                        parent=self,
+                        depends_on=[upload_cmd, pipeline, self.lambda_function],
+                    ),
+                )
+            else:
+                # Sync mode: wait for completion
+                sync_script = pipeline.name.apply(
+                    lambda pn: f"""#!/usr/bin/env bash
+set -e
+{lambda_wait_logic}
+echo "🔄 SYNC: Starting Docker build pipeline for {self.name}"
+EXEC_ID=$(aws codepipeline start-pipeline-execution --name {pn} --query pipelineExecutionId --output text)
+echo "Execution ID: $EXEC_ID"
+sleep 5
+while true; do
+  STATUS=$(aws codepipeline get-pipeline-execution --pipeline-name {pn} --pipeline-execution-id $EXEC_ID --query "pipelineExecution.status" --output text)
+  echo "🔄 Pipeline status: $STATUS"
+  if [ "$STATUS" = "Succeeded" ]; then
+    echo "✅ Docker build completed successfully"
+    break
+  elif [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Superseded" ]; then
+    echo "❌ Pipeline failed with status: $STATUS"
+    exit 1
+  fi
+  sleep 15
+done
+"""
+                )
+                pipeline_trigger_cmd = command.local.Command(
+                    f"{self.name}-sync-pipeline",
+                    create=sync_script,
+                    update=sync_script,
+                    triggers=[content_hash],
+                    opts=ResourceOptions(
+                        parent=self,
+                        depends_on=[upload_cmd, pipeline, self.lambda_function],
+                    ),
+                )
         else:
             self.lambda_function = None
+            pipeline_trigger_cmd = pipeline_trigger_cmd_placeholder
 
         # Export outputs
         self.repository_url = self.ecr_repo.repository_url
@@ -429,7 +519,8 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
                         "echo Image URI: $IMAGE_URI",
                         # Create or update Lambda function if specified
                         # Note: Lambda service role must have ECR permissions for this to work
-                        'if [ -n "$LAMBDA_FUNCTION_NAME" ]; then echo "Checking if Lambda function $LAMBDA_FUNCTION_NAME exists..." && if aws lambda get-function --function-name "$LAMBDA_FUNCTION_NAME" >/dev/null 2>&1; then echo "Updating existing Lambda function..." && aws lambda update-function-code --function-name "$LAMBDA_FUNCTION_NAME" --image-uri "$IMAGE_URI" >/dev/null && echo "✅ Lambda function updated"; else echo "Lambda function does not exist - will be created by Pulumi"; fi; fi',
+                        # Handle race condition: Lambda might be in "Pending" state if Pulumi is still creating it
+                        'if [ -n "$LAMBDA_FUNCTION_NAME" ]; then echo "Checking if Lambda function $LAMBDA_FUNCTION_NAME exists..." && if aws lambda get-function --function-name "$LAMBDA_FUNCTION_NAME" >/dev/null 2>&1; then echo "Checking Lambda function state..." && STATE=$(aws lambda get-function --function-name "$LAMBDA_FUNCTION_NAME" --query "Configuration.State" --output text 2>/dev/null || echo "Unknown") && if [ "$STATE" = "Active" ]; then echo "Updating existing Lambda function..." && aws lambda update-function-code --function-name "$LAMBDA_FUNCTION_NAME" --image-uri "$IMAGE_URI" >/dev/null && echo "✅ Lambda function updated"; else echo "⚠️ Lambda function is in state: $STATE - skipping update (Pulumi will handle it)"; fi; else echo "Lambda function does not exist - will be created by Pulumi"; fi; fi',
                         "echo Push completed on `date`",
                     ]
                 },
@@ -739,28 +830,39 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
         )
 
         # Trigger pipeline (async or sync based on mode)
+        # Note: If lambda_config is provided, trigger command will be created AFTER Lambda is created
+        # This ensures proper ordering: Lambda created -> trigger waits -> pipeline starts
+        # For now, return None as placeholder - will be created after Lambda if needed
         if not self.sync_mode:
-            # Async: trigger and continue
-            trigger_script = pipeline.name.apply(
-                lambda pn: f"""#!/usr/bin/env bash
+            # Async mode: trigger command will be created after Lambda (if lambda_config exists)
+            # or here if no Lambda config
+            if not self.lambda_config:
+                # No Lambda config, create trigger command now
+                trigger_script = pipeline.name.apply(
+                    lambda pn: f"""#!/usr/bin/env bash
 set -e
 echo "🔄 Triggering Docker build pipeline for {self.name}"
 EXEC_ID=$(aws codepipeline start-pipeline-execution --name {pn} --query pipelineExecutionId --output text)
 echo "✅ Pipeline triggered: $EXEC_ID"
 echo "   View logs: https://console.aws.amazon.com/codesuite/codepipeline/pipelines/{pn}/view"
 """
-            )
-            pipeline_trigger_cmd = command.local.Command(
-                f"{self.name}-trigger-pipeline",
-                create=trigger_script,
-                update=trigger_script,
-                triggers=[content_hash],
-                opts=ResourceOptions(parent=self, depends_on=[upload_cmd, pipeline]),
-            )
+                )
+                pipeline_trigger_cmd = command.local.Command(
+                    f"{self.name}-trigger-pipeline",
+                    create=trigger_script,
+                    update=trigger_script,
+                    triggers=[content_hash],
+                    opts=ResourceOptions(parent=self, depends_on=[upload_cmd, pipeline]),
+                )
+            else:
+                # Lambda config exists - trigger will be created after Lambda
+                pipeline_trigger_cmd = None
         else:
             # Sync: wait for completion
-            sync_script = pipeline.name.apply(
-                lambda pn: f"""#!/usr/bin/env bash
+            # If Lambda config exists, trigger will be created after Lambda
+            if not self.lambda_config:
+                sync_script = pipeline.name.apply(
+                    lambda pn: f"""#!/usr/bin/env bash
 set -e
 echo "🔄 SYNC: Starting Docker build pipeline for {self.name}"
 EXEC_ID=$(aws codepipeline start-pipeline-execution --name {pn} --query pipelineExecutionId --output text)
@@ -780,13 +882,16 @@ while true; do
 done
 """
             )
-            pipeline_trigger_cmd = command.local.Command(
-                f"{self.name}-sync-pipeline",
-                create=sync_script,
-                update=sync_script,
-                triggers=[content_hash],
-                opts=ResourceOptions(parent=self, depends_on=[upload_cmd, pipeline]),
-            )
+                pipeline_trigger_cmd = command.local.Command(
+                    f"{self.name}-sync-pipeline",
+                    create=sync_script,
+                    update=sync_script,
+                    triggers=[content_hash],
+                    opts=ResourceOptions(parent=self, depends_on=[upload_cmd, pipeline]),
+                )
+            else:
+                # Lambda config exists - trigger will be created after Lambda
+                pipeline_trigger_cmd = None
 
         return build_bucket, upload_cmd, pipeline, codebuild_project, pipeline_trigger_cmd
 
@@ -931,6 +1036,7 @@ echo "✅ Bootstrap image pushed to $REPO_URL:latest"
         # Create Lambda function after bootstrap image is pushed
         # In sync mode (CI/CD), skip bootstrap dependency and wait for pipeline instead
         # Bootstrap may exit early without pushing if Docker isn't available
+        # Note: pipeline_trigger_cmd may be None if it will be created after Lambda
         if self.sync_mode and pipeline_trigger_cmd:
             # In sync mode: wait for pipeline to build and push the image
             depends_on_list = [pipeline_trigger_cmd]
@@ -950,4 +1056,11 @@ echo "✅ Bootstrap image pushed to $REPO_URL:latest"
 
         self.function_arn = self.lambda_function.arn
         self.function_name = self.lambda_function.name
+
+        # Make pipeline trigger depend on Lambda function being created
+        # This ensures Lambda exists before pipeline is triggered
+        # The trigger script already includes wait logic for Lambda to be Active
+        # The CodeBuild post_build phase will also check Lambda state before updating
+        # Note: We can't modify the trigger command's depends_on after creation,
+        # but the trigger script will wait for Lambda to be Active before starting the pipeline
 

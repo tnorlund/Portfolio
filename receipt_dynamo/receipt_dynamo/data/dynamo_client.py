@@ -25,6 +25,9 @@ from receipt_dynamo.data._ocr_routing_decision import _OCRRoutingDecision
 from receipt_dynamo.data._places_cache import _PlacesCache
 from receipt_dynamo.data._queue import _Queue
 from receipt_dynamo.data._receipt import _Receipt
+from receipt_dynamo.data._receipt_core_label_definition import (
+    _ReceiptCoreLabelDefinition,
+)
 from receipt_dynamo.data._receipt_chatgpt_validation import (
     _ReceiptChatGPTValidation,
 )
@@ -51,6 +54,9 @@ from receipt_dynamo.data._receipt_validation_summary import (
 )
 from receipt_dynamo.data._receipt_word import _ReceiptWord
 from receipt_dynamo.data._receipt_word_label import _ReceiptWordLabel
+from receipt_dynamo.data._receipt_word_label_cove_verification import (
+    _ReceiptWordLabelCoVeVerification,
+)
 from receipt_dynamo.data._receipt_word_label_spatial_analysis import (
     _ReceiptWordLabelSpatialAnalysis,
 )
@@ -100,6 +106,8 @@ class DynamoClient(
     _AIUsageMetric,
     _CompactionLock,
     _CompactionRun,
+    _ReceiptWordLabelCoVeVerification,
+    _ReceiptCoreLabelDefinition,
 ):
     """A class used to represent a DynamoDB client."""
 
