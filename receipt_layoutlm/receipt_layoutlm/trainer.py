@@ -314,53 +314,7 @@ class ReceiptLayoutLMTrainer:
         except AttributeError:
             pass
 
-        # Per-epoch metric logging to run.json
-        try:
-            TrainerCallback = getattr(self._transformers, "TrainerCallback")
-
-            class _MetricLoggerCallback(TrainerCallback):  # type: ignore
-                def __init__(self, run_path: str) -> None:
-                    self.run_path = run_path
-
-                def on_evaluate(self, args, state, control, metrics=None, **kwargs):  # type: ignore[override]
-                    # Silence unused parameter warnings
-                    del args, control, kwargs
-                    if not self.run_path:
-                        return
-                    data = {}
-                    try:
-                        with open(self.run_path, "r", encoding="utf-8") as f:
-                            data = json.load(f)
-                    except (FileNotFoundError, json.JSONDecodeError):
-                        data = {}
-                    epoch_metrics = data.get("epoch_metrics", [])
-                    entry = {
-                        "epoch": (
-                            float(state.epoch)
-                            if getattr(state, "epoch", None)
-                            else None
-                        ),
-                        "global_step": int(getattr(state, "global_step", 0)),
-                    }
-                    if isinstance(metrics, dict):
-                        entry.update(
-                            {
-                                k: float(v)
-                                for k, v in metrics.items()
-                                if isinstance(v, (int, float))
-                            }
-                        )
-                    epoch_metrics.append(entry)
-                    data["epoch_metrics"] = epoch_metrics
-                    with open(self.run_path, "w", encoding="utf-8") as f:
-                        json.dump(data, f, indent=2)
-
-            callbacks.append(
-                _MetricLoggerCallback(os.path.join(output_dir, "run.json"))
-            )
-        except AttributeError:
-            # Older transformers versions may lack TrainerCallback
-            pass
+        # Note: _MetricLoggerCallback will be created after job is created (see below)
         if "remove_unused_columns" in ta_params:
             args_kwargs["remove_unused_columns"] = False
 
@@ -373,6 +327,7 @@ class ReceiptLayoutLMTrainer:
             "training_config": asdict(self.training_config),
             "data_config": asdict(self.data_config),
             "label_list": label_list,
+            "num_labels": len(label_list),
             "dataset_counts": dataset_counts,
             "epoch_metrics": [],
         }
@@ -399,6 +354,103 @@ class ReceiptLayoutLMTrainer:
             tags={},
         )
         self.dynamo.add_job(job)
+
+        # Per-epoch metric logging to run.json (created after job so we have job_id)
+        try:
+            TrainerCallback = getattr(self._transformers, "TrainerCallback")
+
+            class _MetricLoggerCallback(TrainerCallback):  # type: ignore
+                def __init__(self, run_path: str, job_id: str, dynamo_client: Any) -> None:
+                    self.run_path = run_path
+                    self.job_id = job_id
+                    self.dynamo = dynamo_client
+
+                def on_evaluate(self, args, state, control, metrics=None, **kwargs):  # type: ignore[override]
+                    # Silence unused parameter warnings
+                    del args, control, kwargs
+                    if not self.run_path:
+                        return
+                    data = {}
+                    try:
+                        with open(self.run_path, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                    except (FileNotFoundError, json.JSONDecodeError):
+                        data = {}
+                    epoch_metrics = data.get("epoch_metrics", [])
+
+                    current_epoch = (
+                        float(state.epoch)
+                        if getattr(state, "epoch", None)
+                        else None
+                    )
+
+                    entry = {
+                        "epoch": current_epoch,
+                        "global_step": int(getattr(state, "global_step", 0)),
+                    }
+                    if isinstance(metrics, dict):
+                        # Add scalar metrics
+                        entry.update(
+                            {
+                                k: float(v)
+                                for k, v in metrics.items()
+                                if isinstance(v, (int, float))
+                            }
+                        )
+                        # Add per-label metrics if available (nested dict)
+                        if "per_label_metrics" in metrics:
+                            entry["per_label_metrics"] = metrics["per_label_metrics"]
+
+                        # Store F1 metric to DynamoDB with epoch if available
+                        if "eval_f1" in metrics or "f1" in metrics:
+                            f1_value = metrics.get("eval_f1") or metrics.get("f1")
+                            if f1_value is not None:
+                                try:
+                                    from receipt_dynamo.data.shared_exceptions import (
+                                        DynamoDBError,
+                                        EntityError,
+                                        OperationError,
+                                    )
+                                    metric = JobMetric(
+                                        job_id=self.job_id,
+                                        metric_name="val_f1",
+                                        value=float(f1_value),
+                                        timestamp=datetime.now().isoformat(),
+                                        unit="ratio",
+                                        epoch=int(current_epoch) if current_epoch is not None else None,
+                                        step=int(getattr(state, "global_step", 0)),
+                                    )
+                                    self.dynamo.add_job_metric(metric)
+                                except (DynamoDBError, EntityError, OperationError):
+                                    # Best-effort write; ignore errors
+                                    pass
+
+                    # Add training loss from log_history if available
+                    if state and hasattr(state, "log_history") and state.log_history:
+                        # Get the most recent training step log entry
+                        train_logs = [log for log in state.log_history if "loss" in log and "eval_loss" not in log]
+                        if train_logs:
+                            latest_train = train_logs[-1]
+                            if "loss" in latest_train:
+                                entry["train_loss"] = float(latest_train["loss"])
+                            if "learning_rate" in latest_train:
+                                entry["learning_rate"] = float(latest_train["learning_rate"])
+
+                    epoch_metrics.append(entry)
+                    data["epoch_metrics"] = epoch_metrics
+                    with open(self.run_path, "w", encoding="utf-8") as f:
+                        json.dump(data, f, indent=2)
+
+            callbacks.append(
+                _MetricLoggerCallback(
+                    os.path.join(output_dir, "run.json"),
+                    job.job_id,
+                    self.dynamo,
+                )
+            )
+        except AttributeError:
+            # Older transformers versions may lack TrainerCallback
+            pass
 
         # Store initial run.json content in Dynamo as a JobLog entry
         try:
@@ -428,9 +480,11 @@ class ReceiptLayoutLMTrainer:
                 f1_fn = getattr(seqeval, "f1_score")
                 precision_fn = getattr(seqeval, "precision_score")
                 recall_fn = getattr(seqeval, "recall_score")
+                classification_report_fn = getattr(seqeval, "classification_report", None)
             except ModuleNotFoundError:
                 # Fallback to token accuracy if seqeval unavailable
                 seqeval = None
+                classification_report_fn = None
 
             logits, labels = eval_pred
             preds = logits.argmax(-1)
@@ -451,30 +505,37 @@ class ReceiptLayoutLMTrainer:
                 y_pred.append(p_tags)
 
             metrics = {}
+            per_label_metrics = {}
             if seqeval:
                 f1 = float(f1_fn(y_true, y_pred))
                 prec = float(precision_fn(y_true, y_pred))
                 rec = float(recall_fn(y_true, y_pred))
                 metrics = {"f1": f1, "precision": prec, "recall": rec}
-                # Report to DynamoDB (F1)
-                metric = JobMetric(
-                    job_id=job.job_id,
-                    metric_name="val_f1",
-                    value=f1,
-                    timestamp=datetime.now().isoformat(),
-                    unit="ratio",
-                )
-                # Best-effort write; ignore errors from downstream service issues
-                from receipt_dynamo.data.shared_exceptions import (
-                    DynamoDBError,
-                    EntityError,
-                    OperationError,
-                )
 
-                try:
-                    self.dynamo.add_job_metric(metric)
-                except (DynamoDBError, EntityError, OperationError):
-                    pass
+                # Get per-label metrics if classification_report is available
+                if classification_report_fn:
+                    try:
+                        # Get unique labels (excluding O for per-label metrics)
+                        unique_labels = sorted(set([tag for seq in y_true + y_pred for tag in seq if tag != "O"]))
+                        if unique_labels:
+                            report = classification_report_fn(
+                                y_true, y_pred, labels=unique_labels, output_dict=True, zero_division=0
+                            )
+                            # Extract per-label metrics
+                            for label in unique_labels:
+                                if label in report:
+                                    per_label_metrics[label] = {
+                                        "f1": float(report[label].get("f1-score", 0.0)),
+                                        "precision": float(report[label].get("precision", 0.0)),
+                                        "recall": float(report[label].get("recall", 0.0)),
+                                        "support": int(report[label].get("support", 0)),
+                                    }
+                    except Exception:
+                        # If classification_report fails, continue without per-label metrics
+                        pass
+
+                # Note: F1 metric is now stored in _MetricLoggerCallback.on_evaluate()
+                # with epoch information, so we don't need to store it here
             else:
                 # Token accuracy fallback
                 import numpy as _np
@@ -482,6 +543,11 @@ class ReceiptLayoutLMTrainer:
                 correct = (preds == labels).astype(float)
                 acc = float(_np.mean(correct))
                 metrics = {"accuracy": acc}
+
+            # Add per-label metrics to return dict if available
+            if per_label_metrics:
+                metrics["per_label_metrics"] = per_label_metrics
+
             return metrics
 
         trainer = self._transformers.Trainer(
@@ -526,16 +592,113 @@ class ReceiptLayoutLMTrainer:
 
             with open(run_json_path, "r", encoding="utf-8") as f:
                 _data = json.load(f)
+
+            epoch_metrics = _data.get("epoch_metrics", [])
+
+            # Calculate best epoch and early stopping info
+            best_epoch = None
+            best_f1 = None
+            early_stopping_triggered = False
+
+            # Find best F1 score
+            f1_metrics = [m for m in epoch_metrics if "eval_f1" in m or "f1" in m]
+            if f1_metrics:
+                # Get F1 value (try eval_f1 first, then f1)
+                f1_with_epochs = [
+                    (m.get("epoch"), m.get("eval_f1") or m.get("f1"))
+                    for m in f1_metrics
+                    if m.get("epoch") is not None and (m.get("eval_f1") is not None or m.get("f1") is not None)
+                ]
+                if f1_with_epochs:
+                    best_epoch, best_f1 = max(f1_with_epochs, key=lambda x: x[1] if x[1] is not None else -1)
+
+                    # Check if early stopping triggered
+                    # If best epoch is not the last epoch, early stopping likely triggered
+                    if epoch_metrics:
+                        last_epoch = max(
+                            (m.get("epoch") for m in epoch_metrics if m.get("epoch") is not None),
+                            default=None
+                        )
+                        if last_epoch is not None and best_epoch is not None:
+                            # Check if we stopped before max epochs
+                            max_epochs = self.training_config.epochs
+                            patience = self.training_config.early_stopping_patience
+                            if last_epoch < max_epochs - 1:
+                                # Check if best epoch was more than patience epochs ago
+                                epochs_since_best = last_epoch - best_epoch
+                                if epochs_since_best >= patience:
+                                    early_stopping_triggered = True
+
+            summary_payload = {
+                "type": "run_summary",
+                "epoch_metrics": epoch_metrics,
+            }
+
+            # Add early stopping information if available
+            if best_epoch is not None:
+                summary_payload["best_epoch"] = float(best_epoch)
+                summary_payload["best_f1"] = float(best_f1) if best_f1 is not None else None
+                summary_payload["early_stopping_triggered"] = early_stopping_triggered
+                if epoch_metrics:
+                    last_epoch = max(
+                        (m.get("epoch") for m in epoch_metrics if m.get("epoch") is not None),
+                        default=None
+                    )
+                    if last_epoch is not None:
+                        summary_payload["epochs_since_best"] = int(last_epoch - best_epoch) if best_epoch is not None else None
+
+            # Extract checkpoint and training time information from trainer_state.json
+            trainer_state_path = os.path.join(output_dir, "trainer_state.json")
+            if os.path.exists(trainer_state_path):
+                try:
+                    with open(trainer_state_path, "r", encoding="utf-8") as f:
+                        trainer_state = json.load(f)
+
+                    # Best checkpoint path
+                    best_checkpoint = trainer_state.get("best_model_checkpoint")
+                    if best_checkpoint:
+                        # Convert to S3 path if output_s3_path is configured
+                        if self.training_config.output_s3_path:
+                            s3_path = self.training_config.output_s3_path
+                            if s3_path.startswith("s3://"):
+                                parsed = urlparse(s3_path)
+                                bucket = parsed.netloc
+                                prefix = parsed.path.lstrip("/")
+                                if not prefix.endswith("/"):
+                                    prefix += "/"
+                                run_prefix = f"{prefix}{job_name}/"
+                            else:
+                                bucket = s3_path
+                                run_prefix = f"runs/{job_name}/"
+
+                            # Best checkpoint is synced to best/ subdirectory
+                            summary_payload["best_checkpoint_s3_path"] = f"s3://{bucket}/{run_prefix}best/"
+                        else:
+                            # Just store local path
+                            summary_payload["best_checkpoint_path"] = best_checkpoint
+
+                    # Training time metrics
+                    train_runtime = trainer_state.get("train_runtime")
+                    if train_runtime is not None:
+                        summary_payload["train_runtime_seconds"] = float(train_runtime)
+
+                    total_flos = trainer_state.get("total_flos")
+                    if total_flos is not None:
+                        summary_payload["total_flos"] = int(total_flos)
+
+                    # Number of checkpoints saved (count checkpoint directories)
+                    checkpoint_dirs = glob(os.path.join(output_dir, "checkpoint-*/"))
+                    if checkpoint_dirs:
+                        summary_payload["num_checkpoints"] = len(checkpoint_dirs)
+                except (json.JSONDecodeError, KeyError, ValueError):
+                    # Best-effort; ignore errors
+                    pass
+
             summary_log = JobLog(
                 job_id=job.job_id,
                 timestamp=datetime.now().isoformat(),
                 log_level="INFO",
-                message=json.dumps(
-                    {
-                        "type": "run_summary",
-                        "epoch_metrics": _data.get("epoch_metrics", []),
-                    }
-                ),
+                message=json.dumps(summary_payload),
                 source="receipt_layoutlm.trainer",
             )
             self.dynamo.add_job_log(summary_log)
