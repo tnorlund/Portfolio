@@ -229,8 +229,13 @@ receipt_label/receipt_data/
 receipt_label/receipt_data_*/
 receipt_label/test_results/
 .venv_test/
+.venv_test_chromadb/
+venv_chromadb/
 # Local ChromaDB databases
 chroma_words_local_words_specific/
+
+# Export directories (temporary export data)
+exports/
 
 # Lambda layer update tool backups (contain sensitive state)
 infra/backups/
