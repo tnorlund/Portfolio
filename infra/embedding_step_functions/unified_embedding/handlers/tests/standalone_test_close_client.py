@@ -61,6 +61,7 @@ sys.modules['chromadb_compaction'] = MagicMock()
 
 # Monkey-patch pydantic for chromadb compatibility with Python 3.14
 # This MUST happen before chromadb is imported
+chromadb_config_mock = None
 try:
     import pydantic_settings
     import pydantic
@@ -69,13 +70,14 @@ try:
     # Make sure it's in the module dict
     setattr(pydantic, 'BaseSettings', pydantic_settings.BaseSettings)
 
-    # Pre-patch chromadb.config module before it's imported
-    # We create a mock module that will be used when chromadb.config tries to import BaseSettings
+    # Pre-patch chromadb.config module before it's imported if needed
+    # Only inject chromadb.config temporarily, not the entire chromadb module
     import types
-    chromadb_config_mock = types.ModuleType('chromadb.config')
-    chromadb_config_mock.BaseSettings = pydantic_settings.BaseSettings
-    sys.modules['chromadb'] = types.ModuleType('chromadb')
-    sys.modules['chromadb.config'] = chromadb_config_mock
+    # Check if chromadb.config already exists (shouldn't, but be safe)
+    if 'chromadb.config' not in sys.modules:
+        chromadb_config_mock = types.ModuleType('chromadb.config')
+        chromadb_config_mock.BaseSettings = pydantic_settings.BaseSettings
+        sys.modules['chromadb.config'] = chromadb_config_mock
 
 except ImportError:
     print("⚠️  pydantic-settings not installed. ChromaDB may fail to import.")
@@ -84,15 +86,27 @@ except ImportError:
 
 # Import chromadb (this will use the patched pydantic)
 try:
-    # Clear the mock we created so chromadb can import normally
-    if 'chromadb.config' in sys.modules and hasattr(sys.modules['chromadb.config'], 'BaseSettings'):
-        # Keep the BaseSettings patch
-        pass
+    # Clean up any temporary mock entries before importing chromadb
+    # so the genuine package can be loaded
+    if chromadb_config_mock is not None and 'chromadb.config' in sys.modules:
+        # Only remove if it's our temporary mock
+        if sys.modules['chromadb.config'] is chromadb_config_mock:
+            del sys.modules['chromadb.config']
+
     import chromadb
-    # Re-apply BaseSettings to chromadb.config if needed
+
+    # After import, check if chromadb.config lacks BaseSettings and reapply if needed
     if hasattr(chromadb, 'config') and not hasattr(chromadb.config, 'BaseSettings'):
-        chromadb.config.BaseSettings = pydantic_settings.BaseSettings
+        try:
+            chromadb.config.BaseSettings = pydantic_settings.BaseSettings
+        except NameError:
+            # pydantic_settings not available, skip
+            pass
 except Exception as e:
+    # Clean up temporary mock in exception path
+    if chromadb_config_mock is not None and 'chromadb.config' in sys.modules:
+        if sys.modules['chromadb.config'] is chromadb_config_mock:
+            del sys.modules['chromadb.config']
     print(f"❌ Failed to import chromadb: {e}")
     print("   This is likely due to Python 3.14 compatibility issues.")
     print("   Try running with Python 3.12 or install pydantic-settings.")
@@ -180,7 +194,9 @@ def test_close_releases_file_locks():
 
         # Test 3: Create tarball (simulates S3 upload)
         print("\n📋 Test 1.3: Creating tarball (simulates S3 upload)...")
-        tar_path = tempfile.mktemp(suffix=".tar.gz")
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".tar.gz")
+        tar_path = temp_file.name
+        temp_file.close()
         try:
             with tarfile.open(tar_path, "w:gz") as tar:
                 tar.add(temp_dir, arcname="chromadb")

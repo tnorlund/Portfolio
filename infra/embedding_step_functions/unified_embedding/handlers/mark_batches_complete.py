@@ -133,18 +133,21 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # CRITICAL: Only mark batches as COMPLETED if they actually completed
         # Filter out batches that are still processing (action: "wait") or failed
         batch_ids = []
+        seen_batch_ids = set()  # O(1) membership checks
         skipped_batches = []
         for result in poll_results:
             if isinstance(result, dict) and "batch_id" in result:
                 batch_id = result["batch_id"]
-                batch_status = result.get("batch_status", "").lower()
+                # Safe normalization: handle None by defaulting to empty string
+                batch_status = (result.get("batch_status") or "").lower()
                 action = result.get("action", "")
 
                 # Only mark batches as COMPLETED if:
                 # 1. batch_status is "completed" AND
                 # 2. action is "process_results" (not "wait", "handle_failure", etc.)
                 if batch_id and batch_status == "completed" and action == "process_results":
-                    if batch_id not in batch_ids:
+                    if batch_id not in seen_batch_ids:
+                        seen_batch_ids.add(batch_id)
                         batch_ids.append(batch_id)
                 else:
                     # Track skipped batches for logging

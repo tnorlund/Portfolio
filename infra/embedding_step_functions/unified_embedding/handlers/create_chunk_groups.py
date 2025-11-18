@@ -257,6 +257,7 @@ def _create_chunk_groups(event: Dict[str, Any]) -> Dict[str, Any]:
                         bucket,
                         poll_results_s3_key,
                     )
+                    poll_results_s3_bucket = bucket
                     logger.info(
                         "Uploaded poll_results to S3",
                         bucket=bucket,

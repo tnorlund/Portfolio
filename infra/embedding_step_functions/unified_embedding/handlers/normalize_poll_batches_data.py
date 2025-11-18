@@ -101,7 +101,13 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 s3_client.download_file(result_bucket, result_key, tmp_file_path)
                 with open(tmp_file_path, "r", encoding="utf-8") as f:
                     individual_result = json.load(f)
-                combined_results.append(individual_result)
+                # Flatten the result: if it's a list, extend; if it's a dict, append; otherwise append as-is
+                if isinstance(individual_result, list):
+                    combined_results.extend(individual_result)
+                elif isinstance(individual_result, dict):
+                    combined_results.append(individual_result)
+                else:
+                    combined_results.append(individual_result)
             except Exception as e:
                 logger.error(
                     "Failed to download individual result from S3",

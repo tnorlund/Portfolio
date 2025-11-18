@@ -239,8 +239,10 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
             s3_client = boto3.client("s3")
 
             # Download chunks file from S3
-            # Use mktemp instead of NamedTemporaryFile to avoid file handle leaks
-            tmp_file_path = tempfile.mktemp(suffix=".json")
+            # Use NamedTemporaryFile for secure, atomic temp file creation
+            tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
+            tmp_file_path = tmp_file.name
+            tmp_file.close()
 
             try:
                 s3_client.download_file(chunks_s3_bucket, chunks_s3_key, tmp_file_path)
@@ -427,8 +429,10 @@ def merge_chunk_group_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         )
         try:
             # Download groups file from S3
-            # Use mktemp instead of NamedTemporaryFile to avoid file handle leaks
-            tmp_file_path = tempfile.mktemp(suffix=".json")
+            # Use NamedTemporaryFile for secure, atomic temp file creation
+            tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
+            tmp_file_path = tmp_file.name
+            tmp_file.close()
 
             try:
                 s3_client.download_file(groups_s3_bucket, groups_s3_key, tmp_file_path)

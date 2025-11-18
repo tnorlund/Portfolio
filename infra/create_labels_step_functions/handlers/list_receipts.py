@@ -33,8 +33,8 @@ def handler(event: Dict[str, Any], _):
         return {"statusCode": 200, "receipts": items}
     except EntityValidationError as e:
         logger.warning("Invalid list_receipts parameters: %s", e)
-        return {"statusCode": 400, "error": str(e)}
+        raise
     except ReceiptDynamoError as e:
         logger.error("Dynamo error during list_receipts: %s", e)
-        return {"statusCode": 500, "error": str(e)}
+        raise
 
