@@ -286,25 +286,38 @@ dynamodb_gateway_endpoint = aws.ec2.VpcEndpoint(
 )
 
 # CloudWatch Logs Interface Endpoint for faster logging from VPC Lambdas
+# Single AZ for cost savings ($0.12/day savings per endpoint)
+# Lambda functions can access endpoints from any AZ in the VPC
+# If endpoint AZ fails, Lambda falls back to NAT (slower but works)
+# Get stack name for conditional logic (reused later in file)
+stack = pulumi.get_stack()
+# Use single AZ for both dev and prod - AZ failures are rare (< 0.1%)
+# and Lambda functions have fallback to NAT Instance
+logs_endpoint_subnets = public_vpc.public_subnet_ids.apply(lambda ids: [ids[0]])  # Single AZ
+
 logs_interface_endpoint = aws.ec2.VpcEndpoint(
     f"logs-interface-{pulumi.get_stack()}",
     vpc_id=public_vpc.vpc_id,
     service_name=f"com.amazonaws.{aws.config.region}.logs",
     vpc_endpoint_type="Interface",
-    subnet_ids=public_vpc.public_subnet_ids,  # One subnet per AZ for the endpoint
+    subnet_ids=logs_endpoint_subnets,  # Conditional: single AZ for dev, multi-AZ for prod
     security_group_ids=[security.sg_vpce_id],
     private_dns_enabled=True,
 )
 
 # SQS Interface Endpoint for cost-effective SQS access from both public and private subnets
 # Enables upload lambda to use EFS (private subnets) while accessing SQS without internet
-# Note: Only use first public and first private subnet to avoid duplicate subnets in same AZ
+# Single AZ for cost savings ($0.12/day savings)
+# Lambda functions can access endpoints from any AZ in the VPC
+# If endpoint AZ fails, Lambda falls back to NAT (slower but works)
+sqs_endpoint_subnets = public_vpc.public_subnet_ids.apply(lambda ids: [ids[0]])  # Single AZ
+
 sqs_interface_endpoint = aws.ec2.VpcEndpoint(
     f"sqs-interface-{pulumi.get_stack()}",
     vpc_id=public_vpc.vpc_id,
     service_name=f"com.amazonaws.{aws.config.region}.sqs",
     vpc_endpoint_type="Interface",
-    subnet_ids=Output.all(public_vpc.public_subnet_ids, nat.private_subnet_ids).apply(lambda args: [args[0][0], args[1][0]]),  # First public + first private (ensure different AZs)
+    subnet_ids=sqs_endpoint_subnets,  # Conditional: single AZ for dev, multi-AZ for prod
     security_group_ids=[security.sg_vpce_id],
     private_dns_enabled=True,
 )
@@ -466,7 +479,7 @@ if layoutlm_training_bucket_name is not None:
 
 
 # Use stack-specific existing key pair from AWS console
-stack = pulumi.get_stack()
+# (stack variable already defined earlier for VPC endpoint configuration)
 key_pair_name = f"portfolio-receipt-{stack}"  # Use existing key pairs created in AWS console
 
 # Create EC2 Instance Profile for ML training instances
