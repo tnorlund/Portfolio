@@ -8,7 +8,7 @@
 
 > **measureSync**\<`T`\>(`name`, `fn`): `T`
 
-Defined in: [utils/performance/monitor.ts:211](https://github.com/tnorlund/Portfolio/blob/3805acd46c7a044d9fbd6e5ee8c9991de638049b/portfolio/utils/performance/monitor.ts#L211)
+Defined in: [utils/performance/monitor.ts:211](https://github.com/tnorlund/Portfolio/blob/be5a22447618de098520c542bcb7c54e92ea0cb5/portfolio/utils/performance/monitor.ts#L211)
 
 ## Type Parameters
 
