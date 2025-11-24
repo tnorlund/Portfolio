@@ -556,7 +556,7 @@ class MLPackageBuilder(pulumi.ComponentResource):
                     "commands": [
                         "echo Starting pre_build phase...",
                         "mkdir -p /tmp/source",
-                        "for pkg in receipt_trainer receipt_dynamo; do "
+                        "for pkg in receipt_dynamo; do "
                         + "echo Downloading source for $pkg... && "
                         + f"aws s3 cp s3://{args['bucket_name']}/source/$pkg.zip /tmp/$pkg.zip && "
                         + "echo Unzipping source for $pkg... && "
@@ -579,13 +579,6 @@ class MLPackageBuilder(pulumi.ComponentResource):
                 },
                 "build": {
                     "commands": [
-                        "echo Building receipt_trainer package...",
-                        "cd /tmp/source/receipt_trainer",
-                        "pip install build || echo 'Warning: could not install build package for receipt_trainer'",
-                        "python -m build --wheel --outdir /tmp/output/wheels || echo 'Warning: could not build receipt_trainer package'",
-                        "mkdir -p /tmp/output/python/receipt_trainer",
-                        "cp -r /tmp/output/wheels/* /tmp/output/python/receipt_trainer/ || echo 'Warning: no wheel files found for receipt_trainer'",
-                        "echo Finished building receipt_trainer.",
                         "echo Building receipt_dynamo package...",
                         "cd /tmp/source/receipt_dynamo",
                         "pip install build || echo 'Warning: could not install build package for receipt_dynamo'",

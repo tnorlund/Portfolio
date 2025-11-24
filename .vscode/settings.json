@@ -41,10 +41,8 @@
   "python.testing.cwd": "${workspaceFolder}",
   "python.testing.pytestArgs": [
     "receipt_dynamo/tests",
-    "receipt_trainer/tests",
     "receipt_label/tests",
     "--cov=receipt_dynamo/receipt_dynamo",
-    "--cov=receipt_trainer/receipt_trainer",
     "--cov=receipt_label/receipt_label",
     "--cov-config=receipt_dynamo/tests/.coveragerc",
     "--cov-report=xml:receipt_dynamo/tests/coverage.xml"
