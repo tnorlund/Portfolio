@@ -58,4 +58,4 @@
 
 ---
 
-**Note**: This PR will be automatically reviewed by both Cursor bot and Claude Code. Please address any findings before requesting human review.
+**Note**: This PR will be automatically reviewed by Cursor bot. Please address any findings before requesting human review.
