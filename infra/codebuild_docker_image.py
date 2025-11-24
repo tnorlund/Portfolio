@@ -117,6 +117,10 @@ class CodeBuildDockerImage(ComponentResource):
             bootstrap_cmd = self._push_bootstrap_image()
             self._create_lambda_function(bootstrap_cmd, pipeline, pipeline_trigger_cmd_placeholder)
 
+            # Ensure lambda_function exists before referencing it
+            if not hasattr(self, 'lambda_function') or self.lambda_function is None:
+                raise RuntimeError("lambda_function was not created by _create_lambda_function")
+
             # Now create the trigger command that depends on Lambda function
             # This ensures proper ordering: Lambda created -> trigger waits -> pipeline starts
             if not self.sync_mode:
