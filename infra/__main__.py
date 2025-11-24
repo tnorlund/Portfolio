@@ -395,28 +395,69 @@ if layoutlm_training_bucket_name is not None:
     from routes.layoutlm_inference_cache_generator.infra import (
         create_layoutlm_inference_cache_generator,
     )
+    from routes.layoutlm_inference.infra import create_layoutlm_inference_lambda
 
+    # Create cache generator (which creates the cache bucket)
     layoutlm_cache_generator = create_layoutlm_inference_cache_generator(
         layoutlm_training_bucket=layoutlm_training_bucket_name,
     )
 
-    # Set cache bucket name in the cache generator module for API Lambda
-    import routes.layoutlm_inference_cache_generator.infra as cache_gen_module
-    cache_gen_module.cache_bucket_name = layoutlm_cache_generator.cache_bucket.id
+    # Create the API Lambda only after the cache bucket exists
+    # No placeholder bucket names - only use the real bucket
+    layoutlm_inference_lambda = create_layoutlm_inference_lambda(
+        cache_bucket_name=layoutlm_cache_generator.cache_bucket.id,
+    )
 
-    # Update the inference module's cache_bucket_name reference
-    # This will cause the Lambda function to be replaced with the correct bucket name
-    # on the next pulumi up because of replace_on_changes=["environment"]
+    # Export the Lambda so api_gateway.py can use it
+    # Set it as a module-level variable in the inference module
     import routes.layoutlm_inference.infra as inference_module
-    inference_module.cache_bucket_name = layoutlm_cache_generator.cache_bucket.id
+    inference_module.layoutlm_inference_lambda = layoutlm_inference_lambda
 
-    # IMPORTANT: The Lambda function is created at module import time with a placeholder.
-    # When we set cache_bucket_name here, Pulumi will detect the change in the Lambda's
-    # environment variable (because it uses _get_cache_bucket_name().apply()) and will
-    # replace the Lambda on the next pulumi up due to replace_on_changes=["environment"].
-    #
-    # This ensures the Lambda gets the correct bucket name after the cache generator
-    # infrastructure is created.
+    # Create API Gateway route for layoutlm_inference
+    # This must be done here after Lambda is created, not in api_gateway.py
+    # because api_gateway.py is imported before the Lambda exists
+    import api_gateway
+    if hasattr(api_gateway, 'api'):
+        integration_layoutlm_inference = aws.apigatewayv2.Integration(
+            "layoutlm_inference_lambda_integration",
+            api_id=api_gateway.api.id,
+            integration_type="AWS_PROXY",
+            integration_uri=layoutlm_inference_lambda.invoke_arn,
+            integration_method="POST",
+            payload_format_version="2.0",
+        )
+        route_layoutlm_inference = aws.apigatewayv2.Route(
+            "layoutlm_inference_route",
+            api_id=api_gateway.api.id,
+            route_key="GET /layoutlm_inference",
+            target=integration_layoutlm_inference.id.apply(
+                lambda id: f"integrations/{id}"
+            ),
+            opts=pulumi.ResourceOptions(
+                replace_on_changes=["route_key", "target"],
+                delete_before_replace=True,
+            ),
+        )
+        # Also add alias route with hyphens for convenience
+        route_layoutlm_inference_cache = aws.apigatewayv2.Route(
+            "layoutlm_inference_cache_route",
+            api_id=api_gateway.api.id,
+            route_key="GET /layoutlm-inference-cache",
+            target=integration_layoutlm_inference.id.apply(
+                lambda id: f"integrations/{id}"
+            ),
+            opts=pulumi.ResourceOptions(
+                replace_on_changes=["route_key", "target"],
+                delete_before_replace=True,
+            ),
+        )
+        lambda_permission_layoutlm_inference = aws.lambda_.Permission(
+            "layoutlm_inference_lambda_permission",
+            action="lambda:InvokeFunction",
+            function=layoutlm_inference_lambda.name,
+            principal="apigateway.amazonaws.com",
+            source_arn=api_gateway.api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+        )
 
     pulumi.export(
         "layoutlm_inference_cache_bucket",
