@@ -8,7 +8,7 @@
 
 > **getPerformanceMonitor**(): `null` \| [`PerformanceMonitor`](../classes/PerformanceMonitor.md)
 
-Defined in: [utils/performance/monitor.ts:192](https://github.com/tnorlund/Portfolio/blob/a98ab7fc8687522dfcfdc6e8748c20d83be8ca0a/portfolio/utils/performance/monitor.ts#L192)
+Defined in: [utils/performance/monitor.ts:192](https://github.com/tnorlund/Portfolio/blob/af42f119e9b16b271c0813295c040b7211fdaf94/portfolio/utils/performance/monitor.ts#L192)
 
 ## Returns
 
