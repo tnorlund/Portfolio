@@ -17,12 +17,8 @@
       "path": "./receipt_upload"
     },
     {
-      "name": "🤖 receipt_trainer",
-      "path": "./receipt_trainer"
-    },
-    {
-      "name": "🤖 receipt_trainer_1",
-      "path": "./receipt_trainer_1"
+      "name": "🤖 receipt_layoutlm",
+      "path": "./receipt_layoutlm"
     },
     {
       "name": "🏗️ infra",
