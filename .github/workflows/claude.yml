@@ -1,6 +1,0 @@
-name: DISABLED - Claude Code (no longer in use)
-
-on:
-  workflow_dispatch:
-
-jobs: {}
