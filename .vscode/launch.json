@@ -50,14 +50,13 @@
       ]
     },
     {
-      "name": "Python: Receipt Trainer Tests",
+      "name": "Python: Receipt LayoutLM Tests",
       "request": "launch",
       "module": "pytest",
       "args": [
-        "receipt_trainer/tests",
-        "--cov=receipt_trainer/receipt_trainer",
-        "--cov-config=receipt_trainer/tests/.coveragerc",
-        "--cov-report=xml:receipt_trainer/tests/coverage.xml"
+        "receipt_layoutlm/tests",
+        "--cov=receipt_layoutlm/receipt_layoutlm",
+        "--cov-report=xml:receipt_layoutlm/tests/coverage.xml"
       ],
       "console": "integratedTerminal",
       "justMyCode": false,
