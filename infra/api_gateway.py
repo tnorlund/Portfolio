@@ -17,7 +17,8 @@ from routes.receipts.infra import receipts_lambda
 import routes.address_similarity_cache_generator.infra  # noqa: F401
 from routes.address_similarity.infra import address_similarity_lambda
 import routes.layoutlm_inference_cache_generator.infra  # noqa: F401
-from routes.layoutlm_inference.infra import layoutlm_inference_lambda
+# LayoutLM inference Lambda is created conditionally in __main__.py after cache bucket exists
+# Route creation is also done in __main__.py after Lambda is created
 
 # Detect the current Pulumi stack
 stack = pulumi.get_stack()
@@ -337,46 +338,9 @@ lambda_permission_address_similarity = aws.lambda_.Permission(
 
 
 # /layoutlm_inference
-integration_layoutlm_inference = aws.apigatewayv2.Integration(
-    "layoutlm_inference_lambda_integration",
-    api_id=api.id,
-    integration_type="AWS_PROXY",
-    integration_uri=layoutlm_inference_lambda.invoke_arn,
-    integration_method="POST",
-    payload_format_version="2.0",
-)
-route_layoutlm_inference = aws.apigatewayv2.Route(
-    "layoutlm_inference_route",
-    api_id=api.id,
-    route_key="GET /layoutlm_inference",
-    target=integration_layoutlm_inference.id.apply(
-        lambda id: f"integrations/{id}"
-    ),
-    opts=pulumi.ResourceOptions(
-        replace_on_changes=["route_key", "target"],
-        delete_before_replace=True,
-    ),
-)
-# Also add alias route with hyphens for convenience
-route_layoutlm_inference_cache = aws.apigatewayv2.Route(
-    "layoutlm_inference_cache_route",
-    api_id=api.id,
-    route_key="GET /layoutlm-inference-cache",
-    target=integration_layoutlm_inference.id.apply(
-        lambda id: f"integrations/{id}"
-    ),
-    opts=pulumi.ResourceOptions(
-        replace_on_changes=["route_key", "target"],
-        delete_before_replace=True,
-    ),
-)
-lambda_permission_layoutlm_inference = aws.lambda_.Permission(
-    "layoutlm_inference_lambda_permission",
-    action="lambda:InvokeFunction",
-    function=layoutlm_inference_lambda.name,
-    principal="apigateway.amazonaws.com",
-    source_arn=api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
-)
+# Route creation moved to __main__.py after Lambda is created
+# This ensures the Lambda exists before the route is created
+# (Lambda is created conditionally after cache bucket exists)
 
 
 # /process
