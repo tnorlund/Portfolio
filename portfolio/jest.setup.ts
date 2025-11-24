@@ -6,7 +6,7 @@ global.IntersectionObserver = class IntersectionObserver {
   disconnect() {}
   observe() {}
   unobserve() {}
-};
+} as any;
 
 // Mock ResizeObserver
 global.ResizeObserver = class ResizeObserver {
@@ -14,12 +14,12 @@ global.ResizeObserver = class ResizeObserver {
   disconnect() {}
   observe() {}
   unobserve() {}
-};
+} as any;
 
 // Mock matchMedia
 Object.defineProperty(window, "matchMedia", {
   writable: true,
-  value: jest.fn().mockImplementation((query) => ({
+  value: jest.fn().mockImplementation((query: string) => ({
     matches: false,
     media: query,
     onchange: null,
@@ -57,11 +57,11 @@ HTMLCanvasElement.prototype.getContext = jest.fn(() => ({
   transform: jest.fn(),
   rect: jest.fn(),
   clip: jest.fn(),
-}));
+})) as any;
 
 HTMLCanvasElement.prototype.toDataURL = jest.fn(
   () => "data:image/png;base64,test"
-);
+) as any;
 
 // Polyfill performance API for tests
 if (typeof global.performance === 'undefined') {
@@ -72,7 +72,7 @@ if (typeof global.performance === 'undefined') {
     clearMarks: jest.fn(),
     clearMeasures: jest.fn(),
     getEntriesByName: jest.fn(() => [{ duration: 10 }]),
-    getEntriesByType: jest.fn((type) => {
+    getEntriesByType: jest.fn((type: string) => {
       // Mock modern PerformanceNavigationTiming API
       if (type === 'navigation') {
         return [{
@@ -90,26 +90,27 @@ if (typeof global.performance === 'undefined') {
       navigationStart: Date.now(),
       loadEventEnd: Date.now() + 100,
     },
-  };
+  } as any;
 } else {
   // Add missing methods if performance exists but methods don't
-  if (!global.performance.mark) {
-    global.performance.mark = jest.fn();
+  const perf = global.performance as any;
+  if (!perf.mark) {
+    perf.mark = jest.fn();
   }
-  if (!global.performance.measure) {
-    global.performance.measure = jest.fn();
+  if (!perf.measure) {
+    perf.measure = jest.fn();
   }
-  if (!global.performance.clearMarks) {
-    global.performance.clearMarks = jest.fn();
+  if (!perf.clearMarks) {
+    perf.clearMarks = jest.fn();
   }
-  if (!global.performance.clearMeasures) {
-    global.performance.clearMeasures = jest.fn();
+  if (!perf.clearMeasures) {
+    perf.clearMeasures = jest.fn();
   }
-  if (!global.performance.getEntriesByName) {
-    global.performance.getEntriesByName = jest.fn(() => [{ duration: 10 }]);
+  if (!perf.getEntriesByName) {
+    perf.getEntriesByName = jest.fn(() => [{ duration: 10 }]);
   }
-  if (!global.performance.getEntriesByType) {
-    global.performance.getEntriesByType = jest.fn((type) => {
+  if (!perf.getEntriesByType) {
+    perf.getEntriesByType = jest.fn((type: string) => {
       // Mock modern PerformanceNavigationTiming API
       if (type === 'navigation') {
         return [{
@@ -124,3 +125,4 @@ if (typeof global.performance === 'undefined') {
     });
   }
 }
+
