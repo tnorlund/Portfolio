@@ -21,7 +21,6 @@ from .components import (
     LambdaFunctionsComponent,
     LineEmbeddingWorkflow,
     MonitoringComponent,
-    RealtimeEmbeddingWorkflow,
     WordEmbeddingWorkflow,
 )
 
@@ -111,13 +110,6 @@ class EmbeddingInfrastructure(ComponentResource):
             f"{name}-word",
             lambda_functions=self.lambdas.all_functions,
             batch_bucket=self.lambdas.batch_bucket,
-            opts=ResourceOptions(parent=self),
-        )
-
-        # Create realtime embedding workflow
-        self.realtime_workflow = RealtimeEmbeddingWorkflow(
-            f"{name}-realtime",
-            lambda_functions=self.lambdas.all_functions,
             opts=ResourceOptions(parent=self),
         )
 
@@ -215,10 +207,6 @@ class EmbeddingInfrastructure(ComponentResource):
                 ),
                 "poll_word_embeddings_sf_arn": (
                     self.poll_word_embeddings_sf.arn
-                ),
-                # Realtime workflow
-                "realtime_embedding_sf_arn": (
-                    self.realtime_workflow.realtime_sf.arn
                 ),
                 # Monitoring outputs
                 "alert_topic_arn": self.monitoring.alert_topic.arn,
