@@ -25,15 +25,26 @@ from receipt_agent.state.models import (
 logger = logging.getLogger(__name__)
 
 
+def _build_chromadb_line_id(image_id: str, receipt_id: int, line_id: int) -> str:
+    """Build ChromaDB document ID for a line."""
+    return f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
+
+
+def _build_chromadb_word_id(image_id: str, receipt_id: int, line_id: int, word_id: int) -> str:
+    """Build ChromaDB document ID for a word."""
+    return f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}"
+
+
 async def load_metadata(
     state: ValidationState,
     dynamo_client: Any,
+    chroma_client: Optional[Any] = None,
 ) -> dict[str, Any]:
     """
     Load current receipt metadata and context from DynamoDB.
 
     This is the entry node that fetches the current state of the
-    receipt we're validating.
+    receipt we're validating. Also verifies embeddings exist in ChromaDB.
     """
     logger.info(
         f"Loading metadata for {state.image_id}#{state.receipt_id}"
@@ -62,10 +73,91 @@ async def load_metadata(
             )
 
         # Get receipt context (lines, words, etc.)
-        _, receipt, words, lines, _, labels = dynamo_client.get_receipt_details(
+        receipt_details = dynamo_client.get_receipt_details(
             image_id=state.image_id,
             receipt_id=state.receipt_id,
         )
+        receipt = receipt_details.receipt
+        words = receipt_details.words
+        lines = receipt_details.lines
+        labels = receipt_details.labels
+
+        # Verify embeddings exist in ChromaDB
+        line_embeddings_available = False
+        word_embeddings_available = False
+        receipt_line_embeddings: dict[str, list[float]] = {}
+        receipt_word_embeddings: dict[str, list[float]] = {}
+
+        if chroma_client and lines:
+            try:
+                # Build ChromaDB IDs for all lines
+                line_ids = [
+                    _build_chromadb_line_id(state.image_id, state.receipt_id, line.line_id)
+                    for line in lines
+                ]
+
+                # Retrieve line embeddings from ChromaDB
+                line_results = chroma_client.get(
+                    collection_name="lines",
+                    ids=line_ids,
+                    include=["embeddings", "metadatas"],
+                )
+
+                found_line_ids = line_results.get("ids") if line_results else None
+                if found_line_ids and len(found_line_ids) > 0:
+                    embeddings = line_results.get("embeddings", [])
+
+                    # Map embeddings by line_id for easy lookup
+                    for idx, chroma_id in enumerate(found_line_ids):
+                        if idx < len(embeddings) and embeddings[idx] is not None:
+                            receipt_line_embeddings[chroma_id] = embeddings[idx]
+
+                    line_embeddings_available = len(found_line_ids) > 0
+                    logger.info(
+                        f"Found {len(found_line_ids)}/{len(line_ids)} line embeddings in ChromaDB"
+                    )
+                else:
+                    logger.warning(f"No line embeddings found in ChromaDB for {state.image_id}#{state.receipt_id}")
+            except Exception as e:
+                logger.warning(f"Could not verify line embeddings: {e}")
+
+        if chroma_client and words:
+            try:
+                # Build ChromaDB IDs for all words
+                word_ids = [
+                    _build_chromadb_word_id(state.image_id, state.receipt_id, word.line_id, word.word_id)
+                    for word in words
+                ]
+
+                # Retrieve word embeddings from ChromaDB (in batches to avoid size limits)
+                batch_size = 1000
+                found_word_count = 0
+
+                for i in range(0, len(word_ids), batch_size):
+                    batch_ids = word_ids[i:i+batch_size]
+                    word_results = chroma_client.get(
+                        collection_name="words",
+                        ids=batch_ids,
+                        include=["embeddings", "metadatas"],
+                    )
+
+                    found_batch_ids = word_results.get("ids") if word_results else None
+                    if found_batch_ids and len(found_batch_ids) > 0:
+                        embeddings = word_results.get("embeddings", [])
+
+                        # Map embeddings by word_id for easy lookup
+                        for idx, chroma_id in enumerate(found_batch_ids):
+                            if idx < len(embeddings) and embeddings[idx] is not None:
+                                receipt_word_embeddings[chroma_id] = embeddings[idx]
+
+                        found_word_count += len(found_batch_ids)
+
+                word_embeddings_available = found_word_count > 0
+                logger.info(
+                    f"Found {found_word_count}/{len(word_ids)} word embeddings in ChromaDB"
+                )
+            except Exception as e:
+                logger.warning(f"Could not verify word embeddings: {e}")
 
         if receipt:
             raw_lines = []
@@ -97,13 +189,28 @@ async def load_metadata(
                 extracted_merchant_name=extracted_merchant,
                 extracted_address=extracted_address,
                 extracted_phone=extracted_phone,
-                line_embeddings_available=True,  # Will verify in next step
-                word_embeddings_available=True,
+                line_embeddings_available=line_embeddings_available,
+                word_embeddings_available=word_embeddings_available,
             )
 
+            # Store retrieved embeddings for potential use in similarity search
+            if receipt_line_embeddings:
+                updates["receipt_line_embeddings"] = receipt_line_embeddings
+            if receipt_word_embeddings:
+                updates["receipt_word_embeddings"] = receipt_word_embeddings
+
         # Add initial message to conversation
+        embedding_status = []
+        if receipt_context := updates.get("receipt_context"):
+            if receipt_context.line_embeddings_available:
+                embedding_status.append("line embeddings available")
+            if receipt_context.word_embeddings_available:
+                embedding_status.append("word embeddings available")
+
+        embedding_info = f" ({', '.join(embedding_status)})" if embedding_status else " (no embeddings found in ChromaDB)"
+
         initial_message = HumanMessage(
-            content=f"""Validate the merchant metadata for receipt {state.image_id}#{state.receipt_id}.
+            content=f"""Validate the merchant metadata for receipt {state.image_id}#{state.receipt_id}{embedding_info}.
 
 Current metadata:
 - Merchant Name: {updates.get('current_merchant_name', 'Unknown')}

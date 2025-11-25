@@ -17,9 +17,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 def setup_environment():
     """Load secrets and outputs from Pulumi and set environment variables."""
     from receipt_dynamo.data._pulumi import load_env, load_secrets
+    from pathlib import Path
 
-    env = load_env("dev")
-    secrets = load_secrets("dev")
+    # Explicitly set the infra directory for Pulumi
+    infra_dir = Path(__file__).parent.parent / "infra"
+    env = load_env("dev", working_dir=str(infra_dir))
+    secrets = load_secrets("dev", working_dir=str(infra_dir))
 
     # Set environment variables for receipt_agent
     os.environ["RECEIPT_AGENT_DYNAMO_TABLE_NAME"] = env.get(
@@ -29,22 +32,134 @@ def setup_environment():
         "portfolio:aws-region", "us-west-2"
     )
 
-    # ChromaDB - use local path if available, otherwise HTTP URL
-    local_chroma = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)), ".chromadb_local", "words"
-    )
-    if os.path.exists(local_chroma):
-        os.environ["RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY"] = local_chroma
-        print(f"✅ ChromaDB local: {local_chroma}")
+    # ChromaDB - use separate directories for lines and words collections
+    # Each collection is stored in its own ChromaDB database directory
+    repo_root = os.path.dirname(os.path.dirname(__file__))
+    snapshot_base_dir = os.path.join(repo_root, ".chroma_snapshots")
+    lines_snapshot_dir = os.path.join(snapshot_base_dir, "lines")
+    words_snapshot_dir = os.path.join(snapshot_base_dir, "words")
+    local_lines = os.path.join(repo_root, ".chromadb_local", "lines")
+    local_words = os.path.join(repo_root, ".chromadb_local", "words")
+
+    # Check for existing snapshots in separate directories
+    has_lines_snapshot = os.path.exists(lines_snapshot_dir) and os.listdir(lines_snapshot_dir)
+    has_words_snapshot = os.path.exists(words_snapshot_dir) and os.listdir(words_snapshot_dir)
+    has_local_lines = os.path.exists(local_lines) and os.listdir(local_lines)
+    has_local_words = os.path.exists(local_words) and os.listdir(local_words)
+
+    chroma_dirs_set = False
+    if has_lines_snapshot and has_words_snapshot:
+        os.environ["RECEIPT_AGENT_CHROMA_LINES_DIRECTORY"] = lines_snapshot_dir
+        os.environ["RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"] = words_snapshot_dir
+        print(f"✅ ChromaDB snapshots found:")
+        print(f"   Lines: {lines_snapshot_dir}")
+        print(f"   Words: {words_snapshot_dir}")
+        chroma_dirs_set = True
+    elif has_local_lines and has_local_words:
+        os.environ["RECEIPT_AGENT_CHROMA_LINES_DIRECTORY"] = local_lines
+        os.environ["RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"] = local_words
+        print(f"✅ ChromaDB local found:")
+        print(f"   Lines: {local_lines}")
+        print(f"   Words: {local_words}")
+        chroma_dirs_set = True
     else:
-        chroma_dns = env.get("chroma_service_dns")
-        if chroma_dns:
-            # Remove any existing port from DNS name
-            chroma_host = chroma_dns.split(":")[0]
-            os.environ["RECEIPT_AGENT_CHROMA_HTTP_URL"] = f"http://{chroma_host}:8000"
-            print(f"✅ ChromaDB URL: http://{chroma_host}:8000")
+        missing = []
+        if not has_lines_snapshot and not has_local_lines:
+            missing.append("lines")
+        if not has_words_snapshot and not has_local_words:
+            missing.append("words")
+        if missing:
+            print(f"⚠️  Missing ChromaDB collections: {', '.join(missing)}")
+            print(f"   Will download from S3...")
+
+    # If we don't have valid ChromaDB directories, download from S3
+    if not chroma_dirs_set:
+        # Try to download from S3 using bucket name from Pulumi outputs
+        # Prefer embedding_chromadb_bucket_name (the one actually used for embeddings)
+        # Fall back to chromadb_bucket_name or environment variable
+        bucket_name = (
+            env.get("embedding_chromadb_bucket_name")
+            or env.get("chromadb_bucket_name")
+            or os.environ.get("CHROMADB_BUCKET")
+        )
+
+        if bucket_name:
+            print(f"📥 Downloading ChromaDB snapshots from S3 bucket: {bucket_name}")
+            print("   (Downloading 'lines' and 'words' collections to separate directories...)")
+            try:
+                from receipt_chroma import download_snapshot_atomic
+
+                # Download lines collection to its own directory
+                if not has_lines_snapshot and not has_local_lines:
+                    os.makedirs(lines_snapshot_dir, exist_ok=True)
+                    lines_result = download_snapshot_atomic(
+                        bucket=bucket_name,
+                        collection="lines",
+                        local_path=lines_snapshot_dir,
+                        verify_integrity=True,
+                    )
+
+                    if lines_result.get("status") == "downloaded":
+                        print(f"✅ Lines collection downloaded: {lines_result.get('version_id', 'unknown')}")
+                        os.environ["RECEIPT_AGENT_CHROMA_LINES_DIRECTORY"] = lines_snapshot_dir
+                    else:
+                        print(f"⚠️  Lines download failed: {lines_result.get('error', 'unknown error')}")
+                else:
+                    print(f"✅ Lines collection already available")
+
+                # Download words collection to its own directory
+                if not has_words_snapshot and not has_local_words:
+                    os.makedirs(words_snapshot_dir, exist_ok=True)
+                    words_result = download_snapshot_atomic(
+                        bucket=bucket_name,
+                        collection="words",
+                        local_path=words_snapshot_dir,
+                        verify_integrity=True,
+                    )
+
+                    if words_result.get("status") == "downloaded":
+                        print(f"✅ Words collection downloaded: {words_result.get('version_id', 'unknown')}")
+                        os.environ["RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"] = words_snapshot_dir
+                    else:
+                        print(f"⚠️  Words download failed: {words_result.get('error', 'unknown error')}")
+                else:
+                    print(f"✅ Words collection already available")
+
+                # Verify both directories are set
+                if os.environ.get("RECEIPT_AGENT_CHROMA_LINES_DIRECTORY") and os.environ.get("RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"):
+                    print(f"✅ ChromaDB snapshots ready:")
+                    print(f"   Lines: {os.environ.get('RECEIPT_AGENT_CHROMA_LINES_DIRECTORY')}")
+                    print(f"   Words: {os.environ.get('RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY')}")
+                else:
+                    # Fall back to HTTP URL if available
+                    chroma_dns = env.get("chroma_service_dns")
+                    if chroma_dns:
+                        chroma_host = chroma_dns.split(":")[0]
+                        os.environ["RECEIPT_AGENT_CHROMA_HTTP_URL"] = f"http://{chroma_host}:8000"
+                        print(f"✅ ChromaDB URL: http://{chroma_host}:8000")
+                    else:
+                        print("⚠️  ChromaDB not available - will fail if needed")
+            except Exception as e:
+                print(f"⚠️  Failed to download snapshot: {e}")
+                import traceback
+                traceback.print_exc()
+                # Fall back to HTTP URL if available
+                chroma_dns = env.get("chroma_service_dns")
+                if chroma_dns:
+                    chroma_host = chroma_dns.split(":")[0]
+                    os.environ["RECEIPT_AGENT_CHROMA_HTTP_URL"] = f"http://{chroma_host}:8000"
+                    print(f"✅ ChromaDB URL: http://{chroma_host}:8000")
+                else:
+                    print("⚠️  ChromaDB not available - will fail if needed")
         else:
-            print("⚠️  ChromaDB not found - will fail if needed")
+            # Fall back to HTTP URL if available
+            chroma_dns = env.get("chroma_service_dns")
+            if chroma_dns:
+                chroma_host = chroma_dns.split(":")[0]
+                os.environ["RECEIPT_AGENT_CHROMA_HTTP_URL"] = f"http://{chroma_host}:8000"
+                print(f"✅ ChromaDB URL: http://{chroma_host}:8000")
+            else:
+                print("⚠️  ChromaDB not found - will fail if needed")
 
     # API Keys
     openai_key = secrets.get("portfolio:OPENAI_API_KEY", "")
@@ -143,34 +258,116 @@ async def test_agent(image_id: str, receipt_id: int, env: dict, secrets: dict):
         table_name=env.get("dynamodb_table_name", "receipts")
     )
 
-    # Try to create ChromaDB client - prefer local
+    # Create ChromaDB clients - use separate directories for lines and words
+    # Create a wrapper that routes queries to the correct client based on collection_name
+    class DualChromaClient:
+        """Wrapper client that routes queries to separate lines/words clients."""
+        def __init__(self, lines_client, words_client):
+            self.lines_client = lines_client
+            self.words_client = words_client
+
+        def query(self, collection_name, **kwargs):
+            """Route query to the appropriate client based on collection_name."""
+            if collection_name == "lines":
+                return self.lines_client.query(collection_name="lines", **kwargs)
+            elif collection_name == "words":
+                return self.words_client.query(collection_name="words", **kwargs)
+            else:
+                raise ValueError(f"Unknown collection: {collection_name}")
+
+        def get(self, collection_name, **kwargs):
+            """Route get to the appropriate client based on collection_name."""
+            if collection_name == "lines":
+                return self.lines_client.get(collection_name="lines", **kwargs)
+            elif collection_name == "words":
+                return self.words_client.get(collection_name="words", **kwargs)
+            else:
+                raise ValueError(f"Unknown collection: {collection_name}")
+
+        def list_collections(self):
+            """Return both collections."""
+            return ["lines", "words"]
+
+        def get_collection(self, collection_name, **kwargs):
+            """Route get_collection to the appropriate client."""
+            if collection_name == "lines":
+                return self.lines_client.get_collection("lines", **kwargs)
+            elif collection_name == "words":
+                return self.words_client.get_collection("words", **kwargs)
+            else:
+                raise ValueError(f"Unknown collection: {collection_name}")
+
     chroma_client = None
-    local_chroma = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)), ".chromadb_local", "words"
-    )
-    if os.path.exists(local_chroma):
-        try:
-            from receipt_chroma.data.chroma_client import ChromaClient
+    repo_root = os.path.dirname(os.path.dirname(__file__))
 
-            chroma_client = ChromaClient(
-                persist_directory=local_chroma,
+    # Check for separate directories first (new approach)
+    lines_dir = os.environ.get("RECEIPT_AGENT_CHROMA_LINES_DIRECTORY")
+    words_dir = os.environ.get("RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY")
+    http_url = os.environ.get("RECEIPT_AGENT_CHROMA_HTTP_URL")
+
+    # Fallback to combined directory (old approach)
+    persist_dir = os.environ.get("RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY")
+
+    if lines_dir and words_dir:
+        # Use separate clients for lines and words
+        try:
+            from receipt_agent.clients.factory import create_chroma_client
+            from receipt_agent.config.settings import get_settings
+
+            settings = get_settings()
+            lines_client = create_chroma_client(
+                persist_directory=lines_dir,
                 mode="read",
+                settings=settings,
             )
-            print(f"✅ ChromaDB client connected to local: {local_chroma}")
+            words_client = create_chroma_client(
+                persist_directory=words_dir,
+                mode="read",
+                settings=settings,
+            )
+            chroma_client = DualChromaClient(lines_client, words_client)
+            print(f"✅ ChromaDB clients created:")
+            print(f"   Lines: {lines_dir}")
+            print(f"   Words: {words_dir}")
         except Exception as e:
-            print(f"⚠️  Could not connect to local ChromaDB: {e}")
-    elif env.get("chroma_service_dns"):
-        chroma_dns = env.get("chroma_service_dns")
+            print(f"⚠️  Failed to create separate ChromaDB clients: {e}")
+            import traceback
+            traceback.print_exc()
+    elif persist_dir:
+        # Fallback to combined directory (old approach)
         try:
-            from receipt_chroma.data.chroma_client import ChromaClient
+            from receipt_agent.clients.factory import create_chroma_client
+            from receipt_agent.config.settings import get_settings
 
-            # Remove any existing port from DNS name
-            chroma_host = chroma_dns.split(":")[0]
-            chroma_client = ChromaClient(
-                http_url=f"http://{chroma_host}:8000",
+            settings = get_settings()
+            chroma_client = create_chroma_client(
+                persist_directory=persist_dir,
                 mode="read",
+                settings=settings,
             )
-            print(f"✅ ChromaDB client connected to http://{chroma_host}:8000")
+            if chroma_client:
+                print(f"✅ ChromaDB client connected to: {persist_dir}")
+            else:
+                print(f"⚠️  ChromaDB client creation returned None")
+        except Exception as e:
+            print(f"⚠️  Could not connect to ChromaDB: {e}")
+            import traceback
+            traceback.print_exc()
+    elif http_url:
+        try:
+            from receipt_agent.clients.factory import create_chroma_client
+            from receipt_agent.config.settings import get_settings
+
+            settings = get_settings()
+            chroma_client = create_chroma_client(
+                http_url=http_url,
+                mode="read",
+                settings=settings,
+            )
+            if chroma_client:
+                print(f"✅ ChromaDB client connected to: {http_url}")
+            else:
+                print(f"⚠️  ChromaDB client creation returned None")
         except Exception as e:
             print(f"⚠️  Could not connect to ChromaDB: {e}")
 
@@ -179,10 +376,19 @@ async def test_agent(image_id: str, receipt_id: int, env: dict, secrets: dict):
     google_key = secrets.get("portfolio:GOOGLE_PLACES_API_KEY", "")
     if google_key:
         try:
-            from receipt_places import PlacesClient
+            from receipt_agent.clients.factory import create_places_client
+            from receipt_agent.config.settings import get_settings
 
-            places_client = PlacesClient(api_key=google_key)
-            print("✅ Places client created")
+            settings = get_settings()
+            places_client = create_places_client(
+                api_key=google_key,
+                table_name=env.get("dynamodb_table_name", "receipts"),
+                settings=settings,
+            )
+            if places_client:
+                print("✅ Places client created")
+            else:
+                print("⚠️  Places client creation returned None")
         except Exception as e:
             print(f"⚠️  Could not create Places client: {e}")
 

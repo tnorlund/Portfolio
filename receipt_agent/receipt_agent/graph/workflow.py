@@ -94,9 +94,21 @@ def create_validation_graph(
         settings = get_settings()
 
     # Initialize LLM for decision making
+    # Get API key for authentication
+    api_key = settings.ollama_api_key.get_secret_value()
+    if not api_key:
+        logger.warning(
+            "Ollama API key not set - LLM calls will fail. "
+            "Set RECEIPT_AGENT_OLLAMA_API_KEY"
+        )
+
     llm = ChatOllama(
         base_url=settings.ollama_base_url,
         model=settings.ollama_model,
+        client_kwargs={
+            "headers": {"Authorization": f"Bearer {api_key}"} if api_key else {},
+            "timeout": 120,  # 2 minute timeout for reliability
+        },
         temperature=0.1,  # Low temperature for consistent reasoning
     )
 
@@ -104,7 +116,11 @@ def create_validation_graph(
     graph = StateGraph(ValidationState)
 
     # Bind dependencies to nodes
-    bound_load_metadata = partial(load_metadata, dynamo_client=dynamo_client)
+    bound_load_metadata = partial(
+        load_metadata,
+        dynamo_client=dynamo_client,
+        chroma_client=chroma_client,
+    )
     bound_search_similar = partial(
         search_similar_receipts,
         chroma_client=chroma_client,

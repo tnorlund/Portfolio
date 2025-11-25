@@ -94,9 +94,9 @@ Configure via environment variables (prefix: `RECEIPT_AGENT_`):
 
 ```bash
 # LLM Configuration (Ollama Cloud)
-export RECEIPT_AGENT_OLLAMA_BASE_URL="https://api.ollama.ai"
+export RECEIPT_AGENT_OLLAMA_BASE_URL="https://ollama.com"
 export RECEIPT_AGENT_OLLAMA_API_KEY="your-ollama-key"
-export RECEIPT_AGENT_OLLAMA_MODEL="llama3.1:8b"
+export RECEIPT_AGENT_OLLAMA_MODEL="gpt-oss:120b-cloud"
 
 # Embeddings (OpenAI)
 export RECEIPT_AGENT_OPENAI_API_KEY="your-openai-key"
