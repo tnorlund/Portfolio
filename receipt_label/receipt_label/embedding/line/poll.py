@@ -33,8 +33,8 @@ from receipt_dynamo.entities import (
 
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
-from receipt_label.vector_store import produce_embedding_delta
-from receipt_label.merchant_validation.normalize import (
+from receipt_chroma.embedding.delta import produce_embedding_delta
+from receipt_chroma.embedding.utils.normalize import (
     normalize_phone,
     build_full_address_from_words,
     build_full_address_from_lines,
@@ -457,15 +457,19 @@ def save_line_embeddings_as_delta(
         )
 
         # Import locally to avoid circular import
-        from receipt_label.embedding.line.realtime import (  # pylint: disable=import-outside-toplevel
-            _format_line_context_embedding_input,
+        from receipt_chroma.embedding.formatting.line_format import (  # pylint: disable=import-outside-toplevel
+            format_line_context_embedding_input,
         )
 
         # Get line context
-        embedding_input = _format_line_context_embedding_input(
+        from receipt_chroma.embedding.formatting.line_format import (
+            parse_prev_next_from_formatted,
+        )
+
+        embedding_input = format_line_context_embedding_input(
             target_line, lines
         )
-        prev_line, next_line = _parse_prev_next_from_formatted(embedding_input)
+        prev_line, next_line = parse_prev_next_from_formatted(embedding_input)
 
         # Priority: canonical name > regular merchant name
         if (
