@@ -381,7 +381,7 @@ def handler(_event, _context):
 
         # Log what we got back for debugging
         logger.info(
-            "ChromaDB get_by_ids returned: ids=%s, embeddings_type=%s",
+            "ChromaDB get returned: ids=%s, embeddings_type=%s",
             line_data.get("ids", []),
             type(line_data.get("embeddings")),
         )
