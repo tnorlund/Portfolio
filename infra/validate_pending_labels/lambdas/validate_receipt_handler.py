@@ -14,8 +14,8 @@ from typing import Any, Dict
 import boto3
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ValidationStatus
-from receipt_label.utils.chroma_s3_helpers import download_snapshot_atomic
-from receipt_label.vector_store.client.chromadb_client import ChromaDBClient
+from receipt_chroma.s3 import download_snapshot_atomic
+from receipt_chroma.data.chroma_client import ChromaClient
 
 # Import EMF metrics utility
 # Utils directory is in the same directory as the handler (lambdas/utils/)
@@ -202,7 +202,7 @@ async def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 chromadb_download_duration_ms = (time.time() - chromadb_download_start) * 1000
 
                 if words_download.get("status") == "downloaded":
-                    chroma_client = ChromaDBClient(
+                    chroma_client = ChromaClient(
                         persist_directory=os.path.join(chromadb_temp_dir, "words"),
                         mode="read",
                     )

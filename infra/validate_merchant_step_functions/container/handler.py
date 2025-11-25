@@ -6,12 +6,11 @@ import logging
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities.compaction_run import CompactionRun
-from receipt_label.vector_store import VectorClient
+from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_label.merchant_resolution.contexts import load_receipt_context
 from receipt_label.merchant_resolution.embeddings import upsert_embeddings
 from receipt_label.embedding.line.realtime import embed_lines_realtime
 from receipt_label.embedding.word.realtime import embed_words_realtime
-from receipt_label.utils.chroma_s3_helpers import upload_bundled_delta_to_s3
 
 
 def _embed_fn_from_openai_texts(texts):
@@ -96,7 +95,7 @@ def lambda_handler(event, _context):
     embed_fn = None
     if chroma_endpoint:
         try:
-            chroma_line_client = VectorClient.create_chromadb_client(
+            chroma_line_client = ChromaClient(
                 mode="read", http_url=chroma_endpoint
             )
             logger.info("Using HTTP ChromaDB endpoint for optional fast-path")
@@ -146,10 +145,10 @@ def lambda_handler(event, _context):
     delta_words_db = os.path.join(tempfile.gettempdir(), f"words_{run_id}")
 
     t_delta_init = time.time()
-    write_line = VectorClient.create_chromadb_client(
+    write_line = ChromaClient(
         persist_directory=delta_lines_db, mode="delta", metadata_only=True
     )
-    write_word = VectorClient.create_chromadb_client(
+    write_word = ChromaClient(
         persist_directory=delta_words_db, mode="delta", metadata_only=True
     )
     logger.info(
@@ -186,28 +185,26 @@ def lambda_handler(event, _context):
     lines_prefix = f"lines/delta/{run_id}/"
     words_prefix = f"words/delta/{run_id}/"
     t_upload = time.time()
-    res_lines = upload_bundled_delta_to_s3(
-        local_delta_dir=delta_lines_db,
+    # persist_and_upload_delta closes the client and uploads files
+    lines_delta_key = write_line.persist_and_upload_delta(
         bucket=bucket,
-        delta_prefix=lines_prefix,
-        metadata={
-            "run_id": run_id,
-            "image_id": image_id,
-            "receipt_id": str(receipt_id),
-            "collection": "lines",
-        },
+        s3_prefix=lines_prefix,
     )
-    res_words = upload_bundled_delta_to_s3(
-        local_delta_dir=delta_words_db,
+    words_delta_key = write_word.persist_and_upload_delta(
         bucket=bucket,
-        delta_prefix=words_prefix,
-        metadata={
-            "run_id": run_id,
-            "image_id": image_id,
-            "receipt_id": str(receipt_id),
-            "collection": "words",
-        },
+        s3_prefix=words_prefix,
     )
+    # Format response to match expected structure
+    res_lines = {
+        "status": "uploaded",
+        "delta_key": lines_delta_key,
+        "object_key": lines_delta_key,
+    }
+    res_words = {
+        "status": "uploaded",
+        "delta_key": words_delta_key,
+        "object_key": words_delta_key,
+    }
     logger.info(
         "uploaded deltas",
         extra={
@@ -224,8 +221,8 @@ def lambda_handler(event, _context):
         run_id=run_id,
         image_id=image_id,
         receipt_id=int(receipt_id),
-        lines_delta_prefix=lines_prefix,
-        words_delta_prefix=words_prefix,
+        lines_delta_prefix=lines_delta_key,
+        words_delta_prefix=words_delta_key,
     )
     logger.info(compaction_run.to_item())
     t_compaction = time.time()
