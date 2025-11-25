@@ -52,6 +52,7 @@ class CodeBuildDockerImage(ComponentResource):
         build_args: Optional[Dict[str, str]] = None,
         platform: str = "linux/arm64",
         sync_mode: Optional[bool] = None,
+        lambda_aliases: Optional[list[str]] = None,  # Pulumi aliases for Lambda rename
         opts: Optional[ResourceOptions] = None,
     ) -> None:
         super().__init__(f"codebuild-docker:{name}", name, {}, opts)
@@ -65,6 +66,7 @@ class CodeBuildDockerImage(ComponentResource):
         self.lambda_config = lambda_config or {}
         self.build_args = build_args or {}
         self.platform = platform
+        self.lambda_aliases = lambda_aliases or []  # Pulumi aliases for Lambda rename
 
         # Configure build mode
         if sync_mode is not None:
@@ -949,21 +951,35 @@ echo "✅ Bootstrap image pushed to $REPO_URL:latest"
         # Create Lambda function after bootstrap image is pushed
         # In sync mode (CI/CD), skip bootstrap dependency and wait for pipeline instead
         # Bootstrap may exit early without pushing if Docker isn't available
+        # Always depend on bootstrap_cmd if it exists to ensure ECR repo is ready
         if self.sync_mode and pipeline_trigger_cmd:
             # In sync mode: wait for pipeline to build and push the image
             depends_on_list = [pipeline_trigger_cmd]
         else:
-            # In async mode: use bootstrap image (if available) for fast Lambda creation
+            # In async mode: ALWAYS wait for bootstrap_cmd to complete
+            # This ensures the ECR repo exists and bootstrap image is attempted
+            # Even if bootstrap fails, we need the repo to exist before Lambda creation
             depends_on_list = [bootstrap_cmd] if bootstrap_cmd else []
+
+        # Add aliases if provided (for renaming existing Lambda functions)
+        lambda_opts = ResourceOptions(
+            parent=self,
+            ignore_changes=["image_uri", "image_config"],  # CodeBuild updates these
+            depends_on=depends_on_list,
+        )
+        if self.lambda_aliases:
+            # Convert string aliases to URN format for Pulumi
+            from pulumi import URN
+            alias_urns = [
+                URN(alias) if not alias.startswith("urn:") else alias
+                for alias in self.lambda_aliases
+            ]
+            lambda_opts.aliases = alias_urns
 
         self.lambda_function = aws.lambda_.Function(
             f"{self.name}-function",
             **lambda_args,
-            opts=ResourceOptions(
-                parent=self,
-                ignore_changes=["image_uri", "image_config"],  # CodeBuild updates these
-                depends_on=depends_on_list,
-            ),
+            opts=lambda_opts,
         )
 
         self.function_arn = self.lambda_function.arn

@@ -2,14 +2,18 @@
 
 import json
 import os
+
+# Import CodeBuildDockerImage for container Lambdas (matches compactor approach)
+# Use absolute import path like compactor does
+import sys
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 from pulumi import (
     ComponentResource,
+    FileArchive,
     Output,
     ResourceOptions,
-    FileArchive,
 )
 from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
 from pulumi_aws.lambda_ import (
@@ -22,17 +26,20 @@ from pulumi_aws.lambda_ import (
 )
 from pulumi_aws.s3 import Bucket
 
-from .base import stack, openai_api_key, label_layer, dynamo_layer, dynamodb_table, config as portfolio_config
+from .base import config as portfolio_config
+from .base import (
+    dynamo_layer,
+    dynamodb_table,
+    label_layer,
+    openai_api_key,
+    stack,
+)
 
-# Import CodeBuildDockerImage for container Lambdas (matches compactor approach)
-# Use absolute import path like compactor does
-import sys
 # Add infra directory to path for imports
 infra_path = Path(__file__).parent.parent.parent
 if str(infra_path) not in sys.path:
     sys.path.insert(0, str(infra_path))
 from codebuild_docker_image import CodeBuildDockerImage
-
 
 GIGABYTE = 1024
 MINUTE = 60
@@ -84,7 +91,9 @@ class LambdaFunctionsComponent(ComponentResource):
         self.vpc_subnet_ids = vpc_subnet_ids
         self.lambda_security_group_id = lambda_security_group_id
         self.efs_access_point_arn = efs_access_point_arn
-        self.efs_mount_targets = efs_mount_targets  # Store mount targets dependency
+        self.efs_mount_targets = (
+            efs_mount_targets  # Store mount targets dependency
+        )
 
         # Create S3 bucket for NDJSON batch files
         self.batch_bucket = Bucket(
@@ -270,6 +279,7 @@ class LambdaFunctionsComponent(ComponentResource):
         self.zip_lambda_functions = {}
 
         # Define zip-based Lambda configurations
+        # Naming convention: operation-first (embedding-{operation}-{entity})
         zip_configs = {
             "embedding-list-pending": {
                 "handler": "handler.lambda_handler",
@@ -277,25 +287,25 @@ class LambdaFunctionsComponent(ComponentResource):
                 "timeout": MINUTE * 15,
                 "source_dir": "list_pending",
             },
-            "embedding-line-find": {
+            "embedding-find-lines": {
                 "handler": "handler.lambda_handler",
                 "memory": GIGABYTE * 1,
                 "timeout": MINUTE * 15,
                 "source_dir": "find_unembedded",
             },
-            "embedding-word-find": {
+            "embedding-find-words": {
                 "handler": "handler.lambda_handler",
                 "memory": GIGABYTE * 1,
                 "timeout": MINUTE * 15,
                 "source_dir": "find_unembedded_words",
             },
-            "embedding-line-submit": {
+            "embedding-submit-lines": {
                 "handler": "handler.lambda_handler",
                 "memory": GIGABYTE * 1,
                 "timeout": MINUTE * 15,
                 "source_dir": "submit_openai",
             },
-            "embedding-word-submit": {
+            "embedding-submit-words": {
                 "handler": "handler.lambda_handler",
                 "memory": GIGABYTE * 1,
                 "timeout": MINUTE * 15,
@@ -307,7 +317,7 @@ class LambdaFunctionsComponent(ComponentResource):
                 "timeout": MINUTE * 15,
                 "source_dir": "split_into_chunks",
             },
-            "embedding-normalize-poll-batches": {
+            "embedding-normalize-batches": {
                 "handler": "handler.lambda_handler",
                 "memory": GIGABYTE * 0.5,
                 "timeout": MINUTE * 5,
@@ -331,21 +341,22 @@ class LambdaFunctionsComponent(ComponentResource):
                 "timeout": MINUTE * 5,
                 "source_dir": "prepare_merge_pairs",
             },
-            "embedding-mark-batches-complete": {
+            "embedding-mark-complete": {
                 "handler": "handler.lambda_handler",
                 "memory": GIGABYTE * 0.5,
                 "timeout": MINUTE * 5,
                 "source_dir": "mark_batches_complete",
             },
-            "embedding-find-receipts-realtime": {
+            "embedding-find-receipts": {
                 "handler": "handler.lambda_handler",
                 "memory": GIGABYTE * 1,
                 "timeout": MINUTE * 15,
                 "source_dir": "find_receipts_realtime",
             },
-            "embedding-process-receipt-realtime": {
+            "embedding-process-receipt": {
                 "handler": "handler.lambda_handler",
-                "memory": GIGABYTE * 2,  # Higher memory for embedding processing
+                "memory": GIGABYTE
+                * 2,  # Higher memory for embedding processing
                 "timeout": MINUTE * 15,
                 "source_dir": "process_receipt_realtime",
             },
@@ -373,9 +384,20 @@ class LambdaFunctionsComponent(ComponentResource):
         }
 
         # Add ChromaDB bucket for realtime processing Lambdas, split_into_chunks, normalize_poll_batches_data, create_chunk_groups, prepare_chunk_groups, and prepare_merge_pairs
-        if config["source_dir"] in ["find_receipts_realtime", "process_receipt_realtime", "split_into_chunks", "normalize_poll_batches_data", "create_chunk_groups", "prepare_chunk_groups", "prepare_merge_pairs"]:
+        if config["source_dir"] in [
+            "find_receipts_realtime",
+            "process_receipt_realtime",
+            "split_into_chunks",
+            "normalize_poll_batches_data",
+            "create_chunk_groups",
+            "prepare_chunk_groups",
+            "prepare_merge_pairs",
+        ]:
             env_vars["CHROMADB_BUCKET"] = self.chromadb_buckets.bucket_name
-            if config["source_dir"] in ["find_receipts_realtime", "process_receipt_realtime"]:
+            if config["source_dir"] in [
+                "find_receipts_realtime",
+                "process_receipt_realtime",
+            ]:
                 env_vars["GOOGLE_PLACES_API_KEY"] = (
                     portfolio_config.get_secret("GOOGLE_PLACES_API_KEY") or ""
                 )
@@ -434,26 +456,40 @@ class LambdaFunctionsComponent(ComponentResource):
         self.container_lambda_functions = {}
 
         # Define container-based Lambda configurations
+        # Naming convention: operation-first (embedding-{operation}-{entity})
+        # CodeBuild will append -lambda-{stack} suffix automatically
         # Optimized based on actual usage patterns from observability data
         container_configs = {
-            "embedding-line-poll": {
-                "memory": GiB(1.5),  # Reduced from 3GB, usage was 668-818MB (22-27%)
+            "embedding-poll-lines": {
+                "memory": GiB(
+                    1.5
+                ),  # Reduced from 3GB, usage was 668-818MB (22-27%)
                 "timeout": MINUTE * 15,
-                "ephemeral_storage": GiB(4),  # Increased back - ChromaDB needs disk space for snapshots/SQLite
+                "ephemeral_storage": GiB(
+                    4
+                ),  # Increased back - ChromaDB needs disk space for snapshots/SQLite
                 "handler_type": "line_polling",
             },
-            "embedding-word-poll": {
-                "memory": GiB(1),  # Reduced from 3GB, usage was 322-360MB (11-12%)
+            "embedding-poll-words": {
+                "memory": GiB(
+                    1
+                ),  # Reduced from 3GB, usage was 322-360MB (11-12%)
                 "timeout": MINUTE * 15,
-                "ephemeral_storage": GiB(4),  # Increased back - ChromaDB operations require disk space
+                "ephemeral_storage": GiB(
+                    4
+                ),  # Increased back - ChromaDB operations require disk space
                 "handler_type": "word_polling",
             },
-            "embedding-vector-compact": {
-                "memory": GiB(4),  # Increased from 2GB to ensure heartbeat thread gets CPU time
+            "embedding-compact": {
+                "memory": GiB(
+                    4
+                ),  # Increased from 2GB to ensure heartbeat thread gets CPU time
                 # Final merge operations are CPU-intensive and need sufficient resources
                 # for both main processing and heartbeat thread
                 "timeout": MINUTE * 15,
-                "ephemeral_storage": GiB(6),  # Increased - compaction downloads/uploads large snapshots
+                "ephemeral_storage": GiB(
+                    6
+                ),  # Increased - compaction downloads/uploads large snapshots
                 "handler_type": "compaction",
             },
         }
@@ -496,8 +532,24 @@ class LambdaFunctionsComponent(ComponentResource):
                 "COMPACTION_QUEUE_URL": self.chromadb_queues.lines_queue_url,
                 "OPENAI_API_KEY": openai_api_key,
                 "S3_BUCKET": self.batch_bucket.bucket,
-                "CHROMA_PERSIST_DIRECTORY": "/mnt/chroma" if (self.vpc_subnet_ids and self.lambda_security_group_id and self.efs_access_point_arn) else "/tmp/chroma",
-                "CHROMA_ROOT": "/mnt/chroma" if (self.vpc_subnet_ids and self.lambda_security_group_id and self.efs_access_point_arn) else "/tmp/chroma",
+                "CHROMA_PERSIST_DIRECTORY": (
+                    "/mnt/chroma"
+                    if (
+                        self.vpc_subnet_ids
+                        and self.lambda_security_group_id
+                        and self.efs_access_point_arn
+                    )
+                    else "/tmp/chroma"
+                ),
+                "CHROMA_ROOT": (
+                    "/mnt/chroma"
+                    if (
+                        self.vpc_subnet_ids
+                        and self.lambda_security_group_id
+                        and self.efs_access_point_arn
+                    )
+                    else "/tmp/chroma"
+                ),
                 "CHROMADB_STORAGE_MODE": "auto",
                 "ENABLE_XRAY": "true",
                 "ENABLE_METRICS": "true",
@@ -506,7 +558,10 @@ class LambdaFunctionsComponent(ComponentResource):
         }
 
         # Add VPC config if available (matches compactor format)
-        if self.vpc_subnet_ids is not None and self.lambda_security_group_id is not None:
+        if (
+            self.vpc_subnet_ids is not None
+            and self.lambda_security_group_id is not None
+        ):
             lambda_config_dict["vpc_config"] = {
                 "subnet_ids": self.vpc_subnet_ids,
                 "security_group_ids": [self.lambda_security_group_id],
@@ -532,7 +587,11 @@ class LambdaFunctionsComponent(ComponentResource):
             platform="linux/arm64",
             opts=ResourceOptions(
                 parent=self,
-                depends_on=self.efs_mount_targets if self.efs_mount_targets else [self.lambda_role],
+                depends_on=(
+                    self.efs_mount_targets
+                    if self.efs_mount_targets
+                    else [self.lambda_role]
+                ),
             ),
         )
 
@@ -564,9 +623,16 @@ class LambdaFunctionsComponent(ComponentResource):
                 "OPENAI_API_KEY": openai_api_key,
                 "S3_BUCKET": self.batch_bucket.bucket,
                 "CHROMA_PERSIST_DIRECTORY": "/tmp/chroma",  # Polling Lambdas don't use EFS
-                "GOOGLE_PLACES_API_KEY": portfolio_config.get_secret("GOOGLE_PLACES_API_KEY") or "",
-                "OLLAMA_API_KEY": portfolio_config.get_secret("OLLAMA_API_KEY") or "",
-                "LANGCHAIN_API_KEY": portfolio_config.get_secret("LANGCHAIN_API_KEY") or "",
+                "GOOGLE_PLACES_API_KEY": portfolio_config.get_secret(
+                    "GOOGLE_PLACES_API_KEY"
+                )
+                or "",
+                "OLLAMA_API_KEY": portfolio_config.get_secret("OLLAMA_API_KEY")
+                or "",
+                "LANGCHAIN_API_KEY": portfolio_config.get_secret(
+                    "LANGCHAIN_API_KEY"
+                )
+                or "",
                 "ENABLE_XRAY": "true",
                 "ENABLE_METRICS": "true",
                 "LOG_LEVEL": "INFO",

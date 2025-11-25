@@ -119,8 +119,8 @@ class WordEmbeddingWorkflow(ComponentResource):
             role_arn=self.sf_role.arn,
             tags={"environment": stack},
             definition=Output.all(
-                self.lambda_functions["embedding-word-find"].arn,
-                self.lambda_functions["embedding-word-submit"].arn,
+                self.lambda_functions["embedding-find-words"].arn,
+                self.lambda_functions["embedding-submit-words"].arn,
             ).apply(self._create_submit_definition),
             opts=ResourceOptions(parent=self),
         )
@@ -165,12 +165,12 @@ class WordEmbeddingWorkflow(ComponentResource):
             tags={"environment": stack},
             definition=Output.all(
                 self.lambda_functions["embedding-list-pending"].arn,
-                self.lambda_functions["embedding-word-poll"].arn,
-                self.lambda_functions["embedding-vector-compact"].arn,
-                self.lambda_functions["embedding-normalize-poll-batches"].arn,
+                self.lambda_functions["embedding-poll-words"].arn,
+                self.lambda_functions["embedding-compact"].arn,
+                self.lambda_functions["embedding-normalize-batches"].arn,
                 self.lambda_functions["embedding-split-chunks"].arn,
                 self.lambda_functions["embedding-prepare-chunk-groups"].arn,
-                self.lambda_functions["embedding-mark-batches-complete"].arn,
+                self.lambda_functions["embedding-mark-complete"].arn,
                 self.lambda_functions["embedding-prepare-merge-pairs"].arn,
                 self.batch_bucket.bucket,
             ).apply(self._create_ingest_definition),
@@ -181,12 +181,12 @@ class WordEmbeddingWorkflow(ComponentResource):
         """Create ingestion workflow definition.
 
         arns_and_bucket[0] = embedding-list-pending
-        arns_and_bucket[1] = embedding-word-poll
-        arns_and_bucket[2] = embedding-vector-compact
-        arns_and_bucket[3] = embedding-normalize-poll-batches
+        arns_and_bucket[1] = embedding-poll-words
+        arns_and_bucket[2] = embedding-compact
+        arns_and_bucket[3] = embedding-normalize-batches
         arns_and_bucket[4] = embedding-split-chunks
         arns_and_bucket[5] = embedding-prepare-chunk-groups
-        arns_and_bucket[6] = embedding-mark-batches-complete
+        arns_and_bucket[6] = embedding-mark-complete
         arns_and_bucket[7] = embedding-prepare-merge-pairs
         arns_and_bucket[8] = batch_bucket_name
         """
