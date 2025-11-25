@@ -968,13 +968,9 @@ echo "✅ Bootstrap image pushed to $REPO_URL:latest"
             depends_on=depends_on_list,
         )
         if self.lambda_aliases:
-            # Convert string aliases to URN format for Pulumi
-            from pulumi import URN
-            alias_urns = [
-                URN(alias) if not alias.startswith("urn:") else alias
-                for alias in self.lambda_aliases
-            ]
-            lambda_opts.aliases = alias_urns
+            # Pulumi ResourceOptions.aliases accepts strings directly (URNs as strings)
+            # No need to wrap in URN() - strings are used as-is
+            lambda_opts.aliases = self.lambda_aliases
 
         self.lambda_function = aws.lambda_.Function(
             f"{self.name}-function",
