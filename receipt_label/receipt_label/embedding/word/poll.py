@@ -29,14 +29,11 @@ from receipt_dynamo.entities import BatchSummary, EmbeddingBatchResult
 
 from receipt_label.utils import get_client_manager
 from receipt_label.utils.client_manager import ClientManager
-from receipt_label.vector_store import produce_embedding_delta
-from receipt_label.merchant_validation.normalize import (
+from receipt_chroma.embedding.delta import produce_embedding_delta
+from receipt_chroma.embedding.utils.normalize import (
     normalize_phone,
     normalize_address,
     normalize_url,
-)
-from receipt_label.merchant_validation.normalize import (
-    normalize_phone,
     build_full_address_from_words,
     build_full_address_from_lines,
 )
@@ -456,12 +453,13 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
         confidence = target_word.confidence
 
         # Import locally to avoid circular import
-        from receipt_label.embedding.word.submit import (  # pylint: disable=import-outside-toplevel
-            _format_word_context_embedding_input,
+        from receipt_chroma.embedding.formatting.word_format import (  # pylint: disable=import-outside-toplevel
+            format_word_context_embedding_input,
+            parse_left_right_from_formatted,
         )
 
-        _embedding = _format_word_context_embedding_input(target_word, words)
-        left_text, right_text = _parse_left_right_from_formatted(_embedding)
+        _embedding = format_word_context_embedding_input(target_word, words)
+        left_text, right_text = parse_left_right_from_formatted(_embedding)
 
         # Priority: canonical name > regular merchant name
         if (

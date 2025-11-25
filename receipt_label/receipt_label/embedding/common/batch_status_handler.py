@@ -12,8 +12,9 @@ from typing import Any, Dict, List, Tuple
 
 from receipt_dynamo.constants import BatchStatus, EmbeddingStatus
 from receipt_dynamo.entities import BatchSummary
+from receipt_dynamo.data.dynamo_client import DynamoClient
 
-from receipt_label.utils.client_manager import ClientManager
+from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -49,14 +50,14 @@ def map_openai_to_dynamo_status(openai_status: str) -> BatchStatus:
 
 
 def process_error_file(
-    openai_batch_id: str, client_manager: ClientManager
+    openai_batch_id: str, openai_client: OpenAI
 ) -> Dict[str, Any]:
     """
     Download and process error file for failed or expired batches.
 
     Args:
         openai_batch_id: OpenAI batch identifier
-        client_manager: Client manager instance
+        openai_client: OpenAI client instance
 
     Returns:
         Dictionary containing:
@@ -65,7 +66,7 @@ def process_error_file(
         - error_details: List of detailed error records
         - sample_errors: First 5 errors for logging
     """
-    batch = client_manager.openai.batches.retrieve(openai_batch_id)
+    batch = openai_client.batches.retrieve(openai_batch_id)
 
     if not batch.error_file_id:
         logger.warning(
@@ -81,7 +82,7 @@ def process_error_file(
         }
 
     # Download error file
-    response = client_manager.openai.files.content(batch.error_file_id)
+    response = openai_client.files.content(batch.error_file_id)
 
     # Parse error content
     if hasattr(response, "read"):
@@ -132,28 +133,28 @@ def process_error_file(
 
 
 def process_partial_results(
-    openai_batch_id: str, client_manager: ClientManager
+    openai_batch_id: str, openai_client: OpenAI
 ) -> Tuple[List[Dict[str, Any]], List[str]]:
     """
     Handle partial results from expired batches.
 
     Args:
         openai_batch_id: OpenAI batch identifier
-        client_manager: Client manager instance
+        openai_client: OpenAI client instance
 
     Returns:
         Tuple of:
         - List of successful results
         - List of failed item IDs that need retry
     """
-    batch = client_manager.openai.batches.retrieve(openai_batch_id)
+    batch = openai_client.batches.retrieve(openai_batch_id)
 
     successful_results = []
     failed_ids = []
 
     # Process output file if available (partial successes)
     if batch.output_file_id:
-        response = client_manager.openai.files.content(batch.output_file_id)
+        response = openai_client.files.content(batch.output_file_id)
 
         if hasattr(response, "read"):
             lines = response.read().decode("utf-8").splitlines()
@@ -194,7 +195,7 @@ def process_partial_results(
 
     # Process error file to identify failures
     if batch.error_file_id:
-        error_info = process_error_file(openai_batch_id, client_manager)
+        error_info = process_error_file(openai_batch_id, openai_client)
         for error_detail in error_info["error_details"]:
             failed_ids.append(error_detail["custom_id"])
 
@@ -209,7 +210,7 @@ def process_partial_results(
 
 
 def handle_completed_status(
-    batch_id: str, openai_batch_id: str, client_manager: ClientManager
+    batch_id: str, openai_batch_id: str, dynamo_client: DynamoClient = None, openai_client: OpenAI = None
 ) -> Dict[str, Any]:
     """
     Handle completed batch status.
@@ -217,7 +218,8 @@ def handle_completed_status(
     Args:
         batch_id: Internal batch identifier (unused but kept for consistency)
         openai_batch_id: OpenAI batch identifier
-        client_manager: Client manager (unused, kept for consistency)
+        dynamo_client: DynamoDB client (unused, kept for consistency)
+        openai_client: OpenAI client (unused, kept for consistency)
 
     Returns:
         Status dictionary with action taken
@@ -235,7 +237,7 @@ def handle_completed_status(
 
 
 def handle_failed_status(
-    batch_id: str, openai_batch_id: str, client_manager: ClientManager
+    batch_id: str, openai_batch_id: str, dynamo_client: DynamoClient, openai_client: OpenAI
 ) -> Dict[str, Any]:
     """
     Handle failed batch status.
@@ -243,7 +245,8 @@ def handle_failed_status(
     Args:
         batch_id: Internal batch identifier
         openai_batch_id: OpenAI batch identifier
-        client_manager: Client manager instance
+        dynamo_client: DynamoDB client instance
+        openai_client: OpenAI client instance
 
     Returns:
         Status dictionary with error details
@@ -251,12 +254,12 @@ def handle_failed_status(
     logger.error("Batch %s failed", openai_batch_id)
 
     # Process error file
-    error_info = process_error_file(openai_batch_id, client_manager)
+    error_info = process_error_file(openai_batch_id, openai_client)
 
     # Update batch summary in DynamoDB
-    batch_summary = client_manager.dynamo.get_batch_summary(batch_id)
+    batch_summary = dynamo_client.get_batch_summary(batch_id)
     batch_summary.status = BatchStatus.FAILED
-    client_manager.dynamo.update_batch_summary(batch_summary)
+    dynamo_client.update_batch_summary(batch_summary)
 
     # Mark all failed items for retry based on batch type
     marked_count = 0
@@ -269,7 +272,7 @@ def handle_failed_status(
             "line" if batch_summary.batch_type == "LINE_EMBEDDING" else "word"
         )
         marked_count = mark_items_for_retry(
-            failed_ids, entity_type, client_manager
+            failed_ids, entity_type, dynamo_client
         )
         logger.info(
             "Marked %d failed items from failed batch %s for retry",
@@ -298,7 +301,7 @@ def handle_failed_status(
 
 
 def handle_expired_status(
-    batch_id: str, openai_batch_id: str, client_manager: ClientManager
+    batch_id: str, openai_batch_id: str, dynamo_client: DynamoClient, openai_client: OpenAI
 ) -> Dict[str, Any]:
     """
     Handle expired batch status (exceeded 24h SLA).
@@ -306,7 +309,8 @@ def handle_expired_status(
     Args:
         batch_id: Internal batch identifier
         openai_batch_id: OpenAI batch identifier
-        client_manager: Client manager instance
+        dynamo_client: DynamoDB client instance
+        openai_client: OpenAI client instance
 
     Returns:
         Status dictionary with partial results info
@@ -315,13 +319,13 @@ def handle_expired_status(
 
     # Process any partial results
     successful_results, failed_ids = process_partial_results(
-        openai_batch_id, client_manager
+        openai_batch_id, openai_client
     )
 
     # Update batch summary
-    batch_summary = client_manager.dynamo.get_batch_summary(batch_id)
+    batch_summary = dynamo_client.get_batch_summary(batch_id)
     batch_summary.status = BatchStatus.EXPIRED
-    client_manager.dynamo.update_batch_summary(batch_summary)
+    dynamo_client.update_batch_summary(batch_summary)
 
     # Mark failed items for retry based on batch type
     marked_count = 0
@@ -331,7 +335,7 @@ def handle_expired_status(
             "line" if batch_summary.batch_type == "LINE_EMBEDDING" else "word"
         )
         marked_count = mark_items_for_retry(
-            failed_ids, entity_type, client_manager
+            failed_ids, entity_type, dynamo_client
         )
         logger.info(
             "Marked %d failed items from expired batch %s for retry",
@@ -360,7 +364,7 @@ def handle_in_progress_status(
     batch_id: str,
     openai_batch_id: str,
     status: str,
-    client_manager: ClientManager,
+    dynamo_client: DynamoClient,
 ) -> Dict[str, Any]:
     """
     Handle in-progress statuses (validating, in_progress, finalizing).
@@ -369,7 +373,8 @@ def handle_in_progress_status(
         batch_id: Internal batch identifier
         openai_batch_id: OpenAI batch identifier
         status: Current status string
-        client_manager: Client manager instance
+        dynamo_client: DynamoDB client instance
+        openai_client: OpenAI client instance
 
     Returns:
         Status dictionary indicating to wait
@@ -377,9 +382,9 @@ def handle_in_progress_status(
     logger.info("Batch %s is still processing: %s", openai_batch_id, status)
 
     # Update batch summary with current status
-    batch_summary = client_manager.dynamo.get_batch_summary(batch_id)
+    batch_summary = dynamo_client.get_batch_summary(batch_id)
     batch_summary.status = map_openai_to_dynamo_status(status)
-    client_manager.dynamo.update_batch_summary(batch_summary)
+    dynamo_client.update_batch_summary(batch_summary)
 
     # Calculate time since submission
     submitted_at = batch_summary.submitted_at
@@ -411,7 +416,7 @@ def handle_cancelled_status(
     batch_id: str,
     openai_batch_id: str,
     status: str,
-    client_manager: ClientManager,
+    dynamo_client: DynamoClient,
 ) -> Dict[str, Any]:
     """
     Handle cancelled/canceling statuses.
@@ -420,7 +425,8 @@ def handle_cancelled_status(
         batch_id: Internal batch identifier
         openai_batch_id: OpenAI batch identifier
         status: Current status (canceling or cancelled)
-        client_manager: Client manager instance
+        dynamo_client: DynamoDB client instance
+        openai_client: OpenAI client instance
 
     Returns:
         Status dictionary for cancelled batch
@@ -428,9 +434,9 @@ def handle_cancelled_status(
     logger.info("Batch %s was cancelled: %s", openai_batch_id, status)
 
     # Update batch summary
-    batch_summary = client_manager.dynamo.get_batch_summary(batch_id)
+    batch_summary = dynamo_client.get_batch_summary(batch_id)
     batch_summary.status = map_openai_to_dynamo_status(status)
-    client_manager.dynamo.update_batch_summary(batch_summary)
+    dynamo_client.update_batch_summary(batch_summary)
 
     return {
         "action": "handle_cancellation",
@@ -444,7 +450,8 @@ def handle_batch_status(
     batch_id: str,
     openai_batch_id: str,
     status: str,
-    client_manager: ClientManager,
+    dynamo_client: DynamoClient,
+    openai_client: OpenAI,
 ) -> Dict[str, Any]:
     """
     Central handler for all batch statuses.
@@ -456,7 +463,8 @@ def handle_batch_status(
         batch_id: Internal batch identifier
         openai_batch_id: OpenAI batch identifier
         status: Current batch status from OpenAI
-        client_manager: Client manager instance
+        dynamo_client: DynamoDB client instance
+        openai_client: OpenAI client instance
 
     Returns:
         Dictionary containing:
@@ -471,19 +479,19 @@ def handle_batch_status(
 
     if status == "completed":
         return handle_completed_status(
-            batch_id, openai_batch_id, client_manager
+            batch_id, openai_batch_id, dynamo_client, openai_client
         )
     if status == "failed":
-        return handle_failed_status(batch_id, openai_batch_id, client_manager)
+        return handle_failed_status(batch_id, openai_batch_id, dynamo_client, openai_client)
     if status == "expired":
-        return handle_expired_status(batch_id, openai_batch_id, client_manager)
+        return handle_expired_status(batch_id, openai_batch_id, dynamo_client, openai_client)
     if status in ["validating", "in_progress", "finalizing"]:
         return handle_in_progress_status(
-            batch_id, openai_batch_id, status, client_manager
+            batch_id, openai_batch_id, status, dynamo_client
         )
     if status in ["canceling", "cancelled"]:
         return handle_cancelled_status(
-            batch_id, openai_batch_id, status, client_manager
+            batch_id, openai_batch_id, status, dynamo_client
         )
 
     logger.error("Unknown batch status: %s", status)
@@ -491,7 +499,7 @@ def handle_batch_status(
 
 
 def mark_items_for_retry(
-    failed_ids: List[str], entity_type: str, client_manager: ClientManager
+    failed_ids: List[str], entity_type: str, dynamo_client: DynamoClient
 ) -> int:
     """
     Mark failed items for retry in DynamoDB.
@@ -499,7 +507,8 @@ def mark_items_for_retry(
     Args:
         failed_ids: List of custom IDs that failed
         entity_type: "word" or "line" to determine entity type
-        client_manager: Client manager instance
+        dynamo_client: DynamoDB client instance
+        openai_client: OpenAI client instance
 
     Returns:
         Number of items marked for retry
@@ -516,26 +525,26 @@ def mark_items_for_retry(
             if entity_type == "line":
                 line_id = int(parts[5])
                 # Get and update line
-                lines = client_manager.dynamo.get_lines_from_receipt(
+                lines = dynamo_client.get_lines_from_receipt(
                     image_id, receipt_id
                 )
                 for line in lines:
                     if line.line_id == line_id:
                         line.embedding_status = EmbeddingStatus.FAILED
-                        client_manager.dynamo.update_lines([line])
+                        dynamo_client.update_lines([line])
                         marked_count += 1
                         break
 
             elif entity_type == "word":
                 word_id = int(parts[7])
                 # Get and update word
-                words = client_manager.dynamo.get_words_from_receipt(
+                words = dynamo_client.get_words_from_receipt(
                     image_id, receipt_id
                 )
                 for word in words:
                     if word.word_id == word_id:
                         word.embedding_status = EmbeddingStatus.FAILED
-                        client_manager.dynamo.update_words([word])
+                        dynamo_client.update_words([word])
                         marked_count += 1
                         break
 
