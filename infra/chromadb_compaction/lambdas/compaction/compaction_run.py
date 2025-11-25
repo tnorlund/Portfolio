@@ -14,8 +14,8 @@ import shutil
 import boto3
 
 from receipt_dynamo.constants import ChromaDBCollection
-from receipt_label.utils.chroma_client import ChromaDBClient
-from receipt_label.utils.chroma_s3_helpers import (
+from receipt_chroma import ChromaClient
+from receipt_chroma.s3 import (
     download_snapshot_atomic,
     upload_snapshot_atomic,
 )
@@ -152,10 +152,12 @@ def process_compaction_runs(
                 # 3) Merge the target collection from delta into snapshot
                 merged_vectors = 0
                 try:
-                    snapshot_client = ChromaDBClient(
-                        persist_directory=snapshot_dir, mode="snapshot"
+                    snapshot_client = ChromaClient(
+                        persist_directory=snapshot_dir,
+                        mode="snapshot",
+                        metadata_only=True,  # No embeddings needed for snapshot operations
                     )
-                    delta_client = ChromaDBClient(
+                    delta_client = ChromaClient(
                         persist_directory=delta_dir, mode="read"
                     )
 
@@ -168,7 +170,7 @@ def process_compaction_runs(
                         ids = data.get("ids", []) or []
                         if ids:
                             target = snapshot_client
-                            target.upsert_vectors(
+                            target.upsert(
                                 collection_name=collection_name,
                                 ids=ids,
                                 embeddings=data.get("embeddings"),
@@ -269,7 +271,7 @@ def process_compaction_runs(
 
 
 def merge_compaction_deltas(
-    chroma_client: "ChromaDBClient",
+    chroma_client: "ChromaClient",
     compaction_runs: List[Any],
     collection: ChromaDBCollection,
     logger: Any,
@@ -327,7 +329,7 @@ def merge_compaction_deltas(
                 merged_count = 0
                 try:
                     collection_name = collection.value
-                    delta_client = ChromaDBClient(persist_directory=delta_dir, mode="read")
+                    delta_client = ChromaClient(persist_directory=delta_dir, mode="read")
                     try:
                         src = delta_client.get_collection(collection_name)
                         data = src.get(include=["documents", "embeddings", "metadatas"])
@@ -342,23 +344,16 @@ def merge_compaction_deltas(
                                 vector_count=len(ids),
                                 sample_id=ids[0] if ids else None,
                             )
-                            chroma_client.upsert_vectors(
+                            chroma_client.upsert(
                                 collection_name=collection_name,
                                 ids=ids,
                                 embeddings=data.get("embeddings"),
                                 documents=data.get("documents"),
                                 metadatas=data.get("metadatas"),
                             )
-                            # Force persistence before snapshot upload
-                            # ChromaDB PersistentClient should auto-persist, but ensure it's flushed
-                            try:
-                                client_obj = chroma_client._client if hasattr(chroma_client, "_client") else getattr(chroma_client, "client", None)
-                                if client_obj and hasattr(client_obj, "persist"):
-                                    client_obj.persist()
-                                    logger.debug("Explicitly persisted ChromaDB data")
-                            except Exception as persist_err:
-                                logger.debug("Could not explicitly persist (auto-persist should handle)", error=str(persist_err))
-                            
+                            # ChromaDB PersistentClient auto-persists, no explicit persist needed
+                            # The close() method will ensure proper flushing
+
                             # Verify upsert succeeded by querying back
                             verify_collection = chroma_client.get_collection(collection_name)
                             verify_result = verify_collection.get(ids=ids[:10], include=["metadatas"])  # Check first 10
@@ -412,7 +407,7 @@ def merge_compaction_deltas(
                         exc_info=True,
                     )
                     continue
-                
+
                 # Track per-run result for DynamoDB updates
                 if run_id and image_id is not None and receipt_id is not None:
                     per_run_results.append({
@@ -437,7 +432,7 @@ def process_compaction_run_messages(
     get_dynamo_client_func: Any = None
 ) -> int:
     """Process COMPACTION_RUN messages for delta merging.
-    
+
     Args:
         compaction_runs: List of StreamMessage objects for COMPACTION_RUN entities
         collection: ChromaDBCollection enum value
@@ -446,19 +441,19 @@ def process_compaction_run_messages(
         OBSERVABILITY_AVAILABLE: Whether observability features are available
         lock_manager: Lock manager instance for atomic operations
         get_dynamo_client_func: Function to get DynamoDB client
-        
+
     Returns:
         Total number of vectors merged across all compaction runs
     """
     if not compaction_runs:
         return 0
-        
+
     logger.info(
         "Processing compaction runs",
         count=len(compaction_runs),
         collection=collection.value
     )
-    
+
     results = process_compaction_runs(
         compaction_runs=compaction_runs,
         collection=collection,

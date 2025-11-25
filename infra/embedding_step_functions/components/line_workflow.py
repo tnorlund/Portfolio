@@ -119,8 +119,8 @@ class LineEmbeddingWorkflow(ComponentResource):
             role_arn=self.sf_role.arn,
             tags={"environment": stack},
             definition=Output.all(
-                self.lambda_functions["embedding-line-find"].arn,
-                self.lambda_functions["embedding-line-submit"].arn,
+                self.lambda_functions["embedding-find-lines"].arn,
+                self.lambda_functions["embedding-submit-lines"].arn,
             ).apply(self._create_submit_definition),
             opts=ResourceOptions(parent=self),
         )
@@ -165,12 +165,13 @@ class LineEmbeddingWorkflow(ComponentResource):
             tags={"environment": stack},
             definition=Output.all(
                 self.lambda_functions["embedding-list-pending"].arn,
-                self.lambda_functions["embedding-line-poll"].arn,
-                self.lambda_functions["embedding-vector-compact"].arn,
-                self.lambda_functions["embedding-normalize-poll-batches"].arn,
+                self.lambda_functions["embedding-poll-lines"].arn,
+                self.lambda_functions["embedding-compact"].arn,
+                self.lambda_functions["embedding-normalize-batches"].arn,
                 self.lambda_functions["embedding-split-chunks"].arn,
-                self.lambda_functions["embedding-create-chunk-groups"].arn,
-                self.lambda_functions["embedding-mark-batches-complete"].arn,
+                self.lambda_functions["embedding-prepare-chunk-groups"].arn,
+                self.lambda_functions["embedding-mark-complete"].arn,
+                self.lambda_functions["embedding-prepare-merge-pairs"].arn,
                 self.batch_bucket.bucket,
             ).apply(self._create_ingest_definition),
             opts=ResourceOptions(parent=self),
@@ -180,13 +181,14 @@ class LineEmbeddingWorkflow(ComponentResource):
         """Create ingestion workflow definition.
 
         arns_and_bucket[0] = embedding-list-pending
-        arns_and_bucket[1] = embedding-line-poll
-        arns_and_bucket[2] = embedding-vector-compact
-        arns_and_bucket[3] = embedding-normalize-poll-batches
+        arns_and_bucket[1] = embedding-poll-lines
+        arns_and_bucket[2] = embedding-compact
+        arns_and_bucket[3] = embedding-normalize-batches
         arns_and_bucket[4] = embedding-split-chunks
-        arns_and_bucket[5] = embedding-create-chunk-groups
-        arns_and_bucket[6] = embedding-mark-batches-complete
-        arns_and_bucket[7] = batch_bucket_name
+        arns_and_bucket[5] = embedding-prepare-chunk-groups
+        arns_and_bucket[6] = embedding-mark-complete
+        arns_and_bucket[7] = embedding-prepare-merge-pairs
+        arns_and_bucket[8] = batch_bucket_name
         """
         arns = arns_and_bucket[:-1]
         batch_bucket_name = arns_and_bucket[-1]
@@ -199,7 +201,7 @@ class LineEmbeddingWorkflow(ComponentResource):
                 "ListPendingBatches": {
                     "Type": "Task",
                     "Resource": arns[0],
-                "Parameters": {
+                    "Parameters": {
                         "batch_type": "line",
                         "execution_id.$": "$$.Execution.Name",
                     },
@@ -278,51 +280,19 @@ class LineEmbeddingWorkflow(ComponentResource):
                         },
                     },
                     "ResultPath": "$.poll_results",
-                    "Next": "NormalizePollBatchesData",
+                    "Next": "PrepareChunks",
                 },
-                "NormalizePollBatchesData": {
+                "PrepareChunks": {
                     "Type": "Task",
                     "Resource": arns[3],
-                    "Comment": "Normalize poll_results structure and upload to S3 if payload is too large",
+                    "Comment": "Combine poll results, create chunks, upload to S3. Replaces NormalizePollBatchesData + SplitIntoChunks + LoadChunksFromS3.",
                     "Parameters": {
                         "batch_id.$": "$$.Execution.Name",
                         "poll_results.$": "$.poll_results",
-                    },
-                    "ResultPath": "$.poll_results_data",
-                    "Next": "SplitIntoChunks",
-                    "Retry": [
-                        {
-                            "ErrorEquals": [
-                                "Lambda.ServiceException",
-                                "Lambda.AWSLambdaException",
-                                "Lambda.ResourceConflictException",
-                            ],
-                            "IntervalSeconds": 5,
-                            "MaxAttempts": 5,
-                            "BackoffRate": 2.0,
-                            "JitterStrategy": "FULL",
-                        }
-                    ],
-                    "Catch": [
-                        {
-                            "ErrorEquals": ["States.ALL"],
-                            "Next": "CompactionFailed",
-                            "ResultPath": "$.error",
-                        }
-                    ],
-                },
-                "SplitIntoChunks": {
-                    "Type": "Task",
-                    "Resource": arns[4],
-                    "Comment": "Split delta results into chunks",
-                    "Parameters": {
-                        "batch_id.$": "$$.Execution.Name",
-                        "poll_results.$": "$.poll_results_data.poll_results",
-                        "poll_results_s3_key.$": "$.poll_results_data.poll_results_s3_key",
-                        "poll_results_s3_bucket.$": "$.poll_results_data.poll_results_s3_bucket",
+                        "database": "lines",
                     },
                     "ResultPath": "$.chunked_data",
-                    "Next": "CheckChunksSource",
+                    "Next": "CheckForChunks",
                     "Retry": [
                         {
                             "ErrorEquals": [
@@ -344,525 +314,344 @@ class LineEmbeddingWorkflow(ComponentResource):
                         }
                     ],
                 },
-                "CheckChunksSource": {
-                        "Type": "Choice",
-                        "Comment": "Check if chunks are in S3 or inline",
-                        "Choices": [
-                            {
-                                "Variable": "$.chunked_data.use_s3",
-                                "BooleanEquals": True,
-                                "Next": "LoadChunksFromS3",
-                            }
-                        ],
-                        "Default": "CheckForChunks",
-                    },
-                    "LoadChunksFromS3": {
-                        "Type": "Task",
-                        "Resource": arns[4],
-                        "Comment": "Load chunks from S3 when payload is too large",
-                        "Parameters": {
-                            "operation": "load_chunks_from_s3",
-                            "chunks_s3_key.$": "$.chunked_data.chunks_s3_key",
-                            "chunks_s3_bucket.$": "$.chunked_data.chunks_s3_bucket",
-                            "batch_id.$": "$.chunked_data.batch_id",
-                            "poll_results_s3_key.$": "$.chunked_data.poll_results_s3_key",
-                            "poll_results_s3_bucket.$": "$.chunked_data.poll_results_s3_bucket",
-                        },
-                        "ResultPath": "$.chunked_data",
-                        "Next": "CheckForChunks",
-                        "Retry": [
-                            {
-                                "ErrorEquals": [
-                                    "Lambda.ServiceException",
-                                    "Lambda.AWSLambdaException",
-                                    "Lambda.ResourceConflictException",
-                                ],
-                                "IntervalSeconds": 5,
-                                "MaxAttempts": 5,
-                                "BackoffRate": 2.0,
-                                "JitterStrategy": "FULL",
-                            }
-                        ],
-                        "Catch": [
-                            {
-                                "ErrorEquals": ["States.ALL"],
-                                "Next": "CompactionFailed",
-                                "ResultPath": "$.error",
-                            }
-                        ],
-                    },
-                    "CheckForChunks": {
-                        "Type": "Choice",
-                        "Comment": "Check if there are chunks",
-                        "Choices": [
-                            {
-                                "Variable": "$.chunked_data.chunks[0]",
-                                "IsPresent": True,
-                                "Next": "NormalizeChunkData",
-                            }
-                        ],
-                        "Default": "NoChunksToProcess",
-                    },
-                    "NormalizeChunkData": {
-                        "Type": "Pass",
-                        "Comment": "Normalize chunked_data to ensure chunks_s3_key and chunks_s3_bucket always exist",
-                        "Parameters": {
-                            "chunks.$": "$.chunked_data.chunks",
-                            "batch_id.$": "$.chunked_data.batch_id",
-                            "total_chunks.$": "$.chunked_data.total_chunks",
-                            "use_s3.$": "$.chunked_data.use_s3",
-                            "chunks_s3_key.$": "$.chunked_data.chunks_s3_key",
-                            "chunks_s3_bucket.$": "$.chunked_data.chunks_s3_bucket",
-                            "poll_results_s3_key.$": "$.chunked_data.poll_results_s3_key",
-                            "poll_results_s3_bucket.$": "$.chunked_data.poll_results_s3_bucket",
-                        },
-                        "ResultPath": "$.chunked_data",
-                        "Next": "ProcessChunksInParallel",
-                    },
-                    "ProcessChunksInParallel": {
-                        "Type": "Map",
-                        "Comment": "Process chunks in parallel",
-                        "ItemsPath": "$.chunked_data.chunks",
-                        "MaxConcurrency": 20,
-                        "Parameters": {
-                            "chunk.$": "$$.Map.Item.Value",
-                            "chunks_s3_key.$": "$.chunked_data.chunks_s3_key",
-                            "chunks_s3_bucket.$": "$.chunked_data.chunks_s3_bucket",
-                            "use_s3.$": "$.chunked_data.use_s3",
-                        },
-                        "Iterator": {
-                            "StartAt": "ProcessSingleChunk",
-                            "States": {
-                                "ProcessSingleChunk": {
-                                    "Type": "Task",
-                                    "Resource": arns[2],
-                                    "Comment": "Process a single chunk",
-                                    "Parameters": {
-                                        "operation": "process_chunk",
-                                        "batch_id.$": "$.chunk.batch_id",
-                                        "chunk_index.$": (
-                                            "$.chunk.chunk_index"
-                                        ),
-                                        "delta_results.$": (
-                                            "$.chunk.delta_results"
-                                        ),
-                                        "chunks_s3_key.$": "$.chunks_s3_key",
-                                        "chunks_s3_bucket.$": "$.chunks_s3_bucket",
-                                        "database": "lines",
-                                    },
-                                    # Note: When use_s3=True, delta_results will be null/missing,
-                                    # and the processing Lambda will download from S3 using chunks_s3_key
-                                    "End": True,
-                                    "Retry": [
-                                        {
-                                            "ErrorEquals": [
-                                                "Lambda.ServiceException",
-                                                "Lambda.AWSLambdaException",
-                                                "Lambda.ResourceConflictException",
-                                                "Runtime.ExitError",
-                                            ],
-                                            "IntervalSeconds": 5,
-                                            "MaxAttempts": 5,
-                                            "BackoffRate": 2.0,
-                                            "JitterStrategy": "FULL",
-                                        },
-                                        {
-                                            "ErrorEquals": [
-                                                "Lambda."
-                                                "TooManyRequestsException"
-                                            ],
-                                            "IntervalSeconds": 10,
-                                            "MaxAttempts": 5,
-                                            "BackoffRate": 2.0,
-                                        },
-                                    ],
-                                },
-                            },
-                        },
-                        "ResultPath": "$.chunk_results",
-                        "Next": "GroupChunksForMerge",
-                        "Catch": [
-                            {
-                                "ErrorEquals": ["States.ALL"],
-                                "Next": "ChunkProcessingFailed",
-                                "ResultPath": "$.error",
-                            }
-                        ],
-                    },
-                    "GroupChunksForMerge": {
-                        "Type": "Pass",
-                        "Comment": "Group processed chunks for hierarchical merging",
-                        "Parameters": {
-                            "batch_id.$": "$.chunked_data.batch_id",
-                            "total_chunks.$": "$.chunked_data.total_chunks",
-                            "chunk_results.$": "$.chunk_results",
-                            "group_size": 20,  # Increased from 10 for faster final merge
-                            # poll_results is always None after NormalizePollBatchesData (it's in S3)
-                            # Use poll_results_data as source of truth for poll_results_s3_key/bucket
-                            # SplitIntoChunks should include these in chunked_data, but poll_results_data is guaranteed to have them
-                            "poll_results_s3_key.$": "$.poll_results_data.poll_results_s3_key",
-                            "poll_results_s3_bucket.$": "$.poll_results_data.poll_results_s3_bucket",
-                        },
-                        "Next": "CheckChunkGroupCount",
-                    },
-                    "CheckChunkGroupCount": {
-                        "Type": "Choice",
-                        "Comment": "Determine if hierarchical merge is beneficial",
-                        "Choices": [
-                            {
-                                "Variable": "$.total_chunks",
-                                "NumericGreaterThan": 4,
-                                "Next": "CreateChunkGroups",
-                            }
-                        ],
-                        "Default": "PrepareFinalMerge",
-                    },
-                    "CreateChunkGroups": {
-                        "Type": "Task",
-                        "Resource": arns[5],
-                        "Comment": "Create chunk groups for parallel merging",
-                        "Parameters": {
-                            "batch_id.$": "$.batch_id",
-                            "chunk_results.$": "$.chunk_results",
-                            "group_size": 20,  # Increased from 10 for faster final merge
-                            # poll_results is always None after NormalizePollBatchesData (it's in S3)
-                            # Handler doesn't need poll_results, just needs to pass through S3 keys
-                            "poll_results_s3_key.$": "$.poll_results_s3_key",
-                            "poll_results_s3_bucket.$": "$.poll_results_s3_bucket",
-                        },
-                        "ResultPath": "$.chunk_groups",
-                        "Next": "CheckChunkGroupsSource",
-                        "Retry": [
-                            {
-                                "ErrorEquals": [
-                                    "Lambda.ServiceException",
-                                    "Lambda.AWSLambdaException",
-                                    "Lambda.ResourceConflictException",
-                                ],
-                                "IntervalSeconds": 5,
-                                "MaxAttempts": 5,
-                                "BackoffRate": 2.0,
-                                "JitterStrategy": "FULL",
-                            }
-                        ],
-                        "Catch": [
-                            {
-                                "ErrorEquals": ["States.ALL"],
-                                "Next": "GroupCreationFailed",
-                                "ResultPath": "$.error",
-                            }
-                        ],
-                    },
-                    "CheckChunkGroupsSource": {
-                        "Type": "Choice",
-                        "Comment": "Check if groups are in S3 or inline",
-                        "Choices": [
-                            {
-                                "Variable": "$.chunk_groups.use_s3",
-                                "BooleanEquals": True,
-                                "Next": "LoadChunkGroupsFromS3",
-                            }
-                        ],
-                        "Default": "MergeChunkGroupsInParallel",
-                    },
-                    "LoadChunkGroupsFromS3": {
-                        "Type": "Task",
-                        "Resource": arns[5],
-                        "Comment": "Load chunk groups from S3 when payload is too large",
-                        "Parameters": {
-                            "operation": "load_groups_from_s3",
-                            "groups_s3_key.$": "$.chunk_groups.groups_s3_key",
-                            "groups_s3_bucket.$": "$.chunk_groups.groups_s3_bucket",
-                            "batch_id.$": "$.chunk_groups.batch_id",
-                            "poll_results_s3_key.$": "$.chunk_groups.poll_results_s3_key",
-                            "poll_results_s3_bucket.$": "$.chunk_groups.poll_results_s3_bucket",
-                        },
-                        "ResultPath": "$.chunk_groups",
-                        "Next": "MergeChunkGroupsInParallel",
-                        "Retry": [
-                            {
-                                "ErrorEquals": [
-                                    "Lambda.ServiceException",
-                                    "Lambda.AWSLambdaException",
-                                    "Lambda.ResourceConflictException",
-                                ],
-                                "IntervalSeconds": 5,
-                                "MaxAttempts": 5,
-                                "BackoffRate": 2.0,
-                                "JitterStrategy": "FULL",
-                            }
-                        ],
-                        "Catch": [
-                            {
-                                "ErrorEquals": ["States.ALL"],
-                                "Next": "GroupCreationFailed",
-                                "ResultPath": "$.error",
-                            }
-                        ],
-                    },
-                    "GroupCreationFailed": {
-                        "Type": "Fail",
-                        "Error": "GroupCreationFailed",
-                        "Cause": "Failed to create chunk groups",
-                    },
-                    "MergeChunkGroupsInParallel": {
-                        "Type": "Map",
-                        "Comment": "Merge chunk groups in parallel for faster processing",
-                        "ItemsPath": "$.chunk_groups.groups",
-                        "MaxConcurrency": 6,
-                        "Parameters": {
-                            "chunk_group.$": "$$.Map.Item.Value.chunk_group",
-                            "batch_id.$": "$.chunk_groups.batch_id",
-                            "group_index.$": "$$.Map.Item.Value.group_index",
-                            "groups_s3_key.$": "$$.Map.Item.Value.groups_s3_key",
-                            "groups_s3_bucket.$": "$$.Map.Item.Value.groups_s3_bucket",
-                        },
-                        "Iterator": {
-                            "StartAt": "MergeSingleChunkGroup",
-                            "States": {
-                                "MergeSingleChunkGroup": {
-                                    "Type": "Task",
-                                    "Resource": arns[2],
-                                    "Comment": "Merge intermediate snapshots from chunk group",
-                                    "Parameters": {
-                                        "operation": "merge_chunk_group",
-                                        "batch_id.$": "States.Format('{}-group-{}', $.batch_id, $.group_index)",
-                                        "group_index.$": "$.group_index",
-                                        "chunk_group.$": "$.chunk_group",
-                                        "groups_s3_key.$": "$.groups_s3_key",
-                                        "groups_s3_bucket.$": "$.groups_s3_bucket",
-                                        "database": "lines",
-                                    },
-                                    "End": True,
-                                    "Retry": [
-                                        {
-                                            "ErrorEquals": [
-                                                "Lambda.ServiceException",
-                                                "Lambda.AWSLambdaException",
-                                                "Lambda.ResourceConflictException",
-                                                "Runtime.ExitError",
-                                            ],
-                                            "IntervalSeconds": 5,
-                                            "MaxAttempts": 5,
-                                            "BackoffRate": 2.0,
-                                            "JitterStrategy": "FULL",
-                                        },
-                                    ],
-                                },
-                            },
-                        },
-                        "ResultPath": "$.merged_groups",
-                        "OutputPath": "$",
-                        "Next": "PrepareHierarchicalFinalMerge",
-                        "Catch": [
-                            {
-                                "ErrorEquals": ["States.ALL"],
-                                "Next": "GroupMergeFailed",
-                                "ResultPath": "$.error",
-                            }
-                        ],
-                    },
-                    "PrepareHierarchicalFinalMerge": {
-                        "Type": "Pass",
-                        "Comment": "Prepare data for final merge of pre-merged groups",
-                        "Parameters": {
-                            "batch_id.$": "$.chunk_groups.batch_id",
-                            "operation": "final_merge",
-                            "chunk_results.$": "$.merged_groups",
-                            # poll_results is always None after NormalizePollBatchesData (it's in S3)
-                            # FinalMerge just needs to pass through the S3 keys for MarkBatchesComplete
-                            # Use root level as primary (GroupChunksForMerge copies from poll_results_data to root)
-                            # chunk_groups.poll_results_s3_key may be null if CreateChunkGroups didn't preserve it
-                            "poll_results_s3_key.$": "$.poll_results_s3_key",
-                            "poll_results_s3_bucket.$": "$.poll_results_s3_bucket",
-                            # Fallback to chunk_groups in case root level is missing
-                            "poll_results_s3_key_fallback.$": "$.chunk_groups.poll_results_s3_key",
-                            "poll_results_s3_bucket_fallback.$": "$.chunk_groups.poll_results_s3_bucket",
-                        },
-                        "Next": "FinalMerge",
-                    },
-                    "GroupMergeFailed": {
-                        "Type": "Fail",
-                        "Error": "GroupMergeFailed",
-                        "Cause": "Failed to merge chunk groups in parallel",
-                    },
-                    "PrepareFinalMerge": {
-                        "Type": "Pass",
-                        "Comment": "Prepare data for final merge",
-                        "Parameters": {
-                            "batch_id.$": "$.chunked_data.batch_id",
-                            "chunk_results.$": "$.chunk_results",
-                            "operation": "final_merge",
-                            # poll_results is always None after NormalizePollBatchesData (it's in S3)
-                            # FinalMerge just needs to pass through the S3 keys for MarkBatchesComplete
-                            # Try chunked_data first, fallback to poll_results_data (source of truth)
-                            "poll_results_s3_key.$": "$.chunked_data.poll_results_s3_key",
-                            "poll_results_s3_bucket.$": "$.chunked_data.poll_results_s3_bucket",
-                            # Always include poll_results_data as fallback (guaranteed to exist)
-                            "poll_results_s3_key_fallback.$": "$.poll_results_data.poll_results_s3_key",
-                            "poll_results_s3_bucket_fallback.$": "$.poll_results_data.poll_results_s3_bucket",
-                        },
-                        "Next": "FinalMerge",
-                    },
-                    "NoChunksToProcess": {
-                        "Type": "Pass",
-                        "Comment": "No chunks to process - prepare data for marking batches complete",
-                        "Parameters": {
-                            # poll_results is always None after NormalizePollBatchesData (it's in S3)
-                            # MarkBatchesComplete handler will load from S3 using poll_results_s3_key
-                            # Use poll_results_data as source of truth (guaranteed to exist)
-                            "poll_results_s3_key.$": "$.poll_results_data.poll_results_s3_key",
-                            "poll_results_s3_bucket.$": "$.poll_results_data.poll_results_s3_bucket",
-                            "poll_results_s3_key_fallback.$": "$.chunked_data.poll_results_s3_key",
-                            "poll_results_s3_bucket_fallback.$": "$.chunked_data.poll_results_s3_bucket",
-                            "poll_results_s3_key_chunked.$": "$.chunked_data.poll_results_s3_key",
-                            "poll_results_s3_bucket_chunked.$": "$.chunked_data.poll_results_s3_bucket",
-                        },
-                        "Next": "PrepareMarkBatchesCompleteNoChunks",
-                    },
-                    "PrepareMarkBatchesCompleteNoChunks": {
-                        "Type": "Pass",
-                        "Comment": "Prepare data for MarkBatchesComplete from no-chunks path",
-                        "Parameters": {
-                            # poll_results is always None after NormalizePollBatchesData (it's in S3)
-                            # MarkBatchesComplete handler will load from S3 using poll_results_s3_key
-                            # Pass through from NoChunksToProcess (which gets from poll_results_data)
-                            "poll_results_s3_key.$": "$.poll_results_s3_key",
-                            "poll_results_s3_bucket.$": "$.poll_results_s3_bucket",
-                            "poll_results_s3_key_fallback.$": "$.poll_results_s3_key_fallback",
-                            "poll_results_s3_bucket_fallback.$": "$.poll_results_s3_bucket_fallback",
-                            "poll_results_s3_key_chunked.$": "$.poll_results_s3_key_chunked",
-                            "poll_results_s3_bucket_chunked.$": "$.poll_results_s3_bucket_chunked",
-                            # poll_results_data doesn't exist in no-chunks path, so set to null
-                            # The handler will use the root-level poll_results_s3_key instead
-                            "poll_results_s3_key_poll_data": None,
-                            "poll_results_s3_bucket_poll_data": None,
-                        },
-                        "Next": "MarkBatchesComplete",
-                    },
-                    "FinalMerge": {
-                        "Type": "Task",
-                        "Resource": arns[2],
-                        "Comment": "Final merge of all chunks",
-                        "Parameters": {
-                            "operation": "final_merge",
-                            "batch_id.$": "$.batch_id",
-                            "chunk_results.$": "$.chunk_results",
-                            "database": "lines",
-                            "poll_results_s3_key.$": "$.poll_results_s3_key",
-                            "poll_results_s3_bucket.$": "$.poll_results_s3_bucket",
-                        },
-                        "ResultPath": "$.final_merge_result",
-                        "OutputPath": "$",
-                        "Next": "PrepareMarkBatchesComplete",
-                        "Retry": [
-                            {
-                                "ErrorEquals": [
-                                    "Lambda.ServiceException",
-                                    "Lambda.AWSLambdaException",
-                                    "Lambda.ResourceConflictException",
-                                    "Runtime.ExitError",
-                                ],
-                                "IntervalSeconds": 5,
-                                "MaxAttempts": 5,
-                                "BackoffRate": 2.0,
-                                "JitterStrategy": "FULL",
-                            },
-                            {
-                                "ErrorEquals": ["States.TaskFailed"],
-                                "IntervalSeconds": 30,  # 30 seconds - retry frequently since add_compaction_lock validates expired locks
-                                "MaxAttempts": 40,  # Allow up to 20 minutes of retries (40 * 30s = 1200s) to cover 16 min lock duration + buffer
-                                "BackoffRate": 1.0,  # No backoff - retry at fixed interval
-                            },
-                        ],
-                    },
-                    "PrepareMarkBatchesComplete": {
-                        "Type": "Pass",
-                        "Comment": "Prepare data for MarkBatchesComplete - normalize poll_results_s3_key from various possible locations",
-                        "Parameters": {
-                            # Preserve final_merge_result so it's available in execution output
-                            # final_merge_result is small (~200-300 bytes) so we can keep it inline
-                            "final_merge_result.$": "$.final_merge_result",
-                            # poll_results is always None after NormalizePollBatchesData (it's in S3)
-                            # MarkBatchesComplete handler will load from S3 using poll_results_s3_key
-                            # Priority: final_merge_result > fallback (from PrepareHierarchicalFinalMerge) > root level
-                            # Note: poll_results_data might not exist in hierarchical merge path, so we set poll_data to null
-                            # The Lambda handler will check multiple locations including poll_results_s3_key_poll_data if passed
-                            "poll_results_s3_key.$": "$.final_merge_result.poll_results_s3_key",
-                            "poll_results_s3_bucket.$": "$.final_merge_result.poll_results_s3_bucket",
-                            # Use fallback from PrepareHierarchicalFinalMerge (more reliable than root level)
-                            "poll_results_s3_key_fallback.$": "$.poll_results_s3_key_fallback",
-                            "poll_results_s3_bucket_fallback.$": "$.poll_results_s3_bucket_fallback",
-                            # Also check root level as secondary fallback
-                            "poll_results_s3_key_root.$": "$.poll_results_s3_key",
-                            "poll_results_s3_bucket_root.$": "$.poll_results_s3_bucket",
-                            # Set to null since poll_results_data might not exist in hierarchical merge path
-                            "poll_results_s3_key_poll_data": None,
-                            "poll_results_s3_bucket_poll_data": None,
-                        },
-                        "Next": "MarkBatchesComplete",
-                    },
-                    "MarkBatchesComplete": {
-                        "Type": "Task",
-                        "Resource": arns[6],
-                        "Comment": "Mark batch summaries as COMPLETED after successful compaction",
-                        "Parameters": {
-                            # poll_results is always None after NormalizePollBatchesData (it's in S3)
-                            # Handler will load from S3 using poll_results_s3_key when poll_results is null/empty
-                            # Priority: primary > fallback > poll_data (source of truth)
-                            "poll_results_s3_key.$": "$.poll_results_s3_key",
-                            "poll_results_s3_bucket.$": "$.poll_results_s3_bucket",
-                            "poll_results_s3_key_fallback.$": "$.poll_results_s3_key_fallback",
-                            "poll_results_s3_bucket_fallback.$": "$.poll_results_s3_bucket_fallback",
-                            # poll_results_s3_key_poll_data is set by PrepareMarkBatchesComplete if available
-                            "poll_results_s3_key_poll_data.$": "$.poll_results_s3_key_poll_data",
-                            "poll_results_s3_bucket_poll_data.$": "$.poll_results_s3_bucket_poll_data",
-                            "poll_results_s3_key_chunked": None,
-                            "poll_results_s3_bucket_chunked": None,
-                        },
-                        "ResultPath": "$.mark_complete_result",
-                        "End": True,
-                        "Retry": [
-                            {
-                                "ErrorEquals": [
-                                    "Lambda.ServiceException",
-                                    "Lambda.AWSLambdaException",
-                                    "Lambda.ResourceConflictException",
-                                ],
-                                "IntervalSeconds": 5,
-                                "MaxAttempts": 3,
-                                "BackoffRate": 2.0,
-                                "JitterStrategy": "FULL",
-                            }
-                        ],
-                        "Catch": [
-                            {
-                                "ErrorEquals": ["States.ALL"],
-                                "Next": "MarkCompleteFailed",
-                                "ResultPath": "$.mark_complete_error",
-                            }
-                        ],
-                    },
-                    "MarkCompleteFailed": {
-                        "Type": "Fail",
-                        "Error": "MarkCompleteFailed",
-                        "Cause": "Failed to mark batches as complete (compaction succeeded but marking failed)",
-                    },
-                    "ChunkProcessingFailed": {
-                        "Type": "Fail",
-                        "Error": "ChunkProcessingFailed",
-                        "Cause": "Failed to process delta chunk",
-                    },
-                    "CompactionFailed": {
-                        "Type": "Fail",
-                        "Error": "CompactionFailed",
-                        "Cause": "Failed to compact ChromaDB deltas",
-                    },
-                    "NoPendingBatches": {
-                        "Type": "Succeed",
-                        "Comment": "No pending batches to process",
-                    },
+                "CheckForChunks": {
+                    "Type": "Choice",
+                    "Comment": "Check if there are chunks to process",
+                    "Choices": [
+                        {
+                            "Variable": "$.chunked_data.has_chunks",
+                            "BooleanEquals": True,
+                            "Next": "ProcessChunksInParallel",
+                        }
+                    ],
+                    "Default": "NoChunksToProcess",
                 },
-            }
+                "ProcessChunksInParallel": {
+                    "Type": "Map",
+                    "Comment": "Process chunks in parallel",
+                    "ItemsPath": "$.chunked_data.chunks",
+                    "MaxConcurrency": 20,
+                    "Parameters": {
+                        "chunk.$": "$$.Map.Item.Value",
+                    },
+                    "Iterator": {
+                        "StartAt": "ProcessSingleChunk",
+                        "States": {
+                            "ProcessSingleChunk": {
+                                "Type": "Task",
+                                "Resource": arns[2],
+                                "Comment": "Process a single chunk",
+                                "Parameters": {
+                                    "operation": "process_chunk",
+                                    "batch_id.$": "$.chunk.batch_id",
+                                    "chunk_index.$": "$.chunk.chunk_index",
+                                    # Chunks are always in S3, keys come from chunk object
+                                    "chunks_s3_key.$": "$.chunk.chunks_s3_key",
+                                    "chunks_s3_bucket.$": "$.chunk.chunks_s3_bucket",
+                                    "database": "lines",
+                                },
+                                "End": True,
+                                "Retry": [
+                                    {
+                                        "ErrorEquals": [
+                                            "Lambda.ServiceException",
+                                            "Lambda.AWSLambdaException",
+                                            "Lambda.ResourceConflictException",
+                                            "Runtime.ExitError",
+                                        ],
+                                        "IntervalSeconds": 5,
+                                        "MaxAttempts": 5,
+                                        "BackoffRate": 2.0,
+                                        "JitterStrategy": "FULL",
+                                    },
+                                    {
+                                        "ErrorEquals": [
+                                            "Lambda."
+                                            "TooManyRequestsException"
+                                        ],
+                                        "IntervalSeconds": 10,
+                                        "MaxAttempts": 5,
+                                        "BackoffRate": 2.0,
+                                    },
+                                ],
+                            },
+                        },
+                    },
+                    "ResultPath": "$.chunk_results",
+                    "Next": "PrepareMergePairs",
+                    "Catch": [
+                        {
+                            "ErrorEquals": ["States.ALL"],
+                            "Next": "ChunkProcessingFailed",
+                            "ResultPath": "$.error",
+                        }
+                    ],
+                },
+                # ============================================================
+                # PARALLEL REDUCE PATTERN
+                # Merges N intermediates down to 1 using parallel pair merging
+                # ============================================================
+                "PrepareMergePairs": {
+                    "Type": "Task",
+                    "Resource": arns[7],
+                    "Comment": "Prepare pairs for parallel reduce - groups intermediates into pairs",
+                    "Parameters": {
+                        "intermediates.$": "$.chunk_results",
+                        "batch_id.$": "$.chunked_data.batch_id",
+                        "database": "lines",
+                        "round": 0,
+                        "poll_results_s3_key.$": "$.chunked_data.poll_results_s3_key",
+                        "poll_results_s3_bucket.$": "$.chunked_data.poll_results_s3_bucket",
+                    },
+                    "ResultPath": "$.reduce_state",
+                    "Next": "CheckReduceComplete",
+                    "Retry": [
+                        {
+                            "ErrorEquals": [
+                                "Lambda.ServiceException",
+                                "Lambda.AWSLambdaException",
+                                "Lambda.ResourceConflictException",
+                            ],
+                            "IntervalSeconds": 5,
+                            "MaxAttempts": 5,
+                            "BackoffRate": 2.0,
+                            "JitterStrategy": "FULL",
+                        }
+                    ],
+                    "Catch": [
+                        {
+                            "ErrorEquals": ["States.ALL"],
+                            "Next": "LineReduceFailed",
+                            "ResultPath": "$.error",
+                        }
+                    ],
+                },
+                "CheckReduceComplete": {
+                    "Type": "Choice",
+                    "Comment": "Check if reduction to single intermediate is complete",
+                    "Choices": [
+                        {
+                            "Variable": "$.reduce_state.done",
+                            "BooleanEquals": True,
+                            "Next": "LineFinalMergeSingle",
+                        }
+                    ],
+                    "Default": "MergePairsInParallel",
+                },
+                "MergePairsInParallel": {
+                    "Type": "Map",
+                    "Comment": "Parallel merge of pairs - O(log N) rounds",
+                    "ItemsPath": "$.reduce_state.pairs",
+                    "MaxConcurrency": 10,
+                    "Parameters": {
+                        "operation": "merge_pair",
+                        "pair_data.$": "$$.Map.Item.Value",
+                    },
+                    "Iterator": {
+                        "StartAt": "MergeSinglePair",
+                        "States": {
+                            "MergeSinglePair": {
+                                "Type": "Task",
+                                "Resource": arns[2],
+                                "End": True,
+                                "Retry": [
+                                    {
+                                        "ErrorEquals": [
+                                            "Lambda.ServiceException",
+                                            "Lambda.AWSLambdaException",
+                                            "Lambda.ResourceConflictException",
+                                            "Runtime.ExitError",
+                                        ],
+                                        "IntervalSeconds": 5,
+                                        "MaxAttempts": 5,
+                                        "BackoffRate": 2.0,
+                                        "JitterStrategy": "FULL",
+                                    },
+                                ],
+                            },
+                        },
+                    },
+                    "ResultPath": "$.merged_results",
+                    "Next": "PrepareNextReduceRound",
+                    "Catch": [
+                        {
+                            "ErrorEquals": ["States.ALL"],
+                            "Next": "LineReduceFailed",
+                            "ResultPath": "$.error",
+                        }
+                    ],
+                },
+                "PrepareNextReduceRound": {
+                    "Type": "Task",
+                    "Resource": arns[7],
+                    "Comment": "Prepare next round of pair merging",
+                    "Parameters": {
+                        "intermediates.$": "$.merged_results",
+                        "batch_id.$": "$.reduce_state.batch_id",
+                        "database.$": "$.reduce_state.database",
+                        "round.$": "$.reduce_state.round",
+                        "poll_results_s3_key.$": "$.reduce_state.poll_results_s3_key",
+                        "poll_results_s3_bucket.$": "$.reduce_state.poll_results_s3_bucket",
+                    },
+                    "ResultPath": "$.reduce_state",
+                    "Next": "CheckReduceComplete",
+                    "Retry": [
+                        {
+                            "ErrorEquals": [
+                                "Lambda.ServiceException",
+                                "Lambda.AWSLambdaException",
+                                "Lambda.ResourceConflictException",
+                            ],
+                            "IntervalSeconds": 5,
+                            "MaxAttempts": 5,
+                            "BackoffRate": 2.0,
+                            "JitterStrategy": "FULL",
+                        }
+                    ],
+                    "Catch": [
+                        {
+                            "ErrorEquals": ["States.ALL"],
+                            "Next": "LineReduceFailed",
+                            "ResultPath": "$.error",
+                        }
+                    ],
+                },
+                "LineReduceFailed": {
+                    "Type": "Fail",
+                    "Error": "LineReduceFailed",
+                    "Cause": "Failed during parallel reduce of line intermediates",
+                },
+                "NoChunksToProcess": {
+                    "Type": "Pass",
+                    "Comment": "No chunks to process - prepare data for marking batches complete",
+                    "Parameters": {
+                        "poll_results_s3_key.$": "$.chunked_data.poll_results_s3_key",
+                        "poll_results_s3_bucket.$": "$.chunked_data.poll_results_s3_bucket",
+                        "poll_results_s3_key_fallback.$": "$.chunked_data.poll_results_s3_key",
+                        "poll_results_s3_bucket_fallback.$": "$.chunked_data.poll_results_s3_bucket",
+                        "poll_results_s3_key_poll_data": None,
+                        "poll_results_s3_bucket_poll_data": None,
+                    },
+                    "Next": "MarkBatchesComplete",
+                },
+                "LineFinalMergeSingle": {
+                    "Type": "Task",
+                    "Resource": arns[2],
+                    "Comment": "Final merge of single intermediate to S3 snapshot",
+                    "Parameters": {
+                        "operation": "final_merge_single",
+                        "batch_id.$": "$.reduce_state.batch_id",
+                        "single_intermediate.$": "$.reduce_state.single_intermediate",
+                        "database": "lines",
+                        "poll_results_s3_key.$": "$.reduce_state.poll_results_s3_key",
+                        "poll_results_s3_bucket.$": "$.reduce_state.poll_results_s3_bucket",
+                    },
+                    "ResultPath": "$.final_merge_result",
+                    "OutputPath": "$",
+                    "Next": "PrepareMarkBatchesComplete",
+                    "Retry": [
+                        {
+                            "ErrorEquals": [
+                                "Lambda.ServiceException",
+                                "Lambda.AWSLambdaException",
+                                "Lambda.ResourceConflictException",
+                                "Runtime.ExitError",
+                            ],
+                            "IntervalSeconds": 5,
+                            "MaxAttempts": 5,
+                            "BackoffRate": 2.0,
+                            "JitterStrategy": "FULL",
+                        },
+                        {
+                            "ErrorEquals": ["States.TaskFailed"],
+                            "IntervalSeconds": 30,
+                            "MaxAttempts": 40,
+                            "BackoffRate": 1.0,
+                        },
+                    ],
+                    "Catch": [
+                        {
+                            "ErrorEquals": ["States.ALL"],
+                            "Next": "CompactionFailed",
+                            "ResultPath": "$.error",
+                        }
+                    ],
+                },
+                "PrepareMarkBatchesComplete": {
+                    "Type": "Pass",
+                    "Comment": "Prepare data for MarkBatchesComplete - normalize poll_results_s3_key",
+                    "Parameters": {
+                        "final_merge_result.$": "$.final_merge_result",
+                        "poll_results_s3_key.$": "$.final_merge_result.poll_results_s3_key",
+                        "poll_results_s3_bucket.$": "$.final_merge_result.poll_results_s3_bucket",
+                        "poll_results_s3_key_fallback.$": "$.reduce_state.poll_results_s3_key",
+                        "poll_results_s3_bucket_fallback.$": "$.reduce_state.poll_results_s3_bucket",
+                        "poll_results_s3_key_poll_data": None,
+                        "poll_results_s3_bucket_poll_data": None,
+                    },
+                    "Next": "MarkBatchesComplete",
+                },
+                "MarkBatchesComplete": {
+                    "Type": "Task",
+                    "Resource": arns[6],
+                    "Comment": "Mark batch summaries as COMPLETED after successful compaction",
+                    "Parameters": {
+                        # poll_results is always None after NormalizePollBatchesData (it's in S3)
+                        # Handler will load from S3 using poll_results_s3_key when poll_results is null/empty
+                        # Priority: primary > fallback > poll_data (source of truth)
+                        "poll_results_s3_key.$": "$.poll_results_s3_key",
+                        "poll_results_s3_bucket.$": "$.poll_results_s3_bucket",
+                        "poll_results_s3_key_fallback.$": "$.poll_results_s3_key_fallback",
+                        "poll_results_s3_bucket_fallback.$": "$.poll_results_s3_bucket_fallback",
+                        # poll_results_s3_key_poll_data is set by PrepareMarkBatchesComplete if available
+                        "poll_results_s3_key_poll_data.$": "$.poll_results_s3_key_poll_data",
+                        "poll_results_s3_bucket_poll_data.$": "$.poll_results_s3_bucket_poll_data",
+                        "poll_results_s3_key_chunked": None,
+                        "poll_results_s3_bucket_chunked": None,
+                    },
+                    "ResultPath": "$.mark_complete_result",
+                    "End": True,
+                    "Retry": [
+                        {
+                            "ErrorEquals": [
+                                "Lambda.ServiceException",
+                                "Lambda.AWSLambdaException",
+                                "Lambda.ResourceConflictException",
+                            ],
+                            "IntervalSeconds": 5,
+                            "MaxAttempts": 3,
+                            "BackoffRate": 2.0,
+                            "JitterStrategy": "FULL",
+                        }
+                    ],
+                    "Catch": [
+                        {
+                            "ErrorEquals": ["States.ALL"],
+                            "Next": "MarkCompleteFailed",
+                            "ResultPath": "$.mark_complete_error",
+                        }
+                    ],
+                },
+                "MarkCompleteFailed": {
+                    "Type": "Fail",
+                    "Error": "MarkCompleteFailed",
+                    "Cause": "Failed to mark batches as complete (compaction succeeded but marking failed)",
+                },
+                "ChunkProcessingFailed": {
+                    "Type": "Fail",
+                    "Error": "ChunkProcessingFailed",
+                    "Cause": "Failed to process delta chunk",
+                },
+                "CompactionFailed": {
+                    "Type": "Fail",
+                    "Error": "CompactionFailed",
+                    "Cause": "Failed to compact ChromaDB deltas",
+                },
+                "NoPendingBatches": {
+                    "Type": "Succeed",
+                    "Comment": "No pending batches to process",
+                },
+            },
+        }
 
         return json.dumps(state_definition)

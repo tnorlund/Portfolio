@@ -16,16 +16,16 @@ from chromadb_compaction import (  # type: ignore[import-not-found]
     ChromaDBBuckets,
 )
 
-# pylint: enable=import-error
-
 from .components import (
     DockerImageComponent,
     LambdaFunctionsComponent,
     LineEmbeddingWorkflow,
-    WordEmbeddingWorkflow,
-    RealtimeEmbeddingWorkflow,
     MonitoringComponent,
+    RealtimeEmbeddingWorkflow,
+    WordEmbeddingWorkflow,
 )
+
+# pylint: enable=import-error
 
 
 class EmbeddingInfrastructure(ComponentResource):
@@ -64,7 +64,6 @@ class EmbeddingInfrastructure(ComponentResource):
             None,
             opts,
         )
-
 
         # Use provided ChromaDB queues instead of creating our own
         self.chromadb_queues = chromadb_queues
@@ -170,13 +169,13 @@ class EmbeddingInfrastructure(ComponentResource):
         # Additional legacy mappings
         if hasattr(self, "container_lambda_functions"):
             self.container_lambda_functions["line-polling"] = (
-                self.container_lambda_functions.get("embedding-line-poll")
+                self.container_lambda_functions.get("embedding-poll-lines")
             )
             self.container_lambda_functions["word-polling"] = (
-                self.container_lambda_functions.get("embedding-word-poll")
+                self.container_lambda_functions.get("embedding-poll-words")
             )
             self.container_lambda_functions["compaction"] = (
-                self.container_lambda_functions.get("embedding-vector-compact")
+                self.container_lambda_functions.get("embedding-compact")
             )
 
     def _register_outputs(self):

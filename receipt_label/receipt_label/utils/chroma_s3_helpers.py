@@ -33,10 +33,17 @@ except ImportError:
     chromadb = None
 
 try:
-    from .chroma_client import ChromaDBClient, CHROMADB_AVAILABLE
+    from receipt_chroma import ChromaClient
+    CHROMADB_AVAILABLE = True
 except ImportError:
     CHROMADB_AVAILABLE = False
-    ChromaDBClient = None
+    ChromaClient = None
+    # Fallback to old client for backward compatibility
+    try:
+        from .chroma_client import ChromaDBClient
+        ChromaDBClient = ChromaDBClient  # Keep for backward compatibility
+    except ImportError:
+        ChromaDBClient = None
 
 logger = logging.getLogger(__name__)
 
@@ -133,14 +140,22 @@ def produce_embedding_delta(
                 f"Creating ChromaDB client for database '{database_name}'"
             )
             logger.info(f"Persist directory: {delta_dir}")
-            chroma = ChromaDBClient(persist_directory=delta_dir, mode="delta")
+            chroma = ChromaClient(
+                persist_directory=delta_dir,
+                mode="delta",
+                metadata_only=True,  # No embeddings needed for delta creation
+            )
             # Adjust delta prefix to include database name
             delta_prefix = f"{database_name}/{delta_prefix}"
             logger.info(f"S3 delta prefix will be: {delta_prefix}")
         else:
             logger.info("Creating ChromaDB client")
             logger.info(f"Persist directory: {delta_dir}")
-            chroma = ChromaDBClient(persist_directory=delta_dir, mode="delta")
+            chroma = ChromaClient(
+                persist_directory=delta_dir,
+                mode="delta",
+                metadata_only=True,  # No embeddings needed for delta creation
+            )
 
         # Upsert vectors
         logger.info(

@@ -58,6 +58,8 @@ strict_equality = true
 [[tool.mypy.overrides]]
 module = [
     "receipt_label.*",
+    "receipt_chroma.*",
+    "receipt_dynamo.*",
     "boto3.*",
     "botocore.*",
     "chromadb.*",
@@ -68,6 +70,8 @@ module = [
     "chromadb_compaction.*",
     "dynamo_db.*",
     "lambda_layer.*",
+    "utils.*",
+    "compaction.*",
 ]
 ignore_missing_imports = true
 
