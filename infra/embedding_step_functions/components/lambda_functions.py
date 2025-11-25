@@ -325,6 +325,12 @@ class LambdaFunctionsComponent(ComponentResource):
                 "timeout": MINUTE * 5,
                 "source_dir": "prepare_chunk_groups",
             },
+            "embedding-prepare-merge-pairs": {
+                "handler": "handler.handle",
+                "memory": GIGABYTE * 0.5,
+                "timeout": MINUTE * 5,
+                "source_dir": "prepare_merge_pairs",
+            },
             "embedding-mark-batches-complete": {
                 "handler": "handler.lambda_handler",
                 "memory": GIGABYTE * 0.5,
@@ -366,8 +372,8 @@ class LambdaFunctionsComponent(ComponentResource):
             "S3_BUCKET": self.batch_bucket.bucket,
         }
 
-        # Add ChromaDB bucket for realtime processing Lambdas, split_into_chunks, normalize_poll_batches_data, create_chunk_groups, and prepare_chunk_groups
-        if config["source_dir"] in ["find_receipts_realtime", "process_receipt_realtime", "split_into_chunks", "normalize_poll_batches_data", "create_chunk_groups", "prepare_chunk_groups"]:
+        # Add ChromaDB bucket for realtime processing Lambdas, split_into_chunks, normalize_poll_batches_data, create_chunk_groups, prepare_chunk_groups, and prepare_merge_pairs
+        if config["source_dir"] in ["find_receipts_realtime", "process_receipt_realtime", "split_into_chunks", "normalize_poll_batches_data", "create_chunk_groups", "prepare_chunk_groups", "prepare_merge_pairs"]:
             env_vars["CHROMADB_BUCKET"] = self.chromadb_buckets.bucket_name
             if config["source_dir"] in ["find_receipts_realtime", "process_receipt_realtime"]:
                 env_vars["GOOGLE_PLACES_API_KEY"] = (

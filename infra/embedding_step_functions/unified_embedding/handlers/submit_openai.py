@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict
 
+from openai import OpenAI
 from receipt_chroma.embedding.openai import (
     add_batch_summary,
     create_batch_summary,
@@ -22,7 +23,6 @@ from receipt_label.embedding.line import (
     update_line_embedding_status,
     write_ndjson,
 )
-from openai import OpenAI
 
 import utils.logging
 
