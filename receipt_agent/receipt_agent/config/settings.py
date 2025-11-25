@@ -24,7 +24,7 @@ class Settings(BaseSettings):
 
     # LLM Configuration (Ollama Cloud)
     ollama_base_url: str = Field(
-        default="https://api.ollama.ai",
+        default="https://ollama.com",
         description="Base URL for Ollama Cloud API",
     )
     ollama_api_key: SecretStr = Field(
@@ -32,8 +32,8 @@ class Settings(BaseSettings):
         description="API key for Ollama Cloud",
     )
     ollama_model: str = Field(
-        default="llama3.1:8b",
-        description="Model to use for agent reasoning",
+        default="gpt-oss:120b-cloud",
+        description="Model to use for agent reasoning (OpenAI OSS 120B cloud model)",
     )
 
     # Alternative: OpenAI for embeddings

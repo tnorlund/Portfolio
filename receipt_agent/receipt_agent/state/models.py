@@ -218,6 +218,16 @@ class ValidationState(BaseModel):
         description="Context about the receipt",
     )
 
+    # Retrieved embeddings from ChromaDB (keyed by ChromaDB document ID)
+    receipt_line_embeddings: dict[str, list[float]] = Field(
+        default_factory=dict,
+        description="Line embeddings retrieved from ChromaDB by document ID",
+    )
+    receipt_word_embeddings: dict[str, list[float]] = Field(
+        default_factory=dict,
+        description="Word embeddings retrieved from ChromaDB by document ID",
+    )
+
     # Agent conversation messages
     messages: Annotated[list[Any], add_messages] = Field(
         default_factory=list,
