@@ -151,12 +151,16 @@ def compact_handler(
         return process_chunk_handler(event)
     if operation == "merge_chunk_group":
         return merge_chunk_group_handler(event)
+    if operation == "merge_pair":
+        return merge_pair_handler(event)
     if operation == "final_merge":
         return final_merge_handler(event)
+    if operation == "final_merge_single":
+        return final_merge_single_handler(event)
 
     logger.error(
         "Invalid operation. Expected 'process_chunk', "
-        "'merge_chunk_group', or 'final_merge'",
+        "'merge_chunk_group', 'merge_pair', 'final_merge', or 'final_merge_single'",
         operation=operation,
     )
     return {
@@ -164,7 +168,7 @@ def compact_handler(
         "error": f"Invalid operation: {operation}",
         "message": (
             "Operation must be 'process_chunk', 'merge_chunk_group', "
-            "or 'final_merge'"
+            "'merge_pair', 'final_merge', or 'final_merge_single'"
         ),
     }
 
@@ -578,6 +582,258 @@ def merge_chunk_group_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         }
 
 
+def merge_pair_handler(event: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Merge a pair of intermediates in the parallel reduce pattern.
+
+    This is similar to merge_chunk_group but optimized for pairs and
+    supports the S3-based pair lookup format from prepare_merge_pairs.
+
+    Input format:
+    {
+        "operation": "merge_pair",
+        "pair_index": 0,
+        "batch_id": "batch-uuid-r1",
+        "intermediates": [
+            {"intermediate_key": "intermediate/batch-id/chunk-0/"},
+            {"intermediate_key": "intermediate/batch-id/chunk-1/"}
+        ],
+        "database": "words" or "lines",
+        "round": 1
+    }
+
+    OR (S3 mode):
+    {
+        "operation": "merge_pair",
+        "pair_index": 0,
+        "batch_id": "batch-uuid-r1",
+        "intermediates": None,
+        "pairs_s3_key": "merge_pairs/batch-id/round-1/pairs.json",
+        "pairs_s3_bucket": "bucket-name",
+        "database": "words" or "lines",
+        "round": 1
+    }
+
+    Returns:
+    {
+        "intermediate_key": "intermediate/batch-uuid-r1/pair-0/"
+    }
+    """
+    logger.info("Starting pair merge for parallel reduce")
+
+    # Support both formats: new format with pair_data, or old format with individual fields
+    pair_data = event.get("pair_data")
+    if pair_data:
+        # New format: extract from pair_data object
+        batch_id = pair_data.get("batch_id")
+        pair_index = pair_data.get("pair_index", 0)
+        intermediates = pair_data.get("intermediates")
+        database_name = pair_data.get("database", "words")
+        current_round = pair_data.get("round", 1)
+        pairs_s3_key = pair_data.get("pairs_s3_key")
+        pairs_s3_bucket = pair_data.get("pairs_s3_bucket")
+    else:
+        # Old format: individual fields at top level
+        batch_id = event.get("batch_id")
+        pair_index = event.get("pair_index", 0)
+        intermediates = event.get("intermediates")
+        database_name = event.get("database", "words")
+        current_round = event.get("round", 1)
+        pairs_s3_key = event.get("pairs_s3_key")
+        pairs_s3_bucket = event.get("pairs_s3_bucket")
+
+    if not batch_id:
+        return {
+            "statusCode": 400,
+            "error": "batch_id is required for pair merging",
+        }
+
+    # Load from S3 if intermediates not provided
+    if (intermediates is None or not intermediates) and pairs_s3_key and pairs_s3_bucket:
+        logger.info(
+            "Downloading pair from S3",
+            pair_index=pair_index,
+            s3_key=pairs_s3_key,
+            bucket=pairs_s3_bucket,
+        )
+        try:
+            tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
+            tmp_file_path = tmp_file.name
+            tmp_file.close()
+
+            try:
+                s3_client.download_file(pairs_s3_bucket, pairs_s3_key, tmp_file_path)
+
+                with open(tmp_file_path, "r", encoding="utf-8") as f:
+                    all_pairs = json.load(f)
+
+                if pair_index >= len(all_pairs):
+                    return {
+                        "statusCode": 404,
+                        "error": f"Pair {pair_index} not found (total: {len(all_pairs)})",
+                        "batch_id": batch_id,
+                        "pair_index": pair_index,
+                    }
+
+                pair_data = all_pairs[pair_index]
+                intermediates = pair_data.get("intermediates", [])
+
+                logger.info(
+                    "Downloaded pair from S3",
+                    pair_index=pair_index,
+                    intermediate_count=len(intermediates),
+                )
+            finally:
+                try:
+                    os.unlink(tmp_file_path)
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.error(
+                "Failed to download pair from S3",
+                pair_index=pair_index,
+                error=str(e),
+                exc_info=True,
+            )
+            raise
+
+    if not intermediates:
+        logger.warning(
+            "Empty pair - nothing to merge",
+            batch_id=batch_id,
+            pair_index=pair_index,
+        )
+        return {
+            "statusCode": 200,
+            "batch_id": batch_id,
+            "pair_index": pair_index,
+            "message": "Empty pair - no intermediate_key",
+            "empty": True,
+        }
+
+    # Extract intermediate keys
+    intermediate_keys = []
+    for item in intermediates:
+        if isinstance(item, dict) and "intermediate_key" in item:
+            intermediate_keys.append(item["intermediate_key"])
+        elif isinstance(item, str):
+            intermediate_keys.append(item)
+
+    if not intermediate_keys:
+        return {
+            "statusCode": 200,
+            "batch_id": batch_id,
+            "pair_index": pair_index,
+            "message": "No valid intermediate keys in pair",
+            "empty": True,
+        }
+
+    # If only one intermediate, just return it (no merge needed)
+    if len(intermediate_keys) == 1:
+        logger.info(
+            "Single intermediate in pair - returning as-is",
+            intermediate_key=intermediate_keys[0],
+        )
+        return {
+            "intermediate_key": intermediate_keys[0],
+        }
+
+    logger.info(
+        "Merging pair",
+        batch_id=batch_id,
+        pair_index=pair_index,
+        intermediate_count=len(intermediate_keys),
+        database=database_name,
+        round=current_round,
+    )
+
+    try:
+        # Perform the merge
+        merge_result = perform_intermediate_merge(
+            batch_id, pair_index, intermediate_keys, database_name
+        )
+
+        return {
+            "intermediate_key": merge_result["intermediate_key"],
+        }
+
+    except Exception as e:
+        logger.error(
+            "Pair merge failed",
+            batch_id=batch_id,
+            pair_index=pair_index,
+            error=str(e),
+            exc_info=True,
+        )
+        return {
+            "statusCode": 500,
+            "error": str(e),
+            "batch_id": batch_id,
+            "pair_index": pair_index,
+            "message": "Pair merge failed",
+        }
+
+
+def final_merge_single_handler(event: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Final merge step for single intermediate after parallel reduce.
+
+    This is a simplified final merge that only needs to handle ONE
+    intermediate result, making it much simpler and faster.
+
+    Input format:
+    {
+        "operation": "final_merge_single",
+        "batch_id": "batch-uuid",
+        "single_intermediate": {"intermediate_key": "intermediate/batch-uuid-r3/pair-0/"},
+        "database": "lines" or "words",
+        "poll_results_s3_key": "...",
+        "poll_results_s3_bucket": "..."
+    }
+    """
+    logger.info("Starting FINAL merge (single intermediate) with mutex lock")
+
+    batch_id = event.get("batch_id")
+    single_intermediate = event.get("single_intermediate")
+    database_name = event.get("database", "words")
+    poll_results_s3_key = event.get("poll_results_s3_key")
+    poll_results_s3_bucket = event.get("poll_results_s3_bucket")
+
+    if not batch_id:
+        return {
+            "statusCode": 400,
+            "error": "batch_id is required for final merge",
+            "poll_results_s3_key": poll_results_s3_key,
+            "poll_results_s3_bucket": poll_results_s3_bucket,
+        }
+
+    # Handle case where single_intermediate is None (empty reduction)
+    if single_intermediate is None:
+        logger.info("No intermediate to merge - skipping final merge")
+        return {
+            "statusCode": 200,
+            "batch_id": batch_id,
+            "database": database_name,
+            "message": "No intermediate to merge",
+            "poll_results_s3_key": poll_results_s3_key,
+            "poll_results_s3_bucket": poll_results_s3_bucket,
+            "skipped": True,
+        }
+
+    # Convert single intermediate to list format for final_merge_handler
+    chunk_results = [single_intermediate]
+
+    # Delegate to existing final_merge_handler
+    return final_merge_handler({
+        "operation": "final_merge",
+        "batch_id": batch_id,
+        "chunk_results": chunk_results,
+        "database": database_name,
+        "poll_results_s3_key": poll_results_s3_key,
+        "poll_results_s3_bucket": poll_results_s3_bucket,
+    })
+
+
 def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     """
     Final merge step that ALWAYS acquires mutex lock and merges to final snapshot.
@@ -681,8 +937,56 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         else ChromaDBCollection.WORDS
     )
 
-    # Acquire lock for final merge
-    lock_id = f"chroma-final-merge-{batch_id}"
+    # =========================================================================
+    # OPTIMIZATION: Pre-download intermediates BEFORE acquiring lock
+    # This reduces lock hold time significantly since intermediate download
+    # can take time but doesn't require exclusive access to the snapshot.
+    # =========================================================================
+    bucket = os.environ["CHROMADB_BUCKET"]
+    predownloaded_intermediates = []  # List of (intermediate_key, temp_dir) tuples
+    predownload_start = time.time()
+
+    # Extract intermediate keys
+    intermediate_keys_to_download = []
+    for chunk in chunk_results:
+        if isinstance(chunk, dict) and "intermediate_key" in chunk:
+            intermediate_keys_to_download.append(chunk["intermediate_key"])
+        elif isinstance(chunk, str):
+            intermediate_keys_to_download.append(chunk)
+
+    logger.info(
+        "Pre-downloading intermediates before lock acquisition",
+        intermediate_count=len(intermediate_keys_to_download),
+        batch_id=batch_id,
+    )
+
+    try:
+        for intermediate_key in intermediate_keys_to_download:
+            temp_dir = tempfile.mkdtemp()
+            download_from_s3(bucket, intermediate_key, temp_dir)
+            predownloaded_intermediates.append((intermediate_key, temp_dir))
+            logger.info(
+                "Pre-downloaded intermediate",
+                intermediate_key=intermediate_key,
+                temp_dir=temp_dir,
+            )
+
+        predownload_duration = time.time() - predownload_start
+        logger.info(
+            "Pre-download complete",
+            intermediate_count=len(predownloaded_intermediates),
+            duration_seconds=predownload_duration,
+        )
+    except Exception as e:
+        # Clean up any pre-downloaded intermediates on failure
+        for _, temp_dir in predownloaded_intermediates:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        raise RuntimeError(f"Failed to pre-download intermediates: {e}") from e
+
+    # Acquire lock for final merge with retry logic
+    # Wait-acquire pattern: retry within Lambda to reduce Step Function retry overhead
+    # Use the same lock as the enhanced compactor to prevent concurrent modifications
+    lock_id = f"chroma-{database_name}-update"
     lock_manager = LockManager(
         dynamo_client,
         collection=collection,
@@ -690,20 +994,54 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         lock_duration_minutes=lock_duration_minutes,
     )
 
+    # Lock acquisition retry configuration
+    # Reduced wait time - if lock is held for >2 minutes, fail fast and let Step Function retry
+    # This prevents Lambda from running for 19+ minutes waiting for a lock
+    max_lock_attempts = 10  # Reduced from 20 - fail faster
+    initial_wait_seconds = 3  # Reduced from 5 - check more frequently
+    max_wait_seconds = 10  # Reduced from 30 - cap wait time lower
+    max_total_wait_seconds = 60  # Maximum total wait time across all attempts (~1 minute)
+    lock_acquired = False
+
     logger.info(
-        "Attempting to acquire final merge lock",
+        "Attempting to acquire final merge lock with wait-acquire pattern",
         batch_id=batch_id,
         lock_id=lock_id,
         collection=collection.value,
         database=database_name,
         chunk_count=len(chunk_results),
         lock_duration_minutes=lock_duration_minutes,
+        max_attempts=max_lock_attempts,
     )
 
     try:
-        lock_acquired = lock_manager.acquire(lock_id)
-        if not lock_acquired:
-            # Try to get details about the existing lock for better debugging
+        total_wait_start = time.time()
+        attempt = 0  # Initialize in case loop breaks early
+        for attempt in range(1, max_lock_attempts + 1):
+            lock_acquired = lock_manager.acquire(lock_id)
+            if lock_acquired:
+                logger.info(
+                    "Lock acquired",
+                    batch_id=batch_id,
+                    lock_id=lock_id,
+                    attempt=attempt,
+                )
+                break
+
+            # Check if we've exceeded max total wait time
+            total_wait_elapsed = time.time() - total_wait_start
+            if total_wait_elapsed >= max_total_wait_seconds:
+                logger.warning(
+                    "Exceeded max total wait time for lock acquisition",
+                    batch_id=batch_id,
+                    lock_id=lock_id,
+                    total_wait_seconds=total_wait_elapsed,
+                    max_total_wait_seconds=max_total_wait_seconds,
+                    attempt=attempt,
+                )
+                break  # Exit loop, will raise error below
+
+            # Get details about the existing lock
             existing_lock = None
             try:
                 existing_lock = dynamo_client.get_compaction_lock(lock_id, collection)
@@ -714,6 +1052,15 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
                     error=str(e),
                 )
 
+            # Calculate wait time with exponential backoff
+            wait_seconds = min(initial_wait_seconds * (1.5 ** (attempt - 1)), max_wait_seconds)
+
+            # Don't wait if this would exceed max_total_wait_seconds
+            if total_wait_elapsed + wait_seconds > max_total_wait_seconds:
+                wait_seconds = max(0, max_total_wait_seconds - total_wait_elapsed)
+                if wait_seconds <= 0:
+                    break  # No time left, exit loop
+
             if existing_lock:
                 now = datetime.now(timezone.utc)
                 expires = (
@@ -723,37 +1070,127 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
                 )
                 time_until_expiry = (expires - now).total_seconds()
 
-                logger.warning(
-                    "Could not acquire lock for final merge - lock is held by another process",
+                # Check if lock is being actively heartbeated (recent heartbeat = active execution)
+                heartbeat = None
+                if existing_lock.heartbeat:
+                    if isinstance(existing_lock.heartbeat, datetime):
+                        heartbeat = existing_lock.heartbeat
+                    else:
+                        try:
+                            heartbeat = datetime.fromisoformat(existing_lock.heartbeat.replace("Z", "+00:00"))
+                        except (ValueError, AttributeError):
+                            pass
+
+                heartbeat_age_seconds = (now - heartbeat).total_seconds() if heartbeat else None
+                is_actively_held = heartbeat_age_seconds is not None and heartbeat_age_seconds < 120  # Heartbeat within last 2 minutes = active
+
+                # If lock is actively held (being heartbeated), fail faster
+                # Don't wait for a lock that's being actively maintained - let Step Functions retry
+                if is_actively_held and attempt >= 3:  # Give it a few attempts first
+                    logger.warning(
+                        "Lock is actively held (recent heartbeat) - failing fast to let Step Functions retry",
+                        batch_id=batch_id,
+                        lock_id=lock_id,
+                        collection=collection.value,
+                        existing_lock_owner=existing_lock.owner,
+                        heartbeat_age_seconds=heartbeat_age_seconds,
+                        attempt=attempt,
+                    )
+                    break  # Exit loop early - will raise error below
+
+                logger.info(
+                    "Lock held by another process, waiting to retry",
                     batch_id=batch_id,
                     lock_id=lock_id,
                     collection=collection.value,
                     existing_lock_owner=existing_lock.owner,
-                    existing_lock_expires=existing_lock.expires,
-                    existing_lock_heartbeat=existing_lock.heartbeat,
                     time_until_expiry_seconds=time_until_expiry,
-                    chunk_count=len(chunk_results),
+                    heartbeat_age_seconds=heartbeat_age_seconds,
+                    is_actively_held=is_actively_held,
+                    attempt=attempt,
+                    max_attempts=max_lock_attempts,
+                    wait_seconds=wait_seconds,
                 )
+            else:
+                logger.info(
+                    "Lock acquisition failed, waiting to retry",
+                    batch_id=batch_id,
+                    lock_id=lock_id,
+                    attempt=attempt,
+                    max_attempts=max_lock_attempts,
+                    wait_seconds=wait_seconds,
+                )
+
+            # Wait before next attempt (unless this is the last attempt)
+            if attempt < max_lock_attempts:
+                time.sleep(wait_seconds)
+
+        if not lock_acquired:
+            # Final failure after all attempts or timeout
+            total_wait_elapsed = time.time() - total_wait_start
+            existing_lock = None
+            try:
+                existing_lock = dynamo_client.get_compaction_lock(lock_id, collection)
+            except Exception:
+                pass
+
+            if existing_lock:
+                now = datetime.now(timezone.utc)
+                expires = (
+                    existing_lock.expires
+                    if isinstance(existing_lock.expires, datetime)
+                    else datetime.fromisoformat(existing_lock.expires.replace("Z", "+00:00"))
+                )
+                time_until_expiry = (expires - now).total_seconds()
+
+                timeout_reason = ""
+                if total_wait_elapsed >= max_total_wait_seconds:
+                    timeout_reason = f" (timed out after {total_wait_elapsed:.1f}s wait, max: {max_total_wait_seconds}s)"
+
+                # Check if lock was actively heartbeated
+                heartbeat = None
+                if existing_lock.heartbeat:
+                    if isinstance(existing_lock.heartbeat, datetime):
+                        heartbeat = existing_lock.heartbeat
+                    else:
+                        try:
+                            heartbeat = datetime.fromisoformat(existing_lock.heartbeat.replace("Z", "+00:00"))
+                        except (ValueError, AttributeError):
+                            pass
+
+                heartbeat_info = ""
+                if heartbeat:
+                    heartbeat_age = (now - heartbeat).total_seconds()
+                    if heartbeat_age < 120:
+                        heartbeat_info = f" (lock actively held - heartbeat {heartbeat_age:.0f}s ago)"
+                    else:
+                        heartbeat_info = f" (heartbeat {heartbeat_age:.0f}s ago)"
+
                 error_msg = (
-                    f"Could not acquire lock {lock_id} for final merge. "
-                    f"Lock is held by owner {existing_lock.owner} "
+                    f"Could not acquire lock {lock_id} for final merge after {attempt-1} attempts{timeout_reason}. "
+                    f"Lock is held by owner {existing_lock.owner}{heartbeat_info} "
                     f"(expires: {existing_lock.expires}, "
                     f"heartbeat: {existing_lock.heartbeat}). "
                     f"Time until expiry: {time_until_expiry:.1f} seconds."
                 )
             else:
-                logger.warning(
-                    "Could not acquire lock for final merge - lock may be held by another process",
-                    batch_id=batch_id,
-                    lock_id=lock_id,
-                    collection=collection.value,
-                    chunk_count=len(chunk_results),
-                )
+                timeout_reason = ""
+                if total_wait_elapsed >= max_total_wait_seconds:
+                    timeout_reason = f" (timed out after {total_wait_elapsed:.1f}s wait, max: {max_total_wait_seconds}s)"
                 error_msg = (
-                    f"Could not acquire lock {lock_id} for final merge. "
+                    f"Could not acquire lock {lock_id} for final merge after {attempt-1} attempts{timeout_reason}. "
                     "Another process is performing final merge."
                 )
 
+            logger.error(
+                "Failed to acquire lock after all attempts or timeout",
+                batch_id=batch_id,
+                lock_id=lock_id,
+                collection=collection.value,
+                attempts=attempt-1,
+                total_wait_seconds=total_wait_elapsed,
+                max_total_wait_seconds=max_total_wait_seconds,
+            )
             # Raise exception so Step Functions treats this as a failure and can retry
             raise RuntimeError(error_msg)
 
@@ -771,33 +1208,19 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
 
         # Perform final merge with database awareness
         # Pass lock_manager for CAS validation during atomic upload (consistent with compactor)
+        # Pass pre-downloaded intermediates to avoid re-downloading while holding lock
         merge_result = perform_final_merge(
-            batch_id, len(chunk_results), database_name, chunk_results, lock_manager
+            batch_id,
+            len(chunk_results),
+            database_name,
+            chunk_results,
+            lock_manager,
+            predownloaded_intermediates=predownloaded_intermediates,
         )
 
-        # Clean up intermediate chunks - extract intermediate keys for cleanup
-        # Filter out error responses and empty groups
-        intermediate_keys = []
-        for chunk in chunk_results:
-            # Skip error responses (empty groups or failed merges)
-            if isinstance(chunk, dict):
-                if "intermediate_key" in chunk:
-                    intermediate_keys.append(chunk["intermediate_key"])
-                elif "statusCode" in chunk and chunk.get("statusCode") != 200:
-                    # Error response - log but skip
-                    logger.warning(
-                        "Skipping error response in chunk_results",
-                        chunk=chunk,
-                        batch_id=batch_id,
-                    )
-                elif "message" in chunk and "Empty" in chunk.get("message", ""):
-                    # Empty group response - skip silently
-                    logger.debug(
-                        "Skipping empty group response",
-                        chunk=chunk,
-                        batch_id=batch_id,
-                    )
-
+        # Clean up intermediate chunks from S3
+        # (local temp dirs are cleaned up in finally block)
+        intermediate_keys = [key for key, _ in predownloaded_intermediates]
         cleanup_intermediate_chunks_by_keys(intermediate_keys)
 
         # Always return full format for final merge
@@ -845,6 +1268,13 @@ def final_merge_handler(event: Dict[str, Any]) -> Dict[str, Any]:
         # Stop heartbeat and release lock
         lock_manager.stop_heartbeat()
         lock_manager.release()
+
+        # Clean up pre-downloaded intermediate temp directories
+        for _, temp_dir in predownloaded_intermediates:
+            try:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            except Exception:
+                pass
 
 
 def process_chunk_deltas(
@@ -1384,27 +1814,61 @@ def perform_intermediate_merge(
                             create_if_missing=True,
                         )
 
-                    # Get all data from chunk collection
-                    chunk_data = chunk_collection.get(
-                        include=["embeddings", "documents", "metadatas"]
+                    # Process chunk collection in batches to avoid ChromaDB batch size limits
+                    # ChromaDB has a max batch size (around 5461), so we need to batch large collections
+                    chunk_count = chunk_collection.count()
+                    if chunk_count == 0:
+                        logger.info(
+                            "Skipping empty chunk collection",
+                            collection_name=collection_name,
+                        )
+                        continue
+
+                    # Use a safe batch size well below ChromaDB's limit
+                    batch_size = 1000
+                    total_batches = (chunk_count + batch_size - 1) // batch_size
+
+                    logger.info(
+                        "Processing chunk collection in batches",
+                        collection_name=collection_name,
+                        total_count=chunk_count,
+                        batch_size=batch_size,
+                        total_batches=total_batches,
                     )
 
-                    if chunk_data["ids"]:
-                        # Add to main collection
-                        main_collection.add(
-                            ids=chunk_data["ids"],
-                            embeddings=chunk_data["embeddings"],
-                            documents=chunk_data["documents"],
-                            metadatas=chunk_data["metadatas"],
+                    for batch_num, offset in enumerate(range(0, chunk_count, batch_size), 1):
+                        # Get batch of embeddings
+                        chunk_batch = chunk_collection.get(
+                            include=["embeddings", "documents", "metadatas"],
+                            limit=batch_size,
+                            offset=offset,
                         )
-                        total_embeddings += len(chunk_data["ids"])
 
-                        logger.info(
-                            "Merged chunk collection data",
-                            collection_name=collection_name,
-                            embeddings_added=len(chunk_data["ids"]),
-                            total_embeddings=total_embeddings,
-                        )
+                        if chunk_batch["ids"]:
+                            # Add batch to main collection
+                            main_collection.add(
+                                ids=chunk_batch["ids"],
+                                embeddings=chunk_batch["embeddings"],
+                                documents=chunk_batch["documents"],
+                                metadatas=chunk_batch["metadatas"],
+                            )
+                            total_embeddings += len(chunk_batch["ids"])
+
+                            logger.debug(
+                                "Merged batch from chunk collection",
+                                collection_name=collection_name,
+                                batch_num=batch_num,
+                                total_batches=total_batches,
+                                embeddings_in_batch=len(chunk_batch["ids"]),
+                                total_embeddings=total_embeddings,
+                            )
+
+                    logger.info(
+                        "Merged chunk collection data",
+                        collection_name=collection_name,
+                        embeddings_added=chunk_count,
+                        total_embeddings=total_embeddings,
+                    )
 
             except Exception as e:
                 logger.error(
@@ -1487,6 +1951,7 @@ def perform_final_merge(
     database_name: Optional[str] = None,
     chunk_results: Optional[List[Dict[str, Any]]] = None,
     lock_manager: Optional[Any] = None,
+    predownloaded_intermediates: Optional[List[tuple]] = None,
 ) -> Dict[str, Any]:
     """
     Perform the final merge of all intermediate chunks into a snapshot.
@@ -1497,7 +1962,17 @@ def perform_final_merge(
         database_name: Database name ('lines' or 'words') for separate snapshots
         chunk_results: List of chunk results with intermediate keys
         lock_manager: Optional lock manager for CAS validation during atomic upload
+        predownloaded_intermediates: Optional list of (intermediate_key, temp_dir) tuples
+            for intermediates that were pre-downloaded before lock acquisition
     """
+    # Build a lookup map for pre-downloaded intermediates
+    predownloaded_map = {}
+    if predownloaded_intermediates:
+        predownloaded_map = {key: temp_dir for key, temp_dir in predownloaded_intermediates}
+        logger.info(
+            "Using pre-downloaded intermediates",
+            count=len(predownloaded_map),
+        )
     start_time = time.time()
     bucket = os.environ["CHROMADB_BUCKET"]
     temp_dir = tempfile.mkdtemp()
@@ -1756,16 +2231,30 @@ def perform_final_merge(
                 total_chunks=len(chunk_keys),
                 intermediate_key=intermediate_key,
             )
-            chunk_temp = tempfile.mkdtemp()
 
-            try:
-                # Download intermediate chunk
-                download_from_s3(bucket, intermediate_key, chunk_temp)
+            # Check if this intermediate was pre-downloaded
+            # If so, use the pre-downloaded temp directory (faster, reduces lock hold time)
+            use_predownloaded = intermediate_key in predownloaded_map
+            if use_predownloaded:
+                chunk_temp = predownloaded_map[intermediate_key]
                 logger.info(
-                    "Downloaded chunk",
+                    "Using pre-downloaded intermediate (no download needed)",
                     chunk_index=i,
                     intermediate_key=intermediate_key,
                 )
+            else:
+                # Fallback: download during lock (legacy behavior)
+                chunk_temp = tempfile.mkdtemp()
+
+            try:
+                if not use_predownloaded:
+                    # Download intermediate chunk (only if not pre-downloaded)
+                    download_from_s3(bucket, intermediate_key, chunk_temp)
+                    logger.info(
+                        "Downloaded chunk during lock (consider pre-downloading)",
+                        chunk_index=i,
+                        intermediate_key=intermediate_key,
+                    )
 
                 # Load chunk using receipt_chroma for consistency
                 chunk_client = ChromaClient(
@@ -1847,7 +2336,10 @@ def perform_final_merge(
                         chunk_client = None
                 except Exception:
                     pass
-                shutil.rmtree(chunk_temp, ignore_errors=True)
+                # Only clean up temp dir if we created it (not pre-downloaded)
+                # Pre-downloaded directories are cleaned up by the caller (final_merge_handler)
+                if not use_predownloaded:
+                    shutil.rmtree(chunk_temp, ignore_errors=True)
 
         # CRITICAL: Close ChromaDB client BEFORE uploading to ensure SQLite files are flushed and unlocked
         close_chromadb_client(chroma_client, collection_name="final_merge")
