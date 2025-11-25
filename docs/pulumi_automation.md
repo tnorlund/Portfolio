@@ -124,7 +124,7 @@ desired_capacity=0, # Start at zero
 
 🚀 Complete Scale-to-Zero Workflow
 
-# receipt_trainer/infrastructure/on_demand.py
+# receipt_layoutlm/infrastructure/on_demand.py (example - historical reference)
 
 class OnDemandTrainingOrchestrator:
 
@@ -205,7 +205,7 @@ temporary_stack = {
 
 🔧 Implementation Plan
 
-1. Refactor existing receipt_trainer to support on-demand deployment
+1. Refactor existing receipt_layoutlm to support on-demand deployment
 2. Create Pulumi Automation API wrapper for infrastructure
 3. Build simple CLI/API trigger system
 4. Test end-to-end workflow with small training job

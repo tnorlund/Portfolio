@@ -102,8 +102,8 @@ jobs:
         run: |
           # Check formatting but don't block (we have auto-format on PRs)
           echo "Checking Python formatting..."
-          black --check --line-length=79 receipt_dynamo receipt_label receipt_chroma receipt_trainer receipt_trainer_1 receipt_upload infra || echo "::warning::Some files need black formatting"
-          isort --check-only --profile=black --line-length=79 receipt_dynamo receipt_label receipt_chroma receipt_trainer receipt_trainer_1 receipt_upload infra || echo "::warning::Some imports need isort formatting"
+          black --check --line-length=79 receipt_dynamo receipt_label receipt_chroma receipt_upload infra || echo "::warning::Some files need black formatting"
+          isort --check-only --profile=black --line-length=79 receipt_dynamo receipt_label receipt_chroma receipt_upload infra || echo "::warning::Some imports need isort formatting"
 
       - name: Set up Node.js
         if: steps.changes.outputs.portfolio == 'true'
@@ -228,13 +228,8 @@ jobs:
             echo "Installing receipt_dynamo dependency from PR source..."
             python3 -m pip install --force-reinstall -e "receipt_dynamo[test]" --disable-pip-version-check
             # Install the target package from PR source with all test dependencies
-            if [[ "${{ matrix.package }}" == "receipt_trainer" ]] || [[ "${{ matrix.package }}" == "receipt_trainer_1" ]]; then
-              echo "Installing ${{ matrix.package }} from PR source..."
-              python3 -m pip install --force-reinstall -e "${{ matrix.package }}[dev]" --disable-pip-version-check
-            else
-              echo "Installing ${{ matrix.package }} from PR source..."
-              python3 -m pip install --force-reinstall -e "${{ matrix.package }}[test]" --disable-pip-version-check
-            fi
+            echo "Installing ${{ matrix.package }} from PR source..."
+            python3 -m pip install --force-reinstall -e "${{ matrix.package }}[test]" --disable-pip-version-check
           else
             # receipt_dynamo package - just install it directly
             echo "Installing ${{ matrix.package }} from PR source..."
