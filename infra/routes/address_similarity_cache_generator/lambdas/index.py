@@ -10,8 +10,8 @@ from datetime import datetime, timezone
 
 import boto3
 from receipt_dynamo import DynamoClient
-from receipt_label.utils.chroma_s3_helpers import download_snapshot_atomic
-from receipt_label.vector_store.client.chromadb_client import ChromaDBClient
+from receipt_chroma.s3 import download_snapshot_atomic
+from receipt_chroma.data.chroma_client import ChromaClient
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -205,7 +205,7 @@ def handler(_event, _context):
         )
 
         # Initialize ChromaDB client in read mode from downloaded snapshot
-        chroma_client = ChromaDBClient(
+        chroma_client = ChromaClient(
             persist_directory=temp_dir,
             mode="read",
         )
@@ -373,7 +373,7 @@ def handler(_event, _context):
         logger.info("Fetching embedding for line ID: %s", line_id)
 
         # Get the line's embedding from ChromaDB
-        line_data = chroma_client.get_by_ids(
+        line_data = chroma_client.get(
             collection_name="lines",
             ids=[line_id],
             include=["embeddings", "metadatas", "documents"],

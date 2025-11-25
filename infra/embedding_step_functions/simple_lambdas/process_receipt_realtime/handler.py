@@ -15,11 +15,10 @@ import uuid
 from typing import Any, Dict
 
 from receipt_dynamo import DynamoClient
-from receipt_label.vector_store import VectorClient
+from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_label.merchant_resolution.embeddings import upsert_embeddings
 from receipt_label.embedding.line.realtime import embed_lines_realtime
 from receipt_label.embedding.word.realtime import embed_words_realtime
-from receipt_label.utils.chroma_s3_helpers import upload_bundled_delta_to_s3
 from receipt_dynamo.entities.compaction_run import CompactionRun
 from receipt_label.merchant_resolution.resolver import resolve_receipt
 from receipt_label.data.places_api import PlacesAPI
@@ -96,7 +95,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             chroma_line_client = None
             if chroma_http:
                 try:
-                    chroma_line_client = VectorClient.create_chromadb_client(
+                    chroma_line_client = ChromaClient(
                         mode="read", http_url=chroma_http
                     )
                 except Exception:
@@ -137,12 +136,12 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         logger.info("Creating ChromaDB deltas...")
 
-        line_client = VectorClient.create_chromadb_client(
+        line_client = ChromaClient(
             persist_directory=delta_lines_dir,
             mode="delta",
             metadata_only=True,
         )
-        word_client = VectorClient.create_chromadb_client(
+        word_client = ChromaClient(
             persist_directory=delta_words_dir,
             mode="delta",
             metadata_only=True,
@@ -164,33 +163,16 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         lines_prefix = f"lines/delta/{run_id}/"
         words_prefix = f"words/delta/{run_id}/"
 
-        lines_upload = upload_bundled_delta_to_s3(
-            local_delta_dir=delta_lines_dir,
+        # persist_and_upload_delta closes the client and uploads files
+        lines_delta_key = line_client.persist_and_upload_delta(
             bucket=chroma_bucket,
-            delta_prefix=lines_prefix,
-            metadata={
-                "run_id": run_id,
-                "image_id": image_id,
-                "receipt_id": str(receipt_id),
-                "collection": "lines",
-            },
+            s3_prefix=lines_prefix,
         )
-        if lines_upload.get("status") != "uploaded":
-            raise RuntimeError(f"Failed to upload line delta to S3: {lines_upload.get('error')}")
 
-        words_upload = upload_bundled_delta_to_s3(
-            local_delta_dir=delta_words_dir,
+        words_delta_key = word_client.persist_and_upload_delta(
             bucket=chroma_bucket,
-            delta_prefix=words_prefix,
-            metadata={
-                "run_id": run_id,
-                "image_id": image_id,
-                "receipt_id": str(receipt_id),
-                "collection": "words",
-            },
+            s3_prefix=words_prefix,
         )
-        if words_upload.get("status") != "uploaded":
-            raise RuntimeError(f"Failed to upload word delta to S3: {words_upload.get('error')}")
 
         logger.info("Uploaded deltas to S3")
 
@@ -200,8 +182,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 run_id=run_id,
                 image_id=image_id,
                 receipt_id=receipt_id,
-                lines_delta_prefix=lines_prefix,
-                words_delta_prefix=words_prefix,
+                lines_delta_prefix=lines_delta_key,
+                words_delta_prefix=words_delta_key,
             )
         )
 
