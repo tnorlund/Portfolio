@@ -74,8 +74,8 @@ class RealtimeEmbeddingWorkflow(ComponentResource):
 
         # Add permissions to invoke Lambda functions
         lambda_arns = [
-            self.lambda_functions["embedding-find-receipts-realtime"].arn,
-            self.lambda_functions["embedding-process-receipt-realtime"].arn,
+            self.lambda_functions["embedding-find-receipts"].arn,
+            self.lambda_functions["embedding-process-receipt"].arn,
         ]
 
         RolePolicy(
@@ -105,8 +105,8 @@ class RealtimeEmbeddingWorkflow(ComponentResource):
             role_arn=self.sf_role.arn,
             tags={"environment": stack},
             definition=Output.all(
-                self.lambda_functions["embedding-find-receipts-realtime"].arn,
-                self.lambda_functions["embedding-process-receipt-realtime"].arn,
+                self.lambda_functions["embedding-find-receipts"].arn,
+                self.lambda_functions["embedding-process-receipt"].arn,
             ).apply(self._create_realtime_definition),
             opts=ResourceOptions(parent=self),
         )
@@ -196,8 +196,3 @@ class RealtimeEmbeddingWorkflow(ComponentResource):
                 },
             }
         )
-
-
-
-
-

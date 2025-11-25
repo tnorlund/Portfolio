@@ -191,7 +191,7 @@ def _split_into_chunks(event: Dict[str, Any]) -> Dict[str, Any]:
             # Each result should have delta_key and collection info
             if isinstance(result, dict) and "delta_key" in result:
 
-                # Ensure collection is set (default to words for backward compat)
+                # Ensure collection is set (default to words)
                 if "collection" not in result:
                     result["collection"] = "words"
                 valid_deltas.append(result)
@@ -213,10 +213,10 @@ def _split_into_chunks(event: Dict[str, Any]) -> Dict[str, Any]:
 
         # Determine chunk size based on collection type
         has_words = any(
-            d.get("collection") == "receipt_words" for d in valid_deltas
+            d.get("collection") == "words" for d in valid_deltas
         )
         has_lines = any(
-            d.get("collection") == "receipt_lines" for d in valid_deltas
+            d.get("collection") == "lines" for d in valid_deltas
         )
 
         # Use appropriate chunk size based on collection type

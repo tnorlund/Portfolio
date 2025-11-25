@@ -6,8 +6,8 @@ import tempfile
 from typing import Any, Dict, List, Optional
 
 from receipt_dynamo.constants import ChromaDBCollection
-from receipt_label.utils.chroma_client import ChromaDBClient
-from receipt_label.utils.chroma_s3_helpers import (
+from receipt_chroma import ChromaClient
+from receipt_chroma.s3 import (
     download_snapshot_atomic,
     upload_snapshot_atomic,
 )
@@ -120,7 +120,7 @@ def process_metadata_updates(
                     continue
 
                 # Load ChromaDB using helper in metadata-only mode
-                chroma_client = ChromaDBClient(
+                chroma_client = ChromaClient(
                     persist_directory=temp_dir,
                     mode="read",
                     metadata_only=True,  # No embeddings needed for metadata updates
@@ -163,8 +163,8 @@ def process_metadata_updates(
                 # Update metadata for this receipt
                 if event_name == "REMOVE":
                     updated_count = remove_receipt_metadata(
-                        collection_obj, 
-                        image_id, 
+                        collection_obj,
+                        image_id,
                         receipt_id,
                         logger,
                         metrics,
@@ -173,9 +173,9 @@ def process_metadata_updates(
                     )
                 else:  # MODIFY
                     updated_count = update_receipt_metadata(
-                        collection_obj, 
-                        image_id, 
-                        receipt_id, 
+                        collection_obj,
+                        image_id,
+                        receipt_id,
                         changes,
                         logger,
                         metrics,
@@ -329,7 +329,7 @@ def process_metadata_updates(
 
 
 def apply_metadata_updates_in_memory(
-    chroma_client: ChromaDBClient,
+    chroma_client: ChromaClient,
     metadata_updates: List[Any],
     collection: ChromaDBCollection,
     logger: Any,

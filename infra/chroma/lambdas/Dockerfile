@@ -2,7 +2,8 @@
 # Multi-stage build for ChromaDB ECS Service
 
 # Stage 1: Install ChromaDB and dependencies
-FROM python:3.12-slim AS dependencies
+# Use AWS ECR mirror to avoid Docker Hub rate limits
+FROM public.ecr.aws/docker/library/python:3.12-slim AS dependencies
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \

@@ -7,8 +7,8 @@ import time
 from typing import Any, Dict, List, Optional
 
 from receipt_dynamo.constants import ChromaDBCollection
-from receipt_label.utils.chroma_client import ChromaDBClient
-from receipt_label.utils.chroma_s3_helpers import (
+from receipt_chroma import ChromaClient
+from receipt_chroma.s3 import (
     download_snapshot_atomic,
     upload_snapshot_atomic,
 )
@@ -76,7 +76,7 @@ def process_label_updates(
             return results
 
         # Load ChromaDB using helper in metadata-only mode
-        chroma_client = ChromaDBClient(
+        chroma_client = ChromaClient(
             persist_directory=temp_dir,
             mode="read",
             metadata_only=True,  # No embeddings needed for metadata updates
@@ -132,7 +132,7 @@ def process_label_updates(
 
                 if event_name == "REMOVE":
                     updated_count = remove_word_labels(
-                        collection_obj, 
+                        collection_obj,
                         chromadb_id,
                         logger,
                         metrics,
@@ -315,7 +315,7 @@ def process_label_updates(
 
 
 def apply_label_updates_in_memory(
-    chroma_client: ChromaDBClient,
+    chroma_client: ChromaClient,
     label_updates: List[Any],
     collection: ChromaDBCollection,
     logger: Any,
