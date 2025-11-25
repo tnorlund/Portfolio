@@ -9,11 +9,10 @@ import boto3
 import logging
 from botocore.exceptions import ClientError, BotoCoreError
 
-from receipt_label.vector_store import VectorClient
+from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_label.merchant_resolution.embeddings import upsert_embeddings
 from receipt_label.embedding.line.realtime import embed_lines_realtime
 from receipt_label.embedding.word.realtime import embed_words_realtime
-from receipt_label.utils.chroma_s3_helpers import upload_bundled_delta_to_s3
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities.compaction_run import CompactionRun
 from receipt_dynamo.entities.receipt_line import ReceiptLine
@@ -186,7 +185,7 @@ def _process_single(payload: Dict[str, Any]):
                         # Use the most recent snapshot (or a specific one)
                         # For now, try the EFS path directly
                         try:
-                            chroma_line_client = VectorClient.create_chromadb_client(
+                            chroma_line_client = ChromaClient(
                                 persist_directory=efs_path,
                                 mode="read",
                             )
@@ -260,7 +259,7 @@ def _process_single(payload: Dict[str, Any]):
 
                 if downloaded_files > 0:
                     # Create local ChromaDB client pointing to snapshot
-                    chroma_line_client = VectorClient.create_chromadb_client(
+                    chroma_line_client = ChromaClient(
                         persist_directory=snapshot_dir,
                         mode="read",
                     )
@@ -276,7 +275,7 @@ def _process_single(payload: Dict[str, Any]):
                 # Fall back to HTTP if snapshot download fails
                 if chroma_http:
                     try:
-                        chroma_line_client = VectorClient.create_chromadb_client(
+                        chroma_line_client = ChromaClient(
                             mode="read",
                             http_url=chroma_http
                         )
@@ -345,10 +344,10 @@ def _process_single(payload: Dict[str, Any]):
     delta_lines_dir = os.path.join(tempfile.gettempdir(), f"lines_{run_id}")
     delta_words_dir = os.path.join(tempfile.gettempdir(), f"words_{run_id}")
 
-    line_client = VectorClient.create_chromadb_client(
+    line_client = ChromaClient(
         persist_directory=delta_lines_dir, mode="delta", metadata_only=True
     )
-    word_client = VectorClient.create_chromadb_client(
+    word_client = ChromaClient(
         persist_directory=delta_words_dir, mode="delta", metadata_only=True
     )
 
@@ -366,30 +365,17 @@ def _process_single(payload: Dict[str, Any]):
     logger.info(
         "Uploading line delta to s3://%s/%s", chroma_bucket, lines_prefix
     )
-    upload_bundled_delta_to_s3(
-        local_delta_dir=delta_lines_dir,
+    # persist_and_upload_delta closes the client and uploads files
+    lines_delta_key = line_client.persist_and_upload_delta(
         bucket=chroma_bucket,
-        delta_prefix=lines_prefix,
-        metadata={
-            "run_id": run_id,
-            "image_id": image_id,
-            "receipt_id": str(receipt_id),
-            "collection": "lines",
-        },
+        s3_prefix=lines_prefix,
     )
     logger.info(
         "Uploading word delta to s3://%s/%s", chroma_bucket, words_prefix
     )
-    upload_bundled_delta_to_s3(
-        local_delta_dir=delta_words_dir,
+    words_delta_key = word_client.persist_and_upload_delta(
         bucket=chroma_bucket,
-        delta_prefix=words_prefix,
-        metadata={
-            "run_id": run_id,
-            "image_id": image_id,
-            "receipt_id": str(receipt_id),
-            "collection": "words",
-        },
+        s3_prefix=words_prefix,
     )
 
     dynamo = DynamoClient(dynamo_table)
@@ -398,15 +384,15 @@ def _process_single(payload: Dict[str, Any]):
             run_id=run_id,
             image_id=image_id,
             receipt_id=receipt_id,
-            lines_delta_prefix=lines_prefix,
-            words_delta_prefix=words_prefix,
+            lines_delta_prefix=lines_delta_key,
+            words_delta_prefix=words_delta_key,
         )
     )
 
     result = {
         "run_id": run_id,
-        "lines_prefix": lines_prefix,
-        "words_prefix": words_prefix,
+        "lines_prefix": lines_delta_key,
+        "words_prefix": words_delta_key,
     }
     logger.info("Completed embed_from_ndjson: %s", result)
     return result
