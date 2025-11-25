@@ -25,6 +25,7 @@ jobs:
     outputs:
       receipt_dynamo_changed: ${{ steps.changes.outputs.receipt_dynamo }}
       receipt_label_changed: ${{ steps.changes.outputs.receipt_label }}
+      receipt_chroma_changed: ${{ steps.changes.outputs.receipt_chroma }}
       portfolio_changed: ${{ steps.changes.outputs.portfolio }}
       infra_changed: ${{ steps.changes.outputs.infra }}
       workflows_changed: ${{ steps.changes.outputs.workflows }}
@@ -46,6 +47,10 @@ jobs:
               - 'pytest*.ini'
             receipt_label:
               - 'receipt_label/**'
+              - 'conftest.py'
+              - 'pytest*.ini'
+            receipt_chroma:
+              - 'receipt_chroma/**'
               - 'conftest.py'
               - 'pytest*.ini'
             infra:
@@ -97,8 +102,8 @@ jobs:
         run: |
           # Check formatting but don't block (we have auto-format on PRs)
           echo "Checking Python formatting..."
-          black --check --line-length=79 receipt_dynamo receipt_label receipt_trainer receipt_trainer_1 receipt_upload infra || echo "::warning::Some files need black formatting"
-          isort --check-only --profile=black --line-length=79 receipt_dynamo receipt_label receipt_trainer receipt_trainer_1 receipt_upload infra || echo "::warning::Some imports need isort formatting"
+          black --check --line-length=79 receipt_dynamo receipt_label receipt_chroma receipt_trainer receipt_trainer_1 receipt_upload infra || echo "::warning::Some files need black formatting"
+          isort --check-only --profile=black --line-length=79 receipt_dynamo receipt_label receipt_chroma receipt_trainer receipt_trainer_1 receipt_upload infra || echo "::warning::Some imports need isort formatting"
 
       - name: Set up Node.js
         if: steps.changes.outputs.portfolio == 'true'
@@ -125,11 +130,12 @@ jobs:
     if: |
       needs.fast-checks.outputs.receipt_dynamo_changed == 'true' ||
       needs.fast-checks.outputs.receipt_label_changed == 'true' ||
+      needs.fast-checks.outputs.receipt_chroma_changed == 'true' ||
       needs.fast-checks.outputs.workflows_changed == 'true' ||
       github.event_name == 'schedule'
     strategy:
       matrix:
-        package: [receipt_dynamo, receipt_label]
+        package: [receipt_dynamo, receipt_label, receipt_chroma]
     steps:
       - uses: actions/checkout@v4
 
@@ -196,7 +202,7 @@ jobs:
           python3 -m pip install --upgrade pip wheel --disable-pip-version-check
 
           # CRITICAL: Always install packages in editable mode to use PR's source code
-          # Special handling for receipt_label which depends on receipt_dynamo
+          # Special handling for receipt_label and receipt_chroma which depend on receipt_dynamo
           if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
             echo "Installing receipt_label with local receipt_dynamo dependency..."
             # First install receipt_dynamo without its test dependencies
@@ -212,6 +218,12 @@ jobs:
               "openai>=1.3.0" "openai-agents>=0.0.12" "fuzzywuzzy>=0.18.0" "RapidFuzz>=3.13.0" \
               "chromadb>=0.5.0" "numpy>=1.24.0" "pinecone>=3.0" \
               --disable-pip-version-check
+          elif [[ "${{ matrix.package }}" == "receipt_chroma" ]]; then
+            echo "Installing receipt_chroma with local receipt_dynamo dependency..."
+            # First install receipt_dynamo without its test dependencies
+            python3 -m pip install --force-reinstall -e "receipt_dynamo" --disable-pip-version-check
+            # Then install receipt_chroma with all dependencies (including receipt-dynamo)
+            python3 -m pip install --force-reinstall -e "receipt_chroma[test]" --disable-pip-version-check
           elif [[ "${{ matrix.package }}" != "receipt_dynamo" ]]; then
             echo "Installing receipt_dynamo dependency from PR source..."
             python3 -m pip install --force-reinstall -e "receipt_dynamo[test]" --disable-pip-version-check
@@ -246,6 +258,7 @@ jobs:
         if: |
           (matrix.package == 'receipt_dynamo' && needs.fast-checks.outputs.receipt_dynamo_changed == 'true') ||
           (matrix.package == 'receipt_label' && needs.fast-checks.outputs.receipt_label_changed == 'true') ||
+          (matrix.package == 'receipt_chroma' && needs.fast-checks.outputs.receipt_chroma_changed == 'true') ||
           needs.fast-checks.outputs.workflows_changed == 'true' ||
           github.event_name == 'schedule'
         env:
@@ -277,6 +290,34 @@ jobs:
               --tb=short \
               --maxfail=3 \
               --durations=10 \
+              -m "integration and not end_to_end and not slow and not performance" \
+              --cov-append \
+              --cov \
+              --cov-report=term-missing \
+              --cov-report=xml
+          elif [[ "${{ matrix.package }}" == "receipt_chroma" ]]; then
+            # receipt_chroma: Run unit tests first (fast feedback), then integration tests
+            echo "🚀 Running receipt_chroma unit tests with optimized timeout..."
+            python -m pytest tests \
+              -n auto \
+              --timeout=30 \
+              --tb=short \
+              --maxfail=5 \
+              --durations=10 \
+              --dist=loadfile \
+              -m "unit and not end_to_end and not slow and not performance" \
+              --cov \
+              --cov-report=term-missing \
+              --cov-report=xml
+
+            echo "🚀 Running receipt_chroma integration tests with extended timeout..."
+            python -m pytest tests \
+              -n auto \
+              --timeout=300 \
+              --tb=short \
+              --maxfail=3 \
+              --durations=10 \
+              --dist=loadfile \
               -m "integration and not end_to_end and not slow and not performance" \
               --cov-append \
               --cov \
