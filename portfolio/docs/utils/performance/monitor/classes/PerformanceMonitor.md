@@ -6,7 +6,7 @@
 
 # Class: PerformanceMonitor
 
-Defined in: [utils/performance/monitor.ts:22](https://github.com/tnorlund/Portfolio/blob/eafcb2422dc724479da3958ed13b1fc7c1bf22d7/portfolio/utils/performance/monitor.ts#L22)
+Defined in: [utils/performance/monitor.ts:22](https://github.com/tnorlund/Portfolio/blob/6fcd361bd87b3b68ade35676f3c62433ca5773de/portfolio/utils/performance/monitor.ts#L22)
 
 ## Constructors
 
@@ -14,7 +14,7 @@ Defined in: [utils/performance/monitor.ts:22](https://github.com/tnorlund/Portfo
 
 > **new PerformanceMonitor**(): `PerformanceMonitor`
 
-Defined in: [utils/performance/monitor.ts:28](https://github.com/tnorlund/Portfolio/blob/eafcb2422dc724479da3958ed13b1fc7c1bf22d7/portfolio/utils/performance/monitor.ts#L28)
+Defined in: [utils/performance/monitor.ts:28](https://github.com/tnorlund/Portfolio/blob/6fcd361bd87b3b68ade35676f3c62433ca5773de/portfolio/utils/performance/monitor.ts#L28)
 
 #### Returns
 
@@ -26,7 +26,7 @@ Defined in: [utils/performance/monitor.ts:28](https://github.com/tnorlund/Portfo
 
 > **destroy**(): `void`
 
-Defined in: [utils/performance/monitor.ts:176](https://github.com/tnorlund/Portfolio/blob/eafcb2422dc724479da3958ed13b1fc7c1bf22d7/portfolio/utils/performance/monitor.ts#L176)
+Defined in: [utils/performance/monitor.ts:176](https://github.com/tnorlund/Portfolio/blob/6fcd361bd87b3b68ade35676f3c62433ca5773de/portfolio/utils/performance/monitor.ts#L176)
 
 #### Returns
 
@@ -38,7 +38,7 @@ Defined in: [utils/performance/monitor.ts:176](https://github.com/tnorlund/Portf
 
 > **getMetrics**(): [`PerformanceMetrics`](../interfaces/PerformanceMetrics.md)
 
-Defined in: [utils/performance/monitor.ts:158](https://github.com/tnorlund/Portfolio/blob/eafcb2422dc724479da3958ed13b1fc7c1bf22d7/portfolio/utils/performance/monitor.ts#L158)
+Defined in: [utils/performance/monitor.ts:158](https://github.com/tnorlund/Portfolio/blob/6fcd361bd87b3b68ade35676f3c62433ca5773de/portfolio/utils/performance/monitor.ts#L158)
 
 #### Returns
 
@@ -50,7 +50,7 @@ Defined in: [utils/performance/monitor.ts:158](https://github.com/tnorlund/Portf
 
 > **reset**(): `void`
 
-Defined in: [utils/performance/monitor.ts:171](https://github.com/tnorlund/Portfolio/blob/eafcb2422dc724479da3958ed13b1fc7c1bf22d7/portfolio/utils/performance/monitor.ts#L171)
+Defined in: [utils/performance/monitor.ts:171](https://github.com/tnorlund/Portfolio/blob/6fcd361bd87b3b68ade35676f3c62433ca5773de/portfolio/utils/performance/monitor.ts#L171)
 
 #### Returns
 
@@ -62,7 +62,7 @@ Defined in: [utils/performance/monitor.ts:171](https://github.com/tnorlund/Portf
 
 > **subscribe**(`callback`): () => `boolean`
 
-Defined in: [utils/performance/monitor.ts:162](https://github.com/tnorlund/Portfolio/blob/eafcb2422dc724479da3958ed13b1fc7c1bf22d7/portfolio/utils/performance/monitor.ts#L162)
+Defined in: [utils/performance/monitor.ts:162](https://github.com/tnorlund/Portfolio/blob/6fcd361bd87b3b68ade35676f3c62433ca5773de/portfolio/utils/performance/monitor.ts#L162)
 
 #### Parameters
 
@@ -84,7 +84,7 @@ Defined in: [utils/performance/monitor.ts:162](https://github.com/tnorlund/Portf
 
 > **trackAPICall**(`endpoint`, `duration`): `void`
 
-Defined in: [utils/performance/monitor.ts:139](https://github.com/tnorlund/Portfolio/blob/eafcb2422dc724479da3958ed13b1fc7c1bf22d7/portfolio/utils/performance/monitor.ts#L139)
+Defined in: [utils/performance/monitor.ts:139](https://github.com/tnorlund/Portfolio/blob/6fcd361bd87b3b68ade35676f3c62433ca5773de/portfolio/utils/performance/monitor.ts#L139)
 
 #### Parameters
 
@@ -106,7 +106,7 @@ Defined in: [utils/performance/monitor.ts:139](https://github.com/tnorlund/Portf
 
 > **trackComponentRender**(`componentName`, `duration`): `void`
 
-Defined in: [utils/performance/monitor.ts:128](https://github.com/tnorlund/Portfolio/blob/eafcb2422dc724479da3958ed13b1fc7c1bf22d7/portfolio/utils/performance/monitor.ts#L128)
+Defined in: [utils/performance/monitor.ts:128](https://github.com/tnorlund/Portfolio/blob/6fcd361bd87b3b68ade35676f3c62433ca5773de/portfolio/utils/performance/monitor.ts#L128)
 
 #### Parameters
 
@@ -128,7 +128,7 @@ Defined in: [utils/performance/monitor.ts:128](https://github.com/tnorlund/Portf
 
 > **trackImageLoad**(`imageSrc`, `duration`): `void`
 
-Defined in: [utils/performance/monitor.ts:150](https://github.com/tnorlund/Portfolio/blob/eafcb2422dc724479da3958ed13b1fc7c1bf22d7/portfolio/utils/performance/monitor.ts#L150)
+Defined in: [utils/performance/monitor.ts:150](https://github.com/tnorlund/Portfolio/blob/6fcd361bd87b3b68ade35676f3c62433ca5773de/portfolio/utils/performance/monitor.ts#L150)
 
 #### Parameters
 
