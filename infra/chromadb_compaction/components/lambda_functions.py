@@ -129,9 +129,18 @@ class HybridLambdaDeployment(ComponentResource):
             f"{name}-docker",
             lambda_config={
                 "role_arn": self.lambda_role.arn,
-                    "timeout": 300,  # 5 minutes should be enough with Elastic throughput. Can reduce if Elastic proves faster
-                "memory_size": 2048,
-                "ephemeral_storage": 5120,  # 5GB for ChromaDB snapshots
+                # Increased timeout from 300s to 900s (15 min) based on log analysis:
+                # - Multiple timeouts at 300s with operations still running
+                # - Snapshot operations (400-550MB) require more time
+                # - Evidence shows operations taking 300-516 seconds
+                "timeout": 900,  # 15 minutes to handle large snapshot operations
+                # Increased memory from 2048MB to 4096MB (4GB) based on log analysis:
+                # - Multiple failures showing "Max Memory Used: 2048 MB" (hitting limit)
+                # - Snapshot uploads average 446MB, largest 552MB
+                # - Need headroom for runtime + ChromaDB + snapshot operations
+                "memory_size": 4096,  # 4GB to handle large snapshots without OOM kills
+                # Increased ephemeral storage from 5GB to 10GB for large snapshot operations
+                "ephemeral_storage": 10240,  # 10GB for ChromaDB snapshots (largest seen: 552MB)
                 "reserved_concurrent_executions": 10,  # Prevent throttling
                 "description": (
                     "Enhanced ChromaDB compaction handler for stream and "
