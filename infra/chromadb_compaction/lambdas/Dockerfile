@@ -10,12 +10,12 @@ ENV HNSWLIB_NO_NATIVE=1
 
 # Copy only the dependency packages (triggers rebuild only when these change)
 COPY receipt_dynamo/ /tmp/receipt_dynamo/
-COPY receipt_label/ /tmp/receipt_label/
+COPY receipt_chroma/ /tmp/receipt_chroma/
 
 # Install dependencies
 RUN pip install --no-cache-dir /tmp/receipt_dynamo && \
-    pip install --no-cache-dir "/tmp/receipt_label[full]" && \
-    rm -rf /tmp/receipt_dynamo /tmp/receipt_label
+    pip install --no-cache-dir /tmp/receipt_chroma && \
+    rm -rf /tmp/receipt_dynamo /tmp/receipt_chroma
 
 # Stage 2: Copy Lambda-specific code (changes frequently, but doesn't invalidate deps cache)
 FROM dependencies

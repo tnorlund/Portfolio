@@ -35,7 +35,7 @@ from utils import (
 
 # Import receipt_dynamo for proper DynamoDB operations
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_label.utils.lock_manager import LockManager
+from receipt_chroma import LockManager
 
 # Import modular components - flexible for both Lambda and test environments
 try:
@@ -172,19 +172,19 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     - SQS messages: Process stream events and traditional deltas
     - Direct invocation: Traditional compaction operations
     """
-    # Configure receipt_label loggers to respect Lambda's LOG_LEVEL for debugging
+    # Configure receipt_chroma loggers to respect Lambda's LOG_LEVEL for debugging
     import logging
 
     log_level = getattr(
         logging, os.environ.get("LOG_LEVEL", "INFO"), logging.INFO
     )
 
-    # Configure the main receipt_label logger and its child loggers
-    receipt_label_logger = logging.getLogger("receipt_label")
-    receipt_label_logger.setLevel(log_level)
+    # Configure the main receipt_chroma logger and its child loggers
+    receipt_chroma_logger = logging.getLogger("receipt_chroma")
+    receipt_chroma_logger.setLevel(log_level)
 
-    # CRITICAL FIX: Add handler to receipt_label loggers so they can output to CloudWatch
-    if not receipt_label_logger.handlers:
+    # CRITICAL FIX: Add handler to receipt_chroma loggers so they can output to CloudWatch
+    if not receipt_chroma_logger.handlers:
         # Create a handler that outputs to stdout (CloudWatch captures this)
         handler = logging.StreamHandler()
 
@@ -200,18 +200,18 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             )
 
         handler.setFormatter(formatter)
-        receipt_label_logger.addHandler(handler)
+        receipt_chroma_logger.addHandler(handler)
 
         # Prevent propagation to avoid duplicate logs
-        receipt_label_logger.propagate = False
+        receipt_chroma_logger.propagate = False
 
     # Specifically configure the lock_manager logger that we need for debugging
-    lock_manager_logger = logging.getLogger("receipt_label.utils.lock_manager")
+    lock_manager_logger = logging.getLogger("receipt_chroma.lock_manager")
     lock_manager_logger.setLevel(log_level)
 
     # Test messages to verify logger configuration is working
-    receipt_label_logger.info(
-        "INFO: receipt_label logger configured for level %s with handler",
+    receipt_chroma_logger.info(
+        "INFO: receipt_chroma logger configured for level %s with handler",
         os.environ.get("LOG_LEVEL", "INFO"),
     )
     lock_manager_logger.debug(
@@ -457,8 +457,8 @@ def process_stream_messages(
 
         # Phase A: off-lock snapshot download/open once
         import tempfile
-        from receipt_label.utils.chroma_s3_helpers import download_snapshot_atomic, upload_snapshot_atomic
-        from receipt_label.utils.chroma_client import ChromaDBClient
+        from receipt_chroma import ChromaClient
+        from receipt_chroma.s3 import download_snapshot_atomic, upload_snapshot_atomic
 
         # Storage mode configuration - easily switchable
         storage_mode = os.environ.get("CHROMADB_STORAGE_MODE", "auto").lower()
@@ -646,54 +646,12 @@ def process_stream_messages(
                 temp_path=snapshot_path
             )
 
-        # Initialize ChromaDB client
-        chroma_client = ChromaDBClient(persist_directory=snapshot_path, mode="snapshot")
-
-        def close_chromadb_client(client: Any, collection_name: str) -> None:
-            """
-            Properly close ChromaDB client to ensure SQLite files are flushed and unlocked.
-
-            This is critical to prevent corruption when uploading/copying SQLite files
-            that are still being written to by an active ChromaDB connection.
-            """
-            if client is None:
-                return
-
-            try:
-                logger.info(
-                    "Closing ChromaDB client",
-                    collection=collection_name,
-                    persist_directory=getattr(client, 'persist_directory', None)
-                )
-
-                # Clear collections cache
-                if hasattr(client, '_collections'):
-                    client._collections.clear()
-
-                # Clear client reference
-                if hasattr(client, '_client') and client._client is not None:
-                    # ChromaDB PersistentClient doesn't have explicit close(), but clearing
-                    # the reference allows Python GC to close SQLite connections
-                    client._client = None
-
-                # Force garbage collection to ensure SQLite connections are closed
-                import gc
-                gc.collect()
-
-                # Small delay to ensure file handles are released by OS
-                import time as _time
-                _time.sleep(0.1)
-
-                logger.info(
-                    "ChromaDB client closed successfully",
-                    collection=collection_name
-                )
-            except Exception as e:
-                logger.warning(
-                    "Error closing ChromaDB client (non-critical)",
-                    error=str(e),
-                    collection=collection_name
-                )
+        # Initialize ChromaDB client using receipt_chroma
+        chroma_client = ChromaClient(
+            persist_directory=snapshot_path,
+            mode="snapshot",
+            metadata_only=True,  # No embeddings needed for snapshot operations
+        )
 
         try:
             # Merge deltas first
@@ -741,7 +699,8 @@ def process_stream_messages(
             # Phase B: Optimized upload with minimal lock time
             # CRITICAL: Close ChromaDB client BEFORE acquiring lock to ensure SQLite files are flushed and unlocked
             # This prevents corruption when uploading files that are still being written to
-            close_chromadb_client(chroma_client, collection.value)
+            # Using receipt_chroma's close() method which properly handles issue #5868
+            chroma_client.close()
             chroma_client = None
 
             published = False
@@ -1043,7 +1002,7 @@ def process_stream_messages(
             # This prevents SQLite file locks from persisting
             if 'chroma_client' in locals() and chroma_client is not None:
                 try:
-                    close_chromadb_client(chroma_client, collection.value)
+                    chroma_client.close()
                 except Exception as e:
                     logger.warning(
                         "Error closing ChromaDB client in finally block",
