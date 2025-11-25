@@ -482,14 +482,19 @@ class LambdaFunctionsComponent(ComponentResource):
             },
             "embedding-compact": {
                 "memory": GiB(
-                    4
-                ),  # Increased from 2GB to ensure heartbeat thread gets CPU time
-                # Final merge operations are CPU-intensive and need sufficient resources
-                # for both main processing and heartbeat thread
-                "timeout": MINUTE * 15,
+                    8
+                ),  # Increased from 4GB to 8GB to prevent OOM kills during final merge
+                # Logs show Lambda hitting 4096 MB limit and being killed after ~131 seconds
+                # Final merge operations download large snapshots (578MB+) and merge them,
+                # requiring significant memory headroom for ChromaDB operations
+                "timeout": MINUTE * 15,  # AWS Lambda maximum timeout is 900s (15 minutes)
+                # Note: If operations need longer, consider breaking into multiple steps
+                # or using Step Functions to orchestrate multiple Lambda invocations
                 "ephemeral_storage": GiB(
-                    6
-                ),  # Increased - compaction downloads/uploads large snapshots
+                    10
+                ),  # Increased from 6GB to 10GB for large snapshot operations
+                # Final merge downloads intermediate snapshots (578MB+) and final snapshot,
+                # requiring sufficient disk space for temporary storage
                 "handler_type": "compaction",
             },
         }
