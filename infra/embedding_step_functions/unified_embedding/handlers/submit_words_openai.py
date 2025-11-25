@@ -6,17 +6,22 @@ This handler reads from S3, formats the data, and submits to OpenAI's Batch API.
 import os
 from pathlib import Path
 from typing import Any, Dict
-from receipt_label.embedding.word import (
+
+from openai import OpenAI
+from receipt_chroma.embedding.openai import (
     add_batch_summary,
     create_batch_summary,
+    submit_openai_batch,
+    upload_to_openai,
+)
+from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_label.embedding.word import (
     deserialize_receipt_words,
     download_serialized_words,
     format_word_context_embedding,
     generate_batch_id,
     query_receipt_words,
-    submit_openai_batch,
     update_word_embedding_status,
-    upload_to_openai,
     write_ndjson,
 )
 
@@ -97,17 +102,24 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         input_file = write_ndjson(batch_id, formatted_words)
         logger.info("Wrote input file", filepath=input_file)
 
+        # Initialize clients
+        dynamo_client = DynamoClient(os.environ.get("DYNAMODB_TABLE_NAME"))
+        openai_client = OpenAI()
+
         # Upload NDJSON file to OpenAI
-        openai_file = upload_to_openai(input_file)
+        openai_file = upload_to_openai(Path(input_file), openai_client)
         logger.info("Uploaded input file to OpenAI", file_id=openai_file.id)
 
         # Submit batch job to OpenAI
-        openai_batch = submit_openai_batch(openai_file.id)
+        openai_batch = submit_openai_batch(openai_file.id, openai_client)
         logger.info("Submitted OpenAI batch", batch_id=openai_batch.id)
 
         # Create batch summary for tracking
         batch_summary = create_batch_summary(
-            batch_id, openai_batch.id, input_file
+            batch_id=batch_id,
+            openai_batch_id=openai_batch.id,
+            file_path=input_file,
+            batch_type="WORD_EMBEDDING",
         )
         logger.info("Created batch summary", batch_id=batch_summary.batch_id)
 
@@ -118,7 +130,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         )
 
         # Store batch summary in DynamoDB
-        add_batch_summary(batch_summary)
+        add_batch_summary(batch_summary, dynamo_client)
         logger.info("Added batch summary to DynamoDB")
 
         return {

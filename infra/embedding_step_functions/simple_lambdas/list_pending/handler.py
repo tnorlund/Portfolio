@@ -1,7 +1,7 @@
 """Simple Lambda handler for listing pending embedding batches.
 
 This is a lightweight, zip-based Lambda function that only depends on
-receipt_label and boto3. No container overhead needed.
+receipt_dynamo and boto3. No container overhead needed.
 
 When batch count is large, creates an S3 manifest to avoid Step Functions
 payload size limits.
@@ -16,10 +16,9 @@ from datetime import datetime
 from typing import Any, Dict, List, Union
 
 import boto3
-from receipt_label.embedding.line import list_pending_line_embedding_batches
-from receipt_label.embedding.word import (
-    list_pending_embedding_batches as list_pending_word_embedding_batches,
-)
+from receipt_dynamo.constants import BatchType
+from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.entities import BatchSummary
 
 # Set up logging
 logger = logging.getLogger()
@@ -30,6 +29,36 @@ logger.setLevel(logging.INFO)
 MAX_PAYLOAD_SIZE = 150 * 1024  # 150KB (conservative)
 
 s3_client = boto3.client("s3")
+
+
+def _list_pending_batches(
+    dynamo_client: DynamoClient, batch_type: BatchType
+) -> List[BatchSummary]:
+    """
+    List pending embedding batches from DynamoDB with pagination.
+
+    Args:
+        dynamo_client: DynamoDB client instance
+        batch_type: Type of batches to list (LINE_EMBEDDING or WORD_EMBEDDING)
+
+    Returns:
+        List of pending batch summaries
+    """
+    summaries, lek = dynamo_client.get_batch_summaries_by_status(
+        status="PENDING",
+        batch_type=batch_type,
+        limit=25,
+        last_evaluated_key=None,
+    )
+    while lek:
+        next_summaries, lek = dynamo_client.get_batch_summaries_by_status(
+            status="PENDING",
+            batch_type=batch_type,
+            limit=25,
+            last_evaluated_key=lek,
+        )
+        summaries.extend(next_summaries)
+    return summaries
 
 
 def lambda_handler(
@@ -81,11 +110,18 @@ def lambda_handler(
     )
 
     try:
+        # Initialize DynamoDB client
+        dynamo_client = DynamoClient(os.environ.get("DYNAMODB_TABLE_NAME"))
+
         # Get pending batches from DynamoDB based on type
         if batch_type == "word":
-            pending_batches = list_pending_word_embedding_batches()
+            pending_batches = _list_pending_batches(
+                dynamo_client, BatchType.WORD_EMBEDDING
+            )
         else:
-            pending_batches = list_pending_line_embedding_batches()
+            pending_batches = _list_pending_batches(
+                dynamo_client, BatchType.LINE_EMBEDDING
+            )
 
         logger.info(
             "Found %d pending %s embedding batches",
@@ -198,7 +234,7 @@ def lambda_handler(
             }
 
     except AttributeError as e:
-        logger.error("Client manager configuration error: %s", str(e))
+        logger.error("Client configuration error: %s", str(e))
         raise RuntimeError(f"Configuration error: {str(e)}") from e
 
     except KeyError as e:

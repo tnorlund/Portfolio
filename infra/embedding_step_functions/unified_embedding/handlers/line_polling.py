@@ -8,53 +8,51 @@ import logging
 import os
 import tempfile
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import boto3
-from receipt_label.embedding.common import (
+from receipt_chroma.embedding.delta import save_line_embeddings_as_delta
+from receipt_chroma.embedding.openai import (
+    download_openai_batch_result,
+    get_openai_batch_status,
+    get_unique_receipt_and_image_ids,
     handle_batch_status,
     mark_items_for_retry,
 )
-from receipt_label.embedding.line.poll import (
-    download_openai_batch_result,
-    get_openai_batch_status,
-    get_receipt_descriptions,
-    mark_batch_complete,
-    save_line_embeddings_as_delta,
-    update_line_embedding_status_to_success,
-)
-from receipt_label.utils import get_client_manager
+from receipt_dynamo.constants import BatchStatus, EmbeddingStatus
+from receipt_dynamo.data.dynamo_client import DynamoClient
+
 import utils.logging
-from utils.metrics import (
-    track_openai_api_call,
-    track_s3_operation,
-    track_chromadb_operation,
-    metrics,
-    emf_metrics,
-)
-from utils.tracing import (
-    trace_openai_batch_poll,
-    trace_s3_snapshot_operation,
-    trace_chromadb_delta_save,
-    tracer,
-)
-from utils.timeout_handler import (
-    start_lambda_monitoring,
-    stop_lambda_monitoring,
-    check_timeout,
-    with_timeout_protection,
-    operation_with_timeout,
-)
 from utils.circuit_breaker import (
+    CircuitBreakerOpenError,
+    chromadb_circuit_breaker,
     openai_circuit_breaker,
     s3_circuit_breaker,
-    chromadb_circuit_breaker,
-    CircuitBreakerOpenError,
 )
 from utils.graceful_shutdown import (
+    final_cleanup,
     register_shutdown_callback,
     timeout_aware_operation,
-    final_cleanup,
+)
+from utils.metrics import (
+    emf_metrics,
+    metrics,
+    track_chromadb_operation,
+    track_openai_api_call,
+    track_s3_operation,
+)
+from utils.timeout_handler import (
+    check_timeout,
+    operation_with_timeout,
+    start_lambda_monitoring,
+    stop_lambda_monitoring,
+    with_timeout_protection,
+)
+from utils.tracing import (
+    trace_chromadb_delta_save,
+    trace_openai_batch_poll,
+    trace_s3_snapshot_operation,
+    tracer,
 )
 
 get_logger = utils.logging.get_logger
@@ -68,7 +66,7 @@ s3_client = boto3.client("s3")
 async def _ensure_receipt_metadata_async(
     image_id: str,
     receipt_id: int,
-    client_manager,
+    dynamo_client: DynamoClient,
 ) -> None:
     """Create receipt_metadata if missing, using LangChain workflow with Ollama Cloud.
 
@@ -79,7 +77,9 @@ async def _ensure_receipt_metadata_async(
     try:
         # Check if metadata already exists
         try:
-            existing_metadata = client_manager.dynamo.get_receipt_metadata(image_id, receipt_id)
+            existing_metadata = dynamo_client.get_receipt_metadata(
+                image_id, receipt_id
+            )
             logger.debug(
                 "Receipt metadata already exists",
                 image_id=image_id,
@@ -89,7 +89,10 @@ async def _ensure_receipt_metadata_async(
         except Exception as check_error:
             # Check if this is a validation error (corrupted metadata) vs missing metadata
             error_str = str(check_error).lower()
-            if "place id must be a string" in error_str or "place_id must be a string" in error_str:
+            if (
+                "place id must be a string" in error_str
+                or "place_id must be a string" in error_str
+            ):
                 # Metadata exists but is corrupted - delete it and recreate
                 logger.warning(
                     "Found corrupted receipt_metadata, will delete and recreate",
@@ -102,8 +105,8 @@ async def _ensure_receipt_metadata_async(
                     # We need to construct the key manually since we can't read it
                     pk = f"IMAGE#{image_id}"
                     sk = f"RECEIPT#{receipt_id:05d}#METADATA"
-                    client_manager.dynamo._client.delete_item(
-                        TableName=client_manager.dynamo.table_name,
+                    dynamo_client._client.delete_item(
+                        TableName=dynamo_client.table_name,
                         Key={
                             "PK": {"S": pk},
                             "SK": {"S": sk},
@@ -150,7 +153,9 @@ async def _ensure_receipt_metadata_async(
 
         # Import the LangChain workflow (with error handling for missing dependencies)
         try:
-            from receipt_label.langchain.metadata_creation import create_receipt_metadata_simple
+            from receipt_label.langchain.metadata_creation import (
+                create_receipt_metadata_simple,
+            )
         except ImportError as import_error:
             error_msg = f"Failed to import LangChain workflow: {import_error}. Make sure langchain dependencies are installed."
             logger.error(error_msg, exc_info=True)
@@ -158,7 +163,9 @@ async def _ensure_receipt_metadata_async(
 
         # Get receipt data (lines and words) for the LangChain workflow
         try:
-            receipt_details = client_manager.dynamo.get_receipt_details(image_id, receipt_id)
+            receipt_details = dynamo_client.get_receipt_details(
+                image_id, receipt_id
+            )
             receipt_lines = receipt_details.lines
             receipt_words = receipt_details.words
         except Exception as receipt_error:
@@ -169,7 +176,7 @@ async def _ensure_receipt_metadata_async(
         # Create metadata using LangChain workflow
         try:
             metadata = await create_receipt_metadata_simple(
-                client=client_manager.dynamo,
+                client=dynamo_client,
                 image_id=image_id,
                 receipt_id=receipt_id,
                 google_places_api_key=google_places_key,
@@ -219,7 +226,7 @@ async def _ensure_receipt_metadata_async(
 def _ensure_receipt_metadata(
     image_id: str,
     receipt_id: int,
-    client_manager,
+    dynamo_client: DynamoClient,
 ) -> None:
     """Synchronous wrapper for async metadata creation.
 
@@ -227,9 +234,12 @@ def _ensure_receipt_metadata(
     so we can use asyncio.run() directly.
     """
     import asyncio
+
     try:
         # Lambda functions don't have a running event loop, so asyncio.run() should work
-        asyncio.run(_ensure_receipt_metadata_async(image_id, receipt_id, client_manager))
+        asyncio.run(
+            _ensure_receipt_metadata_async(image_id, receipt_id, dynamo_client)
+        )
     except Exception as e:
         # Log the full error with traceback for debugging
         logger.error(
@@ -277,6 +287,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Use the same JSON formatter as the handler logger if available
         try:
             from utils.logging import StructuredFormatter
+
             formatter = StructuredFormatter()
         except ImportError:
             # Fallback to simple format
@@ -305,11 +316,15 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     error_types: Dict[str, int] = {}
 
     try:
-        return _handle_internal(event, context, collected_metrics, metric_dimensions, error_types)
+        return _handle_internal(
+            event, context, collected_metrics, metric_dimensions, error_types
+        )
     except CircuitBreakerOpenError as e:
         logger.error("Circuit breaker prevented operation", error=str(e))
         collected_metrics["LinePollingCircuitBreakerBlocked"] = 1
-        error_types["CircuitBreakerOpenError"] = error_types.get("CircuitBreakerOpenError", 0) + 1
+        error_types["CircuitBreakerOpenError"] = (
+            error_types.get("CircuitBreakerOpenError", 0) + 1
+        )
 
         # Log metrics via EMF before raising
         emf_metrics.log_metrics(
@@ -332,10 +347,14 @@ def _handle_internal(
 ) -> Dict[str, Any]:
     """Internal handler with full instrumentation and error handling."""
     try:
-        return _handle_internal_core(event, context, collected_metrics, metric_dimensions, error_types)
+        return _handle_internal_core(
+            event, context, collected_metrics, metric_dimensions, error_types
+        )
     except TimeoutError as e:
         logger.error("Timeout error in line polling", error=str(e))
-        collected_metrics["LinePollingTimeouts"] = collected_metrics.get("LinePollingTimeouts", 0) + 1
+        collected_metrics["LinePollingTimeouts"] = (
+            collected_metrics.get("LinePollingTimeouts", 0) + 1
+        )
         metric_dimensions["timeout_stage"] = "handler"
         error_types["TimeoutError"] = error_types.get("TimeoutError", 0) + 1
         tracer.add_annotation("timeout", "true")
@@ -353,9 +372,13 @@ def _handle_internal(
             error=str(e),
             error_type=type(e).__name__,
         )
-        collected_metrics["LinePollingErrors"] = collected_metrics.get("LinePollingErrors", 0) + 1
+        collected_metrics["LinePollingErrors"] = (
+            collected_metrics.get("LinePollingErrors", 0) + 1
+        )
         metric_dimensions["error_type"] = type(e).__name__
-        error_types[type(e).__name__] = error_types.get(type(e).__name__, 0) + 1
+        error_types[type(e).__name__] = (
+            error_types.get(type(e).__name__, 0) + 1
+        )
         tracer.add_annotation("error", type(e).__name__)
         tracer.add_metadata(
             "error_details", {"message": str(e), "type": type(e).__name__}
@@ -393,7 +416,11 @@ def _handle_internal_core(
     batch_index = event.get("batch_index")
     pending_batches = event.get("pending_batches")
 
-    if manifest_s3_key and manifest_s3_bucket is not None and batch_index is not None:
+    if (
+        manifest_s3_key
+        and manifest_s3_bucket is not None
+        and batch_index is not None
+    ):
         # Download manifest from S3 and look up batch info
         logger.info(
             "Loading batch info from S3 manifest",
@@ -402,21 +429,29 @@ def _handle_internal_core(
             batch_index=batch_index,
         )
 
-        with tempfile.NamedTemporaryFile(mode="r", suffix=".json", delete=False) as tmp_file:
+        with tempfile.NamedTemporaryFile(
+            mode="r", suffix=".json", delete=False
+        ) as tmp_file:
             tmp_file_path = tmp_file.name
 
         try:
-            s3_client.download_file(manifest_s3_bucket, manifest_s3_key, tmp_file_path)
+            s3_client.download_file(
+                manifest_s3_bucket, manifest_s3_key, tmp_file_path
+            )
             with open(tmp_file_path, "r", encoding="utf-8") as f:
                 manifest = json.load(f)
 
             # Look up batch info using batch_index
             if not isinstance(manifest, dict) or "batches" not in manifest:
-                raise ValueError(f"Invalid manifest format: expected dict with 'batches' key")
+                raise ValueError(
+                    f"Invalid manifest format: expected dict with 'batches' key"
+                )
 
             batches = manifest.get("batches", [])
             if not isinstance(batches, list):
-                raise ValueError(f"Invalid manifest format: 'batches' must be a list")
+                raise ValueError(
+                    f"Invalid manifest format: 'batches' must be a list"
+                )
 
             if batch_index < 0 or batch_index >= len(batches):
                 raise ValueError(
@@ -441,7 +476,9 @@ def _handle_internal_core(
     elif pending_batches is not None and batch_index is not None:
         # Use inline pending_batches array
         if not isinstance(pending_batches, list):
-            raise ValueError(f"pending_batches must be a list, got {type(pending_batches).__name__}")
+            raise ValueError(
+                f"pending_batches must be a list, got {type(pending_batches).__name__}"
+            )
 
         if batch_index < 0 or batch_index >= len(pending_batches):
             raise ValueError(
@@ -481,7 +518,9 @@ def _handle_internal_core(
     # Check timeout before starting
     if check_timeout():
         logger.error("Lambda timeout detected before processing")
-        collected_metrics["LinePollingTimeouts"] = collected_metrics.get("LinePollingTimeouts", 0) + 1
+        collected_metrics["LinePollingTimeouts"] = (
+            collected_metrics.get("LinePollingTimeouts", 0) + 1
+        )
         metric_dimensions["timeout_stage"] = "pre_processing"
         error_types["TimeoutError"] = error_types.get("TimeoutError", 0) + 1
 
@@ -493,8 +532,144 @@ def _handle_internal_core(
         )
         raise TimeoutError("Lambda timeout detected before processing")
 
-    with operation_with_timeout("get_client_manager", max_duration=30):
-        client_manager = get_client_manager()
+    # Create DynamoDB client directly (replacing client_manager pattern)
+    with operation_with_timeout("create_dynamo_client", max_duration=30):
+        dynamo_client = DynamoClient(os.environ["DYNAMODB_TABLE_NAME"])
+
+    # Create OpenAI client (needed for batch status check)
+    from openai import OpenAI
+
+    openai_client = OpenAI()  # Uses OPENAI_API_KEY from environment
+
+    # Inline helper functions to avoid receipt_label dependency
+    def _parse_metadata_from_line_id(custom_id: str) -> Dict[str, Any]:
+        """
+        Parse metadata from a line ID in the format IMAGE#uuid#RECEIPT#00001#LINE#00001.
+
+        Args:
+            custom_id: Custom ID string in format IMAGE#<id>#RECEIPT#<id>#LINE#<id>
+
+        Returns:
+            Dictionary with image_id, receipt_id, line_id, and source
+        """
+        parts = custom_id.split("#")
+        if len(parts) != 6:
+            raise ValueError(
+                f"Invalid custom_id format for line embedding: {custom_id}. "
+                f"Expected format: IMAGE#<id>#RECEIPT#<id>#LINE#<id> (6 parts), "
+                f"but got {len(parts)} parts"
+            )
+        return {
+            "image_id": parts[1],
+            "receipt_id": int(parts[3]),
+            "line_id": int(parts[5]),
+            "source": "openai_line_embedding_batch",
+        }
+
+    def _get_receipt_descriptions(
+        results: List[dict],
+    ) -> dict[str, dict[int, dict]]:
+        """
+        Get the receipt descriptions from the embedding results, grouped by image
+        and receipt.
+
+        Returns:
+            A dict mapping each image_id (str) to a dict that maps each
+            receipt_id (int) to a dict containing:
+                - receipt
+                - lines
+                - words
+                - letters
+                - labels
+                - metadata
+                - sections
+        """
+        descriptions: dict[str, dict[int, dict]] = {}
+        for receipt_id, image_id in get_unique_receipt_and_image_ids(results):
+            receipt_details = dynamo_client.get_receipt_details(
+                image_id=image_id,
+                receipt_id=receipt_id,
+            )
+            receipt_metadata = dynamo_client.get_receipt_metadata(
+                image_id=image_id,
+                receipt_id=receipt_id,
+            )
+            receipt_sections = dynamo_client.get_receipt_sections_from_receipt(
+                image_id=image_id,
+                receipt_id=receipt_id,
+            )
+            descriptions.setdefault(image_id, {})[receipt_id] = {
+                "receipt": receipt_details.receipt,
+                "lines": receipt_details.lines,
+                "words": receipt_details.words,
+                "letters": receipt_details.letters,
+                "labels": receipt_details.labels,
+                "metadata": receipt_metadata,
+                "sections": receipt_sections,
+            }
+        return descriptions
+
+    def _update_line_embedding_status_to_success(
+        results: List[dict],
+        descriptions: dict[str, dict[int, dict]],
+    ) -> None:
+        """
+        Update the embedding status of the lines to SUCCESS.
+
+        Args:
+            results: The list of embedding results.
+            descriptions: The nested dict of receipt descriptions.
+        """
+        # Group lines by receipt for efficient updates
+        lines_by_receipt: dict[str, dict[int, list]] = {}
+
+        for result in results:
+            meta = _parse_metadata_from_line_id(result["custom_id"])
+            image_id = meta["image_id"]
+            receipt_id = meta["receipt_id"]
+            line_id = meta["line_id"]
+
+            # Get the lines for this receipt from descriptions
+            receipt_lines = descriptions[image_id][receipt_id]["lines"]
+
+            # Find the target line by direct line_id match
+            target_line = next(
+                (line for line in receipt_lines if line.line_id == line_id),
+                None,
+            )
+
+            if target_line:
+                # Initialize the receipt dict if needed
+                if image_id not in lines_by_receipt:
+                    lines_by_receipt[image_id] = {}
+                if receipt_id not in lines_by_receipt[image_id]:
+                    lines_by_receipt[image_id][receipt_id] = []
+
+                # Update the embedding status to SUCCESS
+                target_line.embedding_status = EmbeddingStatus.SUCCESS.value
+                lines_by_receipt[image_id][receipt_id].append(target_line)
+            else:
+                raise ValueError(
+                    f"No line found with ID {line_id} in receipt {receipt_id} "
+                    f"from image {image_id}"
+                )
+
+        # Update lines individually to avoid transaction conflicts when multiple
+        # batches are processed concurrently
+        for image_id, receipts in lines_by_receipt.items():
+            for receipt_id, lines_to_update in receipts.items():
+                dynamo_client.update_receipt_lines(lines_to_update)
+
+    def _mark_batch_complete(batch_id: str) -> None:
+        """
+        Mark the embedding batch as complete in the system.
+
+        Args:
+            batch_id: The identifier of the batch.
+        """
+        batch_summary = dynamo_client.get_batch_summary(batch_id)
+        batch_summary.status = BatchStatus.COMPLETED.value
+        dynamo_client.update_batch_summary(batch_summary)
 
     # Check the batch status with monitoring and circuit breaker protection
     with trace_openai_batch_poll(batch_id, openai_batch_id):
@@ -502,7 +677,9 @@ def _handle_internal_core(
             "get_openai_batch_status", max_duration=60
         ):
             with openai_circuit_breaker().call():
-                batch_status = get_openai_batch_status(openai_batch_id)
+                batch_status = get_openai_batch_status(
+                    openai_batch_id, openai_client
+                )
 
     logger.info(
         "Retrieved batch status from OpenAI",
@@ -513,7 +690,9 @@ def _handle_internal_core(
 
     # Add status to trace
     tracer.add_annotation("batch_status", batch_status)
-    collected_metrics["BatchStatusChecked"] = collected_metrics.get("BatchStatusChecked", 0) + 1
+    collected_metrics["BatchStatusChecked"] = (
+        collected_metrics.get("BatchStatusChecked", 0) + 1
+    )
     metric_dimensions["batch_status"] = batch_status
 
     # Use modular status handler with timeout protection
@@ -522,7 +701,8 @@ def _handle_internal_core(
             batch_id=batch_id,
             openai_batch_id=openai_batch_id,
             status=batch_status,
-            client_manager=client_manager,
+            dynamo_client=dynamo_client,
+            openai_client=openai_client,
         )
 
     # Process based on the action determined by status handler
@@ -535,9 +715,13 @@ def _handle_internal_core(
         # Check timeout before processing
         if check_timeout():
             logger.error("Lambda timeout detected before result processing")
-            collected_metrics["LinePollingTimeouts"] = collected_metrics.get("LinePollingTimeouts", 0) + 1
+            collected_metrics["LinePollingTimeouts"] = (
+                collected_metrics.get("LinePollingTimeouts", 0) + 1
+            )
             metric_dimensions["timeout_stage"] = "pre_results"
-            error_types["TimeoutError"] = error_types.get("TimeoutError", 0) + 1
+            error_types["TimeoutError"] = (
+                error_types.get("TimeoutError", 0) + 1
+            )
 
             # Log metrics via EMF before raising
             emf_metrics.log_metrics(
@@ -555,7 +739,9 @@ def _handle_internal_core(
                 "download_openai_batch_result", max_duration=180
             ):
                 with openai_circuit_breaker().call():
-                    results = download_openai_batch_result(openai_batch_id)
+                    results = download_openai_batch_result(
+                        openai_batch_id, openai_client
+                    )
 
         result_count = len(results)
         logger.info("Downloaded embedding results", result_count=result_count)
@@ -565,16 +751,21 @@ def _handle_internal_core(
         # Ensure receipt_metadata exists for all receipts (create if missing using Places API)
         # This is required because get_receipt_descriptions requires receipt_metadata
         # and embeddings need metadata to work properly
-        with operation_with_timeout("ensure_receipt_metadata", max_duration=120):
-            from receipt_label.embedding.line.poll import _get_unique_receipt_and_image_ids
-            unique_receipts = _get_unique_receipt_and_image_ids(results)
+        with operation_with_timeout(
+            "ensure_receipt_metadata", max_duration=120
+        ):
+            unique_receipts = get_unique_receipt_and_image_ids(results)
             missing_metadata = []
             for receipt_id, image_id in unique_receipts:
                 try:
-                    _ensure_receipt_metadata(image_id, receipt_id, client_manager)
+                    _ensure_receipt_metadata(
+                        image_id, receipt_id, dynamo_client
+                    )
                     # Verify metadata was created (or already existed)
                     try:
-                        client_manager.dynamo.get_receipt_metadata(image_id, receipt_id)
+                        dynamo_client.get_receipt_metadata(
+                            image_id, receipt_id
+                        )
                         logger.debug(
                             "Verified receipt_metadata exists",
                             image_id=image_id,
@@ -613,7 +804,7 @@ def _handle_internal_core(
         with operation_with_timeout(
             "get_receipt_descriptions", max_duration=60
         ):
-            descriptions = get_receipt_descriptions(results)
+            descriptions = _get_receipt_descriptions(results)
 
         description_count = len(descriptions)
         logger.info(
@@ -638,9 +829,13 @@ def _handle_internal_core(
         # Check timeout before saving delta
         if check_timeout():
             logger.error("Lambda timeout detected before delta save")
-            collected_metrics["LinePollingTimeouts"] = collected_metrics.get("LinePollingTimeouts", 0) + 1
+            collected_metrics["LinePollingTimeouts"] = (
+                collected_metrics.get("LinePollingTimeouts", 0) + 1
+            )
             metric_dimensions["timeout_stage"] = "pre_save"
-            error_types["TimeoutError"] = error_types.get("TimeoutError", 0) + 1
+            error_types["TimeoutError"] = (
+                error_types.get("TimeoutError", 0) + 1
+            )
 
             # Log metrics via EMF before raising
             emf_metrics.log_metrics(
@@ -687,11 +882,16 @@ def _handle_internal_core(
                         except RuntimeError as e:
                             # Check if this is a validation failure
                             error_msg = str(e).lower()
-                            if "validation failed" in error_msg or "delta validation" in error_msg:
+                            if (
+                                "validation failed" in error_msg
+                                or "delta validation" in error_msg
+                            ):
                                 # Validation failed after retries
                                 validation_success = False
                                 validation_attempts = 3  # max_retries default
-                                validation_retries = 2  # retries = attempts - 1
+                                validation_retries = (
+                                    2  # retries = attempts - 1
+                                )
                             raise
 
         delta_save_duration = time.time() - delta_save_start_time
@@ -703,9 +903,13 @@ def _handle_internal_core(
                 batch_id=batch_id,
                 error=delta_result.get("error", "Unknown error"),
             )
-            collected_metrics["LinePollingErrors"] = collected_metrics.get("LinePollingErrors", 0) + 1
+            collected_metrics["LinePollingErrors"] = (
+                collected_metrics.get("LinePollingErrors", 0) + 1
+            )
             metric_dimensions["error_type"] = "delta_save_failed"
-            error_types["delta_save_failed"] = error_types.get("delta_save_failed", 0) + 1
+            error_types["delta_save_failed"] = (
+                error_types.get("delta_save_failed", 0) + 1
+            )
 
             # Log metrics via EMF
             emf_metrics.log_metrics(
@@ -737,12 +941,18 @@ def _handle_internal_core(
 
         # Collect metrics (aggregated, not per-call)
         collected_metrics["SavedEmbeddings"] = embedding_count
-        collected_metrics["DeltasSaved"] = collected_metrics.get("DeltasSaved", 0) + 1
+        collected_metrics["DeltasSaved"] = (
+            collected_metrics.get("DeltasSaved", 0) + 1
+        )
         collected_metrics["DeltaValidationAttempts"] = validation_attempts
         if validation_retries > 0:
             collected_metrics["DeltaValidationRetries"] = validation_retries
-        collected_metrics["DeltaValidationSuccess"] = 1 if validation_success else 0
-        collected_metrics["DeltaSaveDuration"] = delta_save_duration  # Includes upload + validation
+        collected_metrics["DeltaValidationSuccess"] = (
+            1 if validation_success else 0
+        )
+        collected_metrics["DeltaSaveDuration"] = (
+            delta_save_duration  # Includes upload + validation
+        )
         metric_dimensions["collection"] = "lines"
 
         # Add to trace
@@ -753,14 +963,16 @@ def _handle_internal_core(
         with operation_with_timeout(
             "update_line_embedding_status_to_success", max_duration=60
         ):
-            update_line_embedding_status_to_success(results, descriptions)
+            _update_line_embedding_status_to_success(results, descriptions)
         logger.info("Updated line embedding status to SUCCESS")
 
         # Mark batch complete only if NOT in step function mode (skip_sqs=False means standalone mode)
         # In step function mode, batches will be marked complete after successful compaction
         if not skip_sqs:
-            with operation_with_timeout("mark_batch_complete", max_duration=30):
-                mark_batch_complete(batch_id)
+            with operation_with_timeout(
+                "mark_batch_complete", max_duration=30
+            ):
+                _mark_batch_complete(batch_id)
             logger.info("Marked batch as complete", batch_id=batch_id)
         else:
             logger.info(
@@ -780,7 +992,7 @@ def _handle_internal_core(
             "embedding_count": delta_result["embedding_count"],
             "storage": "s3_delta",
             "collection": "lines",
-            "database": "lines",  # Database for line embeddings
+            "database": "lines",
         }
 
         logger.info("Successfully completed line polling", **full_result)
@@ -806,7 +1018,9 @@ def _handle_internal_core(
 
         result_s3_key = f"poll_results/{batch_id}/result.json"
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp_file:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False
+        ) as tmp_file:
             json.dump(full_result, tmp_file, indent=2)
             tmp_file_path = tmp_file.name
 
@@ -850,7 +1064,7 @@ def _handle_internal_core(
             )
 
             # Get receipt details for successful results
-            descriptions = get_receipt_descriptions(partial_results)
+            descriptions = _get_receipt_descriptions(partial_results)
 
             # Get configuration from environment
             bucket_name = os.environ.get("CHROMADB_BUCKET")
@@ -885,7 +1099,7 @@ def _handle_internal_core(
                 # Don't return early - still need to mark failed items for retry
             else:
                 # Update status for successful lines only if delta was saved
-                update_line_embedding_status_to_success(
+                _update_line_embedding_status_to_success(
                     partial_results, descriptions
                 )
                 logger.info(
@@ -895,11 +1109,13 @@ def _handle_internal_core(
 
         # Mark failed items for retry
         if failed_ids:
-            marked = mark_items_for_retry(failed_ids, "line", client_manager)
+            marked = mark_items_for_retry(failed_ids, "line", dynamo_client)
             logger.info("Marked lines for retry", count=marked)
 
         # Log metrics via EMF
-        collected_metrics["LinePollingPartialResults"] = collected_metrics.get("LinePollingPartialResults", 0) + 1
+        collected_metrics["LinePollingPartialResults"] = (
+            collected_metrics.get("LinePollingPartialResults", 0) + 1
+        )
         emf_metrics.log_metrics(
             collected_metrics,
             dimensions=metric_dimensions if metric_dimensions else None,
@@ -930,7 +1146,9 @@ def _handle_internal_core(
         )
 
         # Log metrics via EMF
-        collected_metrics["LinePollingFailures"] = collected_metrics.get("LinePollingFailures", 0) + 1
+        collected_metrics["LinePollingFailures"] = (
+            collected_metrics.get("LinePollingFailures", 0) + 1
+        )
         error_types.update(error_info.get("error_types", {}))
         emf_metrics.log_metrics(
             collected_metrics,
@@ -958,7 +1176,12 @@ def _handle_internal_core(
 
     elif status_result["action"] in ["wait", "handle_cancellation"]:
         # Batch is still processing or was cancelled
-        collected_metrics[f"LinePolling{status_result['action'].title()}"] = collected_metrics.get(f"LinePolling{status_result['action'].title()}", 0) + 1
+        collected_metrics[f"LinePolling{status_result['action'].title()}"] = (
+            collected_metrics.get(
+                f"LinePolling{status_result['action'].title()}", 0
+            )
+            + 1
+        )
 
         # Log metrics via EMF
         emf_metrics.log_metrics(
@@ -987,9 +1210,13 @@ def _handle_internal_core(
             action=status_result.get("action"),
             status_result=status_result,
         )
-        collected_metrics["LinePollingErrors"] = collected_metrics.get("LinePollingErrors", 0) + 1
+        collected_metrics["LinePollingErrors"] = (
+            collected_metrics.get("LinePollingErrors", 0) + 1
+        )
         metric_dimensions["error_type"] = "unknown_action"
-        error_types["unknown_action"] = error_types.get("unknown_action", 0) + 1
+        error_types["unknown_action"] = (
+            error_types.get("unknown_action", 0) + 1
+        )
         tracer.add_annotation("error", "unknown_action")
 
         # Log metrics via EMF
