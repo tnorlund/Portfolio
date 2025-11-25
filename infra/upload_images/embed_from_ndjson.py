@@ -6,11 +6,10 @@ from typing import Any, Dict, Iterator
 
 import boto3
 
-from receipt_label.vector_store import VectorClient
+from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_label.merchant_resolution.embeddings import upsert_embeddings
 from receipt_label.embedding.line.realtime import embed_lines_realtime
 from receipt_label.embedding.word.realtime import embed_words_realtime
-from receipt_label.utils.chroma_s3_helpers import upload_bundled_delta_to_s3
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities.compaction_run import CompactionRun
 from receipt_label.merchant_resolution.resolver import resolve_receipt
@@ -109,12 +108,10 @@ def _process_single(payload: Dict[str, Any]):
         )
 
         # Minimal HTTP client wrapper: reuse query_words worker? Here we skip client if not set
-        from receipt_label.vector_store import VectorClient as _VC
-
         chroma_line_client = None
         if chroma_http:
             try:
-                chroma_line_client = _VC.create_chromadb_client(
+                chroma_line_client = ChromaClient(
                     mode="read", http_url=chroma_http
                 )
             except Exception:
@@ -151,10 +148,10 @@ def _process_single(payload: Dict[str, Any]):
     delta_lines_dir = os.path.join(tempfile.gettempdir(), f"lines_{run_id}")
     delta_words_dir = os.path.join(tempfile.gettempdir(), f"words_{run_id}")
 
-    line_client = VectorClient.create_chromadb_client(
+    line_client = ChromaClient(
         persist_directory=delta_lines_dir, mode="delta", metadata_only=True
     )
-    word_client = VectorClient.create_chromadb_client(
+    word_client = ChromaClient(
         persist_directory=delta_words_dir, mode="delta", metadata_only=True
     )
 
@@ -171,27 +168,14 @@ def _process_single(payload: Dict[str, Any]):
     # Upload deltas to S3
     lines_prefix = f"lines/delta/{run_id}/"
     words_prefix = f"words/delta/{run_id}/"
-    upload_bundled_delta_to_s3(
-        local_delta_dir=delta_lines_dir,
+    # persist_and_upload_delta closes the client and uploads files
+    lines_delta_key = line_client.persist_and_upload_delta(
         bucket=chroma_bucket,
-        delta_prefix=lines_prefix,
-        metadata={
-            "run_id": run_id,
-            "image_id": image_id,
-            "receipt_id": str(receipt_id),
-            "collection": "lines",
-        },
+        s3_prefix=lines_prefix,
     )
-    upload_bundled_delta_to_s3(
-        local_delta_dir=delta_words_dir,
+    words_delta_key = word_client.persist_and_upload_delta(
         bucket=chroma_bucket,
-        delta_prefix=words_prefix,
-        metadata={
-            "run_id": run_id,
-            "image_id": image_id,
-            "receipt_id": str(receipt_id),
-            "collection": "words",
-        },
+        s3_prefix=words_prefix,
     )
 
     # Insert CompactionRun to trigger compactor via streams
@@ -201,13 +185,13 @@ def _process_single(payload: Dict[str, Any]):
             run_id=run_id,
             image_id=image_id,
             receipt_id=receipt_id,
-            lines_delta_prefix=lines_prefix,
-            words_delta_prefix=words_prefix,
+            lines_delta_prefix=lines_delta_key,
+            words_delta_prefix=words_delta_key,
         )
     )
 
     return {
         "run_id": run_id,
-        "lines_prefix": lines_prefix,
-        "words_prefix": words_prefix,
+        "lines_prefix": lines_delta_key,
+        "words_prefix": words_delta_key,
     }
