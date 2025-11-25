@@ -347,19 +347,6 @@ class LambdaFunctionsComponent(ComponentResource):
                 "timeout": MINUTE * 5,
                 "source_dir": "mark_batches_complete",
             },
-            "embedding-find-receipts": {
-                "handler": "handler.lambda_handler",
-                "memory": GIGABYTE * 1,
-                "timeout": MINUTE * 15,
-                "source_dir": "find_receipts_realtime",
-            },
-            "embedding-process-receipt": {
-                "handler": "handler.lambda_handler",
-                "memory": GIGABYTE
-                * 2,  # Higher memory for embedding processing
-                "timeout": MINUTE * 15,
-                "source_dir": "process_receipt_realtime",
-            },
         }
 
         for name, lambda_config in zip_configs.items():
@@ -383,10 +370,8 @@ class LambdaFunctionsComponent(ComponentResource):
             "S3_BUCKET": self.batch_bucket.bucket,
         }
 
-        # Add ChromaDB bucket for realtime processing Lambdas, split_into_chunks, normalize_poll_batches_data, create_chunk_groups, prepare_chunk_groups, and prepare_merge_pairs
+        # Add ChromaDB bucket for split_into_chunks, normalize_poll_batches_data, create_chunk_groups, prepare_chunk_groups, and prepare_merge_pairs
         if config["source_dir"] in [
-            "find_receipts_realtime",
-            "process_receipt_realtime",
             "split_into_chunks",
             "normalize_poll_batches_data",
             "create_chunk_groups",
@@ -394,16 +379,6 @@ class LambdaFunctionsComponent(ComponentResource):
             "prepare_merge_pairs",
         ]:
             env_vars["CHROMADB_BUCKET"] = self.chromadb_buckets.bucket_name
-            if config["source_dir"] in [
-                "find_receipts_realtime",
-                "process_receipt_realtime",
-            ]:
-                env_vars["GOOGLE_PLACES_API_KEY"] = (
-                    portfolio_config.get_secret("GOOGLE_PLACES_API_KEY") or ""
-                )
-                env_vars["CHROMA_HTTP_ENDPOINT"] = (
-                    os.environ.get("CHROMA_HTTP_ENDPOINT") or ""
-                )
 
         # Create the Lambda function
         # Determine which layers are needed based on imports
@@ -413,8 +388,6 @@ class LambdaFunctionsComponent(ComponentResource):
 
         # Source directories that use receipt_label (need label_layer, which includes receipt_dynamo)
         uses_receipt_label = config["source_dir"] in [
-            "find_receipts_realtime",
-            "process_receipt_realtime",
             "submit_openai",
             "submit_words_openai",
             "find_unembedded",
