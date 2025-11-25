@@ -1,11 +1,109 @@
 """Integration test fixtures for receipt_chroma using moto for AWS mocking."""
 
+import tempfile
+
 import boto3
 import pytest
 from moto import mock_aws
-
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ChromaDBCollection
+
+from receipt_chroma import ChromaClient
+
+
+@pytest.fixture
+def temp_chromadb_dir():
+    """Create a temporary directory for ChromaDB persistence."""
+    with tempfile.TemporaryDirectory(prefix="chromadb_test_") as tmpdir:
+        yield tmpdir
+
+
+@pytest.fixture
+def chroma_client_write(temp_chromadb_dir):
+    """Create a ChromaClient in write mode."""
+    client = ChromaClient(
+        persist_directory=temp_chromadb_dir,
+        mode="write",
+        metadata_only=True,
+    )
+    yield client
+    client.close()
+
+
+@pytest.fixture
+def chroma_client_read(temp_chromadb_dir):
+    """Create a ChromaClient in read mode."""
+    # First create some data with write mode
+    with ChromaClient(
+        persist_directory=temp_chromadb_dir,
+        mode="write",
+        metadata_only=True,
+    ) as write_client:
+        write_client.upsert(
+            collection_name="test",
+            ids=["1"],
+            documents=["test document"],
+        )
+
+    # Now return read client
+    client = ChromaClient(
+        persist_directory=temp_chromadb_dir,
+        mode="read",
+    )
+    yield client
+    client.close()
+
+
+@pytest.fixture
+def chroma_client_delta(temp_chromadb_dir):
+    """Create a ChromaClient in delta mode."""
+    client = ChromaClient(
+        persist_directory=temp_chromadb_dir,
+        mode="delta",
+        metadata_only=True,
+    )
+    yield client
+    client.close()
+
+
+@pytest.fixture
+def populated_chroma_db(temp_chromadb_dir):
+    """Create a ChromaDB with pre-populated data."""
+    collection_name = "populated_test"
+    client = ChromaClient(
+        persist_directory=temp_chromadb_dir,
+        mode="write",
+        metadata_only=True,
+    )
+
+    # Populate with test data
+    client.upsert(
+        collection_name=collection_name,
+        ids=["doc1", "doc2", "doc3"],
+        documents=[
+            "Python is a programming language",
+            "JavaScript is used for web development",
+            "Machine learning uses Python",
+        ],
+        metadatas=[
+            {"topic": "programming"},
+            {"topic": "web"},
+            {"topic": "ml"},
+        ],
+    )
+
+    yield client, collection_name
+    client.close()
+
+
+@pytest.fixture
+def s3_bucket(request):
+    """Create a mock S3 bucket using moto."""
+    with mock_aws():
+        s3 = boto3.client("s3", region_name="us-east-1")
+        bucket_name = request.param
+        s3.create_bucket(Bucket=bucket_name)
+        yield bucket_name
 
 
 @pytest.fixture

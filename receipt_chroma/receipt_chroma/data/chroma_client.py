@@ -16,7 +16,7 @@ import os
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Generator, List, Optional
 
 import chromadb
 from chromadb.config import Settings
@@ -209,14 +209,19 @@ class ChromaClient:
                 # internal _client attribute (issue #5868)
                 if (
                     hasattr(self._client, "_client")
-                    and self._client._client is not None  # pylint: disable=protected-access,no-member
+                    and self._client._client
+                    is not None  # pylint: disable=protected-access,no-member
                 ):
                     # Try to close SQLite connections if accessible
-                    internal_client = self._client._client  # pylint: disable=protected-access,no-member
+                    internal_client = (
+                        self._client._client
+                    )  # pylint: disable=protected-access,no-member
                     if hasattr(internal_client, "close"):
                         try:
                             internal_client.close()
-                        except Exception as e:  # pylint: disable=broad-exception-caught
+                        except (
+                            Exception
+                        ) as e:  # pylint: disable=broad-exception-caught
                             # Catch all exceptions during cleanup to ensure
                             # we don't fail silently
                             logger.debug(
@@ -545,6 +550,7 @@ class ChromaClient:
 
         if s3_client is None:
             import boto3  # type: ignore[import-untyped]
+
             s3_client = boto3.client("s3")
 
         # CRITICAL: Close ChromaDB client BEFORE uploading to ensure SQLite
@@ -554,6 +560,7 @@ class ChromaClient:
         # Generate a unique delta ID for this upload
         # This ensures each delta has a unique S3 path for parallel processing
         import uuid as uuid_module
+
         delta_id = uuid_module.uuid4().hex
 
         # Upload all files from persist directory under the delta ID
@@ -575,6 +582,7 @@ class ChromaClient:
         # Optional validation: try to download and open the database
         if validate_after_upload:
             import tempfile
+
             with tempfile.TemporaryDirectory() as temp_dir:
                 # Download one key file to validate
                 test_key = uploaded_files[0]
@@ -593,7 +601,9 @@ class ChromaClient:
         return actual_delta_key
 
     @contextmanager
-    def collection(self, name: str, create_if_missing: bool = False):
+    def collection(
+        self, name: str, create_if_missing: bool = False
+    ) -> Generator[Any, None, None]:
         """
         Context manager for a collection that ensures proper cleanup.
 
