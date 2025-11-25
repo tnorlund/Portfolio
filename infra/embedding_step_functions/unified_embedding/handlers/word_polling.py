@@ -6,23 +6,23 @@ Pure business logic - no Lambda-specific code.
 import json
 import logging
 import os
+import random
 import tempfile
 import time
-from typing import Any, Dict, Optional, Tuple
+from functools import wraps
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar
 
 import boto3
-from receipt_label.embedding.common import (
+from receipt_chroma.embedding.openai import (
+    download_openai_batch_result,
+    get_openai_batch_status,
+    get_unique_receipt_and_image_ids,
     handle_batch_status,
     mark_items_for_retry,
 )
-from receipt_label.embedding.word.poll import (
-    download_openai_batch_result,
-    get_openai_batch_status,
-    get_receipt_descriptions,
-    mark_batch_complete,
-    save_word_embeddings_as_delta,
-)
-from receipt_label.utils import get_client_manager
+from receipt_chroma.embedding.delta import save_word_embeddings_as_delta
+from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.constants import BatchStatus
 import utils.logging
 from utils.metrics import (
     track_openai_api_call,
@@ -63,11 +63,108 @@ logger = get_operation_logger(__name__)
 
 s3_client = boto3.client("s3")
 
+# Type variable for retry decorator
+T = TypeVar("T")
+
+
+def retry_openai_api_call(
+    max_retries: int = 3,
+    initial_delay: float = 1.0,
+    max_delay: float = 60.0,
+    backoff_factor: float = 2.0,
+    retryable_errors: Optional[List[str]] = None,
+) -> Callable[[Callable[..., T]], Callable[..., T]]:
+    """
+    Retry decorator for OpenAI API calls with exponential backoff.
+
+    Args:
+        max_retries: Maximum number of retry attempts (default: 3)
+        initial_delay: Initial delay in seconds (default: 1.0)
+        max_delay: Maximum delay in seconds (default: 60.0)
+        backoff_factor: Multiplier for exponential backoff (default: 2.0)
+        retryable_errors: List of error patterns to retry on (default: 403, 429, 500, 502, 503, 504)
+
+    Returns:
+        Decorated function with retry logic
+    """
+    if retryable_errors is None:
+        retryable_errors = ["403", "429", "500", "502", "503", "504", "timeout", "connection"]
+
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        @wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> T:
+            last_exception = None
+            delay = initial_delay
+
+            for attempt in range(max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:  # pylint: disable=broad-exception-caught
+                    last_exception = e
+                    error_str = str(e).lower()
+                    error_type = type(e).__name__
+
+                    # Check if this is a retryable error
+                    is_retryable = any(pattern in error_str for pattern in retryable_errors)
+
+                    # Don't retry on 401 (authentication) - that's a permanent issue
+                    if "401" in error_str or "unauthorized" in error_str:
+                        logger.error(
+                            "OpenAI API authentication failed (401) - not retrying",
+                            error_type=error_type,
+                            error=str(e),
+                            attempt=attempt + 1,
+                        )
+                        raise
+
+                    # Check if we should retry
+                    if attempt < max_retries and is_retryable:
+                        # Calculate delay with exponential backoff and jitter
+                        jitter = random.uniform(0, delay * 0.1)  # 10% jitter
+                        actual_delay = min(delay + jitter, max_delay)
+
+                        logger.warning(
+                            "OpenAI API call failed, retrying",
+                            error_type=error_type,
+                            error=str(e),
+                            attempt=attempt + 1,
+                            max_retries=max_retries + 1,
+                            retry_delay=actual_delay,
+                        )
+
+                        time.sleep(actual_delay)
+                        delay *= backoff_factor
+                    else:
+                        # Not retryable or out of retries
+                        if not is_retryable:
+                            logger.error(
+                                "OpenAI API call failed with non-retryable error",
+                                error_type=error_type,
+                                error=str(e),
+                                attempt=attempt + 1,
+                            )
+                        else:
+                            logger.error(
+                                "OpenAI API call failed after all retries",
+                                error_type=error_type,
+                                error=str(e),
+                                attempts=attempt + 1,
+                            )
+                        raise
+
+            # Should never reach here, but just in case
+            if last_exception:
+                raise last_exception
+            raise RuntimeError("Unexpected error in retry logic")
+
+        return wrapper
+    return decorator
+
 
 async def _ensure_receipt_metadata_async(
     image_id: str,
     receipt_id: int,
-    client_manager,
+    dynamo_client: DynamoClient,
 ) -> None:
     """Create receipt_metadata if missing, using LangChain workflow with Ollama Cloud.
 
@@ -78,7 +175,7 @@ async def _ensure_receipt_metadata_async(
     try:
         # Check if metadata already exists
         try:
-            existing_metadata = client_manager.dynamo.get_receipt_metadata(image_id, receipt_id)
+            existing_metadata = dynamo_client.get_receipt_metadata(image_id, receipt_id)
             logger.debug(
                 "Receipt metadata already exists",
                 image_id=image_id,
@@ -101,8 +198,8 @@ async def _ensure_receipt_metadata_async(
                     # We need to construct the key manually since we can't read it
                     pk = f"IMAGE#{image_id}"
                     sk = f"RECEIPT#{receipt_id:05d}#METADATA"
-                    client_manager.dynamo._client.delete_item(
-                        TableName=client_manager.dynamo.table_name,
+                    dynamo_client._client.delete_item(
+                        TableName=dynamo_client.table_name,
                         Key={
                             "PK": {"S": pk},
                             "SK": {"S": sk},
@@ -157,7 +254,7 @@ async def _ensure_receipt_metadata_async(
 
         # Get receipt data (lines and words) for the LangChain workflow
         try:
-            receipt_details = client_manager.dynamo.get_receipt_details(image_id, receipt_id)
+            receipt_details = dynamo_client.get_receipt_details(image_id, receipt_id)
             receipt_lines = receipt_details.lines
             receipt_words = receipt_details.words
         except Exception as receipt_error:
@@ -168,7 +265,7 @@ async def _ensure_receipt_metadata_async(
         # Create metadata using LangChain workflow
         try:
             metadata = await create_receipt_metadata_simple(
-                client=client_manager.dynamo,
+                client=dynamo_client,
                 image_id=image_id,
                 receipt_id=receipt_id,
                 google_places_api_key=google_places_key,
@@ -218,7 +315,7 @@ async def _ensure_receipt_metadata_async(
 def _ensure_receipt_metadata(
     image_id: str,
     receipt_id: int,
-    client_manager,
+    dynamo_client: DynamoClient,
 ) -> None:
     """Synchronous wrapper for async metadata creation.
 
@@ -228,7 +325,7 @@ def _ensure_receipt_metadata(
     import asyncio
     try:
         # Lambda functions don't have a running event loop, so asyncio.run() should work
-        asyncio.run(_ensure_receipt_metadata_async(image_id, receipt_id, client_manager))
+        asyncio.run(_ensure_receipt_metadata_async(image_id, receipt_id, dynamo_client))
     except Exception as e:
         # Log the full error with traceback for debugging
         logger.error(
@@ -492,16 +589,105 @@ def _handle_internal_core(
         )
         raise TimeoutError("Lambda timeout detected before processing")
 
-    with operation_with_timeout("get_client_manager", max_duration=30):
-        client_manager = get_client_manager()
+    # Create DynamoDB client directly (replacing client_manager pattern)
+    with operation_with_timeout("create_dynamo_client", max_duration=30):
+        dynamo_client = DynamoClient(os.environ["DYNAMODB_TABLE_NAME"])
 
-    # Check the batch status with monitoring and circuit breaker protection
-    with trace_openai_batch_poll(batch_id, openai_batch_id):
-        with operation_with_timeout(
-            "get_openai_batch_status", max_duration=60
-        ):
-            with openai_circuit_breaker().call():
-                batch_status = get_openai_batch_status(openai_batch_id)
+    # Create OpenAI client (needed for batch status check)
+    from openai import OpenAI
+    openai_client = OpenAI()  # Uses OPENAI_API_KEY from environment
+
+    # Inline helper functions to avoid receipt_label dependency
+    def _get_receipt_descriptions(
+        results: List[dict],
+    ) -> dict[str, dict[int, dict]]:
+        """
+        Get the receipt descriptions from the embedding results, grouped by image
+        and receipt.
+
+        Returns:
+            A dict mapping each image_id (str) to a dict that maps each
+            receipt_id (int) to a dict containing:
+                - receipt
+                - lines
+                - words
+                - letters
+                - labels
+                - metadata
+        """
+        descriptions: dict[str, dict[int, dict]] = {}
+        for receipt_id, image_id in get_unique_receipt_and_image_ids(results):
+            receipt_details = dynamo_client.get_receipt_details(
+                image_id=image_id,
+                receipt_id=receipt_id,
+            )
+            receipt_metadata = dynamo_client.get_receipt_metadata(
+                image_id=image_id,
+                receipt_id=receipt_id,
+            )
+            descriptions.setdefault(image_id, {})[receipt_id] = {
+                "receipt": receipt_details.receipt,
+                "lines": receipt_details.lines,
+                "words": receipt_details.words,
+                "letters": receipt_details.letters,
+                "labels": receipt_details.labels,
+                "metadata": receipt_metadata,
+            }
+        return descriptions
+
+    def _mark_batch_complete(batch_id: str) -> None:
+        """
+        Mark the embedding batch as complete in the system.
+
+        Args:
+            batch_id: The identifier of the batch.
+        """
+        batch_summary = dynamo_client.get_batch_summary(batch_id)
+        batch_summary.status = BatchStatus.COMPLETED.value
+        dynamo_client.update_batch_summary(batch_summary)
+
+    # Check the batch status with monitoring, circuit breaker, and retry protection
+    @retry_openai_api_call(max_retries=3, initial_delay=1.0, max_delay=30.0)
+    def _get_batch_status_with_retry() -> str:
+        """Get batch status with retry logic."""
+        with trace_openai_batch_poll(batch_id, openai_batch_id):
+            with operation_with_timeout(
+                "get_openai_batch_status", max_duration=60
+            ):
+                with openai_circuit_breaker().call():
+                    return get_openai_batch_status(openai_batch_id, openai_client)
+
+    try:
+        batch_status = _get_batch_status_with_retry()
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        # After retries, provide detailed error message
+        error_str = str(e).lower()
+        error_type = type(e).__name__
+
+        if "401" in error_str or "unauthorized" in error_str:
+            logger.error(
+                "OpenAI API returned 401 Unauthorized - invalid API key",
+                openai_batch_id=openai_batch_id,
+                batch_id=batch_id,
+                error_type=error_type,
+                error=str(e),
+            )
+            raise RuntimeError(
+                f"OpenAI API authentication failed (401): {str(e)}. "
+                f"Check OPENAI_API_KEY environment variable."
+            ) from e
+        else:
+            # Re-raise with context (403, 429, etc. were already retried)
+            logger.error(
+                "OpenAI API error while checking batch status (after retries)",
+                openai_batch_id=openai_batch_id,
+                batch_id=batch_id,
+                error_type=error_type,
+                error=str(e),
+            )
+            raise RuntimeError(
+                f"OpenAI API error while checking batch status for {openai_batch_id}: {str(e)}"
+            ) from e
 
     logger.info(
         "Retrieved batch status from OpenAI",
@@ -515,14 +701,48 @@ def _handle_internal_core(
     collected_metrics["BatchStatusChecked"] = collected_metrics.get("BatchStatusChecked", 0) + 1
     metric_dimensions["batch_status"] = batch_status
 
-    # Use modular status handler with timeout protection
-    with operation_with_timeout("handle_batch_status", max_duration=30):
-        status_result = handle_batch_status(
-            batch_id=batch_id,
-            openai_batch_id=openai_batch_id,
-            status=batch_status,
-            client_manager=client_manager,
-        )
+    # Use modular status handler with timeout protection and retry
+    @retry_openai_api_call(max_retries=2, initial_delay=1.0, max_delay=15.0)
+    def _handle_batch_status_with_retry() -> Dict[str, Any]:
+        """Handle batch status with retry logic."""
+        with operation_with_timeout("handle_batch_status", max_duration=30):
+            return handle_batch_status(
+                batch_id=batch_id,
+                openai_batch_id=openai_batch_id,
+                status=batch_status,
+                dynamo_client=dynamo_client,
+                openai_client=openai_client,
+            )
+
+    try:
+        status_result = _handle_batch_status_with_retry()
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        # After retries, provide detailed error message
+        error_str = str(e).lower()
+        error_type = type(e).__name__
+
+        if "401" in error_str or "unauthorized" in error_str:
+            logger.error(
+                "OpenAI API returned 401 Unauthorized in handle_batch_status",
+                openai_batch_id=openai_batch_id,
+                batch_id=batch_id,
+                error_type=error_type,
+                error=str(e),
+            )
+            raise RuntimeError(
+                f"OpenAI API authentication failed (401) in handle_batch_status: {str(e)}. "
+                f"Check OPENAI_API_KEY environment variable."
+            ) from e
+        else:
+            # Re-raise with context
+            logger.error(
+                "Error in handle_batch_status (after retries)",
+                openai_batch_id=openai_batch_id,
+                batch_id=batch_id,
+                error_type=error_type,
+                error=str(e),
+            )
+            raise
 
     # Process based on the action determined by status handler
     if (
@@ -548,13 +768,48 @@ def _handle_internal_core(
                 "Lambda timeout detected before result processing"
             )
 
-        # Download the batch results with monitoring and circuit breaker protection
-        with tracer.subsegment("OpenAI.DownloadResults", namespace="remote"):
-            with operation_with_timeout(
-                "download_openai_batch_result", max_duration=180
-            ):
-                with openai_circuit_breaker().call():
-                    results = download_openai_batch_result(openai_batch_id)
+        # Download the batch results with monitoring, circuit breaker, and retry protection
+        @retry_openai_api_call(max_retries=3, initial_delay=2.0, max_delay=60.0)
+        def _download_results_with_retry() -> List[dict]:
+            """Download batch results with retry logic."""
+            with tracer.subsegment("OpenAI.DownloadResults", namespace="remote"):
+                with operation_with_timeout(
+                    "download_openai_batch_result", max_duration=180
+                ):
+                    with openai_circuit_breaker().call():
+                        return download_openai_batch_result(openai_batch_id, openai_client)
+
+        try:
+            results = _download_results_with_retry()
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            # After retries, provide detailed error message
+            error_str = str(e).lower()
+            error_type = type(e).__name__
+
+            if "401" in error_str or "unauthorized" in error_str:
+                logger.error(
+                    "OpenAI API returned 401 Unauthorized while downloading results",
+                    openai_batch_id=openai_batch_id,
+                    batch_id=batch_id,
+                    error_type=error_type,
+                    error=str(e),
+                )
+                raise RuntimeError(
+                    f"OpenAI API authentication failed (401) while downloading results: {str(e)}. "
+                    f"Check OPENAI_API_KEY environment variable."
+                ) from e
+            else:
+                # Re-raise with context (403, 429, etc. were already retried)
+                logger.error(
+                    "OpenAI API error while downloading batch results (after retries)",
+                    openai_batch_id=openai_batch_id,
+                    batch_id=batch_id,
+                    error_type=error_type,
+                    error=str(e),
+                )
+                raise RuntimeError(
+                    f"OpenAI API error while downloading results for {openai_batch_id}: {str(e)}"
+                ) from e
 
         result_count = len(results)
         logger.info("Downloaded embedding results", result_count=result_count)
@@ -565,15 +820,14 @@ def _handle_internal_core(
         # This is required because get_receipt_descriptions requires receipt_metadata
         # and embeddings need metadata to work properly
         with operation_with_timeout("ensure_receipt_metadata", max_duration=120):
-            from receipt_label.embedding.word.poll import _get_unique_receipt_and_image_ids
-            unique_receipts = _get_unique_receipt_and_image_ids(results)
+            unique_receipts = get_unique_receipt_and_image_ids(results)
             missing_metadata = []
             for receipt_id, image_id in unique_receipts:
                 try:
-                    _ensure_receipt_metadata(image_id, receipt_id, client_manager)
+                    _ensure_receipt_metadata(image_id, receipt_id, dynamo_client)
                     # Verify metadata was created (or already existed)
                     try:
-                        client_manager.dynamo.get_receipt_metadata(image_id, receipt_id)
+                        dynamo_client.get_receipt_metadata(image_id, receipt_id)
                         logger.debug(
                             "Verified receipt_metadata exists",
                             image_id=image_id,
@@ -612,7 +866,7 @@ def _handle_internal_core(
         with operation_with_timeout(
             "get_receipt_descriptions", max_duration=60
         ):
-            descriptions = get_receipt_descriptions(results)
+            descriptions = _get_receipt_descriptions(results)
 
         description_count = len(descriptions)
         logger.info(
@@ -723,7 +977,7 @@ def _handle_internal_core(
         # In step function mode, batches will be marked complete after successful compaction
         if not skip_sqs:
             with operation_with_timeout("mark_batch_complete", max_duration=30):
-                mark_batch_complete(batch_id)
+                _mark_batch_complete(batch_id)
             logger.info("Marked batch as complete", batch_id=batch_id)
         else:
             logger.info(
@@ -742,6 +996,8 @@ def _handle_internal_core(
             "delta_key": delta_result["delta_key"],
             "embedding_count": delta_result["embedding_count"],
             "storage": "s3_delta",
+            "collection": "words",
+            "database": "words",
         }
 
         logger.info("Successfully completed word polling", **full_result)
@@ -811,7 +1067,7 @@ def _handle_internal_core(
             )
 
             # Get receipt details for successful results
-            descriptions = get_receipt_descriptions(partial_results)
+            descriptions = _get_receipt_descriptions(partial_results)
 
             # Get bucket name for delta save
             bucket_name = os.environ.get("CHROMADB_BUCKET")
@@ -834,7 +1090,7 @@ def _handle_internal_core(
 
         # Mark failed items for retry
         if failed_ids:
-            marked = mark_items_for_retry(failed_ids, "word", client_manager)
+            marked = mark_items_for_retry(failed_ids, "word", dynamo_client)
             logger.info("Marked words for retry", count=marked)
 
         # Log metrics via EMF

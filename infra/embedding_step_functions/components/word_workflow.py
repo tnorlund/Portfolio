@@ -169,7 +169,7 @@ class WordEmbeddingWorkflow(ComponentResource):
                 self.lambda_functions["embedding-vector-compact"].arn,
                 self.lambda_functions["embedding-normalize-poll-batches"].arn,
                 self.lambda_functions["embedding-split-chunks"].arn,
-                self.lambda_functions["embedding-create-chunk-groups"].arn,
+                self.lambda_functions["embedding-prepare-chunk-groups"].arn,
                 self.lambda_functions["embedding-mark-batches-complete"].arn,
                 self.batch_bucket.bucket,
             ).apply(self._create_ingest_definition),
@@ -184,7 +184,7 @@ class WordEmbeddingWorkflow(ComponentResource):
         arns_and_bucket[2] = embedding-vector-compact
         arns_and_bucket[3] = embedding-normalize-poll-batches
         arns_and_bucket[4] = embedding-split-chunks
-        arns_and_bucket[5] = embedding-create-chunk-groups
+        arns_and_bucket[5] = embedding-prepare-chunk-groups
         arns_and_bucket[6] = embedding-mark-batches-complete
         arns_and_bucket[7] = batch_bucket_name
         """
@@ -277,95 +277,16 @@ class WordEmbeddingWorkflow(ComponentResource):
                             },
                         },
                         "ResultPath": "$.poll_results",
-                        "Next": "NormalizePollWordBatchesData",
+                        "Next": "PrepareWordChunks",
                     },
-                    "NormalizePollWordBatchesData": {
+                    "PrepareWordChunks": {
                         "Type": "Task",
                         "Resource": arns[3],
-                        "Comment": "Normalize poll_results structure and upload to S3 if payload is too large",
+                        "Comment": "Combine poll results, create chunks, upload to S3. Replaces NormalizePollWordBatchesData + SplitWordIntoChunks + LoadWordChunksFromS3.",
                         "Parameters": {
                             "batch_id.$": "$$.Execution.Name",
                             "poll_results.$": "$.poll_results",
-                        },
-                        "ResultPath": "$.poll_results_data",
-                        "Next": "SplitWordIntoChunks",
-                        "Retry": [
-                            {
-                                "ErrorEquals": [
-                                    "Lambda.ServiceException",
-                                    "Lambda.AWSLambdaException",
-                                    "Lambda.ResourceConflictException",
-                                ],
-                                "IntervalSeconds": 5,
-                                "MaxAttempts": 5,
-                                "BackoffRate": 2.0,
-                                "JitterStrategy": "FULL",
-                            }
-                        ],
-                        "Catch": [
-                            {
-                                "ErrorEquals": ["States.ALL"],
-                                "Next": "WordCompactionFailed",
-                                "ResultPath": "$.error",
-                            }
-                        ],
-                    },
-                    "SplitWordIntoChunks": {
-                        "Type": "Task",
-                        "Resource": arns[4],
-                        "Comment": "Split word delta results",
-                        "Parameters": {
-                            "batch_id.$": "$$.Execution.Name",
-                            "poll_results.$": "$.poll_results_data.poll_results",
-                            "poll_results_s3_key.$": "$.poll_results_data.poll_results_s3_key",
-                            "poll_results_s3_bucket.$": "$.poll_results_data.poll_results_s3_bucket",
-                        },
-                        "ResultPath": "$.chunked_data",
-                        "Next": "CheckWordChunksSource",
-                        "Retry": [
-                            {
-                                "ErrorEquals": [
-                                    "Lambda.ServiceException",
-                                    "Lambda.AWSLambdaException",
-                                    "Lambda.ResourceConflictException",
-                                ],
-                                "IntervalSeconds": 5,
-                                "MaxAttempts": 5,
-                                "BackoffRate": 2.0,
-                                "JitterStrategy": "FULL",
-                            }
-                        ],
-                        "Catch": [
-                            {
-                                "ErrorEquals": ["States.ALL"],
-                                "Next": "WordCompactionFailed",
-                                "ResultPath": "$.error",
-                            }
-                        ],
-                    },
-                    "CheckWordChunksSource": {
-                        "Type": "Choice",
-                        "Comment": "Check if chunks are in S3 or inline",
-                        "Choices": [
-                            {
-                                "Variable": "$.chunked_data.use_s3",
-                                "BooleanEquals": True,
-                                "Next": "LoadWordChunksFromS3",
-                            }
-                        ],
-                        "Default": "CheckForWordChunks",
-                    },
-                    "LoadWordChunksFromS3": {
-                        "Type": "Task",
-                        "Resource": arns[4],
-                        "Comment": "Load chunks from S3 when payload is too large",
-                        "Parameters": {
-                            "operation": "load_chunks_from_s3",
-                            "chunks_s3_key.$": "$.chunked_data.chunks_s3_key",
-                            "chunks_s3_bucket.$": "$.chunked_data.chunks_s3_bucket",
-                            "batch_id.$": "$.chunked_data.batch_id",
-                            "poll_results_s3_key.$": "$.chunked_data.poll_results_s3_key",
-                            "poll_results_s3_bucket.$": "$.chunked_data.poll_results_s3_bucket",
+                            "database": "words",
                         },
                         "ResultPath": "$.chunked_data",
                         "Next": "CheckForWordChunks",
@@ -392,31 +313,15 @@ class WordEmbeddingWorkflow(ComponentResource):
                     },
                     "CheckForWordChunks": {
                         "Type": "Choice",
-                        "Comment": "Check if there are chunks",
+                        "Comment": "Check if there are chunks to process",
                         "Choices": [
                             {
-                                "Variable": "$.chunked_data.chunks[0]",
-                                "IsPresent": True,
-                                "Next": "NormalizeWordChunkData",
+                                "Variable": "$.chunked_data.has_chunks",
+                                "BooleanEquals": True,
+                                "Next": "ProcessWordChunksInParallel",
                             }
                         ],
                         "Default": "NoWordChunksToProcess",
-                    },
-                    "NormalizeWordChunkData": {
-                        "Type": "Pass",
-                        "Comment": "Normalize chunked_data to ensure chunks_s3_key and chunks_s3_bucket always exist",
-                        "Parameters": {
-                            "chunks.$": "$.chunked_data.chunks",
-                            "batch_id.$": "$.chunked_data.batch_id",
-                            "total_chunks.$": "$.chunked_data.total_chunks",
-                            "use_s3.$": "$.chunked_data.use_s3",
-                            "chunks_s3_key.$": "$.chunked_data.chunks_s3_key",
-                            "chunks_s3_bucket.$": "$.chunked_data.chunks_s3_bucket",
-                            "poll_results_s3_key.$": "$.chunked_data.poll_results_s3_key",
-                            "poll_results_s3_bucket.$": "$.chunked_data.poll_results_s3_bucket",
-                        },
-                        "ResultPath": "$.chunked_data",
-                        "Next": "ProcessWordChunksInParallel",
                     },
                     "ProcessWordChunksInParallel": {
                         "Type": "Map",
@@ -425,9 +330,6 @@ class WordEmbeddingWorkflow(ComponentResource):
                         "MaxConcurrency": 20,
                         "Parameters": {
                             "chunk.$": "$$.Map.Item.Value",
-                            "chunks_s3_key.$": "$.chunked_data.chunks_s3_key",
-                            "chunks_s3_bucket.$": "$.chunked_data.chunks_s3_bucket",
-                            "use_s3.$": "$.chunked_data.use_s3",
                         },
                         "Iterator": {
                             "StartAt": "ProcessSingleWordChunk",
@@ -439,18 +341,12 @@ class WordEmbeddingWorkflow(ComponentResource):
                                     "Parameters": {
                                         "operation": "process_chunk",
                                         "batch_id.$": "$.chunk.batch_id",
-                                        "chunk_index.$": (
-                                            "$.chunk.chunk_index"
-                                        ),
-                                        "delta_results.$": (
-                                            "$.chunk.delta_results"
-                                        ),
-                                        "chunks_s3_key.$": "$.chunks_s3_key",
-                                        "chunks_s3_bucket.$": "$.chunks_s3_bucket",
+                                        "chunk_index.$": "$.chunk.chunk_index",
+                                        # Chunks are always in S3, keys come from chunk object
+                                        "chunks_s3_key.$": "$.chunk.chunks_s3_key",
+                                        "chunks_s3_bucket.$": "$.chunk.chunks_s3_bucket",
                                         "database": "words",
                                     },
-                                    # Note: When use_s3=True, delta_results will be null/missing,
-                                    # and the processing Lambda will download from S3 using chunks_s3_key
                                     "End": True,
                                     "Retry": [
                                         {
@@ -479,7 +375,7 @@ class WordEmbeddingWorkflow(ComponentResource):
                             },
                         },
                         "ResultPath": "$.chunk_results",
-                        "Next": "GroupChunksForMerge",
+                        "Next": "PrepareChunkGroups",
                         "Catch": [
                             {
                                 "ErrorEquals": ["States.ALL"],
@@ -488,130 +384,64 @@ class WordEmbeddingWorkflow(ComponentResource):
                             }
                         ],
                     },
-                    "GroupChunksForMerge": {
-                        "Type": "Pass",
-                        "Comment": "Group processed chunks for hierarchical merging",
+                    "PrepareChunkGroups": {
+                        "Type": "Task",
+                        "Resource": arns[5],
+                        "Comment": "Prepare chunk groups - decides hierarchical vs direct merge",
                         "Parameters": {
-                            "batch_id.$": "$.chunked_data.batch_id",
-                            "total_chunks.$": "$.chunked_data.total_chunks",
+                            "chunked_data.$": "$.chunked_data",
                             "chunk_results.$": "$.chunk_results",
-                            "group_size": 20,  # Increased from 10 for faster final merge
-                            # poll_results is always None after NormalizePollWordBatchesData (it's in S3)
-                            # Use poll_results_data as source of truth for poll_results_s3_key/bucket
-                            # SplitIntoChunks should include these in chunked_data, but poll_results_data is guaranteed to have them
-                            "poll_results_s3_key.$": "$.poll_results_data.poll_results_s3_key",
-                            "poll_results_s3_bucket.$": "$.poll_results_data.poll_results_s3_bucket",
+                            "group_size": 20,
+                            "database": "words",
                         },
-                        "Next": "CheckChunkGroupCount",
+                        "ResultPath": "$.prepare_result",
+                        "Next": "CheckHierarchicalMerge",
+                        "Retry": [
+                            {
+                                "ErrorEquals": [
+                                    "Lambda.ServiceException",
+                                    "Lambda.AWSLambdaException",
+                                    "Lambda.ResourceConflictException",
+                                ],
+                                "IntervalSeconds": 5,
+                                "MaxAttempts": 5,
+                                "BackoffRate": 2.0,
+                                "JitterStrategy": "FULL",
+                            }
+                        ],
+                        "Catch": [
+                            {
+                                "ErrorEquals": ["States.ALL"],
+                                "Next": "WordGroupCreationFailed",
+                                "ResultPath": "$.error",
+                            }
+                        ],
                     },
-                    "CheckChunkGroupCount": {
+                    "CheckHierarchicalMerge": {
                         "Type": "Choice",
-                        "Comment": "Determine if hierarchical merge is beneficial",
+                        "Comment": "Branch based on hierarchical merge decision",
                         "Choices": [
                             {
-                                "Variable": "$.total_chunks",
-                                "NumericGreaterThan": 4,
-                                "Next": "CreateChunkGroups",
+                                "Variable": "$.prepare_result.use_hierarchical_merge",
+                                "BooleanEquals": True,
+                                "Next": "MergeChunkGroupsInParallel",
                             }
                         ],
                         "Default": "PrepareWordFinalMerge",
                     },
-                    "CreateChunkGroups": {
-                        "Type": "Task",
-                        "Resource": arns[5],
-                        "Comment": "Create chunk groups for parallel merging",
-                        "Parameters": {
-                            "batch_id.$": "$.batch_id",
-                            "chunk_results.$": "$.chunk_results",
-                            "group_size": 20,  # Increased from 10 for faster final merge
-                            # poll_results is always None after NormalizePollWordBatchesData (it's in S3)
-                            # Handler doesn't need poll_results, just needs to pass through S3 keys
-                            "poll_results_s3_key.$": "$.poll_results_s3_key",
-                            "poll_results_s3_bucket.$": "$.poll_results_s3_bucket",
-                        },
-                        "ResultPath": "$.chunk_groups",
-                        "Next": "CheckChunkGroupsSource",
-                        "Retry": [
-                            {
-                                "ErrorEquals": [
-                                    "Lambda.ServiceException",
-                                    "Lambda.AWSLambdaException",
-                                    "Lambda.ResourceConflictException",
-                                ],
-                                "IntervalSeconds": 5,
-                                "MaxAttempts": 5,
-                                "BackoffRate": 2.0,
-                                "JitterStrategy": "FULL",
-                            }
-                        ],
-                        "Catch": [
-                            {
-                                "ErrorEquals": ["States.ALL"],
-                                "Next": "WordGroupCreationFailed",
-                                "ResultPath": "$.error",
-                            }
-                        ],
-                    },
-                    "CheckChunkGroupsSource": {
-                        "Type": "Choice",
-                        "Comment": "Check if groups are in S3 or inline",
-                        "Choices": [
-                            {
-                                "Variable": "$.chunk_groups.use_s3",
-                                "BooleanEquals": True,
-                                "Next": "LoadChunkGroupsFromS3",
-                            }
-                        ],
-                        "Default": "MergeChunkGroupsInParallel",
-                    },
-                    "LoadChunkGroupsFromS3": {
-                        "Type": "Task",
-                        "Resource": arns[5],
-                        "Comment": "Load chunk groups from S3 when payload is too large",
-                        "Parameters": {
-                            "operation": "load_groups_from_s3",
-                            "groups_s3_key.$": "$.chunk_groups.groups_s3_key",
-                            "groups_s3_bucket.$": "$.chunk_groups.groups_s3_bucket",
-                            "batch_id.$": "$.chunk_groups.batch_id",
-                            "poll_results_s3_key.$": "$.chunk_groups.poll_results_s3_key",
-                            "poll_results_s3_bucket.$": "$.chunk_groups.poll_results_s3_bucket",
-                        },
-                        "ResultPath": "$.chunk_groups",
-                        "Next": "MergeChunkGroupsInParallel",
-                        "Retry": [
-                            {
-                                "ErrorEquals": [
-                                    "Lambda.ServiceException",
-                                    "Lambda.AWSLambdaException",
-                                    "Lambda.ResourceConflictException",
-                                ],
-                                "IntervalSeconds": 5,
-                                "MaxAttempts": 5,
-                                "BackoffRate": 2.0,
-                                "JitterStrategy": "FULL",
-                            }
-                        ],
-                        "Catch": [
-                            {
-                                "ErrorEquals": ["States.ALL"],
-                                "Next": "WordGroupCreationFailed",
-                                "ResultPath": "$.error",
-                            }
-                        ],
-                    },
                     "WordGroupCreationFailed": {
                         "Type": "Fail",
                         "Error": "WordGroupCreationFailed",
-                        "Cause": "Failed to create word chunk groups",
+                        "Cause": "Failed to prepare word chunk groups",
                     },
                     "MergeChunkGroupsInParallel": {
                         "Type": "Map",
                         "Comment": "Second parallel merge stage using chunk_results as input",
-                        "ItemsPath": "$.chunk_groups.groups",
+                        "ItemsPath": "$.prepare_result.chunk_groups.groups",
                         "MaxConcurrency": 6,
                         "Parameters": {
                             "chunk_group.$": "$$.Map.Item.Value.chunk_group",
-                            "batch_id.$": "$.chunk_groups.batch_id",
+                            "batch_id.$": "$.prepare_result.chunk_groups.batch_id",
                             "group_index.$": "$$.Map.Item.Value.group_index",
                             "groups_s3_key.$": "$$.Map.Item.Value.groups_s3_key",
                             "groups_s3_bucket.$": "$$.Map.Item.Value.groups_s3_bucket",
@@ -665,18 +495,15 @@ class WordEmbeddingWorkflow(ComponentResource):
                         "Type": "Pass",
                         "Comment": "Prepare data for final merge of pre-merged groups",
                         "Parameters": {
-                            "batch_id.$": "$.chunk_groups.batch_id",
+                            "batch_id.$": "$.prepare_result.batch_id",
                             "operation": "final_merge",
                             "chunk_results.$": "$.merged_groups",
-                            # poll_results is always None after NormalizePollWordBatchesData (it's in S3)
-                            # WordFinalMerge just needs to pass through the S3 keys for MarkWordBatchesComplete
-                            # Use root level as primary (GroupChunksForMerge copies from poll_results_data to root)
-                            # chunk_groups.poll_results_s3_key may be null if CreateChunkGroups didn't preserve it
-                            "poll_results_s3_key.$": "$.poll_results_s3_key",
-                            "poll_results_s3_bucket.$": "$.poll_results_s3_bucket",
-                            # Fallback to chunk_groups in case root level is missing
-                            "poll_results_s3_key_fallback.$": "$.chunk_groups.poll_results_s3_key",
-                            "poll_results_s3_bucket_fallback.$": "$.chunk_groups.poll_results_s3_bucket",
+                            # poll_results S3 keys come from PrepareChunkGroups
+                            "poll_results_s3_key.$": "$.prepare_result.poll_results_s3_key",
+                            "poll_results_s3_bucket.$": "$.prepare_result.poll_results_s3_bucket",
+                            # Fallback uses same source since PrepareChunkGroups passes through the S3 keys
+                            "poll_results_s3_key_fallback.$": "$.prepare_result.poll_results_s3_key",
+                            "poll_results_s3_bucket_fallback.$": "$.prepare_result.poll_results_s3_bucket",
                         },
                         "Next": "WordFinalMerge",
                     },
@@ -687,19 +514,17 @@ class WordEmbeddingWorkflow(ComponentResource):
                     },
                     "PrepareWordFinalMerge": {
                         "Type": "Pass",
-                        "Comment": "Prepare data for final merge",
+                        "Comment": "Prepare data for direct final merge (skip hierarchical)",
                         "Parameters": {
-                            "batch_id.$": "$.chunked_data.batch_id",
-                            "chunk_results.$": "$.chunk_results",
+                            "batch_id.$": "$.prepare_result.batch_id",
+                            "chunk_results.$": "$.prepare_result.chunk_results",
                             "operation": "final_merge",
-                            # poll_results is always None after NormalizePollWordBatchesData (it's in S3)
-                            # WordFinalMerge just needs to pass through the S3 keys for MarkWordBatchesComplete
-                            # Try chunked_data first, fallback to poll_results_data (source of truth)
-                            "poll_results_s3_key.$": "$.chunked_data.poll_results_s3_key",
-                            "poll_results_s3_bucket.$": "$.chunked_data.poll_results_s3_bucket",
-                            # Always include poll_results_data as fallback (guaranteed to exist)
-                            "poll_results_s3_key_fallback.$": "$.poll_results_data.poll_results_s3_key",
-                            "poll_results_s3_bucket_fallback.$": "$.poll_results_data.poll_results_s3_bucket",
+                            # poll_results S3 keys come from PrepareChunkGroups
+                            "poll_results_s3_key.$": "$.prepare_result.poll_results_s3_key",
+                            "poll_results_s3_bucket.$": "$.prepare_result.poll_results_s3_bucket",
+                            # Same source for fallback
+                            "poll_results_s3_key_fallback.$": "$.prepare_result.poll_results_s3_key",
+                            "poll_results_s3_bucket_fallback.$": "$.prepare_result.poll_results_s3_bucket",
                         },
                         "Next": "WordFinalMerge",
                     },
@@ -707,33 +532,11 @@ class WordEmbeddingWorkflow(ComponentResource):
                         "Type": "Pass",
                         "Comment": "No word chunks to process - prepare data for marking batches complete",
                         "Parameters": {
-                            # poll_results is always None after NormalizePollWordBatchesData (it's in S3)
-                            # MarkWordBatchesComplete handler will load from S3 using poll_results_s3_key
-                            # Use poll_results_data as source of truth (guaranteed to exist)
-                            "poll_results_s3_key.$": "$.poll_results_data.poll_results_s3_key",
-                            "poll_results_s3_bucket.$": "$.poll_results_data.poll_results_s3_bucket",
+                            # poll_results S3 keys come from PrepareWordChunks (even when has_chunks=false)
+                            "poll_results_s3_key.$": "$.chunked_data.poll_results_s3_key",
+                            "poll_results_s3_bucket.$": "$.chunked_data.poll_results_s3_bucket",
                             "poll_results_s3_key_fallback.$": "$.chunked_data.poll_results_s3_key",
                             "poll_results_s3_bucket_fallback.$": "$.chunked_data.poll_results_s3_bucket",
-                            "poll_results_s3_key_chunked.$": "$.chunked_data.poll_results_s3_key",
-                            "poll_results_s3_bucket_chunked.$": "$.chunked_data.poll_results_s3_bucket",
-                        },
-                        "Next": "PrepareMarkWordBatchesCompleteNoChunks",
-                    },
-                    "PrepareMarkWordBatchesCompleteNoChunks": {
-                        "Type": "Pass",
-                        "Comment": "Prepare data for MarkWordBatchesComplete from no-chunks path",
-                        "Parameters": {
-                            # poll_results is always None after NormalizePollWordBatchesData (it's in S3)
-                            # MarkWordBatchesComplete handler will load from S3 using poll_results_s3_key
-                            # Pass through from NoWordChunksToProcess (which gets from poll_results_data)
-                            "poll_results_s3_key.$": "$.poll_results_s3_key",
-                            "poll_results_s3_bucket.$": "$.poll_results_s3_bucket",
-                            "poll_results_s3_key_fallback.$": "$.poll_results_s3_key_fallback",
-                            "poll_results_s3_bucket_fallback.$": "$.poll_results_s3_bucket_fallback",
-                            "poll_results_s3_key_chunked.$": "$.poll_results_s3_key_chunked",
-                            "poll_results_s3_bucket_chunked.$": "$.poll_results_s3_bucket_chunked",
-                            # poll_results_data doesn't exist in no-chunks path, so set to null
-                            # The handler will use the root-level poll_results_s3_key instead
                             "poll_results_s3_key_poll_data": None,
                             "poll_results_s3_bucket_poll_data": None,
                         },

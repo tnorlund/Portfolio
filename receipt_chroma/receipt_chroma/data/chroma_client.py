@@ -275,7 +275,7 @@ class ChromaClient:
                         name=name
                     )
                 else:
-                    get_args = {"name": name}
+                    get_args: Dict[str, Any] = {"name": name}
                     if self._embedding_function:
                         get_args["embedding_function"] = (
                             self._embedding_function
@@ -481,6 +481,116 @@ class ChromaClient:
             self._client.reset()
             self._collections.clear()
             logger.debug("Reset ChromaDB client")
+
+    def upsert_vectors(
+        self,
+        collection_name: str,
+        ids: List[str],
+        embeddings: Optional[List[List[float]]] = None,
+        documents: Optional[List[str]] = None,
+        metadatas: Optional[List[Dict[str, Any]]] = None,
+    ) -> None:
+        """
+        Upsert vectors into a collection (alias for upsert for backward compatibility).
+
+        This method provides compatibility with the old ChromaDBClient interface.
+
+        Args:
+            collection_name: Name of the collection
+            ids: List of unique IDs
+            embeddings: Optional list of embedding vectors
+            documents: Optional list of documents (for auto-embedding)
+            metadatas: Optional list of metadata dictionaries
+        """
+        self.upsert(
+            collection_name=collection_name,
+            ids=ids,
+            embeddings=embeddings,
+            documents=documents,
+            metadatas=metadatas,
+        )
+
+    def persist_and_upload_delta(
+        self,
+        bucket: str,
+        s3_prefix: str,
+        s3_client: Optional[Any] = None,
+        validate_after_upload: bool = True,
+    ) -> str:
+        """
+        Flush the local DB to disk, upload to S3, and return the key prefix.
+
+        This method is used by producer lambdas to create delta files that
+        will be processed by the compactor.
+
+        Args:
+            bucket: S3 bucket name
+            s3_prefix: S3 prefix for delta files
+            s3_client: Optional boto3 S3 client (creates one if not provided)
+            validate_after_upload: If True, validates the uploaded database
+
+        Returns:
+            S3 prefix where the delta was uploaded
+
+        Raises:
+            RuntimeError: If not in delta mode or no files to upload
+        """
+        if self.mode != "delta":
+            raise RuntimeError(
+                "persist_and_upload_delta requires mode='delta'"
+            )
+
+        if not self.persist_directory:
+            raise RuntimeError("persist_directory required for delta uploads")
+
+        if s3_client is None:
+            import boto3  # type: ignore[import-untyped]
+            s3_client = boto3.client("s3")
+
+        # CRITICAL: Close ChromaDB client BEFORE uploading to ensure SQLite
+        # files are flushed and unlocked (issue #5868)
+        self.close()
+
+        # Generate a unique delta ID for this upload
+        # This ensures each delta has a unique S3 path for parallel processing
+        import uuid as uuid_module
+        delta_id = uuid_module.uuid4().hex
+
+        # Upload all files from persist directory under the delta ID
+        uploaded_files = []
+        for file_path in Path(self.persist_directory).rglob("*"):
+            if file_path.is_file():
+                relative = file_path.relative_to(self.persist_directory)
+                # Include delta_id in the S3 key to ensure uniqueness
+                s3_key = f"{s3_prefix.rstrip('/')}/{delta_id}/{relative}"
+                s3_client.upload_file(str(file_path), bucket, s3_key)
+                uploaded_files.append(s3_key)
+
+        if not uploaded_files:
+            raise RuntimeError("No files to upload")
+
+        # The actual delta key is the prefix + delta_id
+        actual_delta_key = f"{s3_prefix.rstrip('/')}/{delta_id}/"
+
+        # Optional validation: try to download and open the database
+        if validate_after_upload:
+            import tempfile
+            with tempfile.TemporaryDirectory() as temp_dir:
+                # Download one key file to validate
+                test_key = uploaded_files[0]
+                local_file = Path(temp_dir) / Path(test_key).name
+                s3_client.download_file(bucket, test_key, str(local_file))
+                # If we can download, the upload was successful
+
+        logger.info(
+            "Uploaded delta to S3: bucket=%s, prefix=%s, actual_delta_key=%s, file_count=%d",
+            bucket,
+            s3_prefix,
+            actual_delta_key,
+            len(uploaded_files),
+        )
+
+        return actual_delta_key
 
     @contextmanager
     def collection(self, name: str, create_if_missing: bool = False):

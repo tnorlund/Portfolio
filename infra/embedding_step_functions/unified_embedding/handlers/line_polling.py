@@ -8,22 +8,19 @@ import logging
 import os
 import tempfile
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import boto3
-from receipt_label.embedding.common import (
+from receipt_chroma.embedding.openai import (
+    download_openai_batch_result,
+    get_openai_batch_status,
+    get_unique_receipt_and_image_ids,
     handle_batch_status,
     mark_items_for_retry,
 )
-from receipt_label.embedding.line.poll import (
-    download_openai_batch_result,
-    get_openai_batch_status,
-    get_receipt_descriptions,
-    mark_batch_complete,
-    save_line_embeddings_as_delta,
-    update_line_embedding_status_to_success,
-)
-from receipt_label.utils import get_client_manager
+from receipt_chroma.embedding.delta import save_line_embeddings_as_delta
+from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.constants import BatchStatus, EmbeddingStatus
 import utils.logging
 from utils.metrics import (
     track_openai_api_call,
@@ -68,7 +65,7 @@ s3_client = boto3.client("s3")
 async def _ensure_receipt_metadata_async(
     image_id: str,
     receipt_id: int,
-    client_manager,
+    dynamo_client: DynamoClient,
 ) -> None:
     """Create receipt_metadata if missing, using LangChain workflow with Ollama Cloud.
 
@@ -79,7 +76,7 @@ async def _ensure_receipt_metadata_async(
     try:
         # Check if metadata already exists
         try:
-            existing_metadata = client_manager.dynamo.get_receipt_metadata(image_id, receipt_id)
+            existing_metadata = dynamo_client.get_receipt_metadata(image_id, receipt_id)
             logger.debug(
                 "Receipt metadata already exists",
                 image_id=image_id,
@@ -102,8 +99,8 @@ async def _ensure_receipt_metadata_async(
                     # We need to construct the key manually since we can't read it
                     pk = f"IMAGE#{image_id}"
                     sk = f"RECEIPT#{receipt_id:05d}#METADATA"
-                    client_manager.dynamo._client.delete_item(
-                        TableName=client_manager.dynamo.table_name,
+                    dynamo_client._client.delete_item(
+                        TableName=dynamo_client.table_name,
                         Key={
                             "PK": {"S": pk},
                             "SK": {"S": sk},
@@ -158,7 +155,7 @@ async def _ensure_receipt_metadata_async(
 
         # Get receipt data (lines and words) for the LangChain workflow
         try:
-            receipt_details = client_manager.dynamo.get_receipt_details(image_id, receipt_id)
+            receipt_details = dynamo_client.get_receipt_details(image_id, receipt_id)
             receipt_lines = receipt_details.lines
             receipt_words = receipt_details.words
         except Exception as receipt_error:
@@ -169,7 +166,7 @@ async def _ensure_receipt_metadata_async(
         # Create metadata using LangChain workflow
         try:
             metadata = await create_receipt_metadata_simple(
-                client=client_manager.dynamo,
+                client=dynamo_client,
                 image_id=image_id,
                 receipt_id=receipt_id,
                 google_places_api_key=google_places_key,
@@ -219,7 +216,7 @@ async def _ensure_receipt_metadata_async(
 def _ensure_receipt_metadata(
     image_id: str,
     receipt_id: int,
-    client_manager,
+    dynamo_client: DynamoClient,
 ) -> None:
     """Synchronous wrapper for async metadata creation.
 
@@ -229,7 +226,7 @@ def _ensure_receipt_metadata(
     import asyncio
     try:
         # Lambda functions don't have a running event loop, so asyncio.run() should work
-        asyncio.run(_ensure_receipt_metadata_async(image_id, receipt_id, client_manager))
+        asyncio.run(_ensure_receipt_metadata_async(image_id, receipt_id, dynamo_client))
     except Exception as e:
         # Log the full error with traceback for debugging
         logger.error(
@@ -493,8 +490,142 @@ def _handle_internal_core(
         )
         raise TimeoutError("Lambda timeout detected before processing")
 
-    with operation_with_timeout("get_client_manager", max_duration=30):
-        client_manager = get_client_manager()
+    # Create DynamoDB client directly (replacing client_manager pattern)
+    with operation_with_timeout("create_dynamo_client", max_duration=30):
+        dynamo_client = DynamoClient(os.environ["DYNAMODB_TABLE_NAME"])
+
+    # Create OpenAI client (needed for batch status check)
+    from openai import OpenAI
+    openai_client = OpenAI()  # Uses OPENAI_API_KEY from environment
+
+    # Inline helper functions to avoid receipt_label dependency
+    def _parse_metadata_from_line_id(custom_id: str) -> Dict[str, Any]:
+        """
+        Parse metadata from a line ID in the format IMAGE#uuid#RECEIPT#00001#LINE#00001.
+
+        Args:
+            custom_id: Custom ID string in format IMAGE#<id>#RECEIPT#<id>#LINE#<id>
+
+        Returns:
+            Dictionary with image_id, receipt_id, line_id, and source
+        """
+        parts = custom_id.split("#")
+        if len(parts) != 6:
+            raise ValueError(
+                f"Invalid custom_id format for line embedding: {custom_id}. "
+                f"Expected format: IMAGE#<id>#RECEIPT#<id>#LINE#<id> (6 parts), "
+                f"but got {len(parts)} parts"
+            )
+        return {
+            "image_id": parts[1],
+            "receipt_id": int(parts[3]),
+            "line_id": int(parts[5]),
+            "source": "openai_line_embedding_batch",
+        }
+
+    def _get_receipt_descriptions(
+        results: List[dict],
+    ) -> dict[str, dict[int, dict]]:
+        """
+        Get the receipt descriptions from the embedding results, grouped by image
+        and receipt.
+
+        Returns:
+            A dict mapping each image_id (str) to a dict that maps each
+            receipt_id (int) to a dict containing:
+                - receipt
+                - lines
+                - words
+                - letters
+                - labels
+                - metadata
+                - sections
+        """
+        descriptions: dict[str, dict[int, dict]] = {}
+        for receipt_id, image_id in get_unique_receipt_and_image_ids(results):
+            receipt_details = dynamo_client.get_receipt_details(
+                image_id=image_id,
+                receipt_id=receipt_id,
+            )
+            receipt_metadata = dynamo_client.get_receipt_metadata(
+                image_id=image_id,
+                receipt_id=receipt_id,
+            )
+            receipt_sections = dynamo_client.get_receipt_sections_from_receipt(
+                image_id=image_id,
+                receipt_id=receipt_id,
+            )
+            descriptions.setdefault(image_id, {})[receipt_id] = {
+                "receipt": receipt_details.receipt,
+                "lines": receipt_details.lines,
+                "words": receipt_details.words,
+                "letters": receipt_details.letters,
+                "labels": receipt_details.labels,
+                "metadata": receipt_metadata,
+                "sections": receipt_sections,
+            }
+        return descriptions
+
+    def _update_line_embedding_status_to_success(
+        results: List[dict],
+        descriptions: dict[str, dict[int, dict]],
+    ) -> None:
+        """
+        Update the embedding status of the lines to SUCCESS.
+
+        Args:
+            results: The list of embedding results.
+            descriptions: The nested dict of receipt descriptions.
+        """
+        # Group lines by receipt for efficient updates
+        lines_by_receipt: dict[str, dict[int, list]] = {}
+
+        for result in results:
+            meta = _parse_metadata_from_line_id(result["custom_id"])
+            image_id = meta["image_id"]
+            receipt_id = meta["receipt_id"]
+            line_id = meta["line_id"]
+
+            # Get the lines for this receipt from descriptions
+            receipt_lines = descriptions[image_id][receipt_id]["lines"]
+
+            # Find the target line by direct line_id match
+            target_line = next(
+                (line for line in receipt_lines if line.line_id == line_id), None
+            )
+
+            if target_line:
+                # Initialize the receipt dict if needed
+                if image_id not in lines_by_receipt:
+                    lines_by_receipt[image_id] = {}
+                if receipt_id not in lines_by_receipt[image_id]:
+                    lines_by_receipt[image_id][receipt_id] = []
+
+                # Update the embedding status to SUCCESS
+                target_line.embedding_status = EmbeddingStatus.SUCCESS.value
+                lines_by_receipt[image_id][receipt_id].append(target_line)
+            else:
+                raise ValueError(
+                    f"No line found with ID {line_id} in receipt {receipt_id} "
+                    f"from image {image_id}"
+                )
+
+        # Update lines individually to avoid transaction conflicts when multiple
+        # batches are processed concurrently
+        for image_id, receipts in lines_by_receipt.items():
+            for receipt_id, lines_to_update in receipts.items():
+                dynamo_client.update_receipt_lines(lines_to_update)
+
+    def _mark_batch_complete(batch_id: str) -> None:
+        """
+        Mark the embedding batch as complete in the system.
+
+        Args:
+            batch_id: The identifier of the batch.
+        """
+        batch_summary = dynamo_client.get_batch_summary(batch_id)
+        batch_summary.status = BatchStatus.COMPLETED.value
+        dynamo_client.update_batch_summary(batch_summary)
 
     # Check the batch status with monitoring and circuit breaker protection
     with trace_openai_batch_poll(batch_id, openai_batch_id):
@@ -502,7 +633,7 @@ def _handle_internal_core(
             "get_openai_batch_status", max_duration=60
         ):
             with openai_circuit_breaker().call():
-                batch_status = get_openai_batch_status(openai_batch_id)
+                batch_status = get_openai_batch_status(openai_batch_id, openai_client)
 
     logger.info(
         "Retrieved batch status from OpenAI",
@@ -522,7 +653,8 @@ def _handle_internal_core(
             batch_id=batch_id,
             openai_batch_id=openai_batch_id,
             status=batch_status,
-            client_manager=client_manager,
+            dynamo_client=dynamo_client,
+            openai_client=openai_client,
         )
 
     # Process based on the action determined by status handler
@@ -555,7 +687,7 @@ def _handle_internal_core(
                 "download_openai_batch_result", max_duration=180
             ):
                 with openai_circuit_breaker().call():
-                    results = download_openai_batch_result(openai_batch_id)
+                    results = download_openai_batch_result(openai_batch_id, openai_client)
 
         result_count = len(results)
         logger.info("Downloaded embedding results", result_count=result_count)
@@ -566,15 +698,14 @@ def _handle_internal_core(
         # This is required because get_receipt_descriptions requires receipt_metadata
         # and embeddings need metadata to work properly
         with operation_with_timeout("ensure_receipt_metadata", max_duration=120):
-            from receipt_label.embedding.line.poll import _get_unique_receipt_and_image_ids
-            unique_receipts = _get_unique_receipt_and_image_ids(results)
+            unique_receipts = get_unique_receipt_and_image_ids(results)
             missing_metadata = []
             for receipt_id, image_id in unique_receipts:
                 try:
-                    _ensure_receipt_metadata(image_id, receipt_id, client_manager)
+                    _ensure_receipt_metadata(image_id, receipt_id, dynamo_client)
                     # Verify metadata was created (or already existed)
                     try:
-                        client_manager.dynamo.get_receipt_metadata(image_id, receipt_id)
+                        dynamo_client.get_receipt_metadata(image_id, receipt_id)
                         logger.debug(
                             "Verified receipt_metadata exists",
                             image_id=image_id,
@@ -613,7 +744,7 @@ def _handle_internal_core(
         with operation_with_timeout(
             "get_receipt_descriptions", max_duration=60
         ):
-            descriptions = get_receipt_descriptions(results)
+            descriptions = _get_receipt_descriptions(results)
 
         description_count = len(descriptions)
         logger.info(
@@ -753,14 +884,14 @@ def _handle_internal_core(
         with operation_with_timeout(
             "update_line_embedding_status_to_success", max_duration=60
         ):
-            update_line_embedding_status_to_success(results, descriptions)
+            _update_line_embedding_status_to_success(results, descriptions)
         logger.info("Updated line embedding status to SUCCESS")
 
         # Mark batch complete only if NOT in step function mode (skip_sqs=False means standalone mode)
         # In step function mode, batches will be marked complete after successful compaction
         if not skip_sqs:
             with operation_with_timeout("mark_batch_complete", max_duration=30):
-                mark_batch_complete(batch_id)
+                _mark_batch_complete(batch_id)
             logger.info("Marked batch as complete", batch_id=batch_id)
         else:
             logger.info(
@@ -780,7 +911,7 @@ def _handle_internal_core(
             "embedding_count": delta_result["embedding_count"],
             "storage": "s3_delta",
             "collection": "lines",
-            "database": "lines",  # Database for line embeddings
+            "database": "lines",
         }
 
         logger.info("Successfully completed line polling", **full_result)
@@ -850,7 +981,7 @@ def _handle_internal_core(
             )
 
             # Get receipt details for successful results
-            descriptions = get_receipt_descriptions(partial_results)
+            descriptions = _get_receipt_descriptions(partial_results)
 
             # Get configuration from environment
             bucket_name = os.environ.get("CHROMADB_BUCKET")
@@ -885,7 +1016,7 @@ def _handle_internal_core(
                 # Don't return early - still need to mark failed items for retry
             else:
                 # Update status for successful lines only if delta was saved
-                update_line_embedding_status_to_success(
+                _update_line_embedding_status_to_success(
                     partial_results, descriptions
                 )
                 logger.info(
@@ -895,7 +1026,7 @@ def _handle_internal_core(
 
         # Mark failed items for retry
         if failed_ids:
-            marked = mark_items_for_retry(failed_ids, "line", client_manager)
+            marked = mark_items_for_retry(failed_ids, "line", dynamo_client)
             logger.info("Marked lines for retry", count=marked)
 
         # Log metrics via EMF

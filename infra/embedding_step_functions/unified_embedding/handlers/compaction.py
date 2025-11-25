@@ -17,35 +17,25 @@ import utils.logging # pylint: disable=import-error
 from utils.metrics import emf_metrics
 
 import boto3
-import chromadb
 
 # Import receipt_dynamo for proper DynamoDB operations
 from receipt_dynamo.constants import ChromaDBCollection
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_label.utils.lock_manager import LockManager
+from receipt_chroma import LockManager, ChromaClient
+from receipt_chroma.s3 import (
+    upload_snapshot_atomic,
+    download_snapshot_atomic,
+)
+from receipt_chroma.s3.helpers import upload_snapshot_with_hash
 
 get_logger = utils.logging.get_logger
 get_operation_logger = utils.logging.get_operation_logger
 
 logger = get_operation_logger(__name__)
 
-try:
-    from receipt_label.utils.chroma_s3_helpers import (
-        upload_snapshot_atomic,
-        download_snapshot_atomic,
-    )
-    from receipt_label.vector_store import upload_snapshot_with_hash
-
-    ATOMIC_UPLOAD_AVAILABLE = True
-    ATOMIC_DOWNLOAD_AVAILABLE = True
-    HASH_UPLOAD_AVAILABLE = True
-except ImportError:
-    ATOMIC_UPLOAD_AVAILABLE = False
-    ATOMIC_DOWNLOAD_AVAILABLE = False
-    HASH_UPLOAD_AVAILABLE = False
-    logger.warning(
-        "Atomic and hash-enabled uploads not available, using legacy upload"
-    )
+ATOMIC_UPLOAD_AVAILABLE = True
+ATOMIC_DOWNLOAD_AVAILABLE = True
+HASH_UPLOAD_AVAILABLE = True
 
 # Try to import EFS snapshot manager (available in container Lambda)
 try:
@@ -78,7 +68,7 @@ def close_chromadb_client(client: Any, collection_name: Optional[str] = None) ->
     that are still being written to by an active ChromaDB connection.
 
     Args:
-        client: ChromaDB PersistentClient instance (or wrapper with _client attribute)
+        client: ChromaClient instance from receipt_chroma
         collection_name: Optional collection name for logging
     """
     if client is None:
@@ -90,22 +80,12 @@ def close_chromadb_client(client: Any, collection_name: Optional[str] = None) ->
             collection=collection_name or "unknown",
         )
 
-        # Clear collections cache
-        if hasattr(client, '_collections'):
-            client._collections.clear()
-
-        # Clear the underlying client reference
-        if hasattr(client, '_client') and client._client is not None:
-            client._client = None
-
-        # Force garbage collection to ensure SQLite connections are closed
-        # This is necessary because ChromaDB doesn't expose a close() method
-        import gc
-        gc.collect()
-
-        # Small delay to ensure file handles are released by OS
-        import time as _time
-        _time.sleep(0.1)
+        # Use the close() method from receipt_chroma.ChromaClient
+        if hasattr(client, 'close'):
+            client.close()
+        elif hasattr(client, '_client') and hasattr(client._client, 'close'):
+            # Fallback for direct chromadb.PersistentClient instances
+            client._client.close()
 
         logger.debug(
             "ChromaDB client cleaned up",
@@ -148,7 +128,7 @@ def compact_handler(
                 "delta_key": "delta/abc123/",
                 "delta_id": "abc123",
                 "embedding_count": 100,
-                "collection": "receipt_words"  # or "receipt_lines"
+                "collection": "words"  # or "lines"
             },
             ...
         ]
@@ -312,8 +292,8 @@ def process_chunk_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     deltas_by_collection: dict[str, list] = {}
     for result in chunk_deltas:
         collection = result.get(
-            "collection", "receipt_words"
-        )  # Default for backward compat
+            "collection", "words"
+        )  # Default to words
         if collection not in deltas_by_collection:
             deltas_by_collection[collection] = []
         deltas_by_collection[collection].append(result)
@@ -889,7 +869,12 @@ def process_chunk_deltas(
 
     try:
         # Initialize ChromaDB in memory
-        chroma_client = chromadb.PersistentClient(path=temp_dir)
+        # Use "delta" mode to allow collection creation and delta merging
+        chroma_client = ChromaClient(
+            persist_directory=temp_dir,
+            mode="delta",
+            metadata_only=True,  # No embeddings needed for validation
+        )
 
         # Process each collection separately
         for collection_name, collection_deltas in deltas_by_collection.items():
@@ -900,17 +885,14 @@ def process_chunk_deltas(
             )
 
             # Get or create collection
-            try:
-                collection = chroma_client.get_collection(collection_name)
-            except Exception:
-                # Collection doesn't exist, create it
-                collection = chroma_client.create_collection(
-                    collection_name,
-                    metadata={
-                        "chunk_index": chunk_index,
-                        "batch_id": batch_id,
-                    },
-                )
+            collection = chroma_client.get_collection(
+                collection_name,
+                create_if_missing=True,
+                metadata={
+                    "chunk_index": chunk_index,
+                    "batch_id": batch_id,
+                },
+            )
 
             # Process deltas for this collection
             # If any delta fails, the entire chunk fails (all-or-nothing behavior)
@@ -919,12 +901,22 @@ def process_chunk_deltas(
             for i, delta in enumerate(collection_deltas):
                 delta_key = delta["delta_key"]
 
+                logger.info(
+                    "Starting delta processing",
+                    delta_index=i + 1,
+                    total_deltas=len(collection_deltas),
+                    delta_key=delta_key,
+                    collection_name=collection_name,
+                )
+
                 try:
                     # Download and merge delta
                     # If this fails, the exception will propagate and fail the entire chunk
+                    delta_start_time = time.time()
                     embeddings_added = download_and_merge_delta(
                         bucket, delta_key, collection, temp_dir
                     )
+                    delta_duration = time.time() - delta_start_time
                     total_embeddings += embeddings_added
                     deltas_processed += 1
                     logger.info(
@@ -934,6 +926,8 @@ def process_chunk_deltas(
                         collection_name=collection_name,
                         current=i + 1,
                         total=len(collection_deltas),
+                        delta_duration_seconds=delta_duration,
+                        progress_percent=round((i + 1) / len(collection_deltas) * 100, 1),
                     )
                 except Exception as e:
                     deltas_failed += 1
@@ -1025,6 +1019,18 @@ def download_and_merge_delta(
 
     Returns the number of embeddings added.
     """
+    # Validate delta_key format - it should include a delta ID, not just a prefix
+    if delta_key.endswith("/") and delta_key.count("/") < 3:
+        # This looks like just a prefix (e.g., "words/delta/") without a delta ID
+        # This would match ALL deltas, which is wrong
+        error_msg = (
+            f"Invalid delta_key format: '{delta_key}'. "
+            f"Expected format: 'words/delta/{{delta_id}}/' or 'lines/delta/{{delta_id}}/'. "
+            f"Current value appears to be just a prefix and would match all deltas."
+        )
+        logger.error(error_msg)
+        raise ValueError(error_msg)
+
     delta_temp = tempfile.mkdtemp(dir=temp_dir)
     validation_success = False
     validation_error_type = None
@@ -1032,7 +1038,15 @@ def download_and_merge_delta(
 
     try:
         # Download delta from S3
+        logger.debug("Downloading delta from S3", delta_key=delta_key, bucket=bucket)
+        download_start = time.time()
         download_from_s3(bucket, delta_key, delta_temp)
+        download_duration = time.time() - download_start
+        logger.debug(
+            "Downloaded delta from S3",
+            delta_key=delta_key,
+            download_duration_seconds=download_duration,
+        )
 
         # Validate delta directory has required files before opening
         # ChromaDB requires at least a SQLite database file
@@ -1054,10 +1068,20 @@ def download_and_merge_delta(
 
         # Load delta into temporary ChromaDB instance
         # Wrap in try-except to provide better error messages for corrupted deltas
+        logger.debug("Opening delta ChromaDB client", delta_key=delta_key)
         try:
-            delta_client = chromadb.PersistentClient(path=delta_temp)
+            delta_client = ChromaClient(
+                persist_directory=delta_temp,
+                mode="read",
+                metadata_only=True,  # No embeddings needed for validation
+            )
             validation_success = True
             validation_duration = time.time() - validation_start_time
+            logger.debug(
+                "Opened delta ChromaDB client",
+                delta_key=delta_key,
+                validation_duration_seconds=validation_duration,
+            )
         except Exception as e:
             validation_duration = time.time() - validation_start_time
             logger.error(
@@ -1077,6 +1101,7 @@ def download_and_merge_delta(
 
         # Get the first (and typically only) collection from the delta
         # The delta should contain exactly one collection with all embeddings
+        logger.debug("Listing collections in delta", delta_key=delta_key)
         delta_collections = delta_client.list_collections()
         if not delta_collections:
             logger.warning(
@@ -1086,49 +1111,83 @@ def download_and_merge_delta(
             return 0
 
         # Use the first collection from the delta (there should only be one)
-        delta_collection = delta_collections[0]
+        # ChromaClient.list_collections() returns list of strings, not objects
+        delta_collection_name = delta_collections[0]
         logger.info(
             "Found collection in delta",
-            collection_name=delta_collection.name,
+            collection_name=delta_collection_name,
             delta_key=delta_key,
         )
 
-        # Get total count first to process in batches
+        # Get collection and total count first to process in batches
+        logger.debug("Getting delta collection and count", delta_key=delta_key)
+        delta_collection = delta_client.get_collection(delta_collection_name)
         total_count = delta_collection.count()
+        logger.info(
+            "Delta collection count",
+            delta_key=delta_key,
+            total_count=total_count,
+        )
         if total_count == 0:
+            logger.warning("Delta collection is empty", delta_key=delta_key)
             return 0
 
         logger.info(
             "Processing embeddings from delta in batches",
             total_count=total_count,
+            delta_key=delta_key,
+            batch_size=1000,
         )
 
         # Process embeddings in batches to reduce memory usage
         batch_size = 1000  # Process 1000 embeddings at a time
         total_processed = 0
+        total_batches = (total_count + batch_size - 1) // batch_size
 
-        for offset in range(0, total_count, batch_size):
+        for batch_num, offset in enumerate(range(0, total_count, batch_size), 1):
+            batch_start_time = time.time()
+            logger.debug(
+                "Processing batch",
+                delta_key=delta_key,
+                batch_num=batch_num,
+                total_batches=total_batches,
+                offset=offset,
+            )
+
             # Get batch of embeddings
+            get_start = time.time()
             batch_results = delta_collection.get(
                 include=["embeddings", "documents", "metadatas"],
                 limit=batch_size,
                 offset=offset,
             )
+            get_duration = time.time() - get_start
 
             if batch_results["ids"]:
                 # Upsert batch into main collection
+                upsert_start = time.time()
                 collection.upsert(
                     ids=batch_results["ids"],
                     embeddings=batch_results["embeddings"],
                     documents=batch_results["documents"],
                     metadatas=batch_results["metadatas"],
                 )
+                upsert_duration = time.time() - upsert_start
                 total_processed += len(batch_results["ids"])
-                logger.debug(
+                batch_duration = time.time() - batch_start_time
+
+                logger.info(
                     "Processed batch",
+                    delta_key=delta_key,
                     offset_start=offset,
                     offset_end=offset + len(batch_results["ids"]),
                     embedding_count=len(batch_results["ids"]),
+                    batch_num=batch_num,
+                    total_batches=total_batches,
+                    get_duration_seconds=get_duration,
+                    upsert_duration_seconds=upsert_duration,
+                    batch_duration_seconds=batch_duration,
+                    progress_percent=round(batch_num / total_batches * 100, 1),
                 )
 
         logger.info(
@@ -1252,7 +1311,12 @@ def perform_intermediate_merge(
 
     try:
         # Initialize ChromaDB in memory for merging
-        chroma_client = chromadb.PersistentClient(path=temp_dir)
+        # Use "delta" mode to allow collection creation during merge
+        chroma_client = ChromaClient(
+            persist_directory=temp_dir,
+            mode="delta",
+            metadata_only=True,  # No embeddings needed for validation
+        )
 
         logger.info(
             "Starting intermediate merge",
@@ -1281,12 +1345,16 @@ def perform_intermediate_merge(
                     chunk_key=chunk_key,
                 )
 
-                # Load chunk ChromaDB (simple for 1.0.21 testing)
-                chunk_client = chromadb.PersistentClient(path=chunk_temp)
+                # Load chunk ChromaDB using receipt_chroma for consistency
+                chunk_client = ChromaClient(
+                    persist_directory=chunk_temp,
+                    mode="read",
+                    metadata_only=True,
+                )
 
                 # Merge all collections from this chunk
-                for collection_meta in chunk_client.list_collections():
-                    collection_name = collection_meta.name
+                # ChromaClient.list_collections() returns list of strings
+                for collection_name in chunk_client.list_collections():
                     chunk_collection = chunk_client.get_collection(
                         collection_name
                     )
@@ -1311,8 +1379,9 @@ def perform_intermediate_merge(
                             collection_name
                         )
                     except Exception:
-                        main_collection = chroma_client.create_collection(
-                            collection_name
+                        main_collection = chroma_client.get_collection(
+                            collection_name,
+                            create_if_missing=True,
                         )
 
                     # Get all data from chunk collection
@@ -1538,7 +1607,12 @@ def perform_final_merge(
                 )
 
                 if download_result.get("status") == "downloaded":
-                    chroma_client = chromadb.PersistentClient(path=temp_dir)
+                    # Use "delta" mode to allow collection creation and data upsert
+                    chroma_client = ChromaClient(
+                        persist_directory=temp_dir,
+                        mode="delta",
+                        metadata_only=True,
+                    )
                     logger.info(
                         "Loaded snapshot from S3",
                         collection=collection_name,
@@ -1556,8 +1630,9 @@ def perform_final_merge(
                         )
                     except Exception:
                         # Collection doesn't exist, create it
-                        collection = chroma_client.create_collection(
+                        collection = chroma_client.get_collection(
                             collection_name,
+                            create_if_missing=True,
                             metadata={
                                 "created_by": "compaction_handler",
                                 "created_at": datetime.now().isoformat(),
@@ -1582,7 +1657,12 @@ def perform_final_merge(
                 # Fallback to legacy download method
                 try:
                     download_from_s3(bucket, snapshot_key, temp_dir)
-                    chroma_client = chromadb.PersistentClient(path=temp_dir)
+                    # Use "delta" mode to allow collection creation and data upsert
+                    chroma_client = ChromaClient(
+                        persist_directory=temp_dir,
+                        mode="delta",
+                        metadata_only=True,
+                    )
                     logger.info(
                         "Loaded existing snapshot from S3", snapshot_key=snapshot_key
                     )
@@ -1593,7 +1673,12 @@ def perform_final_merge(
                         snapshot_key=snapshot_key,
                         error=str(e),
                     )
-                    chroma_client = chromadb.PersistentClient(path=temp_dir)
+                    # Use "delta" mode to allow collection creation
+                    chroma_client = ChromaClient(
+                        persist_directory=temp_dir,
+                        mode="delta",
+                        metadata_only=True,
+                    )
 
                     # Create the collection (will be empty)
                     try:
@@ -1604,8 +1689,9 @@ def perform_final_merge(
                         )
                     except Exception:
                         # Collection doesn't exist, create it
-                        collection = chroma_client.create_collection(
+                        collection = chroma_client.get_collection(
                             collection_name,
+                            create_if_missing=True,
                             metadata={
                                 "created_by": "compaction_handler",
                                 "created_at": datetime.now().isoformat(),
@@ -1619,7 +1705,12 @@ def perform_final_merge(
                         )
         else:
             # Create ChromaDB client from EFS snapshot
-            chroma_client = chromadb.PersistentClient(path=temp_dir)
+            # Use "delta" mode to allow collection creation and data upsert
+            chroma_client = ChromaClient(
+                persist_directory=temp_dir,
+                mode="delta",
+                metadata_only=True,
+            )
 
         # Merge intermediate chunks - handle both legacy and new formats
         if chunk_results:
@@ -1676,23 +1767,29 @@ def perform_final_merge(
                     intermediate_key=intermediate_key,
                 )
 
-                # Load chunk
-                chunk_client = chromadb.PersistentClient(path=chunk_temp)
+                # Load chunk using receipt_chroma for consistency
+                chunk_client = ChromaClient(
+                    persist_directory=chunk_temp,
+                    mode="read",
+                    metadata_only=True,
+                )
 
                 # Merge all collections from chunk
-                for collection_meta in chunk_client.list_collections():
+                # ChromaClient.list_collections() returns list of strings
+                for collection_name in chunk_client.list_collections():
                     chunk_collection = chunk_client.get_collection(
-                        collection_meta.name
+                        collection_name
                     )
 
                     # Get or create collection in main snapshot
                     try:
                         main_collection = chroma_client.get_collection(
-                            collection_meta.name
+                            collection_name
                         )
                     except Exception:
-                        main_collection = chroma_client.create_collection(
-                            collection_meta.name
+                        main_collection = chroma_client.get_collection(
+                            collection_name,
+                            create_if_missing=True,
                         )
 
                     # Process embeddings in batches to reduce memory usage
@@ -2065,23 +2162,88 @@ def cleanup_intermediate_chunks_by_keys(intermediate_keys: List[str]):
 
 def download_from_s3(bucket: str, prefix: str, local_path: str):
     """Download all objects with a given prefix from S3."""
+    logger.debug(
+        "Starting S3 download",
+        bucket=bucket,
+        prefix=prefix,
+        local_path=local_path,
+    )
+    download_start = time.time()
+
     paginator = s3_client.get_paginator("list_objects_v2")
     pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
 
-    for page in pages:
+    total_files = 0
+    total_size = 0
+    files_downloaded = 0
+
+    for page_num, page in enumerate(pages, 1):
         if "Contents" not in page:
+            logger.debug(
+                "No objects found in page",
+                page_num=page_num,
+                prefix=prefix,
+            )
             continue
 
-        for obj in page["Contents"]:
+        logger.debug(
+            "Processing S3 page",
+            page_num=page_num,
+            objects_in_page=len(page["Contents"]),
+            prefix=prefix,
+        )
+
+        for obj_num, obj in enumerate(page["Contents"], 1):
             key = obj["Key"]
+            size = obj.get("Size", 0)
+            total_size += size
             relative_path = key[len(prefix) :]
             if not relative_path:
+                logger.debug("Skipping empty relative path", key=key)
                 continue
 
+            total_files += 1
             local_file = os.path.join(local_path, relative_path)
             os.makedirs(os.path.dirname(local_file), exist_ok=True)
 
+            file_download_start = time.time()
+            logger.debug(
+                "Downloading file",
+                file_num=files_downloaded + 1,
+                key=key,
+                size_bytes=size,
+                local_file=local_file,
+            )
+
             s3_client.download_file(bucket, key, local_file)
+            files_downloaded += 1
+
+            file_download_duration = time.time() - file_download_start
+            logger.debug(
+                "Downloaded file",
+                key=key,
+                duration_seconds=file_download_duration,
+                size_bytes=size,
+            )
+
+    download_duration = time.time() - download_start
+
+    if total_files == 0:
+        logger.warning(
+            "No files found to download",
+            bucket=bucket,
+            prefix=prefix,
+        )
+    else:
+        logger.info(
+            "Completed S3 download",
+            bucket=bucket,
+            prefix=prefix,
+            total_files=total_files,
+            files_downloaded=files_downloaded,
+            total_size_bytes=total_size,
+            duration_seconds=download_duration,
+        )
 
 
 def upload_to_s3(

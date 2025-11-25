@@ -189,6 +189,8 @@ class CodeBuildDockerImage(ComponentResource):
                 packages_to_hash = [
                     "receipt_dynamo/receipt_dynamo",
                     "receipt_dynamo/pyproject.toml",
+                    "receipt_chroma/receipt_chroma",
+                    "receipt_chroma/pyproject.toml",
                     "receipt_label/receipt_label",
                     "receipt_label/pyproject.toml",
                 ]
@@ -302,7 +304,7 @@ echo "📦 Copying minimal context with include patterns..."
 if [ "$CONTEXT_PATH" = "." ]; then
   # Lambda images - need packages from monorepo root
   # Default packages that all Lambda images need
-  echo "  → Including receipt_dynamo and receipt_label packages..."
+  echo "  → Including receipt_dynamo, receipt_chroma, and receipt_label packages..."
   rsync -a \
     --include='receipt_dynamo/' \
     --include='receipt_dynamo/pyproject.toml' \
@@ -310,6 +312,22 @@ if [ "$CONTEXT_PATH" = "." ]; then
     --include='receipt_dynamo/receipt_dynamo/**' \
     --include='receipt_dynamo/docs/' \
     --include='receipt_dynamo/docs/README.md' \
+    --include='receipt_chroma/' \
+    --include='receipt_chroma/pyproject.toml' \
+    --include='receipt_chroma/README.md' \
+    --include='receipt_chroma/receipt_chroma/' \
+    --include='receipt_chroma/receipt_chroma/**' \
+    --exclude='receipt_chroma/__pycache__/' \
+    --exclude='receipt_chroma/**/__pycache__/' \
+    --exclude='receipt_chroma/tests/' \
+    --exclude='receipt_chroma/tests/**' \
+    --exclude='receipt_chroma/venv/' \
+    --exclude='receipt_chroma/venv/**' \
+    --exclude='receipt_chroma/htmlcov/' \
+    --exclude='receipt_chroma/htmlcov/**' \
+    --exclude='receipt_chroma/*.md' \
+    --exclude='receipt_chroma/conftest.py' \
+    --exclude='receipt_chroma/coverage.json' \
     --include='receipt_label/' \
     --include='receipt_label/pyproject.toml' \
     --include='receipt_label/receipt_label/' \
