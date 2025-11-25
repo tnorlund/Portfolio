@@ -22,8 +22,7 @@ from receipt_dynamo.entities.compaction_run import CompactionRun
 from receipt_label.embedding.line.realtime import embed_lines_realtime
 from receipt_label.embedding.word.realtime import embed_words_realtime
 from receipt_label.merchant_resolution.embeddings import upsert_embeddings
-from receipt_label.utils.chroma_s3_helpers import upload_bundled_delta_to_s3
-from receipt_label.vector_store import VectorClient
+from receipt_chroma.data.chroma_client import ChromaClient
 
 logger = logging.getLogger(__name__)
 
@@ -217,7 +216,7 @@ class EmbeddingProcessor:
                     snapshot_info = efs_manager.get_snapshot_for_chromadb()
                     if snapshot_info:
                         # Create local ChromaDB client pointing to local copy
-                        chroma_line_client = VectorClient.create_chromadb_client(
+                        chroma_line_client = ChromaClient(
                             persist_directory=snapshot_info["local_path"],
                             mode="read",
                         )
@@ -292,7 +291,7 @@ class EmbeddingProcessor:
 
                     if downloaded_files > 0:
                         # Create local ChromaDB client pointing to snapshot
-                        chroma_line_client = VectorClient.create_chromadb_client(
+                        chroma_line_client = ChromaClient(
                             persist_directory=snapshot_dir,
                             mode="read",
                         )
@@ -308,7 +307,7 @@ class EmbeddingProcessor:
                     # Fall back to HTTP if snapshot download fails
                     if self.chroma_http_endpoint:
                         try:
-                            chroma_line_client = VectorClient.create_chromadb_client(
+                            chroma_line_client = ChromaClient(
                                 mode="read",
                                 http_url=self.chroma_http_endpoint
                             )
@@ -396,12 +395,12 @@ class EmbeddingProcessor:
         delta_lines_dir = os.path.join(tempfile.gettempdir(), f"lines_{run_id}")
         delta_words_dir = os.path.join(tempfile.gettempdir(), f"words_{run_id}")
 
-        line_client = VectorClient.create_chromadb_client(
+        line_client = ChromaClient(
             persist_directory=delta_lines_dir,
             mode="delta",
             metadata_only=True
         )
-        word_client = VectorClient.create_chromadb_client(
+        word_client = ChromaClient(
             persist_directory=delta_words_dir,
             mode="delta",
             metadata_only=True
@@ -427,31 +426,18 @@ class EmbeddingProcessor:
         _log(
             f"Uploading line delta to s3://{self.chromadb_bucket}/{lines_prefix}"
         )
-        upload_bundled_delta_to_s3(
-            local_delta_dir=delta_lines_dir,
+        # persist_and_upload_delta closes the client and uploads files
+        lines_delta_key = line_client.persist_and_upload_delta(
             bucket=self.chromadb_bucket,
-            delta_prefix=lines_prefix,
-            metadata={
-                "run_id": run_id,
-                "image_id": image_id,
-                "receipt_id": str(receipt_id),
-                "collection": "lines",
-            },
+            s3_prefix=lines_prefix,
         )
 
         _log(
             f"Uploading word delta to s3://{self.chromadb_bucket}/{words_prefix}"
         )
-        upload_bundled_delta_to_s3(
-            local_delta_dir=delta_words_dir,
+        words_delta_key = word_client.persist_and_upload_delta(
             bucket=self.chromadb_bucket,
-            delta_prefix=words_prefix,
-            metadata={
-                "run_id": run_id,
-                "image_id": image_id,
-                "receipt_id": str(receipt_id),
-                "collection": "words",
-            },
+            s3_prefix=words_prefix,
         )
 
         # Create COMPACTION_RUN record
@@ -462,8 +448,8 @@ class EmbeddingProcessor:
                     run_id=run_id,
                     image_id=image_id,
                     receipt_id=receipt_id,
-                    lines_delta_prefix=lines_prefix,
-                    words_delta_prefix=words_prefix,
+                    lines_delta_prefix=lines_delta_key,
+                    words_delta_prefix=words_delta_key,
                 )
             )
             _log(f"COMPACTION_RUN created: run_id={run_id}")
