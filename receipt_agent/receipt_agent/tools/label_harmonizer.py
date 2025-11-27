@@ -802,13 +802,15 @@ class LabelHarmonizer:
             # 2. LLM validation for edge cases
 
             # Sort records to prioritize checking INVALID and NEEDS_REVIEW labels first
-            # These are more likely to be outliers
+            # These are more likely to be outliers, but we check ALL labels (including VALID)
+            # because harmonization is about consistency with consensus, not validation status.
+            # A VALID label that doesn't match consensus is still an outlier.
             sorted_records = sorted(
                 label_records,
                 key=lambda x: (
                     0 if x[1].validation_status == "INVALID" else
                     1 if x[1].validation_status == "NEEDS_REVIEW" else
-                    2
+                    2  # VALID, PENDING, and other statuses
                 )
             )
 
@@ -829,6 +831,15 @@ class LabelHarmonizer:
                     words_without_embeddings += 1
                     logger.debug(
                         f"No embedding for '{record.word_text}' ({chroma_id}), skipping outlier check"
+                    )
+                    continue
+
+                # Skip VALID labels - we're comparing against VALID labels, so VALID labels
+                # that match consensus are already correct. Only check non-VALID labels.
+                if record.validation_status == "VALID":
+                    logger.debug(
+                        f"Skipping VALID label '{record.word_text}' - already validated, "
+                        f"only checking non-VALID labels against VALID examples"
                     )
                     continue
 
@@ -1200,11 +1211,15 @@ class LabelHarmonizer:
         context_section = f"""## Context
 
 - **Merchant:** {group.merchant_name}
-- **Merchant name words:** {sorted(merchant_words) if merchant_words else "N/A"}
 - **Label Type:** `{group.label_type}`
 - **Label Type Definition:** {label_definition}
 - **Word being evaluated:** `"{word.word_text}"`
 - **Current validation status:** {word.validation_status or 'PENDING'}"""
+
+        # Add merchant name components as a hint, but emphasize context is primary
+        # Only relevant for MERCHANT_NAME label type
+        if merchant_words and group.label_type == "MERCHANT_NAME":
+            context_section += f"\n- **Note:** The merchant name contains these components: {sorted(merchant_words)}. These may be valid when appearing in merchant name context (header/store info area), but **context is the primary factor** - consider receipt position and surrounding text carefully."""
 
         # Add line context if available
         if line_context:
@@ -1246,26 +1261,63 @@ Does the word `"{word.word_text}"` belong in this group of words with the label 
 
 ## Evaluation Criteria
 
-1. **Semantic similarity:** Does the word text make sense as a `{group.label_type}`?
-2. **Pattern consistency:** Does it match the pattern of other VALID `{group.label_type}` words?
-3. **Context:** Would this word typically appear as a `{group.label_type}` on a receipt from {group.merchant_name}?
-4. **Similarity scores:** Does it have enough similar matches with VALID labels?
-5. **Merchant name components:** If the merchant name is multi-word (e.g., "In-N-Out Burger"), individual words from that name (e.g., "OUT", "BURGER", "IN") are valid when they appear separately. Words that match or are variants of merchant name components belong in the group.
-6. **OCR/scanning errors:** Receipt text may have word boundary issues, missing characters, or character substitutions. If a word appears to be a variant or partial match of words in the merchant name or similar VALID labels, it likely belongs.
-7. **Merchant name in product names:** When a merchant name appears as part of a product name (e.g., "SPROUTS CREAM CHEESE" where "SPROUTS" is the merchant), the merchant name word is still a valid `MERCHANT_NAME` label. Brand names within product descriptions are valid merchant name labels.
+**IMPORTANT: Evaluate context FIRST, then consider merchant name components as a secondary hint.**
+
+1. **Receipt context and position (PRIMARY):**
+   - Where does this word appear on the receipt? (header/store info area vs product descriptions vs totals)
+   - What text surrounds it? Does the surrounding context indicate merchant/store information or product descriptions?
+   - Does the spatial position (top of receipt, near store address/phone) suggest merchant name context?
+
+2. **Pattern consistency:** Does it match the pattern of other VALID `{group.label_type}` words in the similar examples provided?
+
+3. **Semantic similarity:** Does the word text make sense as a `{group.label_type}` in this specific context?
+
+4. **Similarity scores:** Does it have enough similar matches with VALID labels from the same merchant?
+
+5. **OCR/scanning errors:** Receipt text may have word boundary issues, missing characters, or character substitutions. If a word appears to be a variant or partial match, verify it's in the correct context before validating."""
+
+        # Add merchant name component criteria only for MERCHANT_NAME label type
+        if group.label_type == "MERCHANT_NAME":
+            prompt += f"""
+6. **Merchant name components (SECONDARY HINT):**
+   - Multi-word merchant names may have individual components that appear separately on receipts
+   - These components are valid **ONLY when appearing in merchant name context** (header area, store information section)
+   - Words matching merchant name components but appearing in product descriptions, line items, or other non-merchant contexts are likely **NOT valid**
+   - **Do NOT rely solely on merchant name component matching** - always verify the receipt context first
+
+7. **Merchant name in product descriptions:** When a merchant name word appears within a product description, it may still be valid as `MERCHANT_NAME` if it's clearly functioning as a brand identifier. However, if it's clearly part of a product name and not functioning as merchant identification, it may not be valid."""
+
+        prompt += f"""
 
 ## Examples of Outliers
 
-- Label text like "AMOUNT:" or "TOTAL:" incorrectly labeled as values
+- Label text like 'AMOUNT:' or 'TOTAL:' incorrectly labeled as values
 - Completely unrelated words that don't match the semantic pattern
 - Values that are clearly wrong (e.g., small amounts labeled as GRAND_TOTAL when other totals are much larger)
+- Words in the wrong receipt section"""
+
+        # Add MERCHANT_NAME-specific outlier examples
+        if group.label_type == "MERCHANT_NAME":
+            prompt += """
+- Words matching merchant name components but appearing in product descriptions or line items (context mismatch)
+- Words in the totals/payment section incorrectly labeled as merchant name
+- Words in clearly non-merchant contexts (e.g., product names, quantities, prices)"""
+
+        prompt += f"""
 
 ## Examples of Valid Labels
 
 - Words that match the semantic pattern of other VALID labels in the group
-- OCR variants or partial words that clearly relate to the merchant name or label type
-- Values that appear in similar context/position as other valid labels
-- **Merchant name words appearing in product names** (e.g., "SPROUTS" in "SPROUTS CREAM CHEESE" is valid as MERCHANT_NAME)
+- OCR variants or partial words that clearly relate to the label type
+- Values that appear in similar context/position as other valid labels"""
+
+        # Add MERCHANT_NAME-specific examples
+        if group.label_type == "MERCHANT_NAME":
+            prompt += """
+- Words appearing in merchant name context (header area, near store address/phone, store hours)
+- Merchant name words functioning as brand identifiers in product descriptions (when clearly identifying the merchant, not just part of a product name)"""
+
+        prompt += f"""
 
 ## Response Format
 
@@ -1418,6 +1470,7 @@ Respond with a JSON object indicating whether the word belongs in this group.
         self,
         word: LabelRecord,
         group: MerchantLabelGroup,
+        parent_run_tree: Optional[Any] = None,
     ) -> Optional[str]:
         """
         Use LLM to suggest the correct CORE_LABEL type for an outlier.
@@ -1432,7 +1485,11 @@ Respond with a JSON object indicating whether the word belongs in this group.
         Returns:
             Suggested CORE_LABEL type (e.g., "PRODUCT_NAME") or None if couldn't determine
         """
-        if not self.llm or not word.word_text:
+        if not self.llm:
+            logger.warning("LLM not available for label type suggestion for '%s'", word.word_text)
+            return None
+        if not word.word_text:
+            logger.warning("Word text is empty for label type suggestion")
             return None
 
         # Get line context
@@ -1479,6 +1536,38 @@ Respond with a JSON object indicating whether the word belongs in this group.
             for label, definition in CORE_LABELS.items()
         )
 
+        # Get existing labels for this word to inform the suggestion
+        existing_labels = []
+        existing_label_types = set()
+        if self.dynamo and word.image_id and word.receipt_id and word.line_id and word.word_id:
+            try:
+                existing_labels_result = self.dynamo.list_receipt_word_labels_for_word(
+                    image_id=word.image_id,
+                    receipt_id=word.receipt_id,
+                    line_id=word.line_id,
+                    word_id=word.word_id,
+                )
+                existing_labels = existing_labels_result[0]  # Get the list from tuple
+                existing_label_types = {
+                    lbl.label for lbl in existing_labels
+                    if lbl.validation_status in ["VALID", "PENDING"]
+                }
+                if existing_label_types:
+                    logger.debug(
+                        "Word '%s' already has labels: %s",
+                        word.word_text,
+                        existing_label_types,
+                    )
+            except Exception as e:
+                logger.debug("Could not fetch existing labels for word: %s", e)
+
+        # Build prompt with existing labels info
+        existing_labels_section = ""
+        if existing_label_types:
+            existing_labels_section = f"\n## Existing Labels for This Word\n\n"
+            existing_labels_section += f"This word already has the following label types: {', '.join(sorted(existing_label_types))}\n"
+            existing_labels_section += f"Consider whether the suggested label type should be one of these, or if a new label type is needed.\n"
+
         prompt = f"""# Determine Correct Label Type for Outlier
 
 A word has been identified as an outlier in the `{group.label_type}` label type group.
@@ -1494,7 +1583,7 @@ Your task is to determine the correct CORE_LABEL type for this word.
   ```
   {"\n  ".join(surrounding_lines) if surrounding_lines else "N/A"}
   ```
-
+{existing_labels_section}
 ## Available CORE_LABEL Types
 
 {core_labels_text}
@@ -1519,22 +1608,38 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
         try:
             from langchain_core.messages import HumanMessage
             from langchain_core.runnables import RunnableConfig
+            from receipt_agent.tools.label_harmonizer_models import LabelTypeSuggestion
+            import langsmith as ls
 
             messages = [HumanMessage(content=prompt)]
-            config = RunnableConfig(
-                metadata={
+
+            # LangSmith best practice: Use run_name for better trace identification
+            # According to LangSmith docs, for LangChain runnables, we should pass the parent config
+            # However, since we're calling from a non-runnable context, we use langsmith_extra
+            # to link the child trace to the parent run tree
+            config_dict = {
+                "run_name": "suggest_label_type_for_outlier",
+                "metadata": {
+                    "prompt_version": "v2-markdown-full-context",
                     "task": "suggest_label_type",
                     "merchant": group.merchant_name,
                     "word": word.word_text,
                     "current_label_type": group.label_type,
+                    "image_id": word.image_id or "",
+                    "receipt_id": str(word.receipt_id) if word.receipt_id else "",
+                    "line_id": str(word.line_id) if word.line_id else "",
+                    "word_id": str(word.word_id) if word.word_id else "",
+                    "existing_label_types": ",".join(sorted(existing_label_types)) if existing_label_types else "",
                 },
-                tags=["label-harmonizer", "label-type-suggestion", "outlier"],
-            )
+                "tags": [
+                    "label-harmonizer",
+                    "label-type-suggestion",
+                    "outlier",
+                    f"merchant:{group.merchant_name}",
+                    f"current-label-type:{group.label_type}",
+                ],
+            }
 
-            # Use structured output for reliable parsing
-            # Best practice: Pass Pydantic schema to format= parameter
-            from receipt_agent.tools.label_harmonizer_models import LabelTypeSuggestion
-            
             # Create LLM with schema in format parameter (Ollama best practice)
             json_schema = LabelTypeSuggestion.model_json_schema()
             llm_with_schema = ChatOllama(
@@ -1544,8 +1649,21 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
                 format=json_schema,  # Pass schema directly to format
                 temperature=self.llm.temperature,
             )
+            # LangSmith best practice: Use ainvoke for async functions to ensure proper trace context
             llm_structured = llm_with_schema.with_structured_output(LabelTypeSuggestion)
-            structured_response: LabelTypeSuggestion = llm_structured.invoke(messages, config=config)  # type: ignore[assignment]
+
+            # Link to parent run if available (LangSmith best practice for nested traces)
+            # According to LangSmith docs, for LangChain runnables called from non-runnable contexts,
+            # we should use langsmith.tracing_context() to set the parent context
+            config = RunnableConfig(**config_dict)
+
+            if parent_run_tree:
+                # Use tracing_context to link child trace to parent
+                # This is the recommended approach when calling LangChain runnables from non-runnable contexts
+                with ls.tracing_context(parent=parent_run_tree):
+                    structured_response: LabelTypeSuggestion = await llm_structured.ainvoke(messages, config=config)  # type: ignore[assignment]
+            else:
+                structured_response: LabelTypeSuggestion = await llm_structured.ainvoke(messages, config=config)  # type: ignore[assignment]
 
             # Extract structured response
             suggested_type = structured_response.suggested_label_type
@@ -1634,7 +1752,27 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
             if is_outlier:
                 changes.append(f"OUTLIER: Word '{record.word_text}' doesn't belong in {group.label_type} group")
                 # For outliers, suggest the correct label type using LLM
-                suggested_label_type = await self._suggest_label_type_for_outlier(record, group)
+                logger.info(
+                    "Outlier detected for '%s' in %s %s. Calling _suggest_label_type_for_outlier...",
+                    record.word_text,
+                    group.merchant_name,
+                    group.label_type,
+                )
+                # Get the current run tree to pass as parent context for child trace
+                # This ensures the label type suggestion appears as a child of the outlier detection run
+                parent_run_tree = None
+                try:
+                    from langsmith.run_helpers import get_current_run_tree
+                    parent_run_tree = get_current_run_tree()
+                except Exception:
+                    # If no parent run context, continue without linking
+                    pass
+                suggested_label_type = await self._suggest_label_type_for_outlier(record, group, parent_run_tree=parent_run_tree)
+                logger.info(
+                    "Label type suggestion for '%s': %s",
+                    record.word_text,
+                    suggested_label_type or "None",
+                )
 
             # Check if label matches consensus
             if record.label != canonical_label:
@@ -1886,7 +2024,7 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
                     # Label type change (outlier correction)
                     logger.info(
                         "[LABEL TYPE CHANGE] %s...#%s#%s#%s: Current: %s (%s) → "
-                        "New: %s (VALID) | Old label would be marked: INVALID | "
+                        "New: %s (PENDING) | Old label would be marked: INVALID | "
                         "Audit trail: label_consolidated_from=%s",
                         r['image_id'][:8],
                         r['receipt_id'],
@@ -1969,36 +2107,113 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
                 # Handle label type change (outlier with suggested_label_type)
                 if r.get("suggested_label_type") and r["suggested_label_type"] != r["label_type"]:
                     # This is an outlier that should be moved to a different label type
-                    # Mark old label as INVALID (it was incorrectly labeled) and create new one with correct type
                     from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
                     from receipt_dynamo.constants import ValidationStatus
                     from datetime import datetime
 
-                    # Update old label's validation_status to INVALID (it was incorrectly labeled)
-                    label.validation_status = ValidationStatus.INVALID.value
-                    self.dynamo.update_receipt_word_label(label)
-
-                    # Create new label with suggested label type
-                    # Use label_consolidated_from to track the previous (incorrect) label for audit trail
-                    new_label = ReceiptWordLabel(
-                        image_id=label.image_id,
-                        receipt_id=label.receipt_id,
-                        line_id=label.line_id,
-                        word_id=label.word_id,
-                        label=r["suggested_label_type"],  # New label type
-                        reasoning=f"Label type corrected from {r['label_type']} (outlier) to {r['suggested_label_type']}. Previous label marked as INVALID.",
-                        timestamp_added=datetime.now().isoformat(),
-                        validation_status=ValidationStatus.VALID.value,  # Mark as valid since LLM suggested it
-                        label_proposed_by="label-harmonizer",
-                        label_consolidated_from=label.label,  # Audit trail: tracks the previous (incorrect) label
+                    # First, check if the word already has the suggested label type
+                    existing_labels_result = self.dynamo.list_receipt_word_labels_for_word(
+                        image_id=r["image_id"],
+                        receipt_id=r["receipt_id"],
+                        line_id=r["line_id"],
+                        word_id=r["word_id"],
                     )
-                    self.dynamo.add_receipt_word_label(new_label)
+                    existing_labels = existing_labels_result[0]  # Get the list from tuple
 
-                    logger.info(
-                        f"Updated label type {r['image_id'][:8]}...#{r['receipt_id']}#{r['line_id']}#{r['word_id']}: "
-                        f"{r['label_type']} → {r['suggested_label_type']} (old label marked INVALID)"
-                    )
-                    result.total_updated += 1
+                    # Check if suggested label type already exists (and is VALID or PENDING)
+                    existing_suggested_label = None
+                    for existing_label in existing_labels:
+                        if existing_label.label == r["suggested_label_type"]:
+                            if existing_label.validation_status in ["VALID", "PENDING"]:
+                                existing_suggested_label = existing_label
+                                break
+
+                    if existing_suggested_label:
+                        # Word already has the correct label type - just mark the incorrect one as INVALID
+                        logger.info(
+                            "Word already has correct label type %s (%s). "
+                            "Marking incorrect %s label as INVALID.",
+                            r['suggested_label_type'],
+                            existing_suggested_label.validation_status,
+                            r['label_type'],
+                        )
+
+                        if dry_run:
+                            logger.info(
+                                "[DRY RUN] Would mark %s label as INVALID for "
+                                "%s...#%s#%s#%s "
+                                "(word already has correct %s label)",
+                                r['label_type'],
+                                r['image_id'][:8],
+                                r['receipt_id'],
+                                r['line_id'],
+                                r['word_id'],
+                                r['suggested_label_type'],
+                            )
+                            result.total_updated += 1
+                        else:
+                            # Mark old label as INVALID (word already has the correct label)
+                            label.validation_status = ValidationStatus.INVALID.value
+                            self.dynamo.update_receipt_word_label(label)
+                            logger.info(
+                                "Marked %s label as INVALID for "
+                                "%s...#%s#%s#%s "
+                                "(word already has correct %s label)",
+                                r['label_type'],
+                                r['image_id'][:8],
+                                r['receipt_id'],
+                                r['line_id'],
+                                r['word_id'],
+                                r['suggested_label_type'],
+                            )
+                            result.total_updated += 1
+                    else:
+                        # Word doesn't have the suggested label type - create new label
+                        if dry_run:
+                            # Dry run: just log what would happen
+                            logger.info(
+                                "[DRY RUN] Would update label type %s...#%s#%s#%s: "
+                                "%s → %s (old label would be marked INVALID, new label would be PENDING)",
+                                r['image_id'][:8],
+                                r['receipt_id'],
+                                r['line_id'],
+                                r['word_id'],
+                                r['label_type'],
+                                r['suggested_label_type'],
+                            )
+                            result.total_updated += 1
+                        else:
+                            # Update old label's validation_status to INVALID (it was incorrectly labeled)
+                            label.validation_status = ValidationStatus.INVALID.value
+                            self.dynamo.update_receipt_word_label(label)
+
+                            # Create new label with suggested label type
+                            # Use label_consolidated_from to track the previous (incorrect) label for audit trail
+                            new_label = ReceiptWordLabel(
+                                image_id=label.image_id,
+                                receipt_id=label.receipt_id,
+                                line_id=label.line_id,
+                                word_id=label.word_id,
+                                label=r["suggested_label_type"],  # New label type
+                                reasoning=f"Label type corrected from {r['label_type']} (outlier) to {r['suggested_label_type']}. Previous label marked as INVALID.",
+                                timestamp_added=datetime.now().isoformat(),
+                                validation_status=ValidationStatus.PENDING.value,  # Mark as PENDING for review since it's a new label type
+                                label_proposed_by="label-harmonizer",
+                                label_consolidated_from=label.label,  # Audit trail: tracks the previous (incorrect) label
+                            )
+                            self.dynamo.add_receipt_word_label(new_label)
+
+                            logger.info(
+                                "Updated label type %s...#%s#%s#%s: "
+                                "%s → %s (old label marked INVALID, new label PENDING)",
+                                r['image_id'][:8],
+                                r['receipt_id'],
+                                r['line_id'],
+                                r['word_id'],
+                                r['label_type'],
+                                r['suggested_label_type'],
+                            )
+                            result.total_updated += 1
 
                 # Update label if consensus is different (same label type)
                 elif r["consensus_label"] and label.label != r["consensus_label"]:
