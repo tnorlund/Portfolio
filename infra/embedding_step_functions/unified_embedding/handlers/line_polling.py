@@ -876,6 +876,21 @@ def _handle_internal_core(
                                 bucket_name,
                                 sqs_queue_url,
                             )
+
+                            # Check if delta creation failed (produce_embedding_delta returns failed status instead of raising)
+                            if delta_result.get("status") == "failed" or not delta_result.get("delta_key"):
+                                error_msg = delta_result.get("error", "Unknown error during delta creation")
+                                logger.error(
+                                    "Delta creation failed",
+                                    batch_id=batch_id,
+                                    error=error_msg,
+                                    delta_result=delta_result,
+                                )
+                                raise RuntimeError(
+                                    f"Delta creation failed: {error_msg}. "
+                                    f"This may indicate an issue with metadata format, ChromaDB compatibility, or S3 upload."
+                                )
+
                             # If we get here, validation succeeded (or was skipped)
                             validation_success = True
                             validation_attempts = 1
@@ -897,11 +912,13 @@ def _handle_internal_core(
         delta_save_duration = time.time() - delta_save_start_time
 
         # Check if delta creation failed
-        if delta_result.get("status") == "failed":
+        if delta_result.get("status") == "failed" or not delta_result.get("delta_key"):
+            error_msg = delta_result.get("error", "Unknown error during delta creation")
             logger.error(
                 "Failed to save delta for batch",
                 batch_id=batch_id,
-                error=delta_result.get("error", "Unknown error"),
+                error=error_msg,
+                delta_result=delta_result,
             )
             collected_metrics["LinePollingErrors"] = (
                 collected_metrics.get("LinePollingErrors", 0) + 1
@@ -923,9 +940,7 @@ def _handle_internal_core(
                 "openai_batch_id": openai_batch_id,
                 "batch_status": batch_status,
                 "action": "delta_save_failed",
-                "error": delta_result.get(
-                    "error", "Failed to save embedding delta"
-                ),
+                "error": error_msg,
                 "results_count": len(results),
             }
 

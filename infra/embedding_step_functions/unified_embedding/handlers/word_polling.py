@@ -1015,6 +1015,21 @@ def _handle_internal_core(
                                 bucket_name,
                                 sqs_queue_url,
                             )
+
+                            # Check if delta creation failed (produce_embedding_delta returns failed status instead of raising)
+                            if delta_result.get("status") == "failed" or not delta_result.get("delta_key"):
+                                error_msg = delta_result.get("error", "Unknown error during delta creation")
+                                logger.error(
+                                    "Delta creation failed",
+                                    batch_id=batch_id,
+                                    error=error_msg,
+                                    delta_result=delta_result,
+                                )
+                                raise RuntimeError(
+                                    f"Delta creation failed: {error_msg}. "
+                                    f"This may indicate an issue with metadata format, ChromaDB compatibility, or S3 upload."
+                                )
+
                             # If we get here, validation succeeded (or was skipped)
                             validation_success = True
                             validation_attempts = 1
@@ -1034,6 +1049,20 @@ def _handle_internal_core(
                             raise
 
         delta_save_duration = time.time() - delta_save_start_time
+
+        # Validate delta_result before using it
+        if not delta_result.get("delta_key"):
+            error_msg = (
+                f"Delta creation returned no delta_key. "
+                f"Status: {delta_result.get('status', 'unknown')}, "
+                f"Error: {delta_result.get('error', 'none')}"
+            )
+            logger.error(
+                "Cannot proceed without delta_key",
+                batch_id=batch_id,
+                delta_result=delta_result,
+            )
+            raise RuntimeError(error_msg)
 
         delta_id = delta_result["delta_id"]
         embedding_count = delta_result["embedding_count"]
@@ -1185,6 +1214,20 @@ def _handle_internal_core(
                 bucket_name,
                 sqs_queue_url,
             )
+
+            # Check if delta creation failed (produce_embedding_delta returns failed status instead of raising)
+            if delta_result.get("status") == "failed" or not delta_result.get("delta_key"):
+                error_msg = delta_result.get("error", "Unknown error during delta creation")
+                logger.error(
+                    "Delta creation failed for partial results",
+                    batch_id=batch_id,
+                    error=error_msg,
+                    delta_result=delta_result,
+                )
+                raise RuntimeError(
+                    f"Delta creation failed for partial results: {error_msg}. "
+                    f"This may indicate an issue with metadata format, ChromaDB compatibility, or S3 upload."
+                )
 
             # Skip writing to DynamoDB - we only store in ChromaDB now
             logger.info(

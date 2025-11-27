@@ -1393,7 +1393,26 @@ def process_chunk_deltas(
             deltas_processed = 0
             deltas_failed = 0
             for i, delta in enumerate(collection_deltas):
-                delta_key = delta["delta_key"]
+                delta_key = delta.get("delta_key")
+                delta_status = delta.get("status", "unknown")
+                delta_error = delta.get("error")
+
+                # Skip deltas with None or missing delta_key (these are failed delta creations)
+                if not delta_key:
+                    # Log detailed diagnostics about why this delta failed
+                    logger.error(
+                        "Skipping delta with missing or None delta_key - delta creation likely failed",
+                        delta_index=i + 1,
+                        total_deltas=len(collection_deltas),
+                        delta_status=delta_status,
+                        delta_error=delta_error,
+                        delta_id=delta.get("delta_id"),
+                        batch_id=delta.get("batch_id"),
+                        collection_name=collection_name,
+                        delta_keys=list(delta.keys()),  # Show what fields are present
+                    )
+                    deltas_failed += 1
+                    continue
 
                 logger.info(
                     "Starting delta processing",
@@ -1517,6 +1536,15 @@ def download_and_merge_delta(
 
     Returns the number of embeddings added.
     """
+    # Validate delta_key is not None or empty
+    if not delta_key:
+        error_msg = (
+            f"delta_key is None or empty. Cannot download and merge delta. "
+            f"This usually indicates the delta creation failed."
+        )
+        logger.error(error_msg)
+        raise ValueError(error_msg)
+
     # Validate delta_key format - it should include a delta ID, not just a prefix
     if delta_key.endswith("/") and delta_key.count("/") < 3:
         # This looks like just a prefix (e.g., "words/delta/") without a delta ID
