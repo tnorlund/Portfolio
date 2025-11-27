@@ -318,7 +318,7 @@ class LabelHarmonizerV2:
                 target_embedding = target_embedding.tolist()
 
             # Query for similar words (same pattern as _identify_outliers)
-            # Filter by merchant_name if available, then filter in Python for validated_labels
+            # Filter by merchant_name if available, then filter in Python for valid_labels
             merchant_filter = merchant_name.strip().title() if merchant_name else None
             where_clause = {"merchant_name": {"$eq": merchant_filter}} if merchant_filter else None
 
@@ -337,9 +337,11 @@ class LabelHarmonizerV2:
                 )
                 return False, None
 
-            # Filter results to only include words with the suggested label type in validated_labels
-            # validated_labels is stored as comma-delimited: ",LABEL1,LABEL2,"
+            # Filter results to only include words with the suggested label type in valid_labels
+            # valid_labels is stored as comma-delimited: ",LABEL1,LABEL2,"
             # Same pattern as _identify_outliers (line 904-906)
+            # Also apply similarity threshold filter like _identify_outliers does
+            similarity_threshold = 0.70  # Same threshold as _identify_outliers
             label_pattern = f",{suggested_label_type},"
             filtered_docs = []
             filtered_metadatas = []
@@ -350,8 +352,16 @@ class LabelHarmonizerV2:
                 query_results["metadatas"][0] if query_results.get("metadatas") else [{}] * len(query_results["documents"][0]),
                 query_results["distances"][0] if query_results.get("distances") else [1.0] * len(query_results["documents"][0])
             ):
-                validated_labels_str = metadata.get("validated_labels", "")
-                if label_pattern in validated_labels_str:
+                # Convert distance to similarity (same formula as _identify_outliers)
+                similarity = max(0.0, 1.0 - (distance / 2))
+
+                # Apply similarity threshold filter (same as _identify_outliers line 900-901)
+                if similarity < similarity_threshold:
+                    continue
+
+                # Filter by valid_labels pattern
+                valid_labels_str = metadata.get("valid_labels", "")
+                if label_pattern in valid_labels_str:
                     filtered_docs.append(doc)
                     filtered_metadatas.append(metadata)
                     filtered_distances.append(distance)
@@ -382,7 +392,7 @@ class LabelHarmonizerV2:
                     "right_context": metadata.get("right", ""),
                     # We queried for this specific label type, so use it
                     "label": suggested_label_type,
-                    "validated_labels": metadata.get("validated_labels", ""),
+                    "valid_labels": metadata.get("valid_labels", ""),
                     # Include IDs for fetching full receipt context
                     "image_id": metadata.get("image_id"),
                     "receipt_id": metadata.get("receipt_id"),
@@ -797,7 +807,7 @@ Respond with JSON: `is_valid` (boolean), `reasoning` (string)"""
         group: MerchantLabelGroup,
         similarity_threshold: float = 0.70,
         run_tree: Optional[Any] = None,
-        max_concurrent_llm_calls: int = 2,
+        max_concurrent_llm_calls: int = 10,
     ) -> None:
         """
         Identify outliers in the group using concurrent LLM calls.
@@ -806,7 +816,7 @@ Respond with JSON: `is_valid` (boolean), `reasoning` (string)"""
             group: The merchant label group
             similarity_threshold: Minimum similarity for matches
             run_tree: Parent run tree for LangSmith trace nesting
-            max_concurrent_llm_calls: Max concurrent LLM calls (default: 5)
+            max_concurrent_llm_calls: Max concurrent LLM calls (default: 10)
         """
         if not group.labels or len(group.labels) < 3:
             return
@@ -901,9 +911,9 @@ Respond with JSON: `is_valid` (boolean), `reasoning` (string)"""
                             continue
 
                         metadata = metadatas[idx] if metadatas else {}
-                        validated_labels_str = metadata.get("validated_labels", "")
+                        valid_labels_str = metadata.get("valid_labels", "")
 
-                        if label_pattern in validated_labels_str:
+                        if label_pattern in valid_labels_str:
                             similar_matches.append((similar_id, similarity))
 
                     work_items.append({
@@ -1139,7 +1149,7 @@ Respond with JSON: `is_valid` (boolean), `reasoning` (string)"""
                 similar_words_info.append({
                     "text": metadata.get("text", "unknown"),
                     "similarity": f"{similarity:.3f}",
-                    "validated_labels": metadata.get("validated_labels", ""),
+                    "valid_labels": metadata.get("valid_labels", ""),
                     "line_context": similar_line_context,
                     "surrounding_words": similar_surrounding_words,
                     "surrounding_lines": similar_surrounding_lines,
@@ -1189,7 +1199,7 @@ You are analyzing receipt word labels for consistency. Your task is to determine
                 prompt += f"### Example {i}\n\n"
                 prompt += f"- **Text:** `'{info['text']}'`\n"
                 prompt += f"- **Similarity:** {info['similarity']}\n"
-                prompt += f"- **Labels:** {info['validated_labels']}\n"
+                prompt += f"- **Labels:** {info['valid_labels']}\n"
                 if info.get('line_context'):
                     prompt += f"- **Line context:** `\"{info['line_context']}\"`\n"
                 if info.get('surrounding_words'):
@@ -1359,8 +1369,8 @@ Respond with a JSON object indicating whether the word belongs in this group.
                     jitter = random.uniform(0, base_delay)
                     wait_time = (base_delay * (2 ** attempt)) + jitter
                     logger.warning(
-                        f"Retryable error for '{word.word_text}' "
-                        f"(attempt {attempt + 1}/{max_retries}): {error_str[:100]}. "
+                        f"Ollama retryable error for '{word.word_text}' "
+                        f"(attempt {attempt + 1}/{max_retries}): {error_str[:200]}. "
                         f"Retrying in {wait_time:.1f}s..."
                     )
                     await asyncio.sleep(wait_time)
@@ -1368,7 +1378,7 @@ Respond with a JSON object indicating whether the word belongs in this group.
                 else:
                     if attempt >= max_retries - 1:
                         logger.error(
-                            f"LLM call failed after {max_retries} attempts for '{word.word_text}': {error_str}"
+                            f"Ollama LLM call failed after {max_retries} attempts for '{word.word_text}': {error_str}"
                         )
                     raise RuntimeError(
                         f"Failed to get LLM decision for '{word.word_text}': {error_str}"
@@ -1511,103 +1521,170 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
 - `suggested_label_type`: string or null (the CORE_LABEL type name, or null if it doesn't match any CORE_LABEL type)
 - `reasoning`: optional string explaining why this label type was suggested"""
 
-        try:
-            from langchain_core.messages import HumanMessage
-            from langchain_core.runnables import RunnableConfig
-            from receipt_agent.tools.label_harmonizer_models import LabelTypeSuggestion
+        # Retry logic following Ollama/LangGraph best practices
+        # Uses exponential backoff with jitter to prevent thundering herd
+        max_retries = 3
+        base_delay = 2.0
+        last_error = None
 
-            messages = [HumanMessage(content=prompt)]
+        for attempt in range(max_retries):
+            try:
+                from langchain_core.messages import HumanMessage
+                from langchain_core.runnables import RunnableConfig
+                from receipt_agent.tools.label_harmonizer_models import LabelTypeSuggestion
 
-            # LangSmith config with comprehensive metadata
-            config = RunnableConfig(
-                run_name="suggest_label_type_for_outlier",
-                metadata={
-                    "prompt_version": "v2-trace-nesting-full-context",
-                    "task": "suggest_label_type",
-                    "merchant": group.merchant_name,
-                    "word": word.word_text,
-                    "current_label_type": group.label_type,
-                    "image_id": word.image_id or "",
-                    "receipt_id": str(word.receipt_id) if word.receipt_id else "",
-                    "line_id": str(word.line_id) if word.line_id else "",
-                    "word_id": str(word.word_id) if word.word_id else "",
-                    "existing_label_types": ",".join(sorted(existing_label_types)) if existing_label_types else "",
-                },
-                tags=[
-                    "label-harmonizer-v2",
-                    "label-type-suggestion",
-                    "outlier",
-                    f"merchant:{group.merchant_name}",
-                    f"current-label-type:{group.label_type}",
-                ],
-            )
+                messages = [HumanMessage(content=prompt)]
 
-            json_schema = LabelTypeSuggestion.model_json_schema()
-            llm_with_schema = ChatOllama(
-                model=self.llm.model,
-                base_url=self.llm.base_url,
-                client_kwargs=self.llm.client_kwargs,
-                format=json_schema,
-                temperature=self.llm.temperature,
-            )
-            llm_structured = llm_with_schema.with_structured_output(LabelTypeSuggestion)
-
-            response = await llm_structured.ainvoke(messages, config=config)
-            suggested_type = getattr(response, 'suggested_label_type', None)
-            reasoning = getattr(response, 'reasoning', "") or ""
-
-            # Validate it's a CORE_LABEL
-            if suggested_type and suggested_type in CORE_LABELS:
-                logger.debug(
-                    "LLM suggestion: word='%s' suggested='%s' reason='%s'",
-                    word.word_text,
-                    suggested_type,
-                    reasoning[:100] if reasoning else "N/A",
+                # LangSmith config with comprehensive metadata
+                config = RunnableConfig(
+                    run_name="suggest_label_type_for_outlier",
+                    metadata={
+                        "prompt_version": "v2-trace-nesting-full-context",
+                        "task": "suggest_label_type",
+                        "merchant": group.merchant_name,
+                        "word": word.word_text,
+                        "current_label_type": group.label_type,
+                        "image_id": word.image_id or "",
+                        "receipt_id": str(word.receipt_id) if word.receipt_id else "",
+                        "line_id": str(word.line_id) if word.line_id else "",
+                        "word_id": str(word.word_id) if word.word_id else "",
+                        "existing_label_types": ",".join(sorted(existing_label_types)) if existing_label_types else "",
+                    },
+                    tags=[
+                        "label-harmonizer-v2",
+                        "label-type-suggestion",
+                        "outlier",
+                        f"merchant:{group.merchant_name}",
+                        f"current-label-type:{group.label_type}",
+                    ],
                 )
 
-                # CRITICAL: Validate suggestion with similarity search + LLM validation
-                # This prevents garbage suggestions like "Vons." -> WEBSITE
-                # by finding similar words with the suggested label and having
-                # the LLM verify the suggestion makes sense
-                is_valid, _similar_words = await self._validate_suggestion_with_similarity(
-                    word=word,
-                    suggested_label_type=suggested_type,
-                    merchant_name=group.merchant_name,
-                    llm_reason=reasoning,
+                json_schema = LabelTypeSuggestion.model_json_schema()
+                llm_with_schema = ChatOllama(
+                    model=self.llm.model,
+                    base_url=self.llm.base_url,
+                    client_kwargs=self.llm.client_kwargs,
+                    format=json_schema,
+                    temperature=self.llm.temperature,
                 )
+                llm_structured = llm_with_schema.with_structured_output(LabelTypeSuggestion)
 
-                if is_valid:
-                    logger.info(
-                        "VALIDATED suggestion: '%s' -> %s",
-                        word.word_text, suggested_type
+                response = await llm_structured.ainvoke(messages, config=config)
+                suggested_type = getattr(response, 'suggested_label_type', None)
+                reasoning = getattr(response, 'reasoning', "") or ""
+
+                # Validate it's a CORE_LABEL
+                if suggested_type and suggested_type in CORE_LABELS:
+                    logger.debug(
+                        "LLM suggestion: word='%s' suggested='%s' reason='%s'",
+                        word.word_text,
+                        suggested_type,
+                        reasoning[:100] if reasoning else "N/A",
                     )
-                    return suggested_type
+
+                    # CRITICAL: Validate suggestion with similarity search + LLM validation
+                    # This prevents garbage suggestions like "Vons." -> WEBSITE
+                    # by finding similar words with the suggested label and having
+                    # the LLM verify the suggestion makes sense
+                    is_valid, _similar_words = await self._validate_suggestion_with_similarity(
+                        word=word,
+                        suggested_label_type=suggested_type,
+                        merchant_name=group.merchant_name,
+                        llm_reason=reasoning,
+                    )
+
+                    if is_valid:
+                        logger.info(
+                            "VALIDATED suggestion: '%s' -> %s",
+                            word.word_text, suggested_type
+                        )
+                        return suggested_type
+                    else:
+                        logger.warning(
+                            "REJECTED suggestion: '%s' -> %s (LLM validation failed, will mark NEEDS_REVIEW)",
+                            word.word_text, suggested_type
+                        )
+                        # Return None so it gets marked as NEEDS_REVIEW instead of auto-updating
+                        return None
+
+                elif suggested_type is None:
+                    logger.debug("Label suggestion: word='%s' suggested=None", word.word_text)
+                    return None
                 else:
                     logger.warning(
-                        "REJECTED suggestion: '%s' -> %s (LLM validation failed, will mark NEEDS_REVIEW)",
-                        word.word_text, suggested_type
+                        "Invalid label type suggested: '%s' (not in CORE_LABELS)",
+                        suggested_type,
                     )
-                    # Return None so it gets marked as NEEDS_REVIEW instead of auto-updating
                     return None
 
-            elif suggested_type is None:
-                logger.debug("Label suggestion: word='%s' suggested=None", word.word_text)
-                return None
-            else:
-                logger.warning(
-                    "Invalid label type suggested: '%s' (not in CORE_LABELS)",
-                    suggested_type,
-                )
-                return None
+            except Exception as e:
+                last_error = e
+                error_str = str(e)
+                error_type = type(e).__name__
 
-        except Exception as e:
-            logger.warning("Failed to suggest label type for '%s': %s", word.word_text, e)
-            return None
+                # Extract additional error context if available
+                error_context = {}
+                status_code = getattr(e, 'status_code', None)
+                if status_code is not None:
+                    error_context['status_code'] = status_code
+                if hasattr(e, 'response'):
+                    error_context['has_response'] = True
+                if hasattr(e, 'request'):
+                    error_context['has_request'] = True
+
+                # Check if this is a retryable error
+                is_retryable = (
+                    "429" in error_str or
+                    "500" in error_str or
+                    "503" in error_str or
+                    "502" in error_str or
+                    "timeout" in error_str.lower() or
+                    "rate limit" in error_str.lower() or
+                    "rate_limit" in error_str.lower() or
+                    "too many requests" in error_str.lower() or
+                    "service unavailable" in error_str.lower() or
+                    "internal server error" in error_str.lower()
+                )
+
+                if is_retryable and attempt < max_retries - 1:
+                    # Exponential backoff with jitter to prevent thundering herd
+                    # attempt 0: 2-4s, attempt 1: 4-8s, attempt 2: 8-16s
+                    jitter = random.uniform(0, base_delay)
+                    wait_time = (base_delay * (2 ** attempt)) + jitter
+                    context_str = f", context: {error_context}" if error_context else ""
+                    logger.warning(
+                        f"Ollama retryable error for label type suggestion '{word.word_text}' "
+                        f"(attempt {attempt + 1}/{max_retries}, error_type={error_type}{context_str}): {error_str[:200]}. "
+                        f"Retrying in {wait_time:.1f}s..."
+                    )
+                    await asyncio.sleep(wait_time)
+                    continue
+                else:
+                    context_str = f", context: {error_context}" if error_context else ""
+                    if attempt >= max_retries - 1:
+                        logger.error(
+                            f"Ollama LLM call failed after {max_retries} attempts for label type suggestion '{word.word_text}' "
+                            f"(error_type={error_type}{context_str}): {error_str}"
+                        )
+                    else:
+                        # Non-retryable error
+                        logger.warning(
+                            f"Ollama non-retryable error for label type suggestion '{word.word_text}' "
+                            f"(error_type={error_type}{context_str}): {error_str[:200]}"
+                        )
+                    return None
+
+        # Should not reach here, but handle it just in case
+        logger.error(
+            f"Unexpected error: Failed to get label type suggestion for '{word.word_text}'"
+        )
+        return None
 
     async def analyze_group(
         self,
         group: MerchantLabelGroup,
         use_similarity: bool = True,
+        max_concurrent_llm_calls: int = 10,
     ) -> list[HarmonizerResult]:
         """
         Analyze a merchant group and return results for each label.
@@ -1618,6 +1695,7 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
         Args:
             group: The merchant group to analyze
             use_similarity: Whether to use ChromaDB similarity clustering
+            max_concurrent_llm_calls: Maximum concurrent LLM calls for outlier detection (default: 10)
 
         Returns:
             List of HarmonizerResult for each label in the group
@@ -1632,11 +1710,14 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
                     "label_type": group.label_type,
                     "labels_count": len(group.labels),
                     "use_similarity": use_similarity,
+                    "max_concurrent_llm_calls": max_concurrent_llm_calls,
                 },
                 tags=["label-harmonizer-v2", "analyze-group"],
             ) as root:
                 try:
-                    results = await self._analyze_group_with_trace(group, use_similarity, run_tree=root)
+                    results = await self._analyze_group_with_trace(
+                        group, use_similarity, run_tree=root, max_concurrent_llm_calls=max_concurrent_llm_calls
+                    )
                     root.end(outputs={"results_count": len(results), "status": "success"})
                     return results
                 except Exception as e:
@@ -1645,13 +1726,16 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
                     raise
         else:
             # No LangSmith - run without trace
-            return await self._analyze_group_with_trace(group, use_similarity, run_tree=None)
+            return await self._analyze_group_with_trace(
+                group, use_similarity, run_tree=None, max_concurrent_llm_calls=max_concurrent_llm_calls
+            )
 
     async def _analyze_group_with_trace(
         self,
         group: MerchantLabelGroup,
         use_similarity: bool,
         run_tree: Any,
+        max_concurrent_llm_calls: int = 10,
     ) -> list[HarmonizerResult]:
         """
         Analyze a merchant group with proper trace nesting.
@@ -1668,7 +1752,9 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
             self._find_similar_words(group)
 
         # Step 3: Identify outliers (pass run_tree for trace nesting)
-        await self._identify_outliers(group, run_tree=run_tree)
+        await self._identify_outliers(
+            group, run_tree=run_tree, max_concurrent_llm_calls=max_concurrent_llm_calls
+        )
 
         # Step 4: Determine canonical label
         canonical_label = group.consensus_label
@@ -1757,6 +1843,7 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
         limit: Optional[int] = None,
         batch_size: int = 1000,
         max_merchants: Optional[int] = None,
+        max_concurrent_llm_calls: int = 10,
     ) -> dict[str, Any]:
         """
         Harmonize all labels for a specific label type.
@@ -1785,6 +1872,7 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
                     "label_type": label_type,
                     "total_groups": len(groups_to_process),
                     "total_labels": sum(len(g.labels) for g in groups_to_process),
+                    "max_concurrent_llm_calls": max_concurrent_llm_calls,
                 },
                 tags=["label-harmonizer-v2", f"label-type:{label_type}"],
             ) as root:
@@ -1795,7 +1883,7 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
 
                         # Pass root run_tree to child operations
                         results = await self._analyze_group_with_trace(
-                            group, use_similarity, run_tree=root
+                            group, use_similarity, run_tree=root, max_concurrent_llm_calls=max_concurrent_llm_calls
                         )
                         all_results.extend(results)
 
@@ -1829,7 +1917,7 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
                     logger.info("Progress: %d/%d groups", i, len(groups_to_process))
 
                 results = await self._analyze_group_with_trace(
-                    group, use_similarity, run_tree=None
+                    group, use_similarity, run_tree=None, max_concurrent_llm_calls=max_concurrent_llm_calls
                 )
                 all_results.extend(results)
 
@@ -1953,7 +2041,7 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
                 if r.get("suggested_label_type") and r["suggested_label_type"] != r["label_type"]:
                     from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
                     from receipt_dynamo.constants import ValidationStatus
-                    from datetime import datetime
+                    from datetime import datetime, timezone
 
                     label.validation_status = ValidationStatus.INVALID.value
                     self.dynamo.update_receipt_word_label(label)
@@ -1965,7 +2053,7 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
                         word_id=label.word_id,
                         label=r["suggested_label_type"],
                         reasoning=f"Label type corrected from {r['label_type']}",
-                        timestamp_added=datetime.now().isoformat(),
+                        timestamp_added=datetime.now(timezone.utc),
                         validation_status=ValidationStatus.PENDING.value,
                         label_proposed_by="label-harmonizer-v2",
                         label_consolidated_from=label.label,
@@ -1976,9 +2064,9 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
                 elif r["consensus_label"] and label.label != r["consensus_label"]:
                     from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
                     from receipt_dynamo.constants import ValidationStatus
-                    from datetime import datetime
+                    from datetime import datetime, timezone
 
-                    label.validation_status = ValidationStatus.SUPERSEDED.value
+                    label.validation_status = ValidationStatus.INVALID.value
                     self.dynamo.update_receipt_word_label(label)
 
                     new_label = ReceiptWordLabel(
@@ -1988,7 +2076,7 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
                         word_id=label.word_id,
                         label=r["consensus_label"],
                         reasoning=f"Updated to consensus",
-                        timestamp_added=datetime.now().isoformat(),
+                        timestamp_added=datetime.now(timezone.utc),
                         validation_status=ValidationStatus.VALID.value,
                         label_proposed_by="label-harmonizer-v2",
                         label_consolidated_from=label.label,
@@ -2113,7 +2201,7 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
                 if r.suggested_label_type and r.suggested_label_type != label_type:
                     from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
                     from receipt_dynamo.constants import ValidationStatus
-                    from datetime import datetime
+                    from datetime import datetime, timezone
 
                     # Mark old label as INVALID
                     label.validation_status = ValidationStatus.INVALID.value
@@ -2127,7 +2215,7 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
                         word_id=label.word_id,
                         label=r.suggested_label_type,
                         reasoning=f"Label type corrected from {label_type}",
-                        timestamp_added=datetime.now().isoformat(),
+                        timestamp_added=datetime.now(timezone.utc),
                         validation_status=ValidationStatus.PENDING.value,
                         label_proposed_by="label-harmonizer-v2",
                         label_consolidated_from=label.label,
@@ -2138,10 +2226,10 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
                 elif r.consensus_label and label.label != r.consensus_label:
                     from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
                     from receipt_dynamo.constants import ValidationStatus
-                    from datetime import datetime
+                    from datetime import datetime, timezone
 
-                    # Mark old label as SUPERSEDED
-                    label.validation_status = ValidationStatus.SUPERSEDED.value
+                    # Mark old label as INVALID (replaced by consensus)
+                    label.validation_status = ValidationStatus.INVALID.value
                     self.dynamo.update_receipt_word_label(label)
 
                     # Create new label with consensus
@@ -2152,7 +2240,7 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
                         word_id=label.word_id,
                         label=r.consensus_label,
                         reasoning=f"Updated to consensus",
-                        timestamp_added=datetime.now().isoformat(),
+                        timestamp_added=datetime.now(timezone.utc),
                         validation_status=ValidationStatus.VALID.value,
                         label_proposed_by="label-harmonizer-v2",
                         label_consolidated_from=label.label,
