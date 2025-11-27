@@ -67,8 +67,9 @@ AWS Step Function infrastructure for running label harmonization across all CORE
 **Purpose**: Heavy-lifting Lambda with ChromaDB, embeddings, and LLM.
 
 **Dependencies** (via pyproject.toml):
-- `receipt_agent` → LabelHarmonizer, LabelRecord, MerchantLabelGroup
+- `receipt_agent` → LabelHarmonizerV2, LabelRecord, MerchantLabelGroup
   - Brings: langgraph, langchain-ollama, langsmith, httpx
+  - **Note**: Uses V2 which has proper LangSmith trace nesting (all LLM calls under single trace)
 - `receipt_chroma` → ChromaClient
   - Brings: chromadb, openai
 - `receipt_dynamo` → DynamoClient
@@ -77,7 +78,7 @@ AWS Step Function infrastructure for running label harmonization across all CORE
 **Actions**:
 1. Download ChromaDB snapshot from S3 (cached in /tmp)
 2. Stream labels from S3 NDJSON file
-3. Run harmonization with LLM-based outlier detection
+3. Run harmonization with LLM-based outlier detection (properly traced in LangSmith)
 4. Upload results to S3
 
 **Configuration**:
