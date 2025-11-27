@@ -284,6 +284,7 @@ class LabelHarmonizer:
                     "headers": {"Authorization": f"Bearer {api_key}"} if api_key else {},
                     "timeout": 120,
                 },
+                format="json",  # Force JSON format for structured output
                 temperature=0.0,
             )
         else:
@@ -1267,7 +1268,21 @@ Does the word `"{word.word_text}"` belong in this group of words with the label 
 
 ## Response Format
 
-Respond with **ONLY** `YES` if the word belongs in this group, or `NO` if it is an outlier (doesn't belong)."""
+You MUST respond with valid JSON only. No markdown, no explanations, just JSON.
+
+Respond with a JSON object matching this exact structure:
+```json
+{
+  "is_outlier": false,
+  "reasoning": "optional explanation"
+}
+```
+
+Where:
+- `is_outlier`: boolean (true if the word does NOT belong in this group, false if it belongs)
+- `reasoning`: optional string explaining your decision
+
+Return ONLY the JSON object, nothing else."""
 
         # Retry logic following Ollama/LangGraph best practices
         max_retries = 3
@@ -1496,7 +1511,21 @@ Consider:
 
 ## Response Format
 
-Respond with **ONLY** the CORE_LABEL type name (e.g., `PRODUCT_NAME`, `MERCHANT_NAME`, `QUANTITY`, etc.) or `NONE` if it doesn't match any CORE_LABEL type.
+You MUST respond with valid JSON only. No markdown, no explanations, just JSON.
+
+Respond with a JSON object matching this exact structure:
+```json
+{
+  "suggested_label_type": "PRODUCT_NAME",
+  "reasoning": "optional explanation"
+}
+```
+
+Where:
+- `suggested_label_type`: string or null (the CORE_LABEL type name, e.g., "PRODUCT_NAME", "MERCHANT_NAME", "QUANTITY", etc., or null if it doesn't match any CORE_LABEL type)
+- `reasoning`: optional string explaining why this label type was suggested
+
+Return ONLY the JSON object, nothing else.
 """
 
         try:
