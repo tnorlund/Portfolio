@@ -317,26 +317,51 @@ class LabelHarmonizerV2:
             if hasattr(target_embedding, 'tolist'):
                 target_embedding = target_embedding.tolist()
 
-            # Query for similar words with the suggested label type that are VALIDATED
-            # Use the target word's embedding to find semantically similar words
-            # ChromaDB metadata stores validated labels as comma-delimited string: ",LABEL1,LABEL2,"
-            # Use $contains for exact matching with delimiters
+            # Query for similar words (same pattern as _identify_outliers)
+            # Filter by merchant_name if available, then filter in Python for validated_labels
+            merchant_filter = merchant_name.strip().title() if merchant_name else None
+            where_clause = {"merchant_name": {"$eq": merchant_filter}} if merchant_filter else None
+
             query_results = self.chroma.query(
                 collection_name="words",
                 query_embeddings=[target_embedding],
-                n_results=10,
-                where={
-                    "validated_labels": {"$contains": f",{suggested_label_type},"}
-                },
+                n_results=50,  # Get more results to filter in Python
+                where=where_clause,
                 include=["documents", "metadatas", "distances"],
             )
 
-            # Rename for consistency with rest of method
-            results = query_results
-
-            if not results or not results.get("documents") or not results["documents"][0]:
+            if not query_results or not query_results.get("documents") or not query_results["documents"][0]:
                 logger.info(
-                    "No similar words with label '%s' found for '%s'",
+                    "No similar words found for '%s'",
+                    word.word_text
+                )
+                return False, None
+
+            # Filter results to only include words with the suggested label type in validated_labels
+            # validated_labels is stored as comma-delimited: ",LABEL1,LABEL2,"
+            # Same pattern as _identify_outliers (line 904-906)
+            label_pattern = f",{suggested_label_type},"
+            filtered_docs = []
+            filtered_metadatas = []
+            filtered_distances = []
+
+            for doc, metadata, distance in zip(
+                query_results["documents"][0],
+                query_results["metadatas"][0] if query_results.get("metadatas") else [{}] * len(query_results["documents"][0]),
+                query_results["distances"][0] if query_results.get("distances") else [1.0] * len(query_results["documents"][0])
+            ):
+                validated_labels_str = metadata.get("validated_labels", "")
+                if label_pattern in validated_labels_str:
+                    filtered_docs.append(doc)
+                    filtered_metadatas.append(metadata)
+                    filtered_distances.append(distance)
+                    # Stop at 10 results after filtering
+                    if len(filtered_docs) >= 10:
+                        break
+
+            if not filtered_docs:
+                logger.info(
+                    "No similar words with validated label '%s' found for '%s'",
                     suggested_label_type, word.word_text
                 )
                 return False, None
@@ -344,9 +369,9 @@ class LabelHarmonizerV2:
             # Build context about similar words for LLM validation
             similar_words_context = []
             for i, (doc, metadata, distance) in enumerate(zip(
-                results["documents"][0],
-                results["metadatas"][0] if results.get("metadatas") else [{}] * len(results["documents"][0]),
-                results["distances"][0] if results.get("distances") else [1.0] * len(results["documents"][0])
+                filtered_docs,
+                filtered_metadatas,
+                filtered_distances
             )):
                 similarity = 1 - (distance / 2)  # Convert distance to similarity (0-1)
                 similar_words_context.append({

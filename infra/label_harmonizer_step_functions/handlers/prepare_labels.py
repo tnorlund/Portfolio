@@ -158,8 +158,14 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     )
 
     # Upload each merchant group as NDJSON
-    # For large groups (>500 labels), split into multiple batches for parallel processing
-    MAX_LABELS_PER_BATCH = 500
+    # For large groups, split into multiple batches for parallel processing
+    # Each batch should complete within Lambda's 15-minute timeout:
+    # - ~100 labels per batch
+    # - ~50% may need LLM checks (non-VALID)
+    # - ~50 LLM calls × 5s each = ~250s with some parallelism
+    # - Plus ChromaDB queries and context fetching
+    # - Target: < 10 minutes per batch to leave buffer
+    MAX_LABELS_PER_BATCH = 100
     output_groups = []
     for merchant_name, labels in merchant_groups.items():
         # Create safe filename base

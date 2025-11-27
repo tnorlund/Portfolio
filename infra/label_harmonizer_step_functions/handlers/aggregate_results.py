@@ -156,3 +156,4 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         "report_path": f"s3://{batch_bucket}/{report_key}" if batch_bucket else None,
     }
 
+

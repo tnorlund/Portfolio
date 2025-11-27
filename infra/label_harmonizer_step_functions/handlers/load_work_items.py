@@ -40,6 +40,7 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     execution_id = event.get("execution_id", "unknown")
     batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET", "")
     manifest_key = event.get("work_items_manifest_s3_key")
+    langchain_project = event.get("langchain_project")  # Pass through for downstream Lambdas
 
     if not manifest_key:
         raise ValueError("work_items_manifest_s3_key not provided")
@@ -63,11 +64,15 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
 
         # Return only indices to minimize Step Functions payload
         # Each HarmonizeLabels Lambda will read its specific item from S3 using the index
-        return {
+        result = {
             "work_item_indices": list(range(total_items)),
             "work_items_manifest_s3_key": manifest_key,
             "total_work_items": total_items,
         }
+        # Pass through langchain_project if provided
+        if langchain_project:
+            result["langchain_project"] = langchain_project
+        return result
     except Exception as e:
         logger.error("Failed to load work items from %s: %s", manifest_key, e)
         raise

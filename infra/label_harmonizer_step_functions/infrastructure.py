@@ -408,7 +408,7 @@ class LabelHarmonizerStepFunction(ComponentResource):
                 "LANGCHAIN_API_KEY": langchain_api_key,
                 "LANGCHAIN_TRACING_V2": "true",
                 "LANGCHAIN_ENDPOINT": "https://api.smith.langchain.com",
-                "LANGCHAIN_PROJECT": "label-harmonizer",
+                "LANGCHAIN_PROJECT": pulumi.Config("portfolio").get("langchain_project") or "label-harmonizer",
             },
         }
 
@@ -571,6 +571,8 @@ class LabelHarmonizerStepFunction(ComponentResource):
             "StartAt": "Initialize",
             "States": {
                 # Initialize execution context
+                # Note: Input should always include max_merchants and label_types (even as null)
+                # to avoid JSONPath errors. The script handles this.
                 "Initialize": {
                     "Type": "Pass",
                     "Parameters": {
@@ -580,17 +582,27 @@ class LabelHarmonizerStepFunction(ComponentResource):
                         "max_merchants.$": "$.max_merchants",
                         "batch_bucket": batch_bucket,
                         "label_types.$": "$.label_types",
+                        "langchain_project.$": "$.langchain_project",
                     },
                     "ResultPath": "$.init",
                     "Next": "CheckLabelTypes",
                 },
-                # Set default label_types if not provided
+                # Set default label_types if not provided or null
+                # Check if label_types is present AND not null (null values should use defaults)
                 "CheckLabelTypes": {
                     "Type": "Choice",
                     "Choices": [
                         {
-                            "Variable": "$.init.label_types",
-                            "IsPresent": True,
+                            "And": [
+                                {
+                                    "Variable": "$.init.label_types",
+                                    "IsPresent": True,
+                                },
+                                {
+                                    "Variable": "$.init.label_types",
+                                    "IsNull": False,
+                                }
+                            ],
                             "Next": "UseProvidedLabelTypes",
                         }
                     ],
@@ -605,6 +617,7 @@ class LabelHarmonizerStepFunction(ComponentResource):
                         "max_merchants.$": "$.init.max_merchants",
                         "batch_bucket": batch_bucket,
                         "label_types": CORE_LABELS,
+                        "langchain_project.$": "$.init.langchain_project",
                     },
                     "Next": "ParallelPrepare",
                 },
@@ -617,6 +630,7 @@ class LabelHarmonizerStepFunction(ComponentResource):
                         "max_merchants.$": "$.init.max_merchants",
                         "batch_bucket": batch_bucket,
                         "label_types.$": "$.init.label_types",
+                        "langchain_project.$": "$.init.langchain_project",
                     },
                     "Next": "ParallelPrepare",
                 },
@@ -701,6 +715,7 @@ class LabelHarmonizerStepFunction(ComponentResource):
                         "work_items_manifest_s3_key.$": "$.flatten_result.work_items_manifest_s3_key",
                         "execution_id.$": "$.execution_id",
                         "batch_bucket.$": "$.batch_bucket",
+                        "langchain_project.$": "$.langchain_project",
                     },
                     "ResultPath": "$.work_items_data",
                     "Retry": [
@@ -745,6 +760,7 @@ class LabelHarmonizerStepFunction(ComponentResource):
                         "execution_id.$": "$.execution_id",
                         "batch_bucket.$": "$.batch_bucket",
                         "dry_run.$": "$.dry_run",
+                        "langchain_project.$": "$.work_items_data.langchain_project",
                     },
                     "ItemProcessor": {
                         "ProcessorConfig": {"Mode": "INLINE"},
@@ -771,6 +787,18 @@ class LabelHarmonizerStepFunction(ComponentResource):
                                         "BackoffRate": 1.5,
                                     },
                                 ],
+                                # Minimize output to stay under 256KB payload limit
+                                # Full results are saved to S3 at results_path
+                                "ResultSelector": {
+                                    "status.$": "$.status",
+                                    "results_path.$": "$.results_path",
+                                    "outliers_found.$": "$.outliers_found",
+                                    "updates_applied.$": "$.updates_applied",
+                                    "total_updated.$": "$.total_updated",
+                                    "total_skipped.$": "$.total_skipped",
+                                    "total_failed.$": "$.total_failed",
+                                    "total_needs_review.$": "$.total_needs_review",
+                                },
                                 "End": True,
                             }
                         },
