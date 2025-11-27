@@ -829,10 +829,26 @@ fi
 
 # Only check ECR if Docker is available
 echo "🔄 Checking if bootstrap image exists in ECR..."
-if aws ecr describe-images --repository-name $(echo "$REPO_URL" | cut -d'/' -f2) --region $REGION --image-ids imageTag=latest >/dev/null 2>&1; then
+REPO_NAME=$(echo "$REPO_URL" | cut -d'/' -f2)
+if aws ecr describe-images --repository-name "$REPO_NAME" --region $REGION --image-ids imageTag=latest >/dev/null 2>&1; then
   echo "✅ Bootstrap image already exists, skipping"
   exit 0
 fi
+
+# Ensure ECR repo is ready (permissions propagated, etc.)
+echo "🔄 Ensuring ECR repository is ready..."
+for i in {{1..10}}; do
+  if aws ecr describe-repositories --repository-names "$REPO_NAME" --region $REGION >/dev/null 2>&1; then
+    echo "✅ ECR repository is ready"
+    break
+  fi
+  if [ $i -eq 10 ]; then
+    echo "⚠️  ECR repository not ready after waiting, but continuing..."
+  else
+    echo "   Waiting for ECR repository to be ready... ($i/10)"
+    sleep 1
+  fi
+done
 
 echo "📦 Pushing minimal bootstrap image to ECR..."
 # Pull public Lambda base image (with error handling)
@@ -858,9 +874,13 @@ else
 fi
 
 # Push to our ECR (with error handling)
+# If push fails, we'll skip and let CodeBuild handle it
+# Lambda creation will fail if image doesn't exist, but that's expected
 if ! docker push "$REPO_URL:latest"; then
-  echo "⚠️  Failed to push bootstrap image. Skipping."
-  echo "   The Lambda function will be created after CodeBuild completes the first build."
+  echo "⚠️  Failed to push bootstrap image"
+  echo "   Docker is available but push failed"
+  echo "   Lambda creation may fail, but CodeBuild will build the image"
+  echo "   After CodeBuild completes, run 'pulumi up' again to create the Lambda"
   exit 0
 fi
 
@@ -876,6 +896,68 @@ echo "✅ Bootstrap image pushed to $REPO_URL:latest"
                 parent=self,
                 depends_on=[self.ecr_repo],
                 # Allow the command to exit successfully even if Docker isn't available
+            ),
+        )
+
+    def _wait_for_image(self, bootstrap_cmd, pipeline_trigger_cmd):
+        """Wait for image to exist in ECR before creating Lambda.
+
+        Polls ECR for up to 30 seconds to see if the image exists.
+        This handles the case where bootstrap just finished pushing.
+        """
+        wait_script = self.ecr_repo.repository_url.apply(
+            lambda repo_url: f"""#!/usr/bin/env bash
+set -e
+
+REPO_URL="{repo_url}"
+REGION=$(echo "$REPO_URL" | cut -d'.' -f4)
+REPO_NAME=$(echo "$REPO_URL" | cut -d'/' -f2)
+
+echo "🔍 Waiting for image to exist in ECR repository $REPO_NAME..."
+
+# Poll for up to 30 seconds (6 attempts, 5 seconds apart)
+MAX_ATTEMPTS=6
+ATTEMPT=0
+
+while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+  if aws ecr describe-images --repository-name "$REPO_NAME" --region "$REGION" --image-ids imageTag=latest >/dev/null 2>&1; then
+    echo "✅ Image exists in ECR, Lambda can be created"
+    exit 0
+  fi
+
+  ATTEMPT=$((ATTEMPT + 1))
+  if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
+    echo "   Attempt $ATTEMPT/$MAX_ATTEMPTS: Image not found, waiting 5 seconds..."
+    sleep 5
+  fi
+done
+
+echo "⚠️  Image does not exist in ECR after waiting"
+echo "   The bootstrap image push may have been skipped (Docker not available)"
+echo "   Proceeding with Lambda creation attempt - it will fail if image still doesn't exist"
+echo "   If Lambda creation fails, CodeBuild will build the image"
+echo "   After CodeBuild completes, run 'pulumi up' again to create the Lambda"
+echo "   Alternatively, ensure Docker is available and bootstrap can push the image"
+# Don't fail here - let Lambda creation attempt happen
+# It will fail with a clear error if image doesn't exist, which is fine
+exit 0
+"""
+        )
+
+        # Depend on bootstrap_cmd to ensure it has run first
+        depends_on = []
+        if bootstrap_cmd:
+            depends_on.append(bootstrap_cmd)
+        # Also depend on pipeline trigger to ensure CodeBuild is at least triggered
+        if pipeline_trigger_cmd:
+            depends_on.append(pipeline_trigger_cmd)
+
+        return command.local.Command(
+            f"{self.name}-wait-for-image",
+            create=wait_script,
+            opts=ResourceOptions(
+                parent=self,
+                depends_on=depends_on,
             ),
         )
 
@@ -948,18 +1030,19 @@ echo "✅ Bootstrap image pushed to $REPO_URL:latest"
                 working_directory=img_cfg.get("working_directory"),
             )
 
-        # Create Lambda function after bootstrap image is pushed
-        # In sync mode (CI/CD), skip bootstrap dependency and wait for pipeline instead
-        # Bootstrap may exit early without pushing if Docker isn't available
-        # Always depend on bootstrap_cmd if it exists to ensure ECR repo is ready
+        # Wait for image to exist before creating Lambda
+        # This polls ECR to ensure the image is available
+        wait_cmd = self._wait_for_image(bootstrap_cmd, pipeline_trigger_cmd)
+
+        # Create Lambda function after image exists
+        # In sync mode (CI/CD), wait for pipeline to build and push the image
+        # In async mode, wait for bootstrap/pipeline and then wait for image to exist
         if self.sync_mode and pipeline_trigger_cmd:
             # In sync mode: wait for pipeline to build and push the image
             depends_on_list = [pipeline_trigger_cmd]
         else:
-            # In async mode: ALWAYS wait for bootstrap_cmd to complete
-            # This ensures the ECR repo exists and bootstrap image is attempted
-            # Even if bootstrap fails, we need the repo to exist before Lambda creation
-            depends_on_list = [bootstrap_cmd] if bootstrap_cmd else []
+            # In async mode: wait for image to exist (which waits for bootstrap/pipeline)
+            depends_on_list = [wait_cmd] if wait_cmd else []
 
         # Add aliases if provided (for renaming existing Lambda functions)
         lambda_opts = ResourceOptions(
