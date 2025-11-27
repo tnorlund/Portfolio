@@ -75,6 +75,15 @@ from langchain_ollama import ChatOllama
 from receipt_agent.config.settings import Settings, get_settings
 
 try:
+    import langsmith as ls
+    from langsmith import traceable
+except ImportError:
+    # LangSmith not available - traceable will be a no-op
+    ls = None
+    def traceable(func):
+        return func
+
+try:
     from receipt_label.constants import CORE_LABELS
 except ImportError:
     # Fallback if receipt_label is not available - include all CORE_LABELS definitions
@@ -164,6 +173,7 @@ class MerchantLabelGroup:
     consensus_label: Optional[str] = None
     similarity_clusters: list[list[LabelRecord]] = field(default_factory=list)
     outliers: list[LabelRecord] = field(default_factory=list)
+    outlier_run_trees: dict[str, Any] = field(default_factory=dict)  # word_id -> run_tree for child trace linking
 
 
 @dataclass
@@ -978,6 +988,7 @@ class LabelHarmonizer:
         except Exception as e:
             logger.error(f"Error identifying outliers: {e}", exc_info=True)
 
+    @traceable
     async def _llm_determine_outlier(
         self,
         word: LabelRecord,
@@ -985,6 +996,7 @@ class LabelHarmonizer:
         group: MerchantLabelGroup,
         metadatas: List[Dict],
         similar_ids: List[str],
+        run_tree: Optional[Any] = None,  # Auto-populated by @traceable decorator
     ) -> bool:
         """
         Use LLM to determine if a word is an outlier in the group.
@@ -1394,7 +1406,20 @@ Respond with a JSON object indicating whether the word belongs in this group.
                     temperature=self.llm.temperature,
                 )
                 llm_structured = llm_with_schema.with_structured_output(OutlierDecision)
-                structured_response: OutlierDecision = llm_structured.invoke(messages, config=config)  # type: ignore[assignment]
+
+                # Wrap the LangChain call with tracing_context to link it to this function's trace
+                # The @traceable decorator provides the run_tree parameter automatically
+                if run_tree and ls:
+                    with ls.tracing_context(parent=run_tree):
+                        structured_response: OutlierDecision = await llm_structured.ainvoke(messages, config=config)  # type: ignore[assignment]
+                else:
+                    structured_response: OutlierDecision = await llm_structured.ainvoke(messages, config=config)  # type: ignore[assignment]
+
+                # Store the run tree for later use in child calls
+                # The @traceable decorator provides this run_tree parameter
+                if run_tree:
+                    word_key = f"{word.image_id}:{word.receipt_id}:{word.line_id}:{word.word_id}"
+                    group.outlier_run_trees[word_key] = run_tree
 
                 # Extract structured response
                 is_outlier = structured_response.is_outlier
@@ -1466,11 +1491,12 @@ Respond with a JSON object indicating whether the word belongs in this group.
             f"Unexpected error: Failed to get LLM decision for '{word.word_text}'"
         ) from last_error
 
+    @traceable
     async def _suggest_label_type_for_outlier(
         self,
         word: LabelRecord,
         group: MerchantLabelGroup,
-        parent_run_tree: Optional[Any] = None,
+        run_tree: Optional[Any] = None,  # Auto-populated by @traceable decorator
     ) -> Optional[str]:
         """
         Use LLM to suggest the correct CORE_LABEL type for an outlier.
@@ -1609,8 +1635,6 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
             from langchain_core.messages import HumanMessage
             from langchain_core.runnables import RunnableConfig
             from receipt_agent.tools.label_harmonizer_models import LabelTypeSuggestion
-            import langsmith as ls
-
             messages = [HumanMessage(content=prompt)]
 
             # LangSmith best practice: Use run_name for better trace identification
@@ -1652,18 +1676,18 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
             # LangSmith best practice: Use ainvoke for async functions to ensure proper trace context
             llm_structured = llm_with_schema.with_structured_output(LabelTypeSuggestion)
 
-            # Link to parent run if available (LangSmith best practice for nested traces)
-            # According to LangSmith docs, for LangChain runnables called from non-runnable contexts,
-            # we should use langsmith.tracing_context() to set the parent context
-            config = RunnableConfig(**config_dict)
+            # According to LangSmith docs, for async functions decorated with @traceable,
+            # we should wrap child calls with tracing_context(parent=run_tree) to ensure
+            # proper trace nesting. This guarantees that all async calls share the same RunTree.
+            child_config = RunnableConfig(**config_dict)
 
-            if parent_run_tree:
-                # Use tracing_context to link child trace to parent
-                # This is the recommended approach when calling LangChain runnables from non-runnable contexts
-                with ls.tracing_context(parent=parent_run_tree):
-                    structured_response: LabelTypeSuggestion = await llm_structured.ainvoke(messages, config=config)  # type: ignore[assignment]
+            # Wrap the LangChain runnable call with tracing_context to link to parent
+            # The @traceable decorator provides the run_tree parameter automatically
+            if run_tree and ls:
+                with ls.tracing_context(parent=run_tree):
+                    structured_response: LabelTypeSuggestion = await llm_structured.ainvoke(messages, config=child_config)  # type: ignore[assignment]
             else:
-                structured_response: LabelTypeSuggestion = await llm_structured.ainvoke(messages, config=config)  # type: ignore[assignment]
+                structured_response: LabelTypeSuggestion = await llm_structured.ainvoke(messages, config=child_config)  # type: ignore[assignment]
 
             # Extract structured response
             suggested_type = structured_response.suggested_label_type
@@ -1758,16 +1782,23 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
                     group.merchant_name,
                     group.label_type,
                 )
-                # Get the current run tree to pass as parent context for child trace
-                # This ensures the label type suggestion appears as a child of the outlier detection run
-                parent_run_tree = None
-                try:
-                    from langsmith.run_helpers import get_current_run_tree
-                    parent_run_tree = get_current_run_tree()
-                except Exception:
-                    # If no parent run context, continue without linking
-                    pass
-                suggested_label_type = await self._suggest_label_type_for_outlier(record, group, parent_run_tree=parent_run_tree)
+                # Get the stored run tree from the outlier detection call
+                # According to LangSmith docs, for async functions with @traceable,
+                # we should pass the parent run_tree either:
+                # 1. As a keyword argument: run_tree=parent_run_tree
+                # 2. Via langsmith_extra: langsmith_extra={"parent": parent_run_tree}
+                word_key = f"{record.image_id}:{record.receipt_id}:{record.line_id}:{record.word_id}"
+                parent_run_tree = group.outlier_run_trees.get(word_key)
+                if not parent_run_tree:
+                    logger.debug(
+                        "No run tree found for outlier '%s' - child trace may not be linked",
+                        record.word_text,
+                    )
+                # Pass run_tree to link child trace to parent
+                # The @traceable decorator will use this to nest the trace
+                suggested_label_type = await self._suggest_label_type_for_outlier(
+                    record, group, run_tree=parent_run_tree
+                )
                 logger.info(
                     "Label type suggestion for '%s': %s",
                     record.word_text,
