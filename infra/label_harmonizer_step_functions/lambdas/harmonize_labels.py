@@ -4,8 +4,11 @@ Harmonize Labels Handler (Container Lambda)
 Downloads ChromaDB snapshot, processes merchant group labels,
 and identifies semantic outliers using LLM-based analysis.
 
+Uses LabelHarmonizerV2 which has proper LangSmith trace nesting.
+All LLM calls appear under a single trace in LangSmith.
+
 Dependencies (via pyproject.toml):
-- receipt_agent: LabelHarmonizer, LabelRecord, MerchantLabelGroup, create_all_clients
+- receipt_agent: LabelHarmonizerV2, LabelRecord, MerchantLabelGroup, create_all_clients
 - receipt_dynamo: DynamoClient
 - receipt_chroma: ChromaClient
 
@@ -26,12 +29,45 @@ import asyncio
 import json
 import logging
 import os
+import time
 from typing import Any, Dict
 
 import boto3
 
+from utils.emf_metrics import emf_metrics
+
+# LangSmith tracing - ensure traces are flushed before Lambda exits
+try:
+    from langsmith.run_trees import get_cached_client as get_langsmith_client
+    HAS_LANGSMITH = True
+except ImportError:
+    HAS_LANGSMITH = False
+    get_langsmith_client = None  # type: ignore
+
+
+def flush_langsmith_traces():
+    """
+    Flush all pending LangSmith traces to the API.
+
+    Must be called before Lambda returns to prevent traces from getting
+    stuck as "pending" in LangSmith. Lambda freezes/terminates background
+    threads after returning, so we must explicitly flush.
+    """
+    if HAS_LANGSMITH and get_langsmith_client:
+        try:
+            client = get_langsmith_client()
+            client.flush()
+            logger.info("LangSmith traces flushed successfully")
+        except Exception as e:
+            logger.warning(f"Failed to flush LangSmith traces: {e}")
+
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+
+# Suppress noisy HTTP request logs from httpx/httpcore (used by langchain-ollama)
+# These log every "HTTP Request: POST https://ollama.com/api/chat" call
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 s3 = boto3.client("s3")
 
@@ -94,11 +130,13 @@ async def process_merchant_group(
     embed_fn: Any,
     llm: Any,
     dry_run: bool = True,
+    min_confidence: float = 70.0,
 ) -> Dict[str, Any]:
-    """Process a single merchant group using the LabelHarmonizer."""
+    """Process a single merchant group using LabelHarmonizerV2 (with proper trace nesting)."""
     # Import here to avoid cold start overhead if not needed
-    from receipt_agent.tools.label_harmonizer import (
-        LabelHarmonizer,
+    # Using V2 which has proper LangSmith trace nesting
+    from receipt_agent.tools.label_harmonizer_v2 import (
+        LabelHarmonizerV2,
         LabelRecord,
         MerchantLabelGroup,
     )
@@ -125,8 +163,8 @@ async def process_merchant_group(
         labels=label_records,
     )
 
-    # Create harmonizer
-    harmonizer = LabelHarmonizer(
+    # Create harmonizer (V2 with proper LangSmith trace nesting)
+    harmonizer = LabelHarmonizerV2(
         dynamo_client=dynamo_client,
         chroma_client=chroma_client,
         embed_fn=embed_fn,
@@ -176,6 +214,38 @@ async def process_merchant_group(
             "changes_needed": o.changes_needed,
         })
 
+    # Build results with word_text from label_lookup
+    results_with_details = []
+    for r in results:
+        if r.needs_update:
+            key = (r.image_id, r.receipt_id, r.line_id, r.word_id)
+            label_record = label_lookup.get(key)
+            results_with_details.append({
+                "word_text": label_record.word_text if label_record else None,
+                "confidence": r.confidence,
+                "needs_update": r.needs_update,
+                "suggested_label_type": r.suggested_label_type,
+            })
+
+    # Apply fixes if not dry run
+    update_result = None
+    if not dry_run:
+        logger.info(
+            "Applying fixes (dry_run=False, min_confidence=%s)", min_confidence
+        )
+        update_result = await harmonizer.apply_fixes_from_results(
+            results=results,
+            label_type=label_type,
+            dry_run=False,
+            min_confidence=min_confidence,
+        )
+        logger.info(
+            "Fixes applied: updated=%d, skipped=%d, failed=%d",
+            update_result.total_updated,
+            update_result.total_skipped,
+            update_result.total_failed,
+        )
+
     return {
         "merchant_name": merchant_name,
         "label_type": label_type,
@@ -183,6 +253,14 @@ async def process_merchant_group(
         "outliers_found": len(outliers),
         "outlier_details": outlier_details,
         "consensus": consensus_label,
+        # Include confidence for filtering
+        "results": results_with_details,
+        # Include update results if fixes were applied
+        "updates_applied": update_result is not None,
+        "total_updated": update_result.total_updated if update_result else 0,
+        "total_skipped": update_result.total_skipped if update_result else 0,
+        "total_failed": update_result.total_failed if update_result else 0,
+        "total_needs_review": update_result.total_needs_review if update_result else 0,
     }
 
 
@@ -213,15 +291,22 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         "work_items_manifest_s3_key": "batches/.../combined_manifest.json",
         "execution_id": "abc123",
         "batch_bucket": "bucket-name",
-        "dry_run": true
+        "dry_run": true,
+        "min_confidence": 75.0  // Optional, default 70.0
     }
     """
     execution_id = event.get("execution_id", "unknown")
     dry_run = event.get("dry_run", True)
+    min_confidence = event.get("min_confidence", 70.0)  # Minimum confidence for apply_fixes
 
     # Lambda-specific env vars
     batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET", "")
     chromadb_bucket = os.environ.get("CHROMADB_BUCKET", "")
+
+    # Set LangSmith project from Step Function input (defaults to env var if not provided)
+    langchain_project = event.get("langchain_project") or os.environ.get("LANGCHAIN_PROJECT", "label-harmonizer")
+    os.environ["LANGCHAIN_PROJECT"] = langchain_project
+    logger.info(f"Using LangSmith project: {langchain_project}")
 
     # Support both direct merchant_group and index-based patterns
     if "index" in event and "work_items_manifest_s3_key" in event:
@@ -256,6 +341,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         f"Processing {merchant_name} - {label_type} "
         f"(execution_id={execution_id}, dry_run={dry_run})"
     )
+
+    # Track processing time for metrics
+    start_time = time.time()
 
     try:
         # Setup ChromaDB (cached in /tmp)
@@ -329,6 +417,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 embed_fn=embed_fn,
                 llm=llm,
                 dry_run=dry_run,
+                min_confidence=min_confidence,
             )
         )
 
@@ -353,17 +442,93 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             f"{result['outliers_found']} outliers found"
         )
 
+        # Emit EMF metrics (cost-effective: ONE log line, no API calls)
+        processing_time = time.time() - start_time
+        emf_metrics.log_metrics(
+            metrics={
+                "OutliersDetected": result["outliers_found"],
+                "LabelsProcessed": result["labels_processed"],
+                "ProcessingTimeSeconds": round(processing_time, 2),
+                "BatchSucceeded": 1,
+                "BatchFailed": 0,
+            },
+            # IMPORTANT: Keep dimensions LOW cardinality to control costs
+            # LabelType has ~15 values (CORE_LABELS)
+            # Do NOT add Merchant as dimension (1000s of values = $$$)
+            dimensions={"LabelType": label_type},
+            # Additional context goes in properties (not dimensions)
+            properties={
+                "merchant_name": merchant_name,
+                "execution_id": execution_id,
+                "dry_run": dry_run,
+                "batch_file": batch_file,
+            },
+            units={
+                "ProcessingTimeSeconds": "Seconds",
+            },
+        )
+
+        # CRITICAL: Flush LangSmith traces before returning
+        # Lambda freezes background threads after return, causing traces to hang
+        flush_langsmith_traces()
+
+        # Return minimal payload to stay under Step Functions 256KB limit
+        # Full results are saved to S3 at results_path
         return {
             "status": "completed",
             "results_path": f"s3://{batch_bucket}/{results_key}",
-            **result,
+            # Summary only (not full outlier_details or results)
+            "merchant_name": result["merchant_name"],
+            "label_type": result["label_type"],
+            "labels_processed": result["labels_processed"],
+            "outliers_found": result["outliers_found"],
+            "consensus": result["consensus"],
+            # DynamoDB update stats (only populated when dry_run=False)
+            "updates_applied": result.get("updates_applied", False),
+            "total_updated": result.get("total_updated", 0),
+            "total_skipped": result.get("total_skipped", 0),
+            "total_failed": result.get("total_failed", 0),
+            "total_needs_review": result.get("total_needs_review", 0),
         }
 
     except Exception as e:
         logger.error(f"Error processing {merchant_name}: {e}", exc_info=True)
+
+        # Emit failure metrics
+        processing_time = time.time() - start_time
+        emf_metrics.log_metrics(
+            metrics={
+                "OutliersDetected": 0,
+                "LabelsProcessed": 0,
+                "ProcessingTimeSeconds": round(processing_time, 2),
+                "BatchSucceeded": 0,
+                "BatchFailed": 1,
+            },
+            dimensions={"LabelType": label_type},
+            properties={
+                "merchant_name": merchant_name,
+                "execution_id": execution_id,
+                "error": str(e),
+            },
+            units={
+                "ProcessingTimeSeconds": "Seconds",
+            },
+        )
+
+        # CRITICAL: Flush LangSmith traces even on error
+        flush_langsmith_traces()
+
         return {
             "status": "error",
             "error": str(e),
             "merchant_name": merchant_name,
             "label_type": label_type,
+            # Include these for ResultSelector consistency
+            "results_path": None,
+            "outliers_found": 0,
+            "updates_applied": False,
+            "total_updated": 0,
+            "total_skipped": 0,
+            "total_failed": 0,
+            "total_needs_review": 0,
         }

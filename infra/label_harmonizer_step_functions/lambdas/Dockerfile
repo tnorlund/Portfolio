@@ -27,5 +27,8 @@ FROM dependencies
 # Copy the harmonize labels handler
 COPY infra/label_harmonizer_step_functions/lambdas/harmonize_labels.py ${LAMBDA_TASK_ROOT}/handler.py
 
+# Copy utils module (EMF metrics, etc.)
+COPY infra/label_harmonizer_step_functions/lambdas/utils/ ${LAMBDA_TASK_ROOT}/utils/
+
 # Set the handler
 CMD ["handler.handler"]
