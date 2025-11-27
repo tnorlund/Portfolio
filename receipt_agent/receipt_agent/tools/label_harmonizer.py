@@ -273,6 +273,8 @@ class LabelHarmonizer:
         self.embed_fn = embed_fn
 
         # Initialize LLM if not provided
+        # Note: We don't set format here - it will be set per-call with the Pydantic schema
+        # This follows Ollama best practices for structured output
         if llm is None:
             if settings is None:
                 settings = get_settings()
@@ -284,7 +286,6 @@ class LabelHarmonizer:
                     "headers": {"Authorization": f"Bearer {api_key}"} if api_key else {},
                     "timeout": 120,
                 },
-                format="json",  # Force JSON format for structured output
                 temperature=0.0,
             )
         else:
@@ -1268,21 +1269,9 @@ Does the word `"{word.word_text}"` belong in this group of words with the label 
 
 ## Response Format
 
-You MUST respond with valid JSON only. No markdown, no explanations, just JSON.
-
-Respond with a JSON object matching this exact structure:
-```json
-{
-  "is_outlier": false,
-  "reasoning": "optional explanation"
-}
-```
-
-Where:
-- `is_outlier`: boolean (true if the word does NOT belong in this group, false if it belongs)
-- `reasoning`: optional string explaining your decision
-
-Return ONLY the JSON object, nothing else."""
+Respond with a JSON object indicating whether the word belongs in this group.
+- `is_outlier`: boolean (true if the word does NOT belong, false if it belongs)
+- `reasoning`: optional string explaining your decision"""
 
         # Retry logic following Ollama/LangGraph best practices
         max_retries = 3
@@ -1339,9 +1328,20 @@ Return ONLY the JSON object, nothing else."""
                 )
 
                 # Use structured output for reliable parsing
+                # Best practice: Pass Pydantic schema to format= parameter
+                # This tells Ollama the exact structure expected
                 from receipt_agent.tools.label_harmonizer_models import OutlierDecision
 
-                llm_structured = self.llm.with_structured_output(OutlierDecision)
+                # Create LLM with schema in format parameter (Ollama best practice)
+                json_schema = OutlierDecision.model_json_schema()
+                llm_with_schema = ChatOllama(
+                    model=self.llm.model,
+                    base_url=self.llm.base_url,
+                    client_kwargs=self.llm.client_kwargs,
+                    format=json_schema,  # Pass schema directly to format
+                    temperature=self.llm.temperature,
+                )
+                llm_structured = llm_with_schema.with_structured_output(OutlierDecision)
                 structured_response: OutlierDecision = llm_structured.invoke(messages, config=config)  # type: ignore[assignment]
 
                 # Extract structured response
@@ -1511,21 +1511,9 @@ Consider:
 
 ## Response Format
 
-You MUST respond with valid JSON only. No markdown, no explanations, just JSON.
-
-Respond with a JSON object matching this exact structure:
-```json
-{
-  "suggested_label_type": "PRODUCT_NAME",
-  "reasoning": "optional explanation"
-}
-```
-
-Where:
-- `suggested_label_type`: string or null (the CORE_LABEL type name, e.g., "PRODUCT_NAME", "MERCHANT_NAME", "QUANTITY", etc., or null if it doesn't match any CORE_LABEL type)
+Respond with a JSON object indicating the correct CORE_LABEL type for this word.
+- `suggested_label_type`: string or null (the CORE_LABEL type name, or null if it doesn't match any CORE_LABEL type)
 - `reasoning`: optional string explaining why this label type was suggested
-
-Return ONLY the JSON object, nothing else.
 """
 
         try:
@@ -1544,9 +1532,19 @@ Return ONLY the JSON object, nothing else.
             )
 
             # Use structured output for reliable parsing
+            # Best practice: Pass Pydantic schema to format= parameter
             from receipt_agent.tools.label_harmonizer_models import LabelTypeSuggestion
-
-            llm_structured = self.llm.with_structured_output(LabelTypeSuggestion)
+            
+            # Create LLM with schema in format parameter (Ollama best practice)
+            json_schema = LabelTypeSuggestion.model_json_schema()
+            llm_with_schema = ChatOllama(
+                model=self.llm.model,
+                base_url=self.llm.base_url,
+                client_kwargs=self.llm.client_kwargs,
+                format=json_schema,  # Pass schema directly to format
+                temperature=self.llm.temperature,
+            )
+            llm_structured = llm_with_schema.with_structured_output(LabelTypeSuggestion)
             structured_response: LabelTypeSuggestion = llm_structured.invoke(messages, config=config)  # type: ignore[assignment]
 
             # Extract structured response
