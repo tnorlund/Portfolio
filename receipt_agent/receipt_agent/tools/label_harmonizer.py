@@ -998,6 +998,19 @@ class LabelHarmonizer:
         similar_ids: List[str],
         run_tree: Optional[Any] = None,  # Auto-populated by @traceable decorator
     ) -> bool:
+        # Get run_tree at the START of the function (before any async operations)
+        # This is the run_tree for THIS function's trace, created by @traceable
+        if not run_tree and ls:
+            try:
+                from langsmith.run_helpers import get_current_run_tree
+                run_tree = get_current_run_tree()
+            except Exception:
+                pass
+
+        # Store it immediately for later use in child calls
+        if run_tree:
+            word_key = f"{word.image_id}:{word.receipt_id}:{word.line_id}:{word.word_id}"
+            group.outlier_run_trees[word_key] = run_tree
         """
         Use LLM to determine if a word is an outlier in the group.
 
@@ -1414,12 +1427,7 @@ Respond with a JSON object indicating whether the word belongs in this group.
                         structured_response: OutlierDecision = await llm_structured.ainvoke(messages, config=config)  # type: ignore[assignment]
                 else:
                     structured_response: OutlierDecision = await llm_structured.ainvoke(messages, config=config)  # type: ignore[assignment]
-
-                # Store the run tree for later use in child calls
-                # The @traceable decorator provides this run_tree parameter
-                if run_tree:
-                    word_key = f"{word.image_id}:{word.receipt_id}:{word.line_id}:{word.word_id}"
-                    group.outlier_run_trees[word_key] = run_tree
+                # Note: run_tree was already stored at the start of the function
 
                 # Extract structured response
                 is_outlier = structured_response.is_outlier
@@ -1496,7 +1504,7 @@ Respond with a JSON object indicating whether the word belongs in this group.
         self,
         word: LabelRecord,
         group: MerchantLabelGroup,
-        run_tree: Optional[Any] = None,  # Auto-populated by @traceable decorator
+        run_tree: Optional[Any] = None,  # Parent run tree to link this trace to
     ) -> Optional[str]:
         """
         Use LLM to suggest the correct CORE_LABEL type for an outlier.
@@ -1507,10 +1515,25 @@ Respond with a JSON object indicating whether the word belongs in this group.
         Args:
             word: The word that is an outlier
             group: The merchant label group it doesn't belong to
+            run_tree: Parent run tree to link this trace to (passed when calling)
 
         Returns:
             Suggested CORE_LABEL type (e.g., "PRODUCT_NAME") or None if couldn't determine
         """
+        # According to LangSmith docs: "wrap the child body with with ls.tracing_context(parent=run_tree):"
+        # This ensures all async calls within this function share the same RunTree and stay in the trace
+        if run_tree and ls:
+            with ls.tracing_context(parent=run_tree):
+                return await self._suggest_label_type_for_outlier_body(word, group)
+        else:
+            return await self._suggest_label_type_for_outlier_body(word, group)
+
+    async def _suggest_label_type_for_outlier_body(
+        self,
+        word: LabelRecord,
+        group: MerchantLabelGroup,
+    ) -> Optional[str]:
+        """Implementation of label type suggestion (called within tracing_context if needed)."""
         if not self.llm:
             logger.warning("LLM not available for label type suggestion for '%s'", word.word_text)
             return None
@@ -1676,18 +1699,10 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
             # LangSmith best practice: Use ainvoke for async functions to ensure proper trace context
             llm_structured = llm_with_schema.with_structured_output(LabelTypeSuggestion)
 
-            # According to LangSmith docs, for async functions decorated with @traceable,
-            # we should wrap child calls with tracing_context(parent=run_tree) to ensure
-            # proper trace nesting. This guarantees that all async calls share the same RunTree.
+            # Since the entire function body is wrapped with tracing_context in the wrapper function,
+            # the LangChain call will automatically be linked to the parent trace
             child_config = RunnableConfig(**config_dict)
-
-            # Wrap the LangChain runnable call with tracing_context to link to parent
-            # The @traceable decorator provides the run_tree parameter automatically
-            if run_tree and ls:
-                with ls.tracing_context(parent=run_tree):
-                    structured_response: LabelTypeSuggestion = await llm_structured.ainvoke(messages, config=child_config)  # type: ignore[assignment]
-            else:
-                structured_response: LabelTypeSuggestion = await llm_structured.ainvoke(messages, config=child_config)  # type: ignore[assignment]
+            structured_response: LabelTypeSuggestion = await llm_structured.ainvoke(messages, config=child_config)  # type: ignore[assignment]
 
             # Extract structured response
             suggested_type = structured_response.suggested_label_type
@@ -1783,10 +1798,9 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
                     group.label_type,
                 )
                 # Get the stored run tree from the outlier detection call
-                # According to LangSmith docs, for async functions with @traceable,
-                # we should pass the parent run_tree either:
-                # 1. As a keyword argument: run_tree=parent_run_tree
-                # 2. Via langsmith_extra: langsmith_extra={"parent": parent_run_tree}
+                # According to LangSmith docs, we can either:
+                # 1. Call with langsmith_extra={"parent": run_tree} (decorator handles linking)
+                # 2. Pass run_tree as parameter and wrap function body with tracing_context (we're doing this)
                 word_key = f"{record.image_id}:{record.receipt_id}:{record.line_id}:{record.word_id}"
                 parent_run_tree = group.outlier_run_trees.get(word_key)
                 if not parent_run_tree:
@@ -1794,8 +1808,7 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
                         "No run tree found for outlier '%s' - child trace may not be linked",
                         record.word_text,
                     )
-                # Pass run_tree to link child trace to parent
-                # The @traceable decorator will use this to nest the trace
+                # Pass parent run_tree as parameter - the function will wrap its body with tracing_context
                 suggested_label_type = await self._suggest_label_type_for_outlier(
                     record, group, run_tree=parent_run_tree
                 )
