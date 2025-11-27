@@ -142,9 +142,8 @@ async def validate_labels_chromadb(
             max_line_id = target_line_id + line_context_range
 
             # Build where filter with line context and label type
-            # Note: ChromaDB uses "valid_labels" (not "validated_labels") based on existing code
             where_conditions = [
-                {"valid_labels": {"$in": [label.label]}},  # Use $in for exact match
+                {"validated_labels": {"$in": [label.label]}},  # Use $in for exact match with array
                 {"line_id": {"$gte": min_line_id}},
                 {"line_id": {"$lte": max_line_id}},
             ]
@@ -167,11 +166,11 @@ async def validate_labels_chromadb(
             except Exception as e:
                 logger.debug(f"   ⚠️  Query failed for {chroma_id}: {e}")
                 # Try without line context filter as fallback
-                where_filter_fallback = {"valid_labels": {"$in": [label.label]}}
+                where_filter_fallback = {"validated_labels": {"$in": [label.label]}}
                 if merchant_name:
                     where_filter_fallback = {
                         "$and": [
-                            {"valid_labels": {"$in": [label.label]}},
+                            {"validated_labels": {"$in": [label.label]}},
                             {"merchant_name": {"$eq": merchant_name}},
                         ]
                     }
@@ -216,13 +215,8 @@ async def validate_labels_chromadb(
             # Check for conflicting labels (similar words with different VALID labels)
             conflicting_labels = set()
             for match in matches:
-                # Handle both list and comma-delimited string formats
-                valid_labels_raw = match["metadata"].get("valid_labels") or match["metadata"].get("validated_labels") or ""
-                if isinstance(valid_labels_raw, list):
-                    valid_labels = set(valid_labels_raw)
-                else:
-                    # Comma-delimited string format: ",LABEL1,LABEL2,"
-                    valid_labels = {lbl.strip() for lbl in str(valid_labels_raw).strip(",").split(",") if lbl.strip()}
+                validated_labels = match["metadata"].get("validated_labels", [])
+                valid_labels = set(validated_labels)
 
                 if label.label not in valid_labels and valid_labels:
                     conflicting_labels.update(valid_labels)

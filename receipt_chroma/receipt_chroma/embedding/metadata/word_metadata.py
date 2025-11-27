@@ -119,26 +119,20 @@ def enrich_word_metadata_with_labels(
         if lbl.validation_status == ValidationStatus.VALID.value
     ]
 
-    # invalid_labels — all labels with status INVALID
-    invalid_labels = [
+    # invalidated_labels — all labels with status INVALID
+    invalidated_labels = [
         lbl.label
         for lbl in word_labels
         if lbl.validation_status == ValidationStatus.INVALID.value
     ]
 
-    # Store validated labels with delimiters for exact matching
-    if validated_labels:
-        # Use comma delimiters to enable exact matching with $contains
-        metadata["validated_labels"] = f",{','.join(validated_labels)},"
-    else:
-        metadata["validated_labels"] = ""
+    # Store validated labels as array (ChromaDB now supports arrays in metadata)
+    # This enables efficient querying with $in operator
+    metadata["validated_labels"] = validated_labels
 
-    # Store invalid labels with delimiters for exact matching
-    if invalid_labels:
-        # Use comma delimiters to enable exact matching with $contains
-        metadata["invalid_labels"] = f",{','.join(invalid_labels)},"
-    else:
-        metadata["invalid_labels"] = ""
+    # Store invalidated labels as array (ChromaDB now supports arrays in metadata)
+    # This enables efficient querying with $in operator
+    metadata["invalidated_labels"] = invalidated_labels
 
     # label_validated_at — timestamp of the most recent VALID
     valids = [

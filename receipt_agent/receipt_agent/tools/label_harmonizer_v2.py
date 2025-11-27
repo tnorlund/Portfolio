@@ -338,9 +338,7 @@ class LabelHarmonizerV2:
                 return False, None
 
             # Filter results to only include words with the suggested label type in validated_labels
-            # validated_labels is stored as comma-delimited: ",LABEL1,LABEL2,"
-            # Same pattern as _identify_outliers (line 904-906)
-            label_pattern = f",{suggested_label_type},"
+            # validated_labels is now stored as an array (ChromaDB supports arrays in metadata)
             filtered_docs = []
             filtered_metadatas = []
             filtered_distances = []
@@ -350,8 +348,8 @@ class LabelHarmonizerV2:
                 query_results["metadatas"][0] if query_results.get("metadatas") else [{}] * len(query_results["documents"][0]),
                 query_results["distances"][0] if query_results.get("distances") else [1.0] * len(query_results["documents"][0])
             ):
-                validated_labels_str = metadata.get("validated_labels", "")
-                if label_pattern in validated_labels_str:
+                validated_labels = metadata.get("validated_labels", [])
+                if suggested_label_type in validated_labels:
                     filtered_docs.append(doc)
                     filtered_metadatas.append(metadata)
                     filtered_distances.append(distance)
@@ -382,7 +380,7 @@ class LabelHarmonizerV2:
                     "right_context": metadata.get("right", ""),
                     # We queried for this specific label type, so use it
                     "label": suggested_label_type,
-                    "validated_labels": metadata.get("validated_labels", ""),
+                    "validated_labels": metadata.get("validated_labels", []),
                     # Include IDs for fetching full receipt context
                     "image_id": metadata.get("image_id"),
                     "receipt_id": metadata.get("receipt_id"),
@@ -888,7 +886,6 @@ Respond with JSON: `is_valid` (boolean), `reasoning` (string)"""
                     metadatas = query_results.get("metadatas", [[]])[0] if query_results else []
 
                     similar_matches = []
-                    label_pattern = f",{group.label_type},"
 
                     for idx, similar_id in enumerate(similar_ids):
                         if similar_id == chroma_id:
@@ -901,9 +898,8 @@ Respond with JSON: `is_valid` (boolean), `reasoning` (string)"""
                             continue
 
                         metadata = metadatas[idx] if metadatas else {}
-                        validated_labels_str = metadata.get("validated_labels", "")
-
-                        if label_pattern in validated_labels_str:
+                        validated_labels = metadata.get("validated_labels", [])
+                        if group.label_type in validated_labels:
                             similar_matches.append((similar_id, similarity))
 
                     work_items.append({
@@ -1139,7 +1135,7 @@ Respond with JSON: `is_valid` (boolean), `reasoning` (string)"""
                 similar_words_info.append({
                     "text": metadata.get("text", "unknown"),
                     "similarity": f"{similarity:.3f}",
-                    "validated_labels": metadata.get("validated_labels", ""),
+                    "validated_labels": metadata.get("validated_labels", []),
                     "line_context": similar_line_context,
                     "surrounding_words": similar_surrounding_words,
                     "surrounding_lines": similar_surrounding_lines,
@@ -1189,7 +1185,10 @@ You are analyzing receipt word labels for consistency. Your task is to determine
                 prompt += f"### Example {i}\n\n"
                 prompt += f"- **Text:** `'{info['text']}'`\n"
                 prompt += f"- **Similarity:** {info['similarity']}\n"
-                prompt += f"- **Labels:** {info['validated_labels']}\n"
+                # Format validated_labels for display
+                validated_labels_display = info['validated_labels']
+                validated_labels_display = ", ".join(validated_labels_display) if validated_labels_display else "None"
+                prompt += f"- **Labels:** {validated_labels_display}\n"
                 if info.get('line_context'):
                     prompt += f"- **Line context:** `\"{info['line_context']}\"`\n"
                 if info.get('surrounding_words'):

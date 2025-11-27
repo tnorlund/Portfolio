@@ -204,7 +204,7 @@ def mock_chroma_client():
     # Mock successful operations
     client.get_by_ids.return_value = {
         "ids": ["test_id_1"],
-        "metadatas": [{"valid_labels": [], "invalid_labels": []}],
+        "metadatas": [{"valid_labels": [], "invalidated_labels": []}],
         "documents": ["test document"],
     }
 
@@ -385,7 +385,7 @@ def dynamodb_table():
     yields the table name for tests.
 
     After the tests, everything is torn down automatically.
-    
+
     This fixture is copied from receipt_dynamo to support lock manager tests.
     """
     with mock_aws():

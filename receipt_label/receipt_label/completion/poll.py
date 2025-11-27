@@ -322,9 +322,7 @@ def update_valid_labels(
                 )
         for vid in id_batch:
             meta = (fetched[vid].metadata if vid in fetched else {}) or {}
-            existing = meta.get("valid_labels", [])
-            if isinstance(existing, str):
-                existing = [existing]
+            existing = list(meta.get("validated_labels", []))
 
             new_labels = valid_by_vector[vid]
             merged = list(set(existing + new_labels))
@@ -333,7 +331,7 @@ def update_valid_labels(
             if set(merged) == set(existing):
                 continue
 
-            meta["valid_labels"] = merged
+            meta["validated_labels"] = merged
             vectors_needing_update.append((vid, meta))
 
     # ------------------------------------------------------------------ #
@@ -452,16 +450,14 @@ def update_invalid_labels(
                 )
         for vid in id_batch:
             meta = (fetched[vid].metadata if vid in fetched else {}) or {}
-            existing_invalid = meta.get("invalid_labels", [])
-            if isinstance(existing_invalid, str):
-                existing_invalid = [existing_invalid]
+            existing_invalid = list(meta.get("invalidated_labels", []))
 
             merged_invalid = list(
                 set(existing_invalid + invalid_by_vector.get(vid, []))
             )
             changed = False
             if set(merged_invalid) != set(existing_invalid):
-                meta["invalid_labels"] = merged_invalid
+                meta["invalidated_labels"] = merged_invalid
                 changed = True
 
             if vid in proposed_by_vector:

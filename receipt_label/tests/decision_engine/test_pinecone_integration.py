@@ -56,7 +56,7 @@ class TestPineconeDecisionHelper:
                     "receipt_id": "receipt_1",
                     "merchant_name": "WALMART",
                     "valid_labels": ["MERCHANT_NAME", "GRAND_TOTAL", "DATE"],
-                    "invalid_labels": [],
+                    "invalidated_labels": [],
                     "timestamp": datetime.now().isoformat(),
                 }
             ),
@@ -69,7 +69,7 @@ class TestPineconeDecisionHelper:
                         "GRAND_TOTAL",
                         "PRODUCT_NAME",
                     ],
-                    "invalid_labels": ["ADDRESS"],
+                    "invalidated_labels": ["ADDRESS"],
                     "timestamp": datetime.now().isoformat(),
                 }
             ),
@@ -78,7 +78,7 @@ class TestPineconeDecisionHelper:
                     "receipt_id": "receipt_3",
                     "merchant_name": "WALMART",
                     "valid_labels": ["MERCHANT_NAME", "DATE"],
-                    "invalid_labels": ["PHONE_NUMBER"],
+                    "invalidated_labels": ["PHONE_NUMBER"],
                     "timestamp": datetime.now().isoformat(),
                 }
             ),
@@ -143,7 +143,7 @@ class TestPineconeDecisionHelper:
                     "receipt_id": "receipt_1",
                     "merchant_name": "WALMART",
                     "valid_labels": ["MERCHANT_NAME"],
-                    "invalid_labels": [],
+                    "invalidated_labels": [],
                     "timestamp": datetime.now().isoformat(),
                 }
             )
@@ -176,7 +176,7 @@ class TestPineconeDecisionHelper:
                     "receipt_id": "receipt_1",
                     "merchant_name": "WALMART",
                     "valid_labels": ["MERCHANT_NAME"],
-                    "invalid_labels": [],
+                    "invalidated_labels": [],
                     "timestamp": datetime.now().isoformat(),
                 }
             )
@@ -241,7 +241,7 @@ class TestPineconeDecisionHelper:
                     "receipt_id": "receipt_1",
                     "merchant_name": "WALMART",
                     "valid_labels": ["MERCHANT_NAME"],
-                    "invalid_labels": [],
+                    "invalidated_labels": [],
                     "timestamp": datetime.now().isoformat(),
                 }
             )
@@ -329,21 +329,21 @@ class TestPineconeDecisionHelper:
                 metadata={
                     "receipt_id": "r1",
                     "valid_labels": ["MERCHANT_NAME", "TOTAL"],
-                    "invalid_labels": [],
+                    "invalidated_labels": [],
                 }
             ),
             Mock(
                 metadata={
                     "receipt_id": "r1",  # Same receipt, different word
                     "valid_labels": ["DATE"],
-                    "invalid_labels": ["ADDRESS"],
+                    "invalidated_labels": ["ADDRESS"],
                 }
             ),
             Mock(
                 metadata={
                     "receipt_id": "r2",
                     "valid_labels": ["MERCHANT_NAME"],
-                    "invalid_labels": ["PHONE"],
+                    "invalidated_labels": ["PHONE"],
                 }
             ),
         ]

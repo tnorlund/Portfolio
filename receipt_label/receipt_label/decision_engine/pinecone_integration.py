@@ -174,7 +174,7 @@ class PineconeDecisionHelper:
 
         # Count valid vs invalid labels
         valid_labels = defaultdict(int)
-        invalid_labels = defaultdict(int)
+        invalidated_labels = defaultdict(int)
         all_labels_seen = set()
 
         for match in matches:
@@ -187,14 +187,14 @@ class PineconeDecisionHelper:
                     all_labels_seen.add(label)
 
             # Track invalid labels
-            if metadata.get("invalid_labels"):
-                for label in metadata["invalid_labels"]:
-                    invalid_labels[label] += 1
+            if metadata.get("invalidated_labels"):
+                for label in metadata["invalidated_labels"]:
+                    invalidated_labels[label] += 1
                     all_labels_seen.add(label)
 
         # Calculate success rate based on valid vs invalid labels
         total_label_instances = sum(valid_labels.values()) + sum(
-            invalid_labels.values()
+            invalidated_labels.values()
         )
         if total_label_instances == 0:
             success_rate = 0.0

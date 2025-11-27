@@ -110,24 +110,29 @@ def _update_pinecone_metadata(
             metadata = (
                 results["metadatas"][i] if "metadatas" in results else {}
             )
-            valid_labels = set(metadata.get("valid_labels", []))
-            invalid_labels = set(metadata.get("invalid_labels", []))
+            # Read validated_labels and invalidated_labels as arrays
+            validated_labels = list(metadata.get("validated_labels", []))
+            invalidated_labels = list(metadata.get("invalidated_labels", []))
+
+            valid_labels = set(validated_labels)
+            invalidated_labels_set = set(invalidated_labels)
 
             # Add valid labels
             for label in valid_by_id.get(chroma_id, []):
                 valid_labels.add(label.label)
-                # If label is now valid, ensure it's removed from invalid_labels
-                if label.label in invalid_labels:
-                    invalid_labels.discard(label.label)
+                # If label is now valid, ensure it's removed from invalidated_labels
+                if label.label in invalidated_labels_set:
+                    invalidated_labels_set.discard(label.label)
 
-            # Add invalid labels and remove them from valid_labels
+            # Add invalidated labels and remove them from valid_labels
             for label in invalid_by_id.get(chroma_id, []):
-                invalid_labels.add(label.label)
+                invalidated_labels_set.add(label.label)
                 if label.label in valid_labels:
                     valid_labels.discard(label.label)
 
-            metadata["valid_labels"] = list(valid_labels)
-            metadata["invalid_labels"] = list(invalid_labels)
+            # Write back as arrays
+            metadata["validated_labels"] = list(valid_labels)
+            metadata["invalidated_labels"] = list(invalidated_labels_set)
             vectors_by_id[chroma_id] = metadata
 
     # Update metadata for each vector in ChromaDB
@@ -170,7 +175,7 @@ def update_labels(
     # - Separates valid and invalid labels based on ``is_consistent`` flag.
     # - Updates Pinecone vector metadata:
     #   * Adds the label to ``valid_labels`` if consistent.
-    #   * Moves the label to ``invalid_labels`` and removes it from
+    #   * Moves the label to ``invalidated_labels`` and removes it from
     #     ``valid_labels`` if inconsistent.
     #   * Ensures that each Pinecone ID is upserted once with merged metadata.
     # - Updates corresponding label validation status in DynamoDB to either

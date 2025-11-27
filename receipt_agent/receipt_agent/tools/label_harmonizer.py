@@ -858,7 +858,7 @@ class LabelHarmonizer:
 
                 try:
                     # Build where clause to find similar words from same merchant
-                    # Note: ChromaDB doesn't support $contains, so we'll filter validated_labels in Python
+                    # Filter validated_labels in Python (now stored as arrays, supports $in in where clause but we filter here for flexibility)
                     where_clause = None
                     if merchant_filter:
                         where_clause = {"merchant_name": {"$eq": merchant_filter}}
@@ -881,9 +881,8 @@ class LabelHarmonizer:
                     # Filter results in Python:
                     # 1. Exclude self
                     # 2. Check similarity threshold
-                    # 3. Check if validated_labels contains the label type (comma-delimited string)
+                    # 3. Check if validated_labels contains the label type (now stored as array)
                     similar_matches = []
-                    label_pattern = f",{group.label_type},"  # Match in comma-delimited string
 
                     for idx, similar_id in enumerate(similar_ids):
                         if similar_id == chroma_id:
@@ -900,14 +899,12 @@ class LabelHarmonizer:
 
                         # Check if this word has VALID label of the target type
                         metadata = metadatas[idx] if metadatas else {}
-                        validated_labels_str = metadata.get("validated_labels", "")
-
-                        # validated_labels is stored as ",GRAND_TOTAL,SUBTOTAL," format
-                        if label_pattern in validated_labels_str:
+                        validated_labels = metadata.get("validated_labels", [])
+                        if group.label_type in validated_labels:
                             similar_matches.append((similar_id, similarity))
                             logger.debug(
                                 f"  Match: {similar_id} (sim={similarity:.3f}, "
-                                f"validated_labels={validated_labels_str})"
+                                f"validated_labels={validated_labels})"
                             )
 
                     logger.debug(
@@ -1214,7 +1211,7 @@ class LabelHarmonizer:
                 similar_words_info.append({
                     "text": metadata.get("text", "unknown"),
                     "similarity": f"{similarity:.3f}",
-                    "validated_labels": metadata.get("validated_labels", ""),
+                    "validated_labels": metadata.get("validated_labels", []),
                     "line_context": similar_line_context,
                     "surrounding_words": similar_surrounding_words,
                     "surrounding_lines": similar_surrounding_lines,
@@ -1268,7 +1265,10 @@ You are analyzing receipt word labels for consistency. Your task is to determine
                 prompt += f"### Example {i}\n\n"
                 prompt += f"- **Text:** `'{info['text']}'`\n"
                 prompt += f"- **Similarity:** {info['similarity']}\n"
-                prompt += f"- **Labels:** {info['validated_labels']}\n"
+                # Format validated_labels for display
+                validated_labels_display = info['validated_labels']
+                validated_labels_display = ", ".join(validated_labels_display) if validated_labels_display else "None"
+                prompt += f"- **Labels:** {validated_labels_display}\n"
                 if info.get('line_context'):
                     prompt += f"- **Line context:** `\"{info['line_context']}\"`\n"
                 if info.get('surrounding_words'):

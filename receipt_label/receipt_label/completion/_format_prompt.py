@@ -332,7 +332,7 @@ def _format_prompt(  # pylint: disable=too-many-arguments
             "text": word.text,
             "line_id": second_pass_label.line_id,
             "proposed_label": second_pass_label.label,
-            "invalid_labels": [
+            "invalidated_labels": [
                 label.label
                 for label in all_labels
                 if label.line_id == second_pass_label.line_id
@@ -431,7 +431,7 @@ def _format_second_pass_prompt(
             "text": word.text,
             "line_id": second_pass_label.line_id,
             "proposed_label": second_pass_label.label,
-            "invalid_labels": [
+            "invalidated_labels": [
                 label.label
                 for label in all_labels
                 if label.line_id == second_pass_label.line_id
