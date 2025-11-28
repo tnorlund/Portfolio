@@ -141,6 +141,19 @@ class UpdateResult:
     errors: list[str] = field(default_factory=list)
 
 
+@dataclass
+class APIUsageMetrics:
+    """Metrics for API usage and errors."""
+    llm_calls_total: int = 0
+    llm_calls_successful: int = 0
+    llm_calls_failed: int = 0
+    rate_limit_errors: int = 0  # 429 errors
+    server_errors: int = 0  # 5xx errors
+    retry_attempts: int = 0
+    circuit_breaker_triggers: int = 0
+    timeout_errors: int = 0
+
+
 class LabelHarmonizerV2:
     """
     Harmonizes receipt word labels with proper LangSmith trace nesting.
@@ -190,6 +203,7 @@ class LabelHarmonizerV2:
         self._no_merchant_labels: list[LabelRecord] = []
         self._last_report: Optional[dict[str, Any]] = None
         self._label_type: Optional[str] = None
+        self._api_metrics: APIUsageMetrics = APIUsageMetrics()  # Track API usage metrics
 
     def _stream_labels_by_type(self, label_type: str):
         """Stream labels for a specific label type from DynamoDB."""
@@ -317,16 +331,14 @@ class LabelHarmonizerV2:
             if hasattr(target_embedding, 'tolist'):
                 target_embedding = target_embedding.tolist()
 
-            # Query for similar words (same pattern as _identify_outliers)
-            # Filter by merchant_name if available, then filter in Python for valid_labels
-            merchant_filter = merchant_name.strip().title() if merchant_name else None
-            where_clause = {"merchant_name": {"$eq": merchant_filter}} if merchant_filter else None
-
+            # Query for similar words across ALL merchants
+            # Let the LLM see all similar words and decide which are relevant
+            # This removes hard-coded merchant filtering - LLM can weight same-merchant vs cross-merchant
             query_results = self.chroma.query(
                 collection_name="words",
                 query_embeddings=[target_embedding],
-                n_results=50,  # Get more results to filter in Python
-                where=where_clause,
+                n_results=30,  # Get enough results for LLM to see variety
+                where=None,  # No merchant filter - let LLM see all merchants
                 include=["documents", "metadatas", "distances"],
             )
 
@@ -335,18 +347,13 @@ class LabelHarmonizerV2:
                     "No similar words found for '%s'",
                     word.word_text
                 )
-                return False, None
+                # Don't return False here - let LLM validate even without similar words
+                # The LLM prompt handles this case
 
-            # Filter results to only include words with the suggested label type in valid_labels
-            # valid_labels is stored as comma-delimited: ",LABEL1,LABEL2,"
-            # Same pattern as _identify_outliers (line 904-906)
-            # Also apply similarity threshold filter like _identify_outliers does
-            similarity_threshold = 0.70  # Same threshold as _identify_outliers
-            label_pattern = f",{suggested_label_type},"
-            filtered_docs = []
-            filtered_metadatas = []
-            filtered_distances = []
-
+            # Build context about ALL similar words for LLM validation
+            # Remove hard-coded filters - let LLM see similarity scores, labels, and merchants
+            # and decide which examples are relevant
+            similar_words_context = []
             for doc, metadata, distance in zip(
                 query_results["documents"][0],
                 query_results["metadatas"][0] if query_results.get("metadatas") else [{}] * len(query_results["documents"][0]),
@@ -355,44 +362,28 @@ class LabelHarmonizerV2:
                 # Convert distance to similarity (same formula as _identify_outliers)
                 similarity = max(0.0, 1.0 - (distance / 2))
 
-                # Apply similarity threshold filter (same as _identify_outliers line 900-901)
-                if similarity < similarity_threshold:
-                    continue
-
-                # Filter by valid_labels pattern
+                # Parse valid_labels and invalid_labels to show LLM complete label information
                 valid_labels_str = metadata.get("valid_labels", "")
-                if label_pattern in valid_labels_str:
-                    filtered_docs.append(doc)
-                    filtered_metadatas.append(metadata)
-                    filtered_distances.append(distance)
-                    # Stop at 10 results after filtering
-                    if len(filtered_docs) >= 10:
-                        break
+                invalid_labels_str = metadata.get("invalid_labels", "")
+                # Extract labels from comma-delimited format: ",LABEL1,LABEL2," -> ["LABEL1", "LABEL2"]
+                valid_labels_list = [label.strip() for label in valid_labels_str.split(",") if label.strip()]
+                invalid_labels_list = [label.strip() for label in invalid_labels_str.split(",") if label.strip()]
 
-            if not filtered_docs:
-                logger.info(
-                    "No similar words with validated label '%s' found for '%s'",
-                    suggested_label_type, word.word_text
-                )
-                return False, None
-
-            # Build context about similar words for LLM validation
-            similar_words_context = []
-            for i, (doc, metadata, distance) in enumerate(zip(
-                filtered_docs,
-                filtered_metadatas,
-                filtered_distances
-            )):
-                similarity = 1 - (distance / 2)  # Convert distance to similarity (0-1)
+                # Show LLM ALL similar words with their complete label information, similarity, and merchant
+                # Let LLM decide which are relevant - don't pre-filter
                 similar_words_context.append({
                     "text": doc,
                     "similarity": round(similarity, 3),
                     "merchant": metadata.get("merchant_name", "Unknown"),
+                    "is_same_merchant": metadata.get("merchant_name", "").strip().title() == (merchant_name.strip().title() if merchant_name else ""),
                     "left_context": metadata.get("left", ""),
                     "right_context": metadata.get("right", ""),
-                    # We queried for this specific label type, so use it
-                    "label": suggested_label_type,
-                    "valid_labels": metadata.get("valid_labels", ""),
+                    # Show LLM complete label information
+                    "valid_labels": valid_labels_list,  # Labels marked VALID
+                    "invalid_labels": invalid_labels_list,  # Labels marked INVALID (important negative signal!)
+                    "label_status": metadata.get("label_status", "unvalidated"),  # Overall status: "validated", "auto_suggested", "unvalidated"
+                    "has_suggested_label": suggested_label_type in valid_labels_list,
+                    "has_suggested_label_invalid": suggested_label_type in invalid_labels_list,  # Strong negative signal!
                     # Include IDs for fetching full receipt context
                     "image_id": metadata.get("image_id"),
                     "receipt_id": metadata.get("receipt_id"),
@@ -400,7 +391,22 @@ class LabelHarmonizerV2:
                     "word_id": metadata.get("word_id"),
                 })
 
-            # Now ask the LLM to validate based on the similar words
+                # Limit to top 20 to avoid overwhelming the LLM, but show variety
+                if len(similar_words_context) >= 20:
+                    break
+
+            # Log if no similar words found, but still call LLM for validation
+            # The LLM prompt is designed to handle this case and can still validate
+            # based on the reasoning and context, even without similar examples
+            if not similar_words_context:
+                logger.info(
+                    "No similar words with validated label '%s' found for '%s'. "
+                    "LLM will validate based on reasoning and context.",
+                    suggested_label_type, word.word_text
+                )
+
+            # Now ask the LLM to validate based on the similar words (or lack thereof)
+            # The LLM prompt handles the case where no similar words are found
             is_valid = await self._llm_validate_suggestion(
                 word_text=word.word_text,
                 suggested_label_type=suggested_label_type,
@@ -507,21 +513,74 @@ class LabelHarmonizerV2:
             logger.warning("LLM not available for suggestion validation")
             return False
 
-        # Enrich similar words with ±3 lines context (same as original prompt)
-        enriched_similar_words = await self._enrich_similar_words_with_context(similar_words[:5])
+        # Enrich similar words with ±3 lines context
+        # Show more examples (up to 15) so LLM can see variety across merchants and labels
+        enriched_similar_words = await self._enrich_similar_words_with_context(similar_words[:15])
 
-        # Format similar words concisely - just show context like original prompt
+        # Format similar words with full context for LLM decision-making
+        # Show: similarity, merchant (same/different), labels (valid/invalid), validation status, and context
         similar_words_text = ""
-        for i, w in enumerate(enriched_similar_words, 1):
-            similar_words_text += f"\n{i}. **\"{w['text']}\"** ({w['similarity']:.0%} similar, {w['merchant']})\n"
-            if w.get('surrounding_lines'):
-                similar_words_text += "   ```\n"
-                similar_words_text += "\n".join(f"   {line}" for line in w['surrounding_lines'])
-                similar_words_text += "\n   ```\n"
-            elif w.get('line_context'):
-                similar_words_text += f"   Line: `{w['line_context']}`\n"
-            else:
-                similar_words_text += f"   Context: {w.get('left_context', '')} [{w['text']}] {w.get('right_context', '')}\n"
+        if enriched_similar_words:
+            # Group by label status for better organization
+            with_label_valid = [w for w in enriched_similar_words if w.get('has_suggested_label') and not w.get('has_suggested_label_invalid')]
+            with_label_invalid = [w for w in enriched_similar_words if w.get('has_suggested_label_invalid')]
+            without_label = [w for w in enriched_similar_words if not w.get('has_suggested_label') and not w.get('has_suggested_label_invalid')]
+
+            if with_label_valid:
+                similar_words_text += f"\n### Similar Words WITH `{suggested_label_type}` Label (VALID):\n"
+                for i, w in enumerate(with_label_valid[:10], 1):  # Show up to 10 with the label
+                    merchant_note = " (SAME MERCHANT)" if w.get('is_same_merchant') else f" ({w['merchant']})"
+                    valid_labels_str = ", ".join(w.get('valid_labels', [])) or "none"
+                    invalid_labels_str = ", ".join(w.get('invalid_labels', [])) or "none"
+                    status = w.get('label_status', 'unknown')
+                    similar_words_text += f"\n{i}. **\"{w['text']}\"** ({w['similarity']:.0%} similar{merchant_note}, status: {status})\n"
+                    similar_words_text += f"   Valid labels: {valid_labels_str} | Invalid labels: {invalid_labels_str}\n"
+                    if w.get('surrounding_lines'):
+                        similar_words_text += "   ```\n"
+                        similar_words_text += "\n".join(f"   {line}" for line in w['surrounding_lines'])
+                        similar_words_text += "\n   ```\n"
+                    elif w.get('line_context'):
+                        similar_words_text += f"   Line: `{w['line_context']}`\n"
+                    else:
+                        similar_words_text += f"   Context: {w.get('left_context', '')} [{w['text']}] {w.get('right_context', '')}\n"
+
+            if with_label_invalid:
+                similar_words_text += f"\n### ⚠️ Similar Words WITH `{suggested_label_type}` Label (INVALID - strong negative signal!):\n"
+                for i, w in enumerate(with_label_invalid[:5], 1):  # Show up to 5 that have this label marked INVALID
+                    merchant_note = " (SAME MERCHANT)" if w.get('is_same_merchant') else f" ({w['merchant']})"
+                    valid_labels_str = ", ".join(w.get('valid_labels', [])) or "none"
+                    invalid_labels_str = ", ".join(w.get('invalid_labels', [])) or "none"
+                    status = w.get('label_status', 'unknown')
+                    similar_words_text += f"\n{i}. **\"{w['text']}\"** ({w['similarity']:.0%} similar{merchant_note}, status: {status})\n"
+                    similar_words_text += f"   Valid labels: {valid_labels_str} | Invalid labels: {invalid_labels_str}\n"
+                    if w.get('surrounding_lines'):
+                        similar_words_text += "   ```\n"
+                        similar_words_text += "\n".join(f"   {line}" for line in w['surrounding_lines'])
+                        similar_words_text += "\n   ```\n"
+                    elif w.get('line_context'):
+                        similar_words_text += f"   Line: `{w['line_context']}`\n"
+                    else:
+                        similar_words_text += f"   Context: {w.get('left_context', '')} [{w['text']}] {w.get('right_context', '')}\n"
+
+            if without_label:
+                similar_words_text += f"\n### Similar Words WITHOUT `{suggested_label_type}` Label (for comparison):\n"
+                for i, w in enumerate(without_label[:5], 1):  # Show up to 5 without the label for contrast
+                    merchant_note = " (SAME MERCHANT)" if w.get('is_same_merchant') else f" ({w['merchant']})"
+                    valid_labels_str = ", ".join(w.get('valid_labels', [])) or "none"
+                    invalid_labels_str = ", ".join(w.get('invalid_labels', [])) or "none"
+                    status = w.get('label_status', 'unknown')
+                    similar_words_text += f"\n{i}. **\"{w['text']}\"** ({w['similarity']:.0%} similar{merchant_note}, status: {status})\n"
+                    similar_words_text += f"   Valid labels: {valid_labels_str} | Invalid labels: {invalid_labels_str}\n"
+                    if w.get('surrounding_lines'):
+                        similar_words_text += "   ```\n"
+                        similar_words_text += "\n".join(f"   {line}" for line in w['surrounding_lines'])
+                        similar_words_text += "\n   ```\n"
+                    elif w.get('line_context'):
+                        similar_words_text += f"   Line: `{w['line_context']}`\n"
+                    else:
+                        similar_words_text += f"   Context: {w.get('left_context', '')} [{w['text']}] {w.get('right_context', '')}\n"
+        else:
+            similar_words_text = "NO SIMILAR WORDS FOUND in the database."
 
         prompt = f"""# Validate Label Type Suggestion
 
@@ -529,12 +588,26 @@ class LabelHarmonizerV2:
 
 **Your reasoning:** {llm_reason or "No reasoning provided"}
 
-## Similar Words with `{suggested_label_type}` Label (±3 lines context)
-{similar_words_text if enriched_similar_words else "NO SIMILAR WORDS FOUND with this label type."}
+## Similar Words from Database (±3 lines context)
+{similar_words_text}
+
+## Instructions
+
+Review the similar words above. Consider:
+- **Similarity scores**: Higher similarity = more relevant
+- **Merchant match**: Same merchant examples may be more relevant, but cross-merchant examples are still useful
+- **Valid labels**: Words with `{suggested_label_type}` in their valid_labels support the suggestion
+- **Invalid labels**: ⚠️ Words with `{suggested_label_type}` in their invalid_labels are a STRONG negative signal - this label was explicitly rejected for similar words!
+- **Validation status**: "validated" = human/LLM confirmed, "auto_suggested" = pending review, "unvalidated" = no labels yet
+- **Context**: Does the word appear in similar receipt contexts?
+
+**Critical**: If you see similar words where `{suggested_label_type}` is in the invalid_labels, this is strong evidence the suggestion is wrong!
+
+If no similar words were found, evaluate based on your reasoning and general knowledge about receipt label types.
 
 ## Question
 
-Does `"{word_text}"` appear in a similar context to these examples? If no similar words were found, is this suggestion likely wrong?
+Is the suggestion `"{word_text}"` -> `{suggested_label_type}` valid based on the evidence above?
 
 Respond with JSON: `is_valid` (boolean), `reasoning` (string)"""
 
@@ -571,7 +644,9 @@ Respond with JSON: `is_valid` (boolean), `reasoning` (string)"""
             )
             llm_structured = llm_with_schema.with_structured_output(ValidationResult)
 
+            self._api_metrics.llm_calls_total += 1
             response = await llm_structured.ainvoke(messages, config=config)
+            self._api_metrics.llm_calls_successful += 1
             is_valid = getattr(response, 'is_valid', False)
             reasoning = getattr(response, 'reasoning', "")
 
@@ -585,6 +660,14 @@ Respond with JSON: `is_valid` (boolean), `reasoning` (string)"""
             return is_valid
 
         except Exception as e:
+            self._api_metrics.llm_calls_failed += 1
+            error_str = str(e)
+            if "429" in error_str or "rate limit" in error_str.lower():
+                self._api_metrics.rate_limit_errors += 1
+            elif "500" in error_str or "503" in error_str or "502" in error_str:
+                self._api_metrics.server_errors += 1
+            elif "timeout" in error_str.lower():
+                self._api_metrics.timeout_errors += 1
             logger.warning("LLM validation failed for '%s': %s", word_text, e)
             return False
 
@@ -935,14 +1018,30 @@ Respond with JSON: `is_valid` (boolean), `reasoning` (string)"""
             )
 
             # Phase 2: Process LLM calls concurrently with semaphore
+            # Circuit breaker: stop processing if we hit too many rate limits
             semaphore = asyncio.Semaphore(max_concurrent_llm_calls)
             outliers = []
             outliers_lock = asyncio.Lock()
+            rate_limit_errors = 0
+            rate_limit_lock = asyncio.Lock()
+            circuit_breaker_threshold = 5  # Stop after 5 consecutive 429 errors
+            should_stop = False
 
             async def check_outlier(item: dict) -> None:
                 """Check a single word for outlier status with concurrency control."""
+                nonlocal should_stop, rate_limit_errors
+
+                # Check circuit breaker before processing
+                async with rate_limit_lock:
+                    if should_stop:
+                        logger.warning(
+                            "Circuit breaker triggered: stopping outlier detection due to rate limits"
+                        )
+                        return
+
                 async with semaphore:
                     try:
+                        self._api_metrics.llm_calls_total += 1
                         if HAS_LANGSMITH and run_tree:
                             is_outlier = await self._llm_determine_outlier(
                                 word=item["record"],
@@ -961,6 +1060,7 @@ Respond with JSON: `is_valid` (boolean), `reasoning` (string)"""
                                 similar_ids=item["similar_ids"],
                             )
 
+                        self._api_metrics.llm_calls_successful += 1
                         if is_outlier:
                             async with outliers_lock:
                                 outliers.append(item["record"])
@@ -969,11 +1069,38 @@ Respond with JSON: `is_valid` (boolean), `reasoning` (string)"""
                                 item['record'].word_text,
                                 group.label_type,
                             )
+                    except RuntimeError as e:
+                        error_str = str(e)
+                        # Check if this is a rate limit error
+                        if "429" in error_str or "too many concurrent requests" in error_str.lower():
+                            async with rate_limit_lock:
+                                rate_limit_errors += 1
+                                self._api_metrics.rate_limit_errors += 1
+                                self._api_metrics.llm_calls_failed += 1
+                                if rate_limit_errors >= circuit_breaker_threshold:
+                                    should_stop = True
+                                    self._api_metrics.circuit_breaker_triggers += 1
+                                    logger.error(
+                                        f"Circuit breaker triggered: {rate_limit_errors} rate limit errors. "
+                                        f"Stopping processing to prevent API spam. "
+                                        f"This Lambda will fail and Step Function will move to next iteration."
+                                    )
+                        else:
+                            self._api_metrics.llm_calls_failed += 1
+                        logger.error(f"Failed outlier detection for '{item['record'].word_text}': {e}")
                     except Exception as e:
                         logger.error(f"Failed outlier detection for '{item['record'].word_text}': {e}")
 
             # Run all LLM checks concurrently (limited by semaphore)
             await asyncio.gather(*[check_outlier(item) for item in work_items])
+
+            # If circuit breaker was triggered, raise an exception to fail the Lambda
+            async with rate_limit_lock:
+                if should_stop:
+                    raise RuntimeError(
+                        f"Rate limit circuit breaker triggered: {rate_limit_errors} consecutive 429 errors. "
+                        f"Stopping Lambda to prevent API spam. Step Function will move to next iteration."
+                    )
 
             group.outliers = outliers
             if outliers:
@@ -1288,6 +1415,11 @@ Respond with a JSON object indicating whether the word belongs in this group.
 
         for attempt in range(max_retries):
             try:
+                if attempt == 0:
+                    self._api_metrics.llm_calls_total += 1
+                else:
+                    self._api_metrics.retry_attempts += 1
+
                 from langchain_core.messages import HumanMessage
                 from langchain_core.runnables import RunnableConfig
                 from receipt_agent.tools.label_harmonizer_models import OutlierDecision
@@ -1335,6 +1467,7 @@ Respond with a JSON object indicating whether the word belongs in this group.
                 llm_structured = llm_with_schema.with_structured_output(OutlierDecision)
 
                 response = await llm_structured.ainvoke(messages, config=config)
+                self._api_metrics.llm_calls_successful += 1
                 is_outlier_result = getattr(response, 'is_outlier', False)
                 reasoning = getattr(response, 'reasoning', "") or ""
 
@@ -1351,17 +1484,53 @@ Respond with a JSON object indicating whether the word belongs in this group.
                 last_error = e
                 error_str = str(e)
 
-                is_retryable = (
+                # Track error types
+                if attempt == 0:  # Only count as failed call on first attempt
+                    self._api_metrics.llm_calls_failed += 1
+
+                # Check if this is a rate limit (429) - fail fast, don't retry
+                is_rate_limit = (
                     "429" in error_str or
+                    "rate limit" in error_str.lower() or
+                    "rate_limit" in error_str.lower() or
+                    "too many concurrent requests" in error_str.lower() or
+                    "too many requests" in error_str.lower()
+                )
+
+                if is_rate_limit:
+                    self._api_metrics.rate_limit_errors += 1
+                    # For rate limits, fail immediately to trigger circuit breaker
+                    # Don't retry - this prevents thundering herd problem
+                    logger.warning(
+                        f"Rate limit detected for '{word.word_text}': {error_str[:200]}. "
+                        f"Failing immediately to trigger circuit breaker."
+                    )
+                    raise RuntimeError(
+                        f"Rate limit error for '{word.word_text}': {error_str}"
+                    ) from e
+
+                # For other retryable errors, use exponential backoff
+                # 401 (unauthorized) is often transient (expired token that gets refreshed)
+                is_retryable = (
+                    "401" in error_str or
+                    "unauthorized" in error_str.lower() or
                     "500" in error_str or
                     "503" in error_str or
                     "502" in error_str or
                     "timeout" in error_str.lower() or
-                    "rate limit" in error_str.lower() or
-                    "rate_limit" in error_str.lower() or
-                    "too many requests" in error_str.lower() or
                     "service unavailable" in error_str.lower()
                 )
+
+                if "401" in error_str or "unauthorized" in error_str.lower():
+                    # 401 errors are often transient auth issues, track separately
+                    logger.warning(
+                        f"Auth error (401) for '{word.word_text}': {error_str[:200]}. "
+                        f"This may be transient - will retry."
+                    )
+                if "500" in error_str or "503" in error_str or "502" in error_str:
+                    self._api_metrics.server_errors += 1
+                if "timeout" in error_str.lower():
+                    self._api_metrics.timeout_errors += 1
 
                 if is_retryable and attempt < max_retries - 1:
                     # Exponential backoff with jitter to prevent thundering herd
@@ -1529,6 +1698,10 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
 
         for attempt in range(max_retries):
             try:
+                self._api_metrics.llm_calls_total += 1
+                if attempt > 0:
+                    self._api_metrics.retry_attempts += 1
+
                 from langchain_core.messages import HumanMessage
                 from langchain_core.runnables import RunnableConfig
                 from receipt_agent.tools.label_harmonizer_models import LabelTypeSuggestion
@@ -1570,6 +1743,7 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
                 llm_structured = llm_with_schema.with_structured_output(LabelTypeSuggestion)
 
                 response = await llm_structured.ainvoke(messages, config=config)
+                self._api_metrics.llm_calls_successful += 1
                 suggested_type = getattr(response, 'suggested_label_type', None)
                 reasoning = getattr(response, 'reasoning', "") or ""
 
@@ -1632,19 +1806,49 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
                 if hasattr(e, 'request'):
                     error_context['has_request'] = True
 
-                # Check if this is a retryable error
-                is_retryable = (
+                # Check if this is a rate limit (429) - fail fast, don't retry
+                is_rate_limit = (
                     "429" in error_str or
+                    "rate limit" in error_str.lower() or
+                    "rate_limit" in error_str.lower() or
+                    "too many concurrent requests" in error_str.lower() or
+                    "too many requests" in error_str.lower()
+                )
+
+                # For rate limits, fail immediately to trigger circuit breaker
+                # Don't retry - this prevents thundering herd problem
+                if is_rate_limit:
+                    context_str = f", context: {error_context}" if error_context else ""
+                    logger.warning(
+                        f"Rate limit detected for label type suggestion '{word.word_text}' "
+                        f"(error_type={error_type}{context_str}): {error_str[:200]}. "
+                        f"Failing immediately to trigger circuit breaker."
+                    )
+                    raise RuntimeError(
+                        f"Rate limit error for label type suggestion '{word.word_text}': {error_str}"
+                    ) from e
+
+                # For other retryable errors, use exponential backoff
+                # 401 (unauthorized) is often transient (expired token that gets refreshed)
+                is_retryable = (
+                    "401" in error_str or
+                    "unauthorized" in error_str.lower() or
                     "500" in error_str or
                     "503" in error_str or
                     "502" in error_str or
                     "timeout" in error_str.lower() or
-                    "rate limit" in error_str.lower() or
-                    "rate_limit" in error_str.lower() or
-                    "too many requests" in error_str.lower() or
                     "service unavailable" in error_str.lower() or
                     "internal server error" in error_str.lower()
                 )
+
+                if "401" in error_str or "unauthorized" in error_str.lower():
+                    # 401 errors are often transient auth issues
+                    context_str = f", context: {error_context}" if error_context else ""
+                    logger.warning(
+                        f"Auth error (401) for label type suggestion '{word.word_text}' "
+                        f"(error_type={error_type}{context_str}): {error_str[:200]}. "
+                        f"This may be transient - will retry."
+                    )
 
                 if is_retryable and attempt < max_retries - 1:
                     # Exponential backoff with jitter to prevent thundering herd
@@ -1679,6 +1883,14 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
             f"Unexpected error: Failed to get label type suggestion for '{word.word_text}'"
         )
         return None
+
+    def get_api_metrics(self) -> APIUsageMetrics:
+        """Get current API usage metrics."""
+        return self._api_metrics
+
+    def reset_api_metrics(self) -> None:
+        """Reset API usage metrics (useful for testing or between batches)."""
+        self._api_metrics = APIUsageMetrics()
 
     async def analyze_group(
         self,
@@ -1778,25 +1990,65 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
             return results
 
         # Step 5: Process each label
+        # Circuit breaker: stop processing if we hit too many rate limits
+        rate_limit_errors = 0
+        circuit_breaker_threshold = 5  # Stop after 5 consecutive 429 errors
+
         for record in group.labels:
+            # Check circuit breaker before processing
+            if rate_limit_errors >= circuit_breaker_threshold:
+                logger.error(
+                    f"Circuit breaker triggered: {rate_limit_errors} rate limit errors during label suggestion. "
+                    f"Stopping processing to prevent API spam. This Lambda will fail and Step Function will move to next iteration."
+                )
+                raise RuntimeError(
+                    f"Rate limit circuit breaker triggered: {rate_limit_errors} consecutive 429 errors. "
+                    f"Stopping Lambda to prevent API spam. Step Function will move to next iteration."
+                )
+
             changes = []
             suggested_label_type = None
             is_outlier = record in group.outliers
 
             if is_outlier:
                 changes.append(f"OUTLIER: '{record.word_text}' doesn't belong in {group.label_type}")
-                # Call with langsmith_extra for proper trace nesting
-                if HAS_LANGSMITH and run_tree:
-                    suggested_label_type = await self._suggest_label_type_for_outlier(
-                        word=record,
-                        group=group,
-                        langsmith_extra={"parent": run_tree},  # type: ignore[call-arg]
-                    )
-                else:
-                    suggested_label_type = await self._suggest_label_type_for_outlier(
-                        word=record,
-                        group=group,
-                    )
+                try:
+                    # Call with langsmith_extra for proper trace nesting
+                    if HAS_LANGSMITH and run_tree:
+                        suggested_label_type = await self._suggest_label_type_for_outlier(
+                            word=record,
+                            group=group,
+                            langsmith_extra={"parent": run_tree},  # type: ignore[call-arg]
+                        )
+                    else:
+                        suggested_label_type = await self._suggest_label_type_for_outlier(
+                            word=record,
+                            group=group,
+                        )
+                except RuntimeError as e:
+                    error_str = str(e)
+                    # Check if this is a rate limit error
+                    if "429" in error_str or "rate limit" in error_str.lower() or "too many concurrent requests" in error_str.lower():
+                        rate_limit_errors += 1
+                        logger.warning(
+                            f"Rate limit error during label suggestion for '{record.word_text}': {error_str[:200]}. "
+                            f"Error count: {rate_limit_errors}/{circuit_breaker_threshold}"
+                        )
+                        # If we hit the threshold, raise to fail the Lambda
+                        if rate_limit_errors >= circuit_breaker_threshold:
+                            logger.error(
+                                f"Circuit breaker triggered: {rate_limit_errors} rate limit errors. "
+                                f"Stopping processing to prevent API spam. This Lambda will fail and Step Function will move to next iteration."
+                            )
+                            raise RuntimeError(
+                                f"Rate limit circuit breaker triggered: {rate_limit_errors} consecutive 429 errors. "
+                                f"Stopping Lambda to prevent API spam. Step Function will move to next iteration."
+                            ) from e
+                        # Otherwise, continue but skip this suggestion
+                        suggested_label_type = None
+                    else:
+                        # Re-raise non-rate-limit errors
+                        raise
 
             if record.label != canonical_label:
                 changes.append(f"label: {record.label} → {canonical_label}")
@@ -1804,7 +2056,13 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
             # Calculate confidence
             confidence = min(100.0, len(group.labels) * 5)
             if is_outlier:
-                confidence = max(0.0, confidence - 50)
+                # If outlier has a validated suggested_label_type, give it high confidence (LLM validated it)
+                if suggested_label_type:
+                    # LLM validated the suggestion, so confidence should be high
+                    confidence = 85.0  # High confidence for validated suggestions
+                else:
+                    # Outlier without validated suggestion -> low confidence
+                    confidence = max(0.0, confidence - 50)
             elif record.validation_status == "VALID" and record.label == canonical_label:
                 confidence = 100.0
 
@@ -2131,6 +2389,15 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
                 labels_for_review.append(r)
                 continue
 
+            # For LLM-validated suggestions, trust the LLM's decision - skip confidence/group_size filters
+            # The LLM already validated the suggestion, so we should apply it
+            if has_validated_suggestion:
+                # LLM validated this suggestion - trust it regardless of confidence/group_size
+                labels_to_update.append(r)
+                continue
+
+            # For consensus-based changes (non-outliers), apply confidence and group_size filters
+            # These are based on statistical patterns, not LLM validation
             if r.confidence < min_confidence:
                 result.total_skipped += 1
                 continue
@@ -2220,8 +2487,20 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
                         label_proposed_by="label-harmonizer-v2",
                         label_consolidated_from=label.label,
                     )
-                    self.dynamo.add_receipt_word_label(new_label)
-                    result.total_updated += 1
+                    try:
+                        self.dynamo.add_receipt_word_label(new_label)
+                        result.total_updated += 1
+                    except Exception as add_error:
+                        # Handle idempotent case: label already exists (e.g., from previous run)
+                        from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
+                        if isinstance(add_error, EntityAlreadyExistsError) or "already exists" in str(add_error).lower():
+                            logger.info(
+                                "Label already exists (idempotent): %s -> %s (image_id=%s)",
+                                label.label, r.suggested_label_type, r.image_id[:8]
+                            )
+                            result.total_updated += 1  # Treat as success
+                        else:
+                            raise  # Re-raise if it's a different error
 
                 elif r.consensus_label and label.label != r.consensus_label:
                     from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
@@ -2245,8 +2524,20 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
                         label_proposed_by="label-harmonizer-v2",
                         label_consolidated_from=label.label,
                     )
-                    self.dynamo.add_receipt_word_label(new_label)
-                    result.total_updated += 1
+                    try:
+                        self.dynamo.add_receipt_word_label(new_label)
+                        result.total_updated += 1
+                    except Exception as add_error:
+                        # Handle idempotent case: label already exists (e.g., from previous run)
+                        from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
+                        if isinstance(add_error, EntityAlreadyExistsError) or "already exists" in str(add_error).lower():
+                            logger.info(
+                                "Label already exists (idempotent): %s -> %s (image_id=%s)",
+                                label.label, r.consensus_label, r.image_id[:8]
+                            )
+                            result.total_updated += 1  # Treat as success
+                        else:
+                            raise  # Re-raise if it's a different error
 
             except Exception as e:
                 logger.error("Failed to update %s: %s", r.image_id, e)
