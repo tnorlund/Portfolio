@@ -50,6 +50,11 @@ openai_api_key = config.require_secret("OPENAI_API_KEY")
 ollama_api_key = config.require_secret("OLLAMA_API_KEY")
 langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
 
+# Label harmonizer specific config
+harmonizer_config = Config("label-harmonizer")
+max_concurrency_process_default = harmonizer_config.get_int("max_concurrency_process") or 10
+max_concurrency_prepare_default = harmonizer_config.get_int("max_concurrency_prepare") or 18
+
 # CORE_LABELS from receipt_label/constants.py
 CORE_LABELS = [
     "MERCHANT_NAME",
@@ -99,12 +104,16 @@ class LabelHarmonizerStepFunction(ComponentResource):
         dynamodb_table_arn: pulumi.Input[str],
         chromadb_bucket_name: pulumi.Input[str],
         chromadb_bucket_arn: pulumi.Input[str],
-        max_concurrency_prepare: int = 18,
-        max_concurrency_process: int = 10,
+        max_concurrency_prepare: Optional[int] = None,
+        max_concurrency_process: Optional[int] = None,
         opts: Optional[ResourceOptions] = None,
     ):
         super().__init__(f"{__name__}-{name}", name, None, opts)
         stack = pulumi.get_stack()
+
+        # Use provided values or fall back to config or defaults
+        self.max_concurrency_prepare = max_concurrency_prepare or max_concurrency_prepare_default
+        self.max_concurrency_process = max_concurrency_process or max_concurrency_process_default
 
         # ============================================================
         # S3 Bucket for batch files and results
@@ -527,8 +536,8 @@ class LabelHarmonizerStepFunction(ComponentResource):
                     harmonize_arn=args[3],
                     aggregate_arn=args[4],
                     batch_bucket=args[5],
-                    max_concurrency_prepare=max_concurrency_prepare,
-                    max_concurrency_process=max_concurrency_process,
+                    max_concurrency_prepare=self.max_concurrency_prepare,
+                    max_concurrency_process=self.max_concurrency_process,
                 )
             ),
             logging_configuration=logging_config,
@@ -792,6 +801,9 @@ class LabelHarmonizerStepFunction(ComponentResource):
                                 "ResultSelector": {
                                     "status.$": "$.status",
                                     "results_path.$": "$.results_path",
+                                    "label_type.$": "$.label_type",
+                                    "merchant_name.$": "$.merchant_name",
+                                    "labels_processed.$": "$.labels_processed",
                                     "outliers_found.$": "$.outliers_found",
                                     "updates_applied.$": "$.updates_applied",
                                     "total_updated.$": "$.total_updated",
@@ -802,6 +814,12 @@ class LabelHarmonizerStepFunction(ComponentResource):
                                 "End": True,
                             }
                         },
+                    },
+                    # Store only count to avoid 256KB payload limit
+                    # Full results are in S3 at results/{execution_id}/{label_type}/{merchant}.json
+                    # AggregateResults will read from S3
+                    "ResultSelector": {
+                        "batch_count.$": "States.ArrayLength($)"
                     },
                     "ResultPath": "$.process_results",
                     "Catch": [
@@ -814,10 +832,17 @@ class LabelHarmonizerStepFunction(ComponentResource):
                     "Next": "AggregateResults",
                 },
                 # Aggregate all results
+                # Read results from S3 to avoid 256KB payload limit
                 "AggregateResults": {
                     "Type": "Task",
                     "Resource": aggregate_arn,
                     "TimeoutSeconds": 120,
+                    "Parameters": {
+                        "execution_id.$": "$.execution_id",
+                        "batch_bucket.$": "$.batch_bucket",
+                        "dry_run.$": "$.dry_run",
+                        "process_results.$": "$.process_results",
+                    },
                     "ResultPath": "$.summary",
                     "Next": "Done",
                 },
