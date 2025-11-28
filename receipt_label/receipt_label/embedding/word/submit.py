@@ -167,14 +167,33 @@ def list_receipt_words_with_no_embeddings(
 
 
 def _format_word_context_embedding_input(
-    word: ReceiptWord, words: list[ReceiptWord]
+    word: ReceiptWord, words: list[ReceiptWord], context_size: int = 2
 ) -> str:
-    # 1) Compute the target word's vertical span (accounting for origin at
-    # bottom). Use bounding_box for consistent span
-    target_bottom = word.bounding_box["y"]
-    target_top = word.bounding_box["y"] + word.bounding_box["height"]
+    """
+    Format word with spatial context for embedding.
+
+    New format: simple context-only with multiple words and <EDGE> tags.
+    Format: "left_words... word right_words..."
+
+    Example with context_size=2:
+    - At edge: "<EDGE> <EDGE> Total Tax Discount"
+    - 1 from edge: "<EDGE> Subtotal Total Tax Discount"
+    - 2+ from edge: "Items Subtotal Total Tax Discount"
+
+    Args:
+        word: The word to format
+        words: All words in the receipt for context
+        context_size: Number of words to include on each side (default: 2)
+
+    Returns:
+        Formatted string with context words and <EDGE> tags
+    """
+    # 1) Calculate target word's vertical span (using corners)
+    target_bottom = word.bottom_left["y"]
+    target_top = word.top_left["y"]
 
     # 2) Sort everything by X so we can walk left/right
+    # Find words based on horizontal position that are on roughly the same horizontal space
     sorted_all = sorted(words, key=lambda w: w.calculate_centroid()[0])
     idx = next(
         i
@@ -183,38 +202,42 @@ def _format_word_context_embedding_input(
         == (word.image_id, word.receipt_id, word.line_id, word.word_id)
     )
 
-    # 3) Filter to only those words whose vertical span lies within the same
-    # line height
-    candidates = []
-    for w in sorted_all:
+    # 3) Collect left neighbors (up to context_size)
+    # Check if candidate word's centroid y is within target's vertical span
+    left_words = []
+    for w in reversed(sorted_all[:idx]):
         if w is word:
             continue
-        w_top = w.top_left["y"]
-        w_bottom = w.bottom_left["y"]
-        # they "fit" if their top isn't below the target bottom,
-        # and their bottom isn't above the target top,
-        # within a small epsilon if you like
-        if w_bottom >= target_bottom and w_top <= target_top:
-            candidates.append(w)
+        # Check if this word is on roughly the same horizontal space
+        # by checking if its centroid y is within target's vertical span
+        w_centroid_y = w.calculate_centroid()[1]
+        if target_bottom <= w_centroid_y <= target_top:
+            left_words.append(w.text)
+            if len(left_words) >= context_size:
+                break
 
-    # 4) Walk left
-    left_text = "<EDGE>"
-    for w in reversed(sorted_all[:idx]):
-        if w in candidates:
-            left_text = w.text
-            break
-
-    # 5) Walk right
-    right_text = "<EDGE>"
+    # 4) Collect right neighbors (up to context_size)
+    # Check if candidate word's centroid y is within target's vertical span
+    right_words = []
     for w in sorted_all[idx + 1 :]:
-        if w in candidates:
-            right_text = w.text
-            break
+        if w is word:
+            continue
+        # Check if this word is on roughly the same horizontal space
+        # by checking if its centroid y is within target's vertical span
+        w_centroid_y = w.calculate_centroid()[1]
+        if target_bottom <= w_centroid_y <= target_top:
+            right_words.append(w.text)
+            if len(right_words) >= context_size:
+                break
 
-    return (
-        f"<TARGET>{word.text}</TARGET> <POS>{_get_word_position(word)}</POS> "
-        f"<CONTEXT>{left_text} {right_text}</CONTEXT>"
-    )
+    # Pad left with <EDGE> tags if needed (one per missing position)
+    left_padded = (["<EDGE>"] * max(0, context_size - len(left_words)) + left_words)[-context_size:]
+
+    # Pad right with <EDGE> tags if needed (one per missing position)
+    right_padded = (right_words + ["<EDGE>"] * max(0, context_size - len(right_words)))[:context_size]
+
+    # Simple format: left_words word right_words
+    return " ".join(left_padded + [word.text] + right_padded)
 
 
 def _get_word_position(word: ReceiptWord) -> str:
