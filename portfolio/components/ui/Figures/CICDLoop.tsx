@@ -127,8 +127,6 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
         []
     );
 
-    // Track which sections have completed initial animation
-    const [animatedSections, setAnimatedSections] = useState<Set<number>>(new Set());
     const pulseIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
     // Trigger sequential animations when mounted
@@ -143,11 +141,6 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
                 setTimeout(() => {
                     api.start((i) => {
                         if (i === index) {
-                            setAnimatedSections((prev) => {
-                                const newSet = new Set(prev);
-                                newSet.add(index);
-                                return newSet;
-                            });
                             return {
                                 opacity: 1,
                                 scale: 1,
@@ -230,7 +223,6 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
     // Reset animations when out of view
     useEffect(() => {
         if (!inView && mounted) {
-            setAnimatedSections(new Set());
             api.start((i) => ({
                 opacity: 0,
                 scale: 0.8,
