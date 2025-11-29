@@ -3,8 +3,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import useOptimizedInView from "../../../hooks/useOptimizedInView";
 
 interface CICDLoopProps {
-    /** Configurable text labels for each section of the loop */
-    labels?: string[];
     /** Delay between each section animation (ms) */
     staggerDelay?: number;
     /** Animation duration for each section (ms) */
@@ -86,7 +84,6 @@ const SECTION_COLORS: Record<string, string> = {
 };
 
 const CICDLoop: React.FC<CICDLoopProps> = ({
-    labels,
     staggerDelay = 200,
     animationDuration = 600,
 }) => {
