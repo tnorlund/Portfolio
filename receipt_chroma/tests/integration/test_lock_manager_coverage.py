@@ -6,6 +6,7 @@ from typing import Literal
 from uuid import uuid4
 
 import pytest
+from botocore.exceptions import ClientError
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ChromaDBCollection
 from receipt_dynamo.entities.compaction_lock import CompactionLock
@@ -104,8 +105,6 @@ class TestLockManagerEdgeCases:
         manager.acquire("test-lock")
 
         # Mock get_compaction_lock to raise an exception
-        from botocore.exceptions import ClientError
-
         mocker.patch.object(
             client,
             "get_compaction_lock",
@@ -275,8 +274,6 @@ class TestLockManagerEdgeCases:
         manager.acquire("test-lock")
 
         # Mock delete to raise an error
-        from botocore.exceptions import ClientError
-
         mocker.patch.object(
             client,
             "delete_compaction_lock",
@@ -313,8 +310,6 @@ class TestLockManagerEdgeCases:
         manager.acquire("test-lock")
 
         # Mock get_compaction_lock to raise an exception
-        from botocore.exceptions import ClientError
-
         mocker.patch.object(
             client,
             "get_compaction_lock",
@@ -347,8 +342,6 @@ class TestLockManagerEdgeCases:
         manager.acquire("test-lock")
 
         # Mock get_compaction_lock to raise an exception
-        from botocore.exceptions import ClientError
-
         mocker.patch.object(
             client,
             "get_compaction_lock",
@@ -381,8 +374,6 @@ class TestLockManagerEdgeCases:
         manager.acquire("test-lock")
 
         # Mock update_compaction_lock to raise an exception
-        from botocore.exceptions import ClientError
-
         mocker.patch.object(
             client,
             "update_compaction_lock",

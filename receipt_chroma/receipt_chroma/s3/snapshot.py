@@ -104,80 +104,78 @@ def _validate_snapshot_after_upload(
             temp_dir,
         )
 
-        while True:
-            download_result = download_snapshot_from_s3(
-                bucket=bucket,
-                snapshot_key=versioned_key,
-                local_snapshot_path=temp_dir,
-                verify_integrity=False,  # Skip hash check for speed
-                s3_client=s3_client,
+        download_result = download_snapshot_from_s3(
+            bucket=bucket,
+            snapshot_key=versioned_key,
+            local_snapshot_path=temp_dir,
+            verify_integrity=False,  # Skip hash check for speed
+            s3_client=s3_client,
+        )
+
+        if download_result.get("status") != "downloaded":
+            _fail_validation(
+                validation_start_time,
+                "Snapshot download failed for validation: %s (%.2fs)",
+                versioned_key,
             )
 
-            if download_result.get("status") != "downloaded":
+        temp_path = Path(temp_dir)
+        sqlite_files = list(temp_path.rglob("*.sqlite*"))
+        if not sqlite_files:
+            _fail_validation(
+                validation_start_time,
+                "No SQLite files found in snapshot (duration: %.2fs)",
+            )
+
+        try:
+            test_client = chromadb.PersistentClient(path=temp_dir)
+            collections = test_client.list_collections()
+
+            if not collections:
                 _fail_validation(
                     validation_start_time,
-                    "Snapshot download failed for validation: %s (%.2fs)",
-                    versioned_key,
+                    "No collections found in snapshot (duration: %.2fs)",
                 )
 
-            temp_path = Path(temp_dir)
-            sqlite_files = list(temp_path.rglob("*.sqlite*"))
-            if not sqlite_files:
+            collection_names = [c.name for c in collections]
+            if collection_name not in collection_names:
                 _fail_validation(
                     validation_start_time,
-                    "No SQLite files found in snapshot (duration: %.2fs)",
+                    (
+                        "Expected collection '%s' not found in snapshot "
+                        "(found: %s, duration: %.2fs)"
+                    ),
+                    collection_name,
+                    collection_names,
                 )
 
-            try:
-                test_client = chromadb.PersistentClient(path=temp_dir)
-                collections = test_client.list_collections()
+            test_collection = test_client.get_collection(collection_name)
+            count = test_collection.count()
 
-                if not collections:
-                    _fail_validation(
-                        validation_start_time,
-                        "No collections found in snapshot (duration: %.2fs)",
-                    )
+            del test_client
+            for _ in range(3):
+                gc.collect()
+            time.sleep(
+                0.1
+            )  # Small delay to ensure SQLite connections are released
+            validation_duration = time.time() - validation_start_time
+            logger.info(
+                "Snapshot validation ok: %s (cols=%d, count=%d, %.2fs)",
+                versioned_key,
+                len(collections),
+                count,
+                validation_duration,
+            )
+            success = True
 
-                collection_names = [c.name for c in collections]
-                if collection_name not in collection_names:
-                    _fail_validation(
-                        validation_start_time,
-                        (
-                            "Expected collection '%s' not found in snapshot "
-                            "(found: %s, duration: %.2fs)"
-                        ),
-                        collection_name,
-                        collection_names,
-                    )
-
-                test_collection = test_client.get_collection(collection_name)
-                count = test_collection.count()
-
-                del test_client
-                for _ in range(3):
-                    gc.collect()
-                time.sleep(
-                    0.1
-                )  # Small delay to ensure SQLite connections are released
-                validation_duration = time.time() - validation_start_time
-                logger.info(
-                    "Snapshot validation ok: %s (cols=%d, count=%d, %.2fs)",
-                    versioned_key,
-                    len(collections),
-                    count,
-                    validation_duration,
-                )
-                success = True
-                break
-
-            except SNAPSHOT_ERRORS as exc:
-                _fail_validation(
-                    validation_start_time,
-                    "ChromaDB open failed: %s (type=%s, %.2fs)",
-                    versioned_key,
-                    type(exc).__name__,
-                    cause=exc,
-                )
+        except SNAPSHOT_ERRORS as exc:
+            _fail_validation(
+                validation_start_time,
+                "ChromaDB open failed: %s (type=%s, %.2fs)",
+                versioned_key,
+                type(exc).__name__,
+                cause=exc,
+            )
 
     except SnapshotValidationError as exc:
         validation_duration = exc.duration
@@ -195,10 +193,7 @@ def _validate_snapshot_after_upload(
         )
     finally:
         if temp_dir:
-            try:
-                shutil.rmtree(temp_dir, ignore_errors=True)
-            except OSError:
-                pass
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
     return success, validation_duration
 
@@ -381,7 +376,7 @@ def upload_snapshot_atomic(
         }
 
     except SNAPSHOT_ERRORS as exc:
-        logger.error("Error during atomic snapshot upload: %s", exc)
+        logger.exception("Error during atomic snapshot upload")
         return {
             "status": "error",
             "error": str(exc),
@@ -518,7 +513,7 @@ def download_snapshot_atomic(
         }
 
     except SNAPSHOT_ERRORS as exc:
-        logger.error("Error during atomic snapshot download: %s", exc)
+        logger.exception("Error during atomic snapshot download")
         return {"status": "error", "error": str(exc), "collection": collection}
 
 
@@ -644,8 +639,4 @@ def initialize_empty_snapshot(
     finally:
         # Clean up temp directory if we created it
         if cleanup_temp:
-            try:
-                shutil.rmtree(temp_dir, ignore_errors=True)
-            except OSError:
-                # Ignore cleanup errors
-                pass
+            shutil.rmtree(temp_dir, ignore_errors=True)

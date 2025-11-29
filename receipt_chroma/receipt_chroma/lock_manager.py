@@ -182,7 +182,7 @@ class LockManager:
                 logger.info("Released lock: %s", self.lock_id)
 
             except LOCK_EXCEPTIONS as exc:
-                logger.error("Error releasing lock %s: %s", self.lock_id, exc)
+                logger.exception("Error releasing lock %s", self.lock_id)
             finally:
                 # Clear state even if delete fails
                 self.lock_id = None
@@ -382,10 +382,8 @@ class LockManager:
                     self.lock_id, self.collection
                 )
             except LOCK_EXCEPTIONS as exc:
-                logger.error(
-                    "Failed to validate ownership for lock %s: %s",
-                    self.lock_id,
-                    exc,
+                logger.exception(
+                    "Failed to validate ownership for lock %s", self.lock_id
                 )
                 return False
 

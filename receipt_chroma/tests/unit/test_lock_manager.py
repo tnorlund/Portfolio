@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
+from botocore.exceptions import ClientError
 from receipt_dynamo.constants import ChromaDBCollection
 
 from receipt_chroma.lock_manager import LockManager
@@ -73,8 +74,6 @@ class TestLockManagerUnit:
 
     def test_acquire_lock_failure(self, lock_manager, mock_dynamo_client):
         """Test lock acquisition failure."""
-        from botocore.exceptions import ClientError
-
         mock_dynamo_client.add_compaction_lock.side_effect = ClientError(
             {
                 "Error": {
@@ -110,8 +109,6 @@ class TestLockManagerUnit:
 
     def test_release_lock_error(self, lock_manager, mock_dynamo_client):
         """Test lock release with error."""
-        from botocore.exceptions import ClientError
-
         mock_dynamo_client.add_compaction_lock.return_value = None
         mock_dynamo_client.delete_compaction_lock.side_effect = ClientError(
             {"Error": {"Code": "InternalServerError", "Message": "Error"}},
@@ -176,8 +173,6 @@ class TestLockManagerUnit:
 
     def test_update_heartbeat_failure(self, lock_manager, mock_dynamo_client):
         """Test heartbeat update failure."""
-        from botocore.exceptions import ClientError
-
         mock_dynamo_client.add_compaction_lock.return_value = None
         mock_dynamo_client.update_compaction_lock.side_effect = ClientError(
             {"Error": {"Code": "InternalServerError", "Message": "Error"}},
@@ -374,8 +369,6 @@ class TestLockManagerUnit:
         self, lock_manager, mock_dynamo_client
     ):
         """Test context manager when lock acquisition fails."""
-        from botocore.exceptions import ClientError
-
         mock_dynamo_client.add_compaction_lock.side_effect = ClientError(
             {
                 "Error": {
@@ -411,8 +404,6 @@ class TestLockManagerUnit:
         self, lock_manager, mock_dynamo_client
     ):
         """Test heartbeat worker stops after max failures."""
-        from botocore.exceptions import ClientError
-
         mock_dynamo_client.add_compaction_lock.return_value = None
         mock_dynamo_client.update_compaction_lock.side_effect = ClientError(
             {"Error": {"Code": "InternalServerError", "Message": "Error"}},

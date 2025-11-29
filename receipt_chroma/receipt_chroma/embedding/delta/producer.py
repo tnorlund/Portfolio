@@ -10,7 +10,7 @@ import os
 import shutil
 import tempfile
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import boto3
@@ -93,7 +93,7 @@ def _notify_sqs(
             "collection": collection_name,
             "database": database_name or "default",
             "vector_count": len(ids),
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         if batch_id:
             message_body["batch_id"] = batch_id
@@ -264,8 +264,8 @@ def produce_embedding_delta(  # pylint: disable=too-many-positional-arguments
             )
             logger.info("Successfully uploaded delta to S3: %s", s3_key)
         except DELTA_ERRORS as exc:
-            logger.error("Failed to upload delta to S3: %s", exc)
-            logger.error("Delta directory was: %s", delta_dir)
+            logger.exception("Failed to upload delta to S3")
+            logger.info("Delta directory was: %s", delta_dir)
             # Re-raise the exception to be caught by the outer try/except
             raise
 
