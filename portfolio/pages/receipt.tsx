@@ -755,10 +755,6 @@ export default function ReceiptPage({
         me the information about what I should actually be doing.
       </p>
 
-      <ClientOnly>
-        <CICDLoop />
-      </ClientOnly>
-
       <h1>Conclusion</h1>
 
       <p>
