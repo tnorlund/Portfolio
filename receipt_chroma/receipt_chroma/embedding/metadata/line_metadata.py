@@ -19,6 +19,7 @@ def create_line_metadata(
     line: ReceiptLine,
     prev_line: str,
     next_line: str,
+    *,
     merchant_name: Optional[str] = None,
     avg_word_confidence: Optional[float] = None,
     section_label: Optional[str] = None,
@@ -117,7 +118,7 @@ def enrich_line_metadata_with_anchors(
             metadata["normalized_full_address"] = anchor_address
         if anchor_url:
             metadata["normalized_url"] = anchor_url
-    except Exception:
+    except (AttributeError, TypeError, ValueError):
         # Silently fail - anchor enrichment is optional
         pass
 
