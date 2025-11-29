@@ -233,12 +233,18 @@ class ChromaClient:
 
             # Force garbage collection to ensure SQLite connections are closed
             # This is necessary because ChromaDB doesn't expose a close()
-            # method
+            # method (issue #5868)
             gc.collect()
 
-            # Small delay to ensure file handles are released by OS
-            # This is critical for preventing file locking issues
-            time.sleep(0.1)
+            # Multiple GC passes to ensure all references are cleared
+            # ChromaDB's internal connections may have circular references
+            for _ in range(3):
+                gc.collect()
+
+            # Longer delay to ensure file handles are released by OS
+            # This is critical for preventing file locking issues when uploading to S3
+            # Issue #5868: SQLite files can remain locked even after client is "closed"
+            time.sleep(0.5)  # Increased from 0.1s to 0.5s for more reliable unlocking
 
             self._closed = True
             logger.debug("ChromaDB client closed successfully")

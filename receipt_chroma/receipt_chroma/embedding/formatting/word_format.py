@@ -40,36 +40,38 @@ def _get_word_position(word: ReceiptWord) -> str:
 
 
 def format_word_context_embedding_input(
-    target_word: ReceiptWord, all_words: List[ReceiptWord]
+    target_word: ReceiptWord, all_words: List[ReceiptWord], context_size: int = 2
 ) -> str:
     """
-    Format word with spatial context matching batch embedding structure.
+    Format word with spatial context for embedding.
 
-    Replicates the format from embedding/word/submit.py:
-    <TARGET>word</TARGET> <POS>position</POS> <CONTEXT>left right</CONTEXT>
+    New format: simple context-only with multiple words and <EDGE> tags.
+    Format: "left_words... word right_words..."
+
+    Example with context_size=2:
+    - At edge: "<EDGE> <EDGE> Total Tax Discount"
+    - 1 from edge: "<EDGE> Subtotal Total Tax Discount"
+    - 2+ from edge: "Items Subtotal Total Tax Discount"
 
     Args:
         target_word: The word to format
         all_words: All words in the receipt for context
+        context_size: Number of words to include on each side (default: 2)
 
     Returns:
-        Formatted string with target, position, and context
+        Formatted string with context words and <EDGE> tags
     """
-    # Calculate position using same logic as batch system
-    position = _get_word_position(target_word)
-
-    # Batch-equivalent neighbor selection (scan-based, not nearest-distance)
-    target_bottom = target_word.bounding_box["y"]
-    target_top = (
-        target_word.bounding_box["y"] + target_word.bounding_box["height"]
+    # Sort all words by x-coordinate (horizontal position)
+    # Use a stable sort key: (x, original_index) to preserve order when x is identical
+    sorted_all = sorted(
+        enumerate(all_words),
+        key=lambda item: (item[1].calculate_centroid()[0], item[0])
     )
 
-    # Sort all words by x centroid
-    sorted_all = sorted(all_words, key=lambda w: w.calculate_centroid()[0])
-    # Find index of target
+    # Find index of target in sorted list
     idx = next(
         i
-        for i, w in enumerate(sorted_all)
+        for i, (orig_idx, w) in enumerate(sorted_all)
         if (w.image_id, w.receipt_id, w.line_id, w.word_id)
         == (
             target_word.image_id,
@@ -79,85 +81,119 @@ def format_word_context_embedding_input(
         )
     )
 
-    # Candidates with vertical span overlap (same line)
-    candidates = []
-    for w in sorted_all:
-        if w is target_word:
+    # Collect left neighbors (up to context_size)
+    # Find words based on horizontal position, regardless of line
+    left_words = []
+    for orig_idx, w in reversed(sorted_all[:idx]):
+        if (w.image_id, w.receipt_id, w.line_id, w.word_id) == (
+            target_word.image_id,
+            target_word.receipt_id,
+            target_word.line_id,
+            target_word.word_id,
+        ):
             continue
-        w_top = w.top_left["y"]
-        w_bottom = w.bottom_left["y"]
-        if w_bottom >= target_bottom and w_top <= target_top:
-            candidates.append(w)
-
-    left_text = "<EDGE>"
-    for w in reversed(sorted_all[:idx]):
-        if w in candidates:
-            left_text = w.text
+        left_words.append(w.text)
+        if len(left_words) >= context_size:
             break
 
-    right_text = "<EDGE>"
-    for w in sorted_all[idx + 1 :]:
-        if w in candidates:
-            right_text = w.text
+    # Collect right neighbors (up to context_size)
+    # Find words based on horizontal position, regardless of line
+    right_words = []
+    for orig_idx, w in sorted_all[idx + 1 :]:
+        if (w.image_id, w.receipt_id, w.line_id, w.word_id) == (
+            target_word.image_id,
+            target_word.receipt_id,
+            target_word.line_id,
+            target_word.word_id,
+        ):
+            continue
+        right_words.append(w.text)
+        if len(right_words) >= context_size:
             break
 
-    return (
-        f"<TARGET>{target_word.text}</TARGET> <POS>{position}</POS> "
-        f"<CONTEXT>{left_text} {right_text}</CONTEXT>"
-    )
+    # Pad left with <EDGE> tags if needed (one per missing position)
+    left_padded = (["<EDGE>"] * max(0, context_size - len(left_words)) + left_words)[-context_size:]
+
+    # Pad right with <EDGE> tags if needed (one per missing position)
+    right_padded = (right_words + ["<EDGE>"] * max(0, context_size - len(right_words)))[:context_size]
+
+    # Simple format: left_words word right_words
+    return " ".join(left_padded + [target_word.text] + right_padded)
 
 
-def parse_left_right_from_formatted(fmt: str) -> Tuple[str, str]:
+def parse_left_right_from_formatted(fmt: str, context_size: int = 2) -> Tuple[List[str], List[str]]:
     """
-    Parse left and right words from formatted embedding input.
+    Parse left and right context words from formatted embedding input.
 
-    Given a string like:
-      "<TARGET>WORD</TARGET> <POS>…</POS> <CONTEXT>LEFT RIGHT</CONTEXT>"
-    return ("LEFT", "RIGHT").
+    New format: "left_words... word right_words..."
+    Example: "<EDGE> Subtotal Total Tax Discount"
+
+    The format is: [left_context (context_size tokens)] [target_word] [right_context (context_size tokens)]
+    Total tokens = context_size + 1 + context_size = 2*context_size + 1
 
     Args:
-        fmt: Formatted string with CONTEXT tags
+        fmt: Formatted string with context words
+        context_size: Expected number of context words on each side (default: 2)
 
     Returns:
-        Tuple of (left_word, right_word)
+        Tuple of (left_words, right_words) as lists, each of length context_size
     """
-    m = re.search(r"<CONTEXT>(.*?)</CONTEXT>", fmt)
-    if not m:
-        raise ValueError(f"No <CONTEXT>…</CONTEXT> in {fmt!r}")
-    cont = m.group(1).strip()
-    # Assuming exactly two tokens separated by whitespace
-    parts = cont.split(maxsplit=1)
-    left = parts[0] if parts else "<EDGE>"
-    right = parts[1] if len(parts) > 1 else "<EDGE>"
-    return left, right
+    # Split by spaces to get all tokens
+    tokens = fmt.split()
+
+    # Expected format: [left_context] [target] [right_context]
+    # Total length should be: context_size + 1 + context_size = 2*context_size + 1
+    expected_length = 2 * context_size + 1
+
+    if len(tokens) < expected_length:
+        # Not enough tokens - pad with <EDGE>
+        tokens = (["<EDGE>"] * context_size + tokens + ["<EDGE>"] * context_size)[:expected_length]
+    elif len(tokens) > expected_length:
+        # Too many tokens - take first context_size, middle word, last context_size
+        tokens = tokens[:context_size] + [tokens[len(tokens) // 2]] + tokens[-context_size:]
+
+    # Extract left context (first context_size tokens)
+    left_tokens = tokens[:context_size]
+    # Target word is at index context_size
+    # Extract right context (last context_size tokens)
+    right_tokens = tokens[context_size + 1:]
+
+    # Return as-is (already includes <EDGE> tokens if present)
+    return left_tokens, right_tokens
 
 
 def get_word_neighbors(
-    target_word: ReceiptWord, all_words: List[ReceiptWord]
-) -> Tuple[str, str]:
+    target_word: ReceiptWord, all_words: List[ReceiptWord], context_size: int = 2
+) -> Tuple[List[str], List[str]]:
     """
-    Get the left and right neighbor words for the target word.
+    Get the left and right neighbor words for the target word with configurable context size.
 
-    This is the same logic as format_word_context_embedding_input but
-    returns the neighbors directly instead of formatting them.
+    Returns multiple neighbors on each side, using <EDGE> tags for missing positions.
+    This preserves relative position information and distinguishes words at different
+    distances from edges.
+
+    Finds neighbors based on horizontal position (x-coordinate), regardless of line (y-coordinate).
+    When x-coordinates are identical, preserves original list order (stable sort).
 
     Args:
         target_word: The word to find neighbors for
         all_words: All words in the receipt
+        context_size: Number of words to include on each side (default: 2)
 
     Returns:
-        Tuple of (left_word, right_word)
+        Tuple of (left_words, right_words) where each is a list of context_size words
     """
-    # Batch-equivalent neighbor selection
-    target_bottom = target_word.bounding_box["y"]
-    target_top = (
-        target_word.bounding_box["y"] + target_word.bounding_box["height"]
+    # Sort all words by x-coordinate (horizontal position)
+    # Use a stable sort key: (x, original_index) to preserve order when x is identical
+    sorted_all = sorted(
+        enumerate(all_words),
+        key=lambda item: (item[1].calculate_centroid()[0], item[0])
     )
 
-    sorted_all = sorted(all_words, key=lambda w: w.calculate_centroid()[0])
+    # Find index of target in sorted list
     idx = next(
         i
-        for i, w in enumerate(sorted_all)
+        for i, (orig_idx, w) in enumerate(sorted_all)
         if (w.image_id, w.receipt_id, w.line_id, w.word_id)
         == (
             target_word.image_id,
@@ -167,25 +203,34 @@ def get_word_neighbors(
         )
     )
 
-    candidates = []
-    for w in sorted_all:
-        if w is target_word:
+    # Collect left neighbors (up to context_size)
+    # Find words based on horizontal position, regardless of line
+    left_words = []
+    for orig_idx, w in reversed(sorted_all[:idx]):
+        if (w.image_id, w.receipt_id, w.line_id, w.word_id) == (
+            target_word.image_id,
+            target_word.receipt_id,
+            target_word.line_id,
+            target_word.word_id,
+        ):
             continue
-        w_top = w.top_left["y"]
-        w_bottom = w.bottom_left["y"]
-        if w_bottom >= target_bottom and w_top <= target_top:
-            candidates.append(w)
-
-    left_text = "<EDGE>"
-    for w in reversed(sorted_all[:idx]):
-        if w in candidates:
-            left_text = w.text
+        left_words.append(w.text)
+        if len(left_words) >= context_size:
             break
 
-    right_text = "<EDGE>"
-    for w in sorted_all[idx + 1 :]:
-        if w in candidates:
-            right_text = w.text
+    # Collect right neighbors (up to context_size)
+    # Find words based on horizontal position, regardless of line
+    right_words = []
+    for orig_idx, w in sorted_all[idx + 1 :]:
+        if (w.image_id, w.receipt_id, w.line_id, w.word_id) == (
+            target_word.image_id,
+            target_word.receipt_id,
+            target_word.line_id,
+            target_word.word_id,
+        ):
+            continue
+        right_words.append(w.text)
+        if len(right_words) >= context_size:
             break
 
-    return left_text, right_text
+    return left_words, right_words

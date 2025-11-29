@@ -112,8 +112,8 @@ def enrich_word_metadata_with_labels(
         if label_proposed_by is not None:
             metadata["label_proposed_by"] = label_proposed_by
 
-    # validated_labels — all labels with status VALID
-    validated_labels = [
+    # valid_labels — all labels with status VALID
+    valid_labels = [
         lbl.label
         for lbl in word_labels
         if lbl.validation_status == ValidationStatus.VALID.value
@@ -126,12 +126,12 @@ def enrich_word_metadata_with_labels(
         if lbl.validation_status == ValidationStatus.INVALID.value
     ]
 
-    # Store validated labels with delimiters for exact matching
-    if validated_labels:
+    # Store valid labels with delimiters for exact matching
+    if valid_labels:
         # Use comma delimiters to enable exact matching with $contains
-        metadata["validated_labels"] = f",{','.join(validated_labels)},"
+        metadata["valid_labels"] = f",{','.join(valid_labels)},"
     else:
-        metadata["validated_labels"] = ""
+        metadata["valid_labels"] = ""
 
     # Store invalid labels with delimiters for exact matching
     if invalid_labels:

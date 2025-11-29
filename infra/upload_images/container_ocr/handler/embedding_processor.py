@@ -44,6 +44,7 @@ class EmbeddingProcessor:
         google_places_api_key: Optional[str],
         openai_api_key: Optional[str],
     ):
+        self.table_name = table_name
         self.dynamo = DynamoClient(table_name)
         self.chromadb_bucket = chromadb_bucket
         self.chroma_http_endpoint = chroma_http_endpoint
@@ -365,6 +366,53 @@ class EmbeddingProcessor:
                     f"✅ Successfully created ReceiptMetadata: {merchant_name} "
                     f"(place_id: {metadata.place_id})"
                 )
+
+                # Step 3: Use metadata finder agent to find any missing fields
+                # This runs after initial creation to fill in place_id, address, phone_number
+                # if they weren't found by the initial workflow
+                try:
+                    from .metadata_finder_processor import MetadataFinderProcessor
+
+                    finder_processor = MetadataFinderProcessor(
+                        table_name=self.table_name,
+                        chromadb_bucket=self.chromadb_bucket,
+                        chroma_http_endpoint=self.chroma_http_endpoint,
+                        google_places_api_key=self.google_places_api_key,
+                        openai_api_key=self.openai_api_key,
+                        ollama_api_key=ollama_api_key,
+                        langsmith_api_key=langchain_api_key,
+                    )
+
+                    _log("Running metadata finder agent to find missing fields...")
+                    finder_result = asyncio.run(
+                        finder_processor.find_missing_metadata(
+                            image_id=image_id,
+                            receipt_id=receipt_id,
+                            receipt_lines=receipt_lines,
+                            receipt_words=receipt_words,
+                            existing_metadata=metadata,
+                        )
+                    )
+
+                    if finder_result.get("success") and finder_result.get("fields_updated"):
+                        updated_fields = finder_result.get("fields_updated", [])
+                        _log(
+                            f"✅ Metadata finder updated {len(updated_fields)} fields: "
+                            f"{', '.join(updated_fields)}"
+                        )
+                        # Reload metadata to get updated version
+                        metadata = self.dynamo.get_receipt_metadata(image_id, receipt_id)
+                    elif finder_result.get("success"):
+                        _log("Metadata finder ran but no fields were updated")
+                    else:
+                        reason = finder_result.get("reason", "unknown")
+                        _log(f"Metadata finder skipped or failed: {reason}")
+
+                except Exception as finder_error:
+                    # Don't fail the whole process if finder fails
+                    _log(f"⚠️ Metadata finder error (non-critical): {finder_error}")
+                    logger.warning(f"Metadata finder failed: {finder_error}", exc_info=True)
+
                 return merchant_name, metadata
             else:
                 _log("⚠️ LangGraph workflow did not create ReceiptMetadata")
