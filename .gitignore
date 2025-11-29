@@ -233,6 +233,8 @@ receipt_label/test_results/
 venv_chromadb/
 # Local ChromaDB databases
 chroma_words_local_words_specific/
+.chroma_snapshots/
+venv312/
 
 # Export directories (temporary export data)
 exports/
