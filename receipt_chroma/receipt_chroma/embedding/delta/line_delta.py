@@ -1,10 +1,5 @@
-"""Line embedding delta creation.
+"""Line embedding delta creation utilities."""
 
-This module provides functionality for saving line embedding results
-as ChromaDB delta files for compaction.
-"""
-
-import re
 from typing import Any, Dict, List, Optional
 
 from receipt_chroma.embedding.delta.producer import produce_embedding_delta
@@ -20,10 +15,12 @@ from receipt_chroma.embedding.metadata.line_metadata import (
 
 def _parse_metadata_from_line_id(custom_id: str) -> Dict[str, Any]:
     """
-    Parse metadata from a line ID in the format IMAGE#uuid#RECEIPT#00001#LINE#00001.
+    Parse metadata from a line ID formatted as
+    IMAGE#uuid#RECEIPT#00001#LINE#00001.
 
     Args:
-        custom_id: Custom ID string in format IMAGE#<id>#RECEIPT#<id>#LINE#<id>
+        custom_id: Custom ID string in format
+            IMAGE#<id>#RECEIPT#<id>#LINE#<id>
 
     Returns:
         Dictionary with image_id, receipt_id, line_id, and source
@@ -36,15 +33,16 @@ def _parse_metadata_from_line_id(custom_id: str) -> Dict[str, Any]:
     # Validate we have the expected format for line embeddings
     if len(parts) != 6:
         raise ValueError(
-            f"Invalid custom_id format for line embedding: {custom_id}. "
-            f"Expected format: IMAGE#<id>#RECEIPT#<id>#LINE#<id> (6 parts), "
-            f"but got {len(parts)} parts"
+            "Invalid custom_id format for line embedding: "
+            f"{custom_id}. Expected IMAGE#<id>#RECEIPT#<id>#LINE#<id> "
+            f"(6 parts) but got {len(parts)} parts"
         )
 
     # Additional validation: check that this is NOT a word embedding
     if "WORD" in parts:
         raise ValueError(
-            f"Custom ID appears to be for word embedding, not line embedding: {custom_id}"
+            "Custom ID appears to be for a word embedding, not a line "
+            f"embedding: {custom_id}"
         )
 
     return {
@@ -147,7 +145,7 @@ def save_line_embeddings_as_delta(
             source="openai_embedding_batch",
         )
 
-        # Anchor-only enrichment for lines: attach fields only if this line has anchor words
+        # Anchor-only enrichment: attach fields only when anchors exist
         line_metadata = enrich_line_metadata_with_anchors(
             line_metadata, line_words
         )
@@ -165,8 +163,9 @@ def save_line_embeddings_as_delta(
         documents=documents,
         metadatas=metadatas,
         bucket_name=bucket_name,
-        collection_name="lines",  # Must match ChromaDBCollection.LINES and database_name
-        database_name="lines",  # Separate database for line embeddings
+        # collection/database names must match ChromaDBCollection.LINES
+        collection_name="lines",
+        database_name="lines",
         sqs_queue_url=sqs_queue_url,
         batch_id=batch_id,
     )

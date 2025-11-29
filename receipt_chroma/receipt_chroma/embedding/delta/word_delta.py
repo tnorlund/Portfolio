@@ -7,10 +7,7 @@ as ChromaDB delta files for compaction.
 from typing import Any, Dict, List, Optional
 
 from receipt_chroma.embedding.delta.producer import produce_embedding_delta
-from receipt_chroma.embedding.formatting.word_format import (
-    format_word_context_embedding_input,
-    get_word_neighbors,
-)
+from receipt_chroma.embedding.formatting.word_format import get_word_neighbors
 from receipt_chroma.embedding.metadata.word_metadata import (
     create_word_metadata,
     enrich_word_metadata_with_anchors,
@@ -20,10 +17,12 @@ from receipt_chroma.embedding.metadata.word_metadata import (
 
 def _parse_metadata_from_custom_id(custom_id: str) -> Dict[str, Any]:
     """
-    Parse metadata from a word ID in the format IMAGE#uuid#RECEIPT#00001#LINE#00001#WORD#00001.
+    Parse metadata from a word ID formatted as
+    IMAGE#uuid#RECEIPT#00001#LINE#00001#WORD#00001.
 
     Args:
-        custom_id: Custom ID string in format IMAGE#<id>#RECEIPT#<id>#LINE#<id>#WORD#<id>
+        custom_id: Custom ID string in the format
+            IMAGE#<id>#RECEIPT#<id>#LINE#<id>#WORD#<id>
 
     Returns:
         Dictionary with image_id, receipt_id, line_id, word_id, and source
@@ -36,15 +35,15 @@ def _parse_metadata_from_custom_id(custom_id: str) -> Dict[str, Any]:
     # Validate we have the expected format for word embeddings
     if len(parts) < 8:
         raise ValueError(
-            f"Invalid custom_id format for word embedding: {custom_id}. "
-            f"Expected format: IMAGE#<id>#RECEIPT#<id>#LINE#<id>#WORD#<id>, "
-            f"but got {len(parts)} parts"
+            f"Invalid word custom_id {custom_id}: expected 8 parts "
+            f"but got {len(parts)}"
         )
 
     # Additional validation: check for WORD component
     if "WORD" not in parts:
         raise ValueError(
-            f"Custom ID appears to be for line embedding, not word embedding: {custom_id}"
+            "Custom ID appears to be for a line embedding, not a word "
+            f"embedding: {custom_id}"
         )
 
     return {
@@ -134,8 +133,10 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
         ]
 
         # Get word context directly (more efficient than parsing)
-        left_words, right_words = get_word_neighbors(target_word, words, context_size=2)
-        # Extract first word from each side for backward compatibility with metadata
+        left_words, right_words = get_word_neighbors(
+            target_word, words, context_size=2
+        )
+        # Extract first neighbor on each side for backward compatibility
         left_text = left_words[0] if left_words else "<EDGE>"
         right_text = right_words[0] if right_words else "<EDGE>"
 
@@ -181,8 +182,9 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
         documents=documents,
         metadatas=metadatas,
         bucket_name=bucket_name,
-        collection_name="words",  # Must match ChromaDBCollection.WORDS and database_name
-        database_name="words",  # Use words-specific database path
+        # collection_name/database_name must match ChromaDBCollection.WORDS
+        collection_name="words",
+        database_name="words",
         sqs_queue_url=sqs_queue_url,
         batch_id=batch_id,
     )

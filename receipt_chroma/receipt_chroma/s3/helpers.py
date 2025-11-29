@@ -1,19 +1,23 @@
 """Low-level S3 helper functions for ChromaDB operations."""
 
+import hashlib
 import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 logger = logging.getLogger(__name__)
+
+S3_HELPER_ERRORS = (BotoCoreError, ClientError, OSError, ValueError)
 
 
 def download_snapshot_from_s3(
     bucket: str,
     snapshot_key: str,
     local_snapshot_path: str,
+    *,
     verify_integrity: bool = False,
     region: Optional[str] = None,
     s3_client: Optional[Any] = None,
@@ -111,15 +115,16 @@ def download_snapshot_from_s3(
             "total_size_bytes": total_size,
         }
 
-    except Exception as e:
-        logger.error("Error downloading snapshot from S3: %s", e)
-        return {"status": "failed", "error": str(e)}
+    except S3_HELPER_ERRORS as exc:
+        logger.error("Error downloading snapshot from S3: %s", exc)
+        return {"status": "failed", "error": str(exc)}
 
 
 def upload_snapshot_with_hash(
     local_snapshot_path: str,
     bucket: str,
     snapshot_key: str,
+    *,
     calculate_hash: bool = True,
     hash_algorithm: str = "md5",
     metadata: Optional[Dict[str, Any]] = None,
@@ -145,7 +150,10 @@ def upload_snapshot_with_hash(
         Dict with upload status, hash info, and statistics
     """
     logger.info(
-        "Starting snapshot upload with hash: local_path=%s, bucket=%s, key=%s, clear=%s",
+        (
+            "Starting snapshot upload with hash: local_path=%s, bucket=%s, "
+            "key=%s, clear=%s"
+        ),
         local_snapshot_path,
         bucket,
         snapshot_key,
@@ -166,7 +174,9 @@ def upload_snapshot_with_hash(
             )
             return {
                 "status": "failed",
-                "error": f"Snapshot path does not exist: {local_snapshot_path}",
+                "error": (
+                    "Snapshot path does not exist: " f"{local_snapshot_path}"
+                ),
             }
 
         # Clear destination directory if requested
@@ -179,23 +189,23 @@ def upload_snapshot_with_hash(
         hash_value = None
         if calculate_hash:
             try:
-                # Simple hash calculation - sum of file sizes and modification times
-                # This is a lightweight alternative to full content hashing
-                import hashlib
-
+                # Lightweight alternative to full content hashing that
+                # relies on path, size, and modification time.
                 hash_obj = hashlib.new(hash_algorithm)
                 for file_path in snapshot_path.rglob("*"):
                     if file_path.is_file():
                         stat = file_path.stat()
-                        hash_obj.update(
-                            f"{file_path.relative_to(snapshot_path)}:{stat.st_size}:{stat.st_mtime}".encode()
+                        descriptor = (
+                            f"{file_path.relative_to(snapshot_path)}:"
+                            f"{stat.st_size}:{stat.st_mtime}"
                         )
+                        hash_obj.update(descriptor.encode())
                 hash_value = hash_obj.hexdigest()
                 logger.info(
                     "Calculated %s hash: %s", hash_algorithm, hash_value
                 )
-            except Exception as e:
-                logger.warning("Failed to calculate hash: %s", e)
+            except (OSError, ValueError) as exc:
+                logger.warning("Failed to calculate hash: %s", exc)
                 hash_value = None
 
         # Upload all files
@@ -249,9 +259,9 @@ def upload_snapshot_with_hash(
             "hash_algorithm": hash_algorithm if hash_value else None,
         }
 
-    except Exception as e:
-        logger.error("Error uploading snapshot to S3: %s", e)
-        return {"status": "failed", "error": str(e)}
+    except S3_HELPER_ERRORS as exc:
+        logger.error("Error uploading snapshot to S3: %s", exc)
+        return {"status": "failed", "error": str(exc)}
 
 
 def _cleanup_s3_prefix(s3_client: Any, bucket: str, prefix: str) -> None:
@@ -282,7 +292,7 @@ def _cleanup_old_snapshot_versions(
         if "CommonPrefixes" in page:
             for prefix_info in page["CommonPrefixes"]:
                 version_path = prefix_info["Prefix"]
-                # Extract version ID from path like "lines/snapshot/timestamped/20250826_143052/"
+                # Extract version IDs such as "lines/.../20250826_143052/"
                 version_id = version_path.split("/")[-2]
                 versions.append(version_id)
 
@@ -296,7 +306,7 @@ def _cleanup_old_snapshot_versions(
         try:
             _cleanup_s3_prefix(s3_client, bucket, version_prefix)
             logger.info("Cleaned up old snapshot version: %s", version_prefix)
-        except Exception as e:
+        except (*S3_HELPER_ERRORS, KeyError) as exc:
             logger.warning(
-                "Failed to cleanup version %s: %s", version_prefix, e
+                "Failed to cleanup version %s: %s", version_prefix, exc
             )

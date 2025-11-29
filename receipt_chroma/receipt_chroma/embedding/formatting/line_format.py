@@ -1,8 +1,4 @@
-"""Line formatting utilities for embedding context.
-
-This module provides functions for formatting line context for embeddings,
-including neighbor detection and position calculation.
-"""
+"""Line formatting utilities for embedding context."""
 
 import re
 from typing import List, Tuple
@@ -10,7 +6,7 @@ from typing import List, Tuple
 from receipt_dynamo.entities import ReceiptLine
 
 
-def _get_line_position(line: ReceiptLine) -> int:
+def _get_line_position(_line: ReceiptLine) -> int:
     """
     Calculate the position of a line within its receipt.
 
@@ -29,7 +25,8 @@ def format_line_context_embedding_input(
     Format line with vertical context matching batch embedding structure.
 
     Replicates the format from embedding/line/submit.py:
-    <TARGET>line text</TARGET> <POS>position</POS> <CONTEXT>prev_line next_line</CONTEXT>
+    <TARGET>line text</TARGET> <POS>position</POS>
+    <CONTEXT>prev_line next_line</CONTEXT>
 
     Args:
         target_line: The line to format
@@ -63,7 +60,8 @@ def format_line_context_embedding_input(
             next_line = sorted_lines[target_index + 1].text
 
     return (
-        f"<TARGET>{target_line.text}</TARGET> <POS>{position}</POS> "
+        f"<TARGET>{target_line.text}</TARGET> "
+        f"<POS>{position}</POS> "
         f"<CONTEXT>{prev_line} {next_line}</CONTEXT>"
     )
 
