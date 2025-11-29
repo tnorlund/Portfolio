@@ -14,7 +14,6 @@ class ValidationStatus(str, Enum):
     VALID = "VALID"  # Validation succeeded
     INVALID = "INVALID"  # Validation rejected
     NEEDS_REVIEW = "NEEDS_REVIEW"  # Validation needs review test
-    SUPERSEDED = "SUPERSEDED"  # Label has been replaced by a new label (preserves audit trail)
 
 
 class BatchStatus(str, Enum):

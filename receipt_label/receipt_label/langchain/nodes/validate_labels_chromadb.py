@@ -217,7 +217,7 @@ async def validate_labels_chromadb(
             conflicting_labels = set()
             for match in matches:
                 # Handle both list and comma-delimited string formats
-                valid_labels_raw = match["metadata"].get("valid_labels") or match["metadata"].get("validated_labels") or ""
+                valid_labels_raw = match["metadata"].get("valid_labels", "")
                 if isinstance(valid_labels_raw, list):
                     valid_labels = set(valid_labels_raw)
                 else:

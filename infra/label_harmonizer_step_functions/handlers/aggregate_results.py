@@ -18,6 +18,34 @@ logger.setLevel(logging.INFO)
 s3 = boto3.client("s3")
 
 
+def _load_results_from_s3(batch_bucket: str, execution_id: str) -> List[Dict]:
+    """Load all results from S3 for the given execution_id."""
+    results: List[Dict] = []
+    prefix = f"results/{execution_id}/"
+
+    try:
+        paginator = s3.get_paginator("list_objects_v2")
+        pages = paginator.paginate(Bucket=batch_bucket, Prefix=prefix)
+
+        for page in pages:
+            for obj in page.get("Contents", []):
+                key = obj["Key"]
+                if key.endswith(".json"):
+                    try:
+                        response = s3.get_object(Bucket=batch_bucket, Key=key)
+                        result = json.loads(response["Body"].read().decode("utf-8"))
+                        results.append(result)
+                    except Exception as e:
+                        logger.warning(f"Failed to load result from {key}: {e}")
+
+        logger.info(f"Loaded {len(results)} results from S3")
+    except Exception as e:
+        logger.error(f"Failed to load results from S3: {e}")
+        raise
+
+    return results
+
+
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     Aggregate results from all harmonization runs.
@@ -50,7 +78,14 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     batch_bucket = os.environ.get("BATCH_BUCKET", "")
 
     logger.info(f"Aggregating results for execution {execution_id}")
-    logger.info(f"Processing {len(process_results)} results")
+
+    # Always read results from S3 to avoid 256KB payload limit
+    # The Step Function only passes batch_count to avoid payload size issues
+    # Results are stored at results/{execution_id}/{label_type}/{merchant}.json
+    logger.info("Reading results from S3 (payload only contains batch_count)...")
+    process_results = _load_results_from_s3(batch_bucket, execution_id)
+
+    logger.info(f"Processing {len(process_results)} results from S3")
 
     # Aggregate metrics
     total_labels = 0
@@ -91,15 +126,38 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         label_type_stats[label_type]["outliers_found"] += outliers_found
         label_type_stats[label_type]["merchants_processed"] += 1
 
-        # Collect outlier details
-        for outlier in result.get("outlier_details", []):
-            outlier_details.append(
-                {
-                    "label_type": label_type,
-                    "merchant_name": merchant_name,
-                    **outlier,
-                }
-            )
+        # Collect outlier details from S3 if not in payload
+        # Full results are stored at results/{execution_id}/{label_type}/{merchant}.json
+        results_path = result.get("results_path")
+        if results_path and not result.get("outlier_details"):
+            try:
+                # Parse S3 path: s3://bucket/key
+                if results_path.startswith("s3://"):
+                    path_parts = results_path[5:].split("/", 1)
+                    if len(path_parts) == 2:
+                        bucket, key = path_parts
+                        response = s3.get_object(Bucket=bucket, Key=key)
+                        full_result = json.loads(response["Body"].read().decode("utf-8"))
+                        for outlier in full_result.get("outlier_details", []):
+                            outlier_details.append(
+                                {
+                                    "label_type": label_type,
+                                    "merchant_name": merchant_name,
+                                    **outlier,
+                                }
+                            )
+            except Exception as e:
+                logger.warning(f"Failed to load outlier details from {results_path}: {e}")
+        else:
+            # Use outlier_details from payload if available
+            for outlier in result.get("outlier_details", []):
+                outlier_details.append(
+                    {
+                        "label_type": label_type,
+                        "merchant_name": merchant_name,
+                        **outlier,
+                    }
+                )
 
     # Build summary
     summary = {

@@ -728,7 +728,7 @@ class LabelHarmonizer:
 
         Uses ChromaDB query with metadata filters to find similar words:
         1. For each word, query ChromaDB for similar words from the same merchant
-        2. Filter by validated_labels metadata to find words with VALID labels
+        2. Filter by valid_labels metadata to find words with VALID labels
         3. If a word has few/no similar matches with VALID labels, it's an outlier
 
         Outliers are words that:
@@ -858,7 +858,7 @@ class LabelHarmonizer:
 
                 try:
                     # Build where clause to find similar words from same merchant
-                    # Note: ChromaDB doesn't support $contains, so we'll filter validated_labels in Python
+                    # Note: ChromaDB doesn't support $contains, so we'll filter valid_labels in Python
                     where_clause = None
                     if merchant_filter:
                         where_clause = {"merchant_name": {"$eq": merchant_filter}}
@@ -881,7 +881,7 @@ class LabelHarmonizer:
                     # Filter results in Python:
                     # 1. Exclude self
                     # 2. Check similarity threshold
-                    # 3. Check if validated_labels contains the label type (comma-delimited string)
+                    # 3. Check if valid_labels contains the label type (comma-delimited string)
                     similar_matches = []
                     label_pattern = f",{group.label_type},"  # Match in comma-delimited string
 
@@ -900,14 +900,14 @@ class LabelHarmonizer:
 
                         # Check if this word has VALID label of the target type
                         metadata = metadatas[idx] if metadatas else {}
-                        validated_labels_str = metadata.get("validated_labels", "")
+                        valid_labels_str = metadata.get("valid_labels", "")
 
-                        # validated_labels is stored as ",GRAND_TOTAL,SUBTOTAL," format
-                        if label_pattern in validated_labels_str:
+                        # valid_labels is stored as ",GRAND_TOTAL,SUBTOTAL," format
+                        if label_pattern in valid_labels_str:
                             similar_matches.append((similar_id, similarity))
                             logger.debug(
                                 f"  Match: {similar_id} (sim={similarity:.3f}, "
-                                f"validated_labels={validated_labels_str})"
+                                f"valid_labels={valid_labels_str})"
                             )
 
                     logger.debug(
@@ -1214,7 +1214,7 @@ class LabelHarmonizer:
                 similar_words_info.append({
                     "text": metadata.get("text", "unknown"),
                     "similarity": f"{similarity:.3f}",
-                    "validated_labels": metadata.get("validated_labels", ""),
+                    "valid_labels": metadata.get("valid_labels", ""),
                     "line_context": similar_line_context,
                     "surrounding_words": similar_surrounding_words,
                     "surrounding_lines": similar_surrounding_lines,
@@ -1268,7 +1268,7 @@ You are analyzing receipt word labels for consistency. Your task is to determine
                 prompt += f"### Example {i}\n\n"
                 prompt += f"- **Text:** `'{info['text']}'`\n"
                 prompt += f"- **Similarity:** {info['similarity']}\n"
-                prompt += f"- **Labels:** {info['validated_labels']}\n"
+                prompt += f"- **Labels:** {info['valid_labels']}\n"
                 if info.get('line_context'):
                     prompt += f"- **Line context:** `\"{info['line_context']}\"`\n"
                 if info.get('surrounding_words'):
@@ -2084,7 +2084,7 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
                     # Consensus update (same label type, different value)
                     logger.info(
                         "[CONSENSUS UPDATE] %s...#%s#%s#%s: Current: %s → "
-                        "New: %s (VALID) | Old label would be marked: SUPERSEDED | "
+                        "New: %s (VALID) | Old label would be marked: INVALID | "
                         "Audit trail: label_consolidated_from=%s",
                         r['image_id'][:8],
                         r['receipt_id'],
@@ -2262,13 +2262,13 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
                 # Update label if consensus is different (same label type)
                 elif r["consensus_label"] and label.label != r["consensus_label"]:
                     # Note: In DynamoDB, labels are keyed by (image_id, receipt_id, line_id, word_id, label)
-                    # Create new label with consensus value and mark old one as SUPERSEDED for audit trail
+                    # Create new label with consensus value and mark old one as INVALID for audit trail
                     from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
                     from receipt_dynamo.constants import ValidationStatus
                     from datetime import datetime
 
-                    # Update old label's validation_status to SUPERSEDED (replaced by consensus, preserves audit trail)
-                    label.validation_status = ValidationStatus.SUPERSEDED.value
+                    # Update old label's validation_status to INVALID (replaced by consensus, preserves audit trail)
+                    label.validation_status = ValidationStatus.INVALID.value
                     self.dynamo.update_receipt_word_label(label)
 
                     # Create new label with consensus value
@@ -2279,17 +2279,17 @@ Respond with a JSON object indicating the correct CORE_LABEL type for this word.
                         line_id=label.line_id,
                         word_id=label.word_id,
                         label=r["consensus_label"],
-                        reasoning=f"Updated to consensus: {label.reasoning or 'N/A'}. Previous label marked as SUPERSEDED.",
+                        reasoning=f"Updated to consensus: {label.reasoning or 'N/A'}. Previous label marked as INVALID.",
                         timestamp_added=datetime.now().isoformat(),
                         validation_status=ValidationStatus.VALID.value,
                         label_proposed_by=label.label_proposed_by or "label-harmonizer",
-                        label_consolidated_from=label.label,  # Audit trail: tracks the previous label that was superseded
+                        label_consolidated_from=label.label,  # Audit trail: tracks the previous label that was replaced
                     )
                     self.dynamo.add_receipt_word_label(new_label)
 
                     logger.info(
                         f"Updated {r['image_id'][:8]}...#{r['receipt_id']}#{r['line_id']}#{r['word_id']}: "
-                        f"{label.label} → {r['consensus_label']} (old label marked SUPERSEDED)"
+                        f"{label.label} → {r['consensus_label']} (old label marked INVALID)"
                     )
                     result.total_updated += 1
 

@@ -131,6 +131,7 @@ async def process_merchant_group(
     llm: Any,
     dry_run: bool = True,
     min_confidence: float = 70.0,
+    max_concurrent_llm_calls: int = 10,
 ) -> Dict[str, Any]:
     """Process a single merchant group using LabelHarmonizerV2 (with proper trace nesting)."""
     # Import here to avoid cold start overhead if not needed
@@ -179,7 +180,7 @@ async def process_merchant_group(
     # Disable similarity search to avoid ChromaDB InternalError when IDs don't exist
     # The harmonizer will still compute consensus based on labels alone
     results = await harmonizer.analyze_group(
-        group, use_similarity=False
+        group, use_similarity=False, max_concurrent_llm_calls=max_concurrent_llm_calls
     )
 
     # Extract outliers (results where needs_update=True and has "OUTLIER" in changes_needed)
@@ -246,6 +247,9 @@ async def process_merchant_group(
             update_result.total_failed,
         )
 
+    # Get API usage metrics
+    api_metrics = harmonizer.get_api_metrics()
+
     return {
         "merchant_name": merchant_name,
         "label_type": label_type,
@@ -261,6 +265,17 @@ async def process_merchant_group(
         "total_skipped": update_result.total_skipped if update_result else 0,
         "total_failed": update_result.total_failed if update_result else 0,
         "total_needs_review": update_result.total_needs_review if update_result else 0,
+        # Include API usage metrics
+        "api_metrics": {
+            "llm_calls_total": api_metrics.llm_calls_total,
+            "llm_calls_successful": api_metrics.llm_calls_successful,
+            "llm_calls_failed": api_metrics.llm_calls_failed,
+            "rate_limit_errors": api_metrics.rate_limit_errors,
+            "server_errors": api_metrics.server_errors,
+            "retry_attempts": api_metrics.retry_attempts,
+            "circuit_breaker_triggers": api_metrics.circuit_breaker_triggers,
+            "timeout_errors": api_metrics.timeout_errors,
+        },
     }
 
 
@@ -298,6 +313,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     execution_id = event.get("execution_id", "unknown")
     dry_run = event.get("dry_run", True)
     min_confidence = event.get("min_confidence", 70.0)  # Minimum confidence for apply_fixes
+    max_concurrent_llm_calls = event.get("max_concurrent_llm_calls", 10)  # Max concurrent LLM calls
 
     # Lambda-specific env vars
     batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET", "")
@@ -339,7 +355,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     logger.info(
         f"Processing {merchant_name} - {label_type} "
-        f"(execution_id={execution_id}, dry_run={dry_run})"
+        f"(execution_id={execution_id}, dry_run={dry_run}, max_concurrent_llm_calls={max_concurrent_llm_calls})"
     )
 
     # Track processing time for metrics
@@ -418,6 +434,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 llm=llm,
                 dry_run=dry_run,
                 min_confidence=min_confidence,
+                max_concurrent_llm_calls=max_concurrent_llm_calls,
             )
         )
 
@@ -444,6 +461,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Emit EMF metrics (cost-effective: ONE log line, no API calls)
         processing_time = time.time() - start_time
+        api_metrics = result.get("api_metrics", {})
         emf_metrics.log_metrics(
             metrics={
                 "OutliersDetected": result["outliers_found"],
@@ -451,6 +469,20 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "ProcessingTimeSeconds": round(processing_time, 2),
                 "BatchSucceeded": 1,
                 "BatchFailed": 0,
+                # DynamoDB update metrics (only when dry_run=False)
+                "LabelsUpdated": result.get("total_updated", 0),
+                "LabelsSkipped": result.get("total_skipped", 0),
+                "LabelsFailed": result.get("total_failed", 0),
+                "LabelsNeedsReview": result.get("total_needs_review", 0),
+                # API usage metrics
+                "LLMCallsTotal": api_metrics.get("llm_calls_total", 0),
+                "LLMCallsSuccessful": api_metrics.get("llm_calls_successful", 0),
+                "LLMCallsFailed": api_metrics.get("llm_calls_failed", 0),
+                "RateLimitErrors": api_metrics.get("rate_limit_errors", 0),
+                "ServerErrors": api_metrics.get("server_errors", 0),
+                "RetryAttempts": api_metrics.get("retry_attempts", 0),
+                "CircuitBreakerTriggers": api_metrics.get("circuit_breaker_triggers", 0),
+                "TimeoutErrors": api_metrics.get("timeout_errors", 0),
             },
             # IMPORTANT: Keep dimensions LOW cardinality to control costs
             # LabelType has ~15 values (CORE_LABELS)

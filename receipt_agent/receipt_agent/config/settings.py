@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     )
     ollama_model: str = Field(
         default="gpt-oss:120b-cloud",
-        description="Model to use for agent reasoning (OpenAI OSS 120B cloud model)",
+        description="Model to use for agent reasoning (OpenAI OSS 120B cloud model). Note: Tier configuration (low/medium/high) may need to be specified separately or via model name format - verify with Ollama Cloud docs.",
     )
 
     # Alternative: OpenAI for embeddings
