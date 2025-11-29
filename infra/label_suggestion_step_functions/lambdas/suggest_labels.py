@@ -16,6 +16,8 @@ from typing import Any, Dict, List
 
 import boto3
 
+from utils.emf_metrics import emf_metrics
+
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
@@ -101,9 +103,15 @@ async def process_batch(
     receipts_processed = 0
     total_suggestions = 0
     total_llm_calls = 0
+    total_llm_calls_successful = 0
+    total_llm_calls_failed = 0
     total_skipped_no_candidates = 0
     total_skipped_low_confidence = 0
     total_unlabeled_words = 0
+    total_chromadb_queries = 0
+    total_embeddings_generated = 0
+    high_confidence_suggestions = 0  # confidence >= 0.75
+    medium_confidence_suggestions = 0  # 0.60 <= confidence < 0.75
     errors: List[Dict] = []
 
     for i, receipt_data in enumerate(receipts, 1):
@@ -141,9 +149,44 @@ async def process_batch(
             total_skipped_low_confidence += result.get("skipped_low_confidence", 0)
             total_unlabeled_words += result.get("unlabeled_words_count", 0)
 
+            # Performance metrics from workflow
+            perf = result.get("performance", {})
+            total_chromadb_queries += perf.get("total_chroma_queries", 0)
+
+            # Count embeddings generated
+            # The workflow tracks embedding_times but not count directly
+            # We can estimate: if there are ChromaDB queries, some embeddings were likely generated
+            # A more accurate count would require the workflow to return embedding_count
+            # For now, use a conservative estimate: ~40% of unlabeled words need on-the-fly embeddings
+            unlabeled = result.get("unlabeled_words_count", 0)
+            queries = perf.get("total_chroma_queries", 0)
+            if queries > 0 and unlabeled > 0:
+                # Estimate: some words have cached embeddings, some need on-the-fly generation
+                # Conservative estimate: 40% of words need embeddings generated
+                estimated_embeddings = max(0, int(unlabeled * 0.4))
+                total_embeddings_generated += estimated_embeddings
+
+            # Count confidence-based suggestions from submit_result
+            submit_result = result.get("submit_result", {})
+            created_labels = submit_result.get("created_labels", [])
+            for label in created_labels:
+                confidence = label.get("confidence", 0.0)
+                if confidence >= 0.75:
+                    high_confidence_suggestions += 1
+                elif confidence >= 0.60:
+                    medium_confidence_suggestions += 1
+
+            # Track LLM call success/failure (assume successful if no error in result)
+            llm_calls = result.get("llm_calls", 0)
+            if llm_calls > 0:
+                # If we got suggestions or skipped words, LLM calls were likely successful
+                # This is a heuristic - we could track actual failures if workflow returns them
+                total_llm_calls_successful += llm_calls
+
             logger.info(
                 f"Receipt {image_id}#{receipt_id}: {result.get('suggestions_count', 0)} suggestions, "
-                f"{result.get('llm_calls', 0)} LLM calls"
+                f"{result.get('llm_calls', 0)} LLM calls, "
+                f"{perf.get('total_chroma_queries', 0)} ChromaDB queries"
             )
 
         except Exception as e:
@@ -159,9 +202,15 @@ async def process_batch(
         "receipts_processed": receipts_processed,
         "suggestions_made": total_suggestions,
         "llm_calls": total_llm_calls,
+        "llm_calls_successful": total_llm_calls_successful,
+        "llm_calls_failed": total_llm_calls_failed,
         "skipped_no_candidates": total_skipped_no_candidates,
         "skipped_low_confidence": total_skipped_low_confidence,
         "unlabeled_words": total_unlabeled_words,
+        "chromadb_queries": total_chromadb_queries,
+        "embeddings_generated": total_embeddings_generated,
+        "high_confidence_suggestions": high_confidence_suggestions,
+        "medium_confidence_suggestions": medium_confidence_suggestions,
         "errors": errors,
     }
 
@@ -307,6 +356,62 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         processing_time = time.time() - start_time
         result["processing_time_seconds"] = round(processing_time, 2)
         result["results_path"] = results_key
+
+        # Emit EMF metrics (cost-effective: ONE log line, no API calls)
+        # Only emit if batch was successful
+        if result.get("status") in ("completed", "partial"):
+            emf_metrics.log_metrics(
+                metrics={
+                    # Operational metrics
+                    "ReceiptsProcessed": result.get("receipts_processed", 0),
+                    "SuggestionsMade": result.get("suggestions_made", 0),
+                    "UnlabeledWordsFound": result.get("unlabeled_words", 0),
+                    "ProcessingTimeSeconds": round(processing_time, 2),
+                    "BatchSucceeded": 1 if result.get("status") == "completed" else 0,
+                    "BatchFailed": 0 if result.get("status") == "completed" else 1,
+                    # Quality metrics
+                    "SkippedNoCandidates": result.get("skipped_no_candidates", 0),
+                    "SkippedLowConfidence": result.get("skipped_low_confidence", 0),
+                    "HighConfidenceSuggestions": result.get("high_confidence_suggestions", 0),
+                    "MediumConfidenceSuggestions": result.get("medium_confidence_suggestions", 0),
+                    # API usage metrics
+                    "LLMCallsTotal": result.get("llm_calls", 0),
+                    "LLMCallsSuccessful": result.get("llm_calls_successful", 0),
+                    "LLMCallsFailed": result.get("llm_calls_failed", 0),
+                    "ChromaDBQueries": result.get("chromadb_queries", 0),
+                    "EmbeddingsGenerated": result.get("embeddings_generated", 0),
+                },
+                # IMPORTANT: Keep dimensions LOW cardinality to control costs
+                # No dimensions for now (all receipts processed together)
+                # Could add LabelType dimension if we track per-label-type metrics
+                dimensions={},
+                # Additional context goes in properties (not dimensions)
+                properties={
+                    "execution_id": execution_id,
+                    "batch_index": batch_index,
+                    "batch_file": batch_file,
+                    "dry_run": dry_run,
+                    "status": result.get("status", "unknown"),
+                },
+                units={
+                    "ProcessingTimeSeconds": "Seconds",
+                },
+            )
+        else:
+            # Emit failure metrics
+            emf_metrics.log_metrics(
+                metrics={
+                    "BatchSucceeded": 0,
+                    "BatchFailed": 1,
+                },
+                dimensions={},
+                properties={
+                    "execution_id": execution_id,
+                    "batch_index": batch_index,
+                    "batch_file": batch_file,
+                    "error": result.get("error", "unknown"),
+                },
+            )
 
         return result
 

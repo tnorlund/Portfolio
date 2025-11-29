@@ -1,4 +1,4 @@
-"""EMF (Embedded Metrics Format) utility for label_validation_agent Lambda functions.
+"""EMF (Embedded Metrics Format) utility for label suggestion Lambda functions.
 
 Uses AWS Embedded Metric Format to send metrics via CloudWatch Logs instead of
 individual PutMetricData API calls. This reduces costs by ~99.9%.
@@ -12,16 +12,15 @@ Usage:
 
     # Collect metrics during processing
     metrics = {
-        "ValidCount": 30,
-        "InvalidCount": 15,
-        "LabelsProcessed": 50,
+        "ReceiptsProcessed": 10,
+        "SuggestionsMade": 50,
         "ProcessingTimeSeconds": 45.2,
     }
 
     # Emit ONE log line at the end (CloudWatch parses automatically)
     emf_metrics.log_metrics(
         metrics=metrics,
-        dimensions={"LabelType": "MERCHANT_NAME"},
+        dimensions={},
         properties={"execution_id": "abc123", "batch_file": "..."}
     )
 """
@@ -44,7 +43,7 @@ class EmbeddedMetricsFormatter:
     - Same CloudWatch Metrics dashboard visibility
     """
 
-    def __init__(self, namespace: str = "LabelValidationAgent"):
+    def __init__(self, namespace: str = "LabelSuggestionAgent"):
         """Initialize EMF formatter.
 
         Args:
