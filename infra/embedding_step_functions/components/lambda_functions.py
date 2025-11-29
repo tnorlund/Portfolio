@@ -299,18 +299,6 @@ class LambdaFunctionsComponent(ComponentResource):
                 "timeout": MINUTE * 15,
                 "source_dir": "find_unembedded_words",
             },
-            "embedding-submit-lines": {
-                "handler": "handler.lambda_handler",
-                "memory": GIGABYTE * 1,
-                "timeout": MINUTE * 15,
-                "source_dir": "submit_openai",
-            },
-            "embedding-submit-words": {
-                "handler": "handler.lambda_handler",
-                "memory": GIGABYTE * 1,
-                "timeout": MINUTE * 15,
-                "source_dir": "submit_words_openai",
-            },
             "embedding-split-chunks": {
                 "handler": "handler.lambda_handler",
                 "memory": GIGABYTE * 0.5,
@@ -453,6 +441,18 @@ class LambdaFunctionsComponent(ComponentResource):
                 ),  # Increased back - ChromaDB operations require disk space
                 "handler_type": "word_polling",
             },
+            "embedding-submit-words": {
+                "memory": GiB(1),  # Similar to polling, lightweight operations
+                "timeout": MINUTE * 15,
+                "ephemeral_storage": GiB(2),  # Minimal disk space needed for NDJSON files
+                "handler_type": "submit_words_openai",
+            },
+            "embedding-submit-lines": {
+                "memory": GiB(1),  # Similar to polling, lightweight operations
+                "timeout": MINUTE * 15,
+                "ephemeral_storage": GiB(2),  # Minimal disk space needed for NDJSON files
+                "handler_type": "submit_openai",
+            },
             "embedding-compact": {
                 "memory": GiB(
                     8
@@ -479,11 +479,18 @@ class LambdaFunctionsComponent(ComponentResource):
                 lambda_func = self._create_compaction_lambda_with_codebuild(
                     name, config
                 )
-            else:
+            elif config["handler_type"] in ["line_polling", "word_polling"]:
                 # Create polling Lambdas using CodeBuildDockerImage (same approach as compaction)
                 lambda_func = self._create_polling_lambda_with_codebuild(
                     name, config
                 )
+            elif config["handler_type"] in ["submit_words_openai", "submit_openai"]:
+                # Create submit Lambda (words or lines) using CodeBuildDockerImage
+                lambda_func = self._create_submit_lambda_with_codebuild(
+                    name, config
+                )
+            else:
+                raise ValueError(f"Unknown handler type: {config['handler_type']}")
             self.container_lambda_functions[name] = lambda_func
 
     def _create_compaction_lambda_with_codebuild(
@@ -638,3 +645,56 @@ class LambdaFunctionsComponent(ComponentResource):
 
         # Return the Lambda function created by CodeBuildDockerImage
         return polling_docker_image.lambda_function
+
+    def _create_submit_lambda_with_codebuild(
+        self, name: str, config: Dict[str, Any]
+    ):
+        """Create submit Lambda (words or lines) using CodeBuildDockerImage with lambda_config."""
+        # Determine component name based on handler type
+        component_name = "SubmitWords" if config["handler_type"] == "submit_words_openai" else "SubmitLines"
+
+        # Build lambda_config dict matching polling Lambda format
+        lambda_config_dict = {
+            "role_arn": self.lambda_role.arn,
+            "timeout": config["timeout"],
+            "memory_size": config["memory"],
+            "ephemeral_storage": config.get("ephemeral_storage", 512),
+            "description": f"Embedding {config['handler_type']} handler using receipt_chroma",
+            "tags": {
+                "Project": "Embedding",
+                "Component": component_name,
+                "Environment": stack,
+                "ManagedBy": "Pulumi",
+            },
+            "environment": {
+                "HANDLER_TYPE": config["handler_type"],
+                "DYNAMODB_TABLE_NAME": dynamodb_table.name,
+                "CHROMADB_BUCKET": self.chromadb_buckets.bucket_name,
+                "OPENAI_API_KEY": openai_api_key,
+                "S3_BUCKET": self.batch_bucket.bucket,
+                "ENABLE_XRAY": "true",
+                "ENABLE_METRICS": "true",
+                "LOG_LEVEL": "INFO",
+            },
+        }
+
+        # Submit Lambdas don't use VPC/EFS (they only format and submit, no ChromaDB reads)
+        # No VPC or EFS configuration needed
+
+        # Create CodeBuildDockerImage with lambda_config (same approach as polling)
+        submit_docker_image = CodeBuildDockerImage(
+            f"{name}-docker",
+            dockerfile_path="infra/embedding_step_functions/unified_embedding/Dockerfile",
+            build_context_path=".",  # Project root for monorepo access
+            source_paths=None,  # Use default rsync with exclusions
+            lambda_function_name=f"{name}-lambda-{stack}",
+            lambda_config=lambda_config_dict,
+            platform="linux/arm64",
+            opts=ResourceOptions(
+                parent=self,
+                depends_on=[self.lambda_role],
+            ),
+        )
+
+        # Return the Lambda function created by CodeBuildDockerImage
+        return submit_docker_image.lambda_function
