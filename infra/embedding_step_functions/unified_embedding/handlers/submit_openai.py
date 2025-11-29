@@ -1,34 +1,38 @@
-"""Handler for submitting batches to OpenAI.
+"""Handler for submitting line embedding batches to OpenAI.
 
-Pure business logic - no Lambda-specific code.
+This handler reads from S3, formats the data using receipt_chroma, and submits to OpenAI's Batch API.
 """
 
+import json
 import os
 from pathlib import Path
 from typing import Any, Dict
+from uuid import uuid4
 
 from openai import OpenAI
+from receipt_chroma.embedding.formatting.line_format import (
+    format_line_context_embedding_input,
+)
 from receipt_chroma.embedding.openai import (
     add_batch_summary,
     create_batch_summary,
     submit_openai_batch,
     upload_to_openai,
 )
+from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_label.embedding.line import (
     deserialize_receipt_lines,
     download_serialized_lines,
-    format_line_context_embedding,
-    generate_batch_id,
-    update_line_embedding_status,
-    write_ndjson,
+    query_receipt_lines,
 )
 
 import utils.logging
 
 get_logger = utils.logging.get_logger
+get_operation_logger = utils.logging.get_operation_logger
 
-logger = get_logger(__name__)
+logger = get_operation_logger(__name__)
 
 
 def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -51,7 +55,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Extract parameters from event
         s3_key = event["s3_key"]
         s3_bucket = event["s3_bucket"]
-        batch_id = generate_batch_id()
+        batch_id = str(uuid4())
 
         # Download the serialized lines from S3
         filepath = download_serialized_lines(
@@ -60,16 +64,60 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         logger.info("Downloaded file", filepath=filepath)
 
         # Deserialize the lines
-        lines = deserialize_receipt_lines(filepath)
-        logger.info("Deserialized lines", count=len(lines))
+        lines_to_embed = deserialize_receipt_lines(filepath)
+        logger.info("Deserialized lines", count=len(lines_to_embed))
 
-        # Format for embedding
-        formatted = format_line_context_embedding(lines)
-        logger.info("Formatted lines", count=len(formatted))
+        # Get image_id and receipt_id from first line (all lines are from same receipt)
+        if not lines_to_embed:
+            raise ValueError("No lines to embed")
+        image_id = lines_to_embed[0].image_id
+        receipt_id = lines_to_embed[0].receipt_id
 
-        # Write to NDJSON file
-        input_file = write_ndjson(batch_id, formatted)
-        logger.info("Wrote input file", filepath=input_file)
+        # Query all lines in the receipt for context
+        all_lines_in_receipt = query_receipt_lines(image_id, receipt_id)
+        logger.info(
+            "Found lines in receipt",
+            count=len(all_lines_in_receipt),
+            receipt_id=receipt_id,
+            image_id=image_id,
+        )
+
+        # Format lines with context for embedding using receipt_chroma
+        formatted_lines = []
+        for line in lines_to_embed:
+            # Use receipt_chroma's format_line_context_embedding_input
+            formatted_input = format_line_context_embedding_input(
+                target_line=line,
+                all_lines=all_lines_in_receipt,
+            )
+
+            # Build custom_id (ChromaDB format)
+            custom_id = (
+                f"IMAGE#{line.image_id}#"
+                f"RECEIPT#{line.receipt_id:05d}#"
+                f"LINE#{line.line_id:05d}"
+            )
+
+            # Format as OpenAI batch API request
+            entry = {
+                "custom_id": custom_id,
+                "method": "POST",
+                "url": "/v1/embeddings",
+                "body": {
+                    "input": formatted_input,
+                    "model": "text-embedding-3-small",
+                },
+            }
+            formatted_lines.append(entry)
+
+        logger.info("Formatted lines with context", count=len(formatted_lines))
+
+        # Write formatted data to NDJSON file
+        input_file = Path(f"/tmp/{batch_id}.ndjson")
+        with input_file.open("w", encoding="utf-8") as f:
+            for row in formatted_lines:
+                f.write(json.dumps(row) + "\n")
+        logger.info("Wrote input file", filepath=str(input_file))
 
         # Initialize clients
         dynamo_client = DynamoClient(os.environ.get("DYNAMODB_TABLE_NAME"))
@@ -87,14 +135,19 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         batch_summary = create_batch_summary(
             batch_id=batch_id,
             openai_batch_id=openai_batch.id,
-            file_path=input_file,
+            file_path=str(input_file),
             batch_type="LINE_EMBEDDING",
         )
         logger.info("Created batch summary", batch_id=batch_summary.batch_id)
 
-        # Update line statuses
-        update_line_embedding_status(lines)
-        logger.info("Updated line embedding status")
+        # Update line embedding status in DynamoDB
+        # Set to PENDING using string format
+        for line in lines_to_embed:
+            line.embedding_status = EmbeddingStatus.PENDING.value
+        dynamo_client.update_receipt_lines(lines_to_embed)
+        logger.info(
+            "Updated embedding status for lines", count=len(lines_to_embed)
+        )
 
         # Save batch summary to database
         add_batch_summary(batch_summary, dynamo_client)

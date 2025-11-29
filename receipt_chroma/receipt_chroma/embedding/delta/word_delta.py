@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 from receipt_chroma.embedding.delta.producer import produce_embedding_delta
 from receipt_chroma.embedding.formatting.word_format import (
     format_word_context_embedding_input,
-    parse_left_right_from_formatted,
+    get_word_neighbors,
 )
 from receipt_chroma.embedding.metadata.word_metadata import (
     create_word_metadata,
@@ -133,9 +133,11 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
             and lbl.word_id == word_id
         ]
 
-        # Get word context
-        _embedding = format_word_context_embedding_input(target_word, words)
-        left_text, right_text = parse_left_right_from_formatted(_embedding)
+        # Get word context directly (more efficient than parsing)
+        left_words, right_words = get_word_neighbors(target_word, words, context_size=2)
+        # Extract first word from each side for backward compatibility with metadata
+        left_text = left_words[0] if left_words else "<EDGE>"
+        right_text = right_words[0] if right_words else "<EDGE>"
 
         # Priority: canonical name > regular merchant name
         if (

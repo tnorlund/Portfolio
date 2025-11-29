@@ -118,9 +118,13 @@ def _validate_snapshot_after_upload(
             test_collection = test_client.get_collection(collection_name)
             count = test_collection.count()  # Lightweight operation
 
-            # Clean up test client
+            # Clean up test client properly (issue #5868)
+            # ChromaDB doesn't expose close(), so we need to clear references
+            # and force GC multiple times
             del test_client
-            gc.collect()
+            for _ in range(3):
+                gc.collect()
+            time.sleep(0.1)  # Small delay to ensure SQLite connections are released
 
             validation_duration = time.time() - validation_start_time
             logger.info(

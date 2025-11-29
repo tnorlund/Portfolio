@@ -11,8 +11,8 @@ from receipt_dynamo.constants import ValidationStatus
 
 def update_receipt_metadata(
     collection: Any,
-    image_id: str, 
-    receipt_id: int, 
+    image_id: str,
+    receipt_id: int,
     changes: Dict[str, Any],
     logger: Any,
     metrics: Any = None,
@@ -249,8 +249,8 @@ def update_receipt_metadata(
 
 
 def remove_receipt_metadata(
-    collection: Any, 
-    image_id: str, 
+    collection: Any,
+    image_id: str,
     receipt_id: int,
     logger: Any,
     metrics: Any = None,
@@ -473,7 +473,7 @@ def update_word_labels(
                 dynamo_client = get_dynamo_client_func()
             else:
                 dynamo_client = DynamoClient(os.environ["DYNAMODB_TABLE_NAME"])
-            
+
             reconstructed_metadata = reconstruct_label_metadata(
                 image_id=image_id,
                 receipt_id=receipt_id,
@@ -524,7 +524,7 @@ def update_word_labels(
                 current_label = entity_data.get("label")
             if current_label:
                 # Initialize fields if missing
-                validated = updated_metadata.get("validated_labels", "") or ""
+                validated = updated_metadata.get("valid_labels", "") or ""
                 invalid = updated_metadata.get("invalid_labels", "") or ""
 
                 def _as_set(csv: str) -> set:
@@ -539,7 +539,7 @@ def update_word_labels(
                     val_set.discard(current_label)
                     inv_set.add(current_label)
                 # Write back with delimiters for exact-match semantics
-                updated_metadata["validated_labels"] = (
+                updated_metadata["valid_labels"] = (
                     f",{','.join(sorted(val_set))}," if val_set else ""
                 )
                 updated_metadata["invalid_labels"] = (
@@ -563,12 +563,12 @@ def update_word_labels(
                 label_status=reconstructed_metadata.get("label_status"),
                 validated_labels_count=(
                     len(
-                        reconstructed_metadata.get("validated_labels", "").split(
+                        reconstructed_metadata.get("valid_labels", "").split(
                             ","
                         )
                     )
                     - 2
-                    if reconstructed_metadata.get("validated_labels")
+                    if reconstructed_metadata.get("valid_labels")
                     else 0
                 ),
             )
@@ -580,11 +580,11 @@ def update_word_labels(
                 (
                     len(
                         reconstructed_metadata.get(
-                            "validated_labels", ""
+                            "valid_labels", ""
                         ).split(",")
                     )
                     - 2
-                    if reconstructed_metadata.get("validated_labels")
+                    if reconstructed_metadata.get("valid_labels")
                     else 0
                 ),
             )
@@ -607,7 +607,7 @@ def update_word_labels(
 
 
 def remove_word_labels(
-    collection: Any, 
+    collection: Any,
     chromadb_id: str,
     logger: Any = None,
     metrics: Any = None,
@@ -635,7 +635,7 @@ def remove_word_labels(
             "label_status",
             "label_confidence",
             "label_proposed_by",
-            "validated_labels",
+            "valid_labels",
             "invalid_labels",
             "label_validated_at",
         ]
@@ -696,7 +696,7 @@ def reconstruct_label_metadata(
 
     Returns:
         Dictionary with reconstructed label metadata fields:
-        - validated_labels: comma-delimited string of valid labels
+        - valid_labels: comma-delimited string of valid labels
         - invalid_labels: comma-delimited string of invalid labels
         - label_status: overall status (validated/auto_suggested/unvalidated)
         - label_confidence: confidence from latest pending label
@@ -742,8 +742,8 @@ def reconstruct_label_metadata(
         label_confidence = None
         label_proposed_by = None
 
-    # validated_labels - all labels with status VALID
-    validated_labels = [
+    # valid_labels - all labels with status VALID
+    valid_labels_list = [
         lbl.label
         for lbl in word_labels
         if lbl.validation_status == ValidationStatus.VALID.value
@@ -781,11 +781,11 @@ def reconstruct_label_metadata(
     if label_proposed_by is not None:
         label_metadata["label_proposed_by"] = label_proposed_by
 
-    # Store validated labels with delimiters for exact matching
-    if validated_labels:
-        label_metadata["validated_labels"] = f",{','.join(validated_labels)},"
+    # Store valid labels with delimiters for exact matching
+    if valid_labels_list:
+        label_metadata["valid_labels"] = f",{','.join(valid_labels_list)},"
     else:
-        label_metadata["validated_labels"] = ""
+        label_metadata["valid_labels"] = ""
 
     # Store invalid labels with delimiters for exact matching
     if invalid_labels:
