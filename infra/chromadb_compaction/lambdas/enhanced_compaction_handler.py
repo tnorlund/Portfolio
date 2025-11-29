@@ -155,7 +155,8 @@ def get_dynamo_client():
 
 # Get configuration from environment
 # Optimized lock parameters for performance
-heartbeat_interval = int(os.environ.get("HEARTBEAT_INTERVAL_SECONDS", "120"))  # 2 minutes (reduced frequency)
+# Note: heartbeat_interval should be < lock_duration_minutes * 60 to ensure lock is extended before expiration
+heartbeat_interval = int(os.environ.get("HEARTBEAT_INTERVAL_SECONDS", "30"))  # 30 seconds (must be < lock_duration)
 lock_duration_minutes = int(os.environ.get("LOCK_DURATION_MINUTES", "1"))      # 1 minute (reduced duration)
 max_heartbeat_failures = int(os.environ.get("MAX_HEARTBEAT_FAILURES", "2"))     # 2 failures (faster recovery)
 compaction_queue_url = os.environ.get("COMPACTION_QUEUE_URL", "")

@@ -1,28 +1,31 @@
 """Handler for submitting word embedding batches to OpenAI.
 
-This handler reads from S3, formats the data, and submits to OpenAI's Batch API.
+This handler reads from S3, formats the data using receipt_chroma, and submits to OpenAI's Batch API.
 """
 
+import json
 import os
 from pathlib import Path
 from typing import Any, Dict
+from uuid import uuid4
 
 from openai import OpenAI
+from receipt_chroma.embedding.formatting.word_format import (
+    format_word_context_embedding_input,
+)
 from receipt_chroma.embedding.openai import (
     add_batch_summary,
     create_batch_summary,
     submit_openai_batch,
     upload_to_openai,
 )
+from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.entities import ReceiptWord
 from receipt_label.embedding.word import (
     deserialize_receipt_words,
     download_serialized_words,
-    format_word_context_embedding,
-    generate_batch_id,
     query_receipt_words,
-    update_word_embedding_status,
-    write_ndjson,
 )
 
 import utils.logging
@@ -65,7 +68,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         receipt_id = event["receipt_id"]
 
         # Generate unique batch ID
-        batch_id = generate_batch_id()
+        batch_id = str(uuid4())
         logger.info("Generated batch ID", batch_id=batch_id)
 
         # Download the NDJSON from S3 back to local via serialized helper
@@ -92,15 +95,44 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             image_id=image_id,
         )
 
-        # Format words with context for embedding
-        formatted_words = format_word_context_embedding(
-            deserialized_words, all_words_in_receipt
-        )
+        # Format words with context for embedding using receipt_chroma
+        formatted_words = []
+        for word in deserialized_words:
+            # Use receipt_chroma's new format_word_context_embedding_input
+            formatted_input = format_word_context_embedding_input(
+                target_word=word,
+                all_words=all_words_in_receipt,
+                context_size=2,  # Default context size
+            )
+
+            # Build custom_id (ChromaDB format)
+            custom_id = (
+                f"IMAGE#{word.image_id}#"
+                f"RECEIPT#{word.receipt_id:05d}#"
+                f"LINE#{word.line_id:05d}#"
+                f"WORD#{word.word_id:05d}"
+            )
+
+            # Format as OpenAI batch API request
+            entry = {
+                "custom_id": custom_id,
+                "method": "POST",
+                "url": "/v1/embeddings",
+                "body": {
+                    "input": formatted_input,
+                    "model": "text-embedding-3-small",
+                },
+            }
+            formatted_words.append(entry)
+
         logger.info("Formatted words with context", count=len(formatted_words))
 
         # Write formatted data to NDJSON file
-        input_file = write_ndjson(batch_id, formatted_words)
-        logger.info("Wrote input file", filepath=input_file)
+        input_file = Path(f"/tmp/{batch_id}.ndjson")
+        with input_file.open("w", encoding="utf-8") as f:
+            for row in formatted_words:
+                f.write(json.dumps(row) + "\n")
+        logger.info("Wrote input file", filepath=str(input_file))
 
         # Initialize clients
         dynamo_client = DynamoClient(os.environ.get("DYNAMODB_TABLE_NAME"))
@@ -118,13 +150,16 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         batch_summary = create_batch_summary(
             batch_id=batch_id,
             openai_batch_id=openai_batch.id,
-            file_path=input_file,
+            file_path=str(input_file),
             batch_type="WORD_EMBEDDING",
         )
         logger.info("Created batch summary", batch_id=batch_summary.batch_id)
 
         # Update word embedding status in DynamoDB
-        update_word_embedding_status(deserialized_words)
+        # Set to PENDING using string format
+        for word in deserialized_words:
+            word.embedding_status = EmbeddingStatus.PENDING.value
+        dynamo_client.update_receipt_words(deserialized_words)
         logger.info(
             "Updated embedding status for words", count=len(deserialized_words)
         )
