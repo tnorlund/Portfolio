@@ -25,13 +25,19 @@ from receipt_chroma.s3.helpers import (
 
 logger = logging.getLogger(__name__)
 
+# Only operational errors that can occur during normal runtime operations.
+# Programming errors (TypeError, ValueError from invalid arguments) are excluded
+# so they propagate and surface bugs during development rather than being
+# silently logged. ValueError and KeyError are included here because they can
+# be raised operationally by ChromaDB, SQLite, or S3 operations (e.g., invalid
+# data formats, missing keys in API responses).
 SNAPSHOT_ERRORS = (
     BotoCoreError,
     ClientError,
     OSError,
     RuntimeError,
-    ValueError,
-    KeyError,
+    ValueError,  # Can be raised by ChromaDB/SQLite for invalid data
+    KeyError,  # Can be raised by ChromaDB/SQLite for missing keys
     sqlite3.Error,
     ChromaError,
 )
