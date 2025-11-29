@@ -53,6 +53,15 @@ from currency_validation_step_functions import (
 from create_labels_step_functions import (
     CreateLabelsStepFunction,
 )
+from label_harmonizer_step_functions import (
+    LabelHarmonizerStepFunction,
+)
+from label_validation_agent_step_functions import (
+    LabelValidationAgentStepFunction,
+)
+from label_suggestion_step_functions import (
+    LabelSuggestionStepFunction,
+)
 
 # Using the optimized docker-build based base images with scoped contexts
 from networking import PublicVpc
@@ -1136,4 +1145,109 @@ pulumi.export(
 pulumi.export(
     "validate_metadata_validate_lambda_arn",
     validate_metadata_sf.validate_metadata_lambda_arn,
+)
+
+# Create label harmonizer Step Function
+# Processes labels in parallel by CORE_LABELS, then by merchant groups
+# Uses ChromaDB for similarity search and LLM for outlier detection
+label_harmonizer_sf = LabelHarmonizerStepFunction(
+    f"label-harmonizer-{stack}",
+    dynamodb_table_name=dynamodb_table.name,
+    dynamodb_table_arn=dynamodb_table.arn,
+    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
+    chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
+    # Concurrency is now configurable via Pulumi config:
+    # pulumi config set label-harmonizer:max_concurrency_process 5 --stack dev
+    # Defaults: max_concurrency_prepare=18, max_concurrency_process=10
+)
+
+pulumi.export(
+    "label_harmonizer_sf_arn",
+    label_harmonizer_sf.state_machine_arn,
+)
+pulumi.export(
+    "label_harmonizer_batch_bucket_name",
+    label_harmonizer_sf.batch_bucket_name,
+)
+pulumi.export(
+    "label_harmonizer_prepare_lambda_arn",
+    label_harmonizer_sf.prepare_labels_lambda_arn,
+)
+pulumi.export(
+    "label_harmonizer_harmonize_lambda_arn",
+    label_harmonizer_sf.harmonize_labels_lambda_arn,
+)
+pulumi.export(
+    "label_harmonizer_aggregate_lambda_arn",
+    label_harmonizer_sf.aggregate_results_lambda_arn,
+)
+
+# Create label validation agent Step Function
+# Processes NEEDS_REVIEW labels using the Label Validation Agent
+# Uses ChromaDB for similarity search and LangGraph agent for validation
+label_validation_agent_sf = LabelValidationAgentStepFunction(
+    f"label-validation-agent-{stack}",
+    dynamodb_table_name=dynamodb_table.name,
+    dynamodb_table_arn=dynamodb_table.arn,
+    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
+    chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
+    # Concurrency is now configurable via Pulumi config:
+    # pulumi config set label-validation-agent:max_concurrency_process 5 --stack dev
+    # Default: max_concurrency_process=5
+)
+
+pulumi.export(
+    "label_validation_agent_sf_arn",
+    label_validation_agent_sf.state_machine_arn,
+)
+pulumi.export(
+    "label_validation_agent_batch_bucket_name",
+    label_validation_agent_sf.batch_bucket_name,
+)
+pulumi.export(
+    "label_validation_agent_prepare_lambda_arn",
+    label_validation_agent_sf.prepare_labels_lambda_arn,
+)
+pulumi.export(
+    "label_validation_agent_validate_lambda_arn",
+    label_validation_agent_sf.validate_labels_lambda_arn,
+)
+pulumi.export(
+    "label_validation_agent_aggregate_lambda_arn",
+    label_validation_agent_sf.aggregate_results_lambda_arn,
+)
+
+# Create label suggestion Step Function
+# Processes receipts with unlabeled words using the Label Suggestion Agent
+# Uses ChromaDB for similarity search and LLM for ambiguous cases
+label_suggestion_sf = LabelSuggestionStepFunction(
+    f"label-suggestion-{stack}",
+    dynamodb_table_name=dynamodb_table.name,
+    dynamodb_table_arn=dynamodb_table.arn,
+    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
+    chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
+    # Concurrency is now configurable via Pulumi config:
+    # pulumi config set label-suggestion:max_concurrency_process 5 --stack dev
+    # Default: max_concurrency_process=5
+)
+
+pulumi.export(
+    "label_suggestion_sf_arn",
+    label_suggestion_sf.state_machine_arn,
+)
+pulumi.export(
+    "label_suggestion_batch_bucket_name",
+    label_suggestion_sf.batch_bucket_name,
+)
+pulumi.export(
+    "label_suggestion_prepare_lambda_arn",
+    label_suggestion_sf.prepare_receipts_lambda_arn,
+)
+pulumi.export(
+    "label_suggestion_suggest_lambda_arn",
+    label_suggestion_sf.suggest_labels_lambda_arn,
+)
+pulumi.export(
+    "label_suggestion_aggregate_lambda_arn",
+    label_suggestion_sf.aggregate_results_lambda_arn,
 )
