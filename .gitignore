@@ -241,3 +241,9 @@ exports/
 
 # Lambda layer update tool backups (contain sensitive state)
 infra/backups/
+
+# Large binary files and test data (should never be committed)
+duplicate_analysis/
+*.ndjson
+raw_images_to_reupload/
+receipt_metadata_backup_*.ndjson
