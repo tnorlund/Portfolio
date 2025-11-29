@@ -6,6 +6,7 @@ from typing import Literal
 from uuid import uuid4
 
 import pytest
+from botocore.exceptions import ClientError
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ChromaDBCollection
 from receipt_dynamo.entities.compaction_lock import CompactionLock
@@ -107,7 +108,15 @@ class TestLockManagerEdgeCases:
         mocker.patch.object(
             client,
             "get_compaction_lock",
-            side_effect=Exception("DynamoDB error"),
+            side_effect=ClientError(
+                {
+                    "Error": {
+                        "Code": "InternalServerError",
+                        "Message": "DynamoDB error",
+                    }
+                },
+                "get_compaction_lock",
+            ),
         )
 
         # Should return None on error
@@ -268,7 +277,15 @@ class TestLockManagerEdgeCases:
         mocker.patch.object(
             client,
             "delete_compaction_lock",
-            side_effect=Exception("Delete error"),
+            side_effect=ClientError(
+                {
+                    "Error": {
+                        "Code": "InternalServerError",
+                        "Message": "Delete error",
+                    }
+                },
+                "delete_compaction_lock",
+            ),
         )
 
         # Release should still clear state (lines 178-179)
@@ -296,7 +313,15 @@ class TestLockManagerEdgeCases:
         mocker.patch.object(
             client,
             "get_compaction_lock",
-            side_effect=Exception("DynamoDB error"),
+            side_effect=ClientError(
+                {
+                    "Error": {
+                        "Code": "InternalServerError",
+                        "Message": "DynamoDB error",
+                    }
+                },
+                "get_compaction_lock",
+            ),
         )
 
         # Should return False on exception (lines 404-410)
@@ -320,7 +345,15 @@ class TestLockManagerEdgeCases:
         mocker.patch.object(
             client,
             "get_compaction_lock",
-            side_effect=Exception("DynamoDB error"),
+            side_effect=ClientError(
+                {
+                    "Error": {
+                        "Code": "InternalServerError",
+                        "Message": "DynamoDB error",
+                    }
+                },
+                "get_compaction_lock",
+            ),
         )
 
         # Should return None on exception (lines 494-500)
@@ -344,7 +377,15 @@ class TestLockManagerEdgeCases:
         mocker.patch.object(
             client,
             "update_compaction_lock",
-            side_effect=Exception("Update error"),
+            side_effect=ClientError(
+                {
+                    "Error": {
+                        "Code": "InternalServerError",
+                        "Message": "Update error",
+                    }
+                },
+                "update_compaction_lock",
+            ),
         )
 
         # Should return False on exception (lines 494-500)
