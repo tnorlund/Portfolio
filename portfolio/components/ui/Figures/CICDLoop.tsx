@@ -73,16 +73,16 @@ const SVG_PATHS = {
 // Order of sections in the loop
 const SECTION_ORDER = ["Plan", "Code", "Build", "Test", "Release", "Deploy", "Operate", "Monitor"];
 
-// Color mapping for each section
+// Color mapping for each section (using CSS variables for theme support)
 const SECTION_COLORS: Record<string, string> = {
-    Plan: "#FFD700", // Yellow
-    Code: "#22C55E", // Green
-    Build: "#22C55E", // Green
-    Test: "#3B82F6", // Blue
-    Release: "#3B82F6", // Blue
-    Deploy: "#EF4444", // Red
-    Operate: "#EF4444", // Red
-    Monitor: "#FFD700", // Yellow
+    Plan: "var(--color-yellow)",
+    Code: "var(--color-green)",
+    Build: "var(--color-green)",
+    Test: "var(--color-blue)",
+    Release: "var(--color-blue)",
+    Deploy: "var(--color-red)",
+    Operate: "var(--color-red)",
+    Monitor: "var(--color-yellow)",
 };
 
 const CICDLoop: React.FC<CICDLoopProps> = ({
