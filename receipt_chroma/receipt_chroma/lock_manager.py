@@ -1,9 +1,8 @@
 """
 Distributed lock manager with heartbeat support for DynamoDB.
 
-This module provides a thread-safe lock manager that maintains distributed locks
-in DynamoDB with automatic heartbeat updates to prevent timeout during long-running
-operations.
+This module provides a thread-safe lock manager that maintains distributed
+locks in DynamoDB with automatic heartbeat updates for long-running tasks.
 """
 
 import logging
@@ -12,16 +11,26 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal, Optional
 
+from botocore.exceptions import BotoCoreError, ClientError
 from receipt_dynamo.constants import ChromaDBCollection
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
 from receipt_dynamo.entities.compaction_lock import CompactionLock
 
 logger = logging.getLogger(__name__)
 
+LOCK_EXCEPTIONS = (
+    ClientError,
+    BotoCoreError,
+    ValueError,
+    EntityAlreadyExistsError,
+)
+
 
 class LockManager:
     """
-    Manages distributed locks with heartbeat support for long-running operations.
+    Manages distributed locks with heartbeat support for long-running
+    operations.
 
     This class provides:
     - Distributed lock acquisition via DynamoDB
@@ -54,6 +63,7 @@ class LockManager:
         self,
         dynamo_client: DynamoClient,
         collection: ChromaDBCollection,
+        *,
         heartbeat_interval: int = 60,
         lock_duration_minutes: int = 5,
         max_heartbeat_failures: int = 3,
@@ -64,9 +74,9 @@ class LockManager:
         Args:
             dynamo_client: DynamoDB client for lock operations
             collection: ChromaDB collection this lock protects (lines or words)
-            heartbeat_interval: Seconds between heartbeat updates (default: 60)
-            lock_duration_minutes: Initial lock duration in minutes (default: 5)
-            max_heartbeat_failures: Max consecutive heartbeat failures before release (default: 3)
+            heartbeat_interval: Seconds between heartbeat updates
+            lock_duration_minutes: Initial lock duration in minutes
+            max_heartbeat_failures: Consecutive heartbeat failures allowed
         """
         self.dynamo_client = dynamo_client
         self.collection = collection
@@ -88,12 +98,30 @@ class LockManager:
         # Thread safety (using RLock to allow recursive acquisition)
         self._lock = threading.RLock()
 
+    @staticmethod
+    def _parse_expiration_timestamp(expires: Any) -> Optional[datetime]:
+        """
+        Convert a CompactionLock expires value into a datetime object.
+
+        Returns:
+            Parsed datetime or None if parsing fails.
+        """
+        if isinstance(expires, datetime):
+            return expires
+        if isinstance(expires, str):
+            try:
+                return datetime.fromisoformat(expires.replace("Z", "+00:00"))
+            except ValueError:
+                return None
+        return None
+
     def acquire(self, lock_id: str = "chromadb_compaction_lock") -> bool:
         """
         Acquire a distributed lock.
 
         Args:
-            lock_id: Identifier for the lock (default: "chromadb_compaction_lock")
+            lock_id: Identifier for the lock (default:
+                "chromadb_compaction_lock")
 
         Returns:
             True if lock was acquired, False otherwise
@@ -132,8 +160,8 @@ class LockManager:
                 self.lock_owner = owner
                 return True
 
-            except Exception as e:
-                logger.info("Failed to acquire lock %s: %s", lock_id, str(e))
+            except LOCK_EXCEPTIONS as exc:
+                logger.info("Failed to acquire lock %s: %s", lock_id, exc)
                 return False
 
     def release(self) -> None:
@@ -153,10 +181,8 @@ class LockManager:
                 )
                 logger.info("Released lock: %s", self.lock_id)
 
-            except Exception as e:
-                logger.error(
-                    "Error releasing lock %s: %s", self.lock_id, str(e)
-                )
+            except LOCK_EXCEPTIONS as exc:
+                logger.exception("Error releasing lock %s", self.lock_id)
             finally:
                 # Clear state even if delete fails
                 self.lock_id = None
@@ -250,11 +276,11 @@ class LockManager:
                 )
                 return True
 
-            except Exception as e:
+            except LOCK_EXCEPTIONS as exc:
                 logger.error(
                     "Failed to update heartbeat for lock %s: %s",
                     self.lock_id,
-                    str(e),
+                    exc,
                 )
                 return False
 
@@ -277,7 +303,7 @@ class LockManager:
                 with self._lock:
                     self.consecutive_heartbeat_failures += 1
                     logger.error(
-                        "Heartbeat update failed (attempt %d/%d) - lock may be lost",
+                        "Heartbeat update failed (attempt %d/%d); lock risk",
                         self.consecutive_heartbeat_failures,
                         self.max_heartbeat_failures,
                     )
@@ -288,7 +314,7 @@ class LockManager:
                         >= self.max_heartbeat_failures
                     ):
                         logger.critical(
-                            "Maximum heartbeat failures reached (%d) - releasing lock %s",
+                            "Max heartbeat failures (%d); releasing %s",
                             self.max_heartbeat_failures,
                             self.lock_id,
                         )
@@ -355,66 +381,57 @@ class LockManager:
                 current_lock = self.dynamo_client.get_compaction_lock(
                     self.lock_id, self.collection
                 )
-
-                if current_lock is None:
-                    logger.warning("Lock %s no longer exists", self.lock_id)
-                    return False
-
-                # Check ownership
-                if current_lock.owner != self.lock_owner:
-                    logger.warning(
-                        "Lock %s ownership mismatch: expected %s, found %s",
-                        self.lock_id,
-                        self.lock_owner,
-                        current_lock.owner,
-                    )
-                    return False
-
-                # Check expiration
-                now = datetime.now(timezone.utc)
-                # Convert expires string back to datetime for comparison
-                if isinstance(current_lock.expires, str):
-                    expires_dt = datetime.fromisoformat(
-                        current_lock.expires.replace("Z", "+00:00")
-                    )
-                else:
-                    expires_dt = current_lock.expires
-
-                # Ensure expires_dt is a datetime object
-                if not isinstance(expires_dt, datetime):
-                    logger.error(
-                        "expires_dt is not a datetime object: %s, value: %s",
-                        type(expires_dt),
-                        expires_dt,
-                    )
-                    return False
-
-                if expires_dt <= now:
-                    logger.warning(
-                        "Lock %s has expired: %s <= %s",
-                        self.lock_id,
-                        expires_dt.isoformat(),
-                        now.isoformat(),
-                    )
-                    return False
-
-                logger.debug("Lock ownership validated for %s", self.lock_id)
-                return True
-
-            except Exception as e:
-                logger.error(
-                    "Failed to validate ownership for lock %s: %s",
-                    self.lock_id,
-                    str(e),
+            except LOCK_EXCEPTIONS as exc:
+                logger.exception(
+                    "Failed to validate ownership for lock %s", self.lock_id
                 )
                 return False
+
+            is_valid = True
+            if current_lock is None:
+                logger.warning("Lock %s no longer exists", self.lock_id)
+                is_valid = False
+            elif current_lock.owner != self.lock_owner:
+                logger.warning(
+                    "Lock %s ownership mismatch: expected %s, found %s",
+                    self.lock_id,
+                    self.lock_owner,
+                    current_lock.owner,
+                )
+                is_valid = False
+            else:
+                expires_dt = self._parse_expiration_timestamp(
+                    current_lock.expires
+                )
+                if expires_dt is None:
+                    logger.error(
+                        "Invalid expiration value for lock %s: %s",
+                        self.lock_id,
+                        current_lock.expires,
+                    )
+                    is_valid = False
+                else:
+                    now = datetime.now(timezone.utc)
+                    if expires_dt <= now:
+                        logger.warning(
+                            "Lock %s has expired: %s <= %s",
+                            self.lock_id,
+                            expires_dt.isoformat(),
+                            now.isoformat(),
+                        )
+                        is_valid = False
+
+            if is_valid:
+                logger.debug("Lock ownership validated for %s", self.lock_id)
+            return is_valid
 
     def get_remaining_time(self) -> Optional[timedelta]:
         """
         Get the remaining time before the lock expires.
 
         Returns:
-            Timedelta representing remaining time, or None if no lock held or error
+            Timedelta representing remaining time, or None if no lock is held
+            or an error occurs.
         """
         with self._lock:
             if not self.lock_id or not self.lock_owner:
@@ -431,13 +448,16 @@ class LockManager:
                 ):
                     return None
 
-                # Convert expires string back to datetime for comparison
-                if isinstance(current_lock.expires, str):
-                    expires_dt = datetime.fromisoformat(
-                        current_lock.expires.replace("Z", "+00:00")
+                expires_dt = self._parse_expiration_timestamp(
+                    current_lock.expires
+                )
+                if expires_dt is None:
+                    logger.error(
+                        "Invalid expiration value for lock %s: %s",
+                        self.lock_id,
+                        current_lock.expires,
                     )
-                else:
-                    expires_dt = current_lock.expires
+                    return None
 
                 remaining = expires_dt - datetime.now(timezone.utc)
                 return (
@@ -446,11 +466,11 @@ class LockManager:
                     else timedelta(0)
                 )
 
-            except Exception as e:
+            except LOCK_EXCEPTIONS as exc:
                 logger.error(
                     "Failed to get remaining time for lock %s: %s",
                     self.lock_id,
-                    str(e),
+                    exc,
                 )
                 return None
 
@@ -491,11 +511,11 @@ class LockManager:
                 logger.info("Successfully refreshed lock %s", self.lock_id)
                 return True
 
-            except Exception as e:
+            except LOCK_EXCEPTIONS as exc:
                 logger.error(
                     "Failed to refresh lock %s: %s",
                     self.lock_id,
-                    str(e),
+                    exc,
                 )
                 return False
 

@@ -13,7 +13,6 @@ from typing import Literal
 from openai import OpenAI
 from openai.types.batch import Batch
 from openai.types.file_object import FileObject
-from receipt_dynamo.constants import BatchType
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import BatchSummary
 
@@ -90,7 +89,7 @@ def create_batch_summary(
                 image_id = parts[1]
                 receipt_id = int(parts[3])
                 receipt_refs.add((image_id, receipt_id))
-            except Exception:  # pylint: disable=broad-exception-caught
+            except (json.JSONDecodeError, IndexError, ValueError):
                 continue
 
     # Build and return the BatchSummary

@@ -20,6 +20,7 @@ def create_word_metadata(
     word: ReceiptWord,
     left_word: str,
     right_word: str,
+    *,
     merchant_name: Optional[str] = None,
     label_status: str = "unvalidated",
     source: str = "openai_embedding_batch",
@@ -189,7 +190,7 @@ def enrich_word_metadata_with_anchors(
             url_norm = normalize_url(val or text)
             if url_norm:
                 metadata["normalized_url"] = url_norm
-    except Exception:
+    except (AttributeError, TypeError, ValueError):
         # Silently fail - anchor enrichment is optional
         pass
 

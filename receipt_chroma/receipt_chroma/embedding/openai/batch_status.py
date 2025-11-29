@@ -351,9 +351,8 @@ def handle_expired_status(
             openai_batch_id,
         )
 
-    # TODO: Consider marking successful items as COMPLETED
-    # This would require implementing a similar function to mark_items_for_retry
-    # but setting status to COMPLETED instead of FAILED
+    # NOTE: Consider marking successful items as COMPLETED by adding a
+    # companion to mark_items_for_retry that promotes succeeded entries.
 
     return {
         "action": "process_partial",
