@@ -253,6 +253,41 @@ class LabelHarmonizerV2:
 
         return words_by_key
 
+    def _check_edge_cases(
+        self,
+        word_text: str,
+        suggested_label_type: str,
+        merchant_name: Optional[str],
+    ) -> Optional[Any]:
+        """
+        Check if word/label combination matches any known edge case.
+
+        Args:
+            word_text: The word text to check
+            suggested_label_type: The CORE_LABEL type
+            merchant_name: Optional merchant name for merchant-specific checks
+
+        Returns:
+            Matching LabelEdgeCase if found, None otherwise
+        """
+        if not word_text:
+            return None
+
+        try:
+            from receipt_dynamo.entities.label_edge_case import LabelEdgeCase
+
+            edge_case = self.dynamo.check_edge_case_match(
+                word_text=word_text,
+                label_type=suggested_label_type,
+                merchant_name=merchant_name,
+            )
+
+            return edge_case
+        except Exception as e:
+            # Don't fail validation if edge case check fails
+            logger.debug(f"Edge case check failed: {e}")
+            return None
+
     async def _validate_suggestion_with_similarity(
         self,
         word: LabelRecord,
@@ -265,8 +300,9 @@ class LabelHarmonizerV2:
         and having an LLM decide if the suggestion makes sense.
 
         This prevents garbage suggestions like "Vons." -> WEBSITE by:
-        1. Finding semantically similar words that have the suggested label type
-        2. Asking the LLM if these similar words support the suggestion
+        1. Checking known edge cases first (fast, free)
+        2. Finding semantically similar words that have the suggested label type
+        3. Asking the LLM if these similar words support the suggestion
 
         Args:
             word: The LabelRecord being classified (has image_id, receipt_id, etc.)
@@ -279,12 +315,37 @@ class LabelHarmonizerV2:
             - is_validated: True if LLM validates the suggestion
             - similar_words_context: List of similar word info, or None
         """
-        if not self.chroma or not self.embed_fn:
-            logger.debug("ChromaDB not available for similarity validation")
-            return False, None
-
         if not word.word_text:
             logger.debug("Word text empty, cannot validate")
+            return False, None
+
+        # Check edge cases first (fast, free, avoids expensive LLM calls)
+        edge_case = self._check_edge_cases(
+            word_text=word.word_text,
+            suggested_label_type=suggested_label_type,
+            merchant_name=merchant_name,
+        )
+
+        if edge_case:
+            logger.info(
+                "Edge case match: '%s' -> %s rejected (known invalid pattern: %s)",
+                word.word_text,
+                suggested_label_type,
+                edge_case.reason,
+            )
+            # Update statistics (async, non-blocking)
+            try:
+                self.dynamo.update_edge_case_statistics(
+                    edge_case,
+                    times_identified=edge_case.times_identified + 1,
+                )
+            except Exception as e:
+                logger.debug(f"Failed to update edge case statistics: {e}")
+            # Reject immediately - no need for ChromaDB or LLM validation
+            return False, None
+
+        if not self.chroma or not self.embed_fn:
+            logger.debug("ChromaDB not available for similarity validation")
             return False, None
 
         try:
@@ -1273,10 +1334,21 @@ Respond with JSON: `is_valid` (boolean), `reasoning` (string)"""
                 except Exception as e:
                     logger.debug(f"Could not fetch line context for similar word {similar_id}: {e}")
 
+                # Parse valid_labels and invalid_labels to show LLM complete label information
+                valid_labels_str = metadata.get("valid_labels", "")
+                invalid_labels_str = metadata.get("invalid_labels", "")
+                # Extract labels from comma-delimited format: ",LABEL1,LABEL2," -> ["LABEL1", "LABEL2"]
+                valid_labels_list = [label.strip() for label in valid_labels_str.split(",") if label.strip()]
+                invalid_labels_list = [label.strip() for label in invalid_labels_str.split(",") if label.strip()]
+
                 similar_words_info.append({
                     "text": metadata.get("text", "unknown"),
                     "similarity": f"{similarity:.3f}",
-                    "valid_labels": metadata.get("valid_labels", ""),
+                    "valid_labels": valid_labels_list,  # List of valid labels
+                    "invalid_labels": invalid_labels_list,  # List of invalid labels (important negative signal!)
+                    "label_status": metadata.get("label_status", "unvalidated"),
+                    "has_current_label_valid": group.label_type in valid_labels_list,
+                    "has_current_label_invalid": group.label_type in invalid_labels_list,  # Strong negative signal!
                     "line_context": similar_line_context,
                     "surrounding_words": similar_surrounding_words,
                     "surrounding_lines": similar_surrounding_lines,
@@ -1318,22 +1390,69 @@ You are analyzing receipt word labels for consistency. Your task is to determine
 
 {context_section}
 
-## Similar Words with VALID `{group.label_type}` Labels
+## Similar Words
 
 """
+        # Group similar words by label status for better organization
         if similar_words_info:
-            for i, info in enumerate(similar_words_info, 1):
-                prompt += f"### Example {i}\n\n"
-                prompt += f"- **Text:** `'{info['text']}'`\n"
-                prompt += f"- **Similarity:** {info['similarity']}\n"
-                prompt += f"- **Labels:** {info['valid_labels']}\n"
-                if info.get('line_context'):
-                    prompt += f"- **Line context:** `\"{info['line_context']}\"`\n"
-                if info.get('surrounding_words'):
-                    prompt += f"- **Surrounding words:** `{' '.join(info['surrounding_words'])}`\n"
-                if info.get('surrounding_lines'):
-                    prompt += "- **Surrounding lines** (spatial order, target line marked):\n  ```\n  " + "\n  ".join(info['surrounding_lines']) + "\n  ```\n"
-                prompt += "\n"
+            with_label_valid = [w for w in similar_words_info if w.get('has_current_label_valid')]
+            with_label_invalid = [w for w in similar_words_info if w.get('has_current_label_invalid')]
+            without_label = [w for w in similar_words_info if not w.get('has_current_label_valid') and not w.get('has_current_label_invalid')]
+
+            if with_label_valid:
+                prompt += f"\n### Similar Words WITH `{group.label_type}` Label (VALID - positive signal):\n\n"
+                for i, info in enumerate(with_label_valid[:10], 1):  # Show up to 10 with the label
+                    valid_labels_str = ", ".join(info.get('valid_labels', [])) or "none"
+                    invalid_labels_str = ", ".join(info.get('invalid_labels', [])) or "none"
+                    status = info.get('label_status', 'unknown')
+                    prompt += f"{i}. **\"{info['text']}\"** ({info['similarity']} similar, status: {status})\n"
+                    prompt += f"   Valid labels: {valid_labels_str} | Invalid labels: {invalid_labels_str}\n"
+                    if info.get('line_context'):
+                        prompt += f"   Line context: `\"{info['line_context']}\"`\n"
+                    if info.get('surrounding_words'):
+                        prompt += f"   Surrounding words: `{' '.join(info['surrounding_words'])}`\n"
+                    if info.get('surrounding_lines'):
+                        prompt += "   Surrounding lines (spatial order, target line marked):\n   ```\n"
+                        prompt += "\n".join(f"   {line}" for line in info['surrounding_lines'])
+                        prompt += "\n   ```\n"
+                    prompt += "\n"
+
+            if with_label_invalid:
+                prompt += f"\n### ⚠️ Similar Words WITH `{group.label_type}` Label (INVALID - strong negative signal!):\n\n"
+                prompt += f"**CRITICAL**: These similar words had `{group.label_type}` explicitly rejected. This is strong evidence the word being evaluated may also NOT belong in this group!\n\n"
+                for i, info in enumerate(with_label_invalid[:5], 1):  # Show up to 5 that have this label marked INVALID
+                    valid_labels_str = ", ".join(info.get('valid_labels', [])) or "none"
+                    invalid_labels_str = ", ".join(info.get('invalid_labels', [])) or "none"
+                    status = info.get('label_status', 'unknown')
+                    prompt += f"{i}. **\"{info['text']}\"** ({info['similarity']} similar, status: {status})\n"
+                    prompt += f"   Valid labels: {valid_labels_str} | Invalid labels: {invalid_labels_str}\n"
+                    if info.get('line_context'):
+                        prompt += f"   Line context: `\"{info['line_context']}\"`\n"
+                    if info.get('surrounding_words'):
+                        prompt += f"   Surrounding words: `{' '.join(info['surrounding_words'])}`\n"
+                    if info.get('surrounding_lines'):
+                        prompt += "   Surrounding lines (spatial order, target line marked):\n   ```\n"
+                        prompt += "\n".join(f"   {line}" for line in info['surrounding_lines'])
+                        prompt += "\n   ```\n"
+                    prompt += "\n"
+
+            if without_label:
+                prompt += f"\n### Similar Words WITHOUT `{group.label_type}` Label (for comparison):\n\n"
+                for i, info in enumerate(without_label[:5], 1):  # Show up to 5 without the label for contrast
+                    valid_labels_str = ", ".join(info.get('valid_labels', [])) or "none"
+                    invalid_labels_str = ", ".join(info.get('invalid_labels', [])) or "none"
+                    status = info.get('label_status', 'unknown')
+                    prompt += f"{i}. **\"{info['text']}\"** ({info['similarity']} similar, status: {status})\n"
+                    prompt += f"   Valid labels: {valid_labels_str} | Invalid labels: {invalid_labels_str}\n"
+                    if info.get('line_context'):
+                        prompt += f"   Line context: `\"{info['line_context']}\"`\n"
+                    if info.get('surrounding_words'):
+                        prompt += f"   Surrounding words: `{' '.join(info['surrounding_words'])}`\n"
+                    if info.get('surrounding_lines'):
+                        prompt += "   Surrounding lines (spatial order, target line marked):\n   ```\n"
+                        prompt += "\n".join(f"   {line}" for line in info['surrounding_lines'])
+                        prompt += "\n   ```\n"
+                    prompt += "\n"
         else:
             prompt += "None found.\n\n"
 
@@ -1353,11 +1472,13 @@ Does the word `"{word.word_text}"` belong in this group of words with the label 
 
 2. **Pattern consistency:** Does it match the pattern of other VALID `{group.label_type}` words in the similar examples provided?
 
-3. **Semantic similarity:** Does the word text make sense as a `{group.label_type}` in this specific context?
+3. **Negative signals (CRITICAL):** ⚠️ If you see similar words where `{group.label_type}` is in the invalid_labels, this is strong evidence the word being evaluated may also NOT belong in this group! Words that were explicitly rejected for this label type are a strong negative signal.
 
-4. **Similarity scores:** Does it have enough similar matches with VALID labels from the same merchant?
+4. **Semantic similarity:** Does the word text make sense as a `{group.label_type}` in this specific context?
 
-5. **OCR/scanning errors:** Receipt text may have word boundary issues, missing characters, or character substitutions."""
+5. **Similarity scores:** Does it have enough similar matches with VALID labels from the same merchant?
+
+6. **OCR/scanning errors:** Receipt text may have word boundary issues, missing characters, or character substitutions."""
 
         # Add merchant name component criteria only for MERCHANT_NAME label type
         if group.label_type == "MERCHANT_NAME":

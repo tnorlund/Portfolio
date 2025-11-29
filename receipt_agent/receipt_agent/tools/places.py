@@ -144,6 +144,110 @@ def verify_with_google_places(
         return {"error": str(e)}
 
 
+class FindBusinessesAtAddressInput(BaseModel):
+    """Input schema for find_businesses_at_address tool."""
+
+    address: str = Field(
+        description="Address to search for businesses at (e.g., '166 W Hillcrest Dr, Thousand Oaks, CA')"
+    )
+
+
+@tool(args_schema=FindBusinessesAtAddressInput)
+def find_businesses_at_address(
+    address: str,
+    # Injected at runtime - accepts PlacesClient from receipt_places
+    _places_client: Optional[Union["PlacesClient", Any]] = None,
+) -> dict[str, Any]:
+    """
+    Find businesses at a specific address using Google Places API.
+
+    Use this when Google Places returns an address as the merchant name
+    (e.g., "166 W Hillcrest Dr" instead of a business name). This tool
+    searches for actual businesses at that address so you can identify
+    the correct merchant.
+
+    CACHING: Uses receipt_places.PlacesClient which automatically caches
+    address searches for 30 days.
+
+    Returns a list of businesses found at the address, each with:
+    - place_id: Google Place ID
+    - name: Business name
+    - formatted_address: Full address
+    - phone_number: Phone number if available
+    - types: Business types (restaurant, store, etc.)
+
+    You can then reason about which business matches the receipt based on:
+    - Business name matching receipt content
+    - Business type matching receipt type
+    - Phone number matching receipt phone
+    """
+    if _places_client is None:
+        return {"error": "Google Places client not configured. Install receipt_places."}
+
+    if not address:
+        return {"error": "Address is required"}
+
+    try:
+        logger.info("🔍 Places search for businesses at address: %s...", address[:50])
+
+        # First, geocode the address to get lat/lng
+        geocode_result = _places_client.search_by_address(address)
+        if not geocode_result:
+            return {
+                "found": False,
+                "businesses": [],
+                "message": f"Could not geocode address: {address}",
+            }
+
+        # Extract location from geocode result
+        geometry = geocode_result.get("geometry", {})
+        location = geometry.get("location", {})
+        lat = location.get("lat")
+        lng = location.get("lng")
+
+        if not lat or not lng:
+            return {
+                "found": False,
+                "businesses": [],
+                "message": f"Could not get coordinates for address: {address}",
+            }
+
+        # Now search for nearby businesses (within 50 meters of the address)
+        nearby_businesses = _places_client.search_nearby(
+            lat=lat,
+            lng=lng,
+            radius=50,  # 50 meters - very close to the address
+        )
+
+        if not nearby_businesses:
+            return {
+                "found": False,
+                "businesses": [],
+                "address_searched": address,
+                "coordinates": {"lat": lat, "lng": lng},
+                "message": f"No businesses found within 50m of address",
+            }
+
+        # Format results
+        businesses = []
+        for business in nearby_businesses[:10]:  # Limit to 10
+            formatted = _format_place_result(business)
+            businesses.append(formatted)
+
+        return {
+            "found": True,
+            "businesses": businesses,
+            "address_searched": address,
+            "coordinates": {"lat": lat, "lng": lng},
+            "count": len(businesses),
+            "message": f"Found {len(businesses)} business(es) at address",
+        }
+
+    except Exception as e:
+        logger.error("Error finding businesses at address: %s", e)
+        return {"error": str(e)}
+
+
 def _format_place_result(place_data: dict[str, Any]) -> dict[str, Any]:
     """Format Google Places result into a consistent structure."""
     return {

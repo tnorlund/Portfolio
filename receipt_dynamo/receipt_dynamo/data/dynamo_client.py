@@ -18,6 +18,7 @@ from receipt_dynamo.data._job_metric import _JobMetric
 from receipt_dynamo.data._job_resource import _JobResource
 from receipt_dynamo.data._job_status import _JobStatus
 from receipt_dynamo.data._label_count_cache import _LabelCountCache
+from receipt_dynamo.data._label_edge_case import _LabelEdgeCase
 from receipt_dynamo.data._letter import _Letter
 from receipt_dynamo.data._line import _Line
 from receipt_dynamo.data._ocr_job import _OCRJob
@@ -100,6 +101,7 @@ class DynamoClient(
     _AIUsageMetric,
     _CompactionLock,
     _CompactionRun,
+    _LabelEdgeCase,
 ):
     """A class used to represent a DynamoDB client."""
 

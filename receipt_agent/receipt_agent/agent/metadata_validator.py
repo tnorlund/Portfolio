@@ -3,12 +3,15 @@ MetadataValidatorAgent - Main agent class for receipt metadata validation.
 
 This module provides a high-level API for validating receipt metadata
 using ChromaDB similarity search and cross-reference verification.
+
+Supports two modes:
+1. Deterministic (default): Fixed workflow with predetermined nodes
+2. Agentic: LLM decides which tools to call with guardrailed tools
 """
 
 import asyncio
-import logging
 import os
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Literal, Optional
 
 import structlog
 from langsmith import Client as LangSmithClient
@@ -16,8 +19,12 @@ from langsmith import traceable
 
 from receipt_agent.config.settings import Settings, get_settings
 from receipt_agent.graph.workflow import create_validation_graph, run_validation
-from receipt_agent.state.models import ValidationResult, ValidationState, ValidationStatus
-from receipt_agent.tools.registry import ToolRegistry, create_tool_registry
+from receipt_agent.graph.agentic_workflow import (
+    create_agentic_validation_graph,
+    run_agentic_validation,
+)
+from receipt_agent.state.models import ValidationResult, ValidationStatus
+from receipt_agent.tools.registry import create_tool_registry
 
 logger = structlog.get_logger(__name__)
 
@@ -69,6 +76,7 @@ class MetadataValidatorAgent:
         places_api: Optional[Any] = None,
         settings: Optional[Settings] = None,
         enable_tracing: bool = True,
+        mode: Literal["deterministic", "agentic"] = "deterministic",
     ):
         """
         Initialize the MetadataValidatorAgent.
@@ -80,12 +88,16 @@ class MetadataValidatorAgent:
             places_api: Optional Google Places API client
             settings: Configuration settings
             enable_tracing: Whether to enable LangSmith tracing
+            mode: Validation mode
+                - "deterministic": Fixed workflow with predetermined steps (default)
+                - "agentic": LLM autonomously decides which tools to call
         """
         self._settings = settings or get_settings()
         self._dynamo_client = dynamo_client
         self._chroma_client = chroma_client
         self._places_api = places_api
         self._enable_tracing = enable_tracing
+        self._mode = mode
 
         # Initialize embedding function
         if embed_fn is not None:
@@ -106,17 +118,29 @@ class MetadataValidatorAgent:
         if enable_tracing:
             self._setup_langsmith()
 
-        # Create the validation graph
-        self._graph = create_validation_graph(
-            dynamo_client=dynamo_client,
-            chroma_client=chroma_client,
-            embed_fn=self._embed_fn,
-            places_api=places_api,
-            settings=self._settings,
-        )
+        # Create the validation graph based on mode
+        self._agentic_state_holder: Optional[dict] = None
+
+        if mode == "agentic":
+            self._graph, self._agentic_state_holder = create_agentic_validation_graph(
+                dynamo_client=dynamo_client,
+                chroma_client=chroma_client,
+                embed_fn=self._embed_fn,
+                places_api=places_api,
+                settings=self._settings,
+            )
+        else:
+            self._graph = create_validation_graph(
+                dynamo_client=dynamo_client,
+                chroma_client=chroma_client,
+                embed_fn=self._embed_fn,
+                places_api=places_api,
+                settings=self._settings,
+            )
 
         logger.info(
             "MetadataValidatorAgent initialized",
+            mode=mode,
             ollama_model=self._settings.ollama_model,
             tracing_enabled=enable_tracing,
         )
@@ -189,8 +213,21 @@ class MetadataValidatorAgent:
             "Starting metadata validation",
             image_id=image_id,
             receipt_id=receipt_id,
+            mode=self._mode,
         )
 
+        if self._mode == "agentic":
+            return await self._validate_agentic(image_id, receipt_id)
+        else:
+            return await self._validate_deterministic(image_id, receipt_id, thread_id)
+
+    async def _validate_deterministic(
+        self,
+        image_id: str,
+        receipt_id: int,
+        thread_id: Optional[str] = None,
+    ) -> ValidationResult:
+        """Run deterministic validation workflow."""
         try:
             final_state = await run_validation(
                 image_id=image_id,
@@ -240,6 +277,64 @@ class MetadataValidatorAgent:
                 reasoning=f"Exception during validation: {str(e)}",
             )
 
+    async def _validate_agentic(
+        self,
+        image_id: str,
+        receipt_id: int,
+    ) -> ValidationResult:
+        """Run agentic validation with tool-calling LLM."""
+        if self._agentic_state_holder is None:
+            return ValidationResult(
+                status=ValidationStatus.ERROR,
+                confidence=0.0,
+                reasoning="Agentic mode not properly initialized",
+            )
+
+        try:
+            decision = await run_agentic_validation(
+                graph=self._graph,
+                state_holder=self._agentic_state_holder,
+                image_id=image_id,
+                receipt_id=receipt_id,
+            )
+
+            # Convert decision dict to ValidationResult
+            status_map = {
+                "VALIDATED": ValidationStatus.VALIDATED,
+                "INVALID": ValidationStatus.INVALID,
+                "NEEDS_REVIEW": ValidationStatus.NEEDS_REVIEW,
+            }
+
+            status = status_map.get(decision.get("status", "NEEDS_REVIEW"), ValidationStatus.NEEDS_REVIEW)
+
+            logger.info(
+                "Agentic validation complete",
+                image_id=image_id,
+                receipt_id=receipt_id,
+                status=status.value,
+                confidence=decision.get("confidence", 0.0),
+            )
+
+            return ValidationResult(
+                status=status,
+                confidence=decision.get("confidence", 0.0),
+                reasoning=decision.get("reasoning", ""),
+                recommendations=decision.get("evidence", []),
+            )
+
+        except Exception as e:
+            logger.error(
+                "Agentic validation error",
+                image_id=image_id,
+                receipt_id=receipt_id,
+                error=str(e),
+            )
+            return ValidationResult(
+                status=ValidationStatus.ERROR,
+                confidence=0.0,
+                reasoning=f"Exception during agentic validation: {str(e)}",
+            )
+
     def validate_sync(
         self,
         image_id: str,
@@ -275,8 +370,6 @@ class MetadataValidatorAgent:
         Returns:
             List of ((image_id, receipt_id), ValidationResult) tuples
         """
-        import asyncio
-
         semaphore = asyncio.Semaphore(max_concurrency)
 
         async def validate_one(
@@ -306,7 +399,7 @@ class MetadataValidatorAgent:
                         reasoning=f"Exception: {str(result)}",
                     ),
                 ))
-            else:
+            elif isinstance(result, tuple):
                 processed_results.append(result)
 
         return processed_results
@@ -323,4 +416,9 @@ class MetadataValidatorAgent:
     def settings(self) -> Settings:
         """Get current settings."""
         return self._settings
+
+    @property
+    def mode(self) -> str:
+        """Get current validation mode ('deterministic' or 'agentic')."""
+        return self._mode
 

@@ -67,6 +67,9 @@ def create_chroma_client(
     - Line embeddings (collection: "lines")
     - Word embeddings (collection: "words")
 
+    If RECEIPT_AGENT_CHROMA_LINES_DIRECTORY and RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY
+    are set, creates separate clients for each collection and returns a DualChromaClient.
+
     Args:
         persist_directory: Local path to ChromaDB (defaults to settings)
         http_url: HTTP URL for remote ChromaDB (defaults to settings)
@@ -74,16 +77,105 @@ def create_chroma_client(
         settings: Configuration settings
 
     Returns:
-        ChromaClient instance from receipt_chroma
+        ChromaClient instance from receipt_chroma, or DualChromaClient if separate directories are set
     """
+    import os
+
     if settings is None:
         settings = get_settings()
 
+    # Check for separate lines/words directories first (new approach)
+    lines_dir = os.environ.get("RECEIPT_AGENT_CHROMA_LINES_DIRECTORY")
+    words_dir = os.environ.get("RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY")
+
+    if lines_dir and words_dir:
+        # Create separate clients for lines and words
+        try:
+            # Try direct import first, fallback to package import
+            try:
+                from receipt_chroma.data.chroma_client import ChromaClient
+            except ImportError:
+                from receipt_chroma import ChromaClient
+
+            lines_client = ChromaClient(persist_directory=lines_dir, mode=mode)
+            words_client = ChromaClient(persist_directory=words_dir, mode=mode)
+
+            # Create DualChromaClient wrapper
+            class DualChromaClient:
+                """Wrapper client that routes queries to separate lines/words clients."""
+
+                def __init__(self, lines_client, words_client):
+                    self.lines_client = lines_client
+                    self.words_client = words_client
+
+                def query(self, collection_name, **kwargs):
+                    """Route query to the appropriate client based on collection_name."""
+                    if collection_name == "lines":
+                        return self.lines_client.query(collection_name="lines", **kwargs)
+                    elif collection_name == "words":
+                        return self.words_client.query(collection_name="words", **kwargs)
+                    else:
+                        raise ValueError(f"Unknown collection: {collection_name}")
+
+                def get(self, collection_name, **kwargs):
+                    """Route get to the appropriate client based on collection_name."""
+                    if collection_name == "lines":
+                        return self.lines_client.get(collection_name="lines", **kwargs)
+                    elif collection_name == "words":
+                        return self.words_client.get(collection_name="words", **kwargs)
+                    else:
+                        raise ValueError(f"Unknown collection: {collection_name}")
+
+                def list_collections(self):
+                    """Return both collections."""
+                    return ["lines", "words"]
+
+                def get_collection(self, collection_name, **kwargs):
+                    """Route get_collection to the appropriate client."""
+                    if collection_name == "lines":
+                        return self.lines_client.get_collection("lines", **kwargs)
+                    elif collection_name == "words":
+                        return self.words_client.get_collection("words", **kwargs)
+                    else:
+                        raise ValueError(f"Unknown collection: {collection_name}")
+
+                def __enter__(self):
+                    if hasattr(self.lines_client, "__enter__"):
+                        self.lines_client.__enter__()
+                    if hasattr(self.words_client, "__enter__"):
+                        self.words_client.__enter__()
+                    return self
+
+                def __exit__(self, exc_type, exc_val, exc_tb):
+                    if hasattr(self.lines_client, "__exit__"):
+                        self.lines_client.__exit__(exc_type, exc_val, exc_tb)
+                    if hasattr(self.words_client, "__exit__"):
+                        self.words_client.__exit__(exc_type, exc_val, exc_tb)
+
+            client = DualChromaClient(lines_client, words_client)
+            logger.info(f"Created ChromaDB client at: {lines_dir}")
+            logger.info(f"Created ChromaDB client at: {words_dir}")
+            return client
+
+        except ImportError as e:
+            logger.error(
+                "Failed to import receipt_chroma. "
+                "Install with: pip install receipt_chroma"
+            )
+            raise ImportError(
+                "receipt_chroma package required for ChromaDB operations"
+            ) from e
+
+    # Fall back to single client (legacy approach)
     persist_dir = persist_directory or settings.chroma_persist_directory
     url = http_url or settings.chroma_http_url
 
     try:
-        from receipt_chroma.data.chroma_client import ChromaClient
+        # Try direct import first, fallback to package import
+        try:
+            from receipt_chroma.data.chroma_client import ChromaClient
+        except ImportError:
+            from receipt_chroma import ChromaClient
 
         if url:
             client = ChromaClient(http_url=url, mode=mode)
@@ -94,7 +186,8 @@ def create_chroma_client(
         else:
             raise ValueError(
                 "Either persist_directory or http_url must be specified. "
-                "Set RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY or RECEIPT_AGENT_CHROMA_HTTP_URL"
+                "Set RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY, RECEIPT_AGENT_CHROMA_HTTP_URL, "
+                "or RECEIPT_AGENT_CHROMA_LINES_DIRECTORY + RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"
             )
 
         return client

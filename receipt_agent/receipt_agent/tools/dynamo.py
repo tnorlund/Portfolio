@@ -124,12 +124,13 @@ def get_receipt_context(
 
     try:
         # Get receipt details
-        image, receipt, words, lines, _, labels = _dynamo_client.get_receipt_details(
+        # Returns ReceiptDetails object with: receipt, lines, words, letters, labels
+        details = _dynamo_client.get_receipt_details(
             image_id=image_id,
             receipt_id=receipt_id,
         )
 
-        if receipt is None:
+        if details.receipt is None:
             return {
                 "found": False,
                 "message": f"Receipt {image_id}#{receipt_id} not found",
@@ -137,10 +138,10 @@ def get_receipt_context(
 
         # Extract text lines
         raw_lines = []
-        if lines:
+        if details.lines:
             raw_lines = [
                 {"line_id": ln.line_id, "text": ln.text}
-                for ln in sorted(lines, key=lambda x: x.line_id)
+                for ln in sorted(details.lines, key=lambda x: x.line_id)
             ]
 
         # Extract candidate merchant data from words
@@ -150,8 +151,8 @@ def get_receipt_context(
             "phones": [],
         }
 
-        if words:
-            for word in words:
+        if details.words:
+            for word in details.words:
                 ext = getattr(word, "extracted_data", None) or {}
                 data_type = (ext.get("type") or "").lower()
 
@@ -170,8 +171,8 @@ def get_receipt_context(
 
         # Get labels for context
         label_summary = {}
-        if labels:
-            for label in labels:
+        if details.labels:
+            for label in details.labels:
                 label_type = label.label
                 label_summary[label_type] = label_summary.get(label_type, 0) + 1
 
@@ -180,7 +181,7 @@ def get_receipt_context(
             "image_id": image_id,
             "receipt_id": receipt_id,
             "line_count": len(raw_lines),
-            "word_count": len(words) if words else 0,
+            "word_count": len(details.words) if details.words else 0,
             "raw_lines": raw_lines[:30],  # Limit to first 30 lines
             "extracted_data": extracted_data,
             "label_summary": label_summary,

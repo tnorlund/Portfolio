@@ -334,6 +334,58 @@ def _process_single(payload: Dict[str, Any]):
                 merchant_name,
                 metadata.place_id,
             )
+
+            # Step 2: Use metadata finder agent to find any missing fields
+            # This runs after initial creation to fill in place_id, address, phone_number
+            # if they weren't found by the initial workflow
+            try:
+                import sys
+                import os
+                # Add current directory to path for imports
+                handler_dir = os.path.dirname(os.path.abspath(__file__))
+                if handler_dir not in sys.path:
+                    sys.path.insert(0, handler_dir)
+                from metadata_finder_processor import MetadataFinderProcessor
+
+                finder_processor = MetadataFinderProcessor(
+                    table_name=dynamo_table,
+                    chromadb_bucket=chroma_bucket,
+                    chroma_http_endpoint=chroma_http,
+                    google_places_api_key=google_places_key,
+                    openai_api_key=os.environ.get("OPENAI_API_KEY"),
+                    ollama_api_key=ollama_key,
+                    langsmith_api_key=langchain_key,
+                )
+
+                logger.info("Running metadata finder agent to find missing fields...")
+                finder_result = asyncio.run(
+                    finder_processor.find_missing_metadata(
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                        receipt_lines=lines,  # Pass lines from NDJSON (avoids DynamoDB read)
+                        receipt_words=words,  # Pass words from NDJSON (avoids DynamoDB read)
+                        existing_metadata=metadata,
+                    )
+                )
+
+                if finder_result.get("success") and finder_result.get("fields_updated"):
+                    updated_fields = finder_result.get("fields_updated", [])
+                    logger.info(
+                        "✅ Metadata finder updated %d fields: %s",
+                        len(updated_fields),
+                        ", ".join(updated_fields)
+                    )
+                    # Reload metadata to get updated version
+                    metadata = dynamo.get_receipt_metadata(image_id, receipt_id)
+                elif finder_result.get("success"):
+                    logger.info("Metadata finder ran but no fields were updated")
+                else:
+                    reason = finder_result.get("reason", "unknown")
+                    logger.info("Metadata finder skipped or failed: %s", reason)
+
+            except Exception as finder_error:
+                # Don't fail the whole process if finder fails
+                logger.warning("⚠️ Metadata finder error (non-critical): %s", finder_error)
         else:
             logger.warning("LangGraph workflow did not create ReceiptMetadata")
     except Exception as e:
