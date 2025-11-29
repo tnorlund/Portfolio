@@ -26,6 +26,8 @@ import {
 } from "../components/ui/Figures";
 import {
   ChromaLogo,
+  ClaudeLogo,
+  CursorLogo,
   DockerLogo,
   GithubActionsLogo,
   GithubLogo,
@@ -587,6 +589,26 @@ export default function ReceiptPage({
         understanding, and architecting solutions, I prototype and experiment
         faster.
       </p>
+
+      <h2>AI Hype</h2>
+
+      <p>
+        I fell for it. I started this journey by using AI to write code. The
+        two AI tools I used most were Cursor and Claude.
+      </p>
+
+      <ClientOnly>
+        <div className={styles["logos-container"]}>
+          <AnimatedInView>
+            <CursorLogo />
+          </AnimatedInView>
+          <AnimatedInView>
+            <ClaudeLogo />
+          </AnimatedInView>
+        </div>
+      </ClientOnly>
+
+
 
       <h2>Pulumi</h2>
 
