@@ -128,6 +128,7 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
     );
 
     const pulseIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const pulseTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
     // Trigger sequential animations when mounted
     // Animate once when component mounts (inView should be true due to fallbackInView)
@@ -165,6 +166,9 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
                 clearInterval(pulseIntervalRef.current);
                 pulseIntervalRef.current = null;
             }
+            // Clear all pulse timeouts
+            pulseTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
+            pulseTimeoutsRef.current = [];
             return;
         }
 
@@ -175,9 +179,13 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
         const continuousAnimationTimeout = setTimeout(() => {
             // Start continuous pulsing animation loop
             const startPulse = () => {
+                // Clear previous pulse timeouts before starting new ones
+                pulseTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
+                pulseTimeoutsRef.current = [];
+
                 SECTION_ORDER.forEach((_, index) => {
                     // Stagger the pulse for each section
-                    setTimeout(() => {
+                    const pulseTimeout = setTimeout(() => {
                         api.start((i) => {
                             if (i === index) {
                                 return {
@@ -190,7 +198,7 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
                         });
 
                         // Return to normal after pulse
-                        setTimeout(() => {
+                        const returnTimeout = setTimeout(() => {
                             api.start((i) => {
                                 if (i === index) {
                                     return {
@@ -202,7 +210,9 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
                                 return false;
                             });
                         }, 400);
+                        pulseTimeoutsRef.current.push(returnTimeout);
                     }, index * 100); // Stagger pulses
+                    pulseTimeoutsRef.current.push(pulseTimeout);
                 });
             };
 
@@ -217,6 +227,9 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
                 clearInterval(pulseIntervalRef.current);
                 pulseIntervalRef.current = null;
             }
+            // Clear all pulse timeouts
+            pulseTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
+            pulseTimeoutsRef.current = [];
         };
     }, [inView, mounted, staggerDelay, animationDuration, api]);
 
