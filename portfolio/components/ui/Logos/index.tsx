@@ -13,5 +13,6 @@ export { default as OllamaLogo } from "./ollamaLogo";
 export { default as LangChainLogo } from "./LangChainLogo";
 export { default as DockerLogo } from "./DockerLogo";
 export { default as ChromaLogo } from "./ChromaLogo";
+export { default as ClaudeLogo } from "./ClaudeLogo";
 export { default as GithubActionsLogo } from "./GithubActionsLogo";
 export { default as CursorLogo } from "./CursorLogo";
