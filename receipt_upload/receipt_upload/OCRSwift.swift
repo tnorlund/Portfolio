@@ -116,9 +116,26 @@ func normalizedRect(from rect: CGRect) -> NormalizedRect {
                           height: rect.size.height)
 }
 
-/// A simple placeholder for angle calculations.
-func angles(for rect: CGRect) -> (degrees: CGFloat, radians: CGFloat) {
-    return (0.0, 0.0)
+/// Calculate bounding box from multiple character boxes
+func boundingBox(from characterBoxes: [CGRect]) -> CGRect {
+    guard !characterBoxes.isEmpty else {
+        return CGRect.zero
+    }
+    let minX = characterBoxes.map { $0.minX }.min() ?? 0
+    let minY = characterBoxes.map { $0.minY }.min() ?? 0
+    let maxX = characterBoxes.map { $0.maxX }.max() ?? 0
+    let maxY = characterBoxes.map { $0.maxY }.max() ?? 0
+    return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+}
+
+/// Calculate corner points from a bounding box
+func cornerPoints(from rect: CGRect) -> (topLeft: CGPoint, topRight: CGPoint, bottomLeft: CGPoint, bottomRight: CGPoint) {
+    return (
+        topLeft: CGPoint(x: rect.minX, y: rect.maxY),
+        topRight: CGPoint(x: rect.maxX, y: rect.maxY),
+        bottomLeft: CGPoint(x: rect.minX, y: rect.minY),
+        bottomRight: CGPoint(x: rect.maxX, y: rect.minY)
+    )
 }
 
 // MARK: - OCR Processing
@@ -155,46 +172,99 @@ func performOCRSync(from imageURL: URL) throws -> [Line] {
         guard let candidate = obs.topCandidates(1).first else { continue }
         let lineText = candidate.string
 
-        // Split the line by whitespace.
+        // Get character boxes from the observation
+        // characterBoxes is an array of CGRect that corresponds to each character in the recognized text
+        let characterBoxes = obs.characterBoxes ?? []
+
+        // Split line text into words
         let wordStrings = lineText.split(separator: " ").map { String($0) }
+
+        // Map characters to words based on text content
+        // characterBoxes array corresponds to characters in lineText (including spaces)
+        var charIndexInLine = 0
         var words: [Word] = []
+
         for wordStr in wordStrings {
-            // For simplicity, use the observation's bounding box for every word.
+            // Find character boxes for this word
+            // Skip spaces between words
+            while charIndexInLine < lineText.count &&
+                  charIndexInLine < characterBoxes.count &&
+                  lineText[lineText.index(lineText.startIndex, offsetBy: charIndexInLine)] == " " {
+                charIndexInLine += 1
+            }
+
+            let wordLength = wordStr.count
+            let wordCharBoxes: [CGRect]
+            if charIndexInLine + wordLength <= characterBoxes.count {
+                wordCharBoxes = Array(characterBoxes[charIndexInLine..<charIndexInLine + wordLength])
+            } else {
+                // Fallback: use line bounding box if character boxes are not available
+                wordCharBoxes = []
+            }
+            charIndexInLine += wordLength
+
+            // Calculate word bounding box from character boxes
+            let wordBoundingBox = wordCharBoxes.isEmpty ? obs.boundingBox : boundingBox(from: wordCharBoxes)
+            let wordCorners = cornerPoints(from: wordBoundingBox)
+
+            // Create letters with individual character bounding boxes
+            var letters: [Letter] = []
+            for (letterIndex, char) in wordStr.enumerated() {
+                let letterBox: CGRect
+                if letterIndex < wordCharBoxes.count {
+                    letterBox = wordCharBoxes[letterIndex]
+                } else {
+                    // Fallback: estimate letter box from word box
+                    let letterWidth = wordBoundingBox.width / CGFloat(wordStr.count)
+                    letterBox = CGRect(
+                        x: wordBoundingBox.minX + CGFloat(letterIndex) * letterWidth,
+                        y: wordBoundingBox.minY,
+                        width: letterWidth,
+                        height: wordBoundingBox.height
+                    )
+                }
+                let letterCorners = cornerPoints(from: letterBox)
+
+                let letter = Letter(
+                    text: String(char),
+                    boundingBox: normalizedRect(from: letterBox),
+                    topLeft: codablePoint(from: letterCorners.topLeft),
+                    topRight: codablePoint(from: letterCorners.topRight),
+                    bottomLeft: codablePoint(from: letterCorners.bottomLeft),
+                    bottomRight: codablePoint(from: letterCorners.bottomRight),
+                    angleDegrees: 0.0,
+                    angleRadians: 0.0,
+                    confidence: candidate.confidence
+                )
+                letters.append(letter)
+            }
+
+            // Create word with proper bounding box
             let word = Word(
                 text: wordStr,
-                boundingBox: normalizedRect(from: obs.boundingBox),
-                topLeft: codablePoint(from: obs.topLeft),
-                topRight: codablePoint(from: obs.topRight),
-                bottomLeft: codablePoint(from: obs.bottomLeft),
-                bottomRight: codablePoint(from: obs.bottomRight),
+                boundingBox: normalizedRect(from: wordBoundingBox),
+                topLeft: codablePoint(from: wordCorners.topLeft),
+                topRight: codablePoint(from: wordCorners.topRight),
+                bottomLeft: codablePoint(from: wordCorners.bottomLeft),
+                bottomRight: codablePoint(from: wordCorners.bottomRight),
                 angleDegrees: 0.0,
                 angleRadians: 0.0,
                 confidence: candidate.confidence,
-                letters: wordStr.map { ch in
-                    Letter(
-                        text: String(ch),
-                        boundingBox: normalizedRect(from: obs.boundingBox),
-                        topLeft: codablePoint(from: obs.topLeft),
-                        topRight: codablePoint(from: obs.topRight),
-                        bottomLeft: codablePoint(from: obs.bottomLeft),
-                        bottomRight: codablePoint(from: obs.bottomRight),
-                        angleDegrees: 0.0,
-                        angleRadians: 0.0,
-                        confidence: candidate.confidence
-                    )
-                },
+                letters: letters,
                 extractedData: nil
             )
             words.append(word)
         }
 
+        // Create line with line-level bounding box
+        let lineCorners = cornerPoints(from: obs.boundingBox)
         let line = Line(
             text: lineText,
             boundingBox: normalizedRect(from: obs.boundingBox),
-            topLeft: codablePoint(from: obs.topLeft),
-            topRight: codablePoint(from: obs.topRight),
-            bottomLeft: codablePoint(from: obs.bottomLeft),
-            bottomRight: codablePoint(from: obs.bottomRight),
+            topLeft: codablePoint(from: lineCorners.topLeft),
+            topRight: codablePoint(from: lineCorners.topRight),
+            bottomLeft: codablePoint(from: lineCorners.bottomLeft),
+            bottomRight: codablePoint(from: lineCorners.bottomRight),
             angleDegrees: 0.0,
             angleRadians: 0.0,
             confidence: candidate.confidence,
