@@ -2,7 +2,9 @@
 
 from typing import Any, Dict, List, Optional
 
-from receipt_chroma.embedding.delta.producer import produce_embedding_delta
+from receipt_chroma.embedding.delta.producer import (
+    _produce_delta_for_collection,
+)
 from receipt_chroma.embedding.formatting.line_format import (
     format_line_context_embedding_input,
     parse_prev_next_from_formatted,
@@ -157,13 +159,12 @@ def save_line_embeddings_as_delta(
         documents.append(target_line.text)
 
     # Produce the delta file
-    delta_result = produce_embedding_delta(
+    delta_result = _produce_delta_for_collection(
         ids=ids,
         embeddings=embeddings,
         documents=documents,
         metadatas=metadatas,
         bucket_name=bucket_name,
-        # collection/database names must match ChromaDBCollection.LINES
         collection_name="lines",
         database_name="lines",
         sqs_queue_url=sqs_queue_url,

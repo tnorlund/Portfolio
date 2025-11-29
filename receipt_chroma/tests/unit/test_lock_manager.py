@@ -73,8 +73,16 @@ class TestLockManagerUnit:
 
     def test_acquire_lock_failure(self, lock_manager, mock_dynamo_client):
         """Test lock acquisition failure."""
-        mock_dynamo_client.add_compaction_lock.side_effect = Exception(
-            "DB error"
+        from botocore.exceptions import ClientError
+
+        mock_dynamo_client.add_compaction_lock.side_effect = ClientError(
+            {
+                "Error": {
+                    "Code": "ConditionalCheckFailedException",
+                    "Message": "DB error",
+                }
+            },
+            "add_compaction_lock",
         )
 
         result = lock_manager.acquire("test-lock")
@@ -102,9 +110,12 @@ class TestLockManagerUnit:
 
     def test_release_lock_error(self, lock_manager, mock_dynamo_client):
         """Test lock release with error."""
+        from botocore.exceptions import ClientError
+
         mock_dynamo_client.add_compaction_lock.return_value = None
-        mock_dynamo_client.delete_compaction_lock.side_effect = Exception(
-            "Error"
+        mock_dynamo_client.delete_compaction_lock.side_effect = ClientError(
+            {"Error": {"Code": "InternalServerError", "Message": "Error"}},
+            "delete_compaction_lock",
         )
 
         lock_manager.acquire("test-lock")
@@ -165,9 +176,12 @@ class TestLockManagerUnit:
 
     def test_update_heartbeat_failure(self, lock_manager, mock_dynamo_client):
         """Test heartbeat update failure."""
+        from botocore.exceptions import ClientError
+
         mock_dynamo_client.add_compaction_lock.return_value = None
-        mock_dynamo_client.update_compaction_lock.side_effect = Exception(
-            "Error"
+        mock_dynamo_client.update_compaction_lock.side_effect = ClientError(
+            {"Error": {"Code": "InternalServerError", "Message": "Error"}},
+            "update_compaction_lock",
         )
 
         lock_manager.acquire("test-lock")
@@ -360,7 +374,17 @@ class TestLockManagerUnit:
         self, lock_manager, mock_dynamo_client
     ):
         """Test context manager when lock acquisition fails."""
-        mock_dynamo_client.add_compaction_lock.side_effect = Exception("Error")
+        from botocore.exceptions import ClientError
+
+        mock_dynamo_client.add_compaction_lock.side_effect = ClientError(
+            {
+                "Error": {
+                    "Code": "ConditionalCheckFailedException",
+                    "Message": "Error",
+                }
+            },
+            "add_compaction_lock",
+        )
 
         with pytest.raises(RuntimeError, match="Failed to acquire lock"):
             with lock_manager:
@@ -387,9 +411,12 @@ class TestLockManagerUnit:
         self, lock_manager, mock_dynamo_client
     ):
         """Test heartbeat worker stops after max failures."""
+        from botocore.exceptions import ClientError
+
         mock_dynamo_client.add_compaction_lock.return_value = None
-        mock_dynamo_client.update_compaction_lock.side_effect = Exception(
-            "Error"
+        mock_dynamo_client.update_compaction_lock.side_effect = ClientError(
+            {"Error": {"Code": "InternalServerError", "Message": "Error"}},
+            "update_compaction_lock",
         )
 
         lock_manager.max_heartbeat_failures = 2

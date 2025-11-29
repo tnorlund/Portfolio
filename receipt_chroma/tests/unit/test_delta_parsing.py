@@ -53,11 +53,11 @@ class TestParseWordId:
     def test_invalid_word_id_wrong_parts(self):
         """Test parsing invalid word ID with wrong number of parts."""
         custom_id = "IMAGE#img123#RECEIPT#456#LINE#789"
-        with pytest.raises(ValueError, match="Invalid custom_id format"):
+        with pytest.raises(ValueError, match="expected 8 parts but got 6"):
             _parse_metadata_from_custom_id(custom_id)
 
     def test_invalid_word_id_no_word(self):
         """Test parsing line ID as word ID."""
         custom_id = "IMAGE#img123#RECEIPT#456#LINE#789"
-        with pytest.raises(ValueError, match="line embedding|6 parts"):
+        with pytest.raises(ValueError, match="expected 8 parts but got 6"):
             _parse_metadata_from_custom_id(custom_id)

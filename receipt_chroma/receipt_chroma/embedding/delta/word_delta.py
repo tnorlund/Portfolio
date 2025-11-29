@@ -6,7 +6,9 @@ as ChromaDB delta files for compaction.
 
 from typing import Any, Dict, List, Optional
 
-from receipt_chroma.embedding.delta.producer import produce_embedding_delta
+from receipt_chroma.embedding.delta.producer import (
+    _produce_delta_for_collection,
+)
 from receipt_chroma.embedding.formatting.word_format import get_word_neighbors
 from receipt_chroma.embedding.metadata.word_metadata import (
     create_word_metadata,
@@ -176,13 +178,12 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
         documents.append(target_word.text)
 
     # Produce the delta file
-    delta_result = produce_embedding_delta(
+    delta_result = _produce_delta_for_collection(
         ids=ids,
         embeddings=embeddings,
         documents=documents,
         metadatas=metadatas,
         bucket_name=bucket_name,
-        # collection_name/database_name must match ChromaDBCollection.WORDS
         collection_name="words",
         database_name="words",
         sqs_queue_url=sqs_queue_url,

@@ -14,11 +14,17 @@ from typing import Any, Literal, Optional
 from botocore.exceptions import BotoCoreError, ClientError
 from receipt_dynamo.constants import ChromaDBCollection
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
 from receipt_dynamo.entities.compaction_lock import CompactionLock
 
 logger = logging.getLogger(__name__)
 
-LOCK_EXCEPTIONS = (ClientError, BotoCoreError, ValueError)
+LOCK_EXCEPTIONS = (
+    ClientError,
+    BotoCoreError,
+    ValueError,
+    EntityAlreadyExistsError,
+)
 
 
 class LockManager:

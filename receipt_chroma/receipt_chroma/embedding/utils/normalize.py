@@ -88,8 +88,6 @@ def _combine_street_and_place(unique_sorted: list[str]) -> Optional[str]:
     for idx, val in enumerate(unique_sorted):
         if street_idx is None and re.search(r"\b\d{1,6}\b", val):
             street_idx = idx
-            if place_idx is not None:
-                break
     for idx, val in enumerate(unique_sorted):
         if idx == street_idx:
             continue

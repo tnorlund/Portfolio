@@ -17,17 +17,18 @@ import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 from chromadb.errors import ChromaError
 
-from receipt_chroma import ChromaClient
+from receipt_chroma.data.chroma_client import ChromaClient
 
 logger = logging.getLogger(__name__)
 
+# Only operational errors that can occur during normal runtime operations.
+# Programming errors (TypeError, ValueError) are excluded so they propagate
+# and surface bugs during development rather than being silently logged.
 DELTA_ERRORS = (
     BotoCoreError,
     ClientError,
     OSError,
     RuntimeError,
-    ValueError,
-    TypeError,
     ChromaError,
 )
 
@@ -121,6 +122,50 @@ def _notify_sqs(
         logger.info("Sent delta notification to SQS: %s", s3_key)
     except DELTA_ERRORS as exc:
         logger.error("Error sending to SQS: %s", exc)
+
+
+def _produce_delta_for_collection(
+    *,
+    ids: List[str],
+    embeddings: List[List[float]],
+    documents: List[str],
+    metadatas: List[Dict[str, Any]],
+    bucket_name: str,
+    collection_name: str,
+    database_name: str,
+    sqs_queue_url: Optional[str] = None,
+    batch_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Helper function to produce delta files for a specific collection.
+
+    This eliminates code duplication between line_delta and word_delta modules.
+
+    Args:
+        ids: Vector IDs
+        embeddings: Embedding vectors
+        documents: Document texts
+        metadatas: Metadata dictionaries
+        bucket_name: S3 bucket name
+        collection_name: Collection name (e.g., "lines", "words")
+        database_name: Database name (e.g., "lines", "words")
+        sqs_queue_url: Optional SQS queue URL
+        batch_id: Optional batch identifier
+
+    Returns:
+        Delta creation result dictionary
+    """
+    return produce_embedding_delta(
+        ids=ids,
+        embeddings=embeddings,
+        documents=documents,
+        metadatas=metadatas,
+        bucket_name=bucket_name,
+        collection_name=collection_name,
+        database_name=database_name,
+        sqs_queue_url=sqs_queue_url,
+        batch_id=batch_id,
+    )
 
 
 # Pylint counts keyword-only args as positional; keep this signature so we

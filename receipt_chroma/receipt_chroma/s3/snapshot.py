@@ -15,7 +15,7 @@ import chromadb
 from botocore.exceptions import BotoCoreError, ClientError
 from chromadb.errors import ChromaError
 
-from receipt_chroma import ChromaClient
+from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_chroma.s3.helpers import (
     _cleanup_old_snapshot_versions,
     _cleanup_s3_prefix,

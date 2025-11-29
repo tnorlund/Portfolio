@@ -104,10 +104,20 @@ class TestLockManagerEdgeCases:
         manager.acquire("test-lock")
 
         # Mock get_compaction_lock to raise an exception
+        from botocore.exceptions import ClientError
+
         mocker.patch.object(
             client,
             "get_compaction_lock",
-            side_effect=Exception("DynamoDB error"),
+            side_effect=ClientError(
+                {
+                    "Error": {
+                        "Code": "InternalServerError",
+                        "Message": "DynamoDB error",
+                    }
+                },
+                "get_compaction_lock",
+            ),
         )
 
         # Should return None on error
@@ -265,10 +275,20 @@ class TestLockManagerEdgeCases:
         manager.acquire("test-lock")
 
         # Mock delete to raise an error
+        from botocore.exceptions import ClientError
+
         mocker.patch.object(
             client,
             "delete_compaction_lock",
-            side_effect=Exception("Delete error"),
+            side_effect=ClientError(
+                {
+                    "Error": {
+                        "Code": "InternalServerError",
+                        "Message": "Delete error",
+                    }
+                },
+                "delete_compaction_lock",
+            ),
         )
 
         # Release should still clear state (lines 178-179)
@@ -293,10 +313,20 @@ class TestLockManagerEdgeCases:
         manager.acquire("test-lock")
 
         # Mock get_compaction_lock to raise an exception
+        from botocore.exceptions import ClientError
+
         mocker.patch.object(
             client,
             "get_compaction_lock",
-            side_effect=Exception("DynamoDB error"),
+            side_effect=ClientError(
+                {
+                    "Error": {
+                        "Code": "InternalServerError",
+                        "Message": "DynamoDB error",
+                    }
+                },
+                "get_compaction_lock",
+            ),
         )
 
         # Should return False on exception (lines 404-410)
@@ -317,10 +347,20 @@ class TestLockManagerEdgeCases:
         manager.acquire("test-lock")
 
         # Mock get_compaction_lock to raise an exception
+        from botocore.exceptions import ClientError
+
         mocker.patch.object(
             client,
             "get_compaction_lock",
-            side_effect=Exception("DynamoDB error"),
+            side_effect=ClientError(
+                {
+                    "Error": {
+                        "Code": "InternalServerError",
+                        "Message": "DynamoDB error",
+                    }
+                },
+                "get_compaction_lock",
+            ),
         )
 
         # Should return None on exception (lines 494-500)
@@ -341,10 +381,20 @@ class TestLockManagerEdgeCases:
         manager.acquire("test-lock")
 
         # Mock update_compaction_lock to raise an exception
+        from botocore.exceptions import ClientError
+
         mocker.patch.object(
             client,
             "update_compaction_lock",
-            side_effect=Exception("Update error"),
+            side_effect=ClientError(
+                {
+                    "Error": {
+                        "Code": "InternalServerError",
+                        "Message": "Update error",
+                    }
+                },
+                "update_compaction_lock",
+            ),
         )
 
         # Should return False on exception (lines 494-500)
