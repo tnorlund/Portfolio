@@ -105,7 +105,7 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
     }, []);
 
     // Calculate responsive dimensions - maintain 2:1 aspect ratio from original SVG
-    const isMobile = windowWidth <= 768;
+    const isMobile = useMemo(() => windowWidth <= 768, [windowWidth]);
     const containerWidth = useMemo(() => {
         if (isMobile) {
             const padding = 32;
@@ -275,6 +275,8 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
                 viewBox={`0 0 ${ORIGINAL_VIEWBOX.width} ${ORIGINAL_VIEWBOX.height}`}
                 style={{ maxWidth: "100%", height: "auto" }}
                 preserveAspectRatio="xMidYMid meet"
+                role="img"
+                aria-label="Animated CI/CD pipeline loop visualization showing Plan, Code, Build, Test, Release, Deploy, Operate, and Monitor stages"
             >
                 {/* Render each section with its paths */}
                 {SECTION_ORDER.map((sectionName, index) => {
