@@ -1,0 +1,33 @@
+{
+  "output_dir": "/Users/tnorlund/Portfolio/backup_images",
+  "total_images": 3,
+  "successful": 3,
+  "failed": 0,
+  "results": {
+    "successful": [
+      {
+        "image_id": "a8d7ab9f-efcf-44d8-8512-0fe30186b40c",
+        "local_path": "backup_images/a8d7ab9f-efcf-44d8-8512-0fe30186b40c.png",
+        "s3_bucket": "raw-image-bucket-c779c32",
+        "s3_key": "raw/a8d7ab9f-efcf-44d8-8512-0fe30186b40c.png",
+        "file_size": 1469182,
+        "dimensions": "2548x3508"
+      },
+      {
+        "image_id": "b9fe3f38-0603-4c43-b55f-b62113f64888",
+        "local_path": "backup_images/b9fe3f38-0603-4c43-b55f-b62113f64888.png",
+        "status": "already_exists"
+      },
+      {
+        "image_id": "e12bd9a9-0e80-4f39-8406-33d714f3af70",
+        "local_path": "backup_images/e12bd9a9-0e80-4f39-8406-33d714f3af70.png",
+        "s3_bucket": "raw-image-bucket-c779c32",
+        "s3_key": "raw/e12bd9a9-0e80-4f39-8406-33d714f3af70.png",
+        "file_size": 2236715,
+        "dimensions": "2548x3508"
+      }
+    ],
+    "failed": [],
+    "not_found": []
+  }
+}

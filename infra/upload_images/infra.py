@@ -790,3 +790,6 @@ class UploadImages(ComponentResource):
         )
 
         self.endpoint_url = pulumi.Output.concat("https://", api_domain_name)
+
+        # Export artifacts bucket for use by other components
+        self.artifacts_bucket = artifacts_bucket

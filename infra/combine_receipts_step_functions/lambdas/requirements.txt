@@ -1,0 +1,14 @@
+# Core dependencies
+receipt-dynamo
+receipt-chroma
+receipt-label
+receipt-upload
+receipt-agent
+
+# Image processing
+Pillow>=10.0.0
+numpy>=1.24.0
+
+# Embeddings
+openai>=1.0.0
+

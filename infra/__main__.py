@@ -62,6 +62,9 @@ from label_validation_agent_step_functions import (
 from label_suggestion_step_functions import (
     LabelSuggestionStepFunction,
 )
+from combine_receipts_step_functions import (
+    CombineReceiptsStepFunction,
+)
 
 # Using the optimized docker-build based base images with scoped contexts
 from networking import PublicVpc
@@ -1250,4 +1253,36 @@ pulumi.export(
 pulumi.export(
     "label_suggestion_aggregate_lambda_arn",
     label_suggestion_sf.aggregate_results_lambda_arn,
+)
+
+# Create combine receipts Step Function
+# Combines multiple receipts into single receipts based on LLM analysis
+combine_receipts_sf = CombineReceiptsStepFunction(
+    f"combine-receipts-{stack}",
+    dynamodb_table_name=dynamodb_table.name,
+    dynamodb_table_arn=dynamodb_table.arn,
+    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
+    chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
+    raw_bucket_name=raw_bucket.bucket,
+    site_bucket_name=site_bucket.bucket,
+    # Use artifacts bucket from upload_images (required for NDJSON export)
+    # The compaction handler has specific permissions for this bucket
+    artifacts_bucket_name=upload_images.artifacts_bucket.bucket,
+    artifacts_bucket_arn=upload_images.artifacts_bucket.arn,
+    # Queue URL and ARN - currently not created, but infrastructure supports it
+    # When queue is created, pass embed_ndjson_queue_url and embed_ndjson_queue_arn here
+    embed_ndjson_queue_url=None,
+    embed_ndjson_queue_arn=None,
+    # Concurrency is configurable via Pulumi config:
+    # pulumi config set combine-receipts:max_concurrency 5 --stack dev
+    # Default: max_concurrency=5
+)
+
+pulumi.export(
+    "combine_receipts_sf_arn",
+    combine_receipts_sf.state_machine_arn,
+)
+pulumi.export(
+    "combine_receipts_batch_bucket_name",
+    combine_receipts_sf.batch_bucket_name,
 )
