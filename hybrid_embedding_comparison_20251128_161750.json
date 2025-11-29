@@ -1,0 +1,651 @@
+[
+  {
+    "approach": "hybrid_embedding",
+    "label_id": "00ded398-af6f-4a49-86f7-c79ccb554e48#1#45#2",
+    "word_text": "VONS",
+    "merchant_name": "Vons",
+    "decision": "VALID",
+    "confidence": 0.96,
+    "reasoning": "The word 'VONS' is shown in a line that typically contains the merchant name on a receipt, and the receipt metadata confirms the merchant is Vons. Google Places data matches this name. Additionally, similar words on other receipts have been validated as MERCHANT_NAME. Therefore, labeling 'VONS' as MERCHANT_NAME is correct.",
+    "evidence": [
+      "Word appears in header line referencing merchant: \">>> For VONS FOR U questions call <<<\"",
+      "Receipt metadata merchant_name is Vons; Google Places confirms name",
+      "Similar words (e.g., FARMERS) on other receipts validated as MERCHANT_NAME"
+    ],
+    "tools_used": [
+      "get_word_context",
+      "get_merchant_metadata",
+      "search_similar_words",
+      "submit_decision"
+    ],
+    "elapsed_time": 18.334106922149658,
+    "success": true
+  },
+  {
+    "approach": "hybrid_embedding",
+    "label_id": "00ded398-af6f-4a49-86f7-c79ccb554e48#1#46#3",
+    "word_text": "Vons.",
+    "merchant_name": "Vons",
+    "decision": "VALID",
+    "confidence": 0.92,
+    "reasoning": "The word 'Vons.' is located in a line that includes the merchant's contact information, clearly indicating it is the store name. Google Places data confirms the merchant is Vons. Supporting evidence from similar words shows consistent labeling as MERCHANT_NAME. Therefore, labeling 'Vons.' as MERCHANT_NAME is correct.",
+    "evidence": [
+      "Word appears in line with phone number and website referencing Vons (\"877-276-9637 or Vons. com/foru\")",
+      "Merchant metadata confirms merchant name is Vons",
+      "Similar words (e.g., \"FARMERS\" in other receipts) validated as MERCHANT_NAME"
+    ],
+    "tools_used": [
+      "get_word_context",
+      "get_merchant_metadata",
+      "search_similar_words",
+      "submit_decision"
+    ],
+    "elapsed_time": 18.329171895980835,
+    "success": true
+  },
+  {
+    "approach": "hybrid_embedding",
+    "label_id": "00ded398-af6f-4a49-86f7-c79ccb554e48#2#1#1",
+    "word_text": "SPROUTS",
+    "merchant_name": "Sprouts Farmers Market",
+    "decision": "VALID",
+    "confidence": 0.96,
+    "reasoning": "The word 'SPROUTS' is positioned in the receipt header, surrounded by address information and the phrase \"FARMERS MARKET\", which together form the full merchant name \"Sprouts Farmers Market\". Google Places confirms this merchant name, and similar words on the receipt (e.g., \"FARMERS\") have been validated as MERCHANT_NAME. Therefore, labeling 'SPROUTS' as MERCHANT_NAME is correct.",
+    "evidence": [
+      "Word appears on header line >>> SPROUTS <<< surrounded by address lines and \"FARMERS MARKET\", indicating it is part of the store name.",
+      "Google Places metadata confirms merchant name is Sprouts Farmers Market.",
+      "Similar word \"FARMERS\" on the receipt has been validated as MERCHANT_NAME."
+    ],
+    "tools_used": [
+      "get_word_context",
+      "get_merchant_metadata",
+      "search_similar_words",
+      "submit_decision"
+    ],
+    "elapsed_time": 17.413986682891846,
+    "success": true
+  },
+  {
+    "approach": "hybrid_embedding",
+    "label_id": "00ded398-af6f-4a49-86f7-c79ccb554e48#2#2#1",
+    "word_text": "FARMERS",
+    "merchant_name": "Sprouts Farmers Market",
+    "decision": "VALID",
+    "confidence": 0.97,
+    "reasoning": "The word 'FARMERS' is part of the header line \"FARMERS MARKET\" on the receipt, which aligns with the merchant name Sprouts Farmers Market as confirmed by receipt metadata and Google Places. Similar words have been validated as MERCHANT_NAME. Therefore the suggested label is correct.",
+    "evidence": [
+      "Word appears in header line \"FARMERS MARKET\" indicating merchant name component",
+      "Google Places metadata confirms merchant name includes \"Farmers Market\"",
+      "Similar words in database consistently validated as MERCHANT_NAME"
+    ],
+    "tools_used": [
+      "get_word_context",
+      "get_merchant_metadata",
+      "search_similar_words",
+      "submit_decision"
+    ],
+    "elapsed_time": 16.716782093048096,
+    "success": true
+  },
+  {
+    "approach": "hybrid_embedding",
+    "label_id": "00ded398-af6f-4a49-86f7-c79ccb554e48#2#2#2",
+    "word_text": "MARKET",
+    "merchant_name": "Sprouts Farmers Market",
+    "decision": "VALID",
+    "confidence": 0.93,
+    "reasoning": "The word 'MARKET' is part of the header line that displays the store name on the receipt. Primary context shows it is part of the merchant name 'Sprouts Farmers Market'. Supporting evidence from similar words and merchant metadata confirms this. No contradictory evidence exists, so the MERCHANT_NAME label is correct.",
+    "evidence": [
+      "Word appears in header line '>>> FARMERS MARKET <<<' indicating store name",
+      "Similar word 'FARMERS' in same line has validated MERCHANT_NAME label",
+      "Google Places merchant name is 'Sprouts Farmers Market' which contains 'MARKET'"
+    ],
+    "tools_used": [
+      "get_word_context",
+      "search_similar_words",
+      "submit_decision"
+    ],
+    "elapsed_time": 14.229880094528198,
+    "success": true
+  },
+  {
+    "approach": "hybrid_embedding",
+    "label_id": "00ded398-af6f-4a49-86f7-c79ccb554e48#2#60#5",
+    "word_text": "Sprouts",
+    "merchant_name": "Sprouts Farmers Market",
+    "decision": "INVALID",
+    "confidence": 0.9,
+    "reasoning": "The word 'Sprouts' is used in a promotional sentence rather than as the primary merchant identifier on the receipt. MERCHANT_NAME should correspond to the full merchant name as it appears (e.g., \"Sprouts Farmers Market\"). Therefore, labeling 'Sprouts' alone as MERCHANT_NAME is incorrect.",
+    "evidence": [
+      "Word context: 'Sprouts' appears in promotional line \"to WIN a $250 Sprouts gift card. Go to:\" not in header where merchant name is displayed.",
+      "Merchant metadata: Google Places lists full merchant name as \"Sprouts Farmers Market\", indicating \"Sprouts\" alone is not the complete merchant name.",
+      "Similar words: \"FARMERS\" (and other components) are labeled MERCHANT_NAME, showing that only full name components are valid for MERCHANT_NAME."
+    ],
+    "tools_used": [
+      "get_word_context",
+      "get_merchant_metadata",
+      "search_similar_words",
+      "submit_decision"
+    ],
+    "elapsed_time": 20.210915088653564,
+    "success": true
+  },
+  {
+    "approach": "hybrid_embedding",
+    "label_id": "016bda87-f2a9-4dfc-85cc-e2b672ccb27a#1#1#1",
+    "word_text": "WF",
+    "merchant_name": "Wells Fargo Bank",
+    "decision": "VALID",
+    "confidence": 0.95,
+    "reasoning": "The word 'WF' is isolated on a line and highlighted, indicating it is the merchant identifier. The receipt metadata shows the merchant is Wells Fargo Bank, and 'WF' is a standard abbreviation for Wells Fargo. This matches the MERCHANT_NAME label with high confidence.",
+    "evidence": [
+      "Primary context: 'WF' appears on its own line, highlighted as '>>> WF <<<', typical merchant header.",
+      "Merchant metadata confirms merchant is Wells Fargo Bank; 'WF' is a common abbreviation."
+    ],
+    "tools_used": [
+      "get_word_context",
+      "get_merchant_metadata",
+      "search_similar_words",
+      "submit_decision"
+    ],
+    "elapsed_time": 15.407546281814575,
+    "success": true
+  },
+  {
+    "approach": "hybrid_embedding",
+    "label_id": "016bda87-f2a9-4dfc-85cc-e2b672ccb27a#2#4#1",
+    "word_text": "THE",
+    "merchant_name": "The Stand - American Classics Redefined",
+    "decision": "VALID",
+    "confidence": 0.96,
+    "reasoning": "The word 'THE' is part of the header line '>>> THE STAND <<<', which is the printed merchant name on the receipt. Google Places metadata confirms the merchant name contains 'The Stand'. Receipt labeling shows other words on the same line are also labeled MERCHANT_NAME, supporting that 'THE' is part of the merchant name. Hence the suggested label MERCHANT_NAME is correct.",
+    "evidence": [
+      "Word appears in header line '>>> THE STAND <<<' indicating merchant name",
+      "Google Places merchant name includes 'The Stand' confirming match",
+      "Other words on same line labeled MERCHANT_NAME"
+    ],
+    "tools_used": [
+      "get_word_context",
+      "get_labels_on_receipt",
+      "get_merchant_metadata",
+      "search_similar_words",
+      "submit_decision"
+    ],
+    "elapsed_time": 23.34507179260254,
+    "success": true
+  },
+  {
+    "approach": "hybrid_embedding",
+    "label_id": "016bda87-f2a9-4dfc-85cc-e2b672ccb27a#2#4#2",
+    "word_text": "STAND",
+    "merchant_name": "The Stand - American Classics Redefined",
+    "decision": "VALID",
+    "confidence": 0.95,
+    "reasoning": "The word 'STAND' is on the receipt header line '>>> THE STAND <<<', which is the prominent display of the merchant name. Google Places confirms the merchant is 'The Stand - American Classics Redefined', so 'STAND' is part of the official name. Similar words from other receipts (e.g., 'FARMERS' in 'FARMERS MARKET') are consistently validated as MERCHANT_NAME. No conflicting evidence exists, so labeling 'STAND' as MERCHANT_NAME is correct.",
+    "evidence": [
+      "Line text 'THE STAND' appears in header indicating merchant name",
+      "Google Places merchant name includes 'The Stand'",
+      "Similar words on other receipts are labeled MERCHANT_NAME"
+    ],
+    "tools_used": [
+      "get_word_context",
+      "get_merchant_metadata",
+      "search_similar_words",
+      "get_labels_on_receipt",
+      "submit_decision"
+    ],
+    "elapsed_time": 17.814427852630615,
+    "success": true
+  },
+  {
+    "approach": "hybrid_embedding",
+    "label_id": "016bda87-f2a9-4dfc-85cc-e2b672ccb27a#2#38#2",
+    "word_text": "THE",
+    "merchant_name": "The Stand - American Classics Redefined",
+    "decision": "INVALID",
+    "confidence": 0.95,
+    "reasoning": "The word \"THE\" is part of a promotional phrase and a URL fragment, not the merchant name displayed on the receipt. The merchant's full name is \"The Stand - American Classics Redefined\". Therefore, labeling \"THE\" as MERCHANT_NAME is incorrect.",
+    "evidence": [
+      "Word appears in promotional line \"GET THE APP!\" not in merchant header",
+      "Merchant name is \"The Stand - American Classics Redefined\", not the isolated word \"THE\""
+    ],
+    "tools_used": [
+      "get_word_context",
+      "get_merchant_metadata",
+      "submit_decision"
+    ],
+    "elapsed_time": 12.799704790115356,
+    "success": true
+  },
+  {
+    "approach": "hybrid_embedding",
+    "label_id": "016bda87-f2a9-4dfc-85cc-e2b672ccb27a#2#43#5",
+    "word_text": "The",
+    "merchant_name": "The Stand - American Classics Redefined",
+    "decision": "INVALID",
+    "confidence": 0.94,
+    "reasoning": "The word 'The' is part of a marketing phrase rather than the merchant name. The receipt's merchant name is 'The Stand - American Classics Redefined', and the primary context shows 'The' within a non-header line. Therefore, labeling it as MERCHANT_NAME is incorrect.",
+    "evidence": [
+      "Word appears in promotional line 'Order Ahead & Skip The Line', not merchant header.",
+      "Merchant name is 'The Stand - American Classics Redefined'; 'The' alone is not the full name.",
+      "No similar words labeled MERCHANT_NAME for 'The' in receipt context."
+    ],
+    "tools_used": [
+      "get_word_context",
+      "get_labels_on_receipt",
+      "search_similar_words",
+      "submit_decision"
+    ],
+    "elapsed_time": 21.501648902893066,
+    "success": true
+  },
+  {
+    "approach": "hybrid_embedding",
+    "label_id": "016bda87-f2a9-4dfc-85cc-e2b672ccb27a#2#48#1",
+    "word_text": "the",
+    "merchant_name": "The Stand - American Classics Redefined",
+    "decision": "INVALID",
+    "confidence": 0.95,
+    "reasoning": "The word 'the' is part of a sentence about email instructions, not the merchant name. The merchant name appears elsewhere on the receipt. Therefore labeling 'the' as MERCHANT_NAME is incorrect.",
+    "evidence": [
+      "Word appears in instructional line \"the email associated with your account\", not in merchant name header.",
+      "Merchant name on receipt is \"The Stand - American Classics Redefined\", not the word \"the\"."
+    ],
+    "tools_used": [
+      "get_word_context",
+      "submit_decision"
+    ],
+    "elapsed_time": 9.286489963531494,
+    "success": true
+  },
+  {
+    "approach": "hybrid_embedding",
+    "label_id": "016bda87-f2a9-4dfc-85cc-e2b672ccb27a#2#51#3",
+    "word_text": "STAND",
+    "merchant_name": "The Stand - American Classics Redefined",
+    "decision": "INVALID",
+    "confidence": 0.95,
+    "reasoning": "The word 'STAND' is part of a phone mnemonic line rather than the printed merchant name header. The complete merchant name includes additional words, so labeling 'STAND' as MERCHANT_NAME is incorrect.",
+    "evidence": [
+      "Line context: 'Call: 1.855.77 STAND (78263)' \u2013 STAND appears in a phone number line, not as the merchant name header.",
+      "Merchant metadata: Full merchant name is 'The Stand - American Classics Redefined', indicating the isolated word STAND is not the complete merchant name."
+    ],
+    "tools_used": [
+      "get_word_context",
+      "get_merchant_metadata",
+      "submit_decision"
+    ],
+    "elapsed_time": 18.81832218170166,
+    "success": true
+  },
+  {
+    "approach": "hybrid_embedding",
+    "label_id": "04a1dfe7-1858-403a-b74f-6edb23d0deb4#1#27#1",
+    "word_text": "Issuer",
+    "merchant_name": "Sprouts Farmers Market",
+    "decision": "INVALID",
+    "confidence": 0.95,
+    "reasoning": "The word 'Issuer' is located in the receipt's terminal data area, not in the header where the merchant name appears. It refers to the card issuer (bank/network) rather than the store's name. Therefore labeling it as MERCHANT_NAME is incorrect.",
+    "evidence": [
+      "Word 'Issuer' appears in terminal data section (>>> Issuer <<<) among fields like TVR, AID, AUTH CODE, indicating it refers to card issuer, not store name.",
+      "Merchant name from receipt and Google Places is 'Sprouts Farmers Market', which does not contain 'Issuer'."
+    ],
+    "tools_used": [
+      "get_word_context",
+      "get_merchant_metadata",
+      "submit_decision"
+    ],
+    "elapsed_time": 11.259935855865479,
+    "success": true
+  },
+  {
+    "approach": "hybrid_embedding",
+    "label_id": "04a1dfe7-1858-403a-b74f-6edb23d0deb4#1#36#1",
+    "word_text": "USD$",
+    "merchant_name": "Sprouts Farmers Market",
+    "decision": "INVALID",
+    "confidence": 0.95,
+    "reasoning": "The token 'USD$' is a currency indicator preceding the total amount, located in the receipt's total section. MERCHANT_NAME should capture the store's trading name, which is 'Sprouts Farmers Market' per merchant metadata. The primary context and label history both confirm that 'USD$' does not represent a merchant name. Therefore the suggested MERCHANT_NAME label is incorrect.",
+    "evidence": [
+      "Word appears as currency symbol before amount 39.97 in total line (\"USD$ 39.97\")",
+      "Merchant metadata lists store name \"Sprouts Farmers Market\", not \"USD$\"",
+      "Label history shows prior invalid labels (ITEM_NAME, UNIT_PRICE) and current NEEDS_REVIEW for GRAND_TOTAL, indicating non\u2011merchant usage"
+    ],
+    "tools_used": [
+      "get_word_context",
+      "get_merchant_metadata",
+      "search_similar_words",
+      "get_all_labels_for_word",
+      "submit_decision"
+    ],
+    "elapsed_time": 18.120301961898804,
+    "success": true
+  },
+  {
+    "approach": "hybrid_embedding",
+    "label_id": "04a1dfe7-1858-403a-b74f-6edb23d0deb4#1#68#1",
+    "word_text": "FARMERS",
+    "merchant_name": "Sprouts Farmers Market",
+    "decision": "VALID",
+    "confidence": 0.96,
+    "reasoning": "The word 'FARMERS' is part of the store name displayed prominently at the top of the receipt. Google Places data confirms the merchant name includes 'Farmers', and similar receipts consistently label this word as MERCHANT_NAME. Therefore the suggested label is correct.",
+    "evidence": [
+      "Primary context: word appears in header line '>>> FARMERS MARKET <<<', indicating store name",
+      "Merchant metadata confirms merchant is Sprouts Farmers Market, which includes 'Farmers'",
+      "Similar word search shows multiple instances where 'FARMERS' labeled MERCHANT_NAME with VALID status"
+    ],
+    "tools_used": [
+      "get_word_context",
+      "get_merchant_metadata",
+      "search_similar_words",
+      "submit_decision"
+    ],
+    "elapsed_time": 21.562292098999023,
+    "success": true
+  },
+  {
+    "approach": "hybrid_embedding",
+    "label_id": "04a1dfe7-1858-403a-b74f-6edb23d0deb4#1#68#2",
+    "word_text": "MARKET",
+    "merchant_name": "Sprouts Farmers Market",
+    "decision": "VALID",
+    "confidence": 0.96,
+    "reasoning": "The word 'MARKET' is part of the receipt header line \"FARMERS MARKET\" and aligns with the merchant name listed in receipt metadata and Google Places data (Sprouts Farmers Market). Similar words from the same receipt have been validated as MERCHANT_NAME, confirming that each token of the merchant name should be labeled MERCHANT_NAME. Hence, labeling 'MARKET' as MERCHANT_NAME is correct.",
+    "evidence": [
+      "Word appears in header line \"FARMERS MARKET\" indicating merchant name component",
+      "Google Places merchant name is \"Sprouts Farmers Market\" which includes the term \"Market\"",
+      "Similar words such as \"FARMERS\" from same receipt have been validated as MERCHANT_NAME"
+    ],
+    "tools_used": [
+      "get_word_context",
+      "get_merchant_metadata",
+      "search_similar_words",
+      "submit_decision"
+    ],
+    "elapsed_time": 18.542541027069092,
+    "success": true
+  },
+  {
+    "approach": "hybrid_embedding",
+    "label_id": "04b16930-7baf-4539-866f-b77d8e73cff8#2#32#1",
+    "word_text": "JPMorgan",
+    "merchant_name": "Chase Bank",
+    "decision": "VALID",
+    "confidence": 0.96,
+    "reasoning": "The word 'JPMorgan' is part of the merchant's legal name as shown on the receipt header. Therefore it should be labeled MERCHANT_NAME.",
+    "evidence": [
+      "Word appears in header line '>>> JPMorgan Chase Bank, N.A. <<<', which is the full legal name of the merchant.",
+      "Receipt metadata confirms merchant is Chase Bank (phone 1-800-935-9935), matching the legal name that includes 'JPMorgan'."
+    ],
+    "tools_used": [
+      "get_word_context",
+      "get_merchant_metadata",
+      "search_similar_words",
+      "submit_decision"
+    ],
+    "elapsed_time": 23.395785093307495,
+    "success": true
+  },
+  {
+    "approach": "hybrid_embedding",
+    "label_id": "04ebdb8a-b560-4c00-aa09-f6afa3bda458#1#29#1",
+    "word_text": "FARMERS",
+    "merchant_name": "Sprouts Farmers Market",
+    "decision": "VALID",
+    "confidence": 0.96,
+    "reasoning": "The word 'FARMERS' appears in the receipt header line '>>> FARMERS MARKET <<<', which is the prominent store name on the receipt. This line is clearly the merchant name, and 'FARMERS' is a component of the full merchant name 'Sprouts Farmers Market'. Google Places metadata confirms the merchant name includes 'Farmers Market'. Similar word searches show consistent validation of 'FARMERS' as MERCHANT_NAME with no contradictory labels. Therefore, labeling 'FARMERS' as MERCHANT_NAME is appropriate.",
+    "evidence": [
+      "Primary context: line '>>> FARMERS MARKET <<<', header indicating merchant name",
+      "Merchant metadata: Google Places name 'Sprouts Farmers Market' includes 'Farmers'",
+      "Similar words: other instances of 'FARMERS' on same merchant receipts validated as MERCHANT_NAME"
+    ],
+    "tools_used": [
+      "get_word_context",
+      "get_merchant_metadata",
+      "search_similar_words",
+      "submit_decision"
+    ],
+    "elapsed_time": 23.187438011169434,
+    "success": true
+  },
+  {
+    "approach": "hybrid_embedding",
+    "label_id": "04ebdb8a-b560-4c00-aa09-f6afa3bda458#1#29#2",
+    "word_text": "MARKET",
+    "merchant_name": "Sprouts Farmers Market",
+    "decision": "VALID",
+    "confidence": 0.95,
+    "reasoning": "The word 'MARKET' is part of the merchant's full name as shown on the receipt header. In receipt labeling conventions, each token of the merchant name is labeled MERCHANT_NAME. Primary context and metadata confirm this, and similar tokens are validated as MERCHANT_NAME. Therefore the suggested label is correct.",
+    "evidence": [
+      "Word 'MARKET' appears in line 'FARMERS MARKET' which is the store name line on the receipt (primary context).",
+      "Receipt metadata merchant_name is 'Sprouts Farmers Market', containing the token 'MARKET' (receipt metadata).",
+      "Similar token 'FARMERS' is labeled MERCHANT_NAME and validated on same receipt (similar words)."
+    ],
+    "tools_used": [
+      "get_word_context",
+      "get_merchant_metadata",
+      "search_similar_words",
+      "submit_decision"
+    ],
+    "elapsed_time": 20.00711488723755,
+    "success": true
+  },
+  {
+    "approach": "hybrid_embedding",
+    "label_id": "04ebdb8a-b560-4c00-aa09-f6afa3bda458#1#62#5",
+    "word_text": "Sprouts",
+    "merchant_name": "Sprouts Farmers Market",
+    "decision": "INVALID",
+    "confidence": 0.95,
+    "reasoning": "The occurrence of 'Sprouts' is within a promotional message about a gift card, not the merchant name printed as the store header. The receipt metadata shows the merchant name is 'Sprouts Farmers Market', so labeling this word as MERCHANT_NAME is incorrect.",
+    "evidence": [
+      "Word appears in promotional line 'to WIN a $250 Sprouts gift card. Go to:' not as store header",
+      "Google Places merchant name is 'Sprouts Farmers Market' indicating full name, not just 'Sprouts'"
+    ],
+    "tools_used": [
+      "get_word_context",
+      "get_merchant_metadata",
+      "submit_decision"
+    ],
+    "elapsed_time": 14.715172052383423,
+    "success": true
+  },
+  {
+    "approach": "hybrid_embedding",
+    "label_id": "058b662d-86d7-4e5f-9dd4-e77335d4197f#1#1#1",
+    "word_text": "WF",
+    "merchant_name": "Trader Joe's",
+    "decision": "INVALID",
+    "confidence": 0.92,
+    "reasoning": "The word 'WF' is isolated on its own line with surrounding address information and markers (>>> WF <<<), indicating it is likely a store code or internal abbreviation rather than the merchant's name. The receipt metadata identifies the merchant as Trader Joe's, which does not include 'WF'. Additionally, the receipt already has a MERCHANT_NAME label elsewhere, and this line's label is flagged as NEEDS_REVIEW, suggesting it is not the correct merchant name. Therefore, the suggested MERCHANT_NAME label for 'WF' is invalid.",
+    "evidence": [
+      "Word context: \"WF\" appears alone on a line surrounded by address lines, not typical merchant name.",
+      "Merchant metadata: Trader Joe's does not contain \"WF\".",
+      "Receipt labels: Only one MERCHANT_NAME label expected elsewhere; this line's label is marked NEEDS_REVIEW."
+    ],
+    "tools_used": [
+      "get_word_context",
+      "get_merchant_metadata",
+      "search_similar_words",
+      "get_labels_on_receipt",
+      "submit_decision"
+    ],
+    "elapsed_time": 25.0888090133667,
+    "success": true
+  },
+  {
+    "approach": "hybrid_embedding",
+    "label_id": "069e270a-a3ce-40dc-81bc-1f05d7f23ac2#1#7#1",
+    "word_text": "SPROUTS",
+    "merchant_name": "Sprouts Farmers Market",
+    "decision": "VALID",
+    "confidence": 0.95,
+    "reasoning": "The word 'SPROUTS' is part of the full merchant name displayed at the top of the receipt. Context and metadata confirm it is the merchant name, and similar words are labeled MERCHANT_NAME. Hence the label is correct.",
+    "evidence": [
+      "Word 'SPROUTS' appears on its own line at top of receipt, surrounded by address and 'FARMERS MARKET' indicating merchant name",
+      "Google Places metadata confirms merchant name is 'Sprouts Farmers Market'",
+      "Similar words like 'FARMERS' on same receipt are validated as MERCHANT_NAME"
+    ],
+    "tools_used": [
+      "get_word_context",
+      "get_merchant_metadata",
+      "search_similar_words",
+      "submit_decision"
+    ],
+    "elapsed_time": 15.355108737945557,
+    "success": true
+  },
+  {
+    "approach": "hybrid_embedding",
+    "label_id": "069e270a-a3ce-40dc-81bc-1f05d7f23ac2#1#8#1",
+    "word_text": "FARMERS",
+    "merchant_name": "Sprouts Farmers Market",
+    "decision": "VALID",
+    "confidence": 0.96,
+    "reasoning": "The word 'FARMERS' is part of the merchant's name as shown in the receipt header and confirmed by Google Places data. Consistent validation from similar word searches supports labeling it as MERCHANT_NAME. Hence, the suggested label is correct.",
+    "evidence": [
+      "Word appears in header line \"FARMERS MARKET\" alongside store name and address, indicating merchant name component",
+      "Google Places metadata confirms merchant is \"Sprouts Farmers Market\" containing the token \"FARMERS\"",
+      "Similar word search shows multiple validated instances of \"FARMERS\" labeled as MERCHANT_NAME for this merchant"
+    ],
+    "tools_used": [
+      "get_word_context",
+      "get_merchant_metadata",
+      "search_similar_words",
+      "submit_decision"
+    ],
+    "elapsed_time": 26.71931219100952,
+    "success": true
+  },
+  {
+    "approach": "hybrid_embedding",
+    "label_id": "069e270a-a3ce-40dc-81bc-1f05d7f23ac2#1#8#2",
+    "word_text": "MARKET",
+    "merchant_name": "Sprouts Farmers Market",
+    "decision": "VALID",
+    "confidence": 0.95,
+    "reasoning": "The word 'MARKET' is part of the receipt header line \"FARMERS MARKET\", which together with \"Sprouts\" forms the full merchant name \"Sprouts Farmers Market\". This matches the MERCHANT_NAME label. Google Places data confirms the merchant name includes \"Market\". Additionally, similar word \"FARMERS\" on the same receipt has been validated as MERCHANT_NAME, providing supporting evidence. No contradictory context is present.",
+    "evidence": [
+      "Word appears in header line \"FARMERS MARKET\" which is part of merchant name",
+      "Google Places metadata confirms merchant name includes \"Market\"",
+      "Similar word \"FARMERS\" on same receipt validated as MERCHANT_NAME"
+    ],
+    "tools_used": [
+      "get_word_context",
+      "get_merchant_metadata",
+      "search_similar_words",
+      "submit_decision"
+    ],
+    "elapsed_time": 17.06378483772278,
+    "success": true
+  },
+  {
+    "approach": "hybrid_embedding",
+    "label_id": "069e270a-a3ce-40dc-81bc-1f05d7f23ac2#1#43#5",
+    "word_text": "Sprouts",
+    "merchant_name": "Sprouts Farmers Market",
+    "decision": "INVALID",
+    "confidence": 0.92,
+    "reasoning": "The word 'Sprouts' is part of a promotional sentence about a gift card rather than the merchant header. The receipt metadata indicates the merchant name is 'Sprouts Farmers Market', and the isolated word 'Sprouts' does not serve as the merchant name on this receipt. Therefore, labeling it as MERCHANT_NAME is incorrect.",
+    "evidence": [
+      "Word appears in promotional line: \"to WIN a $250 Sprouts gift card. Go to:\" (not header).",
+      "Merchant metadata shows full name \"Sprouts Farmers Market\"; \"Sprouts\" alone not used as merchant name on receipt.",
+      "Similar words like \"FARMERS\" are labeled MERCHANT_NAME, but \"Sprouts\" appears only in promotional context."
+    ],
+    "tools_used": [
+      "get_word_context",
+      "search_similar_words",
+      "submit_decision"
+    ],
+    "elapsed_time": 16.468587160110474,
+    "success": true
+  },
+  {
+    "approach": "hybrid_embedding",
+    "label_id": "06e54f95-6c95-4567-9fe4-6d5803e8c04d#1#1#1",
+    "word_text": "Urbane",
+    "merchant_name": "Urbane Cafe",
+    "decision": "VALID",
+    "confidence": 0.97,
+    "reasoning": "The word 'Urbane' is on the first line of the receipt, formatted as >>> Urbane Cafe <<<, which is the typical location for the merchant's trading name. Google Places confirms the merchant name is Urbane Cafe, so 'Urbane' is part of that name. Additional similar words also have MERCHANT_NAME labels validated. Therefore the suggested label MERCHANT_NAME is correct.",
+    "evidence": [
+      "Word appears in header line as part of \"Urbane Cafe\" (primary context)",
+      "Google Places metadata confirms merchant name is \"Urbane Cafe\" (secondary context)",
+      "Similar words on other receipts have MERCHANT_NAME label validated (supporting evidence)"
+    ],
+    "tools_used": [
+      "get_word_context",
+      "get_merchant_metadata",
+      "search_similar_words",
+      "submit_decision"
+    ],
+    "elapsed_time": 20.37179708480835,
+    "success": true
+  },
+  {
+    "approach": "hybrid_embedding",
+    "label_id": "06e54f95-6c95-4567-9fe4-6d5803e8c04d#1#1#2",
+    "word_text": "Cafe",
+    "merchant_name": "Urbane Cafe",
+    "decision": "VALID",
+    "confidence": 0.96,
+    "reasoning": "The word 'Cafe' is part of the line 'Urbane Cafe', which is the merchant's trading name as confirmed by receipt metadata and Google Places data. Its position at the top of the receipt matches the expected location for a merchant name. Supporting evidence from similar words also shows this label is appropriate. Therefore, labeling 'Cafe' as MERCHANT_NAME is correct.",
+    "evidence": [
+      "Primary context: word 'Cafe' appears in line 'Urbane Cafe' at top of receipt, typical merchant name location.",
+      "Merchant metadata confirms merchant name is 'Urbane Cafe'.",
+      "Similar words from other receipts (e.g., 'FARMERS' in 'FARMERS MARKET') have been validated as MERCHANT_NAME, supporting this labeling."
+    ],
+    "tools_used": [
+      "get_word_context",
+      "get_merchant_metadata",
+      "search_similar_words",
+      "submit_decision"
+    ],
+    "elapsed_time": 18.49058699607849,
+    "success": true
+  },
+  {
+    "approach": "hybrid_embedding",
+    "label_id": "06e54f95-6c95-4567-9fe4-6d5803e8c04d#3#1#1",
+    "word_text": "SPROUTS",
+    "merchant_name": "Sprouts Farmers Market",
+    "decision": "VALID",
+    "confidence": 0.96,
+    "reasoning": "The word 'SPROUTS' is positioned in the receipt header on a separate line, directly adjacent to address information and the line \"FARMERS MARKET\", forming the full merchant name \"Sprouts Farmers Market\". Google Places confirms this merchant name, and similar words on the receipt have been validated as MERCHANT_NAME. Therefore, labeling 'SPROUTS' as MERCHANT_NAME is correct.",
+    "evidence": [
+      "Word appears on its own line at top of receipt, surrounded by address lines and \"FARMERS MARKET\" indicating merchant name.",
+      "Google Places metadata shows merchant name \"Sprouts Farmers Market\", which includes the word \"Sprouts\".",
+      "Similar word \"FARMERS\" on same receipt has been validated as MERCHANT_NAME."
+    ],
+    "tools_used": [
+      "get_word_context",
+      "get_merchant_metadata",
+      "search_similar_words",
+      "submit_decision"
+    ],
+    "elapsed_time": 24.820014715194702,
+    "success": true
+  },
+  {
+    "approach": "hybrid_embedding",
+    "label_id": "06e54f95-6c95-4567-9fe4-6d5803e8c04d#3#2#1",
+    "word_text": "FARMERS",
+    "merchant_name": "Sprouts Farmers Market",
+    "decision": "VALID",
+    "confidence": 0.95,
+    "reasoning": "The word \"FARMERS\" is part of the receipt header that displays the merchant name. Primary context places it with other merchant information, and Google Places confirms the merchant name includes \"Farmers\". Similar word searches also validate this labeling. Hence the suggested label MERCHANT_NAME is correct.",
+    "evidence": [
+      "Word appears in header line \"FARMERS MARKET\" among merchant details (phone, address) indicating merchant name component",
+      "Google Places metadata confirms merchant name \"Sprouts Farmers Market\" includes \"Farmers\"",
+      "Similar word search shows multiple validated instances where \"FARMERS\" is labeled MERCHANT_NAME"
+    ],
+    "tools_used": [
+      "get_word_context",
+      "get_merchant_metadata",
+      "search_similar_words",
+      "submit_decision"
+    ],
+    "elapsed_time": 22.019036769866943,
+    "success": true
+  }
+]

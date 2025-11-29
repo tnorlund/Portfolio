@@ -1,0 +1,229 @@
+{
+  "summary": {
+    "total_duplicate_groups": 17,
+    "canonical_images": [
+      "00ded398-af6f-4a49-86f7-c79ccb554e48",
+      "06e54f95-6c95-4567-9fe4-6d5803e8c04d",
+      "20576ddd-8a2c-4aea-841e-da553b8a7ff1",
+      "29dd2c96-6854-42dd-a84f-6344b49d7254",
+      "32d3d4a1-c253-4883-86a5-0700d8cdc04a",
+      "49a1a1e7-348a-4cd9-af96-2312e838476e",
+      "4cd9dd6d-ecd8-4e6f-928f-18440e4ad303",
+      "4e180507-c996-4766-979d-4af3221a68a3",
+      "53645e98-1dc3-4929-8ff9-c9e5e12455bb",
+      "739dfe4b-edac-49b1-86c3-3568a7c98492",
+      "887079fa-bb3e-480a-8202-e759afe63f1a",
+      "a63dbf2e-84ed-42a8-9a44-febfb57b4870",
+      "a6596a97-4ce5-49ab-876d-6a2dfaeffca4",
+      "cb22100f-44c2-4b7d-b29f-46627a64355a",
+      "ce0da565-da87-4a7d-9525-aa0cd7b3b75c",
+      "d25dcaa4-66a0-412d-beee-ba799ead2f57",
+      "d67ee0e3-6f30-4142-8209-cebbf309f40e"
+    ],
+    "duplicate_images_to_delete": [
+      "1905dba2-c408-48e9-aa4d-f47fec0a3835",
+      "23e1b623-e3fa-4102-84ca-4b5b3862e6ed",
+      "53e716ed-49bf-4562-90e7-fc8c860cb985",
+      "6bfbbd7b-40af-4cb7-89c5-095796f9d1a5",
+      "783f5ca8-dec8-4d72-bfc2-5196573942bb",
+      "866ae94f-6274-4f02-a4ab-42eec72381fb",
+      "88e95723-3beb-4dcb-ba4b-cf24b3b70565",
+      "910efdda-b8f9-42e4-9666-ce76cf8371bf",
+      "95ae3b59-238c-4725-a2b0-d428d09bb82a",
+      "965c73ca-e68b-4afe-a42c-c41732e48ef4",
+      "9efaf9b1-b39d-49c6-93f2-bc58e52387b0",
+      "a1dacbc8-ab6a-40af-8146-b15d44a7aa81",
+      "a63a6c84-d399-452f-9e56-08ff664c8f35",
+      "b4791435-f9a7-4fb3-ac5f-35f8c933e3fe",
+      "baf2e4e5-fd03-4301-8f99-4a92b03ba40e",
+      "c0900230-2907-4093-9bf7-29ca3cdf397a",
+      "dea7bb6f-ea6d-4ae8-a365-02c79b00970f",
+      "e26d6ebe-ace2-45e2-9a3c-830fb947f4c7",
+      "fb69b028-a9d1-4d27-b30f-6e5f1502e2ac"
+    ],
+    "labels_to_merge": {
+      "non_conflicting": 163,
+      "conflicting": 84,
+      "total": 247
+    },
+    "label_preservation": {
+      "canonical_labels": 2084,
+      "labels_from_duplicates": 247,
+      "total_after_merge": 2331
+    }
+  },
+  "groups": [
+    {
+      "canonical_image_id": "a6596a97-4ce5-49ab-876d-6a2dfaeffca4",
+      "duplicate_image_ids": [
+        "965c73ca-e68b-4afe-a42c-c41732e48ef4",
+        "fb69b028-a9d1-4d27-b30f-6e5f1502e2ac"
+      ],
+      "current_canonical_labels": 84,
+      "non_conflicting_to_add": 6,
+      "conflicts_to_resolve": 20,
+      "estimated_labels_after_merge": 110
+    },
+    {
+      "canonical_image_id": "49a1a1e7-348a-4cd9-af96-2312e838476e",
+      "duplicate_image_ids": [
+        "a63a6c84-d399-452f-9e56-08ff664c8f35",
+        "c0900230-2907-4093-9bf7-29ca3cdf397a"
+      ],
+      "current_canonical_labels": 176,
+      "non_conflicting_to_add": 47,
+      "conflicts_to_resolve": 15,
+      "estimated_labels_after_merge": 238
+    },
+    {
+      "canonical_image_id": "00ded398-af6f-4a49-86f7-c79ccb554e48",
+      "duplicate_image_ids": [
+        "e26d6ebe-ace2-45e2-9a3c-830fb947f4c7"
+      ],
+      "current_canonical_labels": 133,
+      "non_conflicting_to_add": 5,
+      "conflicts_to_resolve": 4,
+      "estimated_labels_after_merge": 142
+    },
+    {
+      "canonical_image_id": "4cd9dd6d-ecd8-4e6f-928f-18440e4ad303",
+      "duplicate_image_ids": [
+        "9efaf9b1-b39d-49c6-93f2-bc58e52387b0"
+      ],
+      "current_canonical_labels": 106,
+      "non_conflicting_to_add": 0,
+      "conflicts_to_resolve": 3,
+      "estimated_labels_after_merge": 109
+    },
+    {
+      "canonical_image_id": "ce0da565-da87-4a7d-9525-aa0cd7b3b75c",
+      "duplicate_image_ids": [
+        "a1dacbc8-ab6a-40af-8146-b15d44a7aa81"
+      ],
+      "current_canonical_labels": 109,
+      "non_conflicting_to_add": 2,
+      "conflicts_to_resolve": 1,
+      "estimated_labels_after_merge": 112
+    },
+    {
+      "canonical_image_id": "d67ee0e3-6f30-4142-8209-cebbf309f40e",
+      "duplicate_image_ids": [
+        "6bfbbd7b-40af-4cb7-89c5-095796f9d1a5"
+      ],
+      "current_canonical_labels": 84,
+      "non_conflicting_to_add": 0,
+      "conflicts_to_resolve": 0,
+      "estimated_labels_after_merge": 84
+    },
+    {
+      "canonical_image_id": "29dd2c96-6854-42dd-a84f-6344b49d7254",
+      "duplicate_image_ids": [
+        "783f5ca8-dec8-4d72-bfc2-5196573942bb"
+      ],
+      "current_canonical_labels": 98,
+      "non_conflicting_to_add": 3,
+      "conflicts_to_resolve": 3,
+      "estimated_labels_after_merge": 104
+    },
+    {
+      "canonical_image_id": "20576ddd-8a2c-4aea-841e-da553b8a7ff1",
+      "duplicate_image_ids": [
+        "53e716ed-49bf-4562-90e7-fc8c860cb985"
+      ],
+      "current_canonical_labels": 94,
+      "non_conflicting_to_add": 6,
+      "conflicts_to_resolve": 1,
+      "estimated_labels_after_merge": 101
+    },
+    {
+      "canonical_image_id": "887079fa-bb3e-480a-8202-e759afe63f1a",
+      "duplicate_image_ids": [
+        "baf2e4e5-fd03-4301-8f99-4a92b03ba40e"
+      ],
+      "current_canonical_labels": 130,
+      "non_conflicting_to_add": 10,
+      "conflicts_to_resolve": 4,
+      "estimated_labels_after_merge": 144
+    },
+    {
+      "canonical_image_id": "739dfe4b-edac-49b1-86c3-3568a7c98492",
+      "duplicate_image_ids": [
+        "95ae3b59-238c-4725-a2b0-d428d09bb82a"
+      ],
+      "current_canonical_labels": 40,
+      "non_conflicting_to_add": 1,
+      "conflicts_to_resolve": 2,
+      "estimated_labels_after_merge": 43
+    },
+    {
+      "canonical_image_id": "a63dbf2e-84ed-42a8-9a44-febfb57b4870",
+      "duplicate_image_ids": [
+        "1905dba2-c408-48e9-aa4d-f47fec0a3835"
+      ],
+      "current_canonical_labels": 451,
+      "non_conflicting_to_add": 7,
+      "conflicts_to_resolve": 10,
+      "estimated_labels_after_merge": 468
+    },
+    {
+      "canonical_image_id": "53645e98-1dc3-4929-8ff9-c9e5e12455bb",
+      "duplicate_image_ids": [
+        "866ae94f-6274-4f02-a4ab-42eec72381fb"
+      ],
+      "current_canonical_labels": 149,
+      "non_conflicting_to_add": 16,
+      "conflicts_to_resolve": 2,
+      "estimated_labels_after_merge": 167
+    },
+    {
+      "canonical_image_id": "d25dcaa4-66a0-412d-beee-ba799ead2f57",
+      "duplicate_image_ids": [
+        "23e1b623-e3fa-4102-84ca-4b5b3862e6ed"
+      ],
+      "current_canonical_labels": 85,
+      "non_conflicting_to_add": 5,
+      "conflicts_to_resolve": 5,
+      "estimated_labels_after_merge": 95
+    },
+    {
+      "canonical_image_id": "06e54f95-6c95-4567-9fe4-6d5803e8c04d",
+      "duplicate_image_ids": [
+        "dea7bb6f-ea6d-4ae8-a365-02c79b00970f"
+      ],
+      "current_canonical_labels": 120,
+      "non_conflicting_to_add": 14,
+      "conflicts_to_resolve": 7,
+      "estimated_labels_after_merge": 141
+    },
+    {
+      "canonical_image_id": "4e180507-c996-4766-979d-4af3221a68a3",
+      "duplicate_image_ids": [
+        "88e95723-3beb-4dcb-ba4b-cf24b3b70565"
+      ],
+      "current_canonical_labels": 86,
+      "non_conflicting_to_add": 35,
+      "conflicts_to_resolve": 1,
+      "estimated_labels_after_merge": 122
+    },
+    {
+      "canonical_image_id": "32d3d4a1-c253-4883-86a5-0700d8cdc04a",
+      "duplicate_image_ids": [
+        "910efdda-b8f9-42e4-9666-ce76cf8371bf"
+      ],
+      "current_canonical_labels": 47,
+      "non_conflicting_to_add": 0,
+      "conflicts_to_resolve": 0,
+      "estimated_labels_after_merge": 47
+    },
+    {
+      "canonical_image_id": "cb22100f-44c2-4b7d-b29f-46627a64355a",
+      "duplicate_image_ids": [
+        "b4791435-f9a7-4fb3-ac5f-35f8c933e3fe"
+      ],
+      "current_canonical_labels": 92,
+      "non_conflicting_to_add": 6,
+      "conflicts_to_resolve": 6,
+      "estimated_labels_after_merge": 104
+    }
+  ]
+}

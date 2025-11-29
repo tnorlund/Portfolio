@@ -1,0 +1,7 @@
+{
+  "image_id": "cb22100f-44c2-4b7d-b29f-46627a64355a",
+  "status": "ERROR",
+  "confidence": 0.0,
+  "reasoning": "Error during analysis: Recursion limit of 50 reached without hitting a stop condition. You can increase the limit by setting the `recursion_limit` config key.\nFor troubleshooting, visit: https://docs.langchain.com/oss/python/langgraph/errors/GRAPH_RECURSION_LIMIT",
+  "grouping": null
+}

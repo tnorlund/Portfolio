@@ -1,0 +1,486 @@
+INFO:botocore.credentials:Found credentials in shared credentials file: ~/.aws/credentials
+INFO:receipt_agent.clients.factory:Created ChromaDB client at: /Users/tnorlund/Portfolio/.chroma_snapshots/lines
+INFO:receipt_agent.clients.factory:Created ChromaDB client at: /Users/tnorlund/Portfolio/.chroma_snapshots/words
+INFO:receipt_places.cache:CacheManager initialized for table: ReceiptsTable-dc5be22
+INFO:receipt_places.client:PlacesClient initialized (cache=disabled)
+============================================================
+🔧 Merchant Harmonizer
+============================================================
+📊 DynamoDB Table: ReceiptsTable-dc5be22
+✅ ChromaDB: /Users/tnorlund/Portfolio/.chroma_snapshots/lines
+✅ OpenAI API key loaded
+✅ Google Places API key loaded
+✅ Harmonizer initialized
+
+🏪 Scanning all merchants...
+============================================================
+Found 500 receipts across 123 merchants
+
+  50 E Thousand Oaks Blvd #3: 2 receipts... WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for 00d01b34-2a2f-460a-b317-e37fafbd53ba#1: receipt not found for image_id=00d01b34-2a2f-460a-b317-e37fafbd53ba, receipt_id=1
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for 335f7921-2492-49a3-91e9-9eecc883be10#1: receipt not found for image_id=335f7921-2492-49a3-91e9-9eecc883be10, receipt_id=1
+✅ all consistent
+  AIM Mail Center: 3 receipts... INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 495-6229)
+INFO:receipt_places.client:🔍 Places API: search_by_address(1014 S Westlake Blvd Suite 14, Westlake Village, C)
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for 9f92d3ca-5433-4b69-b27a-ffa90b02d5fc#2: receipt not found for image_id=9f92d3ca-5433-4b69-b27a-ffa90b02d5fc, receipt_id=2
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 495-6229)
+⚠️  3 need updates
+  Agoura Rd: 2 receipts... WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for 09b29b40-272c-42fe-b34a-6916123096f9#1: receipt not found for image_id=09b29b40-272c-42fe-b34a-6916123096f9, receipt_id=1
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for aee67cc7-5c4e-427b-9f98-d8d37f11a6bc#1: receipt not found for image_id=aee67cc7-5c4e-427b-9f98-d8d37f11a6bc, receipt_id=1
+✅ all consistent
+  Anawalt True Value Lumber: 2 receipts... INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 769-4421)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 769-4421)
+⚠️  2 need updates
+  Avis Car Rental: 12 receipts... WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for 01d3b8e0-f0f8-43d5-af23-07b7c3a73bd9#1: receipt not found for image_id=01d3b8e0-f0f8-43d5-af23-07b7c3a73bd9, receipt_id=1
+INFO:receipt_places.client:🔍 Places API: search_by_address(389 E Thousand Oaks Blvd Unit 3, Thousand Oaks, CA)
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for 09b29b40-272c-42fe-b34a-6916123096f9#2: receipt not found for image_id=09b29b40-272c-42fe-b34a-6916123096f9, receipt_id=2
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for 0c3e58fe-f74c-419b-bd35-742475169a10#1: receipt not found for image_id=0c3e58fe-f74c-419b-bd35-742475169a10, receipt_id=1
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for 11208686-2836-415c-bbc1-62bf59f4a298#1: receipt not found for image_id=11208686-2836-415c-bbc1-62bf59f4a298, receipt_id=1
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for 2cd429a4-a12b-40f3-a46f-50740a66619c#1: receipt not found for image_id=2cd429a4-a12b-40f3-a46f-50740a66619c, receipt_id=1
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for 32e987c3-3b8a-4484-845c-e31589197355#1: receipt not found for image_id=32e987c3-3b8a-4484-845c-e31589197355, receipt_id=1
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for 6f6ae375-0074-4f75-8988-d1906da1a2b5#1: receipt not found for image_id=6f6ae375-0074-4f75-8988-d1906da1a2b5, receipt_id=1
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for 7905961d-55f8-4d46-9c0d-b6047053b546#1: receipt not found for image_id=7905961d-55f8-4d46-9c0d-b6047053b546, receipt_id=1
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for 8bb49157-d1a6-4550-9296-e8d12b7a11c2#1: receipt not found for image_id=8bb49157-d1a6-4550-9296-e8d12b7a11c2, receipt_id=1
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for aad08fa6-d5ff-43a5-a300-49329860aa38#1: receipt not found for image_id=aad08fa6-d5ff-43a5-a300-49329860aa38, receipt_id=1
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for ddd538ee-07b5-4925-9206-738b51c7cc4d#1: receipt not found for image_id=ddd538ee-07b5-4925-9206-738b51c7cc4d, receipt_id=1
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for dfa9acb0-2c39-4f6c-bc9d-bceb26330c88#1: receipt not found for image_id=dfa9acb0-2c39-4f6c-bc9d-bceb26330c88, receipt_id=1
+⚠️  1 need updates
+  Brent's Delicatessen & Restaurant: 3 receipts... INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 557-1882)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 557-1882)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 557-1882)
+⚠️  3 need updates
+  CREAMERY & CAFE: 2 receipts... ✅ all consistent
+  CVS: 4 receipts... INFO:receipt_places.client:🔍 Places API: search_by_address(2791 Agoura Rd, Thousand Oaks, CA 91361, United St)
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for 5a1a8f1e-7798-49c9-b55c-90134f35b2d7#1: receipt not found for image_id=5a1a8f1e-7798-49c9-b55c-90134f35b2d7, receipt_id=1
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 495-4938)
+⚠️  2 need updates
+  Cafe Nouveau: 2 receipts... ✅ all consistent
+  Chase Bank: 5 receipts... INFO:receipt_places.client:🔍 Places API: search_by_phone(1-800-935-9935)
+INFO:receipt_places.client:🔍 Places API: search_by_phone(1-800-935-9935)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 379-2452)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 379-2452)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 379-2452)
+⚠️  5 need updates
+  Costco Wholesale: 23 receipts... INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 597-3901)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 597-3901)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 597-3901)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 597-3901)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 597-3901)
+INFO:receipt_places.client:🔍 Places API: search_by_address(5700 Lindero Canyon Rd, Westlake Village, CA 91362)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 597-3901)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 597-3901)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 597-3901)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 597-3901)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 597-3901)
+INFO:receipt_places.client:🔍 Places API: search_by_address(5700 Lindero Canyon Rd, Westlake Village, CA 91362)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 597-3901)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 597-3901)
+INFO:receipt_places.client:🔍 Places API: search_by_phone(818-597-3901)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 597-3901)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 597-3901)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 597-3901)
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for 9f92d3ca-5433-4b69-b27a-ffa90b02d5fc#1: receipt not found for image_id=9f92d3ca-5433-4b69-b27a-ffa90b02d5fc, receipt_id=1
+INFO:receipt_places.client:🔍 Places API: search_by_address(5700 Lindero Canyon Rd, Westlake Village, CA 91362)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 597-3901)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 597-3901)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 597-3901)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 597-3901)
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for e1223ce4-b7f3-48ee-a306-a574dd86a3ce#2: receipt not found for image_id=e1223ce4-b7f3-48ee-a306-a574dd86a3ce, receipt_id=2
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 597-3901)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 597-3901)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 597-3901)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 597-3901)
+⚠️  27 need updates
+  DIY Home Center: 5 receipts... INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 707-1515)
+INFO:receipt_places.client:🔍 Places API: search_by_address(3775 Thousand Oaks Blvd, Thousand Oaks, CA 91360, )
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for 399198e9-c24c-42fe-8c76-780991931509#1: receipt not found for image_id=399198e9-c24c-42fe-8c76-780991931509, receipt_id=1
+INFO:receipt_places.client:🔍 Places API: search_by_address(28750 Roadside Dr, Agoura Hills, CA 91301, United )
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-2753)
+INFO:receipt_places.client:🔍 Places API: search_by_address(3775 Thousand Oaks Blvd, Thousand Oaks, CA 91360, )
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 707-1515)
+INFO:receipt_places.client:🔍 Places API: search_by_address(28750 Roadside Dr, Agoura Hills, CA 91301, United )
+⚠️  7 need updates
+  East Coast Bagel Co.: 2 receipts... INFO:receipt_places.client:🔍 Places API: search_by_phone(8054949099)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 494-9099)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 494-9099)
+⚠️  3 need updates
+  Eastwood: 2 receipts... INFO:receipt_places.client:🔍 Places API: search_by_address(611 S Western Ave, Los Angeles, CA 90005, United S)
+⚠️  1 need updates
+  FEY CHIROPRACTIC: 2 receipts... ✅ all consistent
+  Fey Chiropractic Thousand Oaks Spine: 3 receipts... INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 495-0110)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 495-0110)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 495-0110)
+⚠️  3 need updates
+  Floor & Decor: 3 receipts... INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 577-4414)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((571) 227-9977)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 577-4414)
+INFO:receipt_places.client:🔍 Places API: search_by_address(950 Edwards Ferry Rd NE, Leesburg, VA 20176, Unite)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 577-4414)
+⚠️  5 need updates
+  Gelson's: 3 receipts... INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 496-0353)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 496-0353)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 496-0353)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 496-0353)
+⚠️  4 need updates
+  Gelson's Westlake Village: 2 receipts... INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 496-0353)
+⚠️  1 need updates
+  Harbor Freight: 6 receipts... INFO:receipt_places.client:🔍 Places API: search_by_phone((800) 250-0668)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 888-4011)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 888-4011)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 888-4011)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 888-4011)
+INFO:receipt_places.client:🔍 Places API: search_by_address(22912 Victory Blvd, Woodland Hills, CA 91367, Unit)
+⚠️  6 need updates
+  In-N-Out Burger: 10 receipts... INFO:receipt_places.client:🔍 Places API: search_by_phone((800) 786-1000)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((800) 786-1000)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((800) 786-1000)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((800) 786-1000)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((800) 786-1000)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((800) 786-1000)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((800) 786-1000)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((800) 786-1000)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((800) 786-1000)
+⚠️  1 need updates
+  Italia Deli & Bakery: 5 receipts... INFO:receipt_places.client:🔍 Places API: search_by_address(5657 Kanan Rd, Agoura Hills, CA 91301, United Stat)
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for 399198e9-c24c-42fe-8c76-780991931509#2: receipt not found for image_id=399198e9-c24c-42fe-8c76-780991931509, receipt_id=2
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 991-4838)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 991-4838)
+INFO:receipt_places.client:🔍 Places API: search_by_phone(818-991-4838)
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for b4c48be0-eabf-4e5c-a170-a76b2a7df3af#2: receipt not found for image_id=b4c48be0-eabf-4e5c-a170-a76b2a7df3af, receipt_id=2
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 991-4838)
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for d870b4a8-25a4-4ff2-8020-2478f6f2ac65#2: receipt not found for image_id=d870b4a8-25a4-4ff2-8020-2478f6f2ac65, receipt_id=2
+✅ all consistent
+  JOANN Fabric and Crafts: 2 receipts... ✅ all consistent
+  Laundry Valet: 2 receipts... INFO:receipt_places.client:🔍 Places API: search_by_address(31121 Via Colinas Suite 1002, Westlake Village, CA)
+INFO:receipt_places.client:🔍 Places API: search_by_address(31121 Via Colinas Suite 1002, Westlake Village, CA)
+⚠️  2 need updates
+  Le Pain Quotidien: 2 receipts... WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for 1356d23f-b0ce-4abe-989b-e123d82b67f0#1: receipt not found for image_id=1356d23f-b0ce-4abe-989b-e123d82b67f0, receipt_id=1
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 839-5230)
+⚠️  1 need updates
+  Lowe's Home Improvement: 2 receipts... INFO:receipt_places.client:🔍 Places API: search_by_address(1027 Academy Dr, Thousand Oaks, CA 91320, United S)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 214-5510)
+⚠️  2 need updates
+  Mendocino Farms: 3 receipts... INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 630-7851)
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for d2697fc7-9a7c-4894-95ee-8061e057e826#1: receipt not found for image_id=d2697fc7-9a7c-4894-95ee-8061e057e826, receipt_id=1
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 630-7851)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 379-9055)
+⚠️  2 need updates
+  Moody Market & Provisions: 2 receipts... INFO:receipt_places.client:🔍 Places API: search_by_phone((747) 222-7677)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((747) 222-7677)
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for d980368d-c5ed-4aa2-b3db-ee3b79188d2b#2: receipt not found for image_id=d980368d-c5ed-4aa2-b3db-ee3b79188d2b, receipt_id=2
+✅ all consistent
+  Moody Rooster: 2 receipts... INFO:receipt_places.client:🔍 Places API: search_by_phone(+18053703131)
+INFO:receipt_places.client:🔍 Places API: search_by_phone(+18053703131)
+⚠️  2 need updates
+  Neighborly: 3 receipts... INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 233-7507)
+INFO:receipt_places.client:🔍 Places API: search_by_address(4000 E Thousand Oaks Blvd, Westlake Village, CA 91)
+INFO:receipt_places.client:🔍 Places API: search_by_address(4000 E Thousand Oaks Blvd Spc C1, Westlake Village)
+INFO:receipt_places.client:🔍 Places API: search_by_address(4000 E Thousand Oaks Blvd, Westlake Village, CA 91)
+⚠️  3 need updates
+  Nicole Skin Studio: 2 receipts... INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 630-3037)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 630-3037)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 630-3037)
+⚠️  3 need updates
+  Nordstrom: 2 receipts... INFO:receipt_places.client:🔍 Places API: search_by_address(21725 Victory Blvd, Canoga Park, CA 91303, United )
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 884-7900)
+⚠️  1 need updates
+  Pasta Sisters: 2 receipts... INFO:receipt_places.client:🔍 Places API: search_by_address(3280 Helms Ave, Culver City, CA 90232, United Stat)
+INFO:receipt_places.client:🔍 Places API: search_by_address(3280 Helms Ave, Culver City, CA 90232)
+⚠️  2 need updates
+  Roast & Rice Asian Fusion: 5 receipts... INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 699-6369)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 699-6369)
+INFO:receipt_places.client:🔍 Places API: search_by_address(30990 Russell Ranch Rd, Westlake Village, CA 91362)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 699-6369)
+⚠️  3 need updates
+  SPEEDWAY: 2 receipts... INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 991-3401)
+INFO:receipt_places.client:🔍 Places API: search_by_address(5000 Kanan Rd, Agoura Hills, CA 91301)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 991-3401)
+INFO:receipt_places.client:🔍 Places API: search_by_address(5000 Kanan Rd, Agoura Hills, CA 91301)
+⚠️  2 need updates
+  Sparkling Image Car Wash: 2 receipts... INFO:receipt_places.client:🔍 Places API: search_by_phone((805)495-5110)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 495-5110)
+⚠️  1 need updates
+  Speedway: 2 receipts... INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 991-3401)
+INFO:receipt_places.client:🔍 Places API: search_by_address(5000 Kanan Rd, Agoura Hills, CA 91301)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 991-3401)
+INFO:receipt_places.client:🔍 Places API: search_by_address(5000 Kanan Rd, Agoura Hills, CA 91301)
+⚠️  2 need updates
+  Sprouts Farmers Market: 154 receipts... WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for 00d01b34-2a2f-460a-b317-e37fafbd53ba#3: receipt not found for image_id=00d01b34-2a2f-460a-b317-e37fafbd53ba, receipt_id=3
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for 01d3b8e0-f0f8-43d5-af23-07b7c3a73bd9#3: receipt not found for image_id=01d3b8e0-f0f8-43d5-af23-07b7c3a73bd9, receipt_id=3
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone(9899999980376)
+WARNING:receipt_places.client:Places API error: API returned status: INVALID_REQUEST (status=INVALID_REQUEST)
+INFO:receipt_places.client:🔍 Places API: search_by_text(9899999980376) [NOT CACHED]
+INFO:receipt_places.client:🔍 Places API: search_by_text(Sprouts Farmers Market) [NOT CACHED]
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for 0c3e58fe-f74c-419b-bd35-742475169a10#3: receipt not found for image_id=0c3e58fe-f74c-419b-bd35-742475169a10, receipt_id=3
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone(+1 805-917-4200)
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for 11208686-2836-415c-bbc1-62bf59f4a298#3: receipt not found for image_id=11208686-2836-415c-bbc1-62bf59f4a298, receipt_id=3
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for 2cd429a4-a12b-40f3-a46f-50740a66619c#3: receipt not found for image_id=2cd429a4-a12b-40f3-a46f-50740a66619c, receipt_id=3
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone(+18059174200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for 32e987c3-3b8a-4484-845c-e31589197355#3: receipt not found for image_id=32e987c3-3b8a-4484-845c-e31589197355, receipt_id=3
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for 335f7921-2492-49a3-91e9-9eecc883be10#3: receipt not found for image_id=335f7921-2492-49a3-91e9-9eecc883be10, receipt_id=3
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for 49ca68ae-39a3-4381-a981-531c84a619be#2: receipt not found for image_id=49ca68ae-39a3-4381-a981-531c84a619be, receipt_id=2
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for 6f6ae375-0074-4f75-8988-d1906da1a2b5#3: receipt not found for image_id=6f6ae375-0074-4f75-8988-d1906da1a2b5, receipt_id=3
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for 7905961d-55f8-4d46-9c0d-b6047053b546#3: receipt not found for image_id=7905961d-55f8-4d46-9c0d-b6047053b546, receipt_id=3
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for 8bb49157-d1a6-4550-9296-e8d12b7a11c2#3: receipt not found for image_id=8bb49157-d1a6-4550-9296-e8d12b7a11c2, receipt_id=3
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 917-4200)
+⚠️  48 need updates
+  Stanley of New Orleans: 2 receipts... INFO:receipt_places.client:🔍 Places API: search_by_phone(504-587-0093)
+INFO:receipt_places.client:🔍 Places API: search_by_phone(+1 504-587-0093)
+⚠️  2 need updates
+  Target: 4 receipts... INFO:receipt_places.client:🔍 Places API: search_by_phone(209-476-8081)
+INFO:receipt_places.client:🔍 Places API: search_by_phone(209-476-8081)
+INFO:receipt_places.client:🔍 Places API: search_by_phone(818-661-2631)
+INFO:receipt_places.client:🔍 Places API: search_by_address(2705 Teller Rd, Thousand Oaks, CA 91320, United St)
+⚠️  4 need updates
+  Target Grocery: 9 receipts... INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 661-2631)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 661-2631)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 661-2631)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 416-5790)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 661-2631)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 661-2631)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 661-2631)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 661-2631)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 661-2631)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 661-2631)
+⚠️  10 need updates
+  The Home Depot: 17 receipts... INFO:receipt_places.client:🔍 Places API: search_by_address(2745 Teller Rd, Thousand Oaks, CA 91320, United St)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 413-3044)
+INFO:receipt_places.client:🔍 Places API: search_by_text((805) 413-3044) [NOT CACHED]
+INFO:receipt_places.client:🔍 Places API: search_by_address(2745 Teller Rd, Thousand Oaks, CA 91320, United St)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 887-7083)
+INFO:receipt_places.client:🔍 Places API: search_by_phone(+1805335000)
+INFO:receipt_places.client:🔍 Places API: search_by_text(+1805335000) [NOT CACHED]
+INFO:receipt_places.client:🔍 Places API: search_by_address(2745 Teller Rd, Thousand Oaks, CA 91320, United St)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 375-6680)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 375-6680)
+INFO:receipt_places.client:🔍 Places API: search_by_address(22855 Victory Blvd, West Hills, CA 91307, United S)
+INFO:receipt_places.client:🔍 Places API: search_by_address(2745 Teller Rd, Thousand Oaks, CA 91320, United St)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 887-7083)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 375-6680)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 375-6680)
+INFO:receipt_places.client:🔍 Places API: search_by_address(22855 Victory Blvd, West Hills, CA 91307, United S)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 375-6680)
+INFO:receipt_places.client:🔍 Places API: search_by_address(2745 Teller Rd, Thousand Oaks, CA 91320, United St)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 375-6680)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 887-7083)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 887-7083)
+INFO:receipt_places.client:🔍 Places API: search_by_address(2745 Teller Rd, Thousand Oaks, CA 91320, United St)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 887-7083)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 375-6680)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 887-7083)
+⚠️  21 need updates
+  The Stand - American Classics Redefined: 3 receipts... INFO:receipt_places.client:🔍 Places API: search_by_address(966 S Westlake Blvd #3, Thousand Oaks, CA 91361, U)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 277-2772)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 277-2772)
+INFO:receipt_places.client:🔍 Places API: search_by_phone(805-777-8560)
+INFO:receipt_places.client:🔍 Places API: search_by_text(805-777-8560) [NOT CACHED]
+INFO:receipt_places.client:🔍 Places API: search_by_address(966 S Westlake Blvd #3, Thousand Oaks, CA 91361, U)
+⚠️  4 need updates
+  Trader Joe's: 4 receipts... INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 494-5040)
+INFO:receipt_places.client:🔍 Places API: search_by_address(6535 Pacific Ave, Stockton, CA 95207, United State)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 494-5040)
+INFO:receipt_places.client:🔍 Places API: search_by_address(4675 Admiralty Way, Marina Del Rey, CA 90292, USA)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 347-2591)
+INFO:receipt_places.client:🔍 Places API: search_by_address(6535 Pacific Ave, Stockton, CA 95207, USA)
+⚠️  6 need updates
+  UNKNOWN: 58 receipts... ✅ all consistent
+  USA: 2 receipts... INFO:receipt_places.client:🔍 Places API: search_by_address(10601 Magnolia Blvd, North Hollywood, CA 91601, US)
+⚠️  1 need updates
+  Urbane Cafe: 3 receipts... INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 496-7666)
+⚠️  1 need updates
+  VONS: 2 receipts... INFO:receipt_places.client:🔍 Places API: search_by_address(3610 Adams Ave, San Diego, CA 92116, United States)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_address(2725 Agoura Rd, Thousand Oaks, CA 91361, United St)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 495-6303)
+INFO:receipt_places.client:🔍 Places API: search_by_text((805) 495-6303) [NOT CACHED]
+INFO:receipt_places.client:🔍 Places API: search_by_address(5671 Kanan Rd, Agoura Hills, CA 91301, United Stat)
+INFO:receipt_places.client:🔍 Places API: search_by_address(2725 Agoura Rd, Thousand Oaks, CA 91361, United St)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_address(2725 Agoura Rd, Thousand Oaks, CA 91361, United St)
+INFO:receipt_places.client:🔍 Places API: search_by_address(2725 Agoura Rd, Thousand Oaks, CA 91361, United St)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 991-2857)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+⚠️  12 need updates
+  Vons: 24 receipts... INFO:receipt_places.client:🔍 Places API: search_by_address(3610 Adams Ave, San Diego, CA 92116, United States)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_address(2725 Agoura Rd, Thousand Oaks, CA 91361, United St)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 495-6303)
+INFO:receipt_places.client:🔍 Places API: search_by_text((805) 495-6303) [NOT CACHED]
+INFO:receipt_places.client:🔍 Places API: search_by_address(5671 Kanan Rd, Agoura Hills, CA 91301, United Stat)
+INFO:receipt_places.client:🔍 Places API: search_by_address(2725 Agoura Rd, Thousand Oaks, CA 91361, United St)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_address(2725 Agoura Rd, Thousand Oaks, CA 91361, United St)
+INFO:receipt_places.client:🔍 Places API: search_by_address(2725 Agoura Rd, Thousand Oaks, CA 91361, United St)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((818) 991-2857)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+INFO:receipt_places.client:🔍 Places API: search_by_phone((805) 497-1921)
+⚠️  12 need updates
+  WF: 4 receipts... ✅ all consistent
+  Wild Fork: 4 receipts... WARNING:receipt_agent.tools.harmonizer:Could not get receipt details for 1356d23f-b0ce-4abe-989b-e123d82b67f0#2: receipt not found for image_id=1356d23f-b0ce-4abe-989b-e123d82b67f0, receipt_id=2
+✅ all consistent
+
+============================================================
+SUMMARY BY MERCHANT
+============================================================
+⚠️ Anawalt True Value Lumber: 0/2 consistent (0%)
+⚠️ Brent's Delicatessen & Restaurant: 0/3 consistent (0%)
+⚠️ CREAMERY & CAFE: 0/0 consistent (0%)
+⚠️ Cafe Nouveau: 0/0 consistent (0%)
+⚠️ Chase Bank: 0/5 consistent (0%)
+⚠️ East Coast Bagel Co.: 0/3 consistent (0%)
+⚠️ Eastwood: 0/1 consistent (0%)
+⚠️ FEY CHIROPRACTIC: 0/0 consistent (0%)
+⚠️ Fey Chiropractic Thousand Oaks Spine: 0/3 consistent (0%)
+⚠️ Floor & Decor: 0/5 consistent (0%)
+⚠️ Gelson's: 0/4 consistent (0%)
+⚠️ Gelson's Westlake Village: 0/1 consistent (0%)
+⚠️ Harbor Freight: 0/6 consistent (0%)
+⚠️ Laundry Valet: 0/2 consistent (0%)
+⚠️ Lowe's Home Improvement: 0/2 consistent (0%)
+⚠️ Moody Rooster: 0/2 consistent (0%)
+⚠️ Nicole Skin Studio: 0/3 consistent (0%)
+⚠️ Pasta Sisters: 0/2 consistent (0%)
+⚠️ Stanley of New Orleans: 0/2 consistent (0%)
+⚠️ Target: 0/4 consistent (0%)
+⚠️ Target Grocery: 0/10 consistent (0%)
+⚠️ The Home Depot: 0/21 consistent (0%)
+⚠️ The Stand - American Classics Redefined: 0/4 consistent (0%)
+⚠️ Trader Joe's: 0/6 consistent (0%)
+⚠️ UNKNOWN: 0/0 consistent (0%)
+⚠️ USA: 0/1 consistent (0%)
+⚠️ Urbane Cafe: 0/1 consistent (0%)
+⚠️ WF: 0/0 consistent (0%)
+⚠️ Costco Wholesale: 2/29 consistent (7%)
+⚠️ DIY Home Center: 1/8 consistent (12%)
+⚠️ AIM Mail Center: 1/4 consistent (25%)
+⚠️ Neighborly: 1/4 consistent (25%)
+⚠️ Roast & Rice Asian Fusion: 1/4 consistent (25%)
+⚠️ CVS: 1/3 consistent (33%)
+⚠️ Le Pain Quotidien: 1/2 consistent (50%)
+⚠️ Mendocino Farms: 2/4 consistent (50%)
+⚠️ Nordstrom: 1/2 consistent (50%)
+⚠️ SPEEDWAY: 2/4 consistent (50%)
+⚠️ Sparkling Image Car Wash: 1/2 consistent (50%)
+⚠️ Speedway: 2/4 consistent (50%)
+⚠️ Sprouts Farmers Market: 52/100 consistent (52%)
+⚠️ VONS: 15/27 consistent (56%)
+⚠️ Vons: 15/27 consistent (56%)
+⚠️ In-N-Out Burger: 10/11 consistent (91%)
+⚠️ Avis Car Rental: 12/13 consistent (92%)
+✅ 50 E Thousand Oaks Blvd #3: 2/2 consistent (100%)
+✅ Agoura Rd: 2/2 consistent (100%)
+✅ Italia Deli & Bakery: 8/8 consistent (100%)
+✅ JOANN Fabric and Crafts: 2/2 consistent (100%)
+✅ Moody Market & Provisions: 3/3 consistent (100%)
+✅ Wild Fork: 5/5 consistent (100%)
+
+💾 Saved report to harmonizer_report.json

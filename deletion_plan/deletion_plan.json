@@ -1,0 +1,499 @@
+{
+  "summary": {
+    "total_duplicate_groups": 17,
+    "total_images_to_delete": 19,
+    "total_images_to_keep": 17,
+    "total_receipts_affected": 3,
+    "unique_receipt_ids": [
+      1,
+      2,
+      3
+    ]
+  },
+  "groups": [
+    {
+      "sha256": "b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf",
+      "canonical_image": {
+        "image_id": "a6596a97-4ce5-49ab-876d-6a2dfaeffca4",
+        "receipt_ids": [
+          1
+        ],
+        "label_count": 78,
+        "timestamp": "2025-06-22T22:48:26.123165+00:00"
+      },
+      "duplicate_images": [
+        {
+          "image_id": "965c73ca-e68b-4afe-a42c-c41732e48ef4",
+          "receipt_ids": [
+            1
+          ],
+          "label_count": 74,
+          "timestamp": "2025-06-22T22:36:30.873407+00:00"
+        },
+        {
+          "image_id": "fb69b028-a9d1-4d27-b30f-6e5f1502e2ac",
+          "receipt_ids": [
+            1
+          ],
+          "label_count": 74,
+          "timestamp": "2025-06-22T19:03:27.852621+00:00"
+        }
+      ],
+      "receipt_ids": [
+        1
+      ],
+      "total_receipts": 1
+    },
+    {
+      "sha256": "fbb577db08f8e9a2b5990be1b36f1ddc3b7e5c44abfe190ea0edfdcd988db266",
+      "canonical_image": {
+        "image_id": "49a1a1e7-348a-4cd9-af96-2312e838476e",
+        "receipt_ids": [
+          1,
+          2
+        ],
+        "label_count": 130,
+        "timestamp": "2025-05-17T19:50:01.331070+00:00"
+      },
+      "duplicate_images": [
+        {
+          "image_id": "a63a6c84-d399-452f-9e56-08ff664c8f35",
+          "receipt_ids": [
+            1,
+            2
+          ],
+          "label_count": 110,
+          "timestamp": "2025-10-27T04:34:11.799651+00:00"
+        },
+        {
+          "image_id": "c0900230-2907-4093-9bf7-29ca3cdf397a",
+          "receipt_ids": [
+            1,
+            2
+          ],
+          "label_count": 31,
+          "timestamp": "2025-10-27T04:00:23.140670+00:00"
+        }
+      ],
+      "receipt_ids": [
+        1,
+        2
+      ],
+      "total_receipts": 2
+    },
+    {
+      "sha256": "56f8ad55e3d80de2a69db565c56dd087b8862ac15ef0723700ec9c362ada835c",
+      "canonical_image": {
+        "image_id": "00ded398-af6f-4a49-86f7-c79ccb554e48",
+        "receipt_ids": [
+          1,
+          2
+        ],
+        "label_count": 128,
+        "timestamp": "2025-10-30T21:19:43.130425+00:00"
+      },
+      "duplicate_images": [
+        {
+          "image_id": "e26d6ebe-ace2-45e2-9a3c-830fb947f4c7",
+          "receipt_ids": [
+            1,
+            2
+          ],
+          "label_count": 60,
+          "timestamp": "2025-10-25T06:58:14.329889+00:00"
+        }
+      ],
+      "receipt_ids": [
+        1,
+        2
+      ],
+      "total_receipts": 2
+    },
+    {
+      "sha256": "441057a2854f3866f8a2086c2c9608c15760f379ff1a88d89c2d9228d3f68f78",
+      "canonical_image": {
+        "image_id": "4cd9dd6d-ecd8-4e6f-928f-18440e4ad303",
+        "receipt_ids": [
+          1,
+          2
+        ],
+        "label_count": 106,
+        "timestamp": "2025-10-31T03:11:31.330982+00:00"
+      },
+      "duplicate_images": [
+        {
+          "image_id": "9efaf9b1-b39d-49c6-93f2-bc58e52387b0",
+          "receipt_ids": [
+            1,
+            2
+          ],
+          "label_count": 47,
+          "timestamp": "2025-10-25T06:58:16.120032+00:00"
+        }
+      ],
+      "receipt_ids": [
+        1,
+        2
+      ],
+      "total_receipts": 2
+    },
+    {
+      "sha256": "f1695f244ca92de5b13c4273f146d3640144db2bcfd2e1cf7d037d7b366b4e94",
+      "canonical_image": {
+        "image_id": "ce0da565-da87-4a7d-9525-aa0cd7b3b75c",
+        "receipt_ids": [
+          1,
+          2
+        ],
+        "label_count": 107,
+        "timestamp": "2025-10-25T06:49:14.469101+00:00"
+      },
+      "duplicate_images": [
+        {
+          "image_id": "a1dacbc8-ab6a-40af-8146-b15d44a7aa81",
+          "receipt_ids": [
+            1,
+            2
+          ],
+          "label_count": 48,
+          "timestamp": "2025-10-26T22:08:58.344964+00:00"
+        }
+      ],
+      "receipt_ids": [
+        1,
+        2
+      ],
+      "total_receipts": 2
+    },
+    {
+      "sha256": "8e7ed123b27f630a40252266b13c41b58ca61673b68fdf29288d9d9ea20f011d",
+      "canonical_image": {
+        "image_id": "d67ee0e3-6f30-4142-8209-cebbf309f40e",
+        "receipt_ids": [
+          1,
+          2
+        ],
+        "label_count": 84,
+        "timestamp": "2025-10-24T03:51:48.233085+00:00"
+      },
+      "duplicate_images": [
+        {
+          "image_id": "6bfbbd7b-40af-4cb7-89c5-095796f9d1a5",
+          "receipt_ids": [
+            1,
+            2
+          ],
+          "label_count": 44,
+          "timestamp": "2025-10-25T07:22:52.618687+00:00"
+        }
+      ],
+      "receipt_ids": [
+        1,
+        2
+      ],
+      "total_receipts": 2
+    },
+    {
+      "sha256": "e0e8845a0f13df409d3ad3630fb0fe3da9c4ce8da52f6466a6e7a87e455d8474",
+      "canonical_image": {
+        "image_id": "29dd2c96-6854-42dd-a84f-6344b49d7254",
+        "receipt_ids": [
+          1,
+          2
+        ],
+        "label_count": 95,
+        "timestamp": "2025-10-27T07:32:14.454868+00:00"
+      },
+      "duplicate_images": [
+        {
+          "image_id": "783f5ca8-dec8-4d72-bfc2-5196573942bb",
+          "receipt_ids": [
+            1,
+            2
+          ],
+          "label_count": 65,
+          "timestamp": "2025-10-26T22:09:03.729856+00:00"
+        }
+      ],
+      "receipt_ids": [
+        1,
+        2
+      ],
+      "total_receipts": 2
+    },
+    {
+      "sha256": "b28b126e612546d46784c7bc1c9d9115c442697b4a8d6e534ac72885a54518b7",
+      "canonical_image": {
+        "image_id": "20576ddd-8a2c-4aea-841e-da553b8a7ff1",
+        "receipt_ids": [
+          1,
+          2
+        ],
+        "label_count": 88,
+        "timestamp": "2025-10-25T06:54:44.886409+00:00"
+      },
+      "duplicate_images": [
+        {
+          "image_id": "53e716ed-49bf-4562-90e7-fc8c860cb985",
+          "receipt_ids": [
+            1,
+            2
+          ],
+          "label_count": 41,
+          "timestamp": "2025-10-25T06:58:32.765777+00:00"
+        }
+      ],
+      "receipt_ids": [
+        1,
+        2
+      ],
+      "total_receipts": 2
+    },
+    {
+      "sha256": "74926c89f927f780d256b5f01950218abb7b5bdd56e03962d3c3fc45d6e45811",
+      "canonical_image": {
+        "image_id": "887079fa-bb3e-480a-8202-e759afe63f1a",
+        "receipt_ids": [
+          1,
+          2
+        ],
+        "label_count": 120,
+        "timestamp": "2025-10-30T20:00:07.067864+00:00"
+      },
+      "duplicate_images": [
+        {
+          "image_id": "baf2e4e5-fd03-4301-8f99-4a92b03ba40e",
+          "receipt_ids": [
+            1,
+            2
+          ],
+          "label_count": 72,
+          "timestamp": "2025-10-25T06:58:35.718985+00:00"
+        }
+      ],
+      "receipt_ids": [
+        1,
+        2
+      ],
+      "total_receipts": 2
+    },
+    {
+      "sha256": "749c39fa67538ead92a4245b2004ca8c23f5030fe2092dbad54498aeda174509",
+      "canonical_image": {
+        "image_id": "739dfe4b-edac-49b1-86c3-3568a7c98492",
+        "receipt_ids": [
+          1
+        ],
+        "label_count": 39,
+        "timestamp": "2025-06-22T22:36:41.465756+00:00"
+      },
+      "duplicate_images": [
+        {
+          "image_id": "95ae3b59-238c-4725-a2b0-d428d09bb82a",
+          "receipt_ids": [
+            1
+          ],
+          "label_count": 36,
+          "timestamp": "2025-06-22T22:49:28.124983+00:00"
+        }
+      ],
+      "receipt_ids": [
+        1
+      ],
+      "total_receipts": 1
+    },
+    {
+      "sha256": "133d296b7c30a4bddced39b03af2a98a83068c882d9d0b185187999c10843e94",
+      "canonical_image": {
+        "image_id": "a63dbf2e-84ed-42a8-9a44-febfb57b4870",
+        "receipt_ids": [
+          1,
+          2
+        ],
+        "label_count": 444,
+        "timestamp": "2025-10-27T03:53:15.764880+00:00"
+      },
+      "duplicate_images": [
+        {
+          "image_id": "1905dba2-c408-48e9-aa4d-f47fec0a3835",
+          "receipt_ids": [
+            1,
+            2
+          ],
+          "label_count": 166,
+          "timestamp": "2025-10-27T04:00:29.039146+00:00"
+        }
+      ],
+      "receipt_ids": [
+        1,
+        2
+      ],
+      "total_receipts": 2
+    },
+    {
+      "sha256": "69e9b5da1c83d2f22a24e685462ccd1865fe9a80e9ab35b688f85377ab095a5a",
+      "canonical_image": {
+        "image_id": "53645e98-1dc3-4929-8ff9-c9e5e12455bb",
+        "receipt_ids": [
+          1,
+          2
+        ],
+        "label_count": 133,
+        "timestamp": "2025-10-27T04:45:26.560161+00:00"
+      },
+      "duplicate_images": [
+        {
+          "image_id": "866ae94f-6274-4f02-a4ab-42eec72381fb",
+          "receipt_ids": [
+            1,
+            2
+          ],
+          "label_count": 88,
+          "timestamp": "2025-10-27T04:00:28.163743+00:00"
+        }
+      ],
+      "receipt_ids": [
+        1,
+        2
+      ],
+      "total_receipts": 2
+    },
+    {
+      "sha256": "aa9c6d6401502fe9e546c0c576e5d6e2d27d27dfbecde0e27fcde3271ebc7dd0",
+      "canonical_image": {
+        "image_id": "d25dcaa4-66a0-412d-beee-ba799ead2f57",
+        "receipt_ids": [
+          1,
+          2
+        ],
+        "label_count": 80,
+        "timestamp": "2025-10-25T05:48:22.099143+00:00"
+      },
+      "duplicate_images": [
+        {
+          "image_id": "23e1b623-e3fa-4102-84ca-4b5b3862e6ed",
+          "receipt_ids": [
+            1,
+            2
+          ],
+          "label_count": 58,
+          "timestamp": "2025-10-25T07:22:36.645088+00:00"
+        }
+      ],
+      "receipt_ids": [
+        1,
+        2
+      ],
+      "total_receipts": 2
+    },
+    {
+      "sha256": "3101b64ceb2752395f75058c03a7a0752dbb54e3c23ed86c960b2b8d2f0edf4e",
+      "canonical_image": {
+        "image_id": "06e54f95-6c95-4567-9fe4-6d5803e8c04d",
+        "receipt_ids": [
+          1,
+          3
+        ],
+        "label_count": 106,
+        "timestamp": "2025-09-26T17:40:55.210967+00:00"
+      },
+      "duplicate_images": [
+        {
+          "image_id": "dea7bb6f-ea6d-4ae8-a365-02c79b00970f",
+          "receipt_ids": [
+            1,
+            3
+          ],
+          "label_count": 56,
+          "timestamp": "2025-10-25T06:58:26.392096+00:00"
+        }
+      ],
+      "receipt_ids": [
+        1,
+        3
+      ],
+      "total_receipts": 2
+    },
+    {
+      "sha256": "c6cd2f8a205be10897502ded46f00973e1bf6c8c94dc3d497b5f4fae0f984dd5",
+      "canonical_image": {
+        "image_id": "4e180507-c996-4766-979d-4af3221a68a3",
+        "receipt_ids": [
+          1
+        ],
+        "label_count": 51,
+        "timestamp": "2025-06-10T16:45:32.405723+00:00"
+      },
+      "duplicate_images": [
+        {
+          "image_id": "88e95723-3beb-4dcb-ba4b-cf24b3b70565",
+          "receipt_ids": [
+            1
+          ],
+          "label_count": 36,
+          "timestamp": "2025-06-22T22:49:32.878702+00:00"
+        }
+      ],
+      "receipt_ids": [
+        1
+      ],
+      "total_receipts": 1
+    },
+    {
+      "sha256": "3dab8deb75037bb928144174cd6ba396e06e4423f881b94073817bb8bd2b94b4",
+      "canonical_image": {
+        "image_id": "32d3d4a1-c253-4883-86a5-0700d8cdc04a",
+        "receipt_ids": [
+          1
+        ],
+        "label_count": 47,
+        "timestamp": "2025-10-30T16:56:05.181417+00:00"
+      },
+      "duplicate_images": [
+        {
+          "image_id": "910efdda-b8f9-42e4-9666-ce76cf8371bf",
+          "receipt_ids": [
+            1
+          ],
+          "label_count": 0,
+          "timestamp": "2025-10-26T22:02:32.366622+00:00"
+        }
+      ],
+      "receipt_ids": [
+        1
+      ],
+      "total_receipts": 1
+    },
+    {
+      "sha256": "b5c3c17a4ac213675cd6fedd9a0bee11eafe7155594aef5c46c61ca90d7fa41b",
+      "canonical_image": {
+        "image_id": "cb22100f-44c2-4b7d-b29f-46627a64355a",
+        "receipt_ids": [
+          1,
+          2,
+          3
+        ],
+        "label_count": 86,
+        "timestamp": "2025-10-25T07:23:07.889913+00:00"
+      },
+      "duplicate_images": [
+        {
+          "image_id": "b4791435-f9a7-4fb3-ac5f-35f8c933e3fe",
+          "receipt_ids": [
+            1,
+            2,
+            3
+          ],
+          "label_count": 66,
+          "timestamp": "2025-10-25T06:58:06.322055+00:00"
+        }
+      ],
+      "receipt_ids": [
+        1,
+        2,
+        3
+      ],
+      "total_receipts": 3
+    }
+  ]
+}

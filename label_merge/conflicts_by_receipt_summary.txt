@@ -1,0 +1,740 @@
+================================================================================
+CONFLICTS ORGANIZED BY RECEIPT
+================================================================================
+
+
+================================================================================
+RECEIPT ID: 1
+================================================================================
+
+Total conflicts: 55
+Affected canonical images: 10
+
+Canonical Image: a6596a97-4ce5-49ab-876d-6a2dfaeffca4
+  Conflicts: 20
+
+  Conflict 1: Line 9, Word 1
+    SHA256: b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf
+    Source (duplicate): 965c73ca-e68b-4afe-a42c-c41732e48ef4
+    Canonical labels: ['LINE_TOTAL']
+    Duplicate labels: ['LINE_TOTAL', 'UNIT_PRICE']
+    Canonical reasoning: LLM Classification: The amount follows the product name "SPATCHCOC" near the top of the receipt, typical for an individual item total. (confidence: 0.99)
+    Duplicate reasoning: LLM Classification: Follows a product name (SPATCHCOC) and looks like a standard item price. (confidence: 0.99)
+
+  Conflict 2: Line 9, Word 1
+    SHA256: b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf
+    Source (duplicate): fb69b028-a9d1-4d27-b30f-6e5f1502e2ac
+    Canonical labels: ['LINE_TOTAL']
+    Duplicate labels: ['LINE_TOTAL']
+    Canonical reasoning: LLM Classification: The amount follows the product name "SPATCHCOC" near the top of the receipt, typical for an individual item total. (confidence: 0.99)
+    Duplicate reasoning: LLM Classification: The line reads 'MEAT 13.13', a product name followed by a monetary value, typical of an item line total. (confidence: 0.99)
+
+  Conflict 3: Line 13, Word 1
+    SHA256: b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf
+    Source (duplicate): 965c73ca-e68b-4afe-a42c-c41732e48ef4
+    Canonical labels: ['LINE_TOTAL', 'UNIT_PRICE']
+    Duplicate labels: ['LINE_TOTAL']
+    Canonical reasoning: Item price listed on line 12-13 without currency symbol
+    Duplicate reasoning: Item price listed on line 12-13, identified as line total
+
+  Conflict 4: Line 13, Word 1
+    SHA256: b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf
+    Source (duplicate): fb69b028-a9d1-4d27-b30f-6e5f1502e2ac
+    Canonical labels: ['LINE_TOTAL', 'UNIT_PRICE']
+    Duplicate labels: ['LINE_TOTAL']
+    Canonical reasoning: Item price listed on line 12-13 without currency symbol
+    Duplicate reasoning: Item price listed on line 12-13
+
+  Conflict 5: Line 14, Word 4
+    SHA256: b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf
+    Source (duplicate): 965c73ca-e68b-4afe-a42c-c41732e48ef4
+    Canonical labels: ['QUANTITY']
+    Duplicate labels: ['PRODUCT_NAME', 'QUANTITY']
+    Canonical reasoning: Numeric weight value preceding unit.
+    Duplicate reasoning: Part of product name indicating size
+
+  Conflict 6: Line 14, Word 4
+    SHA256: b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf
+    Source (duplicate): fb69b028-a9d1-4d27-b30f-6e5f1502e2ac
+    Canonical labels: ['QUANTITY']
+    Duplicate labels: ['QUANTITY']
+    Canonical reasoning: Numeric weight value preceding unit.
+    Duplicate reasoning: Numeric value preceding unit indicator, representing weight.
+
+  Conflict 7: Line 14, Word 5
+    SHA256: b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf
+    Source (duplicate): 965c73ca-e68b-4afe-a42c-c41732e48ef4
+    Canonical labels: ['QUANTITY']
+    Duplicate labels: ['PRODUCT_NAME', 'QUANTITY']
+    Canonical reasoning: Unit of weight accompanying numeric quantity.
+    Duplicate reasoning: Part of product name indicating unit
+
+  Conflict 8: Line 14, Word 5
+    SHA256: b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf
+    Source (duplicate): fb69b028-a9d1-4d27-b30f-6e5f1502e2ac
+    Canonical labels: ['QUANTITY']
+    Duplicate labels: ['QUANTITY']
+    Canonical reasoning: Unit of weight accompanying numeric quantity.
+    Duplicate reasoning: Unit of measure following the numeric quantity.
+
+  Conflict 9: Line 16, Word 1
+    SHA256: b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf
+    Source (duplicate): 965c73ca-e68b-4afe-a42c-c41732e48ef4
+    Canonical labels: ['LINE_TOTAL', 'UNIT_PRICE']
+    Duplicate labels: ['LINE_TOTAL']
+    Canonical reasoning: Item price listed on line 14 and 16 without currency symbol
+    Duplicate reasoning: Item price listed on line 14,16, identified as line total
+
+  Conflict 10: Line 16, Word 1
+    SHA256: b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf
+    Source (duplicate): fb69b028-a9d1-4d27-b30f-6e5f1502e2ac
+    Canonical labels: ['LINE_TOTAL', 'UNIT_PRICE']
+    Duplicate labels: ['LINE_TOTAL']
+    Canonical reasoning: Item price listed on line 14 and 16 without currency symbol
+    Duplicate reasoning: Item price listed on line 14,16
+
+  Conflict 11: Line 19, Word 1
+    SHA256: b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf
+    Source (duplicate): 965c73ca-e68b-4afe-a42c-c41732e48ef4
+    Canonical labels: ['LINE_TOTAL', 'UNIT_PRICE']
+    Duplicate labels: ['LINE_TOTAL']
+    Canonical reasoning: LLM Classification: The amount follows "BAG" on an early line, fitting the pattern of a small line‑item price. (confidence: 0.99)
+    Duplicate reasoning: LLM Classification: Label reads FEE, indicating a small additional charge; treated as a line‑item amount rather than tax because no explicit tax keyword is present. (confidence: 0.95)
+
+  Conflict 12: Line 19, Word 1
+    SHA256: b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf
+    Source (duplicate): fb69b028-a9d1-4d27-b30f-6e5f1502e2ac
+    Canonical labels: ['LINE_TOTAL', 'UNIT_PRICE']
+    Duplicate labels: ['LINE_TOTAL']
+    Canonical reasoning: LLM Classification: The amount follows "BAG" on an early line, fitting the pattern of a small line‑item price. (confidence: 0.99)
+    Duplicate reasoning: LLM Classification: The line reads 'FEE 0.10'; although labeled as a fee, it is presented as a monetary amount in the item section, so it is treated as a line total. (confidence: 0.99)
+
+  Conflict 13: Line 21, Word 1
+    SHA256: b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf
+    Source (duplicate): 965c73ca-e68b-4afe-a42c-c41732e48ef4
+    Canonical labels: ['GRAND_TOTAL', 'PAYMENT_METHOD', 'SUBTOTAL']
+    Duplicate labels: ['GRAND_TOTAL', 'SUBTOTAL']
+    Canonical reasoning: Superseded by SUBTOTAL consolidation. Original: LLM Classification: The line contains the keyword "TOTAL" (without any tax qualifier) and matches the amount paid, representing the final amount due. (confidence: 0.99)
+    Duplicate reasoning: Superseded by SUBTOTAL consolidation. Original: LLM Classification: The line uses the keyword TOTAL and the amount matches the SUBTOTAL, signifying the final amount due. (confidence: 0.99)
+
+  Conflict 14: Line 21, Word 1
+    SHA256: b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf
+    Source (duplicate): 965c73ca-e68b-4afe-a42c-c41732e48ef4
+    Canonical labels: ['GRAND_TOTAL', 'PAYMENT_METHOD', 'SUBTOTAL']
+    Duplicate labels: ['GRAND_TOTAL', 'SUBTOTAL']
+    Canonical reasoning: Superseded by SUBTOTAL consolidation. Original: LLM Classification: The line contains the keyword "TOTAL" (without any tax qualifier) and matches the amount paid, representing the final amount due. (confidence: 0.99)
+    Duplicate reasoning: Superseded by SUBTOTAL consolidation. Original: LLM Classification: The line uses the keyword TOTAL and the amount matches the SUBTOTAL, signifying the final amount due. (confidence: 0.99)
+
+  Conflict 15: Line 21, Word 1
+    SHA256: b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf
+    Source (duplicate): fb69b028-a9d1-4d27-b30f-6e5f1502e2ac
+    Canonical labels: ['GRAND_TOTAL', 'PAYMENT_METHOD', 'SUBTOTAL']
+    Duplicate labels: ['GRAND_TOTAL', 'SUBTOTAL']
+    Canonical reasoning: Superseded by SUBTOTAL consolidation. Original: LLM Classification: The line contains the keyword "TOTAL" (without any tax qualifier) and matches the amount paid, representing the final amount due. (confidence: 0.99)
+    Duplicate reasoning: Superseded by SUBTOTAL consolidation. Original: LLM Classification: The line contains the keyword 'TOTAL' with a dollar amount, indicating the grand total payable. (confidence: 0.99)
+
+  Conflict 16: Line 21, Word 1
+    SHA256: b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf
+    Source (duplicate): fb69b028-a9d1-4d27-b30f-6e5f1502e2ac
+    Canonical labels: ['GRAND_TOTAL', 'PAYMENT_METHOD', 'SUBTOTAL']
+    Duplicate labels: ['GRAND_TOTAL', 'SUBTOTAL']
+    Canonical reasoning: Superseded by SUBTOTAL consolidation. Original: LLM Classification: The line contains the keyword "TOTAL" (without any tax qualifier) and matches the amount paid, representing the final amount due. (confidence: 0.99)
+    Duplicate reasoning: Superseded by SUBTOTAL consolidation. Original: LLM Classification: The line contains the keyword 'TOTAL' with a dollar amount, indicating the grand total payable. (confidence: 0.99)
+
+  Conflict 17: Line 23, Word 1
+    SHA256: b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf
+    Source (duplicate): 965c73ca-e68b-4afe-a42c-c41732e48ef4
+    Canonical labels: ['GRAND_TOTAL', 'PAYMENT_METHOD']
+    Duplicate labels: ['GRAND_TOTAL']
+    Canonical reasoning: Explicitly labeled as TOTAL with dollar sign, final amount due
+    Duplicate reasoning: Explicitly labeled as TOTAL on line 22-23, representing final amount due
+
+  Conflict 18: Line 23, Word 1
+    SHA256: b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf
+    Source (duplicate): fb69b028-a9d1-4d27-b30f-6e5f1502e2ac
+    Canonical labels: ['GRAND_TOTAL', 'PAYMENT_METHOD']
+    Duplicate labels: ['GRAND_TOTAL', 'LINE_TOTAL']
+    Canonical reasoning: Explicitly labeled as TOTAL with dollar sign, final amount due
+    Duplicate reasoning: Explicitly labeled as TOTAL, final amount due
+
+  Conflict 19: Line 25, Word 1
+    SHA256: b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf
+    Source (duplicate): 965c73ca-e68b-4afe-a42c-c41732e48ef4
+    Canonical labels: ['GRAND_TOTAL', 'PAYMENT_METHOD']
+    Duplicate labels: ['GRAND_TOTAL']
+    Canonical reasoning: Payment line showing DEBIT amount, matches final total
+    Duplicate reasoning: Labeled as DEBIT, amount charged equals final total
+
+  Conflict 20: Line 25, Word 1
+    SHA256: b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf
+    Source (duplicate): fb69b028-a9d1-4d27-b30f-6e5f1502e2ac
+    Canonical labels: ['GRAND_TOTAL', 'PAYMENT_METHOD']
+    Duplicate labels: ['GRAND_TOTAL', 'LINE_TOTAL']
+    Canonical reasoning: Payment line showing DEBIT amount, matches final total
+    Duplicate reasoning: DEBIT line shows the charged amount, matches final total
+
+Canonical Image: 49a1a1e7-348a-4cd9-af96-2312e838476e
+  Conflicts: 8
+
+  Conflict 1: Line 15, Word 3
+    SHA256: fbb577db08f8e9a2b5990be1b36f1ddc3b7e5c44abfe190ea0edfdcd988db266
+    Source (duplicate): a63a6c84-d399-452f-9e56-08ff664c8f35
+    Canonical labels: ['PRODUCT_NAME']
+    Duplicate labels: ['PRODUCT_NAME', 'QUANTITY']
+    Canonical reasoning: Product code that appears immediately before the unit price.
+    Duplicate reasoning: Model number part of the product name. | Item number or SKU appended to the product name.
+
+  Conflict 2: Line 20, Word 1
+    SHA256: fbb577db08f8e9a2b5990be1b36f1ddc3b7e5c44abfe190ea0edfdcd988db266
+    Source (duplicate): a63a6c84-d399-452f-9e56-08ff664c8f35
+    Canonical labels: ['QUANTITY', 'UNIT_PRICE']
+    Duplicate labels: ['QUANTITY']
+    Canonical reasoning: Numeric value immediately before unit price, indicating quantity.
+    Duplicate reasoning: Unit abbreviation indicating each item. | The abbreviation 'EA' is a common unit indicator meaning 'each', used to denote the quantity unit. | Contains numeric quantity '1' followed by unit abbreviation 'EA' (each), a common quantity indicator. | Unit indicator 'EA' (each) following the quantity. | The token 'EA' appears between the product code and the unit price, indicating a quantity of one.
+
+  Conflict 3: Line 24, Word 2
+    SHA256: fbb577db08f8e9a2b5990be1b36f1ddc3b7e5c44abfe190ea0edfdcd988db266
+    Source (duplicate): a63a6c84-d399-452f-9e56-08ff664c8f35
+    Canonical labels: ['PRODUCT_NAME', 'QUANTITY']
+    Duplicate labels: ['PRODUCT_NAME']
+    Canonical reasoning: Alphanumeric code appearing between quantity and price, consistent with product identifiers in the receipt.
+    Duplicate reasoning: Part of the product description. | Part of the product description on line 21,33. | Common noun in product description preceding color and size. | Common noun in product description, part of the item name.
+
+  Conflict 4: Line 27, Word 2
+    SHA256: fbb577db08f8e9a2b5990be1b36f1ddc3b7e5c44abfe190ea0edfdcd988db266
+    Source (duplicate): a63a6c84-d399-452f-9e56-08ff664c8f35
+    Canonical labels: ['PRODUCT_NAME', 'QUANTITY']
+    Duplicate labels: ['PRODUCT_NAME']
+    Canonical reasoning: Alphanumeric code appearing between quantity and price, consistent with product identifiers in the receipt.
+    Duplicate reasoning: Part of the product description. | Part of the product description on line 21,33. | Common noun in product description preceding color and size. | Common noun in product description, part of the item name.
+
+  Conflict 5: Line 30, Word 1
+    SHA256: fbb577db08f8e9a2b5990be1b36f1ddc3b7e5c44abfe190ea0edfdcd988db266
+    Source (duplicate): a63a6c84-d399-452f-9e56-08ff664c8f35
+    Canonical labels: ['LINE_TOTAL', 'UNIT_PRICE']
+    Duplicate labels: ['UNIT_PRICE']
+    Canonical reasoning: LLM Classification: The line is labeled with a product code (487368) followed by '1 EA C' and the dollar amount $9.49. This matches the common pattern of a line‑item total (quantity × unit price). It appears early in the receipt, consistent with item listings. (confidence: 0.96)
+    Duplicate reasoning: Matches the line total for the item with quantity 1, indicating unit price of $2.651.
+
+  Conflict 6: Line 32, Word 1
+    SHA256: fbb577db08f8e9a2b5990be1b36f1ddc3b7e5c44abfe190ea0edfdcd988db266
+    Source (duplicate): a63a6c84-d399-452f-9e56-08ff664c8f35
+    Canonical labels: ['LINE_TOTAL', 'UNIT_PRICE']
+    Duplicate labels: ['UNIT_PRICE']
+    Canonical reasoning: LLM Classification: The word 'WORMS' (a product name) is directly followed by $2.55. No quantity is shown, so the amount is taken as the line total for that single item. (confidence: 0.96)
+    Duplicate reasoning: Contains dollar sign and numeric value 1.891, typical unit price format. | The string starts with a dollar sign and contains the numeric amount 1.891, matching the target amount 1.89, and is positioned after the quantity indicator.
+
+  Conflict 7: Line 34, Word 1
+    SHA256: fbb577db08f8e9a2b5990be1b36f1ddc3b7e5c44abfe190ea0edfdcd988db266
+    Source (duplicate): a63a6c84-d399-452f-9e56-08ff664c8f35
+    Canonical labels: ['LINE_TOTAL', 'UNIT_PRICE']
+    Duplicate labels: ['UNIT_PRICE']
+    Canonical reasoning: LLM Classification: After the product dimensions '16X12X12' the receipt shows $5.67. This follows the typical item‑line pattern (description → price) and therefore is classified as a line total. (confidence: 0.94)
+    Duplicate reasoning: Contains a dollar sign and the unit indicator 'EA', matching the format of a unit price.
+
+  Conflict 8: Line 36, Word 1
+    SHA256: fbb577db08f8e9a2b5990be1b36f1ddc3b7e5c44abfe190ea0edfdcd988db266
+    Source (duplicate): a63a6c84-d399-452f-9e56-08ff664c8f35
+    Canonical labels: ['LINE_TOTAL', 'UNIT_PRICE']
+    Duplicate labels: ['UNIT_PRICE']
+    Canonical reasoning: LLM Classification: The dimensions '18X18X24' are followed by $6.53, matching the usual item‑line format, so this amount is treated as the line total for that item. (confidence: 0.94)
+    Duplicate reasoning: The value matches the target amount and is formatted as a price per unit, representing the unit price per item.
+
+Canonical Image: 29dd2c96-6854-42dd-a84f-6344b49d7254
+  Conflicts: 3
+
+  Conflict 1: Line 13, Word 4
+    SHA256: e0e8845a0f13df409d3ad3630fb0fe3da9c4ce8da52f6466a6e7a87e455d8474
+    Source (duplicate): 783f5ca8-dec8-4d72-bfc2-5196573942bb
+    Canonical labels: ['PRODUCT_NAME', 'QUANTITY']
+    Duplicate labels: ['PRODUCT_NAME']
+    Canonical reasoning: Included in the product description to indicate the unit of measure, treated as part of the name.
+    Duplicate reasoning: Included in the product description indicating the unit of measure.
+
+  Conflict 2: Line 28, Word 1
+    SHA256: e0e8845a0f13df409d3ad3630fb0fe3da9c4ce8da52f6466a6e7a87e455d8474
+    Source (duplicate): 783f5ca8-dec8-4d72-bfc2-5196573942bb
+    Canonical labels: ['GRAND_TOTAL', 'LINE_TOTAL']
+    Duplicate labels: ['GRAND_TOTAL']
+    Canonical reasoning: Final amount due appears multiple times labeled as TOTAL, AMT, and on the bank card line.
+    Duplicate reasoning: Authorization amount matches final total.
+
+  Conflict 3: Line 46, Word 1
+    SHA256: e0e8845a0f13df409d3ad3630fb0fe3da9c4ce8da52f6466a6e7a87e455d8474
+    Source (duplicate): 783f5ca8-dec8-4d72-bfc2-5196573942bb
+    Canonical labels: ['GRAND_TOTAL', 'LINE_TOTAL']
+    Duplicate labels: ['GRAND_TOTAL']
+    Canonical reasoning: Final amount due appears multiple times labeled as TOTAL, AMT, and on the bank card line.
+    Duplicate reasoning: Currency amount shown on bank card line.
+
+Canonical Image: 20576ddd-8a2c-4aea-841e-da553b8a7ff1
+  Conflicts: 1
+
+  Conflict 1: Line 35, Word 1
+    SHA256: b28b126e612546d46784c7bc1c9d9115c442697b4a8d6e534ac72885a54518b7
+    Source (duplicate): 53e716ed-49bf-4562-90e7-fc8c860cb985
+    Canonical labels: ['GRAND_TOTAL']
+    Duplicate labels: ['GRAND_TOTAL', 'LINE_TOTAL']
+    Canonical reasoning: EFT/Debit line shows transaction amount matching total
+    Duplicate reasoning: EFT/Debit entry shows 24.01, matching the transaction total.
+
+Canonical Image: 739dfe4b-edac-49b1-86c3-3568a7c98492
+  Conflicts: 2
+
+  Conflict 1: Line 17, Word 2
+    SHA256: 749c39fa67538ead92a4245b2004ca8c23f5030fe2092dbad54498aeda174509
+    Source (duplicate): 95ae3b59-238c-4725-a2b0-d428d09bb82a
+    Canonical labels: ['DISCOUNT', 'LINE_TOTAL']
+    Duplicate labels: ['DISCOUNT']
+    Canonical reasoning: Explicitly states a saved amount, indicating a discount applied to the purchase.
+    Duplicate reasoning: Explicit statement of money saved, representing a discount applied to the purchase.
+
+  Conflict 2: Line 17, Word 4
+    SHA256: 749c39fa67538ead92a4245b2004ca8c23f5030fe2092dbad54498aeda174509
+    Source (duplicate): 95ae3b59-238c-4725-a2b0-d428d09bb82a
+    Canonical labels: ['DISCOUNT', 'UNIT_PRICE']
+    Duplicate labels: ['DISCOUNT']
+    Canonical reasoning: Explicitly states a saved amount, indicating a discount applied to the purchase.
+    Duplicate reasoning: Explicit statement of money saved, representing a discount applied to the purchase.
+
+Canonical Image: 53645e98-1dc3-4929-8ff9-c9e5e12455bb
+  Conflicts: 2
+
+  Conflict 1: Line 34, Word 4
+    SHA256: 69e9b5da1c83d2f22a24e685462ccd1865fe9a80e9ab35b688f85377ab095a5a
+    Source (duplicate): 866ae94f-6274-4f02-a4ab-42eec72381fb
+    Canonical labels: ['GRAND_TOTAL']
+    Duplicate labels: ['DISCOUNT', 'GRAND_TOTAL']
+    Canonical reasoning: Total transaction amount charged to debit card
+    Duplicate reasoning: Line 34 shows the total amount of the transaction
+
+  Conflict 2: Line 42, Word 1
+    SHA256: 69e9b5da1c83d2f22a24e685462ccd1865fe9a80e9ab35b688f85377ab095a5a
+    Source (duplicate): 866ae94f-6274-4f02-a4ab-42eec72381fb
+    Canonical labels: ['GRAND_TOTAL']
+    Duplicate labels: ['DISCOUNT', 'GRAND_TOTAL']
+    Canonical reasoning: Total transaction amount charged to debit card
+    Duplicate reasoning: Line 34 shows the total amount of the transaction
+
+Canonical Image: d25dcaa4-66a0-412d-beee-ba799ead2f57
+  Conflicts: 5
+
+  Conflict 1: Line 43, Word 1
+    SHA256: aa9c6d6401502fe9e546c0c576e5d6e2d27d27dfbecde0e27fcde3271ebc7dd0
+    Source (duplicate): 23e1b623-e3fa-4102-84ca-4b5b3862e6ed
+    Canonical labels: ['LINE_TOTAL', 'UNIT_PRICE']
+    Duplicate labels: ['LINE_TOTAL']
+    Canonical reasoning: Price listed next to an item (CINNAMON ROLL CEREAL) representing its line total.
+    Duplicate reasoning: Item line with price, represents the extended price for that product.
+
+  Conflict 2: Line 48, Word 1
+    SHA256: aa9c6d6401502fe9e546c0c576e5d6e2d27d27dfbecde0e27fcde3271ebc7dd0
+    Source (duplicate): 23e1b623-e3fa-4102-84ca-4b5b3862e6ed
+    Canonical labels: ['LINE_TOTAL', 'UNIT_PRICE']
+    Duplicate labels: ['LINE_TOTAL']
+    Canonical reasoning: Price listed next to an item (RAW WHOLE MILK) representing its line total.
+    Duplicate reasoning: Item line with price, represents the extended price for that product.
+
+  Conflict 3: Line 49, Word 1
+    SHA256: aa9c6d6401502fe9e546c0c576e5d6e2d27d27dfbecde0e27fcde3271ebc7dd0
+    Source (duplicate): 23e1b623-e3fa-4102-84ca-4b5b3862e6ed
+    Canonical labels: ['GRAND_TOTAL', 'LINE_TOTAL']
+    Duplicate labels: ['GRAND_TOTAL']
+    Canonical reasoning: Explicitly marked as 'BALANCE DUE', indicating the final amount owed.
+    Duplicate reasoning: Balance due matches the final amount owed.
+
+  Conflict 4: Line 50, Word 1
+    SHA256: aa9c6d6401502fe9e546c0c576e5d6e2d27d27dfbecde0e27fcde3271ebc7dd0
+    Source (duplicate): 23e1b623-e3fa-4102-84ca-4b5b3862e6ed
+    Canonical labels: ['GRAND_TOTAL', 'LINE_TOTAL', 'PAYMENT_METHOD']
+    Duplicate labels: ['GRAND_TOTAL', 'PAYMENT_METHOD']
+    Canonical reasoning: Shows the payment amount that settles the total balance.
+    Duplicate reasoning: Shown as DEBIT amount, matching the total purchase.
+
+  Conflict 5: Line 50, Word 1
+    SHA256: aa9c6d6401502fe9e546c0c576e5d6e2d27d27dfbecde0e27fcde3271ebc7dd0
+    Source (duplicate): 23e1b623-e3fa-4102-84ca-4b5b3862e6ed
+    Canonical labels: ['GRAND_TOTAL', 'LINE_TOTAL', 'PAYMENT_METHOD']
+    Duplicate labels: ['GRAND_TOTAL', 'PAYMENT_METHOD']
+    Canonical reasoning: Shows the payment amount that settles the total balance.
+    Duplicate reasoning: Shown as DEBIT amount, matching the total purchase.
+
+Canonical Image: 06e54f95-6c95-4567-9fe4-6d5803e8c04d
+  Conflicts: 7
+
+  Conflict 1: Line 3, Word 2
+    SHA256: 3101b64ceb2752395f75058c03a7a0752dbb54e3c23ed86c960b2b8d2f0edf4e
+    Source (duplicate): dea7bb6f-ea6d-4ae8-a365-02c79b00970f
+    Canonical labels: ['ADDRESS_LINE']
+    Duplicate labels: ['ADDRESS_LINE', 'UNIT_PRICE']
+    Canonical reasoning: Lines 2‑4 contain the street address, unit number, city, state and ZIP code.
+    Duplicate reasoning: Lines 2‑4 provide the full street address, unit, city, state and ZIP
+
+  Conflict 2: Line 16, Word 1
+    SHA256: 3101b64ceb2752395f75058c03a7a0752dbb54e3c23ed86c960b2b8d2f0edf4e
+    Source (duplicate): dea7bb6f-ea6d-4ae8-a365-02c79b00970f
+    Canonical labels: ['PRODUCT_NAME']
+    Duplicate labels: ['DISCOUNT', 'PRODUCT_NAME']
+    Canonical reasoning: The word 'TIP' precedes the amount and represents the line item on the receipt.
+    Duplicate reasoning: Line 16 shows tip amount added to the order
+
+  Conflict 3: Line 21, Word 1
+    SHA256: 3101b64ceb2752395f75058c03a7a0752dbb54e3c23ed86c960b2b8d2f0edf4e
+    Source (duplicate): dea7bb6f-ea6d-4ae8-a365-02c79b00970f
+    Canonical labels: ['LINE_TOTAL']
+    Duplicate labels: ['LINE_TOTAL', 'UNIT_PRICE']
+    Canonical reasoning: Item line shows quantity and price with dollar sign, indicating extended price for that line.
+    Duplicate reasoning: Item line total for So-Cal Chicken
+
+  Conflict 4: Line 25, Word 1
+    SHA256: 3101b64ceb2752395f75058c03a7a0752dbb54e3c23ed86c960b2b8d2f0edf4e
+    Source (duplicate): dea7bb6f-ea6d-4ae8-a365-02c79b00970f
+    Canonical labels: ['GRAND_TOTAL', 'LINE_TOTAL', 'SUBTOTAL']
+    Duplicate labels: ['DISCOUNT', 'GRAND_TOTAL', 'LINE_TOTAL']
+    Canonical reasoning: Explicitly labeled as 'Order Total', the final amount due after tax.
+    Duplicate reasoning: Line 14 shows the order total amount for the transaction | Line 14 shows total amount for the order
+
+  Conflict 5: Line 25, Word 1
+    SHA256: 3101b64ceb2752395f75058c03a7a0752dbb54e3c23ed86c960b2b8d2f0edf4e
+    Source (duplicate): dea7bb6f-ea6d-4ae8-a365-02c79b00970f
+    Canonical labels: ['GRAND_TOTAL', 'LINE_TOTAL', 'SUBTOTAL']
+    Duplicate labels: ['DISCOUNT', 'GRAND_TOTAL', 'LINE_TOTAL']
+    Canonical reasoning: Explicitly labeled as 'Order Total', the final amount due after tax.
+    Duplicate reasoning: Line 14 shows the order total amount for the transaction | Line 14 shows total amount for the order
+
+  Conflict 6: Line 26, Word 1
+    SHA256: 3101b64ceb2752395f75058c03a7a0752dbb54e3c23ed86c960b2b8d2f0edf4e
+    Source (duplicate): dea7bb6f-ea6d-4ae8-a365-02c79b00970f
+    Canonical labels: ['GRAND_TOTAL', 'LINE_TOTAL']
+    Duplicate labels: ['DISCOUNT', 'LINE_TOTAL']
+    Canonical reasoning: Payment line 'Visa $16.19' matches the order total amount, confirming it as the amount charged.
+    Duplicate reasoning: Line 14 shows the order total amount for the transaction | Line 14 shows total amount for the order
+
+  Conflict 7: Line 27, Word 1
+    SHA256: 3101b64ceb2752395f75058c03a7a0752dbb54e3c23ed86c960b2b8d2f0edf4e
+    Source (duplicate): dea7bb6f-ea6d-4ae8-a365-02c79b00970f
+    Canonical labels: ['LINE_TOTAL']
+    Duplicate labels: ['DISCOUNT', 'LINE_TOTAL']
+    Canonical reasoning: Tip amount shown separately, classified as a line total for the tip
+    Duplicate reasoning: Line 16 shows tip amount added to the order
+
+Canonical Image: 4e180507-c996-4766-979d-4af3221a68a3
+  Conflicts: 1
+
+  Conflict 1: Line 1, Word 1
+    SHA256: c6cd2f8a205be10897502ded46f00973e1bf6c8c94dc3d497b5f4fae0f984dd5
+    Source (duplicate): 88e95723-3beb-4dcb-ba4b-cf24b3b70565
+    Canonical labels: ['MERCHANT_NAME']
+    Duplicate labels: ['ADDRESS_LINE', 'MERCHANT_NAME']
+    Canonical reasoning: Printed at the top and bottom of the receipt, indicating the merchant's trading name.
+    Duplicate reasoning: Street line followed by city, state, and ZIP together form the full address printed on the receipt
+
+Canonical Image: cb22100f-44c2-4b7d-b29f-46627a64355a
+  Conflicts: 6
+
+  Conflict 1: Line 1, Word 1
+    SHA256: b5c3c17a4ac213675cd6fedd9a0bee11eafe7155594aef5c46c61ca90d7fa41b
+    Source (duplicate): b4791435-f9a7-4fb3-ac5f-35f8c933e3fe
+    Canonical labels: ['MERCHANT_NAME']
+    Duplicate labels: ['MERCHANT_NAME', 'PRODUCT_NAME']
+    Canonical reasoning: Store name appears at top of receipt on lines 1-2
+    Duplicate reasoning: Store name appears at the top of the receipt on lines 1‑2
+
+  Conflict 2: Line 7, Word 1
+    SHA256: b5c3c17a4ac213675cd6fedd9a0bee11eafe7155594aef5c46c61ca90d7fa41b
+    Source (duplicate): b4791435-f9a7-4fb3-ac5f-35f8c933e3fe
+    Canonical labels: ['MERCHANT_NAME']
+    Duplicate labels: ['MERCHANT_NAME', 'PRODUCT_NAME']
+    Canonical reasoning: Store name appears at top of receipt on lines 1-2
+    Duplicate reasoning: Store name appears at the top of the receipt on lines 1‑2
+
+  Conflict 3: Line 29, Word 1
+    SHA256: b5c3c17a4ac213675cd6fedd9a0bee11eafe7155594aef5c46c61ca90d7fa41b
+    Source (duplicate): b4791435-f9a7-4fb3-ac5f-35f8c933e3fe
+    Canonical labels: ['GRAND_TOTAL', 'SUBTOTAL']
+    Duplicate labels: ['GRAND_TOTAL']
+    Canonical reasoning: Final amount due appears multiple times as BALANCE DUE, DEBIT, and Total: USD$ 10.72, indicating the grand total of the transaction.
+    Duplicate reasoning: Labeled as BALANCE DUE, indicating the final amount due for the transaction.
+
+  Conflict 4: Line 30, Word 1
+    SHA256: b5c3c17a4ac213675cd6fedd9a0bee11eafe7155594aef5c46c61ca90d7fa41b
+    Source (duplicate): b4791435-f9a7-4fb3-ac5f-35f8c933e3fe
+    Canonical labels: ['GRAND_TOTAL', 'PAYMENT_METHOD']
+    Duplicate labels: ['GRAND_TOTAL', 'LINE_TOTAL', 'PAYMENT_METHOD']
+    Canonical reasoning: Final amount due appears multiple times as BALANCE DUE, DEBIT, and Total: USD$ 10.72, indicating the grand total of the transaction.
+    Duplicate reasoning: DEBIT line shows the payment amount matching the total due.
+
+  Conflict 5: Line 30, Word 1
+    SHA256: b5c3c17a4ac213675cd6fedd9a0bee11eafe7155594aef5c46c61ca90d7fa41b
+    Source (duplicate): b4791435-f9a7-4fb3-ac5f-35f8c933e3fe
+    Canonical labels: ['GRAND_TOTAL', 'PAYMENT_METHOD']
+    Duplicate labels: ['GRAND_TOTAL', 'LINE_TOTAL', 'PAYMENT_METHOD']
+    Canonical reasoning: Final amount due appears multiple times as BALANCE DUE, DEBIT, and Total: USD$ 10.72, indicating the grand total of the transaction.
+    Duplicate reasoning: DEBIT line shows the payment amount matching the total due.
+
+  Conflict 6: Line 41, Word 5
+    SHA256: b5c3c17a4ac213675cd6fedd9a0bee11eafe7155594aef5c46c61ca90d7fa41b
+    Source (duplicate): b4791435-f9a7-4fb3-ac5f-35f8c933e3fe
+    Canonical labels: ['MERCHANT_NAME']
+    Duplicate labels: ['MERCHANT_NAME', 'PRODUCT_NAME']
+    Canonical reasoning: Store name appears at top of receipt on lines 1-2
+    Duplicate reasoning: Store name appears at the top of the receipt on lines 1‑2
+
+
+================================================================================
+RECEIPT ID: 2
+================================================================================
+
+Total conflicts: 29
+Affected canonical images: 6
+
+Canonical Image: 49a1a1e7-348a-4cd9-af96-2312e838476e
+  Conflicts: 7
+
+  Conflict 1: Line 11, Word 2
+    SHA256: fbb577db08f8e9a2b5990be1b36f1ddc3b7e5c44abfe190ea0edfdcd988db266
+    Source (duplicate): a63a6c84-d399-452f-9e56-08ff664c8f35
+    Canonical labels: ['PRODUCT_NAME', 'QUANTITY']
+    Duplicate labels: ['PRODUCT_NAME', 'QUANTITY']
+    Canonical reasoning: Descriptive term following quantity, representing the product being purchased.
+    Duplicate reasoning: Descriptive term following quantity; although separated from unit price by '@', still product name.
+
+  Conflict 2: Line 11, Word 2
+    SHA256: fbb577db08f8e9a2b5990be1b36f1ddc3b7e5c44abfe190ea0edfdcd988db266
+    Source (duplicate): a63a6c84-d399-452f-9e56-08ff664c8f35
+    Canonical labels: ['PRODUCT_NAME', 'QUANTITY']
+    Duplicate labels: ['PRODUCT_NAME', 'QUANTITY']
+    Canonical reasoning: Descriptive term following quantity, representing the product being purchased.
+    Duplicate reasoning: Descriptive term following quantity; although separated from unit price by '@', still product name.
+
+  Conflict 3: Line 11, Word 2
+    SHA256: fbb577db08f8e9a2b5990be1b36f1ddc3b7e5c44abfe190ea0edfdcd988db266
+    Source (duplicate): c0900230-2907-4093-9bf7-29ca3cdf397a
+    Canonical labels: ['PRODUCT_NAME', 'QUANTITY']
+    Duplicate labels: ['PRODUCT_NAME']
+    Canonical reasoning: Descriptive term following quantity, representing the product being purchased.
+    Duplicate reasoning: Descriptive unit name that follows quantity and precedes price, representing the product type.
+
+  Conflict 4: Line 14, Word 1
+    SHA256: fbb577db08f8e9a2b5990be1b36f1ddc3b7e5c44abfe190ea0edfdcd988db266
+    Source (duplicate): a63a6c84-d399-452f-9e56-08ff664c8f35
+    Canonical labels: ['GRAND_TOTAL', 'LINE_TOTAL', 'QUANTITY', 'SUBTOTAL']
+    Duplicate labels: ['LINE_TOTAL']
+    Canonical reasoning: Superseded by LINE_TOTAL from LLM analysis. Original reasoning: LLM Classification: The amount $100.00 appears after the tax line and another "Total:" label, representing the final amount due after tax (which is $0.00). (confidence: 0.99)
+    Duplicate reasoning: Extended price shown after quantity and unit price, labeled as total for the fuel line.
+
+  Conflict 5: Line 14, Word 1
+    SHA256: fbb577db08f8e9a2b5990be1b36f1ddc3b7e5c44abfe190ea0edfdcd988db266
+    Source (duplicate): c0900230-2907-4093-9bf7-29ca3cdf397a
+    Canonical labels: ['GRAND_TOTAL', 'LINE_TOTAL', 'QUANTITY', 'SUBTOTAL']
+    Duplicate labels: ['LINE_TOTAL']
+    Canonical reasoning: Superseded by LINE_TOTAL from LLM analysis. Original reasoning: LLM Classification: The amount $100.00 appears after the tax line and another "Total:" label, representing the final amount due after tax (which is $0.00). (confidence: 0.99)
+    Duplicate reasoning: Extended price for fuel line (quantity x unit price) appears on line 11/14 as total amount
+
+  Conflict 6: Line 15, Word 1
+    SHA256: fbb577db08f8e9a2b5990be1b36f1ddc3b7e5c44abfe190ea0edfdcd988db266
+    Source (duplicate): a63a6c84-d399-452f-9e56-08ff664c8f35
+    Canonical labels: ['LINE_TOTAL', 'TAX']
+    Duplicate labels: ['TAX']
+    Canonical reasoning: Superseded by TAX consolidation. Original: LLM Consolidation: The amount follows the label "Change"; while not a standard line‑item, it is a monetary amount presented as a line total for change given. (confidence: 0.85). Supersedes previous 'TAX' label.
+    Duplicate reasoning: Explicitly labeled as 'Sales tax' with amount $0.00.
+
+  Conflict 7: Line 15, Word 1
+    SHA256: fbb577db08f8e9a2b5990be1b36f1ddc3b7e5c44abfe190ea0edfdcd988db266
+    Source (duplicate): c0900230-2907-4093-9bf7-29ca3cdf397a
+    Canonical labels: ['LINE_TOTAL', 'TAX']
+    Duplicate labels: ['TAX']
+    Canonical reasoning: Superseded by TAX consolidation. Original: LLM Consolidation: The amount follows the label "Change"; while not a standard line‑item, it is a monetary amount presented as a line total for change given. (confidence: 0.85). Supersedes previous 'TAX' label.
+    Duplicate reasoning: Explicitly labeled as 'Sales tax' with amount $0.00
+
+Canonical Image: 00ded398-af6f-4a49-86f7-c79ccb554e48
+  Conflicts: 4
+
+  Conflict 1: Line 42, Word 3
+    SHA256: 56f8ad55e3d80de2a69db565c56dd087b8862ac15ef0723700ec9c362ada835c
+    Source (duplicate): e26d6ebe-ace2-45e2-9a3c-830fb947f4c7
+    Canonical labels: ['PRODUCT_NAME', 'QUANTITY']
+    Duplicate labels: ['PRODUCT_NAME']
+    Canonical reasoning: Fat percentage listed as part of the product description. | Part of product name preceding price. | Part of the product name "ORG A2/A2 6% FAT MLK".
+    Duplicate reasoning: Fat percentage indicator within the product description. | Part of the product name appearing before the price.
+
+  Conflict 2: Line 45, Word 1
+    SHA256: 56f8ad55e3d80de2a69db565c56dd087b8862ac15ef0723700ec9c362ada835c
+    Source (duplicate): e26d6ebe-ace2-45e2-9a3c-830fb947f4c7
+    Canonical labels: ['LINE_TOTAL', 'UNIT_PRICE']
+    Duplicate labels: ['LINE_TOTAL']
+    Canonical reasoning: Item line price.
+    Duplicate reasoning: Item line with price for sour cream, representing its line total.
+
+  Conflict 3: Line 49, Word 1
+    SHA256: 56f8ad55e3d80de2a69db565c56dd087b8862ac15ef0723700ec9c362ada835c
+    Source (duplicate): e26d6ebe-ace2-45e2-9a3c-830fb947f4c7
+    Canonical labels: ['GRAND_TOTAL', 'LINE_TOTAL', 'PAYMENT_METHOD']
+    Duplicate labels: ['GRAND_TOTAL', 'PAYMENT_METHOD']
+    Canonical reasoning: Labeled as 'DEBIT $10.78', indicating the amount charged to the debit card, i.e., the final total.
+    Duplicate reasoning: Payment line showing amount debited, equals total.
+
+  Conflict 4: Line 49, Word 1
+    SHA256: 56f8ad55e3d80de2a69db565c56dd087b8862ac15ef0723700ec9c362ada835c
+    Source (duplicate): e26d6ebe-ace2-45e2-9a3c-830fb947f4c7
+    Canonical labels: ['GRAND_TOTAL', 'LINE_TOTAL', 'PAYMENT_METHOD']
+    Duplicate labels: ['GRAND_TOTAL', 'PAYMENT_METHOD']
+    Canonical reasoning: Labeled as 'DEBIT $10.78', indicating the amount charged to the debit card, i.e., the final total.
+    Duplicate reasoning: Payment line showing amount debited, equals total.
+
+Canonical Image: 4cd9dd6d-ecd8-4e6f-928f-18440e4ad303
+  Conflicts: 3
+
+  Conflict 1: Line 46, Word 1
+    SHA256: 441057a2854f3866f8a2086c2c9608c15760f379ff1a88d89c2d9228d3f68f78
+    Source (duplicate): 9efaf9b1-b39d-49c6-93f2-bc58e52387b0
+    Canonical labels: ['GRAND_TOTAL', 'LINE_TOTAL', 'PAYMENT_METHOD']
+    Duplicate labels: ['GRAND_TOTAL', 'LINE_TOTAL']
+    Canonical reasoning: Debit entry shows amount $16.48, matching the total charged
+    Duplicate reasoning: Shows amount debited from card, matches total purchase amount.
+
+  Conflict 2: Line 46, Word 1
+    SHA256: 441057a2854f3866f8a2086c2c9608c15760f379ff1a88d89c2d9228d3f68f78
+    Source (duplicate): 9efaf9b1-b39d-49c6-93f2-bc58e52387b0
+    Canonical labels: ['GRAND_TOTAL', 'LINE_TOTAL', 'PAYMENT_METHOD']
+    Duplicate labels: ['GRAND_TOTAL', 'LINE_TOTAL']
+    Canonical reasoning: Debit entry shows amount $16.48, matching the total charged
+    Duplicate reasoning: Shows amount debited from card, matches total purchase amount.
+
+  Conflict 3: Line 51, Word 1
+    SHA256: 441057a2854f3866f8a2086c2c9608c15760f379ff1a88d89c2d9228d3f68f78
+    Source (duplicate): 9efaf9b1-b39d-49c6-93f2-bc58e52387b0
+    Canonical labels: ['LINE_TOTAL', 'SUBTOTAL']
+    Duplicate labels: ['LINE_TOTAL']
+    Canonical reasoning: Appears as 'CHANGE', representing the line amount of change given (zero in this case)
+    Duplicate reasoning: Change amount | Change given (zero) after payment | Appears as 'CHANGE' amount; not a purchase line but a monetary amount on receipt | Change amount returned to customer, treated as line total of zero
+
+Canonical Image: ce0da565-da87-4a7d-9525-aa0cd7b3b75c
+  Conflicts: 1
+
+  Conflict 1: Line 28, Word 1
+    SHA256: f1695f244ca92de5b13c4273f146d3640144db2bcfd2e1cf7d037d7b366b4e94
+    Source (duplicate): a1dacbc8-ab6a-40af-8146-b15d44a7aa81
+    Canonical labels: ['GRAND_TOTAL']
+    Duplicate labels: ['GRAND_TOTAL', 'PAYMENT_METHOD']
+    Canonical reasoning: Explicitly labeled as Order Total, representing the total before tip
+    Duplicate reasoning: Line labeled 'Order Total' representing final amount before tip
+
+Canonical Image: 887079fa-bb3e-480a-8202-e759afe63f1a
+  Conflicts: 4
+
+  Conflict 1: Line 1, Word 1
+    SHA256: 74926c89f927f780d256b5f01950218abb7b5bdd56e03962d3c3fc45d6e45811
+    Source (duplicate): baf2e4e5-fd03-4301-8f99-4a92b03ba40e
+    Canonical labels: ['MERCHANT_NAME']
+    Duplicate labels: ['MERCHANT_NAME', 'PRODUCT_NAME']
+    Canonical reasoning: Store name appears at the top of the receipt on multiple lines
+    Duplicate reasoning: Store name appears at top of receipt on multiple lines
+
+  Conflict 2: Line 7, Word 1
+    SHA256: 74926c89f927f780d256b5f01950218abb7b5bdd56e03962d3c3fc45d6e45811
+    Source (duplicate): baf2e4e5-fd03-4301-8f99-4a92b03ba40e
+    Canonical labels: ['MERCHANT_NAME']
+    Duplicate labels: ['MERCHANT_NAME', 'PRODUCT_NAME']
+    Canonical reasoning: Store name appears at the top of the receipt on multiple lines
+    Duplicate reasoning: Store name appears at top of receipt on multiple lines
+
+  Conflict 3: Line 14, Word 3
+    SHA256: 74926c89f927f780d256b5f01950218abb7b5bdd56e03962d3c3fc45d6e45811
+    Source (duplicate): baf2e4e5-fd03-4301-8f99-4a92b03ba40e
+    Canonical labels: ['PRODUCT_NAME']
+    Duplicate labels: ['PRODUCT_NAME', 'QUANTITY']
+    Canonical reasoning: Fat percentage, part of product description.
+    Duplicate reasoning: Fat content percentage included in the product description.
+
+  Conflict 4: Line 33, Word 5
+    SHA256: 74926c89f927f780d256b5f01950218abb7b5bdd56e03962d3c3fc45d6e45811
+    Source (duplicate): baf2e4e5-fd03-4301-8f99-4a92b03ba40e
+    Canonical labels: ['MERCHANT_NAME']
+    Duplicate labels: ['MERCHANT_NAME', 'PRODUCT_NAME']
+    Canonical reasoning: Store name appears at the top of the receipt on multiple lines
+    Duplicate reasoning: Store name appears at top of receipt on multiple lines
+
+Canonical Image: a63dbf2e-84ed-42a8-9a44-febfb57b4870
+  Conflicts: 10
+
+  Conflict 1: Line 12, Word 1
+    SHA256: 133d296b7c30a4bddced39b03af2a98a83068c882d9d0b185187999c10843e94
+    Source (duplicate): 1905dba2-c408-48e9-aa4d-f47fec0a3835
+    Canonical labels: ['LINE_TOTAL']
+    Duplicate labels: ['LINE_TOTAL', 'UNIT_PRICE']
+    Canonical reasoning: Appears on a product line with a price, no quantity indicated, thus treated as line total.
+    Duplicate reasoning: Appears on a product line with price, no explicit label, treated as item total
+
+  Conflict 2: Line 16, Word 1
+    SHA256: 133d296b7c30a4bddced39b03af2a98a83068c882d9d0b185187999c10843e94
+    Source (duplicate): 1905dba2-c408-48e9-aa4d-f47fec0a3835
+    Canonical labels: ['DISCOUNT', 'LINE_TOTAL', 'UNIT_PRICE']
+    Duplicate labels: ['DISCOUNT', 'LINE_TOTAL']
+    Canonical reasoning: Discount amount listed under 'Pro Xtra Preferred Pricing' on line 15-16
+    Duplicate reasoning: Negative amount line indicating a discount (lines 15-16) | Negative amount prefixed by a pricing program name, indicating a discount line item | Line "Pro Xtra Preferred Pricing -0.75" indicates a discount amount
+
+  Conflict 3: Line 16, Word 1
+    SHA256: 133d296b7c30a4bddced39b03af2a98a83068c882d9d0b185187999c10843e94
+    Source (duplicate): 1905dba2-c408-48e9-aa4d-f47fec0a3835
+    Canonical labels: ['DISCOUNT', 'LINE_TOTAL', 'UNIT_PRICE']
+    Duplicate labels: ['DISCOUNT', 'LINE_TOTAL']
+    Canonical reasoning: Discount amount listed under 'Pro Xtra Preferred Pricing' on line 15-16
+    Duplicate reasoning: Negative amount line indicating a discount (lines 15-16) | Negative amount prefixed by a pricing program name, indicating a discount line item | Line "Pro Xtra Preferred Pricing -0.75" indicates a discount amount
+
+  Conflict 4: Line 17, Word 1
+    SHA256: 133d296b7c30a4bddced39b03af2a98a83068c882d9d0b185187999c10843e94
+    Source (duplicate): 1905dba2-c408-48e9-aa4d-f47fec0a3835
+    Canonical labels: ['PHONE_NUMBER', 'PRODUCT_NAME', 'QUANTITY']
+    Duplicate labels: ['PRODUCT_NAME', 'QUANTITY']
+    Canonical reasoning: Sequence "805) 3756690" matches typical US phone number pattern
+    Duplicate reasoning: Size specification included in the product name. | Part of the descriptive product name preceding quantity and price.
+
+  Conflict 5: Line 17, Word 1
+    SHA256: 133d296b7c30a4bddced39b03af2a98a83068c882d9d0b185187999c10843e94
+    Source (duplicate): 1905dba2-c408-48e9-aa4d-f47fec0a3835
+    Canonical labels: ['PHONE_NUMBER', 'PRODUCT_NAME', 'QUANTITY']
+    Duplicate labels: ['PRODUCT_NAME', 'QUANTITY']
+    Canonical reasoning: Sequence "805) 3756690" matches typical US phone number pattern
+    Duplicate reasoning: Size specification included in the product name. | Part of the descriptive product name preceding quantity and price.
+
+  Conflict 6: Line 22, Word 1
+    SHA256: 133d296b7c30a4bddced39b03af2a98a83068c882d9d0b185187999c10843e94
+    Source (duplicate): 1905dba2-c408-48e9-aa4d-f47fec0a3835
+    Canonical labels: ['LINE_TOTAL', 'TAX']
+    Duplicate labels: ['LINE_TOTAL', 'UNIT_PRICE']
+    Canonical reasoning: Second monetary value on the same product line, treated as an additional line total (e.g., tax or surcharge).
+    Duplicate reasoning: Numeric amount on same line as 403.23; treated as line total with low confidence
+
+  Conflict 7: Line 46, Word 1
+    SHA256: 133d296b7c30a4bddced39b03af2a98a83068c882d9d0b185187999c10843e94
+    Source (duplicate): 1905dba2-c408-48e9-aa4d-f47fec0a3835
+    Canonical labels: ['LINE_TOTAL']
+    Duplicate labels: ['LINE_TOTAL', 'UNIT_PRICE']
+    Canonical reasoning: Line total for 3 @ 2.23 displayed across two line numbers.
+    Duplicate reasoning: Quantity x unit price (3@2.23) yields 6.69, appears on two lines
+
+  Conflict 8: Line 49, Word 1
+    SHA256: 133d296b7c30a4bddced39b03af2a98a83068c882d9d0b185187999c10843e94
+    Source (duplicate): 1905dba2-c408-48e9-aa4d-f47fec0a3835
+    Canonical labels: ['PHONE_NUMBER', 'QUANTITY', 'UNIT_PRICE']
+    Duplicate labels: ['QUANTITY', 'UNIT_PRICE']
+    Canonical reasoning: Sequence "805) 3756690" matches typical US phone number pattern
+    Duplicate reasoning: The number precedes an '@' symbol, a common notation for quantity in receipt lines. | The token '3' appears after a slash in the refund line 'MAX REFUND VALUE $6.36/3', indicating a quantity of 3 items.
+
+  Conflict 9: Line 49, Word 1
+    SHA256: 133d296b7c30a4bddced39b03af2a98a83068c882d9d0b185187999c10843e94
+    Source (duplicate): 1905dba2-c408-48e9-aa4d-f47fec0a3835
+    Canonical labels: ['PHONE_NUMBER', 'QUANTITY', 'UNIT_PRICE']
+    Duplicate labels: ['QUANTITY', 'UNIT_PRICE']
+    Canonical reasoning: Sequence "805) 3756690" matches typical US phone number pattern
+    Duplicate reasoning: The number precedes an '@' symbol, a common notation for quantity in receipt lines. | The token '3' appears after a slash in the refund line 'MAX REFUND VALUE $6.36/3', indicating a quantity of 3 items.
+
+  Conflict 10: Line 51, Word 2
+    SHA256: 133d296b7c30a4bddced39b03af2a98a83068c882d9d0b185187999c10843e94
+    Source (duplicate): 1905dba2-c408-48e9-aa4d-f47fec0a3835
+    Canonical labels: ['GRAND_TOTAL', 'LINE_TOTAL']
+    Duplicate labels: ['GRAND_TOTAL']
+    Canonical reasoning: Final amount due displayed with currency symbol and labeled as total elsewhere.
+    Duplicate reasoning: Explicitly labeled with USD$, matches subtotal + tax, high confidence as final amount
+

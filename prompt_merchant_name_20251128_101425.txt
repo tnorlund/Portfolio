@@ -1,0 +1,168 @@
+# Analyze Invalid MERCHANT_NAME Labels and Generate Edge Cases
+
+You are analyzing INVALID MERCHANT_NAME labels to identify semantic patterns and cross-label confusion that should be rejected immediately without expensive LLM validation.
+
+## Task
+
+Review the following invalid label examples and identify:
+1. **Semantic patterns**: What types of words/contexts are being incorrectly labeled as MERCHANT_NAME?
+2. **Cross-label confusion**: Are these words actually other label types (e.g., PRODUCT_NAME, ADDRESS_LINE, etc.)?
+3. **Global vs merchant-specific**: Are patterns universal or merchant-specific?
+4. **Pattern types**: Should this be exact match, prefix, suffix, contains, or regex?
+
+## Label Type Definition
+
+Trading name or brand of the store issuing the receipt.
+
+## All CORE_LABELS (for context)
+
+- **MERCHANT_NAME**: Trading name or brand of the store issuing the receipt.
+- **STORE_HOURS**: Printed business hours or opening times for the merchant.
+- **PHONE_NUMBER**: Telephone number printed on the receipt (store's main line).
+- **WEBSITE**: Web or email address printed on the receipt.
+- **LOYALTY_ID**: Customer loyalty / rewards / membership identifier.
+- **ADDRESS_LINE**: Full address line (street + city etc.) printed on the receipt.
+- **DATE**: Calendar date of the transaction.
+- **TIME**: Time of the transaction.
+- **PAYMENT_METHOD**: Payment instrument summary (e.g., VISA ••••1234, CASH).
+- **COUPON**: Coupon code or description that reduces price.
+- **DISCOUNT**: Any non-coupon discount line item.
+- **PRODUCT_NAME**: Descriptive text of a purchased product (item name).
+- **QUANTITY**: Numeric count or weight of the item.
+- **UNIT_PRICE**: Price per single unit / weight before tax.
+- **LINE_TOTAL**: Extended price for that line (quantity x unit price).
+- **SUBTOTAL**: Sum of all line totals before tax and discounts.
+- **TAX**: Any tax line (sales tax, VAT, bottle deposit).
+- **GRAND_TOTAL**: Final amount due after all discounts, taxes and fees.
+
+## Invalid Label Examples
+
+
+### Pattern: 'VONS.' (1 occurrences)
+
+**Example 1:**
+- Word: `VONS.`
+- Invalid Label: `MERCHANT_NAME` (status: INVALID)
+- Merchant: Vons
+- Line: `VONS.`
+- **Label History (consolidation chain):**
+  1. ❌ `MERCHANT_NAME` → INVALID (current (INVALID))
+     Reasoning: Store name appears at the top of the receipt.
+     Timestamp: 2025-11-16T18:14:52.788402
+
+- **Audit Trail (ALL labels for this word - 2 total):**
+  ⏳ `WEBSITE` → NEEDS_REVIEW (consolidated from: MULTIPLE_SOURCES) (proposed by: simple_receipt_analyzer)
+    Reasoning: Web address provided for customer service
+    Timestamp: 2025-11-11T01:45:50.693004
+  ❌ `MERCHANT_NAME` → INVALID ← CURRENT (consolidated from: MULTIPLE_SOURCES) (proposed by: simple_receipt_analyzer)
+    Reasoning: Store name appears at the top of the receipt.
+    Timestamp: 2025-11-16T18:14:52.788402
+
+- Surrounding words: `[VONS.]`
+- Surrounding lines:
+  >>> VONS. <<<
+  Store 3135 Dir Tomas de la Cruz
+  Main: (805) 497-1921
+- Other labels on receipt: {'MERCHANT_NAME': 3, 'WEBSITE': 15, 'PHONE_NUMBER': 5, 'ADDRESS_LINE': 6, 'PRODUCT_NAME': 6, 'QUANTITY': 2, 'DISCOUNT': 15, 'LINE_TOTAL': 2, 'UNIT_PRICE': 3, 'DATE': 2, 'TIME': 2, 'GRAND_TOTAL': 3, 'PAYMENT_METHOD': 4, 'TAX': 2}
+- Original reasoning: Store name appears at the top of the receipt.
+
+
+### Pattern: 'BANK,' (1 occurrences)
+
+**Example 1:**
+- Word: `Bank,`
+- Invalid Label: `MERCHANT_NAME` (status: INVALID)
+- Merchant: Chase Bank
+- Line: `JPMorgan Chase Bank, N.A.`
+- **Label History (consolidation chain):**
+  1. ❌ `BUSINESS_NAME` → INVALID (was superseded by MERCHANT_NAME)
+     Reasoning: Identified as the name of the bank, which is the business entity (Partial match confidence: 1.00)
+     Timestamp: 2025-03-30T18:48:10.314716
+  2. ❌ `MERCHANT_NAME` → INVALID (current (INVALID))
+     Reasoning: The word "Bank," by itself does not represent the full trading name or brand of the merchant issuing the receipt. In the receipt context the merchant 
+     Timestamp: 2025-08-25T11:10:21.928576
+
+- **Audit Trail (ALL labels for this word - 2 total):**
+  ❌ `BUSINESS_NAME` → INVALID (proposed by: COMPLETION_BATCH)
+    Reasoning: Identified as the name of the bank, which is the business entity (Partial match confidence: 1.00)
+    Timestamp: 2025-03-30T18:48:10.314716
+  ❌ `MERCHANT_NAME` → INVALID ← CURRENT (consolidated from: BUSINESS_NAME) (proposed by: reasoning_addition_validator)
+    Reasoning: The word "Bank," by itself does not represent the full trading name or brand of the merchant issuing the receipt. In the receipt context the merchant 
+    Timestamp: 2025-08-25T11:10:21.928576
+
+- Surrounding words: `JPMorgan Chase [Bank,] N.A.`
+- Surrounding lines:
+  Further review may result in additional
+  deposit availability delay.
+  >>> JPMorgan Chase Bank, N.A. <<<
+  Agoura and Westlake Bi.d, Branch 134747
+  1-800-935-9935
+- Other labels on receipt: {'BUSINESS_NAME': 6, 'MERCHANT_NAME': 6, 'PAYMENT_METHOD': 8, 'PRODUCT_NAME': 6, 'ACCOUNT_NUMBER': 1, 'LOYALTY_ID': 1, 'LINE_TOTAL': 3, 'SUBTOTAL': 3, 'UNIT_PRICE': 1, 'ITEM_TOTAL': 2, 'GRAND_TOTAL': 2, 'TOTAL': 1, 'DATE': 3, 'ADDRESS_LINE': 6, 'PHONE': 1, 'PHONE_NUMBER': 1, 'WEBSITE': 1, 'TIME': 1}
+- Labels on same line: JPMorgan (BUSINESS_NAME), JPMorgan (MERCHANT_NAME), Chase (BUSINESS_NAME), Chase (MERCHANT_NAME), N.A. (BUSINESS_NAME)
+- Original reasoning: The word "Bank," by itself does not represent the full trading name or brand of the merchant issuing the receipt. In the receipt context the merchant is identified as "CHASE" and the bank name appears as part of the larger entity "Chase Bank," but the isolated word "Bank," is not a merchant name. Th
+
+
+## Instructions
+
+1. **Use the Consolidation Chain**: This is the MOST IMPORTANT context! The "Label History" shows the full sequence of label changes:
+   - If you see: `MERCHANT_NAME (INVALID) → PRODUCT_NAME (VALID)`, this means MERCHANT_NAME was superseded by PRODUCT_NAME
+   - The reasoning in each step explains WHY the label changed
+   - This shows cross-label confusion patterns clearly (e.g., "MERCHANT_NAME might be mislabeled as PRODUCT_NAME when buying store-brand products")
+
+2. **Use the Superseded By field**: If an INVALID label has a "Superseded By" section, it means another label replaced it:
+   - This is direct evidence of cross-label confusion
+   - The reasoning explains why the replacement happened
+   - Use this to identify patterns like "store-brand products labeled as merchant names"
+
+3. **Use the Audit Trail**: The "Audit Trail" shows what OTHER labels exist for the SAME word:
+   - If a word has `MERCHANT_NAME=INVALID` but `PRODUCT_NAME=VALID`, it means the word was incorrectly labeled as MERCHANT_NAME but is actually a product name
+   - If a word has `MERCHANT_NAME=INVALID` but `ADDRESS_LINE=VALID`, it means the word was incorrectly labeled as MERCHANT_NAME but is actually part of an address
+   - Check `label_consolidated_from` to see if labels were replaced
+
+2. **Identify semantic patterns**: Use the consolidation chain and audit trail to identify patterns:
+   - **Store-brand products**: If consolidation chain shows `MERCHANT_NAME → PRODUCT_NAME`, this is store-brand confusion
+   - **Location names**: If consolidation chain shows `MERCHANT_NAME → ADDRESS_LINE`, this is address confusion
+   - **Partial words**: Words that are parts of merchant names (e.g., "Decor" from "Floor & Decor")
+   - **Common words**: Articles/conjunctions (e.g., "The", "AND") that shouldn't be MERCHANT_NAME
+   - **Cross-label confusion**: Use consolidation chain to confirm - if `MERCHANT_NAME` was replaced by another label type, that's the pattern!
+
+2. **Classify scope**: Is it global (all merchants) or merchant-specific?
+
+3. **Determine match type**:
+   - `exact`: Exact word match
+   - `prefix`: Word starts with this pattern
+   - `suffix`: Word ends with this pattern
+   - `contains`: Word contains this pattern
+   - `regex`: Use regex pattern (provide pattern)
+
+4. **Write clear reason**: Explain:
+   - Why this is invalid for MERCHANT_NAME
+   - What label type it might actually be (if applicable)
+   - The semantic pattern you identified
+
+5. **Assign confidence**: How confident are you this is a valid edge case? (0.0-1.0)
+
+## Criteria for Edge Cases
+
+✅ **Good edge cases:**
+- Punctuation-only words ("-", ".", ":")
+- Common English words that are clearly not MERCHANT_NAME ("The", "AND", "Store")
+- Location names from addresses (e.g., "Westlake", "Village", "Oaks")
+- Store-brand product names (e.g., "Kirkland" from Costco products)
+- Partial words from merchant names (e.g., "Decor" from "Floor & Decor")
+- Words that appear in wrong context (e.g., product names labeled as merchant names)
+- OCR errors that are consistent
+
+❌ **Bad edge cases:**
+- Words that might be valid in some contexts
+- Patterns with low occurrence counts
+- Merchant-specific quirks that are actually valid
+- Edge cases that would block legitimate labels
+
+## Output
+
+Provide a JSON response with:
+- `edge_cases`: List of edge case candidates with semantic explanations
+- `summary`: Brief summary of the semantic patterns you identified (e.g., "MERCHANT_NAME is often confused with PRODUCT_NAME for store-brand products, or with ADDRESS_LINE for location names")
+
+Focus on high-confidence, clearly invalid patterns. Be conservative - it's better to miss an edge case than to create a false positive that blocks valid labels.

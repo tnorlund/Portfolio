@@ -1,0 +1,3286 @@
+{
+  "1": {
+    "a6596a97-4ce5-49ab-876d-6a2dfaeffca4": [
+      {
+        "sha256": "b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf",
+        "line_id": 9,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "LLM Classification: The amount follows the product name \"SPATCHCOC\" near the top of the receipt, typical for an individual item total. (confidence: 0.99)",
+            "validation_status": "VALID",
+            "label_proposed_by": "trader joe's_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T17:25:08.718659"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "LLM Classification: Follows a product name (SPATCHCOC) and looks like a standard item price. (confidence: 0.99)",
+            "validation_status": "VALID",
+            "label_proposed_by": "trader joe's_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T18:03:17.631897"
+          },
+          {
+            "label": "UNIT_PRICE",
+            "reasoning": "Superseded by LINE_TOTAL consolidation. Original: LLM Classification: Word-level UNIT_PRICE from line_total_1: The line contains two tokens. The first token, 'SPATCHCOC', appears to be an alphanumeric code or abbreviation referring to a product, so it is labeled as PRODUCT_NAME. The second token, '13.13', is a numeric amount that follows typical price formatting (two decimal places), thus it is labeled as UNIT_PRICE. No quantity markers are present in the line, so no words receive the QUANTITY label. (confidence: 0.95)",
+            "validation_status": "INVALID",
+            "label_proposed_by": "trader joe's_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T18:03:20.930929"
+          }
+        ],
+        "source_image_id": "965c73ca-e68b-4afe-a42c-c41732e48ef4"
+      },
+      {
+        "sha256": "b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf",
+        "line_id": 9,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "LLM Classification: The amount follows the product name \"SPATCHCOC\" near the top of the receipt, typical for an individual item total. (confidence: 0.99)",
+            "validation_status": "VALID",
+            "label_proposed_by": "trader joe's_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T17:25:08.718659"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "LLM Classification: The line reads 'MEAT 13.13', a product name followed by a monetary value, typical of an item line total. (confidence: 0.99)",
+            "validation_status": "VALID",
+            "label_proposed_by": "trader joe's_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T17:22:31.619000"
+          }
+        ],
+        "source_image_id": "fb69b028-a9d1-4d27-b30f-6e5f1502e2ac"
+      },
+      {
+        "sha256": "b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf",
+        "line_id": 13,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Item price listed on line 12-13 without currency symbol",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T09:13:28.346172"
+          },
+          {
+            "label": "UNIT_PRICE",
+            "reasoning": "Numeric value matching the line total for this item. | Numeric value matching the target amount, positioned after the product name. | Price token appears after quantity and unit.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-19T01:23:39.065001"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Item price listed on line 12-13, identified as line total",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T10:33:17.970249"
+          }
+        ],
+        "source_image_id": "965c73ca-e68b-4afe-a42c-c41732e48ef4"
+      },
+      {
+        "sha256": "b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf",
+        "line_id": 13,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Item price listed on line 12-13 without currency symbol",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T09:13:28.346172"
+          },
+          {
+            "label": "UNIT_PRICE",
+            "reasoning": "Numeric value matching the line total for this item. | Numeric value matching the target amount, positioned after the product name. | Price token appears after quantity and unit.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-19T01:23:39.065001"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Item price listed on line 12-13",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T04:48:23.537832"
+          }
+        ],
+        "source_image_id": "fb69b028-a9d1-4d27-b30f-6e5f1502e2ac"
+      },
+      {
+        "sha256": "b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf",
+        "line_id": 14,
+        "word_id": 4,
+        "canonical_labels": [
+          {
+            "label": "QUANTITY",
+            "reasoning": "Numeric weight value preceding unit.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T09:13:28.346172"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "PRODUCT_NAME",
+            "reasoning": "Part of product name indicating size",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-19T02:29:50.912270"
+          },
+          {
+            "label": "QUANTITY",
+            "reasoning": "Numeric weight preceding unit",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T10:33:17.970249"
+          }
+        ],
+        "source_image_id": "965c73ca-e68b-4afe-a42c-c41732e48ef4"
+      },
+      {
+        "sha256": "b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf",
+        "line_id": 14,
+        "word_id": 4,
+        "canonical_labels": [
+          {
+            "label": "QUANTITY",
+            "reasoning": "Numeric weight value preceding unit.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T09:13:28.346172"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "QUANTITY",
+            "reasoning": "Numeric value preceding unit indicator, representing weight.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T04:48:23.537832"
+          }
+        ],
+        "source_image_id": "fb69b028-a9d1-4d27-b30f-6e5f1502e2ac"
+      },
+      {
+        "sha256": "b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf",
+        "line_id": 14,
+        "word_id": 5,
+        "canonical_labels": [
+          {
+            "label": "QUANTITY",
+            "reasoning": "Unit of weight accompanying numeric quantity.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T09:13:28.346172"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "PRODUCT_NAME",
+            "reasoning": "Part of product name indicating unit",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-19T02:29:50.912270"
+          },
+          {
+            "label": "QUANTITY",
+            "reasoning": "Unit of weight",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T10:33:17.970249"
+          }
+        ],
+        "source_image_id": "965c73ca-e68b-4afe-a42c-c41732e48ef4"
+      },
+      {
+        "sha256": "b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf",
+        "line_id": 14,
+        "word_id": 5,
+        "canonical_labels": [
+          {
+            "label": "QUANTITY",
+            "reasoning": "Unit of weight accompanying numeric quantity.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T09:13:28.346172"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "QUANTITY",
+            "reasoning": "Unit of measure following the numeric quantity.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T04:48:23.537832"
+          }
+        ],
+        "source_image_id": "fb69b028-a9d1-4d27-b30f-6e5f1502e2ac"
+      },
+      {
+        "sha256": "b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf",
+        "line_id": 16,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Item price listed on line 14 and 16 without currency symbol",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T09:13:28.346172"
+          },
+          {
+            "label": "UNIT_PRICE",
+            "reasoning": "Numeric value matching the line total for this item. | Numeric value matching the target amount, positioned after the product name. | Price token appears after quantity and unit.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-19T01:23:39.065001"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Item price listed on line 14,16, identified as line total",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T10:33:17.970249"
+          }
+        ],
+        "source_image_id": "965c73ca-e68b-4afe-a42c-c41732e48ef4"
+      },
+      {
+        "sha256": "b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf",
+        "line_id": 16,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Item price listed on line 14 and 16 without currency symbol",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T09:13:28.346172"
+          },
+          {
+            "label": "UNIT_PRICE",
+            "reasoning": "Numeric value matching the line total for this item. | Numeric value matching the target amount, positioned after the product name. | Price token appears after quantity and unit.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-19T01:23:39.065001"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Item price listed on line 14,16",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T04:48:23.537832"
+          }
+        ],
+        "source_image_id": "fb69b028-a9d1-4d27-b30f-6e5f1502e2ac"
+      },
+      {
+        "sha256": "b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf",
+        "line_id": 19,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "LLM Classification: The amount follows \"BAG\" on an early line, fitting the pattern of a small line\u2011item price. (confidence: 0.99)",
+            "validation_status": "VALID",
+            "label_proposed_by": "trader joe's_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T17:25:09.978814"
+          },
+          {
+            "label": "UNIT_PRICE",
+            "reasoning": "Numeric value with decimal point directly following the product name.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-19T01:23:39.065001"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "LLM Classification: Label reads FEE, indicating a small additional charge; treated as a line\u2011item amount rather than tax because no explicit tax keyword is present. (confidence: 0.95)",
+            "validation_status": "VALID",
+            "label_proposed_by": "trader joe's_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T18:03:18.844940"
+          }
+        ],
+        "source_image_id": "965c73ca-e68b-4afe-a42c-c41732e48ef4"
+      },
+      {
+        "sha256": "b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf",
+        "line_id": 19,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "LLM Classification: The amount follows \"BAG\" on an early line, fitting the pattern of a small line\u2011item price. (confidence: 0.99)",
+            "validation_status": "VALID",
+            "label_proposed_by": "trader joe's_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T17:25:09.978814"
+          },
+          {
+            "label": "UNIT_PRICE",
+            "reasoning": "Numeric value with decimal point directly following the product name.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-19T01:23:39.065001"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "LLM Classification: The line reads 'FEE 0.10'; although labeled as a fee, it is presented as a monetary amount in the item section, so it is treated as a line total. (confidence: 0.99)",
+            "validation_status": "VALID",
+            "label_proposed_by": "trader joe's_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T17:22:32.834776"
+          }
+        ],
+        "source_image_id": "fb69b028-a9d1-4d27-b30f-6e5f1502e2ac"
+      },
+      {
+        "sha256": "b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf",
+        "line_id": 21,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Superseded by SUBTOTAL consolidation. Original: LLM Classification: The line contains the keyword \"TOTAL\" (without any tax qualifier) and matches the amount paid, representing the final amount due. (confidence: 0.99)",
+            "validation_status": "INVALID",
+            "label_proposed_by": "trader joe's_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T17:25:10.492240"
+          },
+          {
+            "label": "PAYMENT_METHOD",
+            "reasoning": "Exact DEBIT line showing amount | Exact TOTAL line showing amount",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-18T06:03:13.517385"
+          },
+          {
+            "label": "SUBTOTAL",
+            "reasoning": "Superseded by GRAND_TOTAL from LLM analysis. Original reasoning: LLM Classification: The line explicitly contains the keyword \"SUBTOTAL\" followed by the amount, indicating the sum of line totals before tax. (confidence: 0.99)",
+            "validation_status": "INVALID",
+            "label_proposed_by": "trader joe's_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T17:25:10.233066"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Superseded by SUBTOTAL consolidation. Original: LLM Classification: The line uses the keyword TOTAL and the amount matches the SUBTOTAL, signifying the final amount due. (confidence: 0.99)",
+            "validation_status": "INVALID",
+            "label_proposed_by": "trader joe's_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T18:03:19.369624"
+          },
+          {
+            "label": "SUBTOTAL",
+            "reasoning": "Superseded by GRAND_TOTAL from LLM analysis. Original reasoning: LLM Classification: The line explicitly contains the keyword SUBTOTAL followed by the amount, indicating the sum of line items before tax/fees. (confidence: 0.99)",
+            "validation_status": "INVALID",
+            "label_proposed_by": "trader joe's_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T18:03:19.109350"
+          }
+        ],
+        "source_image_id": "965c73ca-e68b-4afe-a42c-c41732e48ef4"
+      },
+      {
+        "sha256": "b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf",
+        "line_id": 21,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Superseded by SUBTOTAL consolidation. Original: LLM Classification: The line contains the keyword \"TOTAL\" (without any tax qualifier) and matches the amount paid, representing the final amount due. (confidence: 0.99)",
+            "validation_status": "INVALID",
+            "label_proposed_by": "trader joe's_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T17:25:10.492240"
+          },
+          {
+            "label": "PAYMENT_METHOD",
+            "reasoning": "Exact DEBIT line showing amount | Exact TOTAL line showing amount",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-18T06:03:13.517385"
+          },
+          {
+            "label": "SUBTOTAL",
+            "reasoning": "Superseded by GRAND_TOTAL from LLM analysis. Original reasoning: LLM Classification: The line explicitly contains the keyword \"SUBTOTAL\" followed by the amount, indicating the sum of line totals before tax. (confidence: 0.99)",
+            "validation_status": "INVALID",
+            "label_proposed_by": "trader joe's_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T17:25:10.233066"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Superseded by SUBTOTAL consolidation. Original: LLM Classification: The line uses the keyword TOTAL and the amount matches the SUBTOTAL, signifying the final amount due. (confidence: 0.99)",
+            "validation_status": "INVALID",
+            "label_proposed_by": "trader joe's_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T18:03:19.369624"
+          },
+          {
+            "label": "SUBTOTAL",
+            "reasoning": "Superseded by GRAND_TOTAL from LLM analysis. Original reasoning: LLM Classification: The line explicitly contains the keyword SUBTOTAL followed by the amount, indicating the sum of line items before tax/fees. (confidence: 0.99)",
+            "validation_status": "INVALID",
+            "label_proposed_by": "trader joe's_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T18:03:19.109350"
+          }
+        ],
+        "source_image_id": "965c73ca-e68b-4afe-a42c-c41732e48ef4"
+      },
+      {
+        "sha256": "b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf",
+        "line_id": 21,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Superseded by SUBTOTAL consolidation. Original: LLM Classification: The line contains the keyword \"TOTAL\" (without any tax qualifier) and matches the amount paid, representing the final amount due. (confidence: 0.99)",
+            "validation_status": "INVALID",
+            "label_proposed_by": "trader joe's_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T17:25:10.492240"
+          },
+          {
+            "label": "PAYMENT_METHOD",
+            "reasoning": "Exact DEBIT line showing amount | Exact TOTAL line showing amount",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-18T06:03:13.517385"
+          },
+          {
+            "label": "SUBTOTAL",
+            "reasoning": "Superseded by GRAND_TOTAL from LLM analysis. Original reasoning: LLM Classification: The line explicitly contains the keyword \"SUBTOTAL\" followed by the amount, indicating the sum of line totals before tax. (confidence: 0.99)",
+            "validation_status": "INVALID",
+            "label_proposed_by": "trader joe's_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T17:25:10.233066"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Superseded by SUBTOTAL consolidation. Original: LLM Classification: The line contains the keyword 'TOTAL' with a dollar amount, indicating the grand total payable. (confidence: 0.99)",
+            "validation_status": "INVALID",
+            "label_proposed_by": "trader joe's_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T17:22:33.353593"
+          },
+          {
+            "label": "SUBTOTAL",
+            "reasoning": "Superseded by GRAND_TOTAL from LLM analysis. Original reasoning: LLM Classification: The line explicitly contains the keyword 'SUBTOTAL' followed by '$29.18', matching the definition of a subtotal. (confidence: 0.99)",
+            "validation_status": "INVALID",
+            "label_proposed_by": "trader joe's_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T17:22:33.097351"
+          }
+        ],
+        "source_image_id": "fb69b028-a9d1-4d27-b30f-6e5f1502e2ac"
+      },
+      {
+        "sha256": "b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf",
+        "line_id": 21,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Superseded by SUBTOTAL consolidation. Original: LLM Classification: The line contains the keyword \"TOTAL\" (without any tax qualifier) and matches the amount paid, representing the final amount due. (confidence: 0.99)",
+            "validation_status": "INVALID",
+            "label_proposed_by": "trader joe's_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T17:25:10.492240"
+          },
+          {
+            "label": "PAYMENT_METHOD",
+            "reasoning": "Exact DEBIT line showing amount | Exact TOTAL line showing amount",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-18T06:03:13.517385"
+          },
+          {
+            "label": "SUBTOTAL",
+            "reasoning": "Superseded by GRAND_TOTAL from LLM analysis. Original reasoning: LLM Classification: The line explicitly contains the keyword \"SUBTOTAL\" followed by the amount, indicating the sum of line totals before tax. (confidence: 0.99)",
+            "validation_status": "INVALID",
+            "label_proposed_by": "trader joe's_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T17:25:10.233066"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Superseded by SUBTOTAL consolidation. Original: LLM Classification: The line contains the keyword 'TOTAL' with a dollar amount, indicating the grand total payable. (confidence: 0.99)",
+            "validation_status": "INVALID",
+            "label_proposed_by": "trader joe's_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T17:22:33.353593"
+          },
+          {
+            "label": "SUBTOTAL",
+            "reasoning": "Superseded by GRAND_TOTAL from LLM analysis. Original reasoning: LLM Classification: The line explicitly contains the keyword 'SUBTOTAL' followed by '$29.18', matching the definition of a subtotal. (confidence: 0.99)",
+            "validation_status": "INVALID",
+            "label_proposed_by": "trader joe's_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T17:22:33.097351"
+          }
+        ],
+        "source_image_id": "fb69b028-a9d1-4d27-b30f-6e5f1502e2ac"
+      },
+      {
+        "sha256": "b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf",
+        "line_id": 23,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Explicitly labeled as TOTAL with dollar sign, final amount due",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T09:13:28.346172"
+          },
+          {
+            "label": "PAYMENT_METHOD",
+            "reasoning": "Exact DEBIT line showing amount | Exact TOTAL line showing amount",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-18T06:03:13.517385"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Explicitly labeled as TOTAL on line 22-23, representing final amount due",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T10:33:17.970249"
+          }
+        ],
+        "source_image_id": "965c73ca-e68b-4afe-a42c-c41732e48ef4"
+      },
+      {
+        "sha256": "b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf",
+        "line_id": 23,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Explicitly labeled as TOTAL with dollar sign, final amount due",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T09:13:28.346172"
+          },
+          {
+            "label": "PAYMENT_METHOD",
+            "reasoning": "Exact DEBIT line showing amount | Exact TOTAL line showing amount",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-18T06:03:13.517385"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Explicitly labeled as TOTAL, final amount due",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T04:48:23.537832"
+          },
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Intermediate total line labeled TOTAL, treated as line total.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-18T22:02:18.467200"
+          }
+        ],
+        "source_image_id": "fb69b028-a9d1-4d27-b30f-6e5f1502e2ac"
+      },
+      {
+        "sha256": "b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf",
+        "line_id": 25,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Payment line showing DEBIT amount, matches final total",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T09:13:28.346172"
+          },
+          {
+            "label": "PAYMENT_METHOD",
+            "reasoning": "Exact DEBIT line showing amount | Exact TOTAL line showing amount",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-18T06:03:13.517385"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Labeled as DEBIT, amount charged equals final total",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-17T05:53:41.244174"
+          }
+        ],
+        "source_image_id": "965c73ca-e68b-4afe-a42c-c41732e48ef4"
+      },
+      {
+        "sha256": "b305dfdc850ae5c20e19e57d29203a37d40a58b3e3d321b461e9bb6551a5a4cf",
+        "line_id": 25,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Payment line showing DEBIT amount, matches final total",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T09:13:28.346172"
+          },
+          {
+            "label": "PAYMENT_METHOD",
+            "reasoning": "Exact DEBIT line showing amount | Exact TOTAL line showing amount",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-18T06:03:13.517385"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "DEBIT line shows the charged amount, matches final total",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-17T03:15:14.384792"
+          },
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Intermediate total line labeled DEBIT, treated as line total.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-18T22:02:18.467200"
+          }
+        ],
+        "source_image_id": "fb69b028-a9d1-4d27-b30f-6e5f1502e2ac"
+      }
+    ],
+    "49a1a1e7-348a-4cd9-af96-2312e838476e": [
+      {
+        "sha256": "fbb577db08f8e9a2b5990be1b36f1ddc3b7e5c44abfe190ea0edfdcd988db266",
+        "line_id": 15,
+        "word_id": 3,
+        "canonical_labels": [
+          {
+            "label": "PRODUCT_NAME",
+            "reasoning": "Product code that appears immediately before the unit price.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T02:43:24.246828"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "PRODUCT_NAME",
+            "reasoning": "Model number part of the product name. | Item number or SKU appended to the product name.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T07:41:37.849708"
+          },
+          {
+            "label": "QUANTITY",
+            "reasoning": "Numeric code present between product name and price but does not represent a quantity.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-17T04:38:28.028398"
+          }
+        ],
+        "source_image_id": "a63a6c84-d399-452f-9e56-08ff664c8f35"
+      },
+      {
+        "sha256": "fbb577db08f8e9a2b5990be1b36f1ddc3b7e5c44abfe190ea0edfdcd988db266",
+        "line_id": 20,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "QUANTITY",
+            "reasoning": "Numeric value immediately before unit price, indicating quantity.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T02:43:24.246828"
+          },
+          {
+            "label": "UNIT_PRICE",
+            "reasoning": "Currency symbol followed by a numeric value immediately before the unit indicator, matching the unit price format.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-16T18:31:35.100805"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "QUANTITY",
+            "reasoning": "Unit abbreviation indicating each item. | The abbreviation 'EA' is a common unit indicator meaning 'each', used to denote the quantity unit. | Contains numeric quantity '1' followed by unit abbreviation 'EA' (each), a common quantity indicator. | Unit indicator 'EA' (each) following the quantity. | The token 'EA' appears between the product code and the unit price, indicating a quantity of one.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T07:41:37.849708"
+          }
+        ],
+        "source_image_id": "a63a6c84-d399-452f-9e56-08ff664c8f35"
+      },
+      {
+        "sha256": "fbb577db08f8e9a2b5990be1b36f1ddc3b7e5c44abfe190ea0edfdcd988db266",
+        "line_id": 24,
+        "word_id": 2,
+        "canonical_labels": [
+          {
+            "label": "PRODUCT_NAME",
+            "reasoning": "Alphanumeric code appearing between quantity and price, consistent with product identifiers in the receipt.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-16T18:31:35.100805"
+          },
+          {
+            "label": "QUANTITY",
+            "reasoning": "Unit indicator following quantity",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-17T02:11:53.442626"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "PRODUCT_NAME",
+            "reasoning": "Part of the product description. | Part of the product description on line 21,33. | Common noun in product description preceding color and size. | Common noun in product description, part of the item name.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T07:41:37.849708"
+          }
+        ],
+        "source_image_id": "a63a6c84-d399-452f-9e56-08ff664c8f35"
+      },
+      {
+        "sha256": "fbb577db08f8e9a2b5990be1b36f1ddc3b7e5c44abfe190ea0edfdcd988db266",
+        "line_id": 27,
+        "word_id": 2,
+        "canonical_labels": [
+          {
+            "label": "PRODUCT_NAME",
+            "reasoning": "Alphanumeric code appearing between quantity and price, consistent with product identifiers in the receipt.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-16T18:31:35.100805"
+          },
+          {
+            "label": "QUANTITY",
+            "reasoning": "Unit indicator following quantity",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-17T02:11:53.442626"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "PRODUCT_NAME",
+            "reasoning": "Part of the product description. | Part of the product description on line 21,33. | Common noun in product description preceding color and size. | Common noun in product description, part of the item name.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T07:41:37.849708"
+          }
+        ],
+        "source_image_id": "a63a6c84-d399-452f-9e56-08ff664c8f35"
+      },
+      {
+        "sha256": "fbb577db08f8e9a2b5990be1b36f1ddc3b7e5c44abfe190ea0edfdcd988db266",
+        "line_id": 30,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "LLM Classification: The line is labeled with a product code (487368) followed by '1 EA C' and the dollar amount $9.49. This matches the common pattern of a line\u2011item total (quantity \u00d7 unit price). It appears early in the receipt, consistent with item listings. (confidence: 0.96)",
+            "validation_status": "VALID",
+            "label_proposed_by": "diy home center_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T18:04:15.331150"
+          },
+          {
+            "label": "UNIT_PRICE",
+            "reasoning": "Superseded by LINE_TOTAL consolidation. Original: LLM Classification: Word-level UNIT_PRICE from line_total_0: The receipt line contains two tokens: \"3207\" and \"$9.49\".\n- \"$9.49\" follows the standard monetary format (a dollar sign followed by a numeric value), which fits the UNIT_PRICE definition.\n- \"3207\" is a numeric token but does not represent a conventional quantity unit (e.g., 2, LB, CT) nor does it describe a product. It could be an item number or internal code, so it does not match any of the specified label categories and is omitted.\nThus only \"$9.49\" is labeled as UNIT_PRICE with high confidence. (confidence: 0.95)",
+            "validation_status": "INVALID",
+            "label_proposed_by": "diy home center_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T18:04:16.856904"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "UNIT_PRICE",
+            "reasoning": "Matches the line total for the item with quantity 1, indicating unit price of $2.651.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T07:41:37.849708"
+          }
+        ],
+        "source_image_id": "a63a6c84-d399-452f-9e56-08ff664c8f35"
+      },
+      {
+        "sha256": "fbb577db08f8e9a2b5990be1b36f1ddc3b7e5c44abfe190ea0edfdcd988db266",
+        "line_id": 32,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "LLM Classification: The word 'WORMS' (a product name) is directly followed by $2.55. No quantity is shown, so the amount is taken as the line total for that single item. (confidence: 0.96)",
+            "validation_status": "VALID",
+            "label_proposed_by": "diy home center_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T18:04:15.503870"
+          },
+          {
+            "label": "UNIT_PRICE",
+            "reasoning": "Superseded by LINE_TOTAL consolidation. Original: LLM Classification: Word-level UNIT_PRICE from line_total_1: The first token \"WORMS\" describes the item being sold, so it is labeled as PRODUCT_NAME. The second token contains a dollar sign followed by a numeric amount, indicating the price per unit; therefore it is labeled as UNIT_PRICE. No other words are present to label. (confidence: 0.98)",
+            "validation_status": "INVALID",
+            "label_proposed_by": "diy home center_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T18:04:17.113262"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "UNIT_PRICE",
+            "reasoning": "Contains dollar sign and numeric value 1.891, typical unit price format. | The string starts with a dollar sign and contains the numeric amount 1.891, matching the target amount 1.89, and is positioned after the quantity indicator.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-19T00:16:13.219159"
+          }
+        ],
+        "source_image_id": "a63a6c84-d399-452f-9e56-08ff664c8f35"
+      },
+      {
+        "sha256": "fbb577db08f8e9a2b5990be1b36f1ddc3b7e5c44abfe190ea0edfdcd988db266",
+        "line_id": 34,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "LLM Classification: After the product dimensions '16X12X12' the receipt shows $5.67. This follows the typical item\u2011line pattern (description \u2192 price) and therefore is classified as a line total. (confidence: 0.94)",
+            "validation_status": "VALID",
+            "label_proposed_by": "diy home center_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T18:04:15.669274"
+          },
+          {
+            "label": "UNIT_PRICE",
+            "reasoning": "Superseded by LINE_TOTAL consolidation. Original: LLM Classification: Word-level UNIT_PRICE from line_total_2: The token \"16X12X12\" represents a set of dimensions that identify the item, so it is labeled as PRODUCT_NAME. The token \"$5.67\" is a monetary value, which matches UNIT_PRICE. No token indicates quantity, so no QUANTITY labels are assigned. (confidence: 0.97)",
+            "validation_status": "INVALID",
+            "label_proposed_by": "diy home center_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T18:04:17.367827"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "UNIT_PRICE",
+            "reasoning": "Contains a dollar sign and the unit indicator 'EA', matching the format of a unit price.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-17T20:05:45.136947"
+          }
+        ],
+        "source_image_id": "a63a6c84-d399-452f-9e56-08ff664c8f35"
+      },
+      {
+        "sha256": "fbb577db08f8e9a2b5990be1b36f1ddc3b7e5c44abfe190ea0edfdcd988db266",
+        "line_id": 36,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "LLM Classification: The dimensions '18X18X24' are followed by $6.53, matching the usual item\u2011line format, so this amount is treated as the line total for that item. (confidence: 0.94)",
+            "validation_status": "VALID",
+            "label_proposed_by": "diy home center_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T18:04:15.835714"
+          },
+          {
+            "label": "UNIT_PRICE",
+            "reasoning": "Superseded by LINE_TOTAL consolidation. Original: LLM Classification: Word-level UNIT_PRICE from line_total_3: The first token \"18X18X24\" describes the item's dimensions and is therefore labeled as a product name. The second token \"$6.53\" is a monetary amount indicating the unit price. No other words are present and thus no further labels are required. (confidence: 0.95)",
+            "validation_status": "INVALID",
+            "label_proposed_by": "diy home center_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T18:04:17.619246"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "UNIT_PRICE",
+            "reasoning": "The value matches the target amount and is formatted as a price per unit, representing the unit price per item.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T07:41:37.849708"
+          }
+        ],
+        "source_image_id": "a63a6c84-d399-452f-9e56-08ff664c8f35"
+      }
+    ],
+    "29dd2c96-6854-42dd-a84f-6344b49d7254": [
+      {
+        "sha256": "e0e8845a0f13df409d3ad3630fb0fe3da9c4ce8da52f6466a6e7a87e455d8474",
+        "line_id": 13,
+        "word_id": 4,
+        "canonical_labels": [
+          {
+            "label": "PRODUCT_NAME",
+            "reasoning": "Included in the product description to indicate the unit of measure, treated as part of the name.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T10:01:30.632086"
+          },
+          {
+            "label": "QUANTITY",
+            "reasoning": "Unit descriptor indicating quantity of one gallon.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-18T06:25:29.405104"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "PRODUCT_NAME",
+            "reasoning": "Included in the product description indicating the unit of measure.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T10:18:34.661324"
+          }
+        ],
+        "source_image_id": "783f5ca8-dec8-4d72-bfc2-5196573942bb"
+      },
+      {
+        "sha256": "e0e8845a0f13df409d3ad3630fb0fe3da9c4ce8da52f6466a6e7a87e455d8474",
+        "line_id": 28,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Final amount due appears multiple times labeled as TOTAL, AMT, and on the bank card line.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T10:01:30.632086"
+          },
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Authorization line shows AMT: $ 23.90, treated as a transaction amount",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-19T02:01:04.380936"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Authorization amount matches final total.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T10:18:34.661324"
+          }
+        ],
+        "source_image_id": "783f5ca8-dec8-4d72-bfc2-5196573942bb"
+      },
+      {
+        "sha256": "e0e8845a0f13df409d3ad3630fb0fe3da9c4ce8da52f6466a6e7a87e455d8474",
+        "line_id": 46,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Final amount due appears multiple times labeled as TOTAL, AMT, and on the bank card line.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T10:01:30.632086"
+          },
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Bank card line displays USD$ 23.90, indicating the charged amount",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-19T02:01:04.380936"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Currency amount shown on bank card line.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T10:18:34.661324"
+          }
+        ],
+        "source_image_id": "783f5ca8-dec8-4d72-bfc2-5196573942bb"
+      }
+    ],
+    "20576ddd-8a2c-4aea-841e-da553b8a7ff1": [
+      {
+        "sha256": "b28b126e612546d46784c7bc1c9d9115c442697b4a8d6e534ac72885a54518b7",
+        "line_id": 35,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "EFT/Debit line shows transaction amount matching total",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T06:58:33.699894"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "EFT/Debit entry shows 24.01, matching the transaction total.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T02:13:52.892999"
+          },
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "EFT/Debit line shows amount 24.01, likely the transaction total",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-18T02:35:40.612425"
+          }
+        ],
+        "source_image_id": "53e716ed-49bf-4562-90e7-fc8c860cb985"
+      }
+    ],
+    "739dfe4b-edac-49b1-86c3-3568a7c98492": [
+      {
+        "sha256": "749c39fa67538ead92a4245b2004ca8c23f5030fe2092dbad54498aeda174509",
+        "line_id": 17,
+        "word_id": 2,
+        "canonical_labels": [
+          {
+            "label": "DISCOUNT",
+            "reasoning": "Explicitly states a saved amount, indicating a discount applied to the purchase.",
+            "validation_status": "NEEDS_REVIEW",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T06:16:00.550633"
+          },
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Discount amount shown as 'Saved $0.64', treated as a monetary line item",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-18T22:42:59.570868"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "DISCOUNT",
+            "reasoning": "Explicit statement of money saved, representing a discount applied to the purchase.",
+            "validation_status": "NEEDS_REVIEW",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T08:31:22.057394"
+          }
+        ],
+        "source_image_id": "95ae3b59-238c-4725-a2b0-d428d09bb82a"
+      },
+      {
+        "sha256": "749c39fa67538ead92a4245b2004ca8c23f5030fe2092dbad54498aeda174509",
+        "line_id": 17,
+        "word_id": 4,
+        "canonical_labels": [
+          {
+            "label": "DISCOUNT",
+            "reasoning": "Explicitly states a saved amount, indicating a discount applied to the purchase.",
+            "validation_status": "NEEDS_REVIEW",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T06:16:00.550633"
+          },
+          {
+            "label": "UNIT_PRICE",
+            "reasoning": "The amount $1,64 represents the original unit price before the $0.64 discount, appearing directly with the amount. | The token '$1,64' appears in the discount line and represents the original price before the discount; it is not a product price listed elsewhere on the receipt.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-18T22:42:59.570868"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "DISCOUNT",
+            "reasoning": "Explicit statement of money saved, representing a discount applied to the purchase.",
+            "validation_status": "NEEDS_REVIEW",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T08:31:22.057394"
+          }
+        ],
+        "source_image_id": "95ae3b59-238c-4725-a2b0-d428d09bb82a"
+      }
+    ],
+    "53645e98-1dc3-4929-8ff9-c9e5e12455bb": [
+      {
+        "sha256": "69e9b5da1c83d2f22a24e685462ccd1865fe9a80e9ab35b688f85377ab095a5a",
+        "line_id": 34,
+        "word_id": 4,
+        "canonical_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Total transaction amount charged to debit card",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T08:54:07.911490"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "DISCOUNT",
+            "reasoning": "Line 34 shows the total amount of the transaction",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-17T05:12:56.254471"
+          },
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Line labeled TOTAL TRANSACTION AMOUNT represents the final amount charged (purchase + cash back).",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T08:58:36.388222"
+          }
+        ],
+        "source_image_id": "866ae94f-6274-4f02-a4ab-42eec72381fb"
+      },
+      {
+        "sha256": "69e9b5da1c83d2f22a24e685462ccd1865fe9a80e9ab35b688f85377ab095a5a",
+        "line_id": 42,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Total transaction amount charged to debit card",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T08:54:07.911490"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "DISCOUNT",
+            "reasoning": "Line 34 shows the total amount of the transaction",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-17T05:12:56.254471"
+          },
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Labeled as TOTAL TRANSACTION AMOUNT and matches purchase subtotal plus cash back; final amount due.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-18T05:37:40.291633"
+          }
+        ],
+        "source_image_id": "866ae94f-6274-4f02-a4ab-42eec72381fb"
+      }
+    ],
+    "d25dcaa4-66a0-412d-beee-ba799ead2f57": [
+      {
+        "sha256": "aa9c6d6401502fe9e546c0c576e5d6e2d27d27dfbecde0e27fcde3271ebc7dd0",
+        "line_id": 43,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Price listed next to an item (CINNAMON ROLL CEREAL) representing its line total.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-16T19:34:34.555796"
+          },
+          {
+            "label": "UNIT_PRICE",
+            "reasoning": "Numeric value matching the line total, appears after the product name, indicating unit price.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T06:24:12.549803"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Item line with price, represents the extended price for that product.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T07:08:07.020444"
+          }
+        ],
+        "source_image_id": "23e1b623-e3fa-4102-84ca-4b5b3862e6ed"
+      },
+      {
+        "sha256": "aa9c6d6401502fe9e546c0c576e5d6e2d27d27dfbecde0e27fcde3271ebc7dd0",
+        "line_id": 48,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Price listed next to an item (RAW WHOLE MILK) representing its line total.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-16T19:34:34.555796"
+          },
+          {
+            "label": "UNIT_PRICE",
+            "reasoning": "Numeric value directly associated with the product name, representing the line total which is treated as unit price due to lack of quantity.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T06:24:12.549803"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Item line with price, represents the extended price for that product.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T07:08:07.020444"
+          }
+        ],
+        "source_image_id": "23e1b623-e3fa-4102-84ca-4b5b3862e6ed"
+      },
+      {
+        "sha256": "aa9c6d6401502fe9e546c0c576e5d6e2d27d27dfbecde0e27fcde3271ebc7dd0",
+        "line_id": 49,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Explicitly marked as 'BALANCE DUE', indicating the final amount owed.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-16T19:34:34.555796"
+          },
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Intermediate balance due line before payment; not the final amount due.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-18T04:31:57.700146"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Balance due matches the final amount owed.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T07:08:07.020444"
+          }
+        ],
+        "source_image_id": "23e1b623-e3fa-4102-84ca-4b5b3862e6ed"
+      },
+      {
+        "sha256": "aa9c6d6401502fe9e546c0c576e5d6e2d27d27dfbecde0e27fcde3271ebc7dd0",
+        "line_id": 50,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Shows the payment amount that settles the total balance.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-16T19:34:34.555796"
+          },
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Payment amount, treated as line total.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-19T22:23:32.440173"
+          },
+          {
+            "label": "PAYMENT_METHOD",
+            "reasoning": "Payment method line shows DEBIT with the transaction amount",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-17T19:25:51.398827"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Shown as DEBIT amount, matching the total purchase.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-16T19:47:43.871217"
+          },
+          {
+            "label": "PAYMENT_METHOD",
+            "reasoning": "Payment method line showing debit transaction amount",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-18T23:50:10.907598"
+          }
+        ],
+        "source_image_id": "23e1b623-e3fa-4102-84ca-4b5b3862e6ed"
+      },
+      {
+        "sha256": "aa9c6d6401502fe9e546c0c576e5d6e2d27d27dfbecde0e27fcde3271ebc7dd0",
+        "line_id": 50,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Shows the payment amount that settles the total balance.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-16T19:34:34.555796"
+          },
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Payment amount, treated as line total.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-19T22:23:32.440173"
+          },
+          {
+            "label": "PAYMENT_METHOD",
+            "reasoning": "Payment method line shows DEBIT with the transaction amount",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-17T19:25:51.398827"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Shown as DEBIT amount, matching the total purchase.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-16T19:47:43.871217"
+          },
+          {
+            "label": "PAYMENT_METHOD",
+            "reasoning": "Payment method line showing debit transaction amount",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-18T23:50:10.907598"
+          }
+        ],
+        "source_image_id": "23e1b623-e3fa-4102-84ca-4b5b3862e6ed"
+      }
+    ],
+    "06e54f95-6c95-4567-9fe4-6d5803e8c04d": [
+      {
+        "sha256": "3101b64ceb2752395f75058c03a7a0752dbb54e3c23ed86c960b2b8d2f0edf4e",
+        "line_id": 3,
+        "word_id": 2,
+        "canonical_labels": [
+          {
+            "label": "ADDRESS_LINE",
+            "reasoning": "Lines 2\u20114 contain the street address, unit number, city, state and ZIP code.",
+            "validation_status": "NEEDS_REVIEW",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T04:58:18.054490"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "ADDRESS_LINE",
+            "reasoning": "Lines 2\u20114 provide the full street address, unit, city, state and ZIP",
+            "validation_status": "NEEDS_REVIEW",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T04:10:09.916305"
+          },
+          {
+            "label": "UNIT_PRICE",
+            "reasoning": "Price token following product name; matches total for quantity 1.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T04:10:09.916305"
+          }
+        ],
+        "source_image_id": "dea7bb6f-ea6d-4ae8-a365-02c79b00970f"
+      },
+      {
+        "sha256": "3101b64ceb2752395f75058c03a7a0752dbb54e3c23ed86c960b2b8d2f0edf4e",
+        "line_id": 16,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "PRODUCT_NAME",
+            "reasoning": "The word 'TIP' precedes the amount and represents the line item on the receipt.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-19T23:26:05.675412"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "DISCOUNT",
+            "reasoning": "Line 16 shows tip amount added to the order",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-18T21:33:46.049527"
+          },
+          {
+            "label": "PRODUCT_NAME",
+            "reasoning": "The word 'TIP' identifies the tip line item. It is separated from the amount by the word 'AMOUNT', but it still serves as the product name for the tip.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-16T18:56:40.660463"
+          }
+        ],
+        "source_image_id": "dea7bb6f-ea6d-4ae8-a365-02c79b00970f"
+      },
+      {
+        "sha256": "3101b64ceb2752395f75058c03a7a0752dbb54e3c23ed86c960b2b8d2f0edf4e",
+        "line_id": 21,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Item line shows quantity and price with dollar sign, indicating extended price for that line.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T04:58:18.054490"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Item line total for So-Cal Chicken",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-16T18:56:40.660463"
+          },
+          {
+            "label": "UNIT_PRICE",
+            "reasoning": "Price token appears after product name and is prefixed with '$', indicating unit price. | Price value following the product name, prefixed with $.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-19T21:23:57.063072"
+          }
+        ],
+        "source_image_id": "dea7bb6f-ea6d-4ae8-a365-02c79b00970f"
+      },
+      {
+        "sha256": "3101b64ceb2752395f75058c03a7a0752dbb54e3c23ed86c960b2b8d2f0edf4e",
+        "line_id": 25,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Explicitly labeled as 'Order Total', the final amount due after tax.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T04:58:18.054490"
+          },
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Pre\u2011tip total labeled as Order Total, treated as a line total",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-18T04:01:15.371323"
+          },
+          {
+            "label": "SUBTOTAL",
+            "reasoning": "Explicitly labeled as 'Order Total', total before tip and final authorization.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-18T23:38:07.069812"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "DISCOUNT",
+            "reasoning": "Line 14 shows the order total amount for the transaction | Line 14 shows total amount for the order",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-18T21:30:44.371569"
+          },
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Explicitly labeled as Order Total, representing total before tip",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-18T07:50:06.740553"
+          },
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Order total before tip",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-16T18:56:40.660463"
+          }
+        ],
+        "source_image_id": "dea7bb6f-ea6d-4ae8-a365-02c79b00970f"
+      },
+      {
+        "sha256": "3101b64ceb2752395f75058c03a7a0752dbb54e3c23ed86c960b2b8d2f0edf4e",
+        "line_id": 25,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Explicitly labeled as 'Order Total', the final amount due after tax.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T04:58:18.054490"
+          },
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Pre\u2011tip total labeled as Order Total, treated as a line total",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-18T04:01:15.371323"
+          },
+          {
+            "label": "SUBTOTAL",
+            "reasoning": "Explicitly labeled as 'Order Total', total before tip and final authorization.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-18T23:38:07.069812"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "DISCOUNT",
+            "reasoning": "Line 14 shows the order total amount for the transaction | Line 14 shows total amount for the order",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-18T21:30:44.371569"
+          },
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Explicitly labeled as Order Total, representing total before tip",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-18T07:50:06.740553"
+          },
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Order total before tip",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-16T18:56:40.660463"
+          }
+        ],
+        "source_image_id": "dea7bb6f-ea6d-4ae8-a365-02c79b00970f"
+      },
+      {
+        "sha256": "3101b64ceb2752395f75058c03a7a0752dbb54e3c23ed86c960b2b8d2f0edf4e",
+        "line_id": 26,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Payment line 'Visa $16.19' matches the order total amount, confirming it as the amount charged.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-17T18:44:05.361946"
+          },
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Payment line showing amount charged to Visa card",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-18T04:01:15.371323"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "DISCOUNT",
+            "reasoning": "Line 14 shows the order total amount for the transaction | Line 14 shows total amount for the order",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-18T21:30:44.371569"
+          },
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Payment amount captured on Visa",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-16T18:56:40.660463"
+          }
+        ],
+        "source_image_id": "dea7bb6f-ea6d-4ae8-a365-02c79b00970f"
+      },
+      {
+        "sha256": "3101b64ceb2752395f75058c03a7a0752dbb54e3c23ed86c960b2b8d2f0edf4e",
+        "line_id": 27,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Tip amount shown separately, classified as a line total for the tip",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-18T04:01:15.371323"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "DISCOUNT",
+            "reasoning": "Line 16 shows tip amount added to the order",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-18T21:33:46.049527"
+          },
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Tip amount line",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-16T18:56:40.660463"
+          }
+        ],
+        "source_image_id": "dea7bb6f-ea6d-4ae8-a365-02c79b00970f"
+      }
+    ],
+    "4e180507-c996-4766-979d-4af3221a68a3": [
+      {
+        "sha256": "c6cd2f8a205be10897502ded46f00973e1bf6c8c94dc3d497b5f4fae0f984dd5",
+        "line_id": 1,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "MERCHANT_NAME",
+            "reasoning": "Printed at the top and bottom of the receipt, indicating the merchant's trading name.",
+            "validation_status": "NEEDS_REVIEW",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T04:56:13.932759"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "ADDRESS_LINE",
+            "reasoning": "Street line followed by city, state, and ZIP together form the full address printed on the receipt",
+            "validation_status": "NEEDS_REVIEW",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T07:38:43.595163"
+          },
+          {
+            "label": "MERCHANT_NAME",
+            "reasoning": "Store name appears as the first line of the receipt",
+            "validation_status": "NEEDS_REVIEW",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T07:38:43.595163"
+          }
+        ],
+        "source_image_id": "88e95723-3beb-4dcb-ba4b-cf24b3b70565"
+      }
+    ],
+    "cb22100f-44c2-4b7d-b29f-46627a64355a": [
+      {
+        "sha256": "b5c3c17a4ac213675cd6fedd9a0bee11eafe7155594aef5c46c61ca90d7fa41b",
+        "line_id": 1,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "MERCHANT_NAME",
+            "reasoning": "Store name appears at top of receipt on lines 1-2",
+            "validation_status": "NEEDS_REVIEW",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T01:54:55.788367"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "MERCHANT_NAME",
+            "reasoning": "Store name appears at the top of the receipt on lines 1\u20112",
+            "validation_status": "NEEDS_REVIEW",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T09:45:03.888561"
+          },
+          {
+            "label": "PRODUCT_NAME",
+            "reasoning": "Appears as part of the product name in the promotional phrase \"Sprouts gift card\".",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T09:45:03.888561"
+          }
+        ],
+        "source_image_id": "b4791435-f9a7-4fb3-ac5f-35f8c933e3fe"
+      },
+      {
+        "sha256": "b5c3c17a4ac213675cd6fedd9a0bee11eafe7155594aef5c46c61ca90d7fa41b",
+        "line_id": 7,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "MERCHANT_NAME",
+            "reasoning": "Store name appears at top of receipt on lines 1-2",
+            "validation_status": "NEEDS_REVIEW",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T01:54:55.788367"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "MERCHANT_NAME",
+            "reasoning": "Store name appears at the top of the receipt on lines 1\u20112",
+            "validation_status": "NEEDS_REVIEW",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T09:45:03.888561"
+          },
+          {
+            "label": "PRODUCT_NAME",
+            "reasoning": "Appears as part of the product name in the promotional phrase \"Sprouts gift card\".",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T09:45:03.888561"
+          }
+        ],
+        "source_image_id": "b4791435-f9a7-4fb3-ac5f-35f8c933e3fe"
+      },
+      {
+        "sha256": "b5c3c17a4ac213675cd6fedd9a0bee11eafe7155594aef5c46c61ca90d7fa41b",
+        "line_id": 29,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Final amount due appears multiple times as BALANCE DUE, DEBIT, and Total: USD$ 10.72, indicating the grand total of the transaction.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-16T18:18:16.852101"
+          },
+          {
+            "label": "SUBTOTAL",
+            "reasoning": "Labeled as BALANCE DUE, representing sum before payment.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T01:54:55.788367"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Labeled as BALANCE DUE, indicating the final amount due for the transaction.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T09:45:03.888561"
+          }
+        ],
+        "source_image_id": "b4791435-f9a7-4fb3-ac5f-35f8c933e3fe"
+      },
+      {
+        "sha256": "b5c3c17a4ac213675cd6fedd9a0bee11eafe7155594aef5c46c61ca90d7fa41b",
+        "line_id": 30,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Final amount due appears multiple times as BALANCE DUE, DEBIT, and Total: USD$ 10.72, indicating the grand total of the transaction.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-16T18:18:16.852101"
+          },
+          {
+            "label": "PAYMENT_METHOD",
+            "reasoning": "Payment line indicating a debit transaction and amount",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-17T16:54:41.125127"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "DEBIT line shows the payment amount matching the total due.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T09:45:03.888561"
+          },
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Debit payment amount matching the total purchase",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-18T05:14:40.214348"
+          },
+          {
+            "label": "PAYMENT_METHOD",
+            "reasoning": "Payment method indicated as DEBIT with amount on line 25",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-19T01:48:57.563890"
+          }
+        ],
+        "source_image_id": "b4791435-f9a7-4fb3-ac5f-35f8c933e3fe"
+      },
+      {
+        "sha256": "b5c3c17a4ac213675cd6fedd9a0bee11eafe7155594aef5c46c61ca90d7fa41b",
+        "line_id": 30,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Final amount due appears multiple times as BALANCE DUE, DEBIT, and Total: USD$ 10.72, indicating the grand total of the transaction.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-16T18:18:16.852101"
+          },
+          {
+            "label": "PAYMENT_METHOD",
+            "reasoning": "Payment line indicating a debit transaction and amount",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-17T16:54:41.125127"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "DEBIT line shows the payment amount matching the total due.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T09:45:03.888561"
+          },
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Debit payment amount matching the total purchase",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-18T05:14:40.214348"
+          },
+          {
+            "label": "PAYMENT_METHOD",
+            "reasoning": "Payment method indicated as DEBIT with amount on line 25",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-19T01:48:57.563890"
+          }
+        ],
+        "source_image_id": "b4791435-f9a7-4fb3-ac5f-35f8c933e3fe"
+      },
+      {
+        "sha256": "b5c3c17a4ac213675cd6fedd9a0bee11eafe7155594aef5c46c61ca90d7fa41b",
+        "line_id": 41,
+        "word_id": 5,
+        "canonical_labels": [
+          {
+            "label": "MERCHANT_NAME",
+            "reasoning": "Store name appears at top of receipt on lines 1-2",
+            "validation_status": "NEEDS_REVIEW",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T01:54:55.788367"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "MERCHANT_NAME",
+            "reasoning": "Store name appears at the top of the receipt on lines 1\u20112",
+            "validation_status": "NEEDS_REVIEW",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T09:45:03.888561"
+          },
+          {
+            "label": "PRODUCT_NAME",
+            "reasoning": "Appears as part of the product name in the promotional phrase \"Sprouts gift card\".",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T09:45:03.888561"
+          }
+        ],
+        "source_image_id": "b4791435-f9a7-4fb3-ac5f-35f8c933e3fe"
+      }
+    ]
+  },
+  "2": {
+    "49a1a1e7-348a-4cd9-af96-2312e838476e": [
+      {
+        "sha256": "fbb577db08f8e9a2b5990be1b36f1ddc3b7e5c44abfe190ea0edfdcd988db266",
+        "line_id": 11,
+        "word_id": 2,
+        "canonical_labels": [
+          {
+            "label": "PRODUCT_NAME",
+            "reasoning": "Descriptive term following quantity, representing the product being purchased.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T02:41:42.333508"
+          },
+          {
+            "label": "QUANTITY",
+            "reasoning": "Unit descriptor following quantity, part of volume measurement",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-18T08:26:49.384632"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "PRODUCT_NAME",
+            "reasoning": "Descriptive term following quantity; although separated from unit price by '@', still product name.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-18T08:40:10.368366"
+          },
+          {
+            "label": "QUANTITY",
+            "reasoning": "Unit of measure accompanying the numeric quantity.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T02:04:49.179247"
+          }
+        ],
+        "source_image_id": "a63a6c84-d399-452f-9e56-08ff664c8f35"
+      },
+      {
+        "sha256": "fbb577db08f8e9a2b5990be1b36f1ddc3b7e5c44abfe190ea0edfdcd988db266",
+        "line_id": 11,
+        "word_id": 2,
+        "canonical_labels": [
+          {
+            "label": "PRODUCT_NAME",
+            "reasoning": "Descriptive term following quantity, representing the product being purchased.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T02:41:42.333508"
+          },
+          {
+            "label": "QUANTITY",
+            "reasoning": "Unit descriptor following quantity, part of volume measurement",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-18T08:26:49.384632"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "PRODUCT_NAME",
+            "reasoning": "Descriptive term following quantity; although separated from unit price by '@', still product name.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-18T08:40:10.368366"
+          },
+          {
+            "label": "QUANTITY",
+            "reasoning": "Unit of measure accompanying the numeric quantity.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T02:04:49.179247"
+          }
+        ],
+        "source_image_id": "a63a6c84-d399-452f-9e56-08ff664c8f35"
+      },
+      {
+        "sha256": "fbb577db08f8e9a2b5990be1b36f1ddc3b7e5c44abfe190ea0edfdcd988db266",
+        "line_id": 11,
+        "word_id": 2,
+        "canonical_labels": [
+          {
+            "label": "PRODUCT_NAME",
+            "reasoning": "Descriptive term following quantity, representing the product being purchased.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T02:41:42.333508"
+          },
+          {
+            "label": "QUANTITY",
+            "reasoning": "Unit descriptor following quantity, part of volume measurement",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-18T08:26:49.384632"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "PRODUCT_NAME",
+            "reasoning": "Descriptive unit name that follows quantity and precedes price, representing the product type.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T08:24:48.649709"
+          }
+        ],
+        "source_image_id": "c0900230-2907-4093-9bf7-29ca3cdf397a"
+      },
+      {
+        "sha256": "fbb577db08f8e9a2b5990be1b36f1ddc3b7e5c44abfe190ea0edfdcd988db266",
+        "line_id": 14,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Superseded by LINE_TOTAL from LLM analysis. Original reasoning: LLM Classification: The amount $100.00 appears after the tax line and another \"Total:\" label, representing the final amount due after tax (which is $0.00). (confidence: 0.99)",
+            "validation_status": "INVALID",
+            "label_proposed_by": "speedway_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T17:12:55.951539"
+          },
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Superseded by SUBTOTAL from LLM analysis. Original reasoning: LLM Consolidation: The amount follows the unit price on the same receipt line and is preceded by the quantity/price indicator (\"100.00\"). It represents the extended price for the diesel purchase, therefore it is a line\u2011total. (confidence: 0.99). Supersedes previous 'GRAND_TOTAL' label.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "speedway_analyzer_llm",
+            "label_consolidated_from": "GRAND_TOTAL",
+            "timestamp_added": "2025-09-02T18:23:22.104083"
+          },
+          {
+            "label": "QUANTITY",
+            "reasoning": "Superseded by GRAND_TOTAL from LLM analysis. Original reasoning: LLM Classification: The same line that lists the unit price also contains a numeric value \"100.00\" without a currency symbol, representing the quantity (gallons) purchased. (confidence: 0.95)",
+            "validation_status": "INVALID",
+            "label_proposed_by": "speedway_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T17:12:55.250504"
+          },
+          {
+            "label": "SUBTOTAL",
+            "reasoning": "Superseded by GRAND_TOTAL from LLM analysis. Original reasoning: LLM Classification: The amount $100.00 appears right after a \"Total:\" label that occurs before the tax line, implying it is the pre\u2011tax subtotal. (confidence: 0.97)",
+            "validation_status": "INVALID",
+            "label_proposed_by": "speedway_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T17:12:55.780939"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Extended price shown after quantity and unit price, labeled as total for the fuel line.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T02:04:49.179247"
+          }
+        ],
+        "source_image_id": "a63a6c84-d399-452f-9e56-08ff664c8f35"
+      },
+      {
+        "sha256": "fbb577db08f8e9a2b5990be1b36f1ddc3b7e5c44abfe190ea0edfdcd988db266",
+        "line_id": 14,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Superseded by LINE_TOTAL from LLM analysis. Original reasoning: LLM Classification: The amount $100.00 appears after the tax line and another \"Total:\" label, representing the final amount due after tax (which is $0.00). (confidence: 0.99)",
+            "validation_status": "INVALID",
+            "label_proposed_by": "speedway_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T17:12:55.951539"
+          },
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Superseded by SUBTOTAL from LLM analysis. Original reasoning: LLM Consolidation: The amount follows the unit price on the same receipt line and is preceded by the quantity/price indicator (\"100.00\"). It represents the extended price for the diesel purchase, therefore it is a line\u2011total. (confidence: 0.99). Supersedes previous 'GRAND_TOTAL' label.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "speedway_analyzer_llm",
+            "label_consolidated_from": "GRAND_TOTAL",
+            "timestamp_added": "2025-09-02T18:23:22.104083"
+          },
+          {
+            "label": "QUANTITY",
+            "reasoning": "Superseded by GRAND_TOTAL from LLM analysis. Original reasoning: LLM Classification: The same line that lists the unit price also contains a numeric value \"100.00\" without a currency symbol, representing the quantity (gallons) purchased. (confidence: 0.95)",
+            "validation_status": "INVALID",
+            "label_proposed_by": "speedway_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T17:12:55.250504"
+          },
+          {
+            "label": "SUBTOTAL",
+            "reasoning": "Superseded by GRAND_TOTAL from LLM analysis. Original reasoning: LLM Classification: The amount $100.00 appears right after a \"Total:\" label that occurs before the tax line, implying it is the pre\u2011tax subtotal. (confidence: 0.97)",
+            "validation_status": "INVALID",
+            "label_proposed_by": "speedway_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T17:12:55.780939"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Extended price for fuel line (quantity x unit price) appears on line 11/14 as total amount",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T08:24:48.649709"
+          }
+        ],
+        "source_image_id": "c0900230-2907-4093-9bf7-29ca3cdf397a"
+      },
+      {
+        "sha256": "fbb577db08f8e9a2b5990be1b36f1ddc3b7e5c44abfe190ea0edfdcd988db266",
+        "line_id": 15,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Superseded by TAX consolidation. Original: LLM Consolidation: The amount follows the label \"Change\"; while not a standard line\u2011item, it is a monetary amount presented as a line total for change given. (confidence: 0.85). Supersedes previous 'TAX' label.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "speedway_analyzer_llm",
+            "label_consolidated_from": "TAX",
+            "timestamp_added": "2025-09-02T17:17:27.852816"
+          },
+          {
+            "label": "TAX",
+            "reasoning": "Superseded by LINE_TOTAL from LLM analysis. Original reasoning: LLM Classification: The line is labelled \"tax\" and the amount shown is $0.00, which corresponds to a tax line. (confidence: 0.98)",
+            "validation_status": "INVALID",
+            "label_proposed_by": "speedway_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T17:12:55.429044"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "TAX",
+            "reasoning": "Explicitly labeled as 'Sales tax' with amount $0.00.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T02:04:49.179247"
+          }
+        ],
+        "source_image_id": "a63a6c84-d399-452f-9e56-08ff664c8f35"
+      },
+      {
+        "sha256": "fbb577db08f8e9a2b5990be1b36f1ddc3b7e5c44abfe190ea0edfdcd988db266",
+        "line_id": 15,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Superseded by TAX consolidation. Original: LLM Consolidation: The amount follows the label \"Change\"; while not a standard line\u2011item, it is a monetary amount presented as a line total for change given. (confidence: 0.85). Supersedes previous 'TAX' label.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "speedway_analyzer_llm",
+            "label_consolidated_from": "TAX",
+            "timestamp_added": "2025-09-02T17:17:27.852816"
+          },
+          {
+            "label": "TAX",
+            "reasoning": "Superseded by LINE_TOTAL from LLM analysis. Original reasoning: LLM Classification: The line is labelled \"tax\" and the amount shown is $0.00, which corresponds to a tax line. (confidence: 0.98)",
+            "validation_status": "INVALID",
+            "label_proposed_by": "speedway_analyzer_llm",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-09-02T17:12:55.429044"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "TAX",
+            "reasoning": "Explicitly labeled as 'Sales tax' with amount $0.00",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T08:24:48.649709"
+          }
+        ],
+        "source_image_id": "c0900230-2907-4093-9bf7-29ca3cdf397a"
+      }
+    ],
+    "00ded398-af6f-4a49-86f7-c79ccb554e48": [
+      {
+        "sha256": "56f8ad55e3d80de2a69db565c56dd087b8862ac15ef0723700ec9c362ada835c",
+        "line_id": 42,
+        "word_id": 3,
+        "canonical_labels": [
+          {
+            "label": "PRODUCT_NAME",
+            "reasoning": "Fat percentage listed as part of the product description. | Part of product name preceding price. | Part of the product name \"ORG A2/A2 6% FAT MLK\".",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T08:14:18.865090"
+          },
+          {
+            "label": "QUANTITY",
+            "reasoning": "Percentage indicator typically denotes quantity or fat content.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-19T00:38:51.304942"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "PRODUCT_NAME",
+            "reasoning": "Fat percentage indicator within the product description. | Part of the product name appearing before the price.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T05:52:06.822527"
+          }
+        ],
+        "source_image_id": "e26d6ebe-ace2-45e2-9a3c-830fb947f4c7"
+      },
+      {
+        "sha256": "56f8ad55e3d80de2a69db565c56dd087b8862ac15ef0723700ec9c362ada835c",
+        "line_id": 45,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Item line price.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T08:14:18.865090"
+          },
+          {
+            "label": "UNIT_PRICE",
+            "reasoning": "Matches the target amount and follows the product name, indicating the unit price.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-17T20:19:02.763256"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Item line with price for sour cream, representing its line total.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T05:52:06.822527"
+          }
+        ],
+        "source_image_id": "e26d6ebe-ace2-45e2-9a3c-830fb947f4c7"
+      },
+      {
+        "sha256": "56f8ad55e3d80de2a69db565c56dd087b8862ac15ef0723700ec9c362ada835c",
+        "line_id": 49,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Labeled as 'DEBIT $10.78', indicating the amount charged to the debit card, i.e., the final total.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-16T20:01:48.560000"
+          },
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Payment line showing amount debited, classified as line total.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T08:14:18.865090"
+          },
+          {
+            "label": "PAYMENT_METHOD",
+            "reasoning": "Payment method indicated as DEBIT with amount on line 48-49",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-18T05:30:25.191152"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Payment line showing amount debited, equals total.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-16T19:25:58.238562"
+          },
+          {
+            "label": "PAYMENT_METHOD",
+            "reasoning": "Payment method line shows DEBIT with amount",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-17T03:45:46.847494"
+          }
+        ],
+        "source_image_id": "e26d6ebe-ace2-45e2-9a3c-830fb947f4c7"
+      },
+      {
+        "sha256": "56f8ad55e3d80de2a69db565c56dd087b8862ac15ef0723700ec9c362ada835c",
+        "line_id": 49,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Labeled as 'DEBIT $10.78', indicating the amount charged to the debit card, i.e., the final total.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-16T20:01:48.560000"
+          },
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Payment line showing amount debited, classified as line total.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T08:14:18.865090"
+          },
+          {
+            "label": "PAYMENT_METHOD",
+            "reasoning": "Payment method indicated as DEBIT with amount on line 48-49",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-18T05:30:25.191152"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Payment line showing amount debited, equals total.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-16T19:25:58.238562"
+          },
+          {
+            "label": "PAYMENT_METHOD",
+            "reasoning": "Payment method line shows DEBIT with amount",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-17T03:45:46.847494"
+          }
+        ],
+        "source_image_id": "e26d6ebe-ace2-45e2-9a3c-830fb947f4c7"
+      }
+    ],
+    "4cd9dd6d-ecd8-4e6f-928f-18440e4ad303": [
+      {
+        "sha256": "441057a2854f3866f8a2086c2c9608c15760f379ff1a88d89c2d9228d3f68f78",
+        "line_id": 46,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Debit entry shows amount $16.48, matching the total charged",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-16T19:03:49.893478"
+          },
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Represents the payment method amount, not the total due",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T04:33:07.531298"
+          },
+          {
+            "label": "PAYMENT_METHOD",
+            "reasoning": "Payment method line shows DEBIT with amount on line 45-46",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-16T19:03:49.893478"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Shows amount debited from card, matches total purchase amount.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T04:36:25.714193"
+          },
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Payment amount (DEBIT) | Payment (debit) amount recorded on receipt",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "simple_receipt_analyzer",
+            "timestamp_added": "2025-11-18T21:49:58.755631"
+          }
+        ],
+        "source_image_id": "9efaf9b1-b39d-49c6-93f2-bc58e52387b0"
+      },
+      {
+        "sha256": "441057a2854f3866f8a2086c2c9608c15760f379ff1a88d89c2d9228d3f68f78",
+        "line_id": 46,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Debit entry shows amount $16.48, matching the total charged",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-16T19:03:49.893478"
+          },
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Represents the payment method amount, not the total due",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T04:33:07.531298"
+          },
+          {
+            "label": "PAYMENT_METHOD",
+            "reasoning": "Payment method line shows DEBIT with amount on line 45-46",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-16T19:03:49.893478"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Shows amount debited from card, matches total purchase amount.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T04:36:25.714193"
+          },
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Payment amount (DEBIT) | Payment (debit) amount recorded on receipt",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "simple_receipt_analyzer",
+            "timestamp_added": "2025-11-18T21:49:58.755631"
+          }
+        ],
+        "source_image_id": "9efaf9b1-b39d-49c6-93f2-bc58e52387b0"
+      },
+      {
+        "sha256": "441057a2854f3866f8a2086c2c9608c15760f379ff1a88d89c2d9228d3f68f78",
+        "line_id": 51,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Appears as 'CHANGE', representing the line amount of change given (zero in this case)",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T04:33:07.531298"
+          },
+          {
+            "label": "SUBTOTAL",
+            "reasoning": "Amount shown as CHANGE 0.00; not a tax, classified as SUBTOTAL with low confidence.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-18T21:48:42.426634"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Change amount | Change given (zero) after payment | Appears as 'CHANGE' amount; not a purchase line but a monetary amount on receipt | Change amount returned to customer, treated as line total of zero",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "simple_receipt_analyzer",
+            "timestamp_added": "2025-11-18T21:49:58.755631"
+          }
+        ],
+        "source_image_id": "9efaf9b1-b39d-49c6-93f2-bc58e52387b0"
+      }
+    ],
+    "ce0da565-da87-4a7d-9525-aa0cd7b3b75c": [
+      {
+        "sha256": "f1695f244ca92de5b13c4273f146d3640144db2bcfd2e1cf7d037d7b366b4e94",
+        "line_id": 28,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Explicitly labeled as Order Total, representing the total before tip",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-17T16:24:28.552752"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Line labeled 'Order Total' representing final amount before tip",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-17T20:53:46.861673"
+          },
+          {
+            "label": "PAYMENT_METHOD",
+            "reasoning": "Line 17 lists the payment method together with the transaction amount",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-17T20:53:46.861673"
+          }
+        ],
+        "source_image_id": "a1dacbc8-ab6a-40af-8146-b15d44a7aa81"
+      }
+    ],
+    "887079fa-bb3e-480a-8202-e759afe63f1a": [
+      {
+        "sha256": "74926c89f927f780d256b5f01950218abb7b5bdd56e03962d3c3fc45d6e45811",
+        "line_id": 1,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "MERCHANT_NAME",
+            "reasoning": "Store name appears at the top of the receipt on multiple lines",
+            "validation_status": "NEEDS_REVIEW",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T10:21:00.157758"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "MERCHANT_NAME",
+            "reasoning": "Store name appears at top of receipt on multiple lines",
+            "validation_status": "NEEDS_REVIEW",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T04:02:28.525623"
+          },
+          {
+            "label": "PRODUCT_NAME",
+            "reasoning": "Part of the product name appearing before the amount.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-18T21:28:04.439672"
+          }
+        ],
+        "source_image_id": "baf2e4e5-fd03-4301-8f99-4a92b03ba40e"
+      },
+      {
+        "sha256": "74926c89f927f780d256b5f01950218abb7b5bdd56e03962d3c3fc45d6e45811",
+        "line_id": 7,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "MERCHANT_NAME",
+            "reasoning": "Store name appears at the top of the receipt on multiple lines",
+            "validation_status": "NEEDS_REVIEW",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T10:21:00.157758"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "MERCHANT_NAME",
+            "reasoning": "Store name appears at top of receipt on multiple lines",
+            "validation_status": "NEEDS_REVIEW",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T04:02:28.525623"
+          },
+          {
+            "label": "PRODUCT_NAME",
+            "reasoning": "Part of the product name appearing before the amount.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-18T21:28:04.439672"
+          }
+        ],
+        "source_image_id": "baf2e4e5-fd03-4301-8f99-4a92b03ba40e"
+      },
+      {
+        "sha256": "74926c89f927f780d256b5f01950218abb7b5bdd56e03962d3c3fc45d6e45811",
+        "line_id": 14,
+        "word_id": 3,
+        "canonical_labels": [
+          {
+            "label": "PRODUCT_NAME",
+            "reasoning": "Fat percentage, part of product description.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T10:21:00.157758"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "PRODUCT_NAME",
+            "reasoning": "Fat content percentage included in the product description.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T04:02:28.525623"
+          },
+          {
+            "label": "QUANTITY",
+            "reasoning": "Numeric percentage descriptor of fat content, treated as a quantity-like numeric field.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-17T02:48:11.297957"
+          }
+        ],
+        "source_image_id": "baf2e4e5-fd03-4301-8f99-4a92b03ba40e"
+      },
+      {
+        "sha256": "74926c89f927f780d256b5f01950218abb7b5bdd56e03962d3c3fc45d6e45811",
+        "line_id": 33,
+        "word_id": 5,
+        "canonical_labels": [
+          {
+            "label": "MERCHANT_NAME",
+            "reasoning": "Store name appears at the top of the receipt on multiple lines",
+            "validation_status": "NEEDS_REVIEW",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T10:21:00.157758"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "MERCHANT_NAME",
+            "reasoning": "Store name appears at top of receipt on multiple lines",
+            "validation_status": "NEEDS_REVIEW",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T04:02:28.525623"
+          },
+          {
+            "label": "PRODUCT_NAME",
+            "reasoning": "Part of the product name appearing before the amount.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-18T21:28:04.439672"
+          }
+        ],
+        "source_image_id": "baf2e4e5-fd03-4301-8f99-4a92b03ba40e"
+      }
+    ],
+    "a63dbf2e-84ed-42a8-9a44-febfb57b4870": [
+      {
+        "sha256": "133d296b7c30a4bddced39b03af2a98a83068c882d9d0b185187999c10843e94",
+        "line_id": 12,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Appears on a product line with a price, no quantity indicated, thus treated as line total.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T03:15:32.277815"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Appears on a product line with price, no explicit label, treated as item total",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T08:40:20.476777"
+          },
+          {
+            "label": "UNIT_PRICE",
+            "reasoning": "Numeric amount matching the line total; likely unit price for a single quantity. | Numeric value matching the target amount and positioned as the price for the item. | Numeric value representing the unit price for BERN MAP PRO. | Numeric value following the product name, typical unit price.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-19T01:01:58.846340"
+          }
+        ],
+        "source_image_id": "1905dba2-c408-48e9-aa4d-f47fec0a3835"
+      },
+      {
+        "sha256": "133d296b7c30a4bddced39b03af2a98a83068c882d9d0b185187999c10843e94",
+        "line_id": 16,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "DISCOUNT",
+            "reasoning": "Discount amount listed under 'Pro Xtra Preferred Pricing' on line 15-16",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-17T17:35:59.645218"
+          },
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Discount line explicitly shows a negative amount.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T03:15:32.277815"
+          },
+          {
+            "label": "UNIT_PRICE",
+            "reasoning": "Negative numeric value indicating a discount directly associated with the product name",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-17T17:35:59.645218"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "DISCOUNT",
+            "reasoning": "Negative amount line indicating a discount (lines 15-16) | Negative amount prefixed by a pricing program name, indicating a discount line item | Line \"Pro Xtra Preferred Pricing -0.75\" indicates a discount amount",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-19T01:01:58.846340"
+          },
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Discount line (Pro Xtra Preferred Pricing) with negative amount",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T08:40:20.476777"
+          }
+        ],
+        "source_image_id": "1905dba2-c408-48e9-aa4d-f47fec0a3835"
+      },
+      {
+        "sha256": "133d296b7c30a4bddced39b03af2a98a83068c882d9d0b185187999c10843e94",
+        "line_id": 16,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "DISCOUNT",
+            "reasoning": "Discount amount listed under 'Pro Xtra Preferred Pricing' on line 15-16",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-17T17:35:59.645218"
+          },
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Discount line explicitly shows a negative amount.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T03:15:32.277815"
+          },
+          {
+            "label": "UNIT_PRICE",
+            "reasoning": "Negative numeric value indicating a discount directly associated with the product name",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-17T17:35:59.645218"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "DISCOUNT",
+            "reasoning": "Negative amount line indicating a discount (lines 15-16) | Negative amount prefixed by a pricing program name, indicating a discount line item | Line \"Pro Xtra Preferred Pricing -0.75\" indicates a discount amount",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-19T01:01:58.846340"
+          },
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Discount line (Pro Xtra Preferred Pricing) with negative amount",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T08:40:20.476777"
+          }
+        ],
+        "source_image_id": "1905dba2-c408-48e9-aa4d-f47fec0a3835"
+      },
+      {
+        "sha256": "133d296b7c30a4bddced39b03af2a98a83068c882d9d0b185187999c10843e94",
+        "line_id": 17,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "PHONE_NUMBER",
+            "reasoning": "Sequence \"805) 3756690\" matches typical US phone number pattern",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T03:15:32.277815"
+          },
+          {
+            "label": "PRODUCT_NAME",
+            "reasoning": "Size descriptor preceding product name, appears before quantity and unit price.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T03:15:32.277815"
+          },
+          {
+            "label": "QUANTITY",
+            "reasoning": "Size quantity preceding product name",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-17T17:35:59.645218"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "PRODUCT_NAME",
+            "reasoning": "Size specification included in the product name. | Part of the descriptive product name preceding quantity and price.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-17T05:05:53.880294"
+          },
+          {
+            "label": "QUANTITY",
+            "reasoning": "Quantity indicator on line 20, preceding the product description but not on the same line as the price.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-17T20:36:07.185374"
+          }
+        ],
+        "source_image_id": "1905dba2-c408-48e9-aa4d-f47fec0a3835"
+      },
+      {
+        "sha256": "133d296b7c30a4bddced39b03af2a98a83068c882d9d0b185187999c10843e94",
+        "line_id": 17,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "PHONE_NUMBER",
+            "reasoning": "Sequence \"805) 3756690\" matches typical US phone number pattern",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T03:15:32.277815"
+          },
+          {
+            "label": "PRODUCT_NAME",
+            "reasoning": "Size descriptor preceding product name, appears before quantity and unit price.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T03:15:32.277815"
+          },
+          {
+            "label": "QUANTITY",
+            "reasoning": "Size quantity preceding product name",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-17T17:35:59.645218"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "PRODUCT_NAME",
+            "reasoning": "Size specification included in the product name. | Part of the descriptive product name preceding quantity and price.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-17T05:05:53.880294"
+          },
+          {
+            "label": "QUANTITY",
+            "reasoning": "Quantity indicator on line 20, preceding the product description but not on the same line as the price.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-17T20:36:07.185374"
+          }
+        ],
+        "source_image_id": "1905dba2-c408-48e9-aa4d-f47fec0a3835"
+      },
+      {
+        "sha256": "133d296b7c30a4bddced39b03af2a98a83068c882d9d0b185187999c10843e94",
+        "line_id": 22,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Second monetary value on the same product line, treated as an additional line total (e.g., tax or surcharge).",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T03:15:32.277815"
+          },
+          {
+            "label": "TAX",
+            "reasoning": "Second numeric value on the same line, likely a tax or surcharge rather than a line total",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-18T03:05:45.884564"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Numeric amount on same line as 403.23; treated as line total with low confidence",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T08:40:20.476777"
+          },
+          {
+            "label": "UNIT_PRICE",
+            "reasoning": "Unit price appears immediately after the amount 403.23 on line 21-22.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-17T05:05:53.880294"
+          }
+        ],
+        "source_image_id": "1905dba2-c408-48e9-aa4d-f47fec0a3835"
+      },
+      {
+        "sha256": "133d296b7c30a4bddced39b03af2a98a83068c882d9d0b185187999c10843e94",
+        "line_id": 46,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Line total for 3 @ 2.23 displayed across two line numbers.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T03:15:32.277815"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Quantity x unit price (3@2.23) yields 6.69, appears on two lines",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T08:40:20.476777"
+          },
+          {
+            "label": "UNIT_PRICE",
+            "reasoning": "Total price for the quantity, appears after unit price.",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-19T20:32:55.240155"
+          }
+        ],
+        "source_image_id": "1905dba2-c408-48e9-aa4d-f47fec0a3835"
+      },
+      {
+        "sha256": "133d296b7c30a4bddced39b03af2a98a83068c882d9d0b185187999c10843e94",
+        "line_id": 49,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "PHONE_NUMBER",
+            "reasoning": "Sequence \"805) 3756690\" matches typical US phone number pattern",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T03:15:32.277815"
+          },
+          {
+            "label": "QUANTITY",
+            "reasoning": "Number preceding '@' indicates quantity of items purchased. | The snippet shows '$6.36/3', indicating a quantity of 3 units.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T03:15:32.277815"
+          },
+          {
+            "label": "UNIT_PRICE",
+            "reasoning": "Unit price appears immediately before total amount 9.72. | Number after '@' and before the total amount represents the unit price per item. | The snippet shows '$6.36/3', indicating a price of $6.36 associated with quantity 3.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T03:15:32.277815"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "QUANTITY",
+            "reasoning": "The number precedes an '@' symbol, a common notation for quantity in receipt lines. | The token '3' appears after a slash in the refund line 'MAX REFUND VALUE $6.36/3', indicating a quantity of 3 items.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T08:40:20.476777"
+          },
+          {
+            "label": "UNIT_PRICE",
+            "reasoning": "Unit price follows the quantity indicator '4' in the string '403.23'. | Price per unit shown next to quantity, before the total amount. | The number follows the '@' symbol, indicating the unit price per item. | The preceding line '3@2.23 6.69' shows a unit price of $2.23 per item, indicated by the '@' symbol following the quantity.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T08:40:20.476777"
+          }
+        ],
+        "source_image_id": "1905dba2-c408-48e9-aa4d-f47fec0a3835"
+      },
+      {
+        "sha256": "133d296b7c30a4bddced39b03af2a98a83068c882d9d0b185187999c10843e94",
+        "line_id": 49,
+        "word_id": 1,
+        "canonical_labels": [
+          {
+            "label": "PHONE_NUMBER",
+            "reasoning": "Sequence \"805) 3756690\" matches typical US phone number pattern",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T03:15:32.277815"
+          },
+          {
+            "label": "QUANTITY",
+            "reasoning": "Number preceding '@' indicates quantity of items purchased. | The snippet shows '$6.36/3', indicating a quantity of 3 units.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T03:15:32.277815"
+          },
+          {
+            "label": "UNIT_PRICE",
+            "reasoning": "Unit price appears immediately before total amount 9.72. | Number after '@' and before the total amount represents the unit price per item. | The snippet shows '$6.36/3', indicating a price of $6.36 associated with quantity 3.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T03:15:32.277815"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "QUANTITY",
+            "reasoning": "The number precedes an '@' symbol, a common notation for quantity in receipt lines. | The token '3' appears after a slash in the refund line 'MAX REFUND VALUE $6.36/3', indicating a quantity of 3 items.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T08:40:20.476777"
+          },
+          {
+            "label": "UNIT_PRICE",
+            "reasoning": "Unit price follows the quantity indicator '4' in the string '403.23'. | Price per unit shown next to quantity, before the total amount. | The number follows the '@' symbol, indicating the unit price per item. | The preceding line '3@2.23 6.69' shows a unit price of $2.23 per item, indicated by the '@' symbol following the quantity.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": "MULTIPLE_SOURCES",
+            "timestamp_added": "2025-11-11T08:40:20.476777"
+          }
+        ],
+        "source_image_id": "1905dba2-c408-48e9-aa4d-f47fec0a3835"
+      },
+      {
+        "sha256": "133d296b7c30a4bddced39b03af2a98a83068c882d9d0b185187999c10843e94",
+        "line_id": 51,
+        "word_id": 2,
+        "canonical_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Final amount due displayed with currency symbol and labeled as total elsewhere.",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T03:15:32.277815"
+          },
+          {
+            "label": "LINE_TOTAL",
+            "reasoning": "Unlabeled amount on line 51; not marked as total, treated as miscellaneous line total",
+            "validation_status": "INVALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-17T17:35:59.645218"
+          }
+        ],
+        "duplicate_labels": [
+          {
+            "label": "GRAND_TOTAL",
+            "reasoning": "Explicitly labeled with USD$, matches subtotal + tax, high confidence as final amount",
+            "validation_status": "VALID",
+            "label_proposed_by": "simple_receipt_analyzer",
+            "label_consolidated_from": null,
+            "timestamp_added": "2025-11-11T08:40:20.476777"
+          }
+        ],
+        "source_image_id": "1905dba2-c408-48e9-aa4d-f47fec0a3835"
+      }
+    ]
+  }
+}

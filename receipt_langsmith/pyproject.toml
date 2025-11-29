@@ -1,0 +1,75 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "receipt-langsmith"
+version = "0.1.0"
+authors = [
+  { name="Tyler Norlund", email="tnorlund@icloud.com" },
+]
+description = "A Python interface for querying and analyzing LangSmith traces for receipt processing"
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "langsmith>=0.1.0",
+]
+keywords = ["langsmith", "langchain", "tracing", "observability", "receipts"]
+
+[project.urls]
+"Homepage" = "https://github.com/tnorlund/example"
+"Bug Tracker" = "https://github.com/tnorlund/example/issues"
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.3.0,<10.0.0",
+    "pytest-mock>=3.14.0,<4.0.0",
+    "pytest-cov>=6.1.0,<7.0.0",
+]
+dev = [
+    "black==25.11.0",
+    "pylint>=3.0.0,<5.0.0",
+    "mypy>=1.16.1",
+    "isort==6.0.1",
+]
+
+[tool.hatch.build]
+exclude = [
+  "tests/",
+  "**/*.md",
+  "**/__pycache__/",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["receipt_langsmith"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v"
+
+[tool.black]
+line-length = 79
+target-version = ["py312"]
+
+[tool.pylint.format]
+max-line-length = 79
+
+[tool.isort]
+profile = "black"
+line_length = 79
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+

@@ -1,0 +1,16 @@
+{
+  "total_receipts": 503,
+  "checked": 503,
+  "has_lines_and_words": 502,
+  "missing_lines": [],
+  "missing_words": [],
+  "missing_both": [
+    {
+      "image_id": "2c453d65-edae-4aeb-819a-612b27d99894",
+      "receipt_id": 1,
+      "lines_count": 0,
+      "words_count": 0
+    }
+  ],
+  "errors": []
+}

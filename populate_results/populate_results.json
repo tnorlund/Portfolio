@@ -1,0 +1,35 @@
+{
+  "dry_run": false,
+  "total_receipts": 2,
+  "processed": 2,
+  "populated": 2,
+  "errors": [],
+  "actions": [
+    {
+      "image_id": "abaec508-6730-4d75-9d48-76492a26a168",
+      "receipt_id": 1,
+      "needs_lines": true,
+      "needs_words": true,
+      "needs_letters": true,
+      "image_lines": 37,
+      "image_words": 85,
+      "image_letters": 516,
+      "lines_added": 37,
+      "words_added": 85,
+      "letters_added": 516
+    },
+    {
+      "image_id": "cb22100f-44c2-4b7d-b29f-46627a64355a",
+      "receipt_id": 3,
+      "needs_lines": true,
+      "needs_words": true,
+      "needs_letters": true,
+      "image_lines": 107,
+      "image_words": 245,
+      "image_letters": 1385,
+      "lines_added": 107,
+      "words_added": 245,
+      "letters_added": 1385
+    }
+  ]
+}

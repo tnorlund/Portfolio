@@ -1,0 +1,821 @@
+{
+  "generated_at": "2025-11-28T09:44:44.025274",
+  "min_occurrences": 3,
+  "label_type_filter": "MERCHANT_NAME",
+  "exact_matches": {
+    "MERCHANT_NAME": [
+      {
+        "word_text": "Westlake",
+        "normalized_word": "WESTLAKE",
+        "merchant_name": null,
+        "match_type": "exact",
+        "count": 13,
+        "merchant_appearances": 5,
+        "examples": [
+          {
+            "word_text": "Westlake",
+            "merchant_name": "BevMo!",
+            "image_id": "0e222ed9-5a1f-49b3-be48-483d13442881",
+            "reasoning": "First line contains location name before phone number, likely store name"
+          },
+          {
+            "word_text": "Westlake",
+            "merchant_name": "BevMo!",
+            "image_id": "0e222ed9-5a1f-49b3-be48-483d13442881",
+            "reasoning": "First line contains location name before phone number, likely store name"
+          },
+          {
+            "word_text": "WESTLAKE",
+            "merchant_name": "In-N-Out Burger",
+            "image_id": "2360d36e-8211-46c4-9bc8-106766d80038",
+            "reasoning": "The word \"WESTLAKE\" appears in the address line of the receipt (\"30780 Russell Ranch Road, Westlake Village\") rather than in the store\u2019s name. According to the definition of the MERCHANT_NAME label, it should correspond to the trading name or brand of the store issuing the receipt, which in this case is \"In-N-Out Burger.\" Therefore the label assigned to \"WESTLAKE\" is incorrect, even after accounting for possible OCR errors."
+          },
+          {
+            "word_text": "Westlake",
+            "merchant_name": "Los Agaves",
+            "image_id": "383a90d8-1d0e-46f4-9f8a-5f2313d9e983",
+            "reasoning": "First line after check number shows the store name"
+          },
+          {
+            "word_text": "WESTLAKE",
+            "merchant_name": "Westlake Physical Therapy, Inc",
+            "image_id": "4b326441-103c-4dae-809e-899404c29ac1",
+            "reasoning": "The word \"WESTLAKE\" appears in a line headed by \"THERAP\" in the receipt context, and the known merchant for this transaction is \"ShopRite of Southington\" (address and phone provided). \"WESTLAKE\" does not correspond to the store\u2019s trading name or brand, nor does it match the merchant details, indicating that labeling it as MERCHANT_NAME is incorrect."
+          }
+        ],
+        "reason": "'WESTLAKE' is a common invalid MERCHANT_NAME pattern (appears 5+ times as INVALID)"
+      },
+      {
+        "word_text": "Village",
+        "normalized_word": "VILLAGE",
+        "merchant_name": null,
+        "match_type": "exact",
+        "count": 11,
+        "merchant_appearances": 3,
+        "examples": [
+          {
+            "word_text": "Village",
+            "merchant_name": "BevMo!",
+            "image_id": "0e222ed9-5a1f-49b3-be48-483d13442881",
+            "reasoning": "First line contains location name before phone number, likely store name"
+          },
+          {
+            "word_text": "VILLAGE",
+            "merchant_name": "In-N-Out Burger",
+            "image_id": "161093e8-b9e0-48e1-8a90-a91e40ff7f61",
+            "reasoning": "First line after receipt number, contains the store branding and location"
+          },
+          {
+            "word_text": "VILLAGE",
+            "merchant_name": "In-N-Out Burger",
+            "image_id": "2360d36e-8211-46c4-9bc8-106766d80038",
+            "reasoning": "The word \"VILLAGE\" appears in the address line of the receipt and is not the store\u2019s trading name. The merchant\u2019s name is \"In\u2011Out Burger\", which is correctly identified elsewhere in the document. Labeling \"VILLAGE\" as MERCHANT_NAME is therefore incorrect, even when accounting for OCR errors \u2013 the correct merchant name should be a distinct term such as \"In\u2011Out Burger\". Consequently, the label is definitively wrong for this word."
+          },
+          {
+            "word_text": "VILLAGE",
+            "merchant_name": "In-N-Out Burger",
+            "image_id": "6b4b3394-cb57-4ce6-9782-751563165946",
+            "reasoning": "First prominent text line after receipt header, typical placement of merchant name"
+          },
+          {
+            "word_text": "VILLAGE",
+            "merchant_name": "In-N-Out Burger",
+            "image_id": "9afeb902-28ff-436a-b69a-e0f5204eefa8",
+            "reasoning": "First prominent line after receipt header, typical location for store name."
+          }
+        ],
+        "reason": "'VILLAGE' is a common invalid MERCHANT_NAME pattern (appears 5+ times as INVALID)"
+      },
+      {
+        "word_text": "-",
+        "normalized_word": "-",
+        "merchant_name": null,
+        "match_type": "exact",
+        "count": 9,
+        "merchant_appearances": 5,
+        "examples": [
+          {
+            "word_text": "-",
+            "merchant_name": "In-N-Out Burger",
+            "image_id": "161093e8-b9e0-48e1-8a90-a91e40ff7f61",
+            "reasoning": "First line after receipt number, contains the store branding and location"
+          },
+          {
+            "word_text": "-",
+            "merchant_name": "California Chicken Cafe",
+            "image_id": "33d60cbd-1107-45ba-8fe0-97831627ea05",
+            "reasoning": "Merchant name includes trailing hyphen as shown on line 1"
+          },
+          {
+            "word_text": "-",
+            "merchant_name": "Los Agaves",
+            "image_id": "383a90d8-1d0e-46f4-9f8a-5f2313d9e983",
+            "reasoning": "First line after check number shows the store name"
+          },
+          {
+            "word_text": "-",
+            "merchant_name": "Los Agaves",
+            "image_id": "383a90d8-1d0e-46f4-9f8a-5f2313d9e983",
+            "reasoning": "First line after check number shows the store name"
+          },
+          {
+            "word_text": "-",
+            "merchant_name": "Costco Wholesale",
+            "image_id": "6cd1f7f5-d988-4e11-9209-cb6535fc3b04",
+            "reasoning": "First two lines of receipt contain the store name \"COSTCO\" and \"-WHOLESALE\""
+          }
+        ],
+        "reason": "'-' is punctuation-only, not a valid MERCHANT_NAME"
+      },
+      {
+        "word_text": "THOUSAND",
+        "normalized_word": "THOUSAND",
+        "merchant_name": null,
+        "match_type": "exact",
+        "count": 7,
+        "merchant_appearances": 3,
+        "examples": [
+          {
+            "word_text": "THOUSAND",
+            "merchant_name": "DIY Home Center",
+            "image_id": "29dd2c96-6854-42dd-a84f-6344b49d7254",
+            "reasoning": "Store name appears in header and footer of the receipt."
+          },
+          {
+            "word_text": "Thousand",
+            "merchant_name": "Handel's Ice Cream",
+            "image_id": "45af80b3-28e6-4666-b398-3421c34f70aa",
+            "reasoning": "Appears on line 1 as the merchant identifier."
+          },
+          {
+            "word_text": "Thousand",
+            "merchant_name": "Mastro's Steakhouse",
+            "image_id": "4e991ce5-314e-43b6-ac99-885d4a0512ba",
+            "reasoning": "First line of receipt contains the trading name of the restaurant"
+          },
+          {
+            "word_text": "Thousand",
+            "merchant_name": "Mastro's Steakhouse",
+            "image_id": "4e991ce5-314e-43b6-ac99-885d4a0512ba",
+            "reasoning": "First line of receipt contains the trading name of the restaurant"
+          },
+          {
+            "word_text": "Thousand",
+            "merchant_name": "Mastro's Steakhouse",
+            "image_id": "4e991ce5-314e-43b6-ac99-885d4a0512ba",
+            "reasoning": "First line of receipt contains the trading name of the restaurant"
+          }
+        ],
+        "reason": "'THOUSAND' is a common invalid MERCHANT_NAME pattern (appears 5+ times as INVALID)"
+      },
+      {
+        "word_text": "AND",
+        "normalized_word": "AND",
+        "merchant_name": null,
+        "match_type": "exact",
+        "count": 11,
+        "merchant_appearances": 5,
+        "examples": [
+          {
+            "word_text": "AND",
+            "merchant_name": "Moody Market & Provisions",
+            "image_id": "361026e0-ae64-4288-8b41-f17d8c55ab83",
+            "reasoning": "Full trading name appears prominently near top of receipt"
+          },
+          {
+            "word_text": "and",
+            "merchant_name": "Roast & Rice Asian Fusion",
+            "image_id": "492f9ae1-90a5-4943-9f26-8bb98052fb4d",
+            "reasoning": "The word \"and\" does not correspond to the merchant name \"Roast & Rice Asian Fusion\". In the receipt context, it appears isolated and the merchant name is explicitly provided elsewhere. The label \"MERCHANT_NAME\" is therefore incorrect for this word."
+          },
+          {
+            "word_text": "and",
+            "merchant_name": "Roast & Rice Asian Fusion",
+            "image_id": "6fa7cc7a-144c-43fb-be37-609e28c28a43",
+            "reasoning": "The word \"and\" by itself does not represent the merchant name \"Roast and Rice Kitchen\". While it appears within the merchant string, labeling only the conjunction as MERCHANT_NAME is incorrect because the label should refer to the full store name or its distinctive components (e.g., \"Roast\", \"Rice Kitchen\"). The presence of \"and\" alone is merely a connecting word, not a unique identifier of the merchant. This matches the semantic similarity evidence, which found no valid examples of \"and\" being labeled MERCHANT_NAME and 15 invalid cases, leading to the conclusion that the assigned label is incorrect."
+          },
+          {
+            "word_text": "and",
+            "merchant_name": "Roast & Rice Asian Fusion",
+            "image_id": "6fa7cc7a-144c-43fb-be37-609e28c28a43",
+            "reasoning": "The word \"and\" appears in the item line \"Rice and\" and is part of a product description, not the store\u2019s trading name. MERCHANT_NAME should only be applied to the store\u2019s official name such as \"Roast & Rice Asian Fusion\".  Even accounting for potential OCR misrecognition, the context and surrounding words indicate that \"and\" is a conjunction, not the merchant brand. Thus labeling it MERCHANT_NAME is incorrect."
+          },
+          {
+            "word_text": "AND",
+            "merchant_name": "Laundry Valet",
+            "image_id": "7c932424-cb54-4fdb-ac2d-465e9b57b7c8",
+            "reasoning": "Store name printed prominently on line 5."
+          }
+        ],
+        "reason": "'AND' is a common invalid MERCHANT_NAME pattern (appears 5+ times as INVALID)"
+      },
+      {
+        "word_text": "The",
+        "normalized_word": "THE",
+        "merchant_name": null,
+        "match_type": "exact",
+        "count": 7,
+        "merchant_appearances": 5,
+        "examples": [
+          {
+            "word_text": "The",
+            "merchant_name": "The HandleBar Barbershop",
+            "image_id": "37900099-30b4-4788-b128-73512a936045",
+            "reasoning": "The merchant\u2019s full trading name is \"The HandleBar\", which includes the word \"The\" but also requires the rest of the name \"HandleBar\" to be identified as the merchant. Labeling the single word \"The\" as the merchant name does not satisfy the definition of MERCHANT_NAME, which is the complete store name or brand. The context shows the word \"The\" appears independently, likely due to OCR segmentation, and does not by itself identify the merchant. Therefore the label is considered definitely incorrect."
+          },
+          {
+            "word_text": "The",
+            "merchant_name": "The Local Peasant - Woodland Hills Restaurant & Bar",
+            "image_id": "523febb6-aeec-4841-bdaf-f1c44bd16574",
+            "reasoning": "The word \"The\" appears at the top of the receipt and is part of the merchant\u2019s full name, \"The Local Peasant \u2013 Woodland Hills Restaurant & Bar.\"  Because the OCR captured only this single word, it is unclear whether the label MERCHANT_NAME is appropriate for such an incomplete fragment.  While \"The\" is certainly present in the merchant\u2019s brand, it is also a common determiner that could appear in many contexts.  Therefore the labeling assignment is ambiguous and warrants a manual review to confirm that \"The\" should be treated as the merchant name in this specific receipt."
+          },
+          {
+            "word_text": "The",
+            "merchant_name": "The Vitamin Shoppe",
+            "image_id": "6b4b3394-cb57-4ce6-9782-751563165946",
+            "reasoning": "First line of the receipt contains the store name and identifier."
+          },
+          {
+            "word_text": "The",
+            "merchant_name": "The Stand - American Classics Redefined",
+            "image_id": "77b07cb3-baaf-459f-a268-57146f6a0020",
+            "reasoning": "Prominent store name printed at top of receipt"
+          },
+          {
+            "word_text": "THE",
+            "merchant_name": "The Stand - American Classics Redefined",
+            "image_id": "d36c2083-68bd-4690-b47f-11ffdc5e86e7",
+            "reasoning": "The word \"THE\" appears isolated in the receipt text and also precedes a product name (\"The Rings\"). While it is part of the overall merchant name \"The Stand\", the isolated use in the receipt indicates it is not a distinct merchant name token. Therefore labeling this individual word as\u202fMERCHANT_NAME is incorrect in this context."
+          }
+        ],
+        "reason": "'THE' is a common invalid MERCHANT_NAME pattern (appears 5+ times as INVALID)"
+      },
+      {
+        "word_text": "Oaks",
+        "normalized_word": "OAKS",
+        "merchant_name": null,
+        "match_type": "exact",
+        "count": 4,
+        "merchant_appearances": 3,
+        "examples": [
+          {
+            "word_text": "Oaks",
+            "merchant_name": "Handel's Ice Cream",
+            "image_id": "45af80b3-28e6-4666-b398-3421c34f70aa",
+            "reasoning": "Appears on line 1 as the merchant identifier."
+          },
+          {
+            "word_text": "Oaks",
+            "merchant_name": "Mastro's Steakhouse",
+            "image_id": "4e991ce5-314e-43b6-ac99-885d4a0512ba",
+            "reasoning": "First line of receipt contains the trading name of the restaurant"
+          },
+          {
+            "word_text": "Oaks",
+            "merchant_name": "Mastro's Steakhouse",
+            "image_id": "4e991ce5-314e-43b6-ac99-885d4a0512ba",
+            "reasoning": "First line of receipt contains the trading name of the restaurant"
+          },
+          {
+            "word_text": "Oaks",
+            "merchant_name": "Wild Fork",
+            "image_id": "a07be6c6-09ee-4dca-a1c1-b1d6f8602065",
+            "reasoning": "The word \"Oaks\" appears in the middle of the address line (\"Thousand Oaks\") rather than as the trading name or brand of the store issuing the receipt. The merchant information provided lists the location as \"101\u202fS\u202fWestlake\u202fBlvd, Thousand\u202fOaks, CA 91362, USA\" and no distinct corporate or store name is identified. In typical receipt formatting, the merchant name would be a standalone title such as the store\u2019s brand (e.g., \"ACME Grocery\"). Because \"Oaks\" is only a component of the city name and not the store\u2019s brand, labeling it as MERCHANT_NAME is incorrect. Hence the label is definitively wrong for this word, even accounting for possible OCR variations."
+          }
+        ],
+        "reason": "'OAKS' is a common invalid MERCHANT_NAME pattern (appears 4+ times as INVALID)"
+      },
+      {
+        "word_text": "BAKERY",
+        "normalized_word": "BAKERY",
+        "merchant_name": null,
+        "match_type": "exact",
+        "count": 7,
+        "merchant_appearances": 3,
+        "examples": [
+          {
+            "word_text": "BAKERY",
+            "merchant_name": "Italia Deli & Bakery",
+            "image_id": "4d0507a4-704e-43ed-a106-1804e3c4a13c",
+            "reasoning": "First line of receipt contains the store's trading name."
+          },
+          {
+            "word_text": "BAKERY",
+            "merchant_name": null,
+            "image_id": "67635c8c-7a39-4d76-8a68-aca83d8f4377",
+            "reasoning": "First two lines contain the store name and legal entity, combined to form the merchant name"
+          },
+          {
+            "word_text": "BAKERY",
+            "merchant_name": "Italia Deli & Bakery",
+            "image_id": "74a4f6ee-ac21-4d42-a2bf-e1414b954ae4",
+            "reasoning": "First line of receipt contains the store's trading name"
+          },
+          {
+            "word_text": "BAKERY",
+            "merchant_name": "Italia Deli & Bakery",
+            "image_id": "7ca97b51-7369-4321-bd01-0211f2bf2557",
+            "reasoning": "The word \"BAKERY\" alone does not constitute the full trading name \"Italia Deli & Bakery\". Although it is part of the merchant name, the label MERCHANT_NAME should be applied to the complete name or to a distinctive part that uniquely identifies the store. In this context, the extracted line contains only the word \"BAKERY\", which is insufficient to confirm the merchant identity. Therefore the label is deemed incorrect for this word."
+          },
+          {
+            "word_text": "BAKERY",
+            "merchant_name": "Ocean Perinatal Medical Group INC",
+            "image_id": "98491e9b-daa4-4294-bf6c-894f8c2a0485",
+            "reasoning": "The receipt\u2019s merchant is identified as \"Ocean Perinatal Medical Group INC\", a health\u2011care institution, not a bakery. The word \"BAKERY\" appears in the receipt but does not match the known merchant name or any known alias. No plausible OCR error could transform \"Ocean Perinatal Medical Group\" into \"BAKERY\", so labeling this word as MERCHANT_NAME is incorrect."
+          }
+        ],
+        "reason": "'BAKERY' is a common invalid MERCHANT_NAME pattern (appears 5+ times as INVALID)"
+      },
+      {
+        "word_text": "CLOSET",
+        "normalized_word": "CLOSET",
+        "merchant_name": null,
+        "match_type": "exact",
+        "count": 3,
+        "merchant_appearances": 3,
+        "examples": [
+          {
+            "word_text": "CLOSET",
+            "merchant_name": "Laundry Valet",
+            "image_id": "7c932424-cb54-4fdb-ac2d-465e9b57b7c8",
+            "reasoning": "Store name printed prominently on line 5."
+          },
+          {
+            "word_text": "CLOSET",
+            "merchant_name": "Target Grocery",
+            "image_id": "8f91a4e0-f0ad-466a-a16f-b4b93b0fe3be",
+            "reasoning": "Merchant name appears on line 5 as service provider | Appears as the primary service description near the top of the receipt, indicating the merchant."
+          },
+          {
+            "word_text": "CLOSET",
+            "merchant_name": "Target Mobile",
+            "image_id": "ac5fd741-29f2-4e05-bf69-9c216ec8a56a",
+            "reasoning": "Line 5 appears as the store description/name."
+          }
+        ],
+        "reason": "'CLOSET' is a common invalid MERCHANT_NAME pattern (appears 3+ times as INVALID)"
+      },
+      {
+        "word_text": "Decor",
+        "normalized_word": "DECOR",
+        "merchant_name": "Floor & Decor",
+        "match_type": "exact",
+        "count": 2,
+        "examples": [
+          {
+            "word_text": "Decor",
+            "image_id": "433b5dca-155c-4f9d-8999-47574b22a7f1",
+            "reasoning": "The word \"Decor\" alone does not represent the full merchant name; the shop\u2019s trading name is \"Floor & Decor\" as shown in the URL and contextual clues. Therefore labeling the isolated word as MERCHANT_NAME is incorrect."
+          },
+          {
+            "word_text": "Decor",
+            "image_id": "433b5dca-155c-4f9d-8999-47574b22a7f1",
+            "reasoning": "The word \"Decor\" appears in the receipt, but it is only a part of the full merchant name \"Floor & Decor\". The merchant name label should represent the entire store name, not just a single component. No contextual evidence indicates that \"Decor\" alone functions as the complete trading name in this receipt, even accounting for typical OCR errors. Therefore the label MERCHANT_NAME is not appropriate for this word."
+          }
+        ],
+        "reason": "'DECOR' is an invalid MERCHANT_NAME pattern specific to Floor & Decor"
+      },
+      {
+        "word_text": "EWHOLESALE",
+        "normalized_word": "EWHOLESALE",
+        "merchant_name": "Costco Wholesale",
+        "match_type": "exact",
+        "count": 2,
+        "examples": [
+          {
+            "word_text": "EWHOLESALE",
+            "image_id": "20576ddd-8a2c-4aea-841e-da553b8a7ff1",
+            "reasoning": "First two lines of receipt contain the store name"
+          },
+          {
+            "word_text": "EWHOLESALE",
+            "image_id": "d67ee0e3-6f30-4142-8209-cebbf309f40e",
+            "reasoning": "First two lines of the receipt display the store name."
+          }
+        ],
+        "reason": "'EWHOLESALE' is an invalid MERCHANT_NAME pattern specific to Costco Wholesale"
+      },
+      {
+        "word_text": "DIY",
+        "normalized_word": "DIY",
+        "merchant_name": "DIY Home Center",
+        "match_type": "exact",
+        "count": 2,
+        "examples": [
+          {
+            "word_text": "DIY",
+            "image_id": "1746d34d-69e2-4764-ae52-4fc444e0a531",
+            "reasoning": "The merchant\u2019s full name as given in the metadata is \"DIY Home Center.\" The extracted word \"DIY\" appears on the receipt, but it is an incomplete or truncated form of the merchant name and does not represent the full trading name. According to the label definition, MERCHANT_NAME should correspond to the complete trading name or brand of the store issuing the receipt. Therefore, labeling \"DIY\" as MERCHANT_NAME is incorrect in this context. The surrounding context, which includes the address and phone number, confirms that the merchant line is not simply \"DIY\" but the full store name. Hence, the label is invalid for this word."
+          },
+          {
+            "word_text": "DIY",
+            "image_id": "93db2c10-ad41-4483-a48a-e6fe2b884e79",
+            "reasoning": "The label 'MERCHANT_NAME' should correspond to the full trading name of the store issuing the receipt. The receipt is for \"DIY Home Center\", which appears in the merchant header (normally spanning multiple words). In the OCR transcript the word \"DIY\" appears only as part of a mis\u2011recognized or truncated header and is not the complete merchant name. Furthermore, the semantic similarity analysis found more instances where \"DIY\" was associated with an invalid MERCHANT_NAME label than with a valid one, and the surrounding context does not support that \"DIY\" alone represents the store\u2019s brand. Therefore, labeling the token \"DIY\" as MERCHANT_NAME is not correct."
+          }
+        ],
+        "reason": "'DIY' is an invalid MERCHANT_NAME pattern specific to DIY Home Center"
+      },
+      {
+        "word_text": "CA",
+        "normalized_word": "CA",
+        "merchant_name": "7-Eleven",
+        "match_type": "exact",
+        "count": 2,
+        "examples": [
+          {
+            "word_text": "CA",
+            "image_id": "1746d34d-69e2-4764-ae52-4fc444e0a531",
+            "reasoning": "Merchant name appears as full string at top of receipt"
+          },
+          {
+            "word_text": "CA",
+            "image_id": "49a1a1e7-348a-4cd9-af96-2312e838476e",
+            "reasoning": "Merchant name appears with additional identifier on receipt line"
+          }
+        ],
+        "reason": "'CA' is an invalid MERCHANT_NAME pattern specific to 7-Eleven"
+      },
+      {
+        "word_text": "SPEEDWAY",
+        "normalized_word": "SPEEDWAY",
+        "merchant_name": "7-Eleven",
+        "match_type": "exact",
+        "count": 2,
+        "examples": [
+          {
+            "word_text": "SPEEDWAY",
+            "image_id": "1746d34d-69e2-4764-ae52-4fc444e0a531",
+            "reasoning": "First line contains store name"
+          },
+          {
+            "word_text": "SPEEDWAY",
+            "image_id": "e0e74bc2-5acf-4dad-85ab-7e1d5f89cd6d",
+            "reasoning": "Header contains 'SPEED AY' which is the brand name Speedway."
+          }
+        ],
+        "reason": "'SPEEDWAY' is an invalid MERCHANT_NAME pattern specific to 7-Eleven"
+      },
+      {
+        "word_text": "EXPRESS",
+        "normalized_word": "EXPRESS",
+        "merchant_name": "SPEEDWAY EXPRESS",
+        "match_type": "exact",
+        "count": 2,
+        "examples": [
+          {
+            "word_text": "EXPRESS",
+            "image_id": "1d5ab3e0-7d81-4de4-b23d-1f490f85d89c",
+            "reasoning": "The receipt shows \"EXPRESS\" as a standalone word on line\u202f1, which is likely intended to represent the merchant\u2019s trading name.  The merchant\u2019s full name is SPEEDWAY\u202fEXPRESS, so a single word match is a partial representation of the brand.  In addition, the same word appears later (line\u202f41) within a description or promotional text, which could confound an automated label assignment.  Therefore, while \"EXPRESS\" is related to the merchant\u2019s brand, its use as a sole label is ambiguous and warrants human review to confirm whether the system should treat it as a valid MERCHANT_NAME or reject it as incomplete. (This explanation meets the 15\u2011character minimum.)"
+          },
+          {
+            "word_text": "EXPRESS",
+            "image_id": "1d5ab3e0-7d81-4de4-b23d-1f490f85d89c",
+            "reasoning": "The receipt\u2019s official merchant trading name is 'SPEEDWAY EXPRESS', as shown in the merchant details section. The word 'EXPRESS' appears on line\u202f1 of the receipt but it does not constitute the full merchant name; it is merely a partial component. According to the label definition \u2013 \u2018Trading name or brand of the store issuing the receipt\u2019 \u2013 the label should refer to the complete brand. Because 'EXPRESS' alone is incomplete and therefore not a correct representation of the merchant name, the label MERCHANT_NAME assigned to this word is incorrect and must be marked INVALID."
+          }
+        ],
+        "reason": "'EXPRESS' is an invalid MERCHANT_NAME pattern specific to SPEEDWAY EXPRESS"
+      },
+      {
+        "word_text": "18",
+        "normalized_word": "18",
+        "merchant_name": "AIM Mail Center",
+        "match_type": "exact",
+        "count": 2,
+        "examples": [
+          {
+            "word_text": "18",
+            "image_id": "20576ddd-8a2c-4aea-841e-da553b8a7ff1",
+            "reasoning": "Appears as the first line and contains the business name."
+          },
+          {
+            "word_text": "18",
+            "image_id": "d076611b-e24b-4772-9d01-1fc9a52f85b7",
+            "reasoning": "First line contains the store name and identifier"
+          }
+        ],
+        "reason": "'18' is an invalid MERCHANT_NAME pattern specific to AIM Mail Center"
+      },
+      {
+        "word_text": "MAIL",
+        "normalized_word": "MAIL",
+        "merchant_name": "AIM Mail Center",
+        "match_type": "exact",
+        "count": 2,
+        "examples": [
+          {
+            "word_text": "MAIL",
+            "image_id": "2dd75581-e04f-4c55-8c8e-d18c8518af1e",
+            "reasoning": "The word 'MAIL' appears on its own in the receipt but the full merchant name is 'AIM Mail Center'. The label MERCHANT_NAME is intended to capture the complete trading name or brand of the issuing store. While 'MAIL' is a component of that name, by itself it does not represent the full merchant. The receipt context does not provide additional surrounding words that would complete the merchant name on this line, and the OCR data shows no adjacent terms that could be concatenated to form the full name. Therefore, labeling 'MAIL' as MERCHANT_NAME would be incorrect. This is not a case of ambiguous OCR errors; the omission of 'AIM' and 'CENTER' is clear."
+          },
+          {
+            "word_text": "MAIL",
+            "image_id": "d076611b-e24b-4772-9d01-1fc9a52f85b7",
+            "reasoning": "First line contains the store name and identifier"
+          }
+        ],
+        "reason": "'MAIL' is an invalid MERCHANT_NAME pattern specific to AIM Mail Center"
+      },
+      {
+        "word_text": "Ranch",
+        "normalized_word": "RANCH",
+        "merchant_name": "Ranch Hand BBQ",
+        "match_type": "exact",
+        "count": 2,
+        "examples": [
+          {
+            "word_text": "Ranch",
+            "image_id": "2ab39193-7661-469e-be03-94ff37c2432f",
+            "reasoning": "First line of receipt contains the trading name of the store."
+          },
+          {
+            "word_text": "Ranch",
+            "image_id": "bb8bb817-2111-47ec-9b37-e7ca7c44192f",
+            "reasoning": "First line of receipt contains the store name"
+          }
+        ],
+        "reason": "'RANCH' is an invalid MERCHANT_NAME pattern specific to Ranch Hand BBQ"
+      },
+      {
+        "word_text": "Hand",
+        "normalized_word": "HAND",
+        "merchant_name": "Ranch Hand BBQ",
+        "match_type": "exact",
+        "count": 2,
+        "examples": [
+          {
+            "word_text": "Hand",
+            "image_id": "2ab39193-7661-469e-be03-94ff37c2432f",
+            "reasoning": "First line of receipt contains the trading name of the store."
+          },
+          {
+            "word_text": "Hand",
+            "image_id": "bb8bb817-2111-47ec-9b37-e7ca7c44192f",
+            "reasoning": "First line of receipt contains the store name"
+          }
+        ],
+        "reason": "'HAND' is an invalid MERCHANT_NAME pattern specific to Ranch Hand BBQ"
+      },
+      {
+        "word_text": "BBQ",
+        "normalized_word": "BBQ",
+        "merchant_name": "Ranch Hand BBQ",
+        "match_type": "exact",
+        "count": 2,
+        "examples": [
+          {
+            "word_text": "BBQ",
+            "image_id": "2ab39193-7661-469e-be03-94ff37c2432f",
+            "reasoning": "First line of receipt contains the trading name of the store."
+          },
+          {
+            "word_text": "BBQ",
+            "image_id": "bb8bb817-2111-47ec-9b37-e7ca7c44192f",
+            "reasoning": "First line of receipt contains the store name"
+          }
+        ],
+        "reason": "'BBQ' is an invalid MERCHANT_NAME pattern specific to Ranch Hand BBQ"
+      },
+      {
+        "word_text": "\u2022CVS",
+        "normalized_word": "\u2022CVS",
+        "merchant_name": "CVS",
+        "match_type": "exact",
+        "count": 2,
+        "examples": [
+          {
+            "word_text": "\u2022CVS",
+            "image_id": "32d3d4a1-c253-4883-86a5-0700d8cdc04a",
+            "reasoning": "Top line of receipt shows the trading name of the store with bullet prefix."
+          },
+          {
+            "word_text": "\u2022CVS",
+            "image_id": "41cb6fe2-d0b9-4cc3-86a9-0e52727dbd3c",
+            "reasoning": "First line includes bullet character before merchant name"
+          }
+        ],
+        "reason": "'\u2022CVS' is an invalid MERCHANT_NAME pattern specific to CVS"
+      },
+      {
+        "word_text": "FEY",
+        "normalized_word": "FEY",
+        "merchant_name": "Fey Chiropractic Thousand Oaks Spine",
+        "match_type": "exact",
+        "count": 2,
+        "examples": [
+          {
+            "word_text": "FEY",
+            "image_id": "361026e0-ae64-4288-8b41-f17d8c55ab83",
+            "reasoning": "Printed at the top of the receipt as the business name"
+          },
+          {
+            "word_text": "FEY",
+            "image_id": "854e7672-d629-4cc9-8cb0-6aefa1068390",
+            "reasoning": "First line of receipt contains the business name"
+          }
+        ],
+        "reason": "'FEY' is an invalid MERCHANT_NAME pattern specific to Fey Chiropractic Thousand Oaks Spine"
+      },
+      {
+        "word_text": "CHIROPRACTIC",
+        "normalized_word": "CHIROPRACTIC",
+        "merchant_name": "Fey Chiropractic Thousand Oaks Spine",
+        "match_type": "exact",
+        "count": 2,
+        "examples": [
+          {
+            "word_text": "CHIROPRACTIC",
+            "image_id": "361026e0-ae64-4288-8b41-f17d8c55ab83",
+            "reasoning": "Printed at the top of the receipt as the business name"
+          },
+          {
+            "word_text": "CHIROPRACTIC",
+            "image_id": "854e7672-d629-4cc9-8cb0-6aefa1068390",
+            "reasoning": "First line of receipt contains the business name"
+          }
+        ],
+        "reason": "'CHIROPRACTIC' is an invalid MERCHANT_NAME pattern specific to Fey Chiropractic Thousand Oaks Spine"
+      },
+      {
+        "word_text": "PHYSICAL",
+        "normalized_word": "PHYSICAL",
+        "merchant_name": "Westlake Physical Therapy, Inc",
+        "match_type": "exact",
+        "count": 2,
+        "examples": [
+          {
+            "word_text": "PHYSICAL",
+            "image_id": "4b326441-103c-4dae-809e-899404c29ac1",
+            "reasoning": "The word 'PHYSICAL' appears on line 1 of the receipt text: 'THERAP [TARGET: PHYSICAL] \u2190 TARGET LINE'. This context indicates it is part of a description (likely 'Physical Therapy') and not the store\u2019s name. The merchant identified from the receipt is \"ShopRite of Southington\", a grocery store, which has no relation to the word 'PHYSICAL'. Therefore, labeling this word as MERCHANT_NAME is incorrect and the label is definitively invalid."
+          },
+          {
+            "word_text": "PHYSICAL",
+            "image_id": "62130e63-c4d8-46a5-bd4b-243400494b10",
+            "reasoning": "The label MERCHANT_NAME is reserved for the full trading name or brand of the store issuing the receipt. The word in question is the single term \"PHYSICAL\", which is only a fragment of the merchant\u2019s full name \"Westlake Physical Therapy, Inc.\" and does not by itself identify the merchant. In the receipt context we see the partial word \"THERAP\" on line\u202f1, likely an OCR abbreviation for \"Therapy\", but this still does not constitute the merchant name. The surrounding data (address, phone, etc.) confirms the merchant identity, but those details are not represented by the word \"PHYSICAL\" alone. Therefore, labeling \"PHYSICAL\" as MERCHANT_NAME is incorrect and the status should be INVALID, even accounting for possible OCR errors or partial extraction. The label would be more appropriate for a full name or a different category like SERVICE_NAME, but not for a single-word fragment."
+          }
+        ],
+        "reason": "'PHYSICAL' is an invalid MERCHANT_NAME pattern specific to Westlake Physical Therapy, Inc"
+      },
+      {
+        "word_text": "Pasta",
+        "normalized_word": "PASTA",
+        "merchant_name": "Pasta Sisters",
+        "match_type": "exact",
+        "count": 2,
+        "examples": [
+          {
+            "word_text": "Pasta",
+            "image_id": "4c5ba3ff-a7c1-49a3-bb91-4e6d75bf1ebb",
+            "reasoning": "The label MERCHANT_NAME is intended for the complete trading name of the store. In this receipt the merchant name is \"Pasta Sisters\", comprised of two words. The word \"Pasta\" alone, while it appears in the merchant name section, is incomplete and does not uniquely identify the store. The context surrounding the word\u2014lines 2-3 list \"PASTA\" and \"SISTERS\" as separate tokens\u2014suggests that each token could be part of a multi\u2011word entity, but labeling a single word as the full merchant name is misleading. Additionally, the semantic similarity analysis flagged \"PASTA\" as more often associated with invalid labeling for MERCHANT_NAME (4 invalid vs 3 valid examples). Therefore, despite the correct OCR text, the label MERCHANT_NAME should not be applied to the lone word \"Pasta\" without the accompanying \"Sisters\". Hence, the status is INVALID."
+          },
+          {
+            "word_text": "PASTA",
+            "image_id": "5492b016-cc08-4d57-9a64-d6775684361c",
+            "reasoning": "The word \"PASTA\" appears as part of the merchant trading name \"Pasta Sisters\", but by itself it does not constitute the full merchant name. The MERCHANT_NAME label is intended to identify the complete brand or trading name of the store issuing the receipt. Since \"PASTA\" alone does not represent that full name and is separated on the next line by \"SISTERS\", labeling this word as MERCHANT_NAME is incorrect. Therefore, the validation status is INVALID."
+          }
+        ],
+        "reason": "'PASTA' is an invalid MERCHANT_NAME pattern specific to Pasta Sisters"
+      },
+      {
+        "word_text": "City",
+        "normalized_word": "CITY",
+        "merchant_name": "Pasta Sisters",
+        "match_type": "exact",
+        "count": 2,
+        "examples": [
+          {
+            "word_text": "City",
+            "image_id": "4c5ba3ff-a7c1-49a3-bb91-4e6d75bf1ebb",
+            "reasoning": "Business name printed at the top of the receipt"
+          },
+          {
+            "word_text": "City",
+            "image_id": "5492b016-cc08-4d57-9a64-d6775684361c",
+            "reasoning": "Full trading name printed near the top of the receipt"
+          }
+        ],
+        "reason": "'CITY' is an invalid MERCHANT_NAME pattern specific to Pasta Sisters"
+      },
+      {
+        "word_text": "Local",
+        "normalized_word": "LOCAL",
+        "merchant_name": "The Local Peasant - Woodland Hills Restaurant & Bar",
+        "match_type": "exact",
+        "count": 2,
+        "examples": [
+          {
+            "word_text": "Local",
+            "image_id": "523febb6-aeec-4841-bdaf-f1c44bd16574",
+            "reasoning": "The word \"Local\" appears on the receipt, but it is only a fragment of the full merchant name \"The Local Peasant - Woodland Hills Restaurant & Bar\". According to the label definition, MERCHANT_NAME should correspond to the complete trading name or brand of the store. A single word that is part of a longer name does not satisfy this requirement, even when considering possible OCR errors. Therefore, labeling \"Local\" as MERCHANT_NAME is not correct."
+          },
+          {
+            "word_text": "LOCAL",
+            "image_id": "523febb6-aeec-4841-bdaf-f1c44bd16574",
+            "reasoning": "First line of receipt contains the merchant's trading name"
+          }
+        ],
+        "reason": "'LOCAL' is an invalid MERCHANT_NAME pattern specific to The Local Peasant - Woodland Hills Restaurant & Bar"
+      },
+      {
+        "word_text": "PITFIRE",
+        "normalized_word": "PITFIRE",
+        "merchant_name": "Pitfire Pizza",
+        "match_type": "exact",
+        "count": 2,
+        "examples": [
+          {
+            "word_text": "PITFIRE",
+            "image_id": "59ddb567-c0ac-4160-83d9-9969b5ddfa74",
+            "reasoning": "Store name appears at top of receipt; consistent with known merchant context"
+          },
+          {
+            "word_text": "Pitfire",
+            "image_id": "59ddb567-c0ac-4160-83d9-9969b5ddfa74",
+            "reasoning": "Store name appears at top of receipt; consistent with known merchant context"
+          }
+        ],
+        "reason": "'PITFIRE' is an invalid MERCHANT_NAME pattern specific to Pitfire Pizza"
+      },
+      {
+        "word_text": "Sparkling",
+        "normalized_word": "SPARKLING",
+        "merchant_name": "Sparkling Image Car Wash",
+        "match_type": "exact",
+        "count": 2,
+        "examples": [
+          {
+            "word_text": "Sparkling",
+            "image_id": "79626fd2-8da1-4782-b050-52d07c2da7d4",
+            "reasoning": "First line of the receipt contains the trading name after an identifier. | Line 1 contains the merchant name after a dash."
+          },
+          {
+            "word_text": "Sparkling",
+            "image_id": "f88f6cb9-2ca2-41eb-8380-53b3cfac2810",
+            "reasoning": "Store name appears after a numeric identifier on the first line | Merchant name appears at the top of the receipt"
+          }
+        ],
+        "reason": "'SPARKLING' is an invalid MERCHANT_NAME pattern specific to Sparkling Image Car Wash"
+      },
+      {
+        "word_text": "Image",
+        "normalized_word": "IMAGE",
+        "merchant_name": "Sparkling Image Car Wash",
+        "match_type": "exact",
+        "count": 2,
+        "examples": [
+          {
+            "word_text": "Image",
+            "image_id": "79626fd2-8da1-4782-b050-52d07c2da7d4",
+            "reasoning": "First line of the receipt contains the trading name after an identifier. | Line 1 contains the merchant name after a dash."
+          },
+          {
+            "word_text": "Image",
+            "image_id": "f88f6cb9-2ca2-41eb-8380-53b3cfac2810",
+            "reasoning": "Store name appears after a numeric identifier on the first line | Merchant name appears at the top of the receipt"
+          }
+        ],
+        "reason": "'IMAGE' is an invalid MERCHANT_NAME pattern specific to Sparkling Image Car Wash"
+      },
+      {
+        "word_text": "County",
+        "normalized_word": "COUNTY",
+        "merchant_name": "Los Angeles County Department of Beaches & Harbors",
+        "match_type": "exact",
+        "count": 2,
+        "examples": [
+          {
+            "word_text": "County",
+            "image_id": "a7b6f2e2-7c2e-4c61-b8df-023a9c6d3de4",
+            "reasoning": "The word \"County\" is only a fragment of the full merchant name \"Los Angeles County Department of Beaches & Harbors\". It does not independently represent the trading name or brand of the store issuing the receipt. Therefore labeling it as MERCHANT_NAME is incorrect for this context."
+          },
+          {
+            "word_text": "County",
+            "image_id": "b65f5318-d6e7-4204-9ab3-5bafab1ee5bc",
+            "reasoning": "The word \"County\" appears isolated on line 6 of the receipt.  While it is part of the full merchant name \"Los Angeles County Department of Beaches & Harbors\", the label definition for MERCHANT_NAME requires the entire trading name or brand of the store issuing the receipt.  Labeling only the word \"County\" as MERCHANT_NAME therefore does not satisfy the definition and is considered invalid.  OCR errors are unlikely to have produced a missing preceding part because the surrounding text shows the correct multi\u2011word merchant name; the isolated word is a fragment, not the complete merchant identity."
+          }
+        ],
+        "reason": "'COUNTY' is an invalid MERCHANT_NAME pattern specific to Los Angeles County Department of Beaches & Harbors"
+      },
+      {
+        "word_text": "BAGEL",
+        "normalized_word": "BAGEL",
+        "merchant_name": "East Coast Bagel Co.",
+        "match_type": "exact",
+        "count": 2,
+        "examples": [
+          {
+            "word_text": "BAGEL",
+            "image_id": "94978c08-45e4-440c-bac5-d9955d45affb",
+            "reasoning": "The word \"BAGEL\" appears as a separate line in the receipt, most likely representing a product item rather than the store\u2019s trading or brand name. The merchant\u2019s full name is \"East Coast Bagel Co.\" and the receipt contains its address and phone number in the corresponding fields. Therefore labeling the word \"BAGEL\" as MERCHANT_NAME is incorrect and the label should be marked as INVALID."
+          },
+          {
+            "word_text": "BAGEL",
+            "image_id": "9bde47bb-fd65-4263-975c-9b5970eac924",
+            "reasoning": "Store name printed prominently at the top of the receipt."
+          }
+        ],
+        "reason": "'BAGEL' is an invalid MERCHANT_NAME pattern specific to East Coast Bagel Co."
+      }
+    ]
+  },
+  "patterns": {}
+}

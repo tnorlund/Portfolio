@@ -1,0 +1,34 @@
+{
+  "generated_at": "2025-11-28T10:24:31.681595",
+  "label_type": "MERCHANT_NAME",
+  "min_occurrences": 1,
+  "max_examples": 2,
+  "edge_cases": [
+    {
+      "word_text": "VONS.",
+      "normalized_word": "VONS",
+      "merchant_name": null,
+      "match_type": "suffix",
+      "pattern": "\\.$",
+      "reason": "The token is a valid merchant name but includes trailing punctuation (a period). The current validator treats the punctuated token as invalid instead of normalising it. After stripping the trailing period the token matches a known merchant (Vons).",
+      "correct_label_type": "MERCHANT_NAME",
+      "can_resolve_needs_review": true,
+      "suggested_rule": "When a token matches a known merchant (or passes fuzzy matching) after stripping trailing punctuation (.,;:), treat it as MERCHANT_NAME rather than rejecting it.",
+      "confidence": 0.94,
+      "count": 1
+    },
+    {
+      "word_text": "Bank,",
+      "normalized_word": "Bank",
+      "merchant_name": null,
+      "match_type": "suffix",
+      "pattern": ",$",
+      "reason": "The token is a generic business\u2011entity suffix, not the full trading name. In receipts it appears as part of a longer name (e.g., \"JPMorgan Chase Bank, N.A.\") and should not be labelled as MERCHANT_NAME on its own.",
+      "correct_label_type": null,
+      "can_resolve_needs_review": true,
+      "suggested_rule": "Exclude isolated tokens that are common business suffixes (Bank, Inc, LLC, Co, Ltd, Corp, N.A., etc.) when they appear alone or only with trailing punctuation; they should not be assigned MERCHANT_NAME.",
+      "confidence": 0.96,
+      "count": 1
+    }
+  ]
+}

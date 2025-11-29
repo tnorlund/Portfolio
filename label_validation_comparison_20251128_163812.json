@@ -1,0 +1,140 @@
+{
+  "timestamp": "20251128_163812",
+  "total_labels": 5,
+  "successful": 5,
+  "failed": 0,
+  "results": [
+    {
+      "label_data": {
+        "word_text": "VONS",
+        "suggested_label_type": "MERCHANT_NAME",
+        "merchant_name": "Vons",
+        "original_reasoning": "Store name appears at top of receipt",
+        "image_id": "00ded398-af6f-4a49-86f7-c79ccb554e48",
+        "receipt_id": 1,
+        "line_id": 45,
+        "word_id": 2
+      },
+      "result": {
+        "decision": "VALID",
+        "confidence": 0.96,
+        "reasoning": "The word VONS appears in contexts that directly reference the store (customer service line and store name line). It matches the official merchant name from Google Places. Therefore, labeling it as MERCHANT_NAME is correct.",
+        "evidence": [
+          "Line text: 'For VONS FOR U questions call' shows VONS as the store name referenced for customer service.",
+          "Receipt contains another line 'VONS.' indicating the merchant name at the bottom of the receipt.",
+          "Google Places metadata confirms the merchant name is 'Vons', matching the word.",
+          "Other MERCHANT_NAME labels are present on the same receipt, supporting consistent labeling of the store name."
+        ],
+        "tools_used": [
+          "get_labels_on_receipt",
+          "get_merchant_metadata",
+          "submit_decision"
+        ]
+      }
+    },
+    {
+      "label_data": {
+        "word_text": "Vons.",
+        "suggested_label_type": "MERCHANT_NAME",
+        "merchant_name": "Vons",
+        "original_reasoning": "Store name appears at the top of the receipt.",
+        "image_id": "00ded398-af6f-4a49-86f7-c79ccb554e48",
+        "receipt_id": 1,
+        "line_id": 46,
+        "word_id": 3
+      },
+      "result": {
+        "decision": "VALID",
+        "confidence": 0.95,
+        "reasoning": "The word 'Vons.' is used in multiple contexts that are characteristic of a merchant name: alongside contact information, in a thank\u2011you message, and as a standalone line at the bottom of the receipt. The period is merely punctuation and does not alter the identification. Therefore, labeling it as MERCHANT_NAME is correct.",
+        "evidence": [
+          "Word appears in line '877-276-9637 or Vons. com/foru' alongside phone and website, indicating merchant name",
+          "Line 'Thank you for shopping Vons!' explicitly references merchant",
+          "Standalone line 'VONS.' at receipt footer is typical merchant name display",
+          "Matches provided merchant name 'Vons'"
+        ],
+        "tools_used": [
+          "submit_decision"
+        ]
+      }
+    },
+    {
+      "label_data": {
+        "word_text": "SPROUTS",
+        "suggested_label_type": "MERCHANT_NAME",
+        "merchant_name": "Sprouts Farmers Market",
+        "original_reasoning": "Store name appears at top of receipt",
+        "image_id": "00ded398-af6f-4a49-86f7-c79ccb554e48",
+        "receipt_id": 2,
+        "line_id": 1,
+        "word_id": 1
+      },
+      "result": {
+        "decision": "VALID",
+        "confidence": 0.95,
+        "reasoning": "The primary context shows 'SPROUTS' as part of the merchant identification on the receipt, matching the definition of MERCHANT_NAME. The surrounding lines and overall receipt content confirm it refers to the store name, not a product or other entity. Therefore, the label is correct.",
+        "evidence": [
+          "The word 'SPROUTS' appears on a line by itself near the bottom of the receipt, directly following 'FARMERS MARKET', indicating the merchant name line.",
+          "Receipt context includes other references to the merchant (e.g., 'Sprouts.com', 'SproutsFeedback.com'), confirming the brand.",
+          "Merchant metadata indicates the official name is 'Sprouts Farmers Market', of which 'SPROUTS' is a key component."
+        ],
+        "tools_used": [
+          "submit_decision"
+        ]
+      }
+    },
+    {
+      "label_data": {
+        "word_text": "FARMERS",
+        "suggested_label_type": "MERCHANT_NAME",
+        "merchant_name": "Sprouts Farmers Market",
+        "original_reasoning": "Store name appears at top of receipt",
+        "image_id": "00ded398-af6f-4a49-86f7-c79ccb554e48",
+        "receipt_id": 2,
+        "line_id": 2,
+        "word_id": 1
+      },
+      "result": {
+        "decision": "VALID",
+        "confidence": 0.97,
+        "reasoning": "The word \"FARMERS\" is part of the complete merchant name \"Sprouts Farmers Market\" as shown on the receipt header. Context and supporting evidence confirm it is not a product or other field. Therefore, labeling it as MERCHANT_NAME is correct.",
+        "evidence": [
+          "Word appears in line \"[FARMERS MARKET]\" with surrounding word \"MARKET\" and adjacent line \"SPROUTS\", forming full merchant name \"Sprouts Farmers Market\".",
+          "Search returned multiple similar instances where \"FARMERS\" was labeled MERCHANT_NAME and validated.",
+          "Audit trail shows MERCHANT_NAME validated and BUSINESS_NAME invalid for this token."
+        ],
+        "tools_used": [
+          "search_similar_words",
+          "submit_decision"
+        ]
+      }
+    },
+    {
+      "label_data": {
+        "word_text": "MARKET",
+        "suggested_label_type": "MERCHANT_NAME",
+        "merchant_name": "Sprouts Farmers Market",
+        "original_reasoning": "Store name appears at top of receipt",
+        "image_id": "00ded398-af6f-4a49-86f7-c79ccb554e48",
+        "receipt_id": 2,
+        "line_id": 2,
+        "word_id": 2
+      },
+      "result": {
+        "decision": "VALID",
+        "confidence": 0.96,
+        "reasoning": "The word 'MARKET' is located within the line \"[FARMERS MARKET]\" which is the full merchant name on the receipt. The surrounding word \"FARMERS\" and the later occurrence of \"SPROUTS\" confirm the complete merchant name is \"Sprouts Farmers Market\", matching the known merchant metadata. Consistent labeling of related tokens as MERCHANT_NAME across this and similar receipts further supports the label. Therefore, labeling 'MARKET' as MERCHANT_NAME is correct.",
+        "evidence": [
+          "Word appears in line \"[FARMERS MARKET]\" confirming it is part of the merchant name",
+          "Merchant metadata confirms store is Sprouts Farmers Market, which includes the term MARKET",
+          "Similar words (e.g., \"FARMERS\") on this receipt have been validated as MERCHANT_NAME"
+        ],
+        "tools_used": [
+          "search_similar_words",
+          "get_all_labels_for_word",
+          "submit_decision"
+        ]
+      }
+    }
+  ]
+}

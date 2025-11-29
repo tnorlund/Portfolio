@@ -1,0 +1,265 @@
+# Analyze Label Patterns and Generate Improved Harmonizer Prompts
+
+You are analyzing patterns in VALID, INVALID, and NEEDS_REVIEW labels for `MERCHANT_NAME` to generate improved prompts for the label harmonizer.
+
+## Goal
+
+The harmonizer uses LLM prompts to:
+1. **Validate suggestions**: Decide if a suggested label type is correct
+2. **Suggest labels**: Propose a label type for outlier words
+
+Your task is to identify patterns in what makes labels VALID vs INVALID vs NEEDS_REVIEW, and generate improved prompts that will help the harmonizer make better decisions.
+
+## Label Type Definition
+
+The name of the business/store where the receipt is from
+
+## All CORE_LABELS (for context)
+
+- **MERCHANT_NAME**: The name of the business/store where the receipt is from
+- **PRODUCT_NAME**: The name of a product or item purchased
+- **ADDRESS_LINE**: Part of the business address
+
+## Examples by Status
+
+
+### VALID Labels (5 examples)
+
+**Example 1:**
+- Word: `SPROUTS`
+- Merchant: `Sprouts Farmers Market` (from Google Places)
+- Line: `SPROUTS`
+- Context:
+  >>> SPROUTS <<<
+  FARMERS MARKET
+  1012 WESTLAKE BLVD.
+- Reasoning: The word 'SPROUTS' appears prominently at the top of the receipt, matching the known merchant name 'Sprouts Farmers Market'. It is repeated in multiple locations and aligns with the address and phone 
+
+**Example 2:**
+- Word: `FARMERS`
+- Merchant: `Sprouts Farmers Market` (from Google Places)
+- Line: `FARMERS MARKET`
+- Context:
+  SPROUTS
+  >>> FARMERS MARKET <<<
+  1012 WESTLAKE BLVD.
+  WESTLAKE, CA 91361
+- Reasoning: The word "FARMERS" appears on the receipt in the line "SPROUTS MARKET [TARGET: FARMERS]", which is part of the full merchant brand "Sprouts Farmers Market".  Because the label "MERCHANT_NAME" refers t
+
+**Example 3:**
+- Word: `MARKET`
+- Merchant: `Sprouts Farmers Market` (from Google Places)
+- Line: `FARMERS MARKET`
+- Context:
+  SPROUTS
+  >>> FARMERS MARKET <<<
+  1012 WESTLAKE BLVD.
+  WESTLAKE, CA 91361
+- Reasoning: The word 'MARKET' appears on the receipt in a context that matches the store’s official name 'Sprouts Farmers Market'. It is listed adjacent to the word 'SPROUTS', both of which together constitute th
+
+**Example 4:**
+- Word: `SPROUTS`
+- Merchant: `Sprouts Farmers Market` (from Google Places)
+- Line: `SPROUTS`
+- Context:
+  (805>917-4200
+  Store Hours MON-SUN 7AM-10PM
+  >>> SPROUTS <<<
+  FARMERS MARKET
+  1012 WESTLAKE BLVD.
+- Reasoning: The word "SPROUTS" appears on the receipt in the exact place where the store’s trading name is displayed. The surrounding context (lines 6‑8, 11‑12, 37, 48) all corroborate that this is a grocery stor
+
+**Example 5:**
+- Word: `FARMERS`
+- Merchant: `Sprouts Farmers Market` (from Google Places)
+- Line: `FARMERS MARKET`
+- Context:
+  Store Hours MON-SUN 7AM-10PM
+  SPROUTS
+  >>> FARMERS MARKET <<<
+  1012 WESTLAKE BLVD.
+  WESTLAKE, CA 91361
+- Reasoning: The word "FARMERS" is a constituent part of the merchant’s trading name, "Sprouts Farmers Market". According to the label definition, any word that appears in the store’s brand name can be labeled as 
+
+
+### INVALID Labels (5 examples)
+
+**Example 1:**
+- Word: `VONS.`
+- Merchant: `Vons` (from Google Places)
+- Line: `VONS.`
+- Context:
+  >>> VONS. <<<
+  Store 3135 Dir Tomas de la Cruz
+  Main: (805) 497-1921
+- Reasoning: Store name appears at the top of the receipt.
+
+**Example 2:**
+- Word: `Bank,`
+- Merchant: `Chase Bank` (from Google Places)
+- Line: `JPMorgan Chase Bank, N.A.`
+- Context:
+  Further review may result in additional
+  deposit availability delay.
+  >>> JPMorgan Chase Bank, N.A. <<<
+  Agoura and Westlake Bi.d, Branch 134747
+  1-800-935-9935
+- Reasoning: The word "Bank," by itself does not represent the full trading name or brand of the merchant issuing the receipt. In the receipt context the merchant is identified as "CHASE" and the bank name appears
+
+**Example 3:**
+- Word: `N.A.`
+- Merchant: `Chase Bank` (from Google Places)
+- Line: `JPMorgan Chase Bank, N.A.`
+- Context:
+  Further review may result in additional
+  deposit availability delay.
+  >>> JPMorgan Chase Bank, N.A. <<<
+  Agoura and Westlake Bi.d, Branch 134747
+  1-800-935-9935
+- Reasoning: The word "N.A." in this receipt does not represent the trading name or brand of the store issuing the receipt. In the given context the merchant is Chase Bank (as shown in lines 1, 34, and the system‑
+
+**Example 4:**
+- Word: `Cafe`
+- Merchant: `Cafe Nouveau` (from Google Places)
+- Line: `Cafe Nouveau`
+- Context:
+  >>> Cafe Nouveau <<<
+  ENJOY!
+  805-648-1422
+- Reasoning: The merchant name shown on the receipt is the full trading name "Nouveau Tea - Vietnamese Bakery & Café". The word "Cafe" appears only as part of this longer name and does not, by itself, constitute t
+
+**Example 5:**
+- Word: `Twisted`
+- Merchant: `Twisted Oak Tavern` (from Google Places)
+- Line: `Twisted Oak Tavern`
+- Context:
+  >>> Twisted Oak Tavern <<<
+  2433 Ventura Blvd
+  805.586.4005
+- Reasoning: First line of receipt shows the trading name
+
+
+### NEEDS_REVIEW Labels (5 examples)
+
+**Example 1:**
+- Word: `VONS`
+- Merchant: `Vons` (from Google Places)
+- Line: `For VONS FOR U questions call`
+- Context:
+  2
+  Thank you for shopping Vons!
+  >>> For VONS FOR U questions call <<<
+  877-276-9637 or Vons. com/foru
+  You Pay
+- Reasoning: Store name appears at top of receipt
+
+**Example 2:**
+- Word: `Vons.`
+- Merchant: `Vons` (from Google Places)
+- Line: `877-276-9637 or Vons. com/foru`
+- Context:
+  Thank you for shopping Vons!
+  For VONS FOR U questions call
+  >>> 877-276-9637 or Vons. com/foru <<<
+  You Pay
+  16.99 T
+- Reasoning: Store name appears at the top of the receipt.
+
+**Example 3:**
+- Word: `SPROUTS`
+- Merchant: `Sprouts Farmers Market` (from Google Places)
+- Line: `SPROUTS`
+- Context:
+  >>> SPROUTS <<<
+  FARMERS MARKET
+  1012 NESTLAKE BLVD.
+- Reasoning: Store name appears at top of receipt
+
+**Example 4:**
+- Word: `FARMERS`
+- Merchant: `Sprouts Farmers Market` (from Google Places)
+- Line: `FARMERS MARKET`
+- Context:
+  SPROUTS
+  >>> FARMERS MARKET <<<
+  1012 NESTLAKE BLVD.
+  WESTLAKE, CA 91361
+- Reasoning: Store name appears at top of receipt
+
+**Example 5:**
+- Word: `MARKET`
+- Merchant: `Sprouts Farmers Market` (from Google Places)
+- Line: `FARMERS MARKET`
+- Context:
+  SPROUTS
+  >>> FARMERS MARKET <<<
+  1012 NESTLAKE BLVD.
+  WESTLAKE, CA 91361
+- Reasoning: Store name appears at top of receipt
+
+
+## Current Harmonizer Prompts
+
+The harmonizer currently uses these prompts:
+
+### 1. Validation Prompt (for validating suggestions)
+```
+# Validate Label Type Suggestion
+
+**Word:** `"{word_text}"` | **Merchant:** {merchant_name} | **Suggested Label:** `MERCHANT_NAME`
+
+**Your reasoning:** {llm_reason}
+
+## Similar Words from Database (±3 lines context)
+{similar_words_text}
+
+## Instructions
+
+Review the similar words above. Consider:
+- **Similarity scores**: Higher similarity = more relevant
+- **Merchant match**: Same merchant examples may be more relevant
+- **Valid labels**: Words with `MERCHANT_NAME` in their valid_labels support the suggestion
+- **Invalid labels**: ⚠️ Words with `MERCHANT_NAME` in their invalid_labels are a STRONG negative signal!
+
+**Critical**: If you see similar words where `MERCHANT_NAME` is in the invalid_labels, this is strong evidence the suggestion is wrong!
+
+Is the suggestion valid?
+```
+
+### 2. Suggestion Prompt (for suggesting labels for outliers)
+```
+# Suggest Label Type for Outlier Word
+
+**Word:** `"{word_text}"` | **Merchant:** {merchant_name} | **Current Label:** `MERCHANT_NAME` (status: {validation_status})
+
+**Context:**
+{context_lines}
+
+## Instructions
+
+Based on the word, merchant, and context, suggest the correct CORE_LABEL type.
+
+What label type should this word have?
+```
+
+## Your Task
+
+Based on the examples above, identify:
+
+1. **Patterns that lead to VALID labels**: What characteristics make a `MERCHANT_NAME` label valid?
+2. **Patterns that lead to INVALID labels**: What mistakes cause labels to be marked invalid?
+3. **Patterns that lead to NEEDS_REVIEW**: What ambiguous cases need human review?
+4. **Common confusion patterns**: What other label types are `MERCHANT_NAME` often confused with?
+
+Then, generate **improved prompts** for:
+- **Validation prompt**: Better instructions for validating suggestions
+- **Suggestion prompt**: Better instructions for suggesting labels
+
+## Output Format
+
+Provide a JSON response with:
+- `patterns_analysis`: Analysis of patterns you identified
+- `improved_validation_prompt`: Improved validation prompt (with placeholders like {word_text})
+- `improved_suggestion_prompt`: Improved suggestion prompt (with placeholders)
+- `key_improvements`: List of key improvements made to the prompts
+- `common_mistakes_to_avoid`: List of common mistakes the harmonizer should avoid

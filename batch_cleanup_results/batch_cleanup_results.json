@@ -1,0 +1,276 @@
+{
+  "dry_run": false,
+  "total_batch_summaries": 1032,
+  "affected_batch_summaries": 38,
+  "deleted": 38,
+  "updated": 0,
+  "errors": [],
+  "actions": [
+    {
+      "batch_id": "578bb714-73a8-4f0f-ae43-b4611b3da346",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "17c31d2c-c2a5-4fca-a09c-78d6ec65dfcf",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "0f7254b3-0212-428c-b66a-d5e4f9c9c50a",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "dea2b7f8-f30d-432e-965a-f5dab3f16b35",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "33d707da-6cda-4856-913b-15c45af22a92",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "786624f5-8c19-4d9e-afb2-68e3a8bc380a",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "c2536d6b-d999-4b22-b705-0ab32f4ed385",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "c9bc0ba8-2e34-4967-94e9-819aabd8674d",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "5d3995a7-1355-4852-8102-763d05b8971c",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "d1ce1554-eba3-42ff-aea8-ec52e27e4f41",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "932f39bf-2f17-4cfe-8c16-2da970e3e498",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "63a57bff-12d5-48f2-b2ed-8ef492ba4008",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "4f1ebf41-f23d-41fa-bdc5-72eccc1a7ca0",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "65352cd0-c3dd-483a-9228-14bc03d8b413",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "56a86e27-f698-48d3-bb9b-97d57faa797a",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "45a65632-70ba-4af9-afd1-b9dd98d8f659",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "54e20ba1-d44f-4a30-b1c4-a2cf2a5f2dc8",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "32108d9e-24ca-4783-b62f-65897b9a93fb",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "0505df74-b599-4291-9991-5cee43e9066b",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "464377e2-095e-4bd3-9481-bb0e187eae3a",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "0be3ea9d-2aae-417b-96d2-afd1d8d5c70b",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "f19c33e6-56cf-428a-945e-d150eac6c002",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "51ab475c-29ed-455c-9a97-b876b2ed3a98",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "6669e97b-b4b0-41c0-90a9-e77fce0f4c37",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "4b10168d-2f53-4e44-85e8-3cb11e3fd82a",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "6ad6af38-9895-4116-9317-3225207772f6",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "5f58e2f8-d4f8-48e4-af95-1f4c13b503b7",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "c2e27d7f-282f-408c-bc10-bc3e3f49f781",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "3949cf83-822f-4779-bc3e-b00c9d7ea50b",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "153e1ccd-5eab-43ba-af62-1a8e86ce21f9",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "6cd64b46-23f1-467a-919d-3d3751d5d298",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "1c29a12c-24dc-45c2-b61d-26ca217650cf",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "c4a2c45f-c1aa-49f7-ac84-7be47ddeced3",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "0f67fd16-3419-47e5-a246-81050cba607d",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "f6e92320-89dc-4ce4-9c7d-9d465b326b19",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "bd81a6a5-99d8-4280-b483-18df5bf3040c",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "ede7a705-308e-4ef0-8491-707c28f43a48",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    },
+    {
+      "batch_id": "ddb73038-b1c9-4773-989e-6d6f7266ffc7",
+      "action": "delete",
+      "reason": "All receipt_refs reference deleted images",
+      "deleted_refs": 1,
+      "remaining_refs": 0
+    }
+  ]
+}

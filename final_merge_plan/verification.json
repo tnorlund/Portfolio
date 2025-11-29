@@ -1,0 +1,147 @@
+{
+  "all_labels_accounted_for": true,
+  "canonical_labels": {
+    "a6596a97-4ce5-49ab-876d-6a2dfaeffca4": 78,
+    "49a1a1e7-348a-4cd9-af96-2312e838476e": 130,
+    "00ded398-af6f-4a49-86f7-c79ccb554e48": 128,
+    "4cd9dd6d-ecd8-4e6f-928f-18440e4ad303": 106,
+    "ce0da565-da87-4a7d-9525-aa0cd7b3b75c": 107,
+    "d67ee0e3-6f30-4142-8209-cebbf309f40e": 84,
+    "29dd2c96-6854-42dd-a84f-6344b49d7254": 95,
+    "20576ddd-8a2c-4aea-841e-da553b8a7ff1": 88,
+    "887079fa-bb3e-480a-8202-e759afe63f1a": 120,
+    "739dfe4b-edac-49b1-86c3-3568a7c98492": 39,
+    "a63dbf2e-84ed-42a8-9a44-febfb57b4870": 444,
+    "53645e98-1dc3-4929-8ff9-c9e5e12455bb": 133,
+    "d25dcaa4-66a0-412d-beee-ba799ead2f57": 80,
+    "06e54f95-6c95-4567-9fe4-6d5803e8c04d": 106,
+    "4e180507-c996-4766-979d-4af3221a68a3": 51,
+    "32d3d4a1-c253-4883-86a5-0700d8cdc04a": 47,
+    "cb22100f-44c2-4b7d-b29f-46627a64355a": 86
+  },
+  "duplicate_labels": {
+    "a6596a97-4ce5-49ab-876d-6a2dfaeffca4": {
+      "non_conflicting": 6,
+      "conflicts": 20,
+      "duplicate_counts": {
+        "965c73ca-e68b-4afe-a42c-c41732e48ef4": 74,
+        "fb69b028-a9d1-4d27-b30f-6e5f1502e2ac": 74
+      }
+    },
+    "49a1a1e7-348a-4cd9-af96-2312e838476e": {
+      "non_conflicting": 47,
+      "conflicts": 15,
+      "duplicate_counts": {
+        "a63a6c84-d399-452f-9e56-08ff664c8f35": 110,
+        "c0900230-2907-4093-9bf7-29ca3cdf397a": 31
+      }
+    },
+    "00ded398-af6f-4a49-86f7-c79ccb554e48": {
+      "non_conflicting": 5,
+      "conflicts": 4,
+      "duplicate_counts": {
+        "e26d6ebe-ace2-45e2-9a3c-830fb947f4c7": 60
+      }
+    },
+    "4cd9dd6d-ecd8-4e6f-928f-18440e4ad303": {
+      "non_conflicting": 0,
+      "conflicts": 3,
+      "duplicate_counts": {
+        "9efaf9b1-b39d-49c6-93f2-bc58e52387b0": 47
+      }
+    },
+    "ce0da565-da87-4a7d-9525-aa0cd7b3b75c": {
+      "non_conflicting": 2,
+      "conflicts": 1,
+      "duplicate_counts": {
+        "a1dacbc8-ab6a-40af-8146-b15d44a7aa81": 48
+      }
+    },
+    "d67ee0e3-6f30-4142-8209-cebbf309f40e": {
+      "non_conflicting": 0,
+      "conflicts": 0,
+      "duplicate_counts": {
+        "6bfbbd7b-40af-4cb7-89c5-095796f9d1a5": 44
+      }
+    },
+    "29dd2c96-6854-42dd-a84f-6344b49d7254": {
+      "non_conflicting": 3,
+      "conflicts": 3,
+      "duplicate_counts": {
+        "783f5ca8-dec8-4d72-bfc2-5196573942bb": 65
+      }
+    },
+    "20576ddd-8a2c-4aea-841e-da553b8a7ff1": {
+      "non_conflicting": 6,
+      "conflicts": 1,
+      "duplicate_counts": {
+        "53e716ed-49bf-4562-90e7-fc8c860cb985": 41
+      }
+    },
+    "887079fa-bb3e-480a-8202-e759afe63f1a": {
+      "non_conflicting": 10,
+      "conflicts": 4,
+      "duplicate_counts": {
+        "baf2e4e5-fd03-4301-8f99-4a92b03ba40e": 72
+      }
+    },
+    "739dfe4b-edac-49b1-86c3-3568a7c98492": {
+      "non_conflicting": 1,
+      "conflicts": 2,
+      "duplicate_counts": {
+        "95ae3b59-238c-4725-a2b0-d428d09bb82a": 36
+      }
+    },
+    "a63dbf2e-84ed-42a8-9a44-febfb57b4870": {
+      "non_conflicting": 7,
+      "conflicts": 10,
+      "duplicate_counts": {
+        "1905dba2-c408-48e9-aa4d-f47fec0a3835": 166
+      }
+    },
+    "53645e98-1dc3-4929-8ff9-c9e5e12455bb": {
+      "non_conflicting": 16,
+      "conflicts": 2,
+      "duplicate_counts": {
+        "866ae94f-6274-4f02-a4ab-42eec72381fb": 88
+      }
+    },
+    "d25dcaa4-66a0-412d-beee-ba799ead2f57": {
+      "non_conflicting": 5,
+      "conflicts": 5,
+      "duplicate_counts": {
+        "23e1b623-e3fa-4102-84ca-4b5b3862e6ed": 58
+      }
+    },
+    "06e54f95-6c95-4567-9fe4-6d5803e8c04d": {
+      "non_conflicting": 14,
+      "conflicts": 7,
+      "duplicate_counts": {
+        "dea7bb6f-ea6d-4ae8-a365-02c79b00970f": 56
+      }
+    },
+    "4e180507-c996-4766-979d-4af3221a68a3": {
+      "non_conflicting": 35,
+      "conflicts": 1,
+      "duplicate_counts": {
+        "88e95723-3beb-4dcb-ba4b-cf24b3b70565": 36
+      }
+    },
+    "32d3d4a1-c253-4883-86a5-0700d8cdc04a": {
+      "non_conflicting": 0,
+      "conflicts": 0,
+      "duplicate_counts": {
+        "910efdda-b8f9-42e4-9666-ce76cf8371bf": 0
+      }
+    },
+    "cb22100f-44c2-4b7d-b29f-46627a64355a": {
+      "non_conflicting": 6,
+      "conflicts": 6,
+      "duplicate_counts": {
+        "b4791435-f9a7-4fb3-ac5f-35f8c933e3fe": 66
+      }
+    }
+  },
+  "missing_labels": [],
+  "errors": []
+}
