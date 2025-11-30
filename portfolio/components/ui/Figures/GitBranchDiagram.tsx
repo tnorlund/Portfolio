@@ -23,9 +23,9 @@ const GitBranchDiagram: React.FC<GitBranchDiagramProps> = ({ enableAnimation = t
     setAnimationCycle((prev) => prev + 1);
   };
   // Animation timing constants
-  const CIRCLE_DURATION = 600;
-  const LINE_DURATION = 800;
-  const STAGGER = 300; // delay between each animation step
+  const CIRCLE_DURATION = 300;
+  const LINE_DURATION = 400;
+  const STAGGER = 150; // delay between each animation step
 
   // Animation delays for each step (in order)
   // Order: blue1 circle -> red1 circle -> red1 line -> red2 circle -> red2 line ->
