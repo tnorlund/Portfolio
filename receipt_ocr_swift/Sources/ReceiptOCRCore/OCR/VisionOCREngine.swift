@@ -140,35 +140,43 @@ private func performOCRSync(from imageURL: URL) throws -> [Line] {
         let lineText = candidate.string
 
         // Get character boxes from the observation
-        // characterBoxes is an array of CGRect that corresponds to each character in the recognized text
+        // Note: characterBoxes only includes boxes for visible glyphs (no spaces)
         let characterBoxes = obs.characterBoxes ?? []
 
         // Split line text into words
         let wordStrings = lineText.split(separator: " ").map { String($0) }
 
-        // Map characters to words based on text content
-        // characterBoxes array corresponds to characters in lineText (including spaces)
-        var charIndexInLine = 0
+        // Map characters to words using separate indices
+        // lineTextIndex: position in lineText (includes spaces)
+        // boxIndex: position in characterBoxes (no spaces, only visible glyphs)
+        var lineTextIndex = 0
+        var boxIndex = 0
         var words: [Word] = []
 
         for wordStr in wordStrings {
-            // Find character boxes for this word
-            // Skip spaces between words
-            while charIndexInLine < lineText.count &&
-                  charIndexInLine < characterBoxes.count &&
-                  lineText[lineText.index(lineText.startIndex, offsetBy: charIndexInLine)] == " " {
-                charIndexInLine += 1
+            // Skip spaces in lineText (advance lineTextIndex but not boxIndex)
+            while lineTextIndex < lineText.count {
+                let char = lineText[lineText.index(lineText.startIndex, offsetBy: lineTextIndex)]
+                if char == " " {
+                    lineTextIndex += 1
+                } else {
+                    break
+                }
             }
 
+            // Consume wordLength boxes from characterBoxes (starting at boxIndex)
             let wordLength = wordStr.count
             let wordCharBoxes: [CGRect]
-            if charIndexInLine + wordLength <= characterBoxes.count {
-                wordCharBoxes = Array(characterBoxes[charIndexInLine..<charIndexInLine + wordLength])
+            if boxIndex + wordLength <= characterBoxes.count {
+                wordCharBoxes = Array(characterBoxes[boxIndex..<boxIndex + wordLength])
+                boxIndex += wordLength
             } else {
                 // Fallback: use line bounding box if character boxes are not available
                 wordCharBoxes = []
             }
-            charIndexInLine += wordLength
+            
+            // Advance lineTextIndex past the word (spaces will be skipped in next iteration)
+            lineTextIndex += wordLength
 
             // Calculate word bounding box from character boxes
             let wordBoundingBox = wordCharBoxes.isEmpty ? obs.boundingBox : boundingBox(from: wordCharBoxes)
