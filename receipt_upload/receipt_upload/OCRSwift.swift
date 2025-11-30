@@ -1,5 +1,17 @@
 #!/usr/bin/env swift
 
+// NOTE: Code Duplication with VisionOCREngine.swift
+//
+// This file contains duplicated code (data models, helper functions, and OCR logic)
+// that also exists in receipt_ocr_swift/Sources/ReceiptOCRCore/OCR/VisionOCREngine.swift.
+//
+// This duplication is intentional due to different deployment targets:
+// - OCRSwift.swift: Standalone script executed directly by Python (no package dependencies)
+// - VisionOCREngine.swift: Part of Swift Package with AWS SDK dependencies (Soto, etc.)
+//
+// Future refactoring could extract shared code into a common Swift Package module if
+// deployment targets converge. For now, changes must be manually synchronized between files.
+
 import Foundation
 import AppKit
 import Vision
@@ -207,7 +219,7 @@ func performOCRSync(from imageURL: URL) throws -> [Line] {
                 // Fallback: use line bounding box if character boxes are not available
                 wordCharBoxes = []
             }
-            
+
             // Advance lineTextIndex past the word (spaces will be skipped in next iteration)
             lineTextIndex += wordLength
 
