@@ -411,7 +411,6 @@ const GitBranchDiagram: React.FC<GitBranchDiagramProps> = ({ enableAnimation = t
                 style={{
                   transform: blue1Circle.scale.to((s) => `scale(${s})`),
                   transformOrigin: "150px 25px",
-                  opacity: blue1Circle.opacity,
                 }}
               />
               {/* First red commit */}
@@ -423,7 +422,6 @@ const GitBranchDiagram: React.FC<GitBranchDiagramProps> = ({ enableAnimation = t
                 style={{
                   transform: red1Circle.scale.to((s) => `scale(${s})`),
                   transformOrigin: "237.81px 112.5px",
-                  opacity: red1Circle.opacity,
                 }}
               />
               {/* Second red commit */}
@@ -435,7 +433,6 @@ const GitBranchDiagram: React.FC<GitBranchDiagramProps> = ({ enableAnimation = t
                 style={{
                   transform: red2Circle.scale.to((s) => `scale(${s})`),
                   transformOrigin: "237.81px 200px",
-                  opacity: red2Circle.opacity,
                 }}
               />
               {/* Second blue commit */}
@@ -447,7 +444,6 @@ const GitBranchDiagram: React.FC<GitBranchDiagramProps> = ({ enableAnimation = t
                 style={{
                   transform: blue2Circle.scale.to((s) => `scale(${s})`),
                   transformOrigin: "150px 112.5px",
-                  opacity: blue2Circle.opacity,
                 }}
               />
               {/* Third blue commit */}
@@ -459,7 +455,6 @@ const GitBranchDiagram: React.FC<GitBranchDiagramProps> = ({ enableAnimation = t
                 style={{
                   transform: blue3Circle.scale.to((s) => `scale(${s})`),
                   transformOrigin: "150px 200px",
-                  opacity: blue3Circle.opacity,
                 }}
               />
               {/* Fourth blue commit */}
@@ -471,7 +466,6 @@ const GitBranchDiagram: React.FC<GitBranchDiagramProps> = ({ enableAnimation = t
                 style={{
                   transform: blue4Circle.scale.to((s) => `scale(${s})`),
                   transformOrigin: "150px 287.5px",
-                  opacity: blue4Circle.opacity,
                 }}
               />
               {/* Green commit */}
@@ -483,7 +477,6 @@ const GitBranchDiagram: React.FC<GitBranchDiagramProps> = ({ enableAnimation = t
                 style={{
                   transform: greenCircle.scale.to((s) => `scale(${s})`),
                   transformOrigin: "62.19px 375px",
-                  opacity: greenCircle.opacity,
                 }}
               />
             </svg>
@@ -614,7 +607,6 @@ const GitBranchDiagram: React.FC<GitBranchDiagramProps> = ({ enableAnimation = t
                 style={{
                   transform: blue1Circle.scale.to((s) => `scale(${s})`),
                   transformOrigin: "25px 125px",
-                  opacity: blue1Circle.opacity,
                 }}
               />
               {/* First red commit */}
@@ -626,7 +618,6 @@ const GitBranchDiagram: React.FC<GitBranchDiagramProps> = ({ enableAnimation = t
                 style={{
                   transform: red1Circle.scale.to((s) => `scale(${s})`),
                   transformOrigin: "112.5px 37.19px",
-                  opacity: red1Circle.opacity,
                 }}
               />
               {/* Second red commit */}
@@ -638,7 +629,6 @@ const GitBranchDiagram: React.FC<GitBranchDiagramProps> = ({ enableAnimation = t
                 style={{
                   transform: red2Circle.scale.to((s) => `scale(${s})`),
                   transformOrigin: "200px 37.19px",
-                  opacity: red2Circle.opacity,
                 }}
               />
               {/* Second blue commit */}
@@ -650,7 +640,6 @@ const GitBranchDiagram: React.FC<GitBranchDiagramProps> = ({ enableAnimation = t
                 style={{
                   transform: blue2Circle.scale.to((s) => `scale(${s})`),
                   transformOrigin: "112.5px 125px",
-                  opacity: blue2Circle.opacity,
                 }}
               />
               {/* Third blue commit */}
@@ -662,7 +651,6 @@ const GitBranchDiagram: React.FC<GitBranchDiagramProps> = ({ enableAnimation = t
                 style={{
                   transform: blue3Circle.scale.to((s) => `scale(${s})`),
                   transformOrigin: "200px 125px",
-                  opacity: blue3Circle.opacity,
                 }}
               />
               {/* Fourth blue commit */}
@@ -674,7 +662,6 @@ const GitBranchDiagram: React.FC<GitBranchDiagramProps> = ({ enableAnimation = t
                 style={{
                   transform: blue4Circle.scale.to((s) => `scale(${s})`),
                   transformOrigin: "287.5px 125px",
-                  opacity: blue4Circle.opacity,
                 }}
               />
               {/* Green commit */}
@@ -686,7 +673,6 @@ const GitBranchDiagram: React.FC<GitBranchDiagramProps> = ({ enableAnimation = t
                 style={{
                   transform: greenCircle.scale.to((s) => `scale(${s})`),
                   transformOrigin: "375px 212.81px",
-                  opacity: greenCircle.opacity,
                 }}
               />
             </svg>
@@ -724,7 +710,7 @@ const GitBranchDiagram: React.FC<GitBranchDiagramProps> = ({ enableAnimation = t
                 backgroundColor: "var(--color-red)",
               }}
             />
-            <span>Bug Fix</span>
+            <span>Feature A</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <div
@@ -735,7 +721,7 @@ const GitBranchDiagram: React.FC<GitBranchDiagramProps> = ({ enableAnimation = t
                 backgroundColor: "var(--color-green)",
               }}
             />
-            <span>Feature</span>
+            <span>Feature B</span>
           </div>
         </div>
       </div>
