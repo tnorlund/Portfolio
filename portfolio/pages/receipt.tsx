@@ -8,9 +8,11 @@ import styles from "../styles/Receipt.module.css";
 import AnimatedInView from "../components/ui/AnimatedInView";
 import {
   AddressSimilaritySideBySide,
+  CICDLoop,
   ClientImageCounts,
   ClientReceiptCounts,
   CodeBuildDiagram,
+  GitBranchDiagram,
   ImageStack,
   LabelValidationCount,
   LayoutLMInferenceVisualization,
@@ -29,16 +31,20 @@ import {
   ClaudeLogo,
   CursorLogo,
   DockerLogo,
+  ESLintLogo,
   GithubActionsLogo,
   GithubLogo,
   GoogleMapsLogo,
   HuggingFaceLogo,
+  JestLogo,
   LangChainLogo,
   OllamaLogo,
   OpenAILogo,
   PineconeLogo,
   PulumiLogo,
-  TerraformLogo,
+  PylintLogo,
+  PytestLogo,
+  TerraformLogo
 } from "../components/ui/Logos";
 
 interface ReceiptPageProps {
@@ -590,7 +596,7 @@ export default function ReceiptPage({
         faster.
       </p>
 
-      <h2>AI Hype</h2>
+      <h2>AI Might Actually Make You a Better Developer</h2>
 
       <p>
         I fell for it. I started this journey by using AI to write code. The
@@ -608,13 +614,140 @@ export default function ReceiptPage({
         </div>
       </ClientOnly>
 
-
-
-      <h2>Pulumi</h2>
+      <p>
+        Both these tools allow you to ask an agent to write code for you.
+        Sounds great, right? The issue came up when I looked at the thousands
+        of files, and I couldn&apos;t explain it, let alone trust it.
+      </p>
 
       <p>
-        I&apos;ve been able to iterate quickly using Pulumi&apos;s
-        Infrastructure as Code (IaC). Before, I would strictly use Terraform.
+        In comes GitHub. GitHub is how professionals store, version, and share
+        code.
+      </p>
+
+      <ClientOnly>
+        <AnimatedInView>
+          <GithubLogo />
+        </AnimatedInView>
+      </ClientOnly>
+
+      <p>
+        GitHub allows me to separate and structure my work into manageable
+        chunks. Each time I make a change, I upload it to GitHub and have
+        automated systems take control through GitHub Actions.
+      </p>
+
+      <ClientOnly>
+        <AnimatedInView>
+          <GithubActionsLogo />
+        </AnimatedInView>
+      </ClientOnly>
+
+      <p>
+        This process is commonly referred to as Continuous Integration and
+        Continuous Deployment (CI/CD). This inserts <i>automated</i>,{" "}
+        <i>measurable</i>{" "} quality checks into the development process.
+      </p>
+
+      <ClientOnly>
+        <div className={styles["logos-container"]}>
+          <AnimatedInView>
+            <CICDLoop />
+          </AnimatedInView>
+        </div>
+      </ClientOnly>
+
+      <p>
+        This &quot;best practice&quot; stops &quot;slop&quot; from reaching the
+        final product. The result is a disciplined loop where every mistake
+        becomes a new test or rule. The codebase stays healthy, and I can lean
+        on AI to write code faster than me.
+      </p>
+
+      <p>
+        Docker allows me to build my code into a container image. This allows
+        me to run the same code in the same environment even when the code runs
+        in the cloud.
+      </p>
+      <ClientOnly>
+        <AnimatedInView>
+          <DockerLogo />
+        </AnimatedInView>
+      </ClientOnly>
+
+      <p>
+        I've been able to speed up my build time by building the code in the
+        cloud. This allows me to have AI code something new, and build all the
+        different parts at the same time.
+      </p>
+
+      <ClientOnly>
+        <CodeBuildDiagram chars={codeBuildDiagramChars} />
+      </ClientOnly>
+
+      <p>
+        With the code built for the cloud, I can manually test it, but I want
+        to move fast. I use test-driven-development so that the "business
+        logic" is tested and working before I move on to the next feature.
+      </p>
+
+
+      <ClientOnly>
+        <div className={styles["logos-container"]}>
+          <AnimatedInView>
+            <PytestLogo />
+          </AnimatedInView>
+          <AnimatedInView>
+            <JestLogo />
+          </AnimatedInView>
+        </div>
+      </ClientOnly>
+
+      <p>
+        I test my python code with Pytest, and my TypeScript code with Jest.
+        This is not enough! I use linting to catch errors and enforce best
+        practices.
+      </p>
+
+      <ClientOnly>
+        <div className={styles["logos-container"]}>
+          <AnimatedInView>
+            <PylintLogo />
+          </AnimatedInView>
+          <AnimatedInView>
+            <ESLintLogo />
+          </AnimatedInView>
+        </div>
+      </ClientOnly>
+
+      <p>
+        These tests and linting allow me to keep the business logic working,
+        the codebase clean, and the allows the AI to read from a structured
+        codebase.
+      </p>
+
+      <p>
+        GitHub allows me to branch into isolated workspaces for each AI agent
+        to write code. These different branches are merged into a "main" branch
+        to release new features and bug fixes.
+      </p>
+
+      <ClientOnly>
+        <AnimatedInView>
+          <GitBranchDiagram />
+        </AnimatedInView>
+      </ClientOnly>
+
+
+      <p>
+        After merging a branch into main, GitHub Actions uses pulumi to deploy
+        the code to the cloud.
+      </p>
+      <p>
+        Pulumi allows me to write my infrastructure in Python. Not only am I
+        more comfortable with Python, but I can hack my way into making Pulumi
+        my own. Previously, I used Terraform. I don't think I'm going back to
+        it anytime soon.
       </p>
 
       <ClientOnly>
@@ -629,35 +762,21 @@ export default function ReceiptPage({
       </ClientOnly>
 
       <p>
-        Pulumi allows me to write my infrastructure in Python. Not only am I
-        more comfortable with Python, but I can hack my way into making Pulumi
-        my own. My docker builds were killing me with their 7 minute deploy
-        times.
+        With all of it released to the cloud, I monitor the AWS services using
+        CloudWatch and AI Agents using LangChain. The logs and metrics allow me
+        to see how the system is performing, and alert me if something is wrong.
       </p>
 
       <ClientOnly>
         <AnimatedInView>
-          <DockerLogo />
+          <LangChainLogo />
         </AnimatedInView>
       </ClientOnly>
 
       <p>
-        After asking around, I learned that the real pros are building and
-        deploying their containers in the cloud. I looked into CodeBuild and
-        CodePipeline, and wrote a new component that manages the
-        container-based lambda functions entirely in AWS. This allows me to
-        quickly iterate the infrastructure while not waiting on builds to
-        deploy.
-      </p>
-
-      <ClientOnly>
-        <CodeBuildDiagram chars={codeBuildDiagramChars} />
-      </ClientOnly>
-
-      <p>
-        This has allowed me to try something new <i>at scale</i> quickly. These
-        cheap tries are allowing me to &ldquo;skill-max&ldquo; my cloud
-        expertise.
+        All the insights from the monitoring are fed into the AI agent to help
+        me plan for new features and bug fixes. This plan is sent to a coding
+        agent to start the process over again.
       </p>
 
       <h2>Vector Embeddings</h2>
