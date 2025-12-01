@@ -137,10 +137,14 @@ private func performOCRSync(from imageURL: URL) throws -> [Line] {
     guard let nsImage = NSImage(contentsOf: imageURL) else { return [] }
     guard let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return [] }
 
+    // Set up the Vision request.
+    // NOTE: We use .accurate mode for better text recognition accuracy.
+    // Word-level bounding boxes work fine with .accurate mode using boundingBox(for: wordRange).
+    // Character-level boxes may have issues in .accurate mode, so we estimate them from word boxes.
     let requestHandler = VNImageRequestHandler(cgImage: cgImage, options: [:])
     let request = VNRecognizeTextRequest()
     request.recognitionLanguages = ["en_US"]
-    request.recognitionLevel = .accurate
+    request.recognitionLevel = .accurate  // Use .accurate for better text recognition
     request.usesLanguageCorrection = true
     try requestHandler.perform([request])
 
@@ -150,66 +154,56 @@ private func performOCRSync(from imageURL: URL) throws -> [Line] {
     for obs in observations {
         guard let candidate = obs.topCandidates(1).first else { continue }
         let lineText = candidate.string
+        let lineTextStartIndex = lineText.startIndex
 
-        // Get character boxes from the observation
-        // Note: characterBoxes only includes boxes for visible glyphs (no spaces)
-        let characterBoxes = obs.characterBoxes ?? []
-
-        // Split line text into words
-        let wordStrings = lineText.split(separator: " ").map { String($0) }
-
-        // Map characters to words using separate indices
-        // lineTextIndex: position in lineText (includes spaces)
-        // boxIndex: position in characterBoxes (no spaces, only visible glyphs)
-        var lineTextIndex = 0
-        var boxIndex = 0
+        // Split line text into words (preserving word positions in the line)
+        let wordStrings = lineText.split(separator: " ", omittingEmptySubsequences: false)
         var words: [Word] = []
+        var currentIndex = lineTextStartIndex
 
         for wordStr in wordStrings {
-            // Skip spaces in lineText (advance lineTextIndex but not boxIndex)
-            while lineTextIndex < lineText.count {
-                let char = lineText[lineText.index(lineText.startIndex, offsetBy: lineTextIndex)]
-                if char == " " {
-                    lineTextIndex += 1
-                } else {
-                    break
-                }
+            // Skip spaces before this word
+            while currentIndex < lineText.endIndex && lineText[currentIndex] == " " {
+                currentIndex = lineText.index(after: currentIndex)
             }
 
-            // Consume wordLength boxes from characterBoxes (starting at boxIndex)
-            let wordLength = wordStr.count
-            let wordCharBoxes: [CGRect]
-            if boxIndex + wordLength <= characterBoxes.count {
-                wordCharBoxes = Array(characterBoxes[boxIndex..<boxIndex + wordLength])
-                boxIndex += wordLength
-            } else {
-                // Fallback: use line bounding box if character boxes are not available
-                wordCharBoxes = []
+            // If we've reached the end or this is an empty word, skip
+            if currentIndex >= lineText.endIndex || wordStr.isEmpty {
+                continue
             }
 
-            // Advance lineTextIndex past the word (spaces will be skipped in next iteration)
-            lineTextIndex += wordLength
+            // Get the range for this word in the line text
+            let wordStartIndex = currentIndex
+            let wordEndIndex = lineText.index(wordStartIndex, offsetBy: wordStr.count)
+            let wordRange = wordStartIndex..<wordEndIndex
 
-            // Calculate word bounding box from character boxes
-            let wordBoundingBox = wordCharBoxes.isEmpty ? obs.boundingBox : boundingBox(from: wordCharBoxes)
+            // Get word bounding box using Vision API
+            // This works in both .accurate and .fast modes
+            let wordBoundingBox: CGRect
+            do {
+                wordBoundingBox = try candidate.boundingBox(for: wordRange)?.boundingBox ?? obs.boundingBox
+            } catch {
+                // Fallback to observation bounding box if range lookup fails
+                wordBoundingBox = obs.boundingBox
+            }
+
             let wordCorners = cornerPoints(from: wordBoundingBox)
 
-            // Create letters with individual character bounding boxes
+            // Get character bounding boxes for each letter in the word
+            // NOTE: In .accurate mode, character-level boundingBox(for:) may return identical boxes.
+            // We estimate letter boxes from the word box, which is more reliable.
             var letters: [Letter] = []
             for (letterIndex, char) in wordStr.enumerated() {
-                let letterBox: CGRect
-                if letterIndex < wordCharBoxes.count {
-                    letterBox = wordCharBoxes[letterIndex]
-                } else {
-                    // Fallback: estimate letter box from word box
-                    let letterWidth = wordBoundingBox.width / CGFloat(wordStr.count)
-                    letterBox = CGRect(
-                        x: wordBoundingBox.minX + CGFloat(letterIndex) * letterWidth,
-                        y: wordBoundingBox.minY,
-                        width: letterWidth,
-                        height: wordBoundingBox.height
-                    )
-                }
+                // Estimate letter box from word box (proportional distribution)
+                // This is more reliable than trying to get individual character boxes
+                let letterWidth = wordBoundingBox.width / CGFloat(wordStr.count)
+                let letterBox = CGRect(
+                    x: wordBoundingBox.minX + CGFloat(letterIndex) * letterWidth,
+                    y: wordBoundingBox.minY,
+                    width: letterWidth,
+                    height: wordBoundingBox.height
+                )
+
                 let letterCorners = cornerPoints(from: letterBox)
 
                 let letter = Letter(
@@ -226,9 +220,12 @@ private func performOCRSync(from imageURL: URL) throws -> [Line] {
                 letters.append(letter)
             }
 
+            // Advance past this word
+            currentIndex = wordEndIndex
+
             // Create word with proper bounding box
             let word = Word(
-                text: wordStr,
+                text: String(wordStr),
                 boundingBox: normalizedRect(from: wordBoundingBox),
                 topLeft: codablePoint(from: wordCorners.topLeft),
                 topRight: codablePoint(from: wordCorners.topRight),
