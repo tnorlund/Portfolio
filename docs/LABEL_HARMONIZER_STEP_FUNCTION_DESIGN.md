@@ -784,3 +784,4 @@ class LabelHarmonizerStepFunction(ComponentResource):
 8. [ ] Full integration test
 
 
+

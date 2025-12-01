@@ -100,3 +100,4 @@ The suggested labels are created with `validation_status="PENDING"` and will be:
 2. Harmonized by the Label Harmonizer
 3. Refined based on merchant patterns and consistency
 
+

@@ -184,3 +184,4 @@ similar_words = search_with_on_the_fly_embedding(
 ---
 
 **Note**: This PR enables on-the-fly embedding for agents while maintaining backward compatibility for queries. Existing embeddings will continue to work, and new embeddings will use the improved format.
+

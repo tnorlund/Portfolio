@@ -202,3 +202,4 @@ Consider moving from initial prompt to tool if:
 
 The key is to balance **performance** (fewer tool calls) with **flexibility** (agent can get additional context when needed).
 
+

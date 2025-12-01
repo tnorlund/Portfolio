@@ -451,7 +451,12 @@ def _combine_receipt_words_to_image_coords(
                         flip_y=True,  # Receipt coords are in OCR space (y=0 at bottom), need to flip to PIL space
                     )
                     centroid = word_copy.calculate_centroid()
+                    # After warp_transform, word_copy coordinates are always normalized (0-1) in image space
+                    # We always need to multiply by image_width/height to get pixel coordinates
+                    # The centroid check tells us if the word is within bounds (centroid <= 1.0) or outside (centroid > 1.0)
+                    # But regardless, we need to convert normalized coords to pixel coords
                     if centroid[0] <= 1.0 and centroid[1] <= 1.0:
+                        # Word is within image bounds - convert normalized to pixel
                         centroid_x = centroid[0] * image_width
                         centroid_y = centroid[1] * image_height
                         bounding_box = {
@@ -477,13 +482,32 @@ def _combine_receipt_words_to_image_coords(
                             "y": word_copy.bottom_right["y"] * image_height,
                         }
                     else:
-                        centroid_x = centroid[0]
-                        centroid_y = centroid[1]
-                        bounding_box = word_copy.bounding_box
-                        top_left = word_copy.top_left
-                        top_right = word_copy.top_right
-                        bottom_left = word_copy.bottom_left
-                        bottom_right = word_copy.bottom_right
+                        # Word is outside image bounds, but coordinates are still normalized
+                        # Convert normalized to pixel coordinates anyway
+                        centroid_x = centroid[0] * image_width
+                        centroid_y = centroid[1] * image_height
+                        bounding_box = {
+                            "x": word_copy.bounding_box["x"] * image_width,
+                            "y": word_copy.bounding_box["y"] * image_height,
+                            "width": word_copy.bounding_box["width"] * image_width,
+                            "height": word_copy.bounding_box["height"] * image_height,
+                        }
+                        top_left = {
+                            "x": word_copy.top_left["x"] * image_width,
+                            "y": word_copy.top_left["y"] * image_height,
+                        }
+                        top_right = {
+                            "x": word_copy.top_right["x"] * image_width,
+                            "y": word_copy.top_right["y"] * image_height,
+                        }
+                        bottom_left = {
+                            "x": word_copy.bottom_left["x"] * image_width,
+                            "y": word_copy.bottom_left["y"] * image_height,
+                        }
+                        bottom_right = {
+                            "x": word_copy.bottom_right["x"] * image_width,
+                            "y": word_copy.bottom_right["y"] * image_height,
+                        }
 
                     all_words.append({
                         "receipt_id": receipt_id,
@@ -506,7 +530,34 @@ def _combine_receipt_words_to_image_coords(
             continue
 
     all_words.sort(key=lambda w: (-w["centroid_y"], w["centroid_x"]))
-    return all_words
+
+    # Deduplicate words with identical coordinates (OCR duplicates)
+    # This handles cases where the same word was detected on multiple lines
+    # with identical bounding box coordinates
+    deduplicated_words = []
+    seen_coords = set()
+    for word in all_words:
+        # Create a coordinate signature for deduplication
+        # Use a small tolerance for floating point comparison (0.1 pixels)
+        coord_key = (
+            round(word["top_left"]["x"], 1),
+            round(word["top_left"]["y"], 1),
+            round(word["top_right"]["x"], 1),
+            round(word["top_right"]["y"], 1),
+            round(word["bottom_left"]["x"], 1),
+            round(word["bottom_left"]["y"], 1),
+            round(word["bottom_right"]["x"], 1),
+            round(word["bottom_right"]["y"], 1),
+            word["text"],  # Also include text to avoid deduplicating different words at same location
+        )
+
+        if coord_key not in seen_coords:
+            seen_coords.add(coord_key)
+            deduplicated_words.append(word)
+        # Skip duplicate - log if needed for debugging
+        # Note: We keep the first occurrence (already sorted by reading order)
+
+    return deduplicated_words
 
 
 def _combine_receipt_letters_to_image_coords(
@@ -555,7 +606,12 @@ def _combine_receipt_letters_to_image_coords(
                                 continue
 
                             centroid = letter_copy.calculate_centroid()
+                            # After warp_transform, letter_copy coordinates are always normalized (0-1) in image space
+                            # We always need to multiply by image_width/height to get pixel coordinates
+                            # The centroid check tells us if the letter is within bounds (centroid <= 1.0) or outside (centroid > 1.0)
+                            # But regardless, we need to convert normalized coords to pixel coords
                             if centroid[0] <= 1.0 and centroid[1] <= 1.0:
+                                # Letter is within image bounds - convert normalized to pixel
                                 centroid_x = centroid[0] * image_width
                                 centroid_y = centroid[1] * image_height
                                 bounding_box = {
@@ -581,13 +637,32 @@ def _combine_receipt_letters_to_image_coords(
                                     "y": letter_copy.bottom_right["y"] * image_height,
                                 }
                             else:
-                                centroid_x = centroid[0]
-                                centroid_y = centroid[1]
-                                bounding_box = letter_copy.bounding_box
-                                top_left = letter_copy.top_left
-                                top_right = letter_copy.top_right
-                                bottom_left = letter_copy.bottom_left
-                                bottom_right = letter_copy.bottom_right
+                                # Letter is outside image bounds, but coordinates are still normalized
+                                # Convert normalized to pixel coordinates anyway
+                                centroid_x = centroid[0] * image_width
+                                centroid_y = centroid[1] * image_height
+                                bounding_box = {
+                                    "x": letter_copy.bounding_box["x"] * image_width,
+                                    "y": letter_copy.bounding_box["y"] * image_height,
+                                    "width": letter_copy.bounding_box["width"] * image_width,
+                                    "height": letter_copy.bounding_box["height"] * image_height,
+                                }
+                                top_left = {
+                                    "x": letter_copy.top_left["x"] * image_width,
+                                    "y": letter_copy.top_left["y"] * image_height,
+                                }
+                                top_right = {
+                                    "x": letter_copy.top_right["x"] * image_width,
+                                    "y": letter_copy.top_right["y"] * image_height,
+                                }
+                                bottom_left = {
+                                    "x": letter_copy.bottom_left["x"] * image_width,
+                                    "y": letter_copy.bottom_left["y"] * image_height,
+                                }
+                                bottom_right = {
+                                    "x": letter_copy.bottom_right["x"] * image_width,
+                                    "y": letter_copy.bottom_right["y"] * image_height,
+                                }
 
                             all_letters.append({
                                 "receipt_id": receipt_id,

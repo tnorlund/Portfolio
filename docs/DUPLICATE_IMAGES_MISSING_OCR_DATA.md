@@ -197,3 +197,4 @@ Update the duplicate detection/processing logic to:
 - The issue appears to be in the duplicate handling logic, not in OCR processing itself
 
 
+

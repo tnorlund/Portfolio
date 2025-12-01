@@ -169,3 +169,4 @@ After cleanup:
 5. Verify ChromaDB has new embeddings
 6. Test similarity search with new embeddings
 
+
