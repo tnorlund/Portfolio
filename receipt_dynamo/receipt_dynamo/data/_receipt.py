@@ -341,7 +341,7 @@ class _Receipt(
         )
 
     @handle_dynamodb_errors("get_receipts_from_image")
-    def get_receipts_from_image(self, image_id: int) -> list[Receipt]:
+    def get_receipts_from_image(self, image_id: str) -> list[Receipt]:
         """List all receipts from an image using the GSI
 
         Args:

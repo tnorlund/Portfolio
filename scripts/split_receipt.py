@@ -8,9 +8,10 @@ This script:
 3. Creates new receipt records (saves locally first)
 4. Migrates ReceiptWordLabels
 5. Saves to DynamoDB (after local validation)
-6. Creates embeddings and CompactionRun directly (triggers compaction via streams)
-7. Waits for compaction to complete
-8. Adds labels (after embeddings exist in ChromaDB)
+6. Exports NDJSON files to S3 (matches upload process)
+7. Creates embeddings and CompactionRun directly (triggers compaction via streams)
+8. Waits for compaction to complete
+9. Adds labels (after embeddings exist in ChromaDB)
 
 Usage:
     python scripts/split_receipt.py \
@@ -55,11 +56,28 @@ from receipt_upload.cluster import (
     join_overlapping_clusters,
 )
 
+# Image processing imports (optional - will fail gracefully if not available)
+IMAGE_PROCESSING_AVAILABLE = False
+try:
+    from PIL import Image as PIL_Image
+    from receipt_upload.utils import (
+        download_image_from_s3,
+        upload_all_cdn_formats,
+        upload_png_to_s3,
+        calculate_sha256_from_bytes,
+    )
+    IMAGE_PROCESSING_AVAILABLE = True
+except ImportError:
+    pass
+
 
 def setup_environment() -> Dict[str, str]:
     """Load environment variables and return configuration dict."""
     table_name = os.environ.get("DYNAMODB_TABLE_NAME")
     chromadb_bucket = os.environ.get("CHROMADB_BUCKET")
+    artifacts_bucket = os.environ.get("ARTIFACTS_BUCKET")
+    site_bucket = os.environ.get("SITE_BUCKET")
+    raw_bucket = os.environ.get("RAW_BUCKET")
 
     # Try loading from Pulumi if not set
     try:
@@ -83,6 +101,25 @@ def setup_environment() -> Dict[str, str]:
             if chromadb_bucket:
                 os.environ["CHROMADB_BUCKET"] = chromadb_bucket
                 print(f"🗄️  ChromaDB Bucket (from Pulumi): {chromadb_bucket}")
+
+        if not artifacts_bucket:
+            artifacts_bucket = env.get("artifacts_bucket_name")
+            if artifacts_bucket:
+                os.environ["ARTIFACTS_BUCKET"] = artifacts_bucket
+                print(f"📦 Artifacts Bucket (from Pulumi): {artifacts_bucket}")
+
+        if not site_bucket:
+            # Try both export names (cdn_bucket_name is the Pulumi export)
+            site_bucket = env.get("cdn_bucket_name") or env.get("site_bucket_name")
+            if site_bucket:
+                os.environ["SITE_BUCKET"] = site_bucket
+                print(f"🌐 Site/CDN Bucket (from Pulumi): {site_bucket}")
+
+        if not raw_bucket:
+            raw_bucket = env.get("raw_bucket_name")
+            if raw_bucket:
+                os.environ["RAW_BUCKET"] = raw_bucket
+                print(f"📦 Raw Bucket (from Pulumi): {raw_bucket}")
     except Exception as e:
         print(f"⚠️  Could not load from Pulumi: {e}")
 
@@ -91,7 +128,10 @@ def setup_environment() -> Dict[str, str]:
 
     return {
         "table_name": table_name,
-        "chromadb_bucket": chromadb_bucket,
+        "chromadb_bucket": chromadb_bucket or "",
+        "artifacts_bucket": artifacts_bucket or "",
+        "site_bucket": site_bucket or "",
+        "raw_bucket": raw_bucket or "",
     }
 
 
@@ -187,27 +227,81 @@ def calculate_receipt_bounds(
     min_y = min(all_y_coords)  # Bottom in OCR space
     max_y = max(all_y_coords)  # Top in OCR space
 
-    padding_x = image_width * 0.02
-    padding_y = image_height * 0.02
-
+    # No padding - matches upload process (scan/photo don't add padding in normal case)
+    # Only photo fallback uses 10px fixed padding, but we're not in a fallback scenario
+    # Clamp to image bounds to ensure valid coordinates
     return {
         "top_left": {
-            "x": max(0, min_x - padding_x) / image_width,
-            "y": (max_y + padding_y) / image_height,
+            "x": max(0, min_x) / image_width,
+            "y": min(image_height, max_y) / image_height,  # Top in OCR space (larger y)
         },
         "top_right": {
-            "x": min(image_width, max_x + padding_x) / image_width,
-            "y": (max_y + padding_y) / image_height,
+            "x": min(image_width, max_x) / image_width,
+            "y": min(image_height, max_y) / image_height,  # Top in OCR space
         },
         "bottom_left": {
-            "x": max(0, min_x - padding_x) / image_width,
-            "y": (min_y - padding_y) / image_height,
+            "x": max(0, min_x) / image_width,
+            "y": max(0, min_y) / image_height,  # Bottom in OCR space (smaller y)
         },
         "bottom_right": {
-            "x": min(image_width, max_x + padding_x) / image_width,
-            "y": (min_y - padding_y) / image_height,
+            "x": min(image_width, max_x) / image_width,
+            "y": max(0, min_y) / image_height,  # Bottom in OCR space
         },
     }
+
+
+def create_split_receipt_image(
+    image: Any,
+    bounds: Dict[str, Any],
+    image_width: int,
+    image_height: int,
+) -> Optional[Any]:
+    """
+    Create a cropped image for a split receipt from the original image.
+
+    Args:
+        image: PIL Image object (the actual downloaded image)
+        bounds: Normalized coordinates (0-1) in OCR space (y=0 at bottom)
+        image_width: Width of the original image (used for coordinate conversion)
+        image_height: Height of the original image (used for coordinate conversion)
+
+    Returns:
+        Cropped PIL Image, or None if cropping fails
+    """
+    if not IMAGE_PROCESSING_AVAILABLE:
+        return None
+
+    try:
+        # Use actual image dimensions for clamping (in case they differ from stored dimensions)
+        actual_width = image.width
+        actual_height = image.height
+
+        # Convert normalized bounds to pixel coordinates
+        # Bounds are in OCR space (y=0 at bottom), convert to image space (y=0 at top) for PIL
+        # OCR_y = image_height - image_y, so image_y = image_height - OCR_y
+        top_left_x = int(bounds["top_left"]["x"] * image_width)
+        top_left_y = int(image_height - bounds["top_left"]["y"] * image_height)  # Top in OCR = convert to image space
+        bottom_right_x = int(bounds["bottom_right"]["x"] * image_width)
+        bottom_right_y = int(image_height - bounds["bottom_left"]["y"] * image_height)  # Bottom in OCR = convert to image space
+
+        # Clamp to actual image bounds (use actual image dimensions, not stored dimensions)
+        top_left_x = max(0, min(top_left_x, actual_width - 1))
+        top_left_y = max(0, min(top_left_y, actual_height - 1))
+        bottom_right_x = max(top_left_x + 1, min(bottom_right_x, actual_width))
+        bottom_right_y = max(top_left_y + 1, min(bottom_right_y, actual_height))
+
+        # Ensure valid crop region
+        if bottom_right_x <= top_left_x or bottom_right_y <= top_left_y:
+            print(f"⚠️  Invalid crop region: ({top_left_x}, {top_left_y}) to ({bottom_right_x}, {bottom_right_y})")
+            return None
+
+        cropped = image.crop((top_left_x, top_left_y, bottom_right_x, bottom_right_y))
+        return cropped
+    except Exception as e:
+        print(f"⚠️  Error creating receipt image: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
 
 
 def create_split_receipt_records(
@@ -222,6 +316,7 @@ def create_split_receipt_records(
     image_height: int,
     raw_bucket: str,
     site_bucket: str,
+    original_image: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """
     Create all DynamoDB entities for a split receipt.
@@ -256,13 +351,41 @@ def create_split_receipt_records(
         image_height,
     )
 
+    # Create receipt image and upload to CDN if original image is available
+    receipt_image = None
+    receipt_cdn_keys = {}
+    if original_image and IMAGE_PROCESSING_AVAILABLE:
+        receipt_image = create_split_receipt_image(
+            original_image,
+            bounds,
+            image_width,
+            image_height,
+        )
+        if receipt_image:
+            # Upload raw image to raw bucket
+            raw_s3_key = f"raw/{image_id}_RECEIPT_{new_receipt_id:05d}.png"
+            upload_png_to_s3(receipt_image, raw_bucket, raw_s3_key)
+
+            # Upload all CDN formats to site bucket (same pattern as upload workflow)
+            receipt_cdn_keys = upload_all_cdn_formats(
+                receipt_image,
+                site_bucket,
+                f"assets/{image_id}_RECEIPT_{new_receipt_id:05d}",
+                generate_thumbnails=True,
+            )
+
     # Calculate dimensions
-    receipt_width = max(1, int(round(
-        (bounds["bottom_right"]["x"] - bounds["top_left"]["x"]) * image_width
-    )))
-    receipt_height = max(1, int(round(
-        (bounds["top_left"]["y"] - bounds["bottom_left"]["y"]) * image_height
-    )))
+    if receipt_image:
+        receipt_width = receipt_image.width
+        receipt_height = receipt_image.height
+    else:
+        # Fallback to calculated dimensions if image not available
+        receipt_width = max(1, int(round(
+            (bounds["bottom_right"]["x"] - bounds["top_left"]["x"]) * image_width
+        )))
+        receipt_height = max(1, int(round(
+            (bounds["top_left"]["y"] - bounds["bottom_left"]["y"]) * image_height
+        )))
 
     # Create Receipt entity
     receipt = Receipt(
@@ -272,17 +395,28 @@ def create_split_receipt_records(
         height=receipt_height,
         timestamp_added=datetime.now(timezone.utc),
         raw_s3_bucket=raw_bucket,
-        raw_s3_key=f"raw/{image_id}_RECEIPT_{new_receipt_id:05d}.png",
+        raw_s3_key=f"raw/{image_id}_RECEIPT_{new_receipt_id:05d}.png" if receipt_image else "",
         top_left=bounds["top_left"],
         top_right=bounds["top_right"],
         bottom_left=bounds["bottom_left"],
         bottom_right=bounds["bottom_right"],
-        sha256=original_receipt.sha256,  # Copy from original
+        sha256=calculate_sha256_from_bytes(receipt_image.tobytes()) if receipt_image else original_receipt.sha256,
         cdn_s3_bucket=site_bucket,
-        # Copy CDN keys from original (will be updated if image is created)
-        cdn_s3_key=original_receipt.cdn_s3_key,
-        cdn_webp_s3_key=original_receipt.cdn_webp_s3_key,
-        cdn_avif_s3_key=original_receipt.cdn_avif_s3_key,
+        # Set CDN keys from uploaded image, or fallback to original (but only if new key exists)
+        cdn_s3_key=receipt_cdn_keys.get("jpeg") or original_receipt.cdn_s3_key,
+        cdn_webp_s3_key=receipt_cdn_keys.get("webp") or original_receipt.cdn_webp_s3_key,
+        # AVIF: Only use new key if it exists (not None), otherwise leave as None (don't use original)
+        # Note: If AVIF upload fails, receipt_cdn_keys.get("avif") will be None, so we leave it as None
+        cdn_avif_s3_key=receipt_cdn_keys.get("avif"),
+        cdn_thumbnail_s3_key=receipt_cdn_keys.get("jpeg_thumbnail"),
+        cdn_thumbnail_webp_s3_key=receipt_cdn_keys.get("webp_thumbnail"),
+        cdn_thumbnail_avif_s3_key=receipt_cdn_keys.get("avif_thumbnail"),
+        cdn_small_s3_key=receipt_cdn_keys.get("jpeg_small"),
+        cdn_small_webp_s3_key=receipt_cdn_keys.get("webp_small"),
+        cdn_small_avif_s3_key=receipt_cdn_keys.get("avif_small"),
+        cdn_medium_s3_key=receipt_cdn_keys.get("jpeg_medium"),
+        cdn_medium_webp_s3_key=receipt_cdn_keys.get("webp_medium"),
+        cdn_medium_avif_s3_key=receipt_cdn_keys.get("avif_medium"),
     )
 
     # Group words by line
@@ -560,6 +694,62 @@ def save_records_locally(
     print(f"💾 Saved records locally to: {image_dir}")
 
 
+def export_receipt_ndjson_to_s3(
+    client: DynamoClient,
+    artifacts_bucket: str,
+    image_id: str,
+    receipt_id: int,
+) -> None:
+    """
+    Export receipt lines and words to NDJSON files in S3.
+
+    This matches the upload workflow pattern from process_ocr_results.py.
+    The NDJSON files are exported for consistency and audit trail, even though
+    we're doing direct embedding instead of queue-based processing.
+    """
+    try:
+        import boto3
+
+        # Fetch authoritative words/lines from DynamoDB (just saved)
+        receipt_words = client.list_receipt_words_from_receipt(image_id, receipt_id)
+        receipt_lines = client.list_receipt_lines_from_receipt(image_id, receipt_id)
+
+        prefix = f"receipts/{image_id}/receipt-{receipt_id:05d}/"
+        lines_key = prefix + "lines.ndjson"
+        words_key = prefix + "words.ndjson"
+
+        # Serialize full dataclass objects so the consumer can rehydrate with
+        # ReceiptLine(**d)/ReceiptWord(**d) preserving geometry and methods
+        line_rows = [dict(l) for l in (receipt_lines or [])]
+        word_rows = [dict(w) for w in (receipt_words or [])]
+
+        # Upload NDJSON files to S3
+        s3_client = boto3.client("s3")
+
+        # Upload lines NDJSON
+        lines_ndjson_content = "\n".join(json.dumps(row, default=str) for row in line_rows)
+        s3_client.put_object(
+            Bucket=artifacts_bucket,
+            Key=lines_key,
+            Body=lines_ndjson_content.encode("utf-8"),
+            ContentType="application/x-ndjson",
+        )
+
+        # Upload words NDJSON
+        words_ndjson_content = "\n".join(json.dumps(row, default=str) for row in word_rows)
+        s3_client.put_object(
+            Bucket=artifacts_bucket,
+            Key=words_key,
+            Body=words_ndjson_content.encode("utf-8"),
+            ContentType="application/x-ndjson",
+        )
+
+    except Exception as e:
+        print(f"⚠️  Error exporting NDJSON for receipt {receipt_id}: {e}")
+        import traceback
+        traceback.print_exc()
+
+
 def create_embeddings_and_compaction_run(
     client: DynamoClient,
     chromadb_bucket: str,
@@ -790,8 +980,12 @@ def main():
         help="S3 bucket for raw images",
     )
     parser.add_argument(
+        "--artifacts-bucket",
+        help="S3 bucket for artifacts (NDJSON files) - auto-loaded from Pulumi if not provided",
+    )
+    parser.add_argument(
         "--site-bucket",
-        help="S3 bucket for site images",
+        help="S3 bucket for site/CDN images - auto-loaded from Pulumi if not provided (not currently used)",
     )
     parser.add_argument(
         "--dry-run",
@@ -816,6 +1010,13 @@ def main():
     if not chromadb_bucket and not args.skip_embedding:
         print(f"⚠️  CHROMADB_BUCKET not set; use --chromadb-bucket or --skip-embedding")
         chromadb_bucket = None
+
+    artifacts_bucket = args.artifacts_bucket or config.get("artifacts_bucket")
+    if not artifacts_bucket:
+        print(f"⚠️  ARTIFACTS_BUCKET not set; NDJSON export will be skipped")
+
+    site_bucket = args.site_bucket or config.get("site_bucket")
+    raw_bucket = args.raw_bucket or config.get("raw_bucket")
 
     image_id = args.image_id
     original_receipt_id = args.original_receipt_id
@@ -859,10 +1060,71 @@ def main():
         print(f"⚠️  Only {len(cluster_dict)} cluster(s) found - nothing to split!")
         return
 
+    # Download original image for creating receipt images
+    original_image = None
+    actual_image_width = image_entity.width
+    actual_image_height = image_entity.height
+
+    if IMAGE_PROCESSING_AVAILABLE and image_entity.raw_s3_bucket and image_entity.raw_s3_key:
+        try:
+            print(f"\n📥 Downloading original image for receipt image creation...")
+            image_bucket = raw_bucket or image_entity.raw_s3_bucket
+            image_path = download_image_from_s3(
+                image_bucket,
+                image_entity.raw_s3_key,
+                image_id,
+            )
+            original_image = PIL_Image.open(image_path)
+            actual_image_width = original_image.width
+            actual_image_height = original_image.height
+            print(f"   ✅ Loaded image: {actual_image_width}x{actual_image_height}")
+
+            # Verify dimensions match DynamoDB (warn if they don't)
+            if actual_image_width != image_entity.width or actual_image_height != image_entity.height:
+                print(f"⚠️  Image dimensions mismatch!")
+                print(f"   DynamoDB: {image_entity.width}x{image_entity.height}")
+                print(f"   Actual: {actual_image_width}x{actual_image_height}")
+                print(f"   Using actual image dimensions for calculations")
+        except Exception as e:
+            print(f"⚠️  Could not download original image: {e}")
+            print(f"   Receipt images will not be created, but data will still be split")
+            print(f"   Using DynamoDB dimensions: {actual_image_width}x{actual_image_height}")
+    elif not IMAGE_PROCESSING_AVAILABLE:
+        print(f"\n⚠️  Image processing not available (PIL not installed)")
+        print(f"   Receipt images will not be created, but data will still be split")
+        print(f"   Using DynamoDB dimensions: {actual_image_width}x{actual_image_height}")
+
+    # Find next available receipt ID (avoid conflicts with existing receipts)
+    print(f"\n🔍 Finding next available receipt ID...")
+    try:
+        # Try to get all receipts for this image
+        existing_receipts = client.get_receipts_from_image(image_id)
+        if existing_receipts:
+            max_receipt_id = max(r.receipt_id for r in existing_receipts)
+            new_receipt_id = max_receipt_id + 1
+            print(f"   Found {len(existing_receipts)} existing receipts, max ID: {max_receipt_id}")
+            print(f"   Starting new receipts at ID: {new_receipt_id}")
+        else:
+            new_receipt_id = 1
+            print(f"   No existing receipts found, starting at ID: 1")
+    except Exception as e:
+        # Fallback: start at a safe high number to avoid conflicts
+        print(f"   ⚠️  Could not query existing receipts: {e}")
+        print(f"   Starting at ID: 1000 (safe fallback to avoid conflicts)")
+        new_receipt_id = 1000
+
     # Create new receipt records
     print(f"\n📝 Creating new receipt records...")
     split_results = []
-    new_receipt_id = 1
+
+    # Determine buckets (use args, then config, then fallback to original receipt)
+    final_raw_bucket = raw_bucket or original_receipt.raw_s3_bucket or ""
+    final_site_bucket = site_bucket or original_receipt.cdn_s3_bucket or ""
+
+    if not final_raw_bucket:
+        raise ValueError("RAW_BUCKET not set - cannot create receipt images")
+    if not final_site_bucket:
+        raise ValueError("SITE_BUCKET not set - cannot upload receipt images to CDN")
 
     for cluster_id, cluster_lines in sorted(cluster_dict.items()):
         print(f"   Creating receipt {new_receipt_id} from cluster {cluster_id}...")
@@ -875,10 +1137,11 @@ def main():
             original_receipt_lines=original_receipt_lines,
             original_receipt_words=original_receipt_words,
             original_receipt_letters=original_receipt_letters,
-            image_width=image_entity.width,
-            image_height=image_entity.height,
-            raw_bucket=args.raw_bucket or original_receipt.raw_s3_bucket,
-            site_bucket=args.site_bucket or original_receipt.cdn_s3_bucket,
+            image_width=actual_image_width,  # Use actual image dimensions
+            image_height=actual_image_height,  # Use actual image dimensions
+            raw_bucket=final_raw_bucket,
+            site_bucket=final_site_bucket,
+            original_image=original_image,
         )
 
         # Migrate labels
@@ -922,6 +1185,20 @@ def main():
         # NOTE: Labels will be added AFTER compaction completes
 
         print(f"      ✅ Saved receipt {receipt.receipt_id}")
+
+    # Export NDJSON files to S3 (for consistency with upload process)
+    # This matches the upload workflow pattern from process_ocr_results.py
+    if artifacts_bucket:
+        print(f"\n📤 Exporting NDJSON files to S3...")
+        for result in split_results:
+            receipt_id = result["receipt"].receipt_id
+            export_receipt_ndjson_to_s3(
+                client,
+                artifacts_bucket,
+                image_id,
+                receipt_id,
+            )
+            print(f"   ✅ Exported NDJSON for receipt {receipt_id}")
 
     # Create embeddings and CompactionRun directly (no queue needed)
     compaction_completed = {}
@@ -982,24 +1259,37 @@ def main():
     # If compaction completed successfully, labels will update immediately
     # If compaction failed/timed out, labels will still be added and update when compaction completes later
     print(f"\n🏷️  Adding labels...")
+    # DynamoDB batch writes are limited to 25 items per request
+    # The add_receipt_word_labels method should handle chunking, but we'll chunk manually to be safe
+    CHUNK_SIZE = 25
     for result in split_results:
         receipt_id = result["receipt"].receipt_id
         if result["receipt_labels"]:
+            labels = result["receipt_labels"]
+            total_labels = len(labels)
+
+            # Chunk labels into batches of 25
+            for i in range(0, total_labels, CHUNK_SIZE):
+                chunk = labels[i:i + CHUNK_SIZE]
+                chunk_num = (i // CHUNK_SIZE) + 1
+                total_chunks = (total_labels + CHUNK_SIZE - 1) // CHUNK_SIZE
+
+                if receipt_id in compaction_completed:
+                    print(f"   Adding labels chunk {chunk_num}/{total_chunks} ({len(chunk)} labels) for receipt {receipt_id} (compaction completed)...")
+                    client.add_receipt_word_labels(chunk)
+                elif not args.skip_embedding:
+                    print(f"   Adding labels chunk {chunk_num}/{total_chunks} ({len(chunk)} labels) for receipt {receipt_id} (compaction pending)...")
+                    client.add_receipt_word_labels(chunk)
+                else:
+                    print(f"   Adding labels chunk {chunk_num}/{total_chunks} ({len(chunk)} labels) for receipt {receipt_id} (embedding skipped)...")
+                    client.add_receipt_word_labels(chunk)
+
             if receipt_id in compaction_completed:
-                print(f"   Adding {len(result['receipt_labels'])} labels for receipt {receipt_id} (compaction completed)...")
-                client.add_receipt_word_labels(result["receipt_labels"])
-                print(f"      ✅ Added labels (compaction run: {compaction_completed[receipt_id]})")
+                print(f"      ✅ Added {total_labels} labels (compaction run: {compaction_completed[receipt_id]})")
             elif not args.skip_embedding:
-                # Compaction was attempted but didn't complete - still add labels
-                # They'll update when compaction completes later
-                print(f"   Adding {len(result['receipt_labels'])} labels for receipt {receipt_id} (compaction pending)...")
-                client.add_receipt_word_labels(result["receipt_labels"])
-                print(f"      ✅ Added labels (will update when compaction completes)")
+                print(f"      ✅ Added {total_labels} labels (will update when compaction completes)")
             else:
-                # Embedding was skipped - add labels anyway
-                print(f"   Adding {len(result['receipt_labels'])} labels for receipt {receipt_id} (embedding skipped)...")
-                client.add_receipt_word_labels(result["receipt_labels"])
-                print(f"      ✅ Added labels (will update when embeddings are created)")
+                print(f"      ✅ Added {total_labels} labels (will update when embeddings are created)")
         else:
             print(f"   No labels to add for receipt {receipt_id}")
 

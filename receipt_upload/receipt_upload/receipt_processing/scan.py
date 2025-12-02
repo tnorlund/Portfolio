@@ -12,7 +12,10 @@ from receipt_dynamo.entities import Image, OCRJob, OCRRoutingDecision, Receipt
 from receipt_upload.cluster import (
     dbscan_lines_x_axis,
     join_overlapping_clusters,
+    merge_clusters_with_agent_logic,
     reorder_box_points,
+    should_apply_smart_merging,
+    split_clusters_by_angle_consistency,
 )
 from receipt_upload.geometry import box_points, invert_affine, min_area_rect
 from receipt_upload.ocr import process_ocr_dict_as_image
@@ -133,8 +136,27 @@ def process_scan(
     dynamo_client.add_words(ocr_words)
     dynamo_client.add_letters(ocr_letters)
 
-    # Get the average diagonal length of the lines
+    # Two-phase clustering approach for better handling of side-by-side receipts
+    # Phase 1: X-axis clustering (like before)
     cluster_dict = dbscan_lines_x_axis(ocr_lines)
+
+    # Phase 1b: Split clusters by angle consistency (prevents merging rotated receipts)
+    cluster_dict = split_clusters_by_angle_consistency(
+        cluster_dict,
+        angle_tolerance=3.0,  # degrees
+        min_samples=2,
+    )
+
+    # Phase 2: Smart merging using combine agent logic (only if needed)
+    # Fast heuristic to skip expensive merging when clustering looks good
+    if should_apply_smart_merging(cluster_dict, len(ocr_lines)):
+        cluster_dict = merge_clusters_with_agent_logic(
+            cluster_dict,
+            min_score=0.5,
+            x_proximity_threshold=0.4,  # Don't merge if >40% apart horizontally
+        )
+
+    # Final step: Join overlapping clusters (still useful for edge cases)
     cluster_dict = join_overlapping_clusters(
         cluster_dict, image.width, image.height, iou_threshold=0.01
     )
