@@ -132,18 +132,21 @@ def split_clusters_by_angle_consistency(
     cluster_dict: Dict[int, List[Line]],
     angle_tolerance: float = 3.0,
     min_samples: int = 2,
+    vertical_gap_threshold: float = 0.15,  # Split if vertical gap > 15% of image height
 ) -> Dict[int, List[Line]]:
     """
-    Phase 1: Split clusters by angle consistency.
+    Phase 1: Split clusters by angle consistency and spatial separation.
 
     This function takes clusters from X-axis DBSCAN and splits them if they
-    contain lines with significantly different angles. This prevents merging
-    side-by-side receipts that have different rotations.
+    contain lines with significantly different angles OR large vertical gaps.
+    This prevents merging side-by-side receipts that have different rotations,
+    and also prevents merging vertically separated lines with the same angle.
 
     Args:
         cluster_dict: Dictionary mapping cluster_id -> List[Line]
         angle_tolerance: Maximum angle difference within a cluster (degrees)
         min_samples: Minimum lines per cluster after splitting
+        vertical_gap_threshold: Maximum vertical gap within a cluster (normalized 0-1)
 
     Returns:
         New dictionary with potentially split clusters
@@ -161,7 +164,7 @@ def split_clusters_by_angle_consistency(
             next_cluster_id += 1
             continue
 
-        # Calculate angles for all lines in this cluster
+        # Calculate angles and positions for all lines in this cluster
         line_data = []
         for line in cluster_lines:
             angle = calculate_angle_from_corners(line)
@@ -170,6 +173,7 @@ def split_clusters_by_angle_consistency(
                 'line': line,
                 'angle': angle,
                 'x': x,
+                'y': y,
             })
 
         # Sort by X coordinate (maintain reading order)
@@ -183,9 +187,49 @@ def split_clusters_by_angle_consistency(
         max_angle_diff = max(angle_difference(a, mean_angle) for a in angles)
 
         if max_angle_diff <= angle_tolerance:
-            # All angles consistent - keep as single cluster
-            new_clusters[next_cluster_id] = cluster_lines
-            next_cluster_id += 1
+            # All angles consistent - check for large vertical gaps
+            # Sort by Y coordinate to find gaps
+            line_data_sorted_y = sorted(line_data, key=lambda ld: ld['y'])
+            y_positions = [ld['y'] for ld in line_data_sorted_y]
+
+            # Find largest vertical gap
+            max_vertical_gap = 0.0
+            for i in range(len(y_positions) - 1):
+                gap = y_positions[i + 1] - y_positions[i]
+                if gap > max_vertical_gap:
+                    max_vertical_gap = gap
+
+            if max_vertical_gap > vertical_gap_threshold:
+                # Large vertical gap - split by Y position
+                # Group lines that are close vertically
+                y_groups = []
+                current_y_group = [line_data_sorted_y[0]]
+
+                for i in range(1, len(line_data_sorted_y)):
+                    current_y = line_data_sorted_y[i]['y']
+                    prev_y = line_data_sorted_y[i - 1]['y']
+                    gap = current_y - prev_y
+
+                    if gap <= vertical_gap_threshold:
+                        current_y_group.append(line_data_sorted_y[i])
+                    else:
+                        # Large gap - start new group
+                        if len(current_y_group) >= min_samples:
+                            y_groups.append(current_y_group)
+                        current_y_group = [line_data_sorted_y[i]]
+
+                # Add last group
+                if len(current_y_group) >= min_samples:
+                    y_groups.append(current_y_group)
+
+                # Assign each Y group to a cluster
+                for y_group in y_groups:
+                    new_clusters[next_cluster_id] = [ld['line'] for ld in y_group]
+                    next_cluster_id += 1
+            else:
+                # No large gaps - keep as single cluster
+                new_clusters[next_cluster_id] = cluster_lines
+                next_cluster_id += 1
         else:
             # Angles inconsistent - split by angle
             # Group by angle similarity
@@ -211,12 +255,365 @@ def split_clusters_by_angle_consistency(
             if len(current_angle_group) >= min_samples:
                 angle_groups.append(current_angle_group)
 
-            # Assign each angle group to a cluster
+            # For each angle group, also check for vertical gaps and split if needed
             for angle_group in angle_groups:
-                new_clusters[next_cluster_id] = [ld['line'] for ld in angle_group]
-                next_cluster_id += 1
+                # Sort by Y coordinate to find gaps
+                angle_group_sorted_y = sorted(angle_group, key=lambda ld: ld['y'])
+                y_positions = [ld['y'] for ld in angle_group_sorted_y]
+
+                # Find largest vertical gap
+                max_vertical_gap = 0.0
+                for i in range(len(y_positions) - 1):
+                    gap = y_positions[i + 1] - y_positions[i]
+                    if gap > max_vertical_gap:
+                        max_vertical_gap = gap
+
+                if max_vertical_gap > vertical_gap_threshold:
+                    # Split by Y position within this angle group
+                    y_groups = []
+                    current_y_group = [angle_group_sorted_y[0]]
+
+                    for i in range(1, len(angle_group_sorted_y)):
+                        current_y = angle_group_sorted_y[i]['y']
+                        prev_y = angle_group_sorted_y[i - 1]['y']
+                        gap = current_y - prev_y
+
+                        if gap <= vertical_gap_threshold:
+                            current_y_group.append(angle_group_sorted_y[i])
+                        else:
+                            if len(current_y_group) >= min_samples:
+                                y_groups.append(current_y_group)
+                            current_y_group = [angle_group_sorted_y[i]]
+
+                    if len(current_y_group) >= min_samples:
+                        y_groups.append(current_y_group)
+
+                    # Assign each Y group to a cluster
+                    for y_group in y_groups:
+                        new_clusters[next_cluster_id] = [ld['line'] for ld in y_group]
+                        next_cluster_id += 1
+                else:
+                    # No large gaps - keep angle group as single cluster
+                    new_clusters[next_cluster_id] = [ld['line'] for ld in angle_group]
+                    next_cluster_id += 1
 
     return new_clusters
+
+
+def find_vertical_stacks(
+    lines: List[Line],
+    vertical_gap_threshold: float = 0.08,  # 8% of image height
+) -> List[List[Line]]:
+    """
+    Find vertical stacks (columns) of lines that are stacked on top of each other.
+
+    Lines in a receipt should be vertically stacked - one on top of another.
+    This function groups lines that form vertical sequences.
+
+    Args:
+        lines: List of lines to analyze
+        vertical_gap_threshold: Maximum gap between consecutive lines in a stack
+
+    Returns:
+        List of line groups, where each group is a vertical stack
+    """
+    if not lines:
+        return []
+
+    # Sort lines by Y coordinate (top to bottom)
+    lines_sorted = sorted(lines, key=lambda l: l.calculate_centroid()[1])
+
+    stacks = []
+    current_stack = [lines_sorted[0]]
+
+    for i in range(1, len(lines_sorted)):
+        current_line = lines_sorted[i]
+        prev_line = lines_sorted[i - 1]
+
+        current_y = current_line.calculate_centroid()[1]
+        prev_y = prev_line.calculate_centroid()[1]
+        gap = current_y - prev_y
+
+        if gap <= vertical_gap_threshold:
+            # Continue current stack
+            current_stack.append(current_line)
+        else:
+            # Start new stack
+            if len(current_stack) >= 2:  # Only keep stacks with 2+ lines
+                stacks.append(current_stack)
+            current_stack = [current_line]
+
+    # Add last stack
+    if len(current_stack) >= 2:
+        stacks.append(current_stack)
+
+    return stacks
+
+
+def reassign_lines_by_x_proximity(
+    cluster_dict: Dict[int, List[Line]],
+    x_proximity_threshold: float = 0.1,  # 10% of image width
+    y_proximity_threshold: float = 0.15,  # 15% of image height - lines must be in similar Y region
+) -> Dict[int, List[Line]]:
+    """
+    Reassign lines to clusters based on X-coordinate proximity within similar Y regions.
+
+    After angle splitting, some lines may have similar angles to one receipt but
+    be horizontally (X) closer to another receipt. This function checks if a line
+    is X-closer to lines in another cluster within a similar Y region, and
+    reassigns it if so.
+
+    This fixes cases where:
+    - A line has a similar angle to receipt A
+    - But is horizontally closer to receipt B (within the same Y region)
+    - The line should belong to receipt B
+
+    Args:
+        cluster_dict: Dictionary mapping cluster_id -> List[Line]
+        x_proximity_threshold: Maximum X-distance to consider lines as belonging
+            to the same receipt (normalized 0-1)
+        y_proximity_threshold: Maximum Y-distance to consider lines as being
+            in the same vertical region (normalized 0-1)
+
+    Returns:
+        New dictionary with reassigned clusters
+    """
+    if not cluster_dict or len(cluster_dict) < 2:
+        return cluster_dict
+
+    # Create a working copy
+    reassigned_clusters = {
+        cluster_id: lines[:] for cluster_id, lines in cluster_dict.items()
+    }
+
+    # For each cluster, check if any lines should be reassigned
+    for cluster_id, cluster_lines in list(reassigned_clusters.items()):
+        lines_to_remove = []
+
+        for line in cluster_lines:
+            line_x, line_y = line.calculate_centroid()
+
+            # Find the closest cluster by X-distance within similar Y region
+            best_cluster_id = None
+            min_x_distance = float('inf')
+
+            for other_cluster_id, other_cluster_lines in reassigned_clusters.items():
+                if other_cluster_id == cluster_id:
+                    continue
+
+                # Check X-distance to lines in this cluster that are in similar Y region
+                for other_line in other_cluster_lines:
+                    other_x, other_y = other_line.calculate_centroid()
+
+                    # Check if lines are in similar Y region
+                    y_distance = abs(line_y - other_y)
+                    if y_distance > y_proximity_threshold:
+                        continue  # Skip if not in similar Y region
+
+                    # Check X-distance
+                    x_distance = abs(line_x - other_x)
+                    if x_distance < min_x_distance:
+                        min_x_distance = x_distance
+                        best_cluster_id = other_cluster_id
+
+            # Calculate average X-distance to lines in current cluster (within Y region)
+            current_cluster_x_distances = []
+            for other_line in cluster_lines:
+                if other_line.line_id == line.line_id:
+                    continue
+                other_x, other_y = other_line.calculate_centroid()
+                y_distance = abs(line_y - other_y)
+                if y_distance <= y_proximity_threshold:
+                    x_distance = abs(line_x - other_x)
+                    current_cluster_x_distances.append(x_distance)
+
+            avg_current_x_distance = (
+                sum(current_cluster_x_distances) / len(current_cluster_x_distances)
+                if current_cluster_x_distances else float('inf')
+            )
+
+            # Reassign if:
+            # 1. Found a closer cluster by X-distance
+            # 2. The X-distance is significantly closer (at least 2x closer)
+            # 3. The X-distance is within threshold
+            if (best_cluster_id is not None and
+                min_x_distance < avg_current_x_distance / 2.0 and
+                min_x_distance <= x_proximity_threshold):
+                lines_to_remove.append(line)
+                reassigned_clusters[best_cluster_id].append(line)
+
+        # Remove reassigned lines from original cluster
+        for line in lines_to_remove:
+            reassigned_clusters[cluster_id].remove(line)
+
+    # Remove empty clusters
+    reassigned_clusters = {
+        cluster_id: lines
+        for cluster_id, lines in reassigned_clusters.items()
+        if len(lines) > 0
+    }
+
+    return reassigned_clusters
+
+
+def reassign_lines_by_vertical_proximity(
+    cluster_dict: Dict[int, List[Line]],
+    vertical_proximity_threshold: float = 0.05,  # 5% of image height
+    vertical_stack_gap: float = 0.08,  # 8% of image height for stack detection
+    x_proximity_threshold: float = 0.1,  # 10% of image width - must be horizontally close
+) -> Dict[int, List[Line]]:
+    """
+    Reassign lines to clusters based on vertical stacking.
+
+    This function identifies vertical "stacks" (columns) of lines within each
+    cluster. Lines that are not part of a vertical stack in their current
+    cluster but are part of a vertical stack in another cluster are reassigned.
+
+    IMPORTANT: Also checks X-proximity to prevent reassigning lines from
+    side-by-side receipts that happen to be vertically aligned.
+
+    Args:
+        cluster_dict: Dictionary mapping cluster_id -> List[Line]
+        vertical_proximity_threshold: Maximum vertical distance to consider
+            a line as part of a stack (normalized 0-1)
+        vertical_stack_gap: Maximum gap between consecutive lines in a stack
+        x_proximity_threshold: Maximum X-distance to allow reassignment
+            (normalized 0-1) - prevents reassigning lines from side-by-side receipts
+
+    Returns:
+        New dictionary with reassigned clusters
+    """
+    if not cluster_dict or len(cluster_dict) < 2:
+        return cluster_dict
+
+    # Create a working copy
+    reassigned_clusters = {
+        cluster_id: lines[:] for cluster_id, lines in cluster_dict.items()
+    }
+
+    # Find vertical stacks in each cluster
+    cluster_stacks = {}
+    for cluster_id, cluster_lines in reassigned_clusters.items():
+        stacks = find_vertical_stacks(cluster_lines, vertical_stack_gap)
+        cluster_stacks[cluster_id] = stacks
+
+    # For each cluster, check if any lines should be reassigned
+    for cluster_id, cluster_lines in list(reassigned_clusters.items()):
+        lines_to_remove = []
+
+        # Get stacks in current cluster
+        current_stacks = cluster_stacks[cluster_id]
+
+        for line in cluster_lines:
+            line_x, line_y = line.calculate_centroid()
+
+            # Check if this line is part of a vertical stack in current cluster
+            is_in_current_stack = False
+            for stack in current_stacks:
+                if line in stack:
+                    is_in_current_stack = True
+                    break
+
+            # If line is already in a stack in current cluster, keep it
+            if is_in_current_stack:
+                continue
+
+            # Line is isolated - check if it's part of a stack in another cluster
+            # First, calculate average X-distance to lines in current cluster
+            current_cluster_x_distances = []
+            for other_line in cluster_lines:
+                if other_line.line_id == line.line_id:
+                    continue
+                other_x, other_y = other_line.calculate_centroid()
+                y_distance = abs(line_y - other_y)
+                if y_distance <= vertical_proximity_threshold:  # Only consider lines in similar Y region
+                    x_distance = abs(line_x - other_x)
+                    current_cluster_x_distances.append(x_distance)
+            avg_current_x_distance = (
+                sum(current_cluster_x_distances) / len(current_cluster_x_distances)
+                if current_cluster_x_distances
+                else float('inf')
+            )
+
+            best_cluster_id = None
+            best_stack_score = 0.0  # Number of lines in the stack it would join
+            best_x_distance = float('inf')
+
+            for other_cluster_id, other_cluster_lines in reassigned_clusters.items():
+                if other_cluster_id == cluster_id:
+                    continue
+
+                # Check if line would be part of a vertical stack in this cluster
+                other_stacks = cluster_stacks[other_cluster_id]
+                for stack in other_stacks:
+                    # Check X-proximity first - if lines are horizontally far apart, skip
+                    stack_xs = [l.calculate_centroid()[0] for l in stack]
+                    avg_stack_x = sum(stack_xs) / len(stack_xs) if stack_xs else 0
+                    x_distance = abs(line_x - avg_stack_x)
+
+                    if x_distance > x_proximity_threshold:
+                        continue  # Skip if horizontally too far apart
+
+                    # Only reassign if the line is CLOSER to the other cluster than to its current cluster
+                    if x_distance >= avg_current_x_distance:
+                        continue  # Skip if not closer to the other cluster
+
+                    # Check if line is vertically close to this stack
+                    stack_ys = [l.calculate_centroid()[1] for l in stack]
+                    min_stack_distance = min(abs(line_y - stack_y) for stack_y in stack_ys)
+
+                    if min_stack_distance <= vertical_proximity_threshold:
+                        # Line is close to this stack - check if it fits in the sequence
+                        # (i.e., it's between two lines or at the top/bottom)
+                        stack_ys_sorted = sorted(stack_ys)
+
+                        # Check if line fits in the vertical sequence
+                        fits_in_sequence = False
+                        if line_y < stack_ys_sorted[0]:
+                            # Line is above the stack
+                            gap = stack_ys_sorted[0] - line_y
+                            if gap <= vertical_stack_gap:
+                                fits_in_sequence = True
+                        elif line_y > stack_ys_sorted[-1]:
+                            # Line is below the stack
+                            gap = line_y - stack_ys_sorted[-1]
+                            if gap <= vertical_stack_gap:
+                                fits_in_sequence = True
+                        else:
+                            # Line is between stack lines - check if it fits
+                            for i in range(len(stack_ys_sorted) - 1):
+                                if stack_ys_sorted[i] <= line_y <= stack_ys_sorted[i + 1]:
+                                    gap_before = line_y - stack_ys_sorted[i]
+                                    gap_after = stack_ys_sorted[i + 1] - line_y
+                                    if gap_before <= vertical_stack_gap and gap_after <= vertical_stack_gap:
+                                        fits_in_sequence = True
+                                    break
+
+                        if fits_in_sequence:
+                            # Prefer stacks with more lines, but also consider X-distance
+                            # If stacks have similar sizes, prefer the one that's closer horizontally
+                            if len(stack) > best_stack_score or (len(stack) == best_stack_score and x_distance < best_x_distance):
+                                best_stack_score = len(stack)
+                                best_x_distance = x_distance
+                                best_cluster_id = other_cluster_id
+
+            # Only reassign if line fits into a stack in another cluster
+            if best_cluster_id is not None and best_stack_score >= 2:
+                lines_to_remove.append(line)
+                reassigned_clusters[best_cluster_id].append(line)
+
+        # Remove reassigned lines from original cluster
+        for line in lines_to_remove:
+            reassigned_clusters[cluster_id].remove(line)
+
+    # Remove empty clusters
+    reassigned_clusters = {
+        cluster_id: lines
+        for cluster_id, lines in reassigned_clusters.items()
+        if len(lines) > 0
+    }
+
+    return reassigned_clusters
 
 
 def evaluate_receipt_completeness(lines: List[Line]) -> Dict[str, float]:
@@ -569,11 +966,15 @@ def join_overlapping_clusters(
     image_width: int,
     image_height: int,
     iou_threshold: float = 0.01,
+    x_proximity_threshold: float = 0.3,  # 30% of image width - don't merge if too far apart horizontally
 ) -> Dict[int, List[Line]]:
     """
     Merge clusters whose bounding boxes overlap above the given iou_threshold.
     This returns a new dictionary of cluster_id -> List[Line] with no overlaps.
     We ignore cluster_id == -1 (noise).
+
+    IMPORTANT: Also checks X-proximity to prevent merging side-by-side receipts
+    that happen to have overlapping bounding boxes.
     """
     # Step 1: Collect valid cluster_ids (excluding -1)
     valid_cluster_ids = [cid for cid in cluster_dict.keys() if cid != -1]
@@ -725,10 +1126,26 @@ def join_overlapping_clusters(
         return iou > threshold
 
     # Step 4: Compare every pair of clusters and merge if they overlap
+    # BUT also check X-proximity to prevent merging side-by-side receipts
     all_ids = list(cluster_bboxes.keys())
     for i, cid_a in enumerate(all_ids):
         for j in range(i + 1, len(all_ids)):
             cid_b = all_ids[j]
+
+            # Check X-proximity first - if clusters are horizontally far apart, skip
+            lines_a = cluster_dict[cid_a]
+            lines_b = cluster_dict[cid_b]
+            x_coords_a = [line.calculate_centroid()[0] for line in lines_a]
+            x_coords_b = [line.calculate_centroid()[0] for line in lines_b]
+            mean_x_a = sum(x_coords_a) / len(x_coords_a) if x_coords_a else 0
+            mean_x_b = sum(x_coords_b) / len(x_coords_b) if x_coords_b else 0
+            x_proximity = abs(mean_x_a - mean_x_b)
+
+            # Skip if too far apart horizontally (likely different receipts)
+            if x_proximity > x_proximity_threshold:
+                continue
+
+            # Only merge if bounding boxes overlap AND clusters are horizontally close
             if boxes_overlap(
                 cluster_bboxes[cid_a], cluster_bboxes[cid_b], iou_threshold
             ):

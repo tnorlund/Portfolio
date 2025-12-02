@@ -23,6 +23,7 @@ Usage:
 
 import argparse
 import json
+import math
 import os
 import sys
 from collections import defaultdict
@@ -58,6 +59,8 @@ except ImportError:
 from receipt_upload.cluster import (
     dbscan_lines_x_axis,
     split_clusters_by_angle_consistency,
+    reassign_lines_by_x_proximity,
+    reassign_lines_by_vertical_proximity,
     merge_clusters_with_agent_logic,
     should_apply_smart_merging,
     join_overlapping_clusters,
@@ -146,34 +149,120 @@ def recluster_receipt_lines(
     image_lines: List[Line],
     image_width: int,
     image_height: int,
+    x_eps: float = 0.08,  # Default epsilon (can be adjusted if needed)
 ) -> Dict[int, List[Line]]:
     """
     Re-cluster lines using two-phase approach.
 
     Returns cluster_id -> List[Line] mapping.
-    """
-    # Phase 1: X-axis clustering
-    cluster_dict = dbscan_lines_x_axis(image_lines)
+    Includes ALL lines, even noise lines (assigned to nearest cluster).
 
-    # Phase 1b: Split by angle consistency
+    Args:
+        image_lines: List of image-level Line entities
+        image_width: Image width in pixels
+        image_height: Image height in pixels
+        x_eps: Epsilon for X-axis DBSCAN (default 0.04 = 4% of image width, tighter than default 0.08)
+    """
+    # Phase 1: X-axis clustering with tighter epsilon
+    cluster_dict = dbscan_lines_x_axis(image_lines, eps=x_eps)
+
+    # Phase 1b: Split by angle consistency and vertical gaps
     cluster_dict = split_clusters_by_angle_consistency(
         cluster_dict,
         angle_tolerance=3.0,
         min_samples=2,
+        vertical_gap_threshold=0.15,  # Split if vertical gap > 15% of image height
+    )
+
+    # Phase 1c: Reassign lines by X-proximity within similar Y regions
+    # This fixes lines that have similar angles to one receipt but are
+    # horizontally closer to another receipt (like the "A" line)
+    cluster_dict = reassign_lines_by_x_proximity(
+        cluster_dict,
+        x_proximity_threshold=0.1,  # 10% of image width
+        y_proximity_threshold=0.15,  # 15% of image height - must be in similar Y region
+    )
+
+    # Phase 1d: Reassign lines by vertical proximity (vertical stacking)
+    # This fixes lines that were incorrectly grouped by X-coordinate
+    # but should belong to a different receipt based on vertical alignment
+    cluster_dict = reassign_lines_by_vertical_proximity(
+        cluster_dict,
+        vertical_proximity_threshold=0.05,  # 5% of image height
+        x_proximity_threshold=0.1,  # 10% of image width - must be horizontally close
     )
 
     # Phase 2: Smart merging (if needed)
+    # This should merge the 8 clusters into 2 receipts based on spatial coherence
     if should_apply_smart_merging(cluster_dict, len(image_lines)):
         cluster_dict = merge_clusters_with_agent_logic(
             cluster_dict,
             min_score=0.5,
-            x_proximity_threshold=0.4,
+            x_proximity_threshold=0.4,  # Don't merge if >40% apart horizontally
         )
 
-    # Final: Join overlapping clusters
-    cluster_dict = join_overlapping_clusters(
-        cluster_dict, image_width, image_height, iou_threshold=0.01
-    )
+    # Final: Join overlapping clusters (skip if we already have 2 clusters)
+    # Only merge if there's significant overlap and we have more than 2 clusters
+    # Also check X-proximity to prevent merging side-by-side receipts
+    if len(cluster_dict) > 2:
+        cluster_dict = join_overlapping_clusters(
+            cluster_dict,
+            image_width,
+            image_height,
+            iou_threshold=0.1,
+            x_proximity_threshold=0.3,  # Don't merge if >30% apart horizontally
+        )
+
+    # Post-processing: Assign any unassigned lines to nearest cluster
+    # This ensures ALL lines are included, even noise lines
+    all_clustered_line_ids = set()
+    for cluster_lines in cluster_dict.values():
+        for line in cluster_lines:
+            all_clustered_line_ids.add(line.line_id)
+
+    unassigned_lines = [
+        line for line in image_lines if line.line_id not in all_clustered_line_ids
+    ]
+
+    if unassigned_lines:
+        # Assign each unassigned line to the nearest cluster based on 2D distance (X and Y)
+        # This is better than just X-coordinate for handling axis-aligned lines
+        for unassigned_line in unassigned_lines:
+            unassigned_centroid = unassigned_line.calculate_centroid()
+            unassigned_x, unassigned_y = unassigned_centroid
+
+            # Find nearest cluster by 2D Euclidean distance
+            nearest_cluster_id = None
+            min_distance = float('inf')
+
+            for cluster_id, cluster_lines in cluster_dict.items():
+                # Calculate cluster centroid (mean X and Y)
+                cluster_x_coords = [
+                    line.calculate_centroid()[0] for line in cluster_lines
+                ]
+                cluster_y_coords = [
+                    line.calculate_centroid()[1] for line in cluster_lines
+                ]
+                if cluster_x_coords and cluster_y_coords:
+                    cluster_mean_x = sum(cluster_x_coords) / len(cluster_x_coords)
+                    cluster_mean_y = sum(cluster_y_coords) / len(cluster_y_coords)
+
+                    # 2D Euclidean distance
+                    dx = unassigned_x - cluster_mean_x
+                    dy = unassigned_y - cluster_mean_y
+                    distance = math.sqrt(dx * dx + dy * dy)
+
+                    if distance < min_distance:
+                        min_distance = distance
+                        nearest_cluster_id = cluster_id
+
+            # Assign to nearest cluster (or create new cluster if none exist)
+            if nearest_cluster_id is not None:
+                cluster_dict[nearest_cluster_id].append(unassigned_line)
+            else:
+                # No clusters exist, create a new one
+                new_cluster_id = max(cluster_dict.keys()) + 1 if cluster_dict else 1
+                cluster_dict[new_cluster_id] = [unassigned_line]
 
     return cluster_dict
 
