@@ -388,6 +388,9 @@ upload_images = UploadImages(
 
 pulumi.export("ocr_job_queue_url", upload_images.ocr_queue.url)
 pulumi.export("ocr_results_queue_url", upload_images.ocr_results_queue.url)
+pulumi.export("artifacts_bucket_name", upload_images.artifacts_bucket.bucket)
+pulumi.export("chromadb_bucket_name", embedding_infrastructure.chromadb_buckets.bucket_name)
+# Note: embed_ndjson_queue_url not exported - scripts embed directly and create CompactionRun
 
 # ML Training Infrastructure
 # -------------------------
