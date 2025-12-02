@@ -95,10 +95,27 @@ def visualize_clustering_phases(
     original_receipt = client.get_receipt(image_id, receipt_id)
     image_lines = client.list_lines_from_image(image_id)
 
-    # Download original image
-    original_image = get_image_from_s3(
-        raw_bucket, image_entity.raw_s3_key
-    )
+    # Download original image from S3
+    # Try raw_s3_key first, fall back to CDN image, then blank image
+    original_image = None
+    s3_key = image_entity.raw_s3_key if image_entity.raw_s3_key else f"raw/{image_id}.png"
+    try:
+        original_image = get_image_from_s3(raw_bucket, s3_key)
+        print(f"✅ Loaded image from raw S3: {s3_key}")
+    except Exception as e:
+        print(f"⚠️  Could not load image from raw S3 key '{s3_key}' in bucket '{raw_bucket}': {e}")
+        # Try CDN image as fallback
+        if image_entity.cdn_s3_bucket and image_entity.cdn_s3_key:
+            try:
+                print(f"   Trying CDN image: {image_entity.cdn_s3_key} in bucket {image_entity.cdn_s3_bucket}")
+                original_image = get_image_from_s3(image_entity.cdn_s3_bucket, image_entity.cdn_s3_key)
+                print(f"✅ Loaded image from CDN")
+            except Exception as e2:
+                print(f"⚠️  Could not load image from CDN: {e2}")
+        if original_image is None:
+            print(f"   Creating blank image for visualization...")
+            # Create a blank image as fallback
+            original_image = PIL_Image.new("RGB", (image_entity.width, image_entity.height), "white")
     img_width, img_height = original_image.size
 
     # Create visualization with multiple panels

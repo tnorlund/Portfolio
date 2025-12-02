@@ -133,20 +133,24 @@ def split_clusters_by_angle_consistency(
     angle_tolerance: float = 3.0,
     min_samples: int = 2,
     vertical_gap_threshold: float = 0.15,  # Split if vertical gap > 15% of image height
+    horizontal_span_threshold: float = 0.4,  # Split if X-span > 40% of image width
 ) -> Dict[int, List[Line]]:
     """
     Phase 1: Split clusters by angle consistency and spatial separation.
 
     This function takes clusters from X-axis DBSCAN and splits them if they
-    contain lines with significantly different angles OR large vertical gaps.
-    This prevents merging side-by-side receipts that have different rotations,
-    and also prevents merging vertically separated lines with the same angle.
+    contain lines with significantly different angles OR large vertical gaps
+    OR if they span too wide horizontally (indicating side-by-side receipts).
+
+    This prevents merging side-by-side receipts that have similar angles but
+    are horizontally separated.
 
     Args:
         cluster_dict: Dictionary mapping cluster_id -> List[Line]
         angle_tolerance: Maximum angle difference within a cluster (degrees)
         min_samples: Minimum lines per cluster after splitting
         vertical_gap_threshold: Maximum vertical gap within a cluster (normalized 0-1)
+        horizontal_span_threshold: Maximum X-span before splitting (normalized 0-1)
 
     Returns:
         New dictionary with potentially split clusters
@@ -187,7 +191,27 @@ def split_clusters_by_angle_consistency(
         max_angle_diff = max(angle_difference(a, mean_angle) for a in angles)
 
         if max_angle_diff <= angle_tolerance:
-            # All angles consistent - check for large vertical gaps
+            # All angles consistent - check for large horizontal span (side-by-side receipts)
+            x_positions = [ld['x'] for ld in line_data]
+            x_span = max(x_positions) - min(x_positions)
+
+            # Check if cluster spans too wide horizontally
+            if x_span > horizontal_span_threshold:
+                # Check if there's a clear separation between left and right sides
+                # Look for a gap in the middle (around X=0.5)
+                left_lines = [ld for ld in line_data if ld['x'] < 0.5]
+                right_lines = [ld for ld in line_data if ld['x'] >= 0.5]
+
+                # If we have lines on both sides and the span is large, split
+                if len(left_lines) >= min_samples and len(right_lines) >= min_samples:
+                    # Split into left and right clusters
+                    new_clusters[next_cluster_id] = [ld['line'] for ld in left_lines]
+                    next_cluster_id += 1
+                    new_clusters[next_cluster_id] = [ld['line'] for ld in right_lines]
+                    next_cluster_id += 1
+                    continue
+
+            # Check for large vertical gaps
             # Sort by Y coordinate to find gaps
             line_data_sorted_y = sorted(line_data, key=lambda ld: ld['y'])
             y_positions = [ld['y'] for ld in line_data_sorted_y]
@@ -726,11 +750,28 @@ def merge_clusters_with_agent_logic(
                 x_coords_2 = [line.calculate_centroid()[0] for line in cluster2_lines]
                 mean_x_1 = sum(x_coords_1) / len(x_coords_1) if x_coords_1 else 0
                 mean_x_2 = sum(x_coords_2) / len(x_coords_2) if x_coords_2 else 0
+                min_x_1, max_x_1 = min(x_coords_1), max(x_coords_1) if x_coords_1 else (0, 0)
+                min_x_2, max_x_2 = min(x_coords_2), max(x_coords_2) if x_coords_2 else (0, 0)
                 x_proximity = abs(mean_x_1 - mean_x_2)
+                x_span_1 = max_x_1 - min_x_1
+                x_span_2 = max_x_2 - min_x_2
 
                 # Skip if too far apart horizontally (likely different receipts)
                 if x_proximity > x_proximity_threshold:
                     continue
+
+                # Additional check: if clusters are on opposite sides of the image,
+                # they're likely different receipts (even if their means are close)
+                # This handles cases where one receipt is on the left and one on the right
+                # Left side: mean X < 0.45, Right side: mean X > 0.55
+                is_left_1 = mean_x_1 < 0.45
+                is_right_1 = mean_x_1 > 0.55
+                is_left_2 = mean_x_2 < 0.45
+                is_right_2 = mean_x_2 > 0.55
+
+                # If one cluster is clearly left and one is clearly right, don't merge
+                if (is_left_1 and is_right_2) or (is_right_1 and is_left_2):
+                    continue  # Skip merging - they're on opposite sides
 
                 # Try merging
                 merged_lines = cluster1_lines + cluster2_lines
