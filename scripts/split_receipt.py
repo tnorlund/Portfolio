@@ -48,6 +48,13 @@ from receipt_dynamo.entities import (
     CompactionRun,
     Line,
 )
+
+# Import transform utilities (for invert_warp)
+try:
+    from receipt_upload.geometry.transformations import invert_warp
+    TRANSFORM_AVAILABLE = True
+except ImportError:
+    TRANSFORM_AVAILABLE = False
 from receipt_upload.cluster import (
     dbscan_lines_x_axis,
     split_clusters_by_angle_consistency,
@@ -424,6 +431,32 @@ def create_split_receipt_records(
     for word in cluster_receipt_words:
         words_by_line[word.line_id].append(word)
 
+    # Get transform coefficients from original receipt to image (reused for all lines/words)
+    # Use the new Receipt entity method
+    try:
+        transform_coeffs, orig_receipt_width, orig_receipt_height = original_receipt.get_transform_to_image(
+            image_width, image_height
+        )
+    except ImportError:
+        raise ValueError("Transform methods not available - required for coordinate transformation")
+
+    # Calculate new receipt bounds in image coordinates (OCR space) - reused for all transformations
+    new_receipt_min_x_abs = bounds["top_left"]["x"] * image_width
+    new_receipt_max_x_abs = bounds["top_right"]["x"] * image_width
+    new_receipt_min_y_abs = bounds["bottom_left"]["y"] * image_height  # Bottom in OCR space
+    new_receipt_max_y_abs = bounds["top_left"]["y"] * image_height  # Top in OCR space
+    new_receipt_width_abs = new_receipt_max_x_abs - new_receipt_min_x_abs
+    new_receipt_height_abs = new_receipt_max_y_abs - new_receipt_min_y_abs
+
+    # Helper function to convert image coordinates to new receipt-relative coordinates
+    def img_to_receipt_coord(img_x, img_y):
+        # Convert from PIL space (y=0 at top) to OCR space (y=0 at bottom)
+        ocr_y = image_height - img_y
+        # Normalize relative to new receipt bounds
+        receipt_x = (img_x - new_receipt_min_x_abs) / new_receipt_width_abs if new_receipt_width_abs > 0 else 0.0
+        receipt_y = (ocr_y - new_receipt_min_y_abs) / new_receipt_height_abs if new_receipt_height_abs > 0 else 0.0
+        return receipt_x, receipt_y
+
     # Create ReceiptLine entities with new IDs
     receipt_lines = []
     line_id_map = {}  # old_line_id -> new_line_id
@@ -439,46 +472,66 @@ def create_split_receipt_records(
         if not original_line:
             continue
 
-        # Convert word coordinates from original receipt-relative to absolute image coordinates
-        receipt_min_x_abs = original_receipt.top_left["x"] * image_width
-        receipt_max_x_abs = original_receipt.top_right["x"] * image_width
-        receipt_min_y_abs = original_receipt.bottom_left["y"] * image_height
-        receipt_max_y_abs = original_receipt.top_left["y"] * image_height
-        receipt_width_abs = receipt_max_x_abs - receipt_min_x_abs
-        receipt_height_abs = receipt_max_y_abs - receipt_min_y_abs
+        # Use proven transform method: transform line from original receipt space to image space
+        # Then transform from image space to new receipt space
+        import copy
 
-        # Convert to absolute coordinates
-        line_words_abs = []
-        for w in line_words:
-            line_words_abs.append({
-                "top_left_x": receipt_min_x_abs + w.top_left["x"] * receipt_width_abs,
-                "top_left_y": receipt_min_y_abs + w.top_left["y"] * receipt_height_abs,
-                "top_right_x": receipt_min_x_abs + w.top_right["x"] * receipt_width_abs,
-                "top_right_y": receipt_min_y_abs + w.top_right["y"] * receipt_height_abs,
-                "bottom_left_x": receipt_min_x_abs + w.bottom_left["x"] * receipt_width_abs,
-                "bottom_left_y": receipt_min_y_abs + w.bottom_left["y"] * receipt_height_abs,
-                "bottom_right_x": receipt_min_x_abs + w.bottom_right["x"] * receipt_width_abs,
-                "bottom_right_y": receipt_min_y_abs + w.bottom_right["y"] * receipt_height_abs,
-            })
+        # Step 1: Transform line from original receipt space to image space
+        # Create a copy of the line to transform
+        line_copy = copy.deepcopy(original_line)
 
-        # Calculate line bounds in absolute coordinates
-        line_min_x_abs = min(w["top_left_x"] for w in line_words_abs)
-        line_max_x_abs = max(w["top_right_x"] for w in line_words_abs)
-        line_min_y_abs = min(w["bottom_left_y"] for w in line_words_abs)
-        line_max_y_abs = max(w["top_left_y"] for w in line_words_abs)
+        # Apply transform: receipt space -> image space
+        # warp_transform expects forward coefficients (image -> receipt), so we invert
+        forward_coeffs = invert_warp(*transform_coeffs)
+        line_copy.warp_transform(
+            *forward_coeffs,
+            src_width=image_width,
+            src_height=image_height,
+            dst_width=orig_receipt_width,
+            dst_height=orig_receipt_height,
+            flip_y=True,  # Receipt coords are in OCR space (y=0 at bottom), need to flip to PIL space
+        )
 
-        # Convert to new receipt-relative coordinates (0-1)
-        new_receipt_min_x_abs = bounds["top_left"]["x"] * image_width
-        new_receipt_max_x_abs = bounds["top_right"]["x"] * image_width
-        new_receipt_min_y_abs = bounds["bottom_left"]["y"] * image_height
-        new_receipt_max_y_abs = bounds["top_left"]["y"] * image_height
-        new_receipt_width_abs = new_receipt_max_x_abs - new_receipt_min_x_abs
-        new_receipt_height_abs = new_receipt_max_y_abs - new_receipt_min_y_abs
+        # After warp_transform, line_copy coordinates are normalized (0-1) in image space
+        # Convert to absolute image coordinates
+        line_tl_img = {
+            "x": line_copy.top_left["x"] * image_width,
+            "y": line_copy.top_left["y"] * image_height,
+        }
+        line_tr_img = {
+            "x": line_copy.top_right["x"] * image_width,
+            "y": line_copy.top_right["y"] * image_height,
+        }
+        line_bl_img = {
+            "x": line_copy.bottom_left["x"] * image_width,
+            "y": line_copy.bottom_left["y"] * image_height,
+        }
+        line_br_img = {
+            "x": line_copy.bottom_right["x"] * image_width,
+            "y": line_copy.bottom_right["y"] * image_height,
+        }
 
-        line_top_left_x = (line_min_x_abs - new_receipt_min_x_abs) / new_receipt_width_abs if new_receipt_width_abs > 0 else 0.0
-        line_top_left_y = (line_max_y_abs - new_receipt_min_y_abs) / new_receipt_height_abs if new_receipt_height_abs > 0 else 0.0
-        line_bottom_right_x = (line_max_x_abs - new_receipt_min_x_abs) / new_receipt_width_abs if new_receipt_width_abs > 0 else 1.0
-        line_bottom_right_y = (line_min_y_abs - new_receipt_min_y_abs) / new_receipt_height_abs if new_receipt_height_abs > 0 else 1.0
+        # Step 2: Transform from image space to new receipt space
+        line_top_left_x, line_top_left_y = img_to_receipt_coord(line_tl_img["x"], line_tl_img["y"])
+        line_top_right_x, line_top_right_y = img_to_receipt_coord(line_tr_img["x"], line_tr_img["y"])
+        line_bottom_left_x, line_bottom_left_y = img_to_receipt_coord(line_bl_img["x"], line_bl_img["y"])
+        line_bottom_right_x, line_bottom_right_y = img_to_receipt_coord(line_br_img["x"], line_br_img["y"])
+
+        # Calculate bounding box for the line
+        line_min_x_abs = min(line_tl_img["x"], line_tr_img["x"], line_bl_img["x"], line_br_img["x"])
+        line_max_x_abs = max(line_tl_img["x"], line_tr_img["x"], line_bl_img["x"], line_br_img["x"])
+        line_min_y_img = min(line_tl_img["y"], line_tr_img["y"], line_bl_img["y"], line_br_img["y"])
+        line_max_y_img = max(line_tl_img["y"], line_tr_img["y"], line_bl_img["y"], line_br_img["y"])
+        # Convert to OCR space for bounding box
+        line_min_y_ocr = image_height - line_max_y_img  # Bottom in OCR space
+        line_max_y_ocr = image_height - line_min_y_img  # Top in OCR space
+
+        # Calculate bounding box in new receipt space (normalized, OCR space)
+        # Bounding box coordinates are relative to receipt bounds, in OCR space
+        line_min_x_receipt = min(line_top_left_x, line_top_right_x, line_bottom_left_x, line_bottom_right_x)
+        line_max_x_receipt = max(line_top_left_x, line_top_right_x, line_bottom_left_x, line_bottom_right_x)
+        line_min_y_receipt = min(line_top_left_y, line_top_right_y, line_bottom_left_y, line_bottom_right_y)
+        line_max_y_receipt = max(line_top_left_y, line_top_right_y, line_bottom_left_y, line_bottom_right_y)
 
         receipt_line = ReceiptLine(
             receipt_id=new_receipt_id,
@@ -486,14 +539,14 @@ def create_split_receipt_records(
             line_id=new_line_id,
             text=original_line.text,
             bounding_box={
-                "x": (line_min_x_abs - new_receipt_min_x_abs),
-                "y": (line_min_y_abs - new_receipt_min_y_abs),
-                "width": (line_max_x_abs - line_min_x_abs),
-                "height": (line_max_y_abs - line_min_y_abs),
+                "x": line_min_x_receipt * new_receipt_width_abs,
+                "y": line_min_y_receipt * new_receipt_height_abs,
+                "width": (line_max_x_receipt - line_min_x_receipt) * new_receipt_width_abs,
+                "height": (line_max_y_receipt - line_min_y_receipt) * new_receipt_height_abs,
             },
             top_left={"x": line_top_left_x, "y": line_top_left_y},
-            top_right={"x": line_bottom_right_x, "y": line_top_left_y},
-            bottom_left={"x": line_top_left_x, "y": line_bottom_right_y},
+            top_right={"x": line_top_right_x, "y": line_top_right_y},
+            bottom_left={"x": line_bottom_left_x, "y": line_bottom_left_y},
             bottom_right={"x": line_bottom_right_x, "y": line_bottom_right_y},
             angle_degrees=original_line.angle_degrees,
             angle_radians=original_line.angle_radians,
@@ -515,39 +568,51 @@ def create_split_receipt_records(
         for word in line_words:
             new_line_id = line_id_map[old_line_id]
 
-            # Convert word coordinates from original receipt-relative to absolute
-            receipt_min_x_abs = original_receipt.top_left["x"] * image_width
-            receipt_max_x_abs = original_receipt.top_right["x"] * image_width
-            receipt_min_y_abs = original_receipt.bottom_left["y"] * image_height
-            receipt_max_y_abs = original_receipt.top_left["y"] * image_height
-            receipt_width_abs = receipt_max_x_abs - receipt_min_x_abs
-            receipt_height_abs = receipt_max_y_abs - receipt_min_y_abs
+            # Use proven transform method: transform word from original receipt space to image space
+            # Then transform from image space to new receipt space
+            # Step 1: Transform word from original receipt space to image space
+            word_copy = copy.deepcopy(word)
+            forward_coeffs = invert_warp(*transform_coeffs)
+            word_copy.warp_transform(
+                *forward_coeffs,
+                src_width=image_width,
+                src_height=image_height,
+                dst_width=orig_receipt_width,
+                dst_height=orig_receipt_height,
+                flip_y=True,  # Receipt coords are in OCR space (y=0 at bottom), need to flip to PIL space
+            )
 
-            word_top_left_x_abs = receipt_min_x_abs + word.top_left["x"] * receipt_width_abs
-            word_top_left_y_abs = receipt_min_y_abs + word.top_left["y"] * receipt_height_abs
-            word_top_right_x_abs = receipt_min_x_abs + word.top_right["x"] * receipt_width_abs
-            word_top_right_y_abs = receipt_min_y_abs + word.top_right["y"] * receipt_height_abs
-            word_bottom_left_x_abs = receipt_min_x_abs + word.bottom_left["x"] * receipt_width_abs
-            word_bottom_left_y_abs = receipt_min_y_abs + word.bottom_left["y"] * receipt_height_abs
-            word_bottom_right_x_abs = receipt_min_x_abs + word.bottom_right["x"] * receipt_width_abs
-            word_bottom_right_y_abs = receipt_min_y_abs + word.bottom_right["y"] * receipt_height_abs
+            # After warp_transform, word_copy coordinates are normalized (0-1) in image space
+            # Convert to absolute image coordinates
+            word_tl_img = {
+                "x": word_copy.top_left["x"] * image_width,
+                "y": word_copy.top_left["y"] * image_height,
+            }
+            word_tr_img = {
+                "x": word_copy.top_right["x"] * image_width,
+                "y": word_copy.top_right["y"] * image_height,
+            }
+            word_bl_img = {
+                "x": word_copy.bottom_left["x"] * image_width,
+                "y": word_copy.bottom_left["y"] * image_height,
+            }
+            word_br_img = {
+                "x": word_copy.bottom_right["x"] * image_width,
+                "y": word_copy.bottom_right["y"] * image_height,
+            }
 
-            # Convert to new receipt-relative coordinates
-            new_receipt_min_x_abs = bounds["top_left"]["x"] * image_width
-            new_receipt_max_x_abs = bounds["top_right"]["x"] * image_width
-            new_receipt_min_y_abs = bounds["bottom_left"]["y"] * image_height
-            new_receipt_max_y_abs = bounds["top_left"]["y"] * image_height
-            new_receipt_width_abs = new_receipt_max_x_abs - new_receipt_min_x_abs
-            new_receipt_height_abs = new_receipt_max_y_abs - new_receipt_min_y_abs
+            # Step 2: Transform from image space to new receipt space
+            # Use the same img_to_receipt_coord function
+            word_top_left_x, word_top_left_y = img_to_receipt_coord(word_tl_img["x"], word_tl_img["y"])
+            word_top_right_x, word_top_right_y = img_to_receipt_coord(word_tr_img["x"], word_tr_img["y"])
+            word_bottom_left_x, word_bottom_left_y = img_to_receipt_coord(word_bl_img["x"], word_bl_img["y"])
+            word_bottom_right_x, word_bottom_right_y = img_to_receipt_coord(word_br_img["x"], word_br_img["y"])
 
-            word_top_left_x = (word_top_left_x_abs - new_receipt_min_x_abs) / new_receipt_width_abs if new_receipt_width_abs > 0 else 0.0
-            word_top_left_y = (word_top_left_y_abs - new_receipt_min_y_abs) / new_receipt_height_abs if new_receipt_height_abs > 0 else 0.0
-            word_top_right_x = (word_top_right_x_abs - new_receipt_min_x_abs) / new_receipt_width_abs if new_receipt_width_abs > 0 else 1.0
-            word_top_right_y = (word_top_right_y_abs - new_receipt_min_y_abs) / new_receipt_height_abs if new_receipt_height_abs > 0 else 0.0
-            word_bottom_left_x = (word_bottom_left_x_abs - new_receipt_min_x_abs) / new_receipt_width_abs if new_receipt_width_abs > 0 else 0.0
-            word_bottom_left_y = (word_bottom_left_y_abs - new_receipt_min_y_abs) / new_receipt_height_abs if new_receipt_height_abs > 0 else 1.0
-            word_bottom_right_x = (word_bottom_right_x_abs - new_receipt_min_x_abs) / new_receipt_width_abs if new_receipt_width_abs > 0 else 1.0
-            word_bottom_right_y = (word_bottom_right_y_abs - new_receipt_min_y_abs) / new_receipt_height_abs if new_receipt_height_abs > 0 else 1.0
+            # Calculate bounding box in new receipt space
+            word_min_x_receipt = min(word_top_left_x, word_top_right_x, word_bottom_left_x, word_bottom_right_x)
+            word_max_x_receipt = max(word_top_left_x, word_top_right_x, word_bottom_left_x, word_bottom_right_x)
+            word_min_y_receipt = min(word_top_left_y, word_top_right_y, word_bottom_left_y, word_bottom_right_y)
+            word_max_y_receipt = max(word_top_left_y, word_top_right_y, word_bottom_left_y, word_bottom_right_y)
 
             receipt_word = ReceiptWord(
                 receipt_id=new_receipt_id,
@@ -555,12 +620,12 @@ def create_split_receipt_records(
                 line_id=new_line_id,
                 word_id=new_word_id,
                 text=word.text,
-            bounding_box={
-                "x": (word_top_left_x_abs - new_receipt_min_x_abs),
-                "y": (word_bottom_left_y_abs - new_receipt_min_y_abs),
-                "width": (word_top_right_x_abs - word_top_left_x_abs),
-                "height": (word_top_left_y_abs - word_bottom_left_y_abs),
-            },
+                bounding_box={
+                    "x": word_min_x_receipt * new_receipt_width_abs,
+                    "y": word_min_y_receipt * new_receipt_height_abs,
+                    "width": (word_max_x_receipt - word_min_x_receipt) * new_receipt_width_abs,
+                    "height": (word_max_y_receipt - word_min_y_receipt) * new_receipt_height_abs,
+                },
                 top_left={"x": word_top_left_x, "y": word_top_left_y},
                 top_right={"x": word_top_right_x, "y": word_top_right_y},
                 bottom_left={"x": word_bottom_left_x, "y": word_bottom_left_y},

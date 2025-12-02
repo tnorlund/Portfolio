@@ -40,7 +40,6 @@ try:
     )
     from receipt_upload.geometry.transformations import find_perspective_coeffs
     from receipt_agent.utils.receipt_coordinates import (
-        get_receipt_to_image_transform,
         transform_receipt_line_to_image_coords,
     )
     IMAGE_PROCESSING_AVAILABLE = True
@@ -433,8 +432,9 @@ def _combine_receipt_words_to_image_coords(
             receipt_words = client.list_receipt_words_from_receipt(image_id, receipt_id)
             for word in receipt_words:
                 try:
-                    transform_coeffs, receipt_width, receipt_height = get_receipt_to_image_transform(
-                        receipt, image_width, image_height
+                    # Use the new Receipt entity method
+                    transform_coeffs, receipt_width, receipt_height = receipt.get_transform_to_image(
+                        image_width, image_height
                     )
                     word_copy = copy.deepcopy(word)
                     from receipt_upload.geometry.transformations import invert_warp
@@ -582,8 +582,9 @@ def _combine_receipt_letters_to_image_coords(
                     )
                     for letter in receipt_letters:
                         try:
-                            transform_coeffs, receipt_width, receipt_height = get_receipt_to_image_transform(
-                                receipt, image_width, image_height
+                            # Use the new Receipt entity method
+                            transform_coeffs, receipt_width, receipt_height = receipt.get_transform_to_image(
+                                image_width, image_height
                             )
                             letter_copy = copy.deepcopy(letter)
                             from receipt_upload.geometry.transformations import invert_warp
