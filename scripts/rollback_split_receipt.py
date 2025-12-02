@@ -42,15 +42,73 @@ def rollback_split_receipt(
     for receipt_id in new_receipt_ids:
         print(f"\n📋 Processing receipt {receipt_id}...")
 
+        # First, list all details to verify what we're deleting
+        print(f"   📊 Listing all details for receipt {receipt_id}...")
+        try:
+            receipt = client.get_receipt(image_id, receipt_id)
+            if receipt:
+                print(f"      Receipt: {receipt.receipt_id} ({receipt.width}x{receipt.height})")
+            else:
+                print(f"      ⚠️  Receipt {receipt_id} not found")
+        except Exception as e:
+            print(f"      ⚠️  Error getting receipt: {e}")
+
+        try:
+            lines = client.list_receipt_lines_from_receipt(image_id, receipt_id)
+            print(f"      Lines: {len(lines)}")
+        except Exception as e:
+            print(f"      ⚠️  Error listing lines: {e}")
+            lines = []
+
+        try:
+            words = client.list_receipt_words_from_receipt(image_id, receipt_id)
+            print(f"      Words: {len(words)}")
+        except Exception as e:
+            print(f"      ⚠️  Error listing words: {e}")
+            words = []
+
+        try:
+            labels, _ = client.list_receipt_word_labels_for_receipt(image_id, receipt_id)
+            print(f"      Labels: {len(labels)}")
+        except Exception as e:
+            print(f"      ⚠️  Error listing labels: {e}")
+            labels = []
+
+        try:
+            letters = client.list_receipt_letters_from_receipt(image_id, receipt_id)
+            print(f"      Letters: {len(letters)}")
+        except (AttributeError, Exception) as e:
+            letters = []
+            # Letters might not be supported
+
+        try:
+            metadata = client.get_receipt_metadata(image_id, receipt_id)
+            if metadata:
+                print(f"      Metadata: Found")
+        except Exception:
+            pass
+
+        try:
+            runs, _ = client.list_compaction_runs_for_receipt(image_id, receipt_id)
+            print(f"      CompactionRuns: {len(runs)}")
+        except Exception as e:
+            runs = []
+
+        print(f"   ✅ Total items to delete: {len(lines)} lines, {len(words)} words, {len(labels)} labels, {len(letters)} letters, {len(runs)} compaction runs")
+
+        if dry_run:
+            print(f"   ⚠️  DRY RUN - Would delete all items above")
+            continue
+
         # 1. Delete labels (references words)
         try:
             labels, _ = client.list_receipt_word_labels_for_receipt(image_id, receipt_id)
             print(f"   Found {len(labels)} labels")
             if not dry_run and labels:
-                for label in labels:
-                    client.delete_receipt_word_label(
-                        image_id, receipt_id, label.line_id, label.word_id, label.label
-                    )
+                # Delete in batches
+                for i in range(0, len(labels), 25):
+                    batch = labels[i:i+25]
+                    client.delete_receipt_word_labels(batch)
                 print(f"   ✅ Deleted {len(labels)} labels")
         except Exception as e:
             print(f"   ⚠️  Error listing/deleting labels: {e}")
@@ -60,8 +118,10 @@ def rollback_split_receipt(
             words = client.list_receipt_words_from_receipt(image_id, receipt_id)
             print(f"   Found {len(words)} words")
             if not dry_run and words:
-                for word in words:
-                    client.delete_receipt_word(image_id, receipt_id, word.line_id, word.word_id)
+                # Delete in batches
+                for i in range(0, len(words), 25):
+                    batch = words[i:i+25]
+                    client.delete_receipt_words(batch)
                 print(f"   ✅ Deleted {len(words)} words")
         except Exception as e:
             print(f"   ⚠️  Error listing/deleting words: {e}")
@@ -71,8 +131,10 @@ def rollback_split_receipt(
             lines = client.list_receipt_lines_from_receipt(image_id, receipt_id)
             print(f"   Found {len(lines)} lines")
             if not dry_run and lines:
-                for line in lines:
-                    client.delete_receipt_line(image_id, receipt_id, line.line_id)
+                # Delete in batches
+                for i in range(0, len(lines), 25):
+                    batch = lines[i:i+25]
+                    client.delete_receipt_lines(batch)
                 print(f"   ✅ Deleted {len(lines)} lines")
         except Exception as e:
             print(f"   ⚠️  Error listing/deleting lines: {e}")
@@ -82,10 +144,10 @@ def rollback_split_receipt(
             letters = client.list_receipt_letters_from_receipt(image_id, receipt_id)
             print(f"   Found {len(letters)} letters")
             if not dry_run and letters:
-                for letter in letters:
-                    client.delete_receipt_letter(
-                        image_id, receipt_id, letter.line_id, letter.word_id, letter.letter_id
-                    )
+                # Delete in batches
+                for i in range(0, len(letters), 25):
+                    batch = letters[i:i+25]
+                    client.delete_receipt_letters(batch)
                 print(f"   ✅ Deleted {len(letters)} letters")
         except (AttributeError, Exception) as e:
             # Letters might not be supported or might not exist

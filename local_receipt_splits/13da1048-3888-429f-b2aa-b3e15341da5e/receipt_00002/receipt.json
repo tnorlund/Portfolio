@@ -1,0 +1,39 @@
+{
+  "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+  "receipt_id": 2,
+  "width": 2054,
+  "height": 2759,
+  "timestamp_added": "2025-12-02T17:27:20.579529+00:00",
+  "raw_s3_bucket": "raw-image-bucket-c779c32",
+  "raw_s3_key": "raw/13da1048-3888-429f-b2aa-b3e15341da5e_RECEIPT_00002.png",
+  "top_left": {
+    "x": 0.125853263175693,
+    "y": 0.8684591014454279
+  },
+  "top_right": {
+    "x": 0.9541702184545587,
+    "y": 0.8684591014454279
+  },
+  "bottom_left": {
+    "x": 0.125853263175693,
+    "y": 0.08192602551782861
+  },
+  "bottom_right": {
+    "x": 0.9541702184545587,
+    "y": 0.08192602551782861
+  },
+  "sha256": "86ce657db32ee1cd8237cc56b80ab0e45880fa9a58d9e68794817896d9fb6553",
+  "cdn_s3_bucket": "sitebucket-ad92f1f",
+  "cdn_s3_key": "assets/13da1048-3888-429f-b2aa-b3e15341da5e_RECEIPT_00002.jpg",
+  "cdn_webp_s3_key": "assets/13da1048-3888-429f-b2aa-b3e15341da5e_RECEIPT_00002.webp",
+  "cdn_avif_s3_key": null,
+  "cdn_thumbnail_s3_key": "assets/13da1048-3888-429f-b2aa-b3e15341da5e_RECEIPT_00002_thumbnail.jpg",
+  "cdn_thumbnail_webp_s3_key": "assets/13da1048-3888-429f-b2aa-b3e15341da5e_RECEIPT_00002_thumbnail.webp",
+  "cdn_thumbnail_avif_s3_key": null,
+  "cdn_small_s3_key": "assets/13da1048-3888-429f-b2aa-b3e15341da5e_RECEIPT_00002_small.jpg",
+  "cdn_small_webp_s3_key": "assets/13da1048-3888-429f-b2aa-b3e15341da5e_RECEIPT_00002_small.webp",
+  "cdn_small_avif_s3_key": null,
+  "cdn_medium_s3_key": "assets/13da1048-3888-429f-b2aa-b3e15341da5e_RECEIPT_00002_medium.jpg",
+  "cdn_medium_webp_s3_key": "assets/13da1048-3888-429f-b2aa-b3e15341da5e_RECEIPT_00002_medium.webp",
+  "cdn_medium_avif_s3_key": null
+}

@@ -1,0 +1,1190 @@
+[
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 1,
+    "text": "5.97",
+    "bounding_box": {
+      "x": 861.274993928597,
+      "y": 294.48580044239066,
+      "width": 97.08036621717795,
+      "height": 52.84656123193872
+    },
+    "top_right": {
+      "x": 0.9924080409821078,
+      "y": 0.21826285768618905
+    },
+    "top_left": {
+      "x": 0.8980540506152738,
+      "y": 0.2083577121773738
+    },
+    "bottom_right": {
+      "x": 0.9862321652241669,
+      "y": 0.24574827083312908
+    },
+    "bottom_left": {
+      "x": 0.8918781748573329,
+      "y": 0.23584312532431354
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 2,
+    "text": "1-5/8\" FINE DRYWALL SCREW 1 LB",
+    "bounding_box": {
+      "x": 244.6903972981088,
+      "y": 214.55546119599353,
+      "width": 592.3658563508384,
+      "height": 149.96305819083685
+    },
+    "top_right": {
+      "x": 0.86679888423561,
+      "y": 0.22891064047399245
+    },
+    "top_left": {
+      "x": 0.2612882959560259,
+      "y": 0.15180455207959637
+    },
+    "bottom_right": {
+      "x": 0.8588954264184478,
+      "y": 0.25790800314184104
+    },
+    "bottom_left": {
+      "x": 0.2533848381594199,
+      "y": 0.18080191339748278
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 3,
+    "text": "MAX REFUND VALUE $5.85",
+    "bounding_box": {
+      "x": 236.4166396084795,
+      "y": 251.5082492476065,
+      "width": 440.91548200149856,
+      "height": 118.53606084940427
+    },
+    "top_right": {
+      "x": 0.7013993679744919,
+      "y": 0.23315018199021897
+    },
+    "top_left": {
+      "x": 0.2523600139047139,
+      "y": 0.1779497800173885
+    },
+    "bottom_right": {
+      "x": 0.6938564479231848,
+      "y": 0.26181766910405235
+    },
+    "bottom_left": {
+      "x": 0.24481709387396333,
+      "y": 0.2066172657812601
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 4,
+    "text": "Pro Xtra Preferred Pricing",
+    "bounding_box": {
+      "x": 228.1158447091509,
+      "y": 286.15557781750545,
+      "width": 518.0540150892961,
+      "height": 136.32364917654922
+    },
+    "top_right": {
+      "x": 0.7726830772771311,
+      "y": 0.2707450576262516
+    },
+    "top_left": {
+      "x": 0.24400926275195484,
+      "y": 0.20246382484751996
+    },
+    "bottom_right": {
+      "x": 0.7648951662066152,
+      "y": 0.2989169768006082
+    },
+    "bottom_left": {
+      "x": 0.23622135168143893,
+      "y": 0.23063574402187684
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 5,
+    "text": "SALES TAX",
+    "bounding_box": {
+      "x": 480.30341269841256,
+      "y": 442.90975984099055,
+      "width": 190.99660427141524,
+      "height": 69.65501725564584
+    },
+    "top_right": {
+      "x": 0.6951529280860355,
+      "y": 0.3311322432185694
+    },
+    "top_left": {
+      "x": 0.5036264004434705,
+      "y": 0.31337220376285013
+    },
+    "bottom_right": {
+      "x": 0.6888962807585162,
+      "y": 0.3626552592285449
+    },
+    "bottom_left": {
+      "x": 0.49736975311595105,
+      "y": 0.3448952197728256
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 6,
+    "text": "XXXXXXXXXXXX8712 DEBIT",
+    "bounding_box": {
+      "x": 138.0530117451342,
+      "y": 451.441684717742,
+      "width": 440.15855184457405,
+      "height": 116.67106885111248
+    },
+    "top_right": {
+      "x": 0.5987568171038142,
+      "y": 0.37381919119201007
+    },
+    "top_left": {
+      "x": 0.15026491171060943,
+      "y": 0.3194088016060012
+    },
+    "bottom_right": {
+      "x": 0.5914502740896859,
+      "y": 0.40195715180349134
+    },
+    "bottom_left": {
+      "x": 0.14295836871703707,
+      "y": 0.3475467608675202
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 7,
+    "text": "AUTH CODE 002566",
+    "bounding_box": {
+      "x": 126.94155072421086,
+      "y": 521.5761273394453,
+      "width": 322.8141626604138,
+      "height": 97.25459452176055
+    },
+    "top_right": {
+      "x": 0.465736620258119,
+      "y": 0.4101192064163755
+    },
+    "top_left": {
+      "x": 0.13891185292656927,
+      "y": 0.3690310651838748
+    },
+    "bottom_right": {
+      "x": 0.45827685797805284,
+      "y": 0.4378416658405143
+    },
+    "bottom_left": {
+      "x": 0.13145209064650354,
+      "y": 0.396753524608013
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 8,
+    "text": "Chip Read",
+    "bounding_box": {
+      "x": 113.39114362618602,
+      "y": 558.9112440824442,
+      "width": 198.78191946251243,
+      "height": 71.25633465490932
+    },
+    "top_right": {
+      "x": 0.32326532606873004,
+      "y": 0.4183988079402233
+    },
+    "top_left": {
+      "x": 0.1241978378999084,
+      "y": 0.39544680236631397
+    },
+    "bottom_right": {
+      "x": 0.31648769302234003,
+      "y": 0.4458628388765248
+    },
+    "bottom_left": {
+      "x": 0.11742020485351817,
+      "y": 0.4229108333026155
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 9,
+    "text": "AID A0000000980840",
+    "bounding_box": {
+      "x": 112.59225020967733,
+      "y": 589.7390849444191,
+      "width": 365.01758989342557,
+      "height": 103.991855357526
+    },
+    "top_right": {
+      "x": 0.49458047138005323,
+      "y": 0.46095362434771653
+    },
+    "top_left": {
+      "x": 0.12413721363739662,
+      "y": 0.4172584428043928
+    },
+    "bottom_right": {
+      "x": 0.48703618254630776,
+      "y": 0.4908358615961462
+    },
+    "bottom_left": {
+      "x": 0.11659292482420808,
+      "y": 0.4471406787028601
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 10,
+    "text": "-0.34",
+    "bounding_box": {
+      "x": 827.7511326026336,
+      "y": 402.59286852409906,
+      "width": 105.06270172404224,
+      "height": 45.390998692332666
+    },
+    "top_right": {
+      "x": 0.965958963055554,
+      "y": 0.2856167697211348
+    },
+    "top_left": {
+      "x": 0.8576404395642925,
+      "y": 0.2848467698564548
+    },
+    "bottom_right": {
+      "x": 0.9654816532534277,
+      "y": 0.31696228994867315
+    },
+    "bottom_left": {
+      "x": 0.8571631297621662,
+      "y": 0.3161922900839928
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 11,
+    "text": "18.89",
+    "bounding_box": {
+      "x": 818.9924952556164,
+      "y": 470.976976616377,
+      "width": 101.03955672629083,
+      "height": 45.34914130860419
+    },
+    "top_right": {
+      "x": 0.9527230131099075,
+      "y": 0.3339710026970357
+    },
+    "top_left": {
+      "x": 0.8485705866760028,
+      "y": 0.3332306182117667
+    },
+    "bottom_right": {
+      "x": 0.9522457033077814,
+      "y": 0.36531652292457356
+    },
+    "bottom_left": {
+      "x": 0.8480932768738766,
+      "y": 0.36457613843930436
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 12,
+    "text": "1.58",
+    "bounding_box": {
+      "x": 830.6848026452706,
+      "y": 507.35021935975027,
+      "width": 84.94697673528795,
+      "height": 45.18171177369506
+    },
+    "top_right": {
+      "x": 0.9481663881942526,
+      "y": 0.3595877230832282
+    },
+    "top_left": {
+      "x": 0.8606783499897718,
+      "y": 0.3589658001156022
+    },
+    "bottom_right": {
+      "x": 0.9476890783921265,
+      "y": 0.3909332433107665
+    },
+    "bottom_left": {
+      "x": 0.8602010401876461,
+      "y": 0.39031132034314037
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 13,
+    "text": "$20.47",
+    "bounding_box": {
+      "x": 782.0299358069567,
+      "y": 535.040563480384,
+      "width": 125.26223250226485,
+      "height": 53.65532423631362
+    },
+    "top_right": {
+      "x": 0.9395304505973685,
+      "y": 0.3794756423944246
+    },
+    "top_left": {
+      "x": 0.8103814418193255,
+      "y": 0.37855756563269066
+    },
+    "bottom_right": {
+      "x": 0.9389663571836432,
+      "y": 0.4165203488542216
+    },
+    "bottom_left": {
+      "x": 0.8098173484056,
+      "y": 0.4156022720924877
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 14,
+    "text": "USD$ 20.47",
+    "bounding_box": {
+      "x": 687.5935131936915,
+      "y": 587.4914235333069,
+      "width": 211.63770501291765,
+      "height": 76.21448695898039
+    },
+    "top_right": {
+      "x": 0.9311830754665285,
+      "y": 0.4402702005001941
+    },
+    "top_left": {
+      "x": 0.719313048745016,
+      "y": 0.41566815359973447
+    },
+    "bottom_right": {
+      "x": 0.9238954061881609,
+      "y": 0.4695922345356911
+    },
+    "bottom_left": {
+      "x": 0.7120253715873838,
+      "y": 0.44499018622911224
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 15,
+    "text": "Verified By PIN",
+    "bounding_box": {
+      "x": 598.3082801114845,
+      "y": 638.7025508174274,
+      "width": 309.17764639779847,
+      "height": 101.21507635868504
+    },
+    "top_right": {
+      "x": 0.9397310934942976,
+      "y": 0.49385284211271474
+    },
+    "top_left": {
+      "x": 0.6281144919962206,
+      "y": 0.4519015927092409
+    },
+    "bottom_right": {
+      "x": 0.9311842200049482,
+      "y": 0.5235143554172322
+    },
+    "bottom_left": {
+      "x": 0.619567618506871,
+      "y": 0.4815631060137583
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 16,
+    "text": "US DEBIT",
+    "bounding_box": {
+      "x": 706.6716772812692,
+      "y": 695.9186084444282,
+      "width": 175.69872892952867,
+      "height": 74.00668372382908
+    },
+    "top_right": {
+      "x": 0.9137231580935141,
+      "y": 0.5174041942279893
+    },
+    "top_left": {
+      "x": 0.7402206282585783,
+      "y": 0.4923837037280464
+    },
+    "bottom_right": {
+      "x": 0.9052839587628964,
+      "y": 0.5447456963381045
+    },
+    "bottom_left": {
+      "x": 0.7317814289279597,
+      "y": 0.5197252058381616
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 17,
+    "text": "PRO XTRA MEMBER STATEMENT",
+    "bounding_box": {
+      "x": 235.66525683923032,
+      "y": 684.0126424889961,
+      "width": 497.05060282392475,
+      "height": 128.0356684640303
+    },
+    "top_right": {
+      "x": 0.758751024019134,
+      "y": 0.5454885032723791
+    },
+    "top_left": {
+      "x": 0.2515851206891577,
+      "y": 0.48395986860931095
+    },
+    "bottom_right": {
+      "x": 0.7512049159899468,
+      "y": 0.5745490206777308
+    },
+    "bottom_left": {
+      "x": 0.244039012659971,
+      "y": 0.5130203860146633
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 18,
+    "text": "PRO XTRA ###-###-9416 SUMMARY",
+    "bounding_box": {
+      "x": 87.72411143808381,
+      "y": 730.3734370943125,
+      "width": 576.5054450735497,
+      "height": 142.14369678462486
+    },
+    "top_right": {
+      "x": 0.6878312370891898,
+      "y": 0.5882720438927749
+    },
+    "top_left": {
+      "x": 0.09838726910436876,
+      "y": 0.5167615489761663
+    },
+    "bottom_right": {
+      "x": 0.6802851290394463,
+      "y": 0.617332562648089
+    },
+    "bottom_left": {
+      "x": 0.09084116101351225,
+      "y": 0.5458220704314047
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 19,
+    "text": "THIS RECEPT PO/JOB NAME: g",
+    "bounding_box": {
+      "x": 85.40023524855405,
+      "y": 761.6747362665124,
+      "width": 534.9885986707427,
+      "height": 142.87735053796843
+    },
+    "top_right": {
+      "x": 0.6424327477266605,
+      "y": 0.6093221036991566
+    },
+    "top_left": {
+      "x": 0.09690967020362372,
+      "y": 0.5389081756518893
+    },
+    "bottom_right": {
+      "x": 0.6339577893921667,
+      "y": 0.6399982717968798
+    },
+    "bottom_left": {
+      "x": 0.08843471188968684,
+      "y": 0.5695843423996501
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 20,
+    "text": "$1,696.80",
+    "bounding_box": {
+      "x": 660.3384480577745,
+      "y": 944.3717090597682,
+      "width": 198.31296651588895,
+      "height": 75.54681592400642
+    },
+    "top_right": {
+      "x": 0.8891613733907092,
+      "y": 0.6889597331097053
+    },
+    "top_left": {
+      "x": 0.6911413089573383,
+      "y": 0.6681718726306559
+    },
+    "bottom_right": {
+      "x": 0.8818219325864328,
+      "y": 0.7216235558852123
+    },
+    "bottom_left": {
+      "x": 0.6838018681530619,
+      "y": 0.7008356954061628
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 21,
+    "text": "Get the CREDIT LINE your business needs",
+    "bounding_box": {
+      "x": 56.53118773532151,
+      "y": 905.7560252670607,
+      "width": 766.7919842849975,
+      "height": 176.5624414048856
+    },
+    "top_right": {
+      "x": 0.852577833044702,
+      "y": 0.7362516182010576
+    },
+    "top_left": {
+      "x": 0.06620576802513672,
+      "y": 0.6408500950878117
+    },
+    "bottom_right": {
+      "x": 0.8449119423640905,
+      "y": 0.7657734234530797
+    },
+    "bottom_left": {
+      "x": 0.05853987738563755,
+      "y": 0.6703718976399098
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 22,
+    "text": "PLUS earn Perks 4X FASTER when you join",
+    "bounding_box": {
+      "x": 52.649801515837225,
+      "y": 943.4258392908325,
+      "width": 761.5613519412202,
+      "height": 174.56065739463708
+    },
+    "top_right": {
+      "x": 0.8431420424519687,
+      "y": 0.7652252594812567
+    },
+    "top_left": {
+      "x": 0.061419664159638024,
+      "y": 0.6675026408348371
+    },
+    "bottom_right": {
+      "x": 0.836242954389573,
+      "y": 0.7910096457779842
+    },
+    "bottom_left": {
+      "x": 0.0545205761383555,
+      "y": 0.6932870244316405
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 23,
+    "text": "Pro Xtra, register, & use your Pro Xtra",
+    "bounding_box": {
+      "x": 48.810209111199356,
+      "y": 983.2590354684786,
+      "width": 756.1780052046665,
+      "height": 164.84301357482735
+    },
+    "top_right": {
+      "x": 0.8335913900052448,
+      "y": 0.7875209576017559
+    },
+    "top_left": {
+      "x": 0.05681929665278156,
+      "y": 0.6956858456339101
+    },
+    "bottom_right": {
+      "x": 0.8273166470935767,
+      "y": 0.8123173203103737
+    },
+    "bottom_left": {
+      "x": 0.05054455374111358,
+      "y": 0.7204822083425273
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 24,
+    "text": "Credit Card. Apply and SAVE UP TO $100.",
+    "bounding_box": {
+      "x": 35.538750551454996,
+      "y": 1009.787671667437,
+      "width": 766.8496248250278,
+      "height": 182.49202701419784
+    },
+    "top_right": {
+      "x": 0.8308991725084808,
+      "y": 0.8125124060988625
+    },
+    "top_left": {
+      "x": 0.04509786442985913,
+      "y": 0.7144556672595955
+    },
+    "bottom_right": {
+      "x": 0.8226028362803897,
+      "y": 0.8435743588303567
+    },
+    "bottom_left": {
+      "x": 0.03680152820176903,
+      "y": 0.7455176199910898
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 25,
+    "text": "1070",
+    "bounding_box": {
+      "x": -17.106927222953345,
+      "y": 1150.741137347379,
+      "width": 160.98983640649658,
+      "height": 63.1529505049394
+    },
+    "top_right": {
+      "x": 0.1489954164934465,
+      "y": 0.8290954634913624
+    },
+    "top_left": {
+      "x": -0.011805723183399513,
+      "y": 0.8141845560156087
+    },
+    "bottom_right": {
+      "x": 0.1430863620081827,
+      "y": 0.8588672003559908
+    },
+    "bottom_left": {
+      "x": -0.017714777668663792,
+      "y": 0.8439562928802364
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 26,
+    "text": "01/06/25",
+    "bounding_box": {
+      "x": 167.21248817846686,
+      "y": 1180.9149765707878,
+      "width": 326.95348196594745,
+      "height": 97.20177005405004
+    },
+    "top_right": {
+      "x": 0.5117248807127706,
+      "y": 0.8757074583597666
+    },
+    "top_left": {
+      "x": 0.18058027728334544,
+      "y": 0.8355334702883946
+    },
+    "bottom_right": {
+      "x": 0.504298555211669,
+      "y": 0.9043066960182207
+    },
+    "bottom_left": {
+      "x": 0.17315395178224352,
+      "y": 0.8641327079468485
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 27,
+    "text": "0S 18",
+    "bounding_box": {
+      "x": 508.47748699705244,
+      "y": 1240.858110458141,
+      "width": 210.49211145590016,
+      "height": 77.15427885058344
+    },
+    "top_right": {
+      "x": 0.7445163249442832,
+      "y": 0.9034735642004112
+    },
+    "top_left": {
+      "x": 0.5340910284089767,
+      "y": 0.8779450711830675
+    },
+    "bottom_right": {
+      "x": 0.7369702168842611,
+      "y": 0.9325340836307069
+    },
+    "bottom_left": {
+      "x": 0.5265449203283977,
+      "y": 0.907005591963325
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 28,
+    "text": "PM",
+    "bounding_box": {
+      "x": 746.1158852245683,
+      "y": 1287.893615565299,
+      "width": 84.94697673528795,
+      "height": 45.18171177369506
+    },
+    "top_right": {
+      "x": 0.8605925328628745,
+      "y": 0.9118460528370962
+    },
+    "top_left": {
+      "x": 0.7731044946583937,
+      "y": 0.9112241298694702
+    },
+    "bottom_right": {
+      "x": 0.8601152230607484,
+      "y": 0.9431915730646345
+    },
+    "bottom_left": {
+      "x": 0.772627184856268,
+      "y": 0.9425696500970085
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 0.5,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 29,
+    "text": "A",
+    "bounding_box": {
+      "x": -20.04160285000785,
+      "y": 1453.1240288773574,
+      "width": 28.581043891893614,
+      "height": 40.56819099682872
+    },
+    "top_right": {
+      "x": 0.008842868008972157,
+      "y": 1.0283370093665156
+    },
+    "top_left": {
+      "x": -0.020319811392521144,
+      "y": 1.0281297017106403
+    },
+    "bottom_right": {
+      "x": 0.0084089499920889,
+      "y": 1.0568329378278858
+    },
+    "bottom_left": {
+      "x": -0.0207537294094044,
+      "y": 1.0566256301720107
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 30,
+    "text": "1010 51 04827097002029002",
+    "bounding_box": {
+      "x": 63.60870302780768,
+      "y": 1268.4980125762106,
+      "width": 634.234380692264,
+      "height": 202.84250851994798
+    },
+    "top_right": {
+      "x": 0.7226391341122219,
+      "y": 0.9738982102076038
+    },
+    "top_left": {
+      "x": 0.08302844867876459,
+      "y": 0.8975011474403135
+    },
+    "bottom_right": {
+      "x": 0.7054795593666484,
+      "y": 1.0410184272006453
+    },
+    "bottom_left": {
+      "x": 0.06586887389207825,
+      "y": 0.9646213671332782
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 31,
+    "text": "RETURN POLICY DEFINITIONS",
+    "bounding_box": {
+      "x": 100.9996485031204,
+      "y": 1399.1508884310945,
+      "width": 500.84238778782407,
+      "height": 128.07752187303512
+    },
+    "top_right": {
+      "x": 0.6232269375791125,
+      "y": 1.0519615807756628
+    },
+    "top_left": {
+      "x": 0.11201473547839529,
+      "y": 0.9899420537985252
+    },
+    "bottom_right": {
+      "x": 0.6158006120780103,
+      "y": 1.080560818434118
+    },
+    "bottom_left": {
+      "x": 0.10458840997729361,
+      "y": 1.0185412914569802
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 32,
+    "text": "POLICY ID",
+    "bounding_box": {
+      "x": 36.564860937683534,
+      "y": 1425.5639566847938,
+      "width": 194.6974723644339,
+      "height": 73.17485747113311
+    },
+    "top_right": {
+      "x": 0.23947964261440088,
+      "y": 1.031040417087437
+    },
+    "top_left": {
+      "x": 0.04511039397591583,
+      "y": 1.008630107567699
+    },
+    "bottom_right": {
+      "x": 0.23223334738650053,
+      "y": 1.0604035576582862
+    },
+    "bottom_left": {
+      "x": 0.037864098768571684,
+      "y": 1.037993246788586
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 33,
+    "text": "DAYS",
+    "bounding_box": {
+      "x": 273.4384741114591,
+      "y": 1472.289694657425,
+      "width": 88.97012173303824,
+      "height": 45.22356915742275
+    },
+    "top_right": {
+      "x": 0.3752858486463797,
+      "y": 1.0423415348776388
+    },
+    "top_left": {
+      "x": 0.2836317133845435,
+      "y": 1.0416899965306015
+    },
+    "bottom_right": {
+      "x": 0.3748085388442533,
+      "y": 1.0736870551051767
+    },
+    "bottom_left": {
+      "x": 0.28315440358241756,
+      "y": 1.0730355167581394
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 34,
+    "text": "POLICY EXPIRES ON",
+    "bounding_box": {
+      "x": 405.3010379392895,
+      "y": 1490.1698432356384,
+      "width": 343.88647769742624,
+      "height": 100.20839206013852
+    },
+    "top_right": {
+      "x": 0.7758079577164277,
+      "y": 1.0966420140572717
+    },
+    "top_left": {
+      "x": 0.4271286883312511,
+      "y": 1.0543407486060887
+    },
+    "bottom_right": {
+      "x": 0.7683816322204651,
+      "y": 1.1252412513782362
+    },
+    "bottom_left": {
+      "x": 0.419702362814732,
+      "y": 1.0829399872770151
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 35,
+    "text": "1",
+    "bounding_box": {
+      "x": 112.55457358698686,
+      "y": 1478.6704368282292,
+      "width": 28.497238102425626,
+      "height": 32.51315237148561
+    },
+    "top_right": {
+      "x": 0.14606372326688358,
+      "y": 1.046411874460172
+    },
+    "top_left": {
+      "x": 0.11690104386539027,
+      "y": 1.0462045668042963
+    },
+    "bottom_right": {
+      "x": 0.14571658886159974,
+      "y": 1.0692086166892834
+    },
+    "bottom_left": {
+      "x": 0.1165539094601062,
+      "y": 1.0690013090334078
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 0.5,
+    "embedding_status": "NONE",
+    "is_noise": false
+  },
+  {
+    "receipt_id": 7,
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "line_id": 36,
+    "text": "90",
+    "bounding_box": {
+      "x": 269.1220087870254,
+      "y": 1508.4955068351833,
+      "width": 48.65486600576419,
+      "height": 36.74996051078574
+    },
+    "top_right": {
+      "x": 0.3290682547385752,
+      "y": 1.0676621007404672
+    },
+    "top_left": {
+      "x": 0.279075090050301,
+      "y": 1.0673067161875385
+    },
+    "bottom_right": {
+      "x": 0.3286777285069354,
+      "y": 1.0933084374356707
+    },
+    "bottom_left": {
+      "x": 0.2786845638186614,
+      "y": 1.0929530528827414
+    },
+    "angle_degrees": 0.0,
+    "angle_radians": 0.0,
+    "confidence": 1.0,
+    "embedding_status": "NONE",
+    "is_noise": false
+  }
+]

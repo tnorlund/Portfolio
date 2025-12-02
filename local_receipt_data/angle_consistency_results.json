@@ -1,0 +1,26 @@
+{
+  "13da1048-3888-429f-b2aa-b3e15341da5e": {
+    "1": {
+      "receipt_id": 1,
+      "total_lines": 142,
+      "mean_angle": 0.0,
+      "mean_angle_difference": 0.0,
+      "max_angle_difference": 0.0,
+      "outlier_count": 0,
+      "outliers": [],
+      "is_consistent": true
+    }
+  },
+  "752cf8e2-cb69-4643-8f28-0ac9e3d2df25": {
+    "1": {
+      "receipt_id": 1,
+      "total_lines": 91,
+      "mean_angle": 0.0,
+      "mean_angle_difference": 0.0,
+      "max_angle_difference": 0.0,
+      "outlier_count": 0,
+      "outliers": [],
+      "is_consistent": true
+    }
+  }
+}

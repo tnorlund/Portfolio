@@ -20,6 +20,7 @@ import argparse
 import io
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -45,6 +46,7 @@ def create_visualization_with_boxes(
     split_receipts: List[Dict],
     split_lines: List[List[Dict]],
     output_path: Path,
+    image_id: str,
 ) -> None:
     """Create a visualization showing original image with bounding boxes for split receipts."""
     if not PIL_AVAILABLE:
@@ -110,85 +112,154 @@ def create_visualization_with_boxes(
         line_bl_x = orig_min_x + bl['x'] * orig_width_abs
         line_bl_y = orig_top_y_img + (1 - bl['y']) * orig_height_abs
 
+        # Draw quadrilateral using actual corner coordinates (not axis-aligned)
         points = [
             (int(line_tl_x), int(line_tl_y)),
             (int(line_tr_x), int(line_tr_y)),
             (int(line_br_x), int(line_br_y)),
             (int(line_bl_x), int(line_bl_y)),
         ]
-        draw.polygon(points, outline=(200, 200, 200), width=1)
+        # Draw the polygon outline
+        draw.polygon(points, outline=(200, 200, 200), width=2)
+        # Optionally draw corner markers to make it clear we're using actual corners
+        corner_radius = 3
+        draw.ellipse([line_tl_x - corner_radius, line_tl_y - corner_radius,
+                     line_tl_x + corner_radius, line_tl_y + corner_radius],
+                    fill=(200, 200, 200), outline=(200, 200, 200))
+        draw.ellipse([line_tr_x - corner_radius, line_tr_y - corner_radius,
+                     line_tr_x + corner_radius, line_tr_y + corner_radius],
+                    fill=(200, 200, 200), outline=(200, 200, 200))
+        draw.ellipse([line_br_x - corner_radius, line_br_y - corner_radius,
+                     line_br_x + corner_radius, line_br_y + corner_radius],
+                    fill=(200, 200, 200), outline=(200, 200, 200))
+        draw.ellipse([line_bl_x - corner_radius, line_bl_y - corner_radius,
+                     line_bl_x + corner_radius, line_bl_y + corner_radius],
+                    fill=(200, 200, 200), outline=(200, 200, 200))
 
     # Draw split receipt lines in different colors
+    # Use proven transform methods to convert from receipt space to image space
     for i, (receipt, lines) in enumerate(zip(split_receipts, split_lines)):
         color = colors[i % len(colors)]
         receipt_id = receipt['receipt_id'] if isinstance(receipt, dict) else receipt.receipt_id
 
-        # Get receipt bounds to transform line coordinates
+        # Get receipt entity (convert dict to entity if needed)
         if isinstance(receipt, dict):
-            receipt_tl = receipt['top_left']
-            receipt_tr = receipt['top_right']
-            receipt_bl = receipt['bottom_left']
-            receipt_br = receipt['bottom_right']
-            receipt_width = receipt['width']
-            receipt_height = receipt['height']
+            from receipt_dynamo.entities import Receipt
+            receipt_entity = Receipt(
+                image_id=receipt['image_id'],
+                receipt_id=receipt['receipt_id'],
+                width=receipt['width'],
+                height=receipt['height'],
+                timestamp_added=receipt.get('timestamp_added', datetime.now(timezone.utc).isoformat()),
+                raw_s3_bucket=receipt.get('raw_s3_bucket', ''),
+                raw_s3_key=receipt.get('raw_s3_key', ''),
+                top_left=receipt['top_left'],
+                top_right=receipt['top_right'],
+                bottom_left=receipt['bottom_left'],
+                bottom_right=receipt['bottom_right'],
+            )
         else:
-            receipt_tl = receipt.top_left
-            receipt_tr = receipt.top_right
-            receipt_bl = receipt.bottom_left
-            receipt_br = receipt.bottom_right
-            receipt_width = receipt.width
-            receipt_height = receipt.height
+            receipt_entity = receipt
 
-        # Calculate receipt bounds in image coordinates
-        # Receipt bounds are in OCR space (y=0 at bottom), normalized (0-1) relative to image
-        # In OCR space: receipt_tl.y is top (larger), receipt_bl.y is bottom (smaller)
-        # Convert to image coordinates: image_y = image_height - ocr_y * image_height
-        receipt_min_x = receipt_tl['x'] * image_width
-        receipt_max_x = receipt_tr['x'] * image_width
-        # In OCR space: receipt_tl.y is top (larger), receipt_bl.y is bottom (smaller)
-        # In image space: top is smaller Y, bottom is larger Y
-        receipt_top_y_img = image_height - receipt_tl['y'] * image_height  # Top in OCR (large) -> top in image (small)
-        receipt_bottom_y_img = image_height - receipt_bl['y'] * image_height  # Bottom in OCR (small) -> bottom in image (large)
+        # Get transform coefficients from receipt to image space
+        try:
+            transform_coeffs, receipt_width, receipt_height = receipt_entity.get_transform_to_image(
+                image_width, image_height
+            )
+        except Exception as e:
+            print(f"⚠️  Error getting transform for receipt {receipt_id}: {e}")
+            continue
 
-        receipt_width_abs = receipt_max_x - receipt_min_x
-        receipt_height_abs = receipt_bottom_y_img - receipt_top_y_img
+        # Import transform utilities
+        try:
+            from receipt_upload.geometry.transformations import invert_warp
+            from receipt_dynamo.entities import ReceiptLine
+            import copy
+            TRANSFORM_AVAILABLE = True
+        except ImportError:
+            # Try alternative import path
+            try:
+                from receipt_dynamo.utils.transformations import invert_warp
+                from receipt_dynamo.entities import ReceiptLine
+                import copy
+                TRANSFORM_AVAILABLE = True
+            except ImportError:
+                print(f"⚠️  Transform utilities not available for receipt {receipt_id}")
+                TRANSFORM_AVAILABLE = False
+
+        if not TRANSFORM_AVAILABLE:
+            continue
 
         for line in lines:
+            # Convert line dict to ReceiptLine entity if needed
             if isinstance(line, dict):
-                tl = line['top_left']
-                tr = line['top_right']
-                br = line['bottom_right']
-                bl = line['bottom_left']
+                from receipt_dynamo.entities import ReceiptLine
+                line_entity = ReceiptLine(
+                    receipt_id=receipt_id,
+                    image_id=line.get('image_id', image_id),
+                    line_id=line['line_id'],
+                    text=line.get('text', ''),
+                    bounding_box=line.get('bounding_box', {}),
+                    top_left=line['top_left'],
+                    top_right=line['top_right'],
+                    bottom_left=line['bottom_left'],
+                    bottom_right=line['bottom_right'],
+                    angle_degrees=line.get('angle_degrees', 0.0),
+                    angle_radians=line.get('angle_radians', 0.0),
+                    confidence=line.get('confidence', 0.0),
+                )
             else:
-                tl = line.top_left
-                tr = line.top_right
-                br = line.bottom_right
-                bl = line.bottom_left
+                line_entity = line
 
-            # Convert from receipt-relative (0-1) to absolute image coordinates
-            # ReceiptLine coordinates are normalized (0-1) relative to receipt bounds
-            # In OCR space: y=0 at bottom of receipt, y=1 at top of receipt
-            # Convert to image coordinates:
-            # - X: receipt_min_x + line_x * receipt_width
-            # - Y: receipt_top_y_img + (1 - line_y) * receipt_height (flip Y: 0=bottom->large Y, 1=top->small Y)
-            line_tl_x = receipt_min_x + tl['x'] * receipt_width_abs
-            line_tl_y = receipt_top_y_img + (1 - tl['y']) * receipt_height_abs  # Flip: receipt 0=bottom, image bottom=large Y
-            line_tr_x = receipt_min_x + tr['x'] * receipt_width_abs
-            line_tr_y = receipt_top_y_img + (1 - tr['y']) * receipt_height_abs
-            line_br_x = receipt_min_x + br['x'] * receipt_width_abs
-            line_br_y = receipt_top_y_img + (1 - br['y']) * receipt_height_abs
-            line_bl_x = receipt_min_x + bl['x'] * receipt_width_abs
-            line_bl_y = receipt_top_y_img + (1 - bl['y']) * receipt_height_abs
+            # Use proven transform method: transform line from receipt space to image space
+            line_copy = copy.deepcopy(line_entity)
 
+            # Apply transform: receipt space -> image space
+            # warp_transform expects forward coefficients (image -> receipt), so we invert
+            forward_coeffs = invert_warp(*transform_coeffs)
+            line_copy.warp_transform(
+                *forward_coeffs,
+                src_width=image_width,
+                src_height=image_height,
+                dst_width=receipt_width,
+                dst_height=receipt_height,
+                flip_y=True,  # Receipt coords are in OCR space (y=0 at bottom), need to flip to PIL space
+            )
+
+            # After warp_transform, line_copy coordinates are normalized (0-1) in image space (PIL space)
+            # Convert to absolute image coordinates
+            line_tl_x = line_copy.top_left["x"] * image_width
+            line_tl_y = line_copy.top_left["y"] * image_height
+            line_tr_x = line_copy.top_right["x"] * image_width
+            line_tr_y = line_copy.top_right["y"] * image_height
+            line_br_x = line_copy.bottom_right["x"] * image_width
+            line_br_y = line_copy.bottom_right["y"] * image_height
+            line_bl_x = line_copy.bottom_left["x"] * image_width
+            line_bl_y = line_copy.bottom_left["y"] * image_height
+
+            # Draw quadrilateral using actual corner coordinates (not axis-aligned)
             points = [
                 (int(line_tl_x), int(line_tl_y)),
                 (int(line_tr_x), int(line_tr_y)),
                 (int(line_br_x), int(line_br_y)),
                 (int(line_bl_x), int(line_bl_y)),
             ]
-
-            # Draw bounding box with cluster color
+            # Draw the polygon outline
             draw.polygon(points, outline=color, width=3)
+            # Draw corner markers to make it clear we're using actual corners
+            corner_radius = 4
+            draw.ellipse([line_tl_x - corner_radius, line_tl_y - corner_radius,
+                         line_tl_x + corner_radius, line_tl_y + corner_radius],
+                        fill=color, outline=color)
+            draw.ellipse([line_tr_x - corner_radius, line_tr_y - corner_radius,
+                         line_tr_x + corner_radius, line_tr_y + corner_radius],
+                        fill=color, outline=color)
+            draw.ellipse([line_br_x - corner_radius, line_br_y - corner_radius,
+                         line_br_x + corner_radius, line_br_y + corner_radius],
+                        fill=color, outline=color)
+            draw.ellipse([line_bl_x - corner_radius, line_bl_y - corner_radius,
+                         line_bl_x + corner_radius, line_bl_y + corner_radius],
+                        fill=color, outline=color)
 
     # Add legend
     try:
@@ -313,6 +384,7 @@ def main():
         split_receipts,
         split_lines_dict,
         args.output,
+        args.image_id,
     )
 
     print(f"\n✅ Visualization complete!")
