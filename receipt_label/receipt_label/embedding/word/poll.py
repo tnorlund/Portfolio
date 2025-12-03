@@ -418,8 +418,8 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
             label_confidence = None
             label_proposed_by = None
 
-        # valid_labels — all labels with status VALID
-        valid_labels = [
+        # validated_labels — all labels with status VALID
+        validated_labels = [
             lbl.label
             for lbl in word_labels
             if lbl.validation_status == ValidationStatus.VALID.value
@@ -454,14 +454,12 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
 
         # Import locally to avoid circular import
         from receipt_chroma.embedding.formatting.word_format import (  # pylint: disable=import-outside-toplevel
-            get_word_neighbors,
+            format_word_context_embedding_input,
+            parse_left_right_from_formatted,
         )
 
-        # Get left and right context words directly (more efficient than parsing)
-        left_words, right_words = get_word_neighbors(target_word, words, context_size=2)
-        # Extract first word from each side for backward compatibility with metadata
-        left_text = left_words[0] if left_words else "<EDGE>"
-        right_text = right_words[0] if right_words else "<EDGE>"
+        _embedding = format_word_context_embedding_input(target_word, words)
+        left_text, right_text = parse_left_right_from_formatted(_embedding)
 
         # Priority: canonical name > regular merchant name
         if (
@@ -521,14 +519,14 @@ def save_word_embeddings_as_delta(  # pylint: disable=too-many-statements
         if label_proposed_by is not None:
             word_metadata["label_proposed_by"] = label_proposed_by
 
-        # Store valid labels with delimiters for exact matching
-        if valid_labels:
+        # Store validated labels with delimiters for exact matching
+        if validated_labels:
             # Use comma delimiters to enable exact matching with $contains
-            word_metadata["valid_labels"] = (
-                f",{','.join(valid_labels)},"
+            word_metadata["validated_labels"] = (
+                f",{','.join(validated_labels)},"
             )
         else:
-            word_metadata["valid_labels"] = ""
+            word_metadata["validated_labels"] = ""
 
         # Store invalid labels with delimiters for exact matching
         if invalid_labels:

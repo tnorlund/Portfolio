@@ -7,6 +7,8 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Literal, Optional, TypedDict
 
+from typing_extensions import NotRequired, Required
+
 import boto3
 
 if TYPE_CHECKING:
@@ -20,12 +22,12 @@ logger = logging.getLogger(__name__)
 class DownloadResult(TypedDict, total=False):
     """Result from downloading a snapshot from S3."""
 
-    status: Literal["downloaded", "failed"]
-    snapshot_key: str
-    local_path: str
-    file_count: int
-    total_size_bytes: int
-    error: str  # Only present if status == "failed"
+    status: Required[Literal["downloaded", "failed"]]  # Always present
+    snapshot_key: NotRequired[str]  # Usually present, but not in exception cases
+    local_path: NotRequired[str]  # Only present on successful download
+    file_count: NotRequired[int]  # Only present on successful download
+    total_size_bytes: NotRequired[int]  # Only present on successful download
+    error: NotRequired[str]  # Only present if status == "failed"
 
 
 class UploadResult(TypedDict, total=False):
@@ -152,7 +154,7 @@ def download_snapshot_from_s3(
         }
 
     except Exception as e:
-        logger.error("Error downloading snapshot from S3: %s", e)
+        logger.exception("Error downloading snapshot from S3")
         return {"status": "failed", "error": str(e)}
 
 
@@ -296,7 +298,7 @@ def upload_snapshot_with_hash(
         }
 
     except Exception as e:
-        logger.error("Error uploading snapshot to S3: %s", e)
+        logger.exception("Error uploading snapshot to S3")
         return {"status": "failed", "error": str(e)}
 
 
@@ -432,7 +434,6 @@ def upload_delta_tarball(
             # Prepare metadata
             extra_args = {
                 "ContentType": "application/gzip",
-                "ContentEncoding": "gzip",
             }
             if metadata:
                 extra_args["Metadata"] = {
@@ -458,5 +459,5 @@ def upload_delta_tarball(
             }
 
     except Exception as e:
-        logger.error("Error uploading delta tarball to S3: %s", e)
+        logger.exception("Error uploading delta tarball to S3")
         return {"status": "failed", "error": str(e)}

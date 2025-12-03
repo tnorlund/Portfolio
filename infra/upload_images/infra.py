@@ -148,9 +148,8 @@ class UploadImages(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Store embed_ndjson_queue_url for use in Lambda environment (optional)
-        # Note: The queue is only needed for the NDJSON worker Lambda
-        # Scripts can embed directly and create CompactionRun (like combine_receipts)
+        # Store embed_ndjson_queue_url for use in Lambda environment
+        # If not provided, we'll use the internal queue created below
         self._external_embed_ndjson_queue_url = embed_ndjson_queue_url
 
         # --- Combined upload_receipt Lambda (presign + job record) ---
@@ -698,14 +697,8 @@ class UploadImages(ComponentResource):
         # Use the Lambda function created by CodeBuildDockerImage
         embed_ndjson_lambda = embed_ndjson_docker_image.lambda_function
 
-        # Store for potential event source mapping (if external queue is provided)
+        # Store for potential event source mapping (if queue is provided)
         self.embed_ndjson_lambda = embed_ndjson_lambda
-
-        # Create event source mapping if external queue is provided
-        if self._external_embed_ndjson_queue_url:
-            # Note: We'd need the queue ARN to create the mapping
-            # For now, this is handled elsewhere if needed
-            pass
 
         # Remove Step Function embedding path in favor of SQS batching
 
@@ -797,6 +790,3 @@ class UploadImages(ComponentResource):
         )
 
         self.endpoint_url = pulumi.Output.concat("https://", api_domain_name)
-
-        # Export artifacts bucket for use by other components
-        self.artifacts_bucket = artifacts_bucket

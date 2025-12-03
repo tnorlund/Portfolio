@@ -300,7 +300,7 @@ def build_entity_change_message(
 
 def _extract_entity_data(
     entity_type: str,
-    entity: ReceiptMetadata | ReceiptWordLabel | Any,  # Receipt for deletion
+    entity: ReceiptMetadata | ReceiptWordLabel,
 ) -> Tuple[Dict[str, Any], List[ChromaDBCollection]]:
     """
     Extract entity data and determine target collections.
@@ -312,18 +312,7 @@ def _extract_entity_data(
     Returns:
         Tuple of (entity_data dict, list of target collections)
     """
-    if entity_type == "RECEIPT":
-        # Receipt deletion affects both collections (all embeddings for the receipt)
-        entity_data = {
-            "entity_type": entity_type,
-            "image_id": entity.image_id,
-            "receipt_id": entity.receipt_id,
-        }
-        target_collections = [
-            ChromaDBCollection.LINES,
-            ChromaDBCollection.WORDS,
-        ]
-    elif entity_type == "RECEIPT_METADATA":
+    if entity_type == "RECEIPT_METADATA":
         # Metadata changes affect both collections
         entity_data = {
             "entity_type": entity_type,

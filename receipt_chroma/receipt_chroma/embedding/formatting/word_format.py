@@ -190,9 +190,10 @@ def get_word_neighbors(
     Get the left and right neighbor words for the target word with
     configurable context size.
 
-    Returns multiple neighbors on each side, using <EDGE> tags for missing
-    positions. This preserves relative position information and distinguishes
-    words at different distances from edges.
+    Returns up to context_size actual neighbor texts on each side. No <EDGE>
+    padding is added; if fewer neighbors are available, the lists will be
+    shorter than context_size. Callers requiring <EDGE>-padded outputs should
+    use format_word_context_embedding_input instead.
 
     Finds neighbors based on horizontal position (x-coordinate), regardless
     of line (y-coordinate). When x-coordinates are identical, preserves
@@ -201,11 +202,13 @@ def get_word_neighbors(
     Args:
         target_word: The word to find neighbors for
         all_words: All words in the receipt
-        context_size: Number of words to include on each side (default: 2)
+        context_size: Maximum number of words to include on each side
+            (default: 2). Actual number may be less if fewer neighbors exist.
 
     Returns:
-        Tuple of (left_words, right_words) where each is a list of
-        context_size words
+        Tuple of (left_words, right_words) where each is a list of up to
+        context_size word texts. Lists may be shorter if fewer neighbors are
+        available.
     """
     # Sort all words by x-coordinate (horizontal position)
     # Use a stable sort key: (x, original_index) to preserve order when

@@ -46,12 +46,10 @@ try:
         group_messages_by_collection,
         process_metadata_updates,
         process_label_updates,
-        process_receipt_deletions,
         process_compaction_run_messages,
         merge_compaction_deltas,
         apply_metadata_updates_in_memory,
         apply_label_updates_in_memory,
-        apply_receipt_deletions_in_memory,
         LambdaResponse,
         StreamMessage,
         MetadataUpdateResult,
@@ -68,12 +66,10 @@ except ImportError:
             group_messages_by_collection,
             process_metadata_updates,
             process_label_updates,
-            process_receipt_deletions,
             process_compaction_run_messages,
             merge_compaction_deltas,
             apply_metadata_updates_in_memory,
             apply_label_updates_in_memory,
-            apply_receipt_deletions_in_memory,
             LambdaResponse,
             StreamMessage,
             MetadataUpdateResult,
@@ -452,12 +448,11 @@ def process_stream_messages(
 
     total_metadata_updates = 0
     total_label_updates = 0
-    total_receipt_deletions = 0
     total_compaction_merged = 0
     failed_receipt_handles: List[str] = []
 
     for collection, msgs in messages_by_collection.items():
-        metadata_msgs, label_msgs, compaction_run_msgs, receipt_deletion_msgs = categorize_stream_messages(
+        metadata_msgs, label_msgs, compaction_run_msgs = categorize_stream_messages(
             msgs
         )
 
@@ -700,22 +695,6 @@ def process_stream_messages(
                 )
                 total_label_updates += sum(
                     r.updated_count for r in lb_results if getattr(r, "error", None) is None
-                )
-
-            # Apply receipt deletions (delete embeddings)
-            # Note: This must happen AFTER metadata and label updates, but BEFORE closing the client
-            if receipt_deletion_msgs:
-                receipt_results = apply_receipt_deletions_in_memory(
-                    chroma_client=chroma_client,
-                    receipt_deletions=receipt_deletion_msgs,
-                    collection=collection,
-                    logger=logger,
-                    metrics=metrics,
-                    OBSERVABILITY_AVAILABLE=True,
-                    get_dynamo_client_func=get_dynamo_client,
-                )
-                total_receipt_deletions += sum(
-                    r.updated_count for r in receipt_results if getattr(r, "error", None) is None
                 )
 
             # Phase B: Optimized upload with minimal lock time
@@ -1050,7 +1029,6 @@ def process_stream_messages(
         message="Stream messages processed",
         metadata_updates=total_metadata_updates,
         label_updates=total_label_updates,
-        receipt_deletions=total_receipt_deletions,
     ).to_dict()
 
 

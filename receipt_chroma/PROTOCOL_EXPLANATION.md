@@ -10,19 +10,24 @@
 **Use for**: Structured data, dictionaries with known keys
 
 ```python
-from typing import TypedDict
+from typing import Literal, TypedDict
+from typing_extensions import NotRequired, Required
 
 class DownloadResult(TypedDict, total=False):
-    status: str  # Required
-    snapshot_key: str  # Required
-    file_count: int  # Optional (total=False means all fields optional)
-    error: str  # Optional
+    status: Required[Literal["downloaded", "failed"]]  # Always present
+    snapshot_key: NotRequired[str]  # Usually present, but not in exception cases
+    local_path: NotRequired[str]  # Only present on successful download
+    file_count: NotRequired[int]  # Only present on successful download
+    total_size_bytes: NotRequired[int]  # Only present on successful download
+    error: NotRequired[str]  # Only present if status == "failed"
 
 def download_snapshot(...) -> DownloadResult:
     return {
         "status": "downloaded",
         "snapshot_key": "path/to/snapshot",
-        "file_count": 42
+        "local_path": "/local/path",
+        "file_count": 42,
+        "total_size_bytes": 1024
     }
 ```
 
@@ -30,7 +35,9 @@ def download_snapshot(...) -> DownloadResult:
 - Type checker knows what keys exist
 - Type checker knows value types
 - IDE autocomplete works
-- Can validate at runtime with `isinstance()` (Python 3.8+)
+- Clear distinction between required and optional fields
+
+**Note**: TypedDict is a static typing construct and produces plain dicts at runtime. It does not support `isinstance()` or `issubclass()` checks. For runtime validation, use libraries like `pydantic` or write custom validation functions.
 
 ## Protocol (Structural Typing)
 
@@ -116,7 +123,7 @@ def download_snapshot_from_s3(
     if s3_client is None:
         import boto3
         s3_client = boto3.client("s3")  # Type checker knows this is S3Client
-    
+
     s3_client.download_file(...)  # ✅ Full autocomplete and type checking!
 ```
 
@@ -154,7 +161,7 @@ def download_snapshot_from_s3(
     if s3_client is None:
         import boto3
         s3_client = boto3.client("s3")  # Real client works
-    
+
     s3_client.download_file(...)  # ✅ Type checked!
 ```
 
@@ -206,7 +213,7 @@ from typing import Protocol, Any, List, Dict
 class ChromaCollection(Protocol):
     """Protocol for ChromaDB collection interface."""
     name: str
-    
+
     def query(self, **kwargs: Any) -> Dict[str, Any]: ...
     def get(self, **kwargs: Any) -> Dict[str, Any]: ...
     def count(self) -> int: ...

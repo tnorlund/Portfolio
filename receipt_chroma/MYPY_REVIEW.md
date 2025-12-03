@@ -255,13 +255,16 @@ def get_collection(...) -> ChromaCollection:
 **Recommendation**: Use TypedDict for structured return values:
 
 ```python
+from typing import Literal, TypedDict
+from typing_extensions import NotRequired, Required
+
 class DownloadResult(TypedDict, total=False):
-    status: Literal["downloaded", "failed"]
-    snapshot_key: str
-    local_path: str
-    file_count: int
-    total_size_bytes: int
-    error: str  # Only present if status == "failed"
+    status: Required[Literal["downloaded", "failed"]]  # Always present
+    snapshot_key: NotRequired[str]  # Usually present, but not in exception cases
+    local_path: NotRequired[str]  # Only present on successful download
+    file_count: NotRequired[int]  # Only present on successful download
+    total_size_bytes: NotRequired[int]  # Only present on successful download
+    error: NotRequired[str]  # Only present if status == "failed"
 
 def download_snapshot_from_s3(...) -> DownloadResult:
 ```
@@ -286,8 +289,8 @@ def enrich_line_metadata_with_anchors(
 ```python
 class LineMetadata(TypedDict, total=False):
     image_id: str
-    receipt_id: str
-    line_id: str
+    receipt_id: int
+    line_id: int
     source: str
     anchor_word_ids: List[str]  # Only if anchors exist
     anchor_word_texts: List[str]  # Only if anchors exist

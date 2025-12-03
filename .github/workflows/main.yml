@@ -31,7 +31,7 @@ jobs:
       workflows_changed: ${{ steps.changes.outputs.workflows }}
       any_code_changed: ${{ steps.changes.outputs.all_code }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0 # Need full history for change detection
@@ -107,7 +107,7 @@ jobs:
 
       - name: Set up Node.js
         if: steps.changes.outputs.portfolio == 'true'
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v6
         with:
           node-version: 20
           # Skip npm caching on self-hosted runners - disk persists between runs
@@ -137,7 +137,7 @@ jobs:
       matrix:
         package: [receipt_dynamo, receipt_label, receipt_chroma]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Python (GitHub-hosted)
         if: ${{ runner.os != 'macOS' }}
@@ -370,10 +370,10 @@ jobs:
     needs: fast-checks
     runs-on: [self-hosted, macOS, ARM64]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v6
         with:
           node-version: 20
           # Skip npm caching on self-hosted runners - disk persists between runs
@@ -403,12 +403,12 @@ jobs:
       contents: write
     continue-on-error: true # Don't fail the whole workflow if docs fail
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v6
         with:
           node-version: 20
           # Docs job runs on GitHub-hosted ubuntu, caching helps
@@ -442,7 +442,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Python (GitHub-hosted)
         if: ${{ runner.os != 'macOS' }}
@@ -473,7 +473,7 @@ jobs:
           which python3
 
       - name: Set up Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v6
         with:
           node-version: 20
           # Deploy job runs on GitHub-hosted ubuntu, caching helps
@@ -533,7 +533,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Python (GitHub-hosted)
         if: ${{ runner.os != 'macOS' }}

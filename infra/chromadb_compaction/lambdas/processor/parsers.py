@@ -15,10 +15,6 @@ from receipt_dynamo.entities.receipt_word_label import (
     ReceiptWordLabel,
     item_to_receipt_word_label,
 )
-from receipt_dynamo.entities.receipt import (
-    Receipt,
-    item_to_receipt,
-)
 
 from .models import ParsedStreamRecord
 
@@ -36,20 +32,6 @@ def detect_entity_type(sk: str) -> Optional[str]:
     Returns:
         Entity type string or None if not relevant
     """
-    # Check for RECEIPT entity (SK pattern: RECEIPT#{receipt_id:05d})
-    # Must check this first before other patterns that contain "RECEIPT#"
-    # SK is exactly "RECEIPT#{id:05d}" with no additional parts after the ID
-    if sk.startswith("RECEIPT#"):
-        parts = sk.split("#")
-        # Should have exactly 2 parts: "RECEIPT" and the ID
-        if len(parts) == 2:
-            # Verify the ID part is numeric (receipt_id:05d format)
-            try:
-                int(parts[1])
-                return "RECEIPT"
-            except ValueError:
-                pass  # Not a valid receipt ID, continue checking
-
     if "#METADATA" in sk:
         return "RECEIPT_METADATA"
     if "#LABEL#" in sk:
@@ -66,7 +48,7 @@ def parse_entity(
     pk: str,
     sk: str,
     metrics=None,
-) -> Optional[Union[ReceiptMetadata, ReceiptWordLabel, Receipt]]:
+) -> Optional[Union[ReceiptMetadata, ReceiptWordLabel]]:
     """
     Parse DynamoDB image into typed entity.
 
@@ -105,8 +87,6 @@ def parse_entity(
                 },
             )
 
-        if entity_type == "RECEIPT":
-            return item_to_receipt(complete_item)
         if entity_type == "RECEIPT_METADATA":
             return item_to_receipt_metadata(complete_item)
         if entity_type == "RECEIPT_WORD_LABEL":
