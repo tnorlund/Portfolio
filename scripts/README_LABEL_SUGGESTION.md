@@ -117,3 +117,5 @@ For a receipt with 15 unlabeled words:
 **Result**: 12 labels suggested, 0-2 LLM calls (vs 15 if using LLM for all)
 
 
+
+

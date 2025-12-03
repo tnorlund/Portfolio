@@ -170,3 +170,5 @@ The agent shows **significant inconsistency** in decision-making. The same input
 **Primary fix**: Clarify the CORE_LABELS definition and add explicit decision rules with examples to guide the agent's interpretation.
 
 
+
+

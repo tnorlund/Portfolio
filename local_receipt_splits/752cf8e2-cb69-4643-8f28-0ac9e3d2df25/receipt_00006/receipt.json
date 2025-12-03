@@ -1,0 +1,39 @@
+{
+  "image_id": "752cf8e2-cb69-4643-8f28-0ac9e3d2df25",
+  "receipt_id": 6,
+  "width": 866,
+  "height": 1731,
+  "timestamp_added": "2025-12-03T06:36:15.035673+00:00",
+  "raw_s3_bucket": "raw-image-bucket-c779c32",
+  "raw_s3_key": "",
+  "top_left": {
+    "x": 0.14782409092086848,
+    "y": 0.8315464898034538
+  },
+  "top_right": {
+    "x": 0.4970647404341739,
+    "y": 0.8315464898034538
+  },
+  "bottom_left": {
+    "x": 0.14782409092086848,
+    "y": 0.33819237676081854
+  },
+  "bottom_right": {
+    "x": 0.4970647404341739,
+    "y": 0.33819237676081854
+  },
+  "sha256": "43ddd6c9fa2dbf605866c586be2be80435e9ddf6d1b4b72b82a293e768c3c8c1",
+  "cdn_s3_bucket": "sitebucket-ad92f1f",
+  "cdn_s3_key": "assets/752cf8e2-cb69-4643-8f28-0ac9e3d2df25_RECEIPT_00001.jpg",
+  "cdn_webp_s3_key": "assets/752cf8e2-cb69-4643-8f28-0ac9e3d2df25_RECEIPT_00001.webp",
+  "cdn_avif_s3_key": null,
+  "cdn_thumbnail_s3_key": null,
+  "cdn_thumbnail_webp_s3_key": null,
+  "cdn_thumbnail_avif_s3_key": null,
+  "cdn_small_s3_key": null,
+  "cdn_small_webp_s3_key": null,
+  "cdn_small_avif_s3_key": null,
+  "cdn_medium_s3_key": null,
+  "cdn_medium_webp_s3_key": null,
+  "cdn_medium_avif_s3_key": null
+}

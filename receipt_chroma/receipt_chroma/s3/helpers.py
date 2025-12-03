@@ -1,6 +1,9 @@
 """Low-level S3 helper functions for ChromaDB operations."""
 
 import logging
+import os
+import tarfile
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -300,3 +303,110 @@ def _cleanup_old_snapshot_versions(
             logger.warning(
                 "Failed to cleanup version %s: %s", version_prefix, e
             )
+
+
+def upload_delta_tarball(
+    local_delta_dir: str,
+    bucket: str,
+    delta_prefix: str,
+    metadata: Optional[Dict[str, Any]] = None,
+    region: Optional[str] = None,
+    s3_client: Optional[Any] = None,
+) -> Dict[str, Any]:
+    """
+    Create a gzip-compressed tarball from a delta directory and upload to S3.
+
+    This function is used by producer lambdas to create delta tarballs that
+    will be processed by the compaction Lambda. The compaction Lambda expects
+    tarballs at {delta_prefix}/delta.tar.gz.
+
+    Args:
+        local_delta_dir: Path to local delta directory (ChromaDB persist directory)
+        bucket: S3 bucket name
+        delta_prefix: S3 prefix for the delta (e.g., "lines/delta/{run_id}")
+        metadata: Optional metadata to include in S3 object
+        region: Optional AWS region
+        s3_client: Optional boto3 S3 client (creates one if not provided)
+
+    Returns:
+        Dict with status, delta_key (prefix), object_key (full S3 key), and tar_size_bytes
+
+    Example:
+        >>> result = upload_delta_tarball(
+        ...     local_delta_dir="/tmp/delta_123",
+        ...     bucket="my-bucket",
+        ...     delta_prefix="lines/delta/abc-123"
+        ... )
+        >>> print(result["object_key"])
+        "lines/delta/abc-123/delta.tar.gz"
+    """
+    logger.info(
+        "Bundling and uploading delta tarball: dir=%s bucket=%s prefix=%s",
+        local_delta_dir,
+        bucket,
+        delta_prefix,
+    )
+
+    if s3_client is None:
+        client_kwargs = {"service_name": "s3"}
+        if region:
+            client_kwargs["region_name"] = region
+        s3_client = boto3.client(**client_kwargs)
+
+    try:
+        delta_path = Path(local_delta_dir)
+        if not delta_path.exists() or not delta_path.is_dir():
+            logger.error(
+                "Delta directory does not exist or is not a directory: %s",
+                local_delta_dir,
+            )
+            return {
+                "status": "failed",
+                "error": f"Delta directory does not exist: {local_delta_dir}",
+            }
+
+        # Create tarball in temp directory
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tar_path = os.path.join(tmp_dir, "delta.tar.gz")
+
+            # Create gzip-compressed tarball
+            with tarfile.open(tar_path, "w:gz") as tar:
+                tar.add(local_delta_dir, arcname=".")
+
+            tar_size = os.path.getsize(tar_path)
+            logger.info(
+                "Created delta tarball: path=%s, size_bytes=%d",
+                tar_path,
+                tar_size,
+            )
+
+            # Upload tarball to S3
+            s3_key = f"{delta_prefix.rstrip('/')}/delta.tar.gz"
+
+            # Prepare metadata
+            extra_args = {
+                "ContentType": "application/gzip",
+                "ContentEncoding": "gzip",
+            }
+            if metadata:
+                extra_args["Metadata"] = {k: str(v) for k, v in metadata.items()}
+
+            s3_client.upload_file(tar_path, bucket, s3_key, ExtraArgs=extra_args)
+
+            logger.info(
+                "Uploaded delta tarball: bucket=%s, key=%s, size_bytes=%d",
+                bucket,
+                s3_key,
+                tar_size,
+            )
+
+            return {
+                "status": "uploaded",
+                "delta_key": delta_prefix,
+                "object_key": s3_key,
+                "tar_size_bytes": tar_size,
+            }
+
+    except Exception as e:
+        logger.error("Error uploading delta tarball to S3: %s", e)
+        return {"status": "failed", "error": str(e)}

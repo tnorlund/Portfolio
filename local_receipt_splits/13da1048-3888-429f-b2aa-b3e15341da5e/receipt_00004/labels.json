@@ -6,7 +6,7 @@
     "word_id": 1,
     "label": "ADDRESS_LINE",
     "reasoning": "The word '2745' is part of a complete address line on the receipt, appearing alongside the street name, city, state, and zip code. This matches the definition of ADDRESS_LINE. There is no indication it serves any other purpose (e.g., product code). Therefore the suggested label is correct.",
-    "timestamp_added": "2025-12-02T16:45:44.710502+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.857893+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -18,7 +18,7 @@
     "word_id": 2,
     "label": "ADDRESS_LINE",
     "reasoning": "The context shows that 'TELLER' is part of a larger address line. The ADDRESS_LINE label is defined for a full address line (including street number, city, state, zip). Since only the token 'TELLER' is being labeled, it does not satisfy the definition, making the suggested label incorrect.",
-    "timestamp_added": "2025-12-02T16:45:44.710567+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.857925+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -30,7 +30,7 @@
     "word_id": 3,
     "label": "ADDRESS_LINE",
     "reasoning": "Full street address appears near the top of the receipt and matches the exact text on the receipt.",
-    "timestamp_added": "2025-12-02T16:45:44.710575+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.857931+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -42,7 +42,7 @@
     "word_id": 1,
     "label": "ADDRESS_LINE",
     "reasoning": "Full street address appears near the top of the receipt and matches the exact text on the receipt.",
-    "timestamp_added": "2025-12-02T16:45:44.710580+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.857935+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -54,7 +54,7 @@
     "word_id": 3,
     "label": "PHONE_NUMBER",
     "reasoning": "Phone number follows the store address line, typical for store contact information.",
-    "timestamp_added": "2025-12-02T16:45:44.710584+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.857938+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -66,7 +66,7 @@
     "word_id": 1,
     "label": "WEBSITE",
     "reasoning": "The word JOANNA is part of a person's name on the receipt and is not itself a web address or email address. The actual email address is MONTECINOS@HOMEDEPOT.COM, which qualifies as a website/contact info, but the labeled word is JOANNA, which does not meet the WEBSITE definition. Therefore the suggested label is incorrect.",
-    "timestamp_added": "2025-12-02T16:45:44.710592+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.857942+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -78,7 +78,7 @@
     "word_id": 2,
     "label": "WEBSITE",
     "reasoning": "Email address contains the store's domain, qualifies as website/contact info",
-    "timestamp_added": "2025-12-02T16:45:44.710596+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.857945+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -90,7 +90,7 @@
     "word_id": 1,
     "label": "DATE",
     "reasoning": "Date appears in the transaction header next to time and cashier information, matching MM/DD/YY format.",
-    "timestamp_added": "2025-12-02T16:45:44.710600+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.857948+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -102,7 +102,7 @@
     "word_id": 2,
     "label": "TIME",
     "reasoning": "Time appears directly after the transaction date, indicating purchase time.",
-    "timestamp_added": "2025-12-02T16:45:44.710611+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.857951+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -114,7 +114,7 @@
     "word_id": 3,
     "label": "TIME",
     "reasoning": "Time appears directly after the transaction date, indicating purchase time.",
-    "timestamp_added": "2025-12-02T16:45:44.710614+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.857953+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -126,7 +126,7 @@
     "word_id": 2,
     "label": "QUANTITY",
     "reasoning": "Dimensions listed as quantity for the plywood product on line 26.",
-    "timestamp_added": "2025-12-02T16:45:44.710618+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.857956+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -138,7 +138,7 @@
     "word_id": 1,
     "label": "LINE_TOTAL",
     "reasoning": "Appears as a numeric amount on an item line",
-    "timestamp_added": "2025-12-02T16:45:44.710621+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.857960+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -150,7 +150,7 @@
     "word_id": 1,
     "label": "LINE_TOTAL",
     "reasoning": "Small numeric value on same line as other item pricing, treated as a line total (unit price).",
-    "timestamp_added": "2025-12-02T16:45:44.710625+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.857963+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -162,7 +162,7 @@
     "word_id": 1,
     "label": "TAX",
     "reasoning": "Small amount adjacent to a larger price, typical of a tax component.",
-    "timestamp_added": "2025-12-02T16:45:44.710628+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.857965+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -174,7 +174,7 @@
     "word_id": 1,
     "label": "UNIT_PRICE",
     "reasoning": "Numeric value preceding the product name and preceding the line total; typical unit price format. | The value 24.56 appears adjacent to the line total 2012.28 and is formatted as a monetary amount, indicating it is the unit price for the product on this line.",
-    "timestamp_added": "2025-12-02T16:45:44.710632+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.857968+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -186,7 +186,7 @@
     "word_id": 2,
     "label": "PRODUCT_NAME",
     "reasoning": "Part of the descriptive product name preceding the price.",
-    "timestamp_added": "2025-12-02T16:45:44.710636+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.857971+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -198,7 +198,7 @@
     "word_id": 1,
     "label": "PRODUCT_NAME",
     "reasoning": "Dimension part of the product description, typically included in the name.",
-    "timestamp_added": "2025-12-02T16:45:44.710640+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.857974+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -210,7 +210,7 @@
     "word_id": 2,
     "label": "PRODUCT_NAME",
     "reasoning": "Dimension specification that is part of the product description.",
-    "timestamp_added": "2025-12-02T16:45:44.710643+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.857977+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -222,7 +222,7 @@
     "word_id": 3,
     "label": "PRODUCT_NAME",
     "reasoning": "Brand or product line identifier preceding the type. | Part of product description \"FIRECODE DRYWALL\"",
-    "timestamp_added": "2025-12-02T16:45:44.710647+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.857980+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -234,7 +234,7 @@
     "word_id": 4,
     "label": "PRODUCT_NAME",
     "reasoning": "Part of product description \"FIRECODE DRYWALL\"",
-    "timestamp_added": "2025-12-02T16:45:44.710651+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.857983+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_4",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -246,7 +246,7 @@
     "word_id": 1,
     "label": "LINE_TOTAL",
     "reasoning": "Explicitly listed after a discount description, typical of an item subtotal before discount.",
-    "timestamp_added": "2025-12-02T16:45:44.710654+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.857986+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -258,7 +258,7 @@
     "word_id": 2,
     "label": "QUANTITY",
     "reasoning": "Immediately follows \"RSN:\" and could represent a quantity or reason code that co-occurs with the amount. | Quantity preceding product name in line 20,100.",
-    "timestamp_added": "2025-12-02T16:45:44.710657+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.857988+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -270,7 +270,7 @@
     "word_id": 1,
     "label": "DISCOUNT",
     "reasoning": "Explicit percentage markdown listed as a line item | Explicit discount line showing a percentage markdown",
-    "timestamp_added": "2025-12-02T16:45:44.710661+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.857991+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -282,7 +282,7 @@
     "word_id": 2,
     "label": "DISCOUNT",
     "reasoning": "Explicit percentage markdown listed as a line item | Explicit discount line showing a percentage markdown",
-    "timestamp_added": "2025-12-02T16:45:44.710664+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.857994+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -294,7 +294,7 @@
     "word_id": 2,
     "label": "PRODUCT_NAME",
     "reasoning": "Brand or manufacturer abbreviation that is part of the product description. | Brand or product identifier appearing in the description.",
-    "timestamp_added": "2025-12-02T16:45:44.710668+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.857997+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -306,7 +306,7 @@
     "word_id": 1,
     "label": "LINE_TOTAL",
     "reasoning": "Negative amount on same line as a discount, representing a discount line total.",
-    "timestamp_added": "2025-12-02T16:45:44.710671+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858000+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -318,7 +318,7 @@
     "word_id": 1,
     "label": "DISCOUNT",
     "reasoning": "Refund value shown as a reduction on the receipt",
-    "timestamp_added": "2025-12-02T16:45:44.710675+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858003+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -330,7 +330,7 @@
     "word_id": 1,
     "label": "PRODUCT_NAME",
     "reasoning": "Part of the product name phrase that precedes the price. | Descriptive word preceding the amount, part of the policy label. | First word of the product name phrase preceding the price. | Appears immediately before the amount and is part of the descriptive phrase 'MAX REFUND VALUE'. | Product name part of the phrase preceding the price.",
-    "timestamp_added": "2025-12-02T16:45:44.710679+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858006+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -342,7 +342,7 @@
     "word_id": 2,
     "label": "DISCOUNT",
     "reasoning": "Refund value shown as a reduction on the receipt",
-    "timestamp_added": "2025-12-02T16:45:44.710682+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858008+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -354,7 +354,7 @@
     "word_id": 2,
     "label": "PRODUCT_NAME",
     "reasoning": "Part of the product name phrase that precedes the price. | Descriptive word preceding the amount, part of the policy label. | Second word of the product name phrase preceding the price. | Part of the descriptive phrase preceding the amount. | Product name part of the phrase preceding the price.",
-    "timestamp_added": "2025-12-02T16:45:44.710686+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858011+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -366,7 +366,7 @@
     "word_id": 3,
     "label": "DISCOUNT",
     "reasoning": "Refund value shown as a reduction on the receipt",
-    "timestamp_added": "2025-12-02T16:45:44.710697+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858014+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -378,7 +378,7 @@
     "word_id": 3,
     "label": "PRODUCT_NAME",
     "reasoning": "Part of the product name phrase that precedes the price. | Descriptive word preceding the amount, part of the policy label. | Third word of the product name phrase preceding the price. | Completes the descriptive phrase before the amount. | Product name part of the phrase preceding the price.",
-    "timestamp_added": "2025-12-02T16:45:44.710700+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858017+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -390,7 +390,7 @@
     "word_id": 4,
     "label": "UNIT_PRICE",
     "reasoning": "Unit price with quantity indicator on a separate line.",
-    "timestamp_added": "2025-12-02T16:45:44.710704+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858020+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_4",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -402,7 +402,7 @@
     "word_id": 1,
     "label": "QUANTITY",
     "reasoning": "Numeric quantity indicator preceding the product description.",
-    "timestamp_added": "2025-12-02T16:45:44.710708+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858024+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -414,7 +414,7 @@
     "word_id": 1,
     "label": "UNIT_PRICE",
     "reasoning": "Amount shown after the dollar sign; represents the line total for the refund, not a unit price.",
-    "timestamp_added": "2025-12-02T16:45:44.710712+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858027+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -426,7 +426,7 @@
     "word_id": 2,
     "label": "PRODUCT_NAME",
     "reasoning": "Dimension specification part of product description.",
-    "timestamp_added": "2025-12-02T16:45:44.710715+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858029+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -438,7 +438,7 @@
     "word_id": 2,
     "label": "QUANTITY",
     "reasoning": "Dimensions listed as quantity for the plywood product on line 26.",
-    "timestamp_added": "2025-12-02T16:45:44.710718+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858032+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -450,7 +450,7 @@
     "word_id": 3,
     "label": "QUANTITY",
     "reasoning": "Dimensions listed as quantity for the plywood product on line 26.",
-    "timestamp_added": "2025-12-02T16:45:44.710721+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858038+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -462,7 +462,7 @@
     "word_id": 4,
     "label": "PRODUCT_NAME",
     "reasoning": "Dimension specification part of product description.",
-    "timestamp_added": "2025-12-02T16:45:44.710725+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858041+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_4",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -474,7 +474,7 @@
     "word_id": 4,
     "label": "QUANTITY",
     "reasoning": "Dimensions listed as quantity for the plywood product on line 26.",
-    "timestamp_added": "2025-12-02T16:45:44.710728+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858043+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_4",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -486,7 +486,7 @@
     "word_id": 5,
     "label": "QUANTITY",
     "reasoning": "Dimensions listed as quantity for the plywood product on line 26.",
-    "timestamp_added": "2025-12-02T16:45:44.710732+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858046+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_5",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -498,7 +498,7 @@
     "word_id": 7,
     "label": "PRODUCT_NAME",
     "reasoning": "Abbreviation indicating product type (e.g., CDX plywood). | The word appears in the context 'CDX PLYWOOD' which is a product name.",
-    "timestamp_added": "2025-12-02T16:45:44.710736+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858107+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_7",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -510,7 +510,7 @@
     "word_id": 8,
     "label": "PRODUCT_NAME",
     "reasoning": "Explicit product type. | The word appears immediately after 'CDX' in the product description 'CDX PLYWOOD'.",
-    "timestamp_added": "2025-12-02T16:45:44.710739+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858124+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_8",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -522,7 +522,7 @@
     "word_id": 1,
     "label": "LINE_TOTAL",
     "reasoning": "Numeric amount listed among other item totals",
-    "timestamp_added": "2025-12-02T16:45:44.710743+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858129+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -534,7 +534,7 @@
     "word_id": 1,
     "label": "LINE_TOTAL",
     "reasoning": "Appears alongside other item totals, treated as a line total.",
-    "timestamp_added": "2025-12-02T16:45:44.710749+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858133+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -546,7 +546,7 @@
     "word_id": 1,
     "label": "TAX",
     "reasoning": "Typical tax amount paired with a larger line total.",
-    "timestamp_added": "2025-12-02T16:45:44.710753+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858137+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -558,7 +558,7 @@
     "word_id": 1,
     "label": "UNIT_PRICE",
     "reasoning": "The second token on the line matches the unit price format and is confirmed by verification.",
-    "timestamp_added": "2025-12-02T16:45:44.710757+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858140+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -570,7 +570,7 @@
     "word_id": 2,
     "label": "ADDRESS_LINE",
     "reasoning": "The context shows 'CA' is used as a state abbreviation within a fee description, not as a standalone full address line. ADDRESS_LINE requires a full street address line, which is not satisfied by the isolated token 'CA'. Therefore the suggested label is incorrect.",
-    "timestamp_added": "2025-12-02T16:45:44.710761+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858144+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -582,7 +582,7 @@
     "word_id": 2,
     "label": "PRODUCT_NAME",
     "reasoning": "Part of the product name 'CA LUMBER FEE'.",
-    "timestamp_added": "2025-12-02T16:45:44.710768+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858147+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -594,7 +594,7 @@
     "word_id": 4,
     "label": "PRODUCT_NAME",
     "reasoning": "Part of the product name 'CA LUMBER FEE'.",
-    "timestamp_added": "2025-12-02T16:45:44.710771+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858150+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_4",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -606,7 +606,7 @@
     "word_id": 1,
     "label": "ADDRESS_LINE",
     "reasoning": "The word 'CA' is embedded within a fee label ('CA LUMBER FEE') on the receipt, which is clearly a charge description rather than a street address. Although 'CA' appears in the actual address later, the specific occurrence under review is not a complete address line. Therefore, labeling it as ADDRESS_LINE is incorrect.",
-    "timestamp_added": "2025-12-02T16:45:44.710775+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858153+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -618,7 +618,7 @@
     "word_id": 1,
     "label": "PRODUCT_NAME",
     "reasoning": "Part of the product name 'CA LUMBER FEE'.",
-    "timestamp_added": "2025-12-02T16:45:44.710778+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858156+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -630,7 +630,7 @@
     "word_id": 2,
     "label": "PRODUCT_NAME",
     "reasoning": "Part of the product name 'CA LUMBER FEE'.",
-    "timestamp_added": "2025-12-02T16:45:44.710781+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858159+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -642,7 +642,7 @@
     "word_id": 3,
     "label": "PRODUCT_NAME",
     "reasoning": "Part of the product name 'CA LUMBER FEE'.",
-    "timestamp_added": "2025-12-02T16:45:44.710785+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858162+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -654,7 +654,7 @@
     "word_id": 2,
     "label": "PRODUCT_NAME",
     "reasoning": "Second word of product description. | Descriptive product name preceding the amount.",
-    "timestamp_added": "2025-12-02T16:45:44.710788+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858165+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -666,7 +666,7 @@
     "word_id": 1,
     "label": "PRODUCT_NAME",
     "reasoning": "First word of product description. | Descriptive product name preceding the amount.",
-    "timestamp_added": "2025-12-02T16:45:44.710791+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858168+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -678,7 +678,7 @@
     "word_id": 2,
     "label": "PRODUCT_NAME",
     "reasoning": "Second word of product description. | Descriptive product name preceding the amount.",
-    "timestamp_added": "2025-12-02T16:45:44.710795+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858171+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -690,7 +690,7 @@
     "word_id": 3,
     "label": "PRODUCT_NAME",
     "reasoning": "Third word of product description. | Descriptive product name preceding the amount.",
-    "timestamp_added": "2025-12-02T16:45:44.710798+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858173+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -702,7 +702,7 @@
     "word_id": 4,
     "label": "PRODUCT_NAME",
     "reasoning": "Fourth word of product description. | Descriptive product name preceding the amount.",
-    "timestamp_added": "2025-12-02T16:45:44.710802+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858176+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_4",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -714,7 +714,7 @@
     "word_id": 3,
     "label": "UNIT_PRICE",
     "reasoning": "Dollar amount directly associated with the policy, representing the unit price. | Unit price preceding the quantity indicator.",
-    "timestamp_added": "2025-12-02T16:45:44.710805+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858179+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -726,7 +726,7 @@
     "word_id": 1,
     "label": "PRODUCT_NAME",
     "reasoning": "Numeric code part of the product name, appears before the price. | Appears as part of the product description/model number preceding the amount.",
-    "timestamp_added": "2025-12-02T16:45:44.710809+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858182+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -738,7 +738,7 @@
     "word_id": 2,
     "label": "PRODUCT_NAME",
     "reasoning": "Abbreviation likely part of product name (color or model). | Color code included in the product name.",
-    "timestamp_added": "2025-12-02T16:45:44.710815+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858185+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -750,7 +750,7 @@
     "word_id": 3,
     "label": "PRODUCT_NAME",
     "reasoning": "Brand name commonly part of product description. | Brand/model name directly preceding the item type.",
-    "timestamp_added": "2025-12-02T16:45:44.710823+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858188+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -762,7 +762,7 @@
     "word_id": 4,
     "label": "PRODUCT_NAME",
     "reasoning": "Descriptor of the product type. | Describes the type of switch (double).",
-    "timestamp_added": "2025-12-02T16:45:44.710827+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858190+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_4",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -774,7 +774,7 @@
     "word_id": 5,
     "label": "PRODUCT_NAME",
     "reasoning": "Core product term, matches the item sold. | Primary item type.",
-    "timestamp_added": "2025-12-02T16:45:44.710834+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858193+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_5",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -786,7 +786,7 @@
     "word_id": 2,
     "label": "DISCOUNT",
     "reasoning": "The token 'Pro' is part of the discount description 'Pro Xtra Preferred Pricing' that appears alongside a monetary amount, indicating a member\u2011specific pricing discount. This aligns with the DISCOUNT label definition, and there is no evidence that it represents a product name, loyalty ID, or other label type. Therefore the suggested DISCOUNT label is correct.",
-    "timestamp_added": "2025-12-02T16:45:44.710838+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858196+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -798,7 +798,7 @@
     "word_id": 2,
     "label": "LOYALTY_ID",
     "reasoning": "Masked phone\u2011like number prefixed by PRO XTRA indicates a loyalty account identifier | Membership program name appears multiple times, serving as loyalty identifier | Exact loyalty identifier appears in the receipt | Masked identifier associated with the Pro Xtra member program.",
-    "timestamp_added": "2025-12-02T16:45:44.710841+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858199+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -810,7 +810,7 @@
     "word_id": 2,
     "label": "PRODUCT_NAME",
     "reasoning": "Product name component preceding price",
-    "timestamp_added": "2025-12-02T16:45:44.710846+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858202+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -822,7 +822,7 @@
     "word_id": 3,
     "label": "DISCOUNT",
     "reasoning": "The word 'Xtra' is embedded within the phrase 'Pro Xtra Preferred Pricing', which denotes a Home Depot Pro membership or pricing program. It is not a monetary or percentage discount description. Therefore, labeling it as DISCOUNT is incorrect.",
-    "timestamp_added": "2025-12-02T16:45:44.710849+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858205+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -834,7 +834,7 @@
     "word_id": 3,
     "label": "LOYALTY_ID",
     "reasoning": "Masked phone\u2011like number prefixed by PRO XTRA indicates a loyalty account identifier | Membership program name appears multiple times, serving as loyalty identifier | Exact loyalty identifier appears in the receipt | Masked identifier associated with the Pro Xtra member program.",
-    "timestamp_added": "2025-12-02T16:45:44.710853+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858208+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -846,7 +846,7 @@
     "word_id": 3,
     "label": "PRODUCT_NAME",
     "reasoning": "Product name component preceding price",
-    "timestamp_added": "2025-12-02T16:45:44.710856+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858210+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -858,7 +858,7 @@
     "word_id": 4,
     "label": "DISCOUNT",
     "reasoning": "The word 'Preferred' is part of the phrase 'Pro Xtra Preferred Pricing', which denotes a specific pricing tier or program offered by The Home Depot. It does not represent a discount amount or percentage, and there is no associated monetary reduction indicated. Therefore, labeling it as DISCOUNT is incorrect.",
-    "timestamp_added": "2025-12-02T16:45:44.710859+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858213+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_4",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -870,7 +870,7 @@
     "word_id": 5,
     "label": "DISCOUNT",
     "reasoning": "The word 'Pricing' is part of a product/service name (Pro Xtra Preferred Pricing) and is associated with a charge amount, not a discount. According to the DISCOUNT label definition, it should represent a non-coupon discount line item such as '10% OFF'. Therefore, labeling 'Pricing' as DISCOUNT is incorrect.",
-    "timestamp_added": "2025-12-02T16:45:44.710863+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858216+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_5",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -882,7 +882,7 @@
     "word_id": 2,
     "label": "PRODUCT_NAME",
     "reasoning": "First word of product description.",
-    "timestamp_added": "2025-12-02T16:45:44.710866+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858219+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -894,7 +894,7 @@
     "word_id": 3,
     "label": "PRODUCT_NAME",
     "reasoning": "Core product type in the description. | Core product descriptor following the quantity and unit price. | Descriptive term within the product name. | Part of product description. | Product type in the description.",
-    "timestamp_added": "2025-12-02T16:45:44.710870+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858221+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -906,7 +906,7 @@
     "word_id": 4,
     "label": "PRODUCT_NAME",
     "reasoning": "Second word of product description.",
-    "timestamp_added": "2025-12-02T16:45:44.710873+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858224+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_4",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -918,7 +918,7 @@
     "word_id": 5,
     "label": "PRODUCT_NAME",
     "reasoning": "Part of the descriptive product name preceding the price. | Weight indicator part of the product name.",
-    "timestamp_added": "2025-12-02T16:45:44.710880+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858227+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_5",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -930,7 +930,7 @@
     "word_id": 5,
     "label": "QUANTITY",
     "reasoning": "Numeric value preceding unit price or quantity indicator.",
-    "timestamp_added": "2025-12-02T16:45:44.710885+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858230+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_5",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -942,7 +942,7 @@
     "word_id": 5,
     "label": "UNIT_PRICE",
     "reasoning": "Unit price follows the quantity token and matches the listed price. | Price per unit immediately following the '@' symbol, consistent with the line total of 107.88 (6 * 17.98). | Price per unit follows '@' after quantity. | Numeric value following '@' indicates unit price. | Follows '@' after quantity, typical unit price format.",
-    "timestamp_added": "2025-12-02T16:45:44.710889+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858233+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_5",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -954,7 +954,7 @@
     "word_id": 6,
     "label": "PRODUCT_NAME",
     "reasoning": "Unit of measure part of the product name.",
-    "timestamp_added": "2025-12-02T16:45:44.710893+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858235+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_6",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -966,7 +966,7 @@
     "word_id": 1,
     "label": "DISCOUNT",
     "reasoning": "Refund value shown as a reduction on the receipt",
-    "timestamp_added": "2025-12-02T16:45:44.710896+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858238+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -978,7 +978,7 @@
     "word_id": 1,
     "label": "PRODUCT_NAME",
     "reasoning": "Part of the product name phrase that precedes the price. | Descriptive word preceding the amount, part of the policy label. | First word of the product name phrase preceding the price. | Appears immediately before the amount and is part of the descriptive phrase 'MAX REFUND VALUE'. | Product name part of the phrase preceding the price.",
-    "timestamp_added": "2025-12-02T16:45:44.710900+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858241+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -990,7 +990,7 @@
     "word_id": 2,
     "label": "DISCOUNT",
     "reasoning": "Refund value shown as a reduction on the receipt",
-    "timestamp_added": "2025-12-02T16:45:44.710903+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858244+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1002,7 +1002,7 @@
     "word_id": 2,
     "label": "PRODUCT_NAME",
     "reasoning": "Part of the product name phrase that precedes the price. | Descriptive word preceding the amount, part of the policy label. | Second word of the product name phrase preceding the price. | Part of the descriptive phrase preceding the amount. | Product name part of the phrase preceding the price.",
-    "timestamp_added": "2025-12-02T16:45:44.710907+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858246+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1014,7 +1014,7 @@
     "word_id": 3,
     "label": "DISCOUNT",
     "reasoning": "Refund value shown as a reduction on the receipt",
-    "timestamp_added": "2025-12-02T16:45:44.710910+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858249+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1026,7 +1026,7 @@
     "word_id": 3,
     "label": "PRODUCT_NAME",
     "reasoning": "Part of the product name phrase that precedes the price. | Descriptive word preceding the amount, part of the policy label. | Third word of the product name phrase preceding the price. | Completes the descriptive phrase before the amount. | Product name part of the phrase preceding the price.",
-    "timestamp_added": "2025-12-02T16:45:44.710913+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858252+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1038,7 +1038,7 @@
     "word_id": 4,
     "label": "LINE_TOTAL",
     "reasoning": "MAX REFUND VALUE $5.85 on a member statement line",
-    "timestamp_added": "2025-12-02T16:45:44.710917+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858257+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_4",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1050,7 +1050,7 @@
     "word_id": 4,
     "label": "UNIT_PRICE",
     "reasoning": "Unit price appears adjacent to product name and dimensions on line 26. | Explicit price following product name on line 26. | Explicit price following product name on line 38. | Explicit price following product name on line 41. | Explicit price following product name on line 44.",
-    "timestamp_added": "2025-12-02T16:45:44.710920+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858260+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_4",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1062,7 +1062,7 @@
     "word_id": 2,
     "label": "PRODUCT_NAME",
     "reasoning": "Appears as a product code preceding quantity and price indicators.",
-    "timestamp_added": "2025-12-02T16:45:44.710924+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858266+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1074,7 +1074,7 @@
     "word_id": 2,
     "label": "PRODUCT_NAME",
     "reasoning": "First word of product description.",
-    "timestamp_added": "2025-12-02T16:45:44.710928+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858268+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1086,7 +1086,7 @@
     "word_id": 3,
     "label": "PRODUCT_NAME",
     "reasoning": "Core product type in the description. | Core product descriptor following the quantity and unit price. | Descriptive term within the product name. | Part of product description. | Product type in the description.",
-    "timestamp_added": "2025-12-02T16:45:44.710931+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858271+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1098,7 +1098,7 @@
     "word_id": 4,
     "label": "PRODUCT_NAME",
     "reasoning": "Second word of product description.",
-    "timestamp_added": "2025-12-02T16:45:44.710934+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858274+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_4",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1110,7 +1110,7 @@
     "word_id": 5,
     "label": "PRODUCT_NAME",
     "reasoning": "Part of the descriptive product name preceding the price. | Weight indicator part of the product name.",
-    "timestamp_added": "2025-12-02T16:45:44.710938+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858276+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_5",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1122,7 +1122,7 @@
     "word_id": 5,
     "label": "QUANTITY",
     "reasoning": "Numeric value preceding unit price or quantity indicator.",
-    "timestamp_added": "2025-12-02T16:45:44.710941+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858279+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_5",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1134,7 +1134,7 @@
     "word_id": 5,
     "label": "UNIT_PRICE",
     "reasoning": "Unit price follows the quantity token and matches the listed price. | Price per unit immediately following the '@' symbol, consistent with the line total of 107.88 (6 * 17.98). | Price per unit follows '@' after quantity. | Numeric value following '@' indicates unit price. | Follows '@' after quantity, typical unit price format.",
-    "timestamp_added": "2025-12-02T16:45:44.710948+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858282+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_5",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1146,7 +1146,7 @@
     "word_id": 6,
     "label": "PRODUCT_NAME",
     "reasoning": "Unit of measure part of the product name.",
-    "timestamp_added": "2025-12-02T16:45:44.710952+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858285+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_6",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1158,7 +1158,7 @@
     "word_id": 1,
     "label": "DISCOUNT",
     "reasoning": "Refund value shown as a reduction on the receipt",
-    "timestamp_added": "2025-12-02T16:45:44.710955+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858288+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1170,7 +1170,7 @@
     "word_id": 1,
     "label": "PRODUCT_NAME",
     "reasoning": "Part of the product name phrase that precedes the price. | Descriptive word preceding the amount, part of the policy label. | First word of the product name phrase preceding the price. | Appears immediately before the amount and is part of the descriptive phrase 'MAX REFUND VALUE'. | Product name part of the phrase preceding the price.",
-    "timestamp_added": "2025-12-02T16:45:44.710978+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858290+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1182,7 +1182,7 @@
     "word_id": 2,
     "label": "DISCOUNT",
     "reasoning": "Refund value shown as a reduction on the receipt",
-    "timestamp_added": "2025-12-02T16:45:44.710981+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858293+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1194,7 +1194,7 @@
     "word_id": 2,
     "label": "PRODUCT_NAME",
     "reasoning": "Part of the product name phrase that precedes the price. | Descriptive word preceding the amount, part of the policy label. | Second word of the product name phrase preceding the price. | Part of the descriptive phrase preceding the amount. | Product name part of the phrase preceding the price.",
-    "timestamp_added": "2025-12-02T16:45:44.710985+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858296+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1206,7 +1206,7 @@
     "word_id": 3,
     "label": "DISCOUNT",
     "reasoning": "Refund value shown as a reduction on the receipt",
-    "timestamp_added": "2025-12-02T16:45:44.710989+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858298+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1218,7 +1218,7 @@
     "word_id": 3,
     "label": "PRODUCT_NAME",
     "reasoning": "Part of the product name phrase that precedes the price. | Descriptive word preceding the amount, part of the policy label. | Third word of the product name phrase preceding the price. | Completes the descriptive phrase before the amount. | Product name part of the phrase preceding the price.",
-    "timestamp_added": "2025-12-02T16:45:44.710992+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858301+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1230,7 +1230,7 @@
     "word_id": 4,
     "label": "LINE_TOTAL",
     "reasoning": "MAX REFUND VALUE $5.85 repeated, treated as a line amount",
-    "timestamp_added": "2025-12-02T16:45:44.710995+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858304+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_4",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1242,7 +1242,7 @@
     "word_id": 4,
     "label": "UNIT_PRICE",
     "reasoning": "Unit price appears adjacent to product name and dimensions on line 26. | Explicit price following product name on line 26. | Explicit price following product name on line 38. | Explicit price following product name on line 41. | Explicit price following product name on line 44.",
-    "timestamp_added": "2025-12-02T16:45:44.710999+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858306+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_4",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1254,7 +1254,7 @@
     "word_id": 2,
     "label": "PRODUCT_NAME",
     "reasoning": "First word of product description.",
-    "timestamp_added": "2025-12-02T16:45:44.711002+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858309+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1266,7 +1266,7 @@
     "word_id": 3,
     "label": "PRODUCT_NAME",
     "reasoning": "Core product type in the description. | Core product descriptor following the quantity and unit price. | Descriptive term within the product name. | Part of product description. | Product type in the description.",
-    "timestamp_added": "2025-12-02T16:45:44.711006+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858312+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1278,7 +1278,7 @@
     "word_id": 4,
     "label": "PRODUCT_NAME",
     "reasoning": "Second word of product description.",
-    "timestamp_added": "2025-12-02T16:45:44.711009+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858315+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_4",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1290,7 +1290,7 @@
     "word_id": 5,
     "label": "PRODUCT_NAME",
     "reasoning": "Part of the descriptive product name preceding the price. | Weight indicator part of the product name.",
-    "timestamp_added": "2025-12-02T16:45:44.711013+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858317+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_5",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1302,7 +1302,7 @@
     "word_id": 5,
     "label": "QUANTITY",
     "reasoning": "Numeric value preceding unit price or quantity indicator.",
-    "timestamp_added": "2025-12-02T16:45:44.711016+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858320+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_5",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1314,7 +1314,7 @@
     "word_id": 5,
     "label": "UNIT_PRICE",
     "reasoning": "Unit price follows the quantity token and matches the listed price. | Price per unit immediately following the '@' symbol, consistent with the line total of 107.88 (6 * 17.98). | Price per unit follows '@' after quantity. | Numeric value following '@' indicates unit price. | Follows '@' after quantity, typical unit price format.",
-    "timestamp_added": "2025-12-02T16:45:44.711020+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858323+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_5",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1326,7 +1326,7 @@
     "word_id": 6,
     "label": "PRODUCT_NAME",
     "reasoning": "Unit of measure part of the product name.",
-    "timestamp_added": "2025-12-02T16:45:44.711023+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858326+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_6",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1338,7 +1338,7 @@
     "word_id": 1,
     "label": "DISCOUNT",
     "reasoning": "Refund value shown as a reduction on the receipt",
-    "timestamp_added": "2025-12-02T16:45:44.711027+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858329+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1350,7 +1350,7 @@
     "word_id": 1,
     "label": "PRODUCT_NAME",
     "reasoning": "Part of the product name phrase that precedes the price. | Descriptive word preceding the amount, part of the policy label. | First word of the product name phrase preceding the price. | Appears immediately before the amount and is part of the descriptive phrase 'MAX REFUND VALUE'. | Product name part of the phrase preceding the price.",
-    "timestamp_added": "2025-12-02T16:45:44.711030+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858331+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1362,7 +1362,7 @@
     "word_id": 2,
     "label": "DISCOUNT",
     "reasoning": "Refund value shown as a reduction on the receipt",
-    "timestamp_added": "2025-12-02T16:45:44.711035+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858334+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1374,7 +1374,7 @@
     "word_id": 2,
     "label": "PRODUCT_NAME",
     "reasoning": "Part of the product name phrase that precedes the price. | Descriptive word preceding the amount, part of the policy label. | Second word of the product name phrase preceding the price. | Part of the descriptive phrase preceding the amount. | Product name part of the phrase preceding the price.",
-    "timestamp_added": "2025-12-02T16:45:44.711038+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858337+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1386,7 +1386,7 @@
     "word_id": 3,
     "label": "DISCOUNT",
     "reasoning": "Refund value shown as a reduction on the receipt",
-    "timestamp_added": "2025-12-02T16:45:44.711042+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858339+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1398,7 +1398,7 @@
     "word_id": 3,
     "label": "PRODUCT_NAME",
     "reasoning": "Part of the product name phrase that precedes the price. | Descriptive word preceding the amount, part of the policy label. | Third word of the product name phrase preceding the price. | Completes the descriptive phrase before the amount. | Product name part of the phrase preceding the price.",
-    "timestamp_added": "2025-12-02T16:45:44.711046+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858343+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1410,7 +1410,7 @@
     "word_id": 4,
     "label": "LINE_TOTAL",
     "reasoning": "MAX REFUND VALUE $5.85 on a summary line",
-    "timestamp_added": "2025-12-02T16:45:44.711049+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858346+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_4",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1422,7 +1422,7 @@
     "word_id": 4,
     "label": "UNIT_PRICE",
     "reasoning": "Unit price appears adjacent to product name and dimensions on line 26. | Explicit price following product name on line 26. | Explicit price following product name on line 38. | Explicit price following product name on line 41. | Explicit price following product name on line 44.",
-    "timestamp_added": "2025-12-02T16:45:44.711053+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858349+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_4",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1434,7 +1434,7 @@
     "word_id": 1,
     "label": "DISCOUNT",
     "reasoning": "The primary context shows 'Pro' as part of the 'Pro Xtra Preferred Pricing' loyalty program description. Discount labels should represent a monetary or percentage reduction, which is not present. Therefore, labeling 'Pro' as DISCOUNT is incorrect.",
-    "timestamp_added": "2025-12-02T16:45:44.711056+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858351+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1446,7 +1446,7 @@
     "word_id": 1,
     "label": "LOYALTY_ID",
     "reasoning": "Masked phone\u2011like number prefixed by PRO XTRA indicates a loyalty account identifier | Membership program name appears multiple times, serving as loyalty identifier | Exact loyalty identifier appears in the receipt | Masked identifier associated with the Pro Xtra member program.",
-    "timestamp_added": "2025-12-02T16:45:44.711065+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858354+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1458,7 +1458,7 @@
     "word_id": 1,
     "label": "PRODUCT_NAME",
     "reasoning": "Product name component preceding price",
-    "timestamp_added": "2025-12-02T16:45:44.711068+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858357+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1470,7 +1470,7 @@
     "word_id": 2,
     "label": "DISCOUNT",
     "reasoning": "The word 'Xtra' is part of the 'Pro Xtra' loyalty program name used by The Home Depot. It appears in contexts describing membership statements and preferred pricing, not as a standalone discount amount. Therefore, labeling it as DISCOUNT is incorrect.",
-    "timestamp_added": "2025-12-02T16:45:44.711072+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858364+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1482,7 +1482,7 @@
     "word_id": 2,
     "label": "LOYALTY_ID",
     "reasoning": "Masked phone\u2011like number prefixed by PRO XTRA indicates a loyalty account identifier | Membership program name appears multiple times, serving as loyalty identifier | Exact loyalty identifier appears in the receipt | Masked identifier associated with the Pro Xtra member program.",
-    "timestamp_added": "2025-12-02T16:45:44.711076+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858367+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1494,7 +1494,7 @@
     "word_id": 2,
     "label": "PRODUCT_NAME",
     "reasoning": "Product name component preceding price",
-    "timestamp_added": "2025-12-02T16:45:44.711080+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858370+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1506,7 +1506,7 @@
     "word_id": 3,
     "label": "DISCOUNT",
     "reasoning": "The word 'Preferred' is part of the phrase 'Pro Xtra Preferred Pricing', which denotes a pricing tier or program rather than a specific discount line item. DISCOUNT labels are reserved for explicit discount amounts or percentages (e.g., '10% OFF'). Therefore, labeling 'Preferred' as DISCOUNT is incorrect.",
-    "timestamp_added": "2025-12-02T16:45:44.711083+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858372+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1518,7 +1518,7 @@
     "word_id": 4,
     "label": "DISCOUNT",
     "reasoning": "The word 'Pricing' is part of a product or membership description ('Pro Xtra Preferred Pricing') and is followed by a price amount. This does not match the DISCOUNT label definition, which requires a non-coupon discount line item such as '10% OFF'. Therefore, labeling it as DISCOUNT is incorrect.",
-    "timestamp_added": "2025-12-02T16:45:44.711087+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858375+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_4",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1530,7 +1530,7 @@
     "word_id": 1,
     "label": "PRODUCT_NAME",
     "reasoning": "Unique identifier part of product description.",
-    "timestamp_added": "2025-12-02T16:45:44.711090+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858378+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1542,7 +1542,7 @@
     "word_id": 2,
     "label": "PAYMENT_METHOD",
     "reasoning": "The word DEBIT is situated in the payment details line alongside a masked card number and transaction verification information, which matches the definition of PAYMENT_METHOD (a summary of the payment instrument). Therefore, labeling DEBIT as PAYMENT_METHOD is correct.",
-    "timestamp_added": "2025-12-02T16:45:44.711094+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858380+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1554,7 +1554,7 @@
     "word_id": 1,
     "label": "LOYALTY_ID",
     "reasoning": "Alphanumeric identifier prefixed by AID commonly used for loyalty or rewards cards.",
-    "timestamp_added": "2025-12-02T16:45:44.711100+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858394+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1566,7 +1566,7 @@
     "word_id": 1,
     "label": "PAYMENT_METHOD",
     "reasoning": "Label type corrected from LOYALTY_ID",
-    "timestamp_added": "2025-12-02T16:45:44.711103+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858397+00:00",
     "validation_status": "PENDING",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "label-harmonizer-v2"
@@ -1578,7 +1578,7 @@
     "word_id": 2,
     "label": "LOYALTY_ID",
     "reasoning": "The identifier A0000000980840 is presented alongside the label 'AID' within the Pro Xtra member statement section of the Home Depot receipt. Pro Xtra is Home Depot's loyalty program, and such alphanumeric identifiers are used to represent customer loyalty or membership IDs. Therefore, labeling this word as LOYALTY_ID is correct.",
-    "timestamp_added": "2025-12-02T16:45:44.711107+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858399+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1590,7 +1590,7 @@
     "word_id": 1,
     "label": "SUBTOTAL",
     "reasoning": "Explicitly labeled as SUBTOTAL 162.81.",
-    "timestamp_added": "2025-12-02T16:45:44.711110+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858402+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1602,7 +1602,7 @@
     "word_id": 1,
     "label": "TAX",
     "reasoning": "Explicitly labeled as SALES TAX 11.77.",
-    "timestamp_added": "2025-12-02T16:45:44.711118+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858405+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1614,7 +1614,7 @@
     "word_id": 1,
     "label": "GRAND_TOTAL",
     "reasoning": "Appears after SUBTOTAL and TAX, matches SUBTOTAL + TAX, indicating final amount due.",
-    "timestamp_added": "2025-12-02T16:45:44.711124+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858407+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1626,7 +1626,7 @@
     "word_id": 1,
     "label": "LINE_TOTAL",
     "reasoning": "Amount near TOTAL label but not the final USD$ line, treated as intermediate total",
-    "timestamp_added": "2025-12-02T16:45:44.711127+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858411+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1638,7 +1638,7 @@
     "word_id": 1,
     "label": "UNIT_PRICE",
     "reasoning": "Currency symbol preceding the numeric unit price.",
-    "timestamp_added": "2025-12-02T16:45:44.711131+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858413+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1650,7 +1650,7 @@
     "word_id": 2,
     "label": "GRAND_TOTAL",
     "reasoning": "Final amount displayed with currency prefix, appears after TOTAL label",
-    "timestamp_added": "2025-12-02T16:45:44.711138+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858416+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1662,7 +1662,7 @@
     "word_id": 2,
     "label": "LINE_TOTAL",
     "reasoning": "Amount appears on receipt but is not labeled as the GRAND_TOTAL.",
-    "timestamp_added": "2025-12-02T16:45:44.711141+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858419+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1674,7 +1674,7 @@
     "word_id": 2,
     "label": "PAYMENT_METHOD",
     "reasoning": "The word DEBIT is consistently used in the receipt alongside chip read information, a masked card number, and authorization codes, which are typical components of a payment method line. This aligns with the PAYMENT_METHOD label definition, and there is no evidence suggesting it belongs to any other label type.",
-    "timestamp_added": "2025-12-02T16:45:44.711145+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858421+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1686,7 +1686,7 @@
     "word_id": 2,
     "label": "PHONE_NUMBER",
     "reasoning": "Phone number format with area code appears next to the address.",
-    "timestamp_added": "2025-12-02T16:45:44.711148+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858424+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1698,7 +1698,7 @@
     "word_id": 2,
     "label": "PRODUCT_NAME",
     "reasoning": "Part of the descriptive product name preceding the price.",
-    "timestamp_added": "2025-12-02T16:45:44.711151+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858426+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1710,7 +1710,7 @@
     "word_id": 1,
     "label": "DISCOUNT",
     "reasoning": "The word 'PRO' is part of the 'PRO XTRA' loyalty program header and appears repeatedly in membership statements and summaries. It does not represent a discount amount or percentage, which is required for the DISCOUNT label. Therefore, labeling it as DISCOUNT is incorrect.",
-    "timestamp_added": "2025-12-02T16:45:44.711155+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858429+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1722,7 +1722,7 @@
     "word_id": 1,
     "label": "LOYALTY_ID",
     "reasoning": "Masked phone\u2011like number prefixed by PRO XTRA indicates a loyalty account identifier | Membership program name appears multiple times, serving as loyalty identifier | Exact loyalty identifier appears in the receipt | Masked identifier associated with the Pro Xtra member program.",
-    "timestamp_added": "2025-12-02T16:45:44.711158+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858432+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1734,7 +1734,7 @@
     "word_id": 1,
     "label": "PRODUCT_NAME",
     "reasoning": "Product name component preceding price",
-    "timestamp_added": "2025-12-02T16:45:44.711161+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858434+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1746,7 +1746,7 @@
     "word_id": 2,
     "label": "DISCOUNT",
     "reasoning": "The word XTRA is part of the 'Pro Xtra' membership program name, appearing in a header line. DISCOUNT labels apply to non-coupon discount line items such as '10% OFF'. Since XTRA is not describing a discount amount or percentage, the suggested DISCOUNT label is incorrect.",
-    "timestamp_added": "2025-12-02T16:45:44.711164+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858437+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1758,7 +1758,7 @@
     "word_id": 2,
     "label": "LOYALTY_ID",
     "reasoning": "Masked phone\u2011like number prefixed by PRO XTRA indicates a loyalty account identifier | Membership program name appears multiple times, serving as loyalty identifier | Exact loyalty identifier appears in the receipt | Masked identifier associated with the Pro Xtra member program.",
-    "timestamp_added": "2025-12-02T16:45:44.711168+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858440+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1770,7 +1770,7 @@
     "word_id": 2,
     "label": "PRODUCT_NAME",
     "reasoning": "Product name component preceding price",
-    "timestamp_added": "2025-12-02T16:45:44.711171+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858442+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1782,7 +1782,7 @@
     "word_id": 3,
     "label": "PRODUCT_NAME",
     "reasoning": "Part of the product description \"PRO XTRA MEMBER STATEMENT\" adjacent to the amount.",
-    "timestamp_added": "2025-12-02T16:45:44.711175+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858445+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1794,7 +1794,7 @@
     "word_id": 4,
     "label": "PRODUCT_NAME",
     "reasoning": "Part of the product description \"PRO XTRA MEMBER STATEMENT\" adjacent to the amount.",
-    "timestamp_added": "2025-12-02T16:45:44.711178+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858448+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_4",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1806,7 +1806,7 @@
     "word_id": 1,
     "label": "DISCOUNT",
     "reasoning": "The word 'PRO' is consistently used as a component of the 'PRO XTRA' loyalty program identifier, not as a discount description or amount. Therefore, labeling it as DISCOUNT is incorrect.",
-    "timestamp_added": "2025-12-02T16:45:44.711184+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858450+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1818,7 +1818,7 @@
     "word_id": 1,
     "label": "LOYALTY_ID",
     "reasoning": "Masked phone\u2011like number prefixed by PRO XTRA indicates a loyalty account identifier | Membership program name appears multiple times, serving as loyalty identifier | Exact loyalty identifier appears in the receipt | Masked identifier associated with the Pro Xtra member program.",
-    "timestamp_added": "2025-12-02T16:45:44.711188+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858453+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1830,7 +1830,7 @@
     "word_id": 1,
     "label": "PRODUCT_NAME",
     "reasoning": "Product name component preceding price",
-    "timestamp_added": "2025-12-02T16:45:44.711191+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858455+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1842,7 +1842,7 @@
     "word_id": 2,
     "label": "DISCOUNT",
     "reasoning": "The word XTRA is consistently used as part of the 'Pro Xtra' membership program name on the Home Depot receipt. It appears in headers and statements (e.g., 'PRO XTRA MEMBER STATEMENT') rather than in a line item indicating a price reduction. According to the label definitions, DISCOUNT should denote a non\u2011coupon discount line item such as '10% OFF'. Since XTRA does not meet this definition, the suggested DISCOUNT label is incorrect.",
-    "timestamp_added": "2025-12-02T16:45:44.711196+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858470+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1854,7 +1854,7 @@
     "word_id": 2,
     "label": "LOYALTY_ID",
     "reasoning": "Masked phone\u2011like number prefixed by PRO XTRA indicates a loyalty account identifier | Membership program name appears multiple times, serving as loyalty identifier | Exact loyalty identifier appears in the receipt | Masked identifier associated with the Pro Xtra member program.",
-    "timestamp_added": "2025-12-02T16:45:44.711200+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858472+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1866,7 +1866,7 @@
     "word_id": 2,
     "label": "PRODUCT_NAME",
     "reasoning": "Product name component preceding price",
-    "timestamp_added": "2025-12-02T16:45:44.711203+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858475+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1878,7 +1878,7 @@
     "word_id": 3,
     "label": "LOYALTY_ID",
     "reasoning": "Masked phone\u2011like number prefixed by PRO XTRA indicates a loyalty account identifier | Exact loyalty identifier appears in the receipt | Masked identifier associated with the Pro Xtra member program.",
-    "timestamp_added": "2025-12-02T16:45:44.711206+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858478+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1890,7 +1890,7 @@
     "word_id": 2,
     "label": "DISCOUNT",
     "reasoning": "The word 'PRO' is part of the 'PRO XTRA' membership program mentioned throughout the receipt. It appears in a line describing spend and program details, not as a discount description. Therefore, labeling it as DISCOUNT is incorrect.",
-    "timestamp_added": "2025-12-02T16:45:44.711209+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858480+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1902,7 +1902,7 @@
     "word_id": 2,
     "label": "LOYALTY_ID",
     "reasoning": "Masked phone\u2011like number prefixed by PRO XTRA indicates a loyalty account identifier | Membership program name appears multiple times, serving as loyalty identifier | Exact loyalty identifier appears in the receipt | Masked identifier associated with the Pro Xtra member program.",
-    "timestamp_added": "2025-12-02T16:45:44.711213+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858483+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1914,7 +1914,7 @@
     "word_id": 2,
     "label": "PRODUCT_NAME",
     "reasoning": "Product name component preceding price",
-    "timestamp_added": "2025-12-02T16:45:44.711216+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858486+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1926,7 +1926,7 @@
     "word_id": 3,
     "label": "DISCOUNT",
     "reasoning": "The word 'XTRA' is part of the Home Depot's 'Pro Xtra' loyalty program terminology, appearing in headings and statements. It does not represent a discount amount or percentage, which is required for the DISCOUNT label. Therefore, labeling it as DISCOUNT is incorrect.",
-    "timestamp_added": "2025-12-02T16:45:44.711219+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858488+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1938,7 +1938,7 @@
     "word_id": 3,
     "label": "LOYALTY_ID",
     "reasoning": "Masked phone\u2011like number prefixed by PRO XTRA indicates a loyalty account identifier | Membership program name appears multiple times, serving as loyalty identifier | Exact loyalty identifier appears in the receipt | Masked identifier associated with the Pro Xtra member program.",
-    "timestamp_added": "2025-12-02T16:45:44.711227+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858491+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1950,7 +1950,7 @@
     "word_id": 3,
     "label": "PRODUCT_NAME",
     "reasoning": "Product name component preceding price",
-    "timestamp_added": "2025-12-02T16:45:44.711305+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858493+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1962,7 +1962,7 @@
     "word_id": 4,
     "label": "PRODUCT_NAME",
     "reasoning": "Product name component preceding price",
-    "timestamp_added": "2025-12-02T16:45:44.711329+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858496+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_4",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1974,7 +1974,7 @@
     "word_id": 1,
     "label": "LINE_TOTAL",
     "reasoning": "Explicit zero amount, considered a line total with no charge.",
-    "timestamp_added": "2025-12-02T16:45:44.711334+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858499+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1986,7 +1986,7 @@
     "word_id": 2,
     "label": "MERCHANT_NAME",
     "reasoning": "The word 'the' is a common article within a promotional line and does not constitute the merchant's trading name. MERCHANT_NAME label should be applied only to the full merchant name or a token that appears in the merchant name line. Therefore, labeling 'the' as MERCHANT_NAME is incorrect.",
-    "timestamp_added": "2025-12-02T16:45:44.711338+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858501+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -1998,7 +1998,7 @@
     "word_id": 1,
     "label": "DISCOUNT",
     "reasoning": "The primary context shows 'Pro' is part of the loyalty program name 'Pro Xtra' and does not represent a discount line item. Discount labels require explicit discount expressions, which are absent. Therefore, the DISCOUNT label is incorrect.",
-    "timestamp_added": "2025-12-02T16:45:44.711345+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858504+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2010,7 +2010,7 @@
     "word_id": 1,
     "label": "LOYALTY_ID",
     "reasoning": "Masked phone\u2011like number prefixed by PRO XTRA indicates a loyalty account identifier | Membership program name appears multiple times, serving as loyalty identifier | Exact loyalty identifier appears in the receipt | Masked identifier associated with the Pro Xtra member program.",
-    "timestamp_added": "2025-12-02T16:45:44.711349+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858507+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2022,7 +2022,7 @@
     "word_id": 1,
     "label": "PRODUCT_NAME",
     "reasoning": "Product name component preceding price",
-    "timestamp_added": "2025-12-02T16:45:44.711353+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858509+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2034,7 +2034,7 @@
     "word_id": 4,
     "label": "WEBSITE",
     "reasoning": "The word 'homedepot.com/credit' is a URL displayed in promotional text encouraging the customer to learn more, which aligns with the definition of a WEBSITE label (web address printed on the receipt). There is no indication it is an email or other type of data, making the label appropriate.",
-    "timestamp_added": "2025-12-02T16:45:44.711357+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858512+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_4",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2046,7 +2046,7 @@
     "word_id": 1,
     "label": "DATE",
     "reasoning": "Date appears in the transaction header next to time and cashier information, matching MM/DD/YY format.",
-    "timestamp_added": "2025-12-02T16:45:44.711361+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858515+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2058,7 +2058,7 @@
     "word_id": 1,
     "label": "TIME",
     "reasoning": "Time appears directly after the transaction date, indicating purchase time.",
-    "timestamp_added": "2025-12-02T16:45:44.711367+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858517+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2070,7 +2070,7 @@
     "word_id": 1,
     "label": "TIME",
     "reasoning": "Time appears directly after the transaction date, indicating purchase time.",
-    "timestamp_added": "2025-12-02T16:45:44.711372+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858520+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2082,7 +2082,7 @@
     "word_id": 4,
     "label": "DATE",
     "reasoning": "Date in MM/DD/YY format followed by time, typical transaction timestamp.",
-    "timestamp_added": "2025-12-02T16:45:44.711378+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858523+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_4",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2094,7 +2094,7 @@
     "word_id": 1,
     "label": "PRODUCT_NAME",
     "reasoning": "Part of the descriptive product name preceding the price. | Weight indicator part of the product name.",
-    "timestamp_added": "2025-12-02T16:45:44.711392+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858526+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2106,7 +2106,7 @@
     "word_id": 1,
     "label": "QUANTITY",
     "reasoning": "Numeric value preceding unit price or quantity indicator.",
-    "timestamp_added": "2025-12-02T16:45:44.711396+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858529+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2118,7 +2118,7 @@
     "word_id": 1,
     "label": "UNIT_PRICE",
     "reasoning": "Unit price follows the quantity token and matches the listed price. | Price per unit immediately following the '@' symbol, consistent with the line total of 107.88 (6 * 17.98). | Price per unit follows '@' after quantity. | Numeric value following '@' indicates unit price. | Follows '@' after quantity, typical unit price format.",
-    "timestamp_added": "2025-12-02T16:45:44.711400+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858531+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2130,7 +2130,7 @@
     "word_id": 6,
     "label": "ADDRESS_LINE",
     "reasoning": "The word 'CA' is only the state component of the address and does not constitute a full address line on its own. According to the label definition, ADDRESS_LINE should capture the complete address line (street, city, state, zip). Therefore, labeling the isolated token 'CA' as ADDRESS_LINE is incorrect.",
-    "timestamp_added": "2025-12-02T16:45:44.711403+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858536+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_6",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2142,7 +2142,7 @@
     "word_id": 6,
     "label": "PRODUCT_NAME",
     "reasoning": "Part of the product name 'CA LUMBER FEE'.",
-    "timestamp_added": "2025-12-02T16:45:44.711409+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858539+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_6",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2154,7 +2154,7 @@
     "word_id": 1,
     "label": "DATE",
     "reasoning": "Date appears on product line with time '05:18 PM'",
-    "timestamp_added": "2025-12-02T16:45:44.711412+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858541+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2166,7 +2166,7 @@
     "word_id": 2,
     "label": "TIME",
     "reasoning": "Time appears adjacent to date '01/06/25' on product line",
-    "timestamp_added": "2025-12-02T16:45:44.711431+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858544+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2178,7 +2178,7 @@
     "word_id": 3,
     "label": "TIME",
     "reasoning": "Time appears adjacent to date '01/06/25' on product line",
-    "timestamp_added": "2025-12-02T16:45:44.711443+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858547+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2190,7 +2190,7 @@
     "word_id": 1,
     "label": "UNIT_PRICE",
     "reasoning": "Numeric value immediately preceding the amount line total, representing unit price. | Unit price for \"FIRECODE DRYWALL\"",
-    "timestamp_added": "2025-12-02T16:45:44.711447+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858549+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2202,7 +2202,7 @@
     "word_id": 1,
     "label": "PRODUCT_NAME",
     "reasoning": "Descriptive text following the unit price and before the line total; matches product naming patterns. | The phrase 'SOUR PATCH KIDS 202' follows the unit price on the same line, matching the typical format of product name after price.",
-    "timestamp_added": "2025-12-02T16:45:44.711451+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858552+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2214,7 +2214,7 @@
     "word_id": 2,
     "label": "PRODUCT_NAME",
     "reasoning": "Descriptive text following the unit price and before the line total; matches product naming patterns. | The phrase 'SOUR PATCH KIDS 202' follows the unit price on the same line, matching the typical format of product name after price.",
-    "timestamp_added": "2025-12-02T16:45:44.711459+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858555+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2226,7 +2226,7 @@
     "word_id": 3,
     "label": "PRODUCT_NAME",
     "reasoning": "Descriptive text following the unit price and before the line total; matches product naming patterns. | The phrase 'SOUR PATCH KIDS 202' follows the unit price on the same line, matching the typical format of product name after price.",
-    "timestamp_added": "2025-12-02T16:45:44.711463+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858557+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2238,7 +2238,7 @@
     "word_id": 4,
     "label": "PRODUCT_NAME",
     "reasoning": "Descriptive text following the unit price and before the line total; matches product naming patterns. | The phrase 'SOUR PATCH KIDS 202' follows the unit price on the same line, matching the typical format of product name after price.",
-    "timestamp_added": "2025-12-02T16:45:44.711467+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858560+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_4",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2250,7 +2250,7 @@
     "word_id": 4,
     "label": "QUANTITY",
     "reasoning": "The number follows the product name and precedes the unit price, a common placement for quantity. | Numeric value immediately after product name, indicating quantity | Numeric value following product name indicates quantity.",
-    "timestamp_added": "2025-12-02T16:45:44.711470+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858562+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_4",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2262,7 +2262,7 @@
     "word_id": 2,
     "label": "DISCOUNT",
     "reasoning": "The word 'Pro' is part of the recurring phrase 'Pro Xtra Preferred Pricing', indicating a membership or pricing tier rather than a specific discount line item. DISCOUNT labels should be applied to explicit discount amounts or percentages, which are absent here. Therefore, labeling 'Pro' as DISCOUNT is incorrect.",
-    "timestamp_added": "2025-12-02T16:45:44.711474+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858565+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2274,7 +2274,7 @@
     "word_id": 2,
     "label": "LOYALTY_ID",
     "reasoning": "Masked phone\u2011like number prefixed by PRO XTRA indicates a loyalty account identifier | Membership program name appears multiple times, serving as loyalty identifier | Exact loyalty identifier appears in the receipt | Masked identifier associated with the Pro Xtra member program.",
-    "timestamp_added": "2025-12-02T16:45:44.711478+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858568+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2286,7 +2286,7 @@
     "word_id": 2,
     "label": "PRODUCT_NAME",
     "reasoning": "Product name component preceding price",
-    "timestamp_added": "2025-12-02T16:45:44.711481+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858571+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2298,7 +2298,7 @@
     "word_id": 3,
     "label": "DISCOUNT",
     "reasoning": "The word 'Xtra' is part of the membership program name 'Pro Xtra Preferred Pricing' on the receipt. It does not represent a discount amount or percentage, and therefore does not satisfy the DISCOUNT label definition. The appropriate label would be related to a loyalty program, not a discount.",
-    "timestamp_added": "2025-12-02T16:45:44.711495+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858574+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2310,7 +2310,7 @@
     "word_id": 3,
     "label": "LOYALTY_ID",
     "reasoning": "Masked phone\u2011like number prefixed by PRO XTRA indicates a loyalty account identifier | Membership program name appears multiple times, serving as loyalty identifier | Exact loyalty identifier appears in the receipt | Masked identifier associated with the Pro Xtra member program.",
-    "timestamp_added": "2025-12-02T16:45:44.711499+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858577+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2322,7 +2322,7 @@
     "word_id": 3,
     "label": "PRODUCT_NAME",
     "reasoning": "Product name component preceding price",
-    "timestamp_added": "2025-12-02T16:45:44.711502+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858580+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2334,7 +2334,7 @@
     "word_id": 4,
     "label": "DISCOUNT",
     "reasoning": "The word 'Preferred' is part of the phrase 'Pro Xtra Preferred Pricing', which denotes a member-specific pricing program rather than a specific discount line item. DISCOUNT labels are reserved for explicit discount amounts or percentages. Therefore, labeling 'Preferred' as DISCOUNT is incorrect.",
-    "timestamp_added": "2025-12-02T16:45:44.711511+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858582+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_4",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2346,7 +2346,7 @@
     "word_id": 5,
     "label": "DISCOUNT",
     "reasoning": "The word 'Pricing' is part of the phrase 'Pro Xtra Preferred Pricing', which refers to a member\u2011specific pricing program rather than a specific discount line item. It does not represent a discount amount or percentage, so labeling it as DISCOUNT is incorrect.",
-    "timestamp_added": "2025-12-02T16:45:44.711515+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858585+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_5",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2358,7 +2358,7 @@
     "word_id": 3,
     "label": "PRODUCT_NAME",
     "reasoning": "Second word of product description.",
-    "timestamp_added": "2025-12-02T16:45:44.711519+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858588+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2370,7 +2370,7 @@
     "word_id": 1,
     "label": "LINE_TOTAL",
     "reasoning": "Numeric value on the same line as a refund, likely the item total before refund.",
-    "timestamp_added": "2025-12-02T16:45:44.711530+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858590+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2382,7 +2382,7 @@
     "word_id": 1,
     "label": "PRODUCT_NAME",
     "reasoning": "Brand or product identifier appearing in the description.",
-    "timestamp_added": "2025-12-02T16:45:44.711534+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858593+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2394,7 +2394,7 @@
     "word_id": 2,
     "label": "PRODUCT_NAME",
     "reasoning": "Part of the product description preceding 'DRILLING DRYWALL'. | Part of the descriptive product name that appears after the unit price. | Part of the product name indicating self-drilling feature. | Part of product description. | Part of product description for drilling drywall.",
-    "timestamp_added": "2025-12-02T16:45:44.711553+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858595+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2406,7 +2406,7 @@
     "word_id": 3,
     "label": "PRODUCT_NAME",
     "reasoning": "Describes the drilling feature of the drywall product. | Descriptive term within the product name. | Part of product description. | Product descriptor following SELF-.",
-    "timestamp_added": "2025-12-02T16:45:44.711557+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858598+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2418,7 +2418,7 @@
     "word_id": 4,
     "label": "PRODUCT_NAME",
     "reasoning": "Core product type in the description. | Core product descriptor following the quantity and unit price. | Descriptive term within the product name. | Part of product description. | Product type in the description.",
-    "timestamp_added": "2025-12-02T16:45:44.711563+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858601+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_4",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2430,7 +2430,7 @@
     "word_id": 5,
     "label": "PRODUCT_NAME",
     "reasoning": "Size specification commonly included in the product name. | Size specification part of the product name.",
-    "timestamp_added": "2025-12-02T16:45:44.711567+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858615+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_5",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2442,7 +2442,7 @@
     "word_id": 1,
     "label": "DISCOUNT",
     "reasoning": "Refund value shown as a reduction on the receipt",
-    "timestamp_added": "2025-12-02T16:45:44.711574+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858618+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2454,7 +2454,7 @@
     "word_id": 1,
     "label": "PRODUCT_NAME",
     "reasoning": "Part of the product name phrase that precedes the price. | Descriptive word preceding the amount, part of the policy label. | First word of the product name phrase preceding the price. | Appears immediately before the amount and is part of the descriptive phrase 'MAX REFUND VALUE'. | Product name part of the phrase preceding the price.",
-    "timestamp_added": "2025-12-02T16:45:44.711577+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858620+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_1",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2466,7 +2466,7 @@
     "word_id": 2,
     "label": "DISCOUNT",
     "reasoning": "Refund value shown as a reduction on the receipt",
-    "timestamp_added": "2025-12-02T16:45:44.711581+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858623+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2478,7 +2478,7 @@
     "word_id": 2,
     "label": "PRODUCT_NAME",
     "reasoning": "Part of the product name phrase that precedes the price. | Descriptive word preceding the amount, part of the policy label. | Second word of the product name phrase preceding the price. | Part of the descriptive phrase preceding the amount. | Product name part of the phrase preceding the price.",
-    "timestamp_added": "2025-12-02T16:45:44.711592+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858625+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2490,7 +2490,7 @@
     "word_id": 3,
     "label": "DISCOUNT",
     "reasoning": "Refund value shown as a reduction on the receipt",
-    "timestamp_added": "2025-12-02T16:45:44.711596+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858628+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2502,7 +2502,7 @@
     "word_id": 3,
     "label": "PRODUCT_NAME",
     "reasoning": "Part of the product name phrase that precedes the price. | Descriptive word preceding the amount, part of the policy label. | Third word of the product name phrase preceding the price. | Completes the descriptive phrase before the amount. | Product name part of the phrase preceding the price.",
-    "timestamp_added": "2025-12-02T16:45:44.711600+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858631+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_3",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2514,7 +2514,7 @@
     "word_id": 4,
     "label": "DISCOUNT",
     "reasoning": "Refund value shown as a reduction on the receipt",
-    "timestamp_added": "2025-12-02T16:45:44.711604+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858633+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_4",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2526,7 +2526,7 @@
     "word_id": 4,
     "label": "LINE_TOTAL",
     "reasoning": "Labeled as \"MAX REFUND VALUE\", treated as a line\u2011level refund amount.",
-    "timestamp_added": "2025-12-02T16:45:44.711609+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858644+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_4",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2538,7 +2538,7 @@
     "word_id": 4,
     "label": "UNIT_PRICE",
     "reasoning": "Numeric amount that matches the target snippet and appears as the line total. | Unit price following the product name.",
-    "timestamp_added": "2025-12-02T16:45:44.711613+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858647+00:00",
     "validation_status": "VALID",
     "label_consolidated_from": "receipt_1_word_4",
     "label_proposed_by": "simple_receipt_analyzer"
@@ -2550,7 +2550,7 @@
     "word_id": 2,
     "label": "PRODUCT_NAME",
     "reasoning": "Appears as a product code preceding quantity and price indicators.",
-    "timestamp_added": "2025-12-02T16:45:44.711617+00:00",
+    "timestamp_added": "2025-12-03T06:35:57.858649+00:00",
     "validation_status": "INVALID",
     "label_consolidated_from": "receipt_1_word_2",
     "label_proposed_by": "simple_receipt_analyzer"
