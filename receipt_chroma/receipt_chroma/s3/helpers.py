@@ -154,7 +154,7 @@ def download_snapshot_from_s3(
         }
 
     except Exception as e:
-        logger.error("Error downloading snapshot from S3: %s", e)
+        logger.exception("Error downloading snapshot from S3")
         return {"status": "failed", "error": str(e)}
 
 
@@ -298,7 +298,7 @@ def upload_snapshot_with_hash(
         }
 
     except Exception as e:
-        logger.error("Error uploading snapshot to S3: %s", e)
+        logger.exception("Error uploading snapshot to S3")
         return {"status": "failed", "error": str(e)}
 
 
@@ -459,5 +459,5 @@ def upload_delta_tarball(
             }
 
     except Exception as e:
-        logger.error("Error uploading delta tarball to S3: %s", e)
+        logger.exception("Error uploading delta tarball to S3")
         return {"status": "failed", "error": str(e)}

@@ -141,8 +141,8 @@ def produce_embedding_delta(
             )
             logger.info("Successfully uploaded delta to S3: %s", s3_key)
         except Exception as e:
-            logger.error("Failed to upload delta to S3: %s", e)
-            logger.error("Delta directory was: %s", delta_dir)
+            logger.exception("Failed to upload delta to S3")
+            logger.debug("Delta directory was: %s", delta_dir)
             # Re-raise the exception to be caught by the outer try/except
             raise
 
@@ -191,7 +191,7 @@ def produce_embedding_delta(
                 logger.info("Sent delta notification to SQS: %s", s3_key)
 
             except Exception as e:
-                logger.error("Error sending to SQS: %s", e)
+                logger.exception("Error sending to SQS")
                 # Delta is still in S3, compactor can find it later
 
         # Calculate delta size (approximate)
@@ -222,7 +222,7 @@ def produce_embedding_delta(
         return result
 
     except Exception as e:
-        logger.error("Error producing delta: %s", e)
+        logger.exception("Error producing delta")
         return {
             "status": "failed",
             "error": str(e),
