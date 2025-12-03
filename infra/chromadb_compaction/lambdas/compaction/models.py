@@ -21,6 +21,7 @@ class LambdaResponse:
     label_results: Optional[List[Dict[str, Any]]] = None
     processed_deltas: Optional[int] = None
     skipped_deltas: Optional[int] = None
+    receipt_deletions: Optional[int] = None
     error: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -38,6 +39,7 @@ class LambdaResponse:
             "label_results",
             "processed_deltas",
             "skipped_deltas",
+            "receipt_deletions",
             "error",
         ]
 

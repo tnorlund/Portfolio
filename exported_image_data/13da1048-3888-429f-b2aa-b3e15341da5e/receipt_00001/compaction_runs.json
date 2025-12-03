@@ -1,0 +1,21 @@
+[
+  {
+    "run_id": "350f4d8f-bc3a-43aa-87eb-f4bd6708be55",
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "receipt_id": 1,
+    "lines_delta_prefix": "lines/delta/350f4d8f-bc3a-43aa-87eb-f4bd6708be55/",
+    "words_delta_prefix": "words/delta/350f4d8f-bc3a-43aa-87eb-f4bd6708be55/",
+    "lines_state": "PENDING",
+    "words_state": "PENDING",
+    "lines_started_at": null,
+    "lines_finished_at": null,
+    "words_started_at": null,
+    "words_finished_at": null,
+    "lines_error": "",
+    "words_error": "",
+    "lines_merged_vectors": 0,
+    "words_merged_vectors": 0,
+    "created_at": "2025-10-27T05:21:36.498296",
+    "updated_at": null
+  }
+]

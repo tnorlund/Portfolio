@@ -923,7 +923,29 @@ def create_embeddings_and_compaction_run(
     try:
         import tempfile
         import uuid
-        from receipt_chroma.data.chroma_client import ChromaClient
+        # Try multiple import paths for ChromaClient
+        try:
+            from receipt_chroma.data.chroma_client import ChromaClient
+        except ImportError:
+            try:
+                from receipt_chroma import ChromaClient
+            except ImportError:
+                # Last resort: try direct import
+                import importlib.util
+                repo_root = Path(__file__).parent.parent
+                chroma_client_path = repo_root / 'receipt_chroma' / 'receipt_chroma' / 'data' / 'chroma_client.py'
+                if chroma_client_path.exists():
+                    spec = importlib.util.spec_from_file_location('chroma_client', str(chroma_client_path))
+                    if spec and spec.loader:
+                        chroma_client_module = importlib.util.module_from_spec(spec)
+                        sys.path.insert(0, str(repo_root / 'receipt_chroma'))
+                        spec.loader.exec_module(chroma_client_module)
+                        ChromaClient = chroma_client_module.ChromaClient
+                    else:
+                        raise ImportError("Could not load chroma_client module")
+                else:
+                    raise ImportError(f"ChromaClient not found at {chroma_client_path}")
+
         from receipt_label.merchant_resolution.embeddings import upsert_embeddings
         from receipt_label.embedding.line.realtime import embed_lines_realtime
         from receipt_label.embedding.word.realtime import embed_words_realtime

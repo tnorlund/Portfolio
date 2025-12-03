@@ -51,6 +51,7 @@ try:
         merge_compaction_deltas,
         apply_metadata_updates_in_memory,
         apply_label_updates_in_memory,
+        apply_receipt_deletions_in_memory,
         LambdaResponse,
         StreamMessage,
         MetadataUpdateResult,
@@ -72,6 +73,7 @@ except ImportError:
             merge_compaction_deltas,
             apply_metadata_updates_in_memory,
             apply_label_updates_in_memory,
+            apply_receipt_deletions_in_memory,
             LambdaResponse,
             StreamMessage,
             MetadataUpdateResult,
@@ -703,7 +705,6 @@ def process_stream_messages(
             # Apply receipt deletions (delete embeddings)
             # Note: This must happen AFTER metadata and label updates, but BEFORE closing the client
             if receipt_deletion_msgs:
-                from .receipt_handler import apply_receipt_deletions_in_memory
                 receipt_results = apply_receipt_deletions_in_memory(
                     chroma_client=chroma_client,
                     receipt_deletions=receipt_deletion_msgs,

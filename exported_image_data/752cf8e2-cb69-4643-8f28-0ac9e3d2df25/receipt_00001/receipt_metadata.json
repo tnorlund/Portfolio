@@ -1,0 +1,24 @@
+[
+  {
+    "image_id": "752cf8e2-cb69-4643-8f28-0ac9e3d2df25",
+    "receipt_id": 1,
+    "place_id": "ChIJj9gYFO4k6IARYvBTz25N-eM",
+    "merchant_name": "Vons",
+    "merchant_category": "Grocery Store",
+    "address": "2725 Agoura Rd, Thousand Oaks, CA 91361, USA",
+    "phone_number": "(805) 497-1921",
+    "matched_fields": [
+      "address",
+      "name",
+      "phone"
+    ],
+    "validated_by": "TEXT_SEARCH",
+    "timestamp": "2025-04-23T21:46:14.204489+00:00",
+    "reasoning": "Text search matched the merchant name",
+    "validation_status": "MATCHED",
+    "canonical_place_id": "ChIJj9gYFO4k6IARYvBTz25N-eM",
+    "canonical_merchant_name": "Vons",
+    "canonical_address": "2725 agoura road thousand oaks ca 91361 usa",
+    "canonical_phone_number": "(805) 497-1921"
+  }
+]

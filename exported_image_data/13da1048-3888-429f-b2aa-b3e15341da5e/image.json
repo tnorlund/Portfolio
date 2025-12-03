@@ -1,0 +1,26 @@
+[
+  {
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "width": 2480,
+    "height": 3508,
+    "timestamp_added": "2025-10-27T05:21:30.811390+00:00",
+    "raw_s3_bucket": "raw-image-bucket-c779c32",
+    "raw_s3_key": "raw/13da1048-3888-429f-b2aa-b3e15341da5e.png",
+    "sha256": "7ef4f71eff878cd8912e47f785ece3af289e12da26f13f1830500dd2b6b45338",
+    "cdn_s3_bucket": "sitebucket-ad92f1f",
+    "cdn_s3_key": "assets/13da1048-3888-429f-b2aa-b3e15341da5e.jpg",
+    "cdn_webp_s3_key": "assets/13da1048-3888-429f-b2aa-b3e15341da5e.webp",
+    "cdn_avif_s3_key": "assets/13da1048-3888-429f-b2aa-b3e15341da5e.avif",
+    "cdn_thumbnail_s3_key": "assets/13da1048-3888-429f-b2aa-b3e15341da5e_thumbnail.jpg",
+    "cdn_thumbnail_webp_s3_key": "assets/13da1048-3888-429f-b2aa-b3e15341da5e_thumbnail.webp",
+    "cdn_thumbnail_avif_s3_key": "assets/13da1048-3888-429f-b2aa-b3e15341da5e_thumbnail.avif",
+    "cdn_small_s3_key": "assets/13da1048-3888-429f-b2aa-b3e15341da5e_small.jpg",
+    "cdn_small_webp_s3_key": "assets/13da1048-3888-429f-b2aa-b3e15341da5e_small.webp",
+    "cdn_small_avif_s3_key": "assets/13da1048-3888-429f-b2aa-b3e15341da5e_small.avif",
+    "cdn_medium_s3_key": "assets/13da1048-3888-429f-b2aa-b3e15341da5e_medium.jpg",
+    "cdn_medium_webp_s3_key": "assets/13da1048-3888-429f-b2aa-b3e15341da5e_medium.webp",
+    "cdn_medium_avif_s3_key": "assets/13da1048-3888-429f-b2aa-b3e15341da5e_medium.avif",
+    "image_type": "SCAN",
+    "receipt_count": null
+  }
+]

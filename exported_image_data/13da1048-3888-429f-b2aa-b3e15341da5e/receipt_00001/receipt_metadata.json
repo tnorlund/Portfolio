@@ -1,0 +1,25 @@
+[
+  {
+    "image_id": "13da1048-3888-429f-b2aa-b3e15341da5e",
+    "receipt_id": 1,
+    "place_id": "ChIJ_1Cxb7ww6IARFuDy92wae8w",
+    "merchant_name": "The Home Depot",
+    "merchant_category": "",
+    "address": "2745 Teller Rd, Thousand Oaks, CA 91320, USA",
+    "phone_number": "(805) 375-6680",
+    "matched_fields": [
+      "address",
+      "google_places_address",
+      "name",
+      "phone"
+    ],
+    "validated_by": "INFERENCE",
+    "timestamp": "2025-10-27T05:23:23.376804+00:00",
+    "reasoning": "Selected via places:address",
+    "validation_status": "MATCHED",
+    "canonical_place_id": "ChIJ_1Cxb7ww6IARFuDy92wae8w",
+    "canonical_merchant_name": "The Home Depot",
+    "canonical_address": "2745 Teller Rd, Thousand Oaks, CA 91320, United States",
+    "canonical_phone_number": ""
+  }
+]
