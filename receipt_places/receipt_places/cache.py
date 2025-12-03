@@ -9,7 +9,7 @@ import json
 import logging
 import time
 from datetime import datetime, timezone
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, cast
 
 import boto3
 from botocore.exceptions import ClientError
@@ -224,7 +224,10 @@ class CacheManager:
                     return None
 
             # Parse response
-            places_response = json.loads(item["places_response"]["S"])
+            places_response = cast(
+                dict[str, Any],
+                json.loads(item["places_response"]["S"]),
+            )
 
             # Check for invalid cached responses
             status = places_response.get("status")
@@ -461,7 +464,10 @@ class CacheManager:
             if not items:
                 return None
 
-            return json.loads(items[0]["places_response"]["S"])
+            return cast(
+                dict[str, Any],
+                json.loads(items[0]["places_response"]["S"]),
+            )
 
         except ClientError as e:
             logger.error("Error querying by place_id: %s", e)
