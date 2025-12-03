@@ -1,27 +1,63 @@
 """Low-level S3 helper functions for ChromaDB operations."""
 
-import hashlib
 import logging
+import os
+import tarfile
+import tempfile
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Literal, Optional, TypedDict
 
 import boto3
-from botocore.exceptions import BotoCoreError, ClientError
+
+if TYPE_CHECKING:
+    from mypy_boto3_s3 import S3Client
+else:
+    S3Client = Any  # type: ignore[misc,assignment]
 
 logger = logging.getLogger(__name__)
 
-S3_HELPER_ERRORS = (BotoCoreError, ClientError, OSError, ValueError)
+
+class DownloadResult(TypedDict, total=False):
+    """Result from downloading a snapshot from S3."""
+
+    status: Literal["downloaded", "failed"]
+    snapshot_key: str
+    local_path: str
+    file_count: int
+    total_size_bytes: int
+    error: str  # Only present if status == "failed"
+
+
+class UploadResult(TypedDict, total=False):
+    """Result from uploading a snapshot to S3."""
+
+    status: Literal["uploaded", "failed"]
+    snapshot_key: str
+    file_count: int
+    total_size_bytes: int
+    hash: str
+    hash_algorithm: str
+    error: str  # Only present if status == "failed"
+
+
+class DeltaTarballResult(TypedDict, total=False):
+    """Result from uploading a delta tarball to S3."""
+
+    status: Literal["uploaded", "failed"]
+    delta_key: str
+    object_key: str
+    tar_size_bytes: int
+    error: str  # Only present if status == "failed"
 
 
 def download_snapshot_from_s3(
     bucket: str,
     snapshot_key: str,
     local_snapshot_path: str,
-    *,
     verify_integrity: bool = False,
     region: Optional[str] = None,
-    s3_client: Optional[Any] = None,
-) -> Dict[str, Any]:
+    s3_client: Optional[S3Client] = None,
+) -> DownloadResult:
     """
     Download a ChromaDB snapshot from S3 to local filesystem.
 
@@ -44,10 +80,10 @@ def download_snapshot_from_s3(
     )
 
     if s3_client is None:
-        client_kwargs = {"service_name": "s3"}
         if region:
-            client_kwargs["region_name"] = region
-        s3_client = boto3.client(**client_kwargs)
+            s3_client = boto3.client("s3", region_name=region)
+        else:
+            s3_client = boto3.client("s3")
 
     try:
         # Create local directory
@@ -115,23 +151,22 @@ def download_snapshot_from_s3(
             "total_size_bytes": total_size,
         }
 
-    except S3_HELPER_ERRORS as exc:
-        logger.error("Error downloading snapshot from S3: %s", exc)
-        return {"status": "failed", "error": str(exc)}
+    except Exception as e:
+        logger.error("Error downloading snapshot from S3: %s", e)
+        return {"status": "failed", "error": str(e)}
 
 
 def upload_snapshot_with_hash(
     local_snapshot_path: str,
     bucket: str,
     snapshot_key: str,
-    *,
     calculate_hash: bool = True,
     hash_algorithm: str = "md5",
     metadata: Optional[Dict[str, Any]] = None,
     region: Optional[str] = None,
     clear_destination: bool = True,
-    s3_client: Optional[Any] = None,
-) -> Dict[str, Any]:
+    s3_client: Optional[S3Client] = None,
+) -> UploadResult:
     """
     Upload ChromaDB snapshot to S3 with optional hash calculation.
 
@@ -150,10 +185,8 @@ def upload_snapshot_with_hash(
         Dict with upload status, hash info, and statistics
     """
     logger.info(
-        (
-            "Starting snapshot upload with hash: local_path=%s, bucket=%s, "
-            "key=%s, clear=%s"
-        ),
+        "Starting snapshot upload with hash: local_path=%s, bucket=%s, "
+        "key=%s, clear=%s",
         local_snapshot_path,
         bucket,
         snapshot_key,
@@ -161,10 +194,10 @@ def upload_snapshot_with_hash(
     )
 
     if s3_client is None:
-        client_kwargs = {"service_name": "s3"}
         if region:
-            client_kwargs["region_name"] = region
-        s3_client = boto3.client(**client_kwargs)
+            s3_client = boto3.client("s3", region_name=region)
+        else:
+            s3_client = boto3.client("s3")
 
     try:
         snapshot_path = Path(local_snapshot_path)
@@ -175,7 +208,7 @@ def upload_snapshot_with_hash(
             return {
                 "status": "failed",
                 "error": (
-                    "Snapshot path does not exist: " f"{local_snapshot_path}"
+                    f"Snapshot path does not exist: {local_snapshot_path}"
                 ),
             }
 
@@ -189,23 +222,26 @@ def upload_snapshot_with_hash(
         hash_value = None
         if calculate_hash:
             try:
-                # Lightweight alternative to full content hashing that
-                # relies on path, size, and modification time.
+                # Simple hash calculation - sum of file sizes and
+                # modification times. This is a lightweight alternative to
+                # full content hashing
+                import hashlib  # pylint: disable=import-outside-toplevel
+
                 hash_obj = hashlib.new(hash_algorithm)
                 for file_path in snapshot_path.rglob("*"):
                     if file_path.is_file():
                         stat = file_path.stat()
-                        descriptor = (
-                            f"{file_path.relative_to(snapshot_path)}:"
-                            f"{stat.st_size}:{stat.st_mtime}"
+                        rel_path = file_path.relative_to(snapshot_path)
+                        hash_str = (
+                            f"{rel_path}:{stat.st_size}:{stat.st_mtime}"
                         )
-                        hash_obj.update(descriptor.encode())
+                        hash_obj.update(hash_str.encode())
                 hash_value = hash_obj.hexdigest()
                 logger.info(
                     "Calculated %s hash: %s", hash_algorithm, hash_value
                 )
-            except (OSError, ValueError) as exc:
-                logger.warning("Failed to calculate hash: %s", exc)
+            except Exception as e:
+                logger.warning("Failed to calculate hash: %s", e)
                 hash_value = None
 
         # Upload all files
@@ -259,12 +295,12 @@ def upload_snapshot_with_hash(
             "hash_algorithm": hash_algorithm if hash_value else None,
         }
 
-    except S3_HELPER_ERRORS as exc:
-        logger.error("Error uploading snapshot to S3: %s", exc)
-        return {"status": "failed", "error": str(exc)}
+    except Exception as e:
+        logger.error("Error uploading snapshot to S3: %s", e)
+        return {"status": "failed", "error": str(e)}
 
 
-def _cleanup_s3_prefix(s3_client: Any, bucket: str, prefix: str) -> None:
+def _cleanup_s3_prefix(s3_client: S3Client, bucket: str, prefix: str) -> None:
     """Helper function to delete all objects under an S3 prefix."""
     paginator = s3_client.get_paginator("list_objects_v2")
     for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
@@ -277,7 +313,7 @@ def _cleanup_s3_prefix(s3_client: Any, bucket: str, prefix: str) -> None:
 
 
 def _cleanup_old_snapshot_versions(
-    s3_client: Any, bucket: str, collection: str, keep_versions: int
+    s3_client: S3Client, bucket: str, collection: str, keep_versions: int
 ) -> None:
     """Helper function to clean up old timestamped snapshot versions."""
     timestamped_prefix = f"{collection}/snapshot/timestamped/"
@@ -292,7 +328,8 @@ def _cleanup_old_snapshot_versions(
         if "CommonPrefixes" in page:
             for prefix_info in page["CommonPrefixes"]:
                 version_path = prefix_info["Prefix"]
-                # Extract version IDs such as "lines/.../20250826_143052/"
+                # Extract version ID from path like
+                # "lines/snapshot/timestamped/20250826_143052/"
                 version_id = version_path.split("/")[-2]
                 versions.append(version_id)
 
@@ -306,7 +343,120 @@ def _cleanup_old_snapshot_versions(
         try:
             _cleanup_s3_prefix(s3_client, bucket, version_prefix)
             logger.info("Cleaned up old snapshot version: %s", version_prefix)
-        except (*S3_HELPER_ERRORS, KeyError) as exc:
+        except Exception as e:
             logger.warning(
-                "Failed to cleanup version %s: %s", version_prefix, exc
+                "Failed to cleanup version %s: %s", version_prefix, e
             )
+
+
+def upload_delta_tarball(
+    local_delta_dir: str,
+    bucket: str,
+    delta_prefix: str,
+    metadata: Optional[Dict[str, Any]] = None,
+    region: Optional[str] = None,
+    s3_client: Optional[S3Client] = None,
+) -> DeltaTarballResult:
+    """
+    Create a gzip-compressed tarball from a delta directory and upload to S3.
+
+    This function is used by producer lambdas to create delta tarballs that
+    will be processed by the compaction Lambda. The compaction Lambda expects
+    tarballs at {delta_prefix}/delta.tar.gz.
+
+    Args:
+        local_delta_dir: Path to local delta directory
+            (ChromaDB persist directory)
+        bucket: S3 bucket name
+        delta_prefix: S3 prefix for the delta (e.g., "lines/delta/{run_id}")
+        metadata: Optional metadata to include in S3 object
+        region: Optional AWS region
+        s3_client: Optional boto3 S3 client (creates one if not provided)
+
+    Returns:
+        Dict with status, delta_key (prefix), object_key (full S3 key),
+        and tar_size_bytes
+
+    Example:
+        >>> result = upload_delta_tarball(
+        ...     local_delta_dir="/tmp/delta_123",
+        ...     bucket="my-bucket",
+        ...     delta_prefix="lines/delta/abc-123"
+        ... )
+        >>> print(result["object_key"])
+        "lines/delta/abc-123/delta.tar.gz"
+    """
+    logger.info(
+        "Bundling and uploading delta tarball: dir=%s bucket=%s prefix=%s",
+        local_delta_dir,
+        bucket,
+        delta_prefix,
+    )
+
+    if s3_client is None:
+        if region:
+            s3_client = boto3.client("s3", region_name=region)
+        else:
+            s3_client = boto3.client("s3")
+
+    try:
+        delta_path = Path(local_delta_dir)
+        if not delta_path.exists() or not delta_path.is_dir():
+            logger.error(
+                "Delta directory does not exist or is not a directory: %s",
+                local_delta_dir,
+            )
+            return {
+                "status": "failed",
+                "error": f"Delta directory does not exist: {local_delta_dir}",
+            }
+
+        # Create tarball in temp directory
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tar_path = os.path.join(tmp_dir, "delta.tar.gz")
+
+            # Create gzip-compressed tarball
+            with tarfile.open(tar_path, "w:gz") as tar:
+                tar.add(local_delta_dir, arcname=".")
+
+            tar_size = os.path.getsize(tar_path)
+            logger.info(
+                "Created delta tarball: path=%s, size_bytes=%d",
+                tar_path,
+                tar_size,
+            )
+
+            # Upload tarball to S3
+            s3_key = f"{delta_prefix.rstrip('/')}/delta.tar.gz"
+
+            # Prepare metadata
+            extra_args = {
+                "ContentType": "application/gzip",
+                "ContentEncoding": "gzip",
+            }
+            if metadata:
+                extra_args["Metadata"] = {
+                    k: str(v) for k, v in metadata.items()
+                }
+
+            s3_client.upload_file(
+                tar_path, bucket, s3_key, ExtraArgs=extra_args
+            )
+
+            logger.info(
+                "Uploaded delta tarball: bucket=%s, key=%s, size_bytes=%d",
+                bucket,
+                s3_key,
+                tar_size,
+            )
+
+            return {
+                "status": "uploaded",
+                "delta_key": delta_prefix,
+                "object_key": s3_key,
+                "tar_size_bytes": tar_size,
+            }
+
+    except Exception as e:
+        logger.error("Error uploading delta tarball to S3: %s", e)
+        return {"status": "failed", "error": str(e)}

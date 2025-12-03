@@ -89,7 +89,7 @@ def create_batch_summary(
                 image_id = parts[1]
                 receipt_id = int(parts[3])
                 receipt_refs.add((image_id, receipt_id))
-            except (json.JSONDecodeError, IndexError, ValueError):
+            except Exception:  # pylint: disable=broad-exception-caught
                 continue
 
     # Build and return the BatchSummary

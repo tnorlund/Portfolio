@@ -1,4 +1,8 @@
-"""Word formatting utilities for embedding context."""
+"""Word formatting utilities for embedding context.
+
+This module provides functions for formatting word context for embeddings,
+including neighbor detection and position calculation.
+"""
 
 from typing import List, Tuple
 
@@ -59,7 +63,8 @@ def format_word_context_embedding_input(
         Formatted string with context words and <EDGE> tags
     """
     # Sort all words by x-coordinate (horizontal position)
-    # Use a stable sort key: (x, original_index) to preserve order for ties
+    # Use a stable sort key: (x, original_index) to preserve order when
+    # x is identical
     sorted_all = sorted(
         enumerate(all_words),
         key=lambda item: (item[1].calculate_centroid()[0], item[0]),
@@ -78,7 +83,8 @@ def format_word_context_embedding_input(
         )
     )
 
-    # Collect left neighbors (up to context_size) based on horizontal position
+    # Collect left neighbors (up to context_size)
+    # Find words based on horizontal position, regardless of line
     left_words = []
     for orig_idx, w in reversed(sorted_all[:idx]):
         if (w.image_id, w.receipt_id, w.line_id, w.word_id) == (
@@ -92,7 +98,8 @@ def format_word_context_embedding_input(
         if len(left_words) >= context_size:
             break
 
-    # Collect right neighbors (up to context_size) based on horizontal position
+    # Collect right neighbors (up to context_size)
+    # Find words based on horizontal position, regardless of line
     right_words = []
     for orig_idx, w in sorted_all[idx + 1 :]:
         if (w.image_id, w.receipt_id, w.line_id, w.word_id) == (
@@ -129,24 +136,25 @@ def parse_left_right_from_formatted(
     New format: "left_words... word right_words..."
     Example: "<EDGE> Subtotal Total Tax Discount"
 
-    The format is:
-    [left_context (context_size tokens)] [target_word]
+    The format is: [left_context (context_size tokens)] [target_word]
     [right_context (context_size tokens)]
     Total tokens = context_size + 1 + context_size = 2*context_size + 1
 
     Args:
         fmt: Formatted string with context words
-        context_size: Context words to include on each side (default: 2)
+        context_size: Expected number of context words on each side
+            (default: 2)
 
     Returns:
-        Tuple of (left_words, right_words) lists of length context_size
+        Tuple of (left_words, right_words) as lists, each of length
+        context_size
     """
     # Split by spaces to get all tokens
     tokens = fmt.split()
 
     # Expected format: [left_context] [target] [right_context]
-    # Total length should be: context_size + 1 + context_size
-    # = 2*context_size + 1
+    # Total length should be: context_size + 1 + context_size =
+    # 2*context_size + 1
     expected_length = 2 * context_size + 1
 
     if len(tokens) < expected_length:
@@ -155,7 +163,8 @@ def parse_left_right_from_formatted(
             ["<EDGE>"] * context_size + tokens + ["<EDGE>"] * context_size
         )[:expected_length]
     elif len(tokens) > expected_length:
-        # Too many tokens - use first context_size, middle word, last group
+        # Too many tokens - take first context_size, middle word,
+        # last context_size
         tokens = (
             tokens[:context_size]
             + [tokens[len(tokens) // 2]]
@@ -178,15 +187,16 @@ def get_word_neighbors(
     context_size: int = 2,
 ) -> Tuple[List[str], List[str]]:
     """
-    Get the left and right neighbor words for the target word.
+    Get the left and right neighbor words for the target word with
+    configurable context size.
 
     Returns multiple neighbors on each side, using <EDGE> tags for missing
-    positions. This preserves relative position information and
-    distinguishes words at different distances from edges.
+    positions. This preserves relative position information and distinguishes
+    words at different distances from edges.
 
     Finds neighbors based on horizontal position (x-coordinate), regardless
-    of line (y-coordinate). When x-coordinates are identical, the original
-    list order is preserved via stable sorting.
+    of line (y-coordinate). When x-coordinates are identical, preserves
+    original list order (stable sort).
 
     Args:
         target_word: The word to find neighbors for
@@ -194,10 +204,12 @@ def get_word_neighbors(
         context_size: Number of words to include on each side (default: 2)
 
     Returns:
-        Tuple of (left_words, right_words) lists of length context_size
+        Tuple of (left_words, right_words) where each is a list of
+        context_size words
     """
     # Sort all words by x-coordinate (horizontal position)
-    # Use stable sort key (x, index) to preserve order for tied positions
+    # Use a stable sort key: (x, original_index) to preserve order when
+    # x is identical
     sorted_all = sorted(
         enumerate(all_words),
         key=lambda item: (item[1].calculate_centroid()[0], item[0]),
