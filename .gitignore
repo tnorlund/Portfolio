@@ -239,3 +239,4 @@ exports/
 
 # Lambda layer update tool backups (contain sensitive state)
 infra/backups/
+.chroma_snapshots/
