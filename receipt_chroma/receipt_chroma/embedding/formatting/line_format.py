@@ -1,4 +1,8 @@
-"""Line formatting utilities for embedding context."""
+"""Line formatting utilities for embedding context.
+
+This module provides functions for formatting line context for embeddings,
+including neighbor detection and position calculation.
+"""
 
 import re
 from typing import List, Tuple
@@ -60,8 +64,7 @@ def format_line_context_embedding_input(
             next_line = sorted_lines[target_index + 1].text
 
     return (
-        f"<TARGET>{target_line.text}</TARGET> "
-        f"<POS>{position}</POS> "
+        f"<TARGET>{target_line.text}</TARGET> <POS>{position}</POS> "
         f"<CONTEXT>{prev_line} {next_line}</CONTEXT>"
     )
 

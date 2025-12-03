@@ -13,20 +13,48 @@ Addresses GitHub issue: https://github.com/chroma-core/chroma/issues/5868
 import gc
 import logging
 import os
-import tempfile
 import time
-import uuid
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, Generator, List, Optional
+from types import TracebackType
+from typing import Any, Dict, Generator, List, Optional, Protocol, Type
 
-import boto3
 import chromadb
 from chromadb.config import Settings
 from chromadb.errors import NotFoundError
 from chromadb.utils import embedding_functions
 
 logger = logging.getLogger(__name__)
+
+
+class ChromaCollection(Protocol):
+    """Protocol for ChromaDB collection interface.
+
+    This protocol defines the methods we use from ChromaDB collections,
+    allowing type checking without requiring ChromaDB type stubs.
+    """
+
+    name: str
+
+    def query(self, **kwargs: Any) -> Dict[str, Any]:
+        """Query the collection with the given parameters."""
+        ...
+
+    def get(self, **kwargs: Any) -> Dict[str, Any]:
+        """Get items from the collection with the given parameters."""
+        ...
+
+    def count(self) -> int:
+        """Return the number of items in the collection."""
+        ...
+
+    def delete(self, **kwargs: Any) -> None:
+        """Delete items from the collection with the given parameters."""
+        ...
+
+    def upsert(self, **kwargs: Any) -> None:
+        """Upsert items into the collection with the given parameters."""
+        ...
 
 
 class ChromaClient:
@@ -111,7 +139,12 @@ class ChromaClient:
             raise RuntimeError("Cannot use closed ChromaClient")
         return self
 
-    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+    def __exit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> None:
         """Exit context manager and close client."""
         self.close()
 
@@ -210,15 +243,25 @@ class ChromaClient:
                 # Try to access the internal client if it exists
                 # ChromaDB doesn't expose close(), so we must access
                 # internal _client attribute (issue #5868)
-                internal_client = getattr(self._client, "_client", None)
-                if internal_client is not None:
-                    close_fn = getattr(internal_client, "close", None)
-                    if callable(close_fn):
+                if (
+                    hasattr(self._client, "_client")
+                    and self._client._client
+                    is not None  # pylint: disable=protected-access,no-member
+                ):
+                    # Try to close SQLite connections if accessible
+                    internal_client = (
+                        self._client._client
+                    )  # pylint: disable=protected-access,no-member
+                    if hasattr(internal_client, "close"):
                         try:
-                            close_fn()
-                        except (OSError, RuntimeError) as err:
+                            internal_client.close()
+                        except (
+                            Exception
+                        ) as e:  # pylint: disable=broad-exception-caught
+                            # Catch all exceptions during cleanup to ensure
+                            # we don't fail silently
                             logger.debug(
-                                "Error closing internal client: %s", err
+                                "Error closing internal client: %s", e
                             )
 
                 # Clear the client reference
@@ -235,8 +278,10 @@ class ChromaClient:
                 gc.collect()
 
             # Longer delay to ensure file handles are released by OS
-            # Critical for preventing file locking issues when uploading to S3
-            # SQLite files can remain locked even after client is "closed"
+            # This is critical for preventing file locking issues when
+            # uploading to S3
+            # Issue #5868: SQLite files can remain locked even after client
+            # is "closed"
             time.sleep(
                 0.5
             )  # Increased from 0.1s to 0.5s for more reliable unlocking
@@ -244,9 +289,11 @@ class ChromaClient:
             self._closed = True
             logger.debug("ChromaDB client closed successfully")
 
-        except (OSError, RuntimeError) as exc:
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            # Catch all exceptions during cleanup to ensure client is
+            # marked as closed even if cleanup fails
             logger.warning(
-                "Error closing ChromaDB client (non-critical): %s", exc
+                "Error closing ChromaDB client (non-critical): %s", e
             )
             # Mark as closed even if there was an error
             self._closed = True
@@ -256,7 +303,7 @@ class ChromaClient:
         name: str,
         create_if_missing: bool = False,
         metadata: Optional[Dict[str, Any]] = None,
-    ) -> Any:
+    ) -> ChromaCollection:
         """
         Get or create a ChromaDB collection.
 
@@ -313,7 +360,8 @@ class ChromaClient:
                         f"create_if_missing=False. Error: {e}"
                     ) from e
 
-        return self._collections[name]
+        return self._collections[name]  # type: ignore[return-value]
+        # ChromaDB returns Any, but matches Protocol
 
     def _assert_writeable(self) -> None:
         """Ensure the client is in a writeable mode."""
@@ -490,15 +538,16 @@ class ChromaClient:
         self,
         collection_name: str,
         ids: List[str],
-        *,
         embeddings: Optional[List[List[float]]] = None,
         documents: Optional[List[str]] = None,
         metadatas: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
         """
-        Upsert vectors into a collection (alias for backward compatibility).
+        Upsert vectors into a collection (alias for upsert for backward
+        compatibility).
 
-        This method maintains compatibility with the legacy ChromaDBClient.
+        This method provides compatibility with the old ChromaDBClient
+        interface.
 
         Args:
             collection_name: Name of the collection
@@ -549,6 +598,8 @@ class ChromaClient:
             raise RuntimeError("persist_directory required for delta uploads")
 
         if s3_client is None:
+            import boto3  # type: ignore[import-untyped]  # pylint: disable=import-outside-toplevel
+
             s3_client = boto3.client("s3")
 
         # CRITICAL: Close ChromaDB client BEFORE uploading to ensure SQLite
@@ -557,7 +608,9 @@ class ChromaClient:
 
         # Generate a unique delta ID for this upload
         # This ensures each delta has a unique S3 path for parallel processing
-        delta_id = uuid.uuid4().hex
+        import uuid as uuid_module  # pylint: disable=import-outside-toplevel
+
+        delta_id = uuid_module.uuid4().hex
 
         # Upload all files from persist directory under the delta ID
         uploaded_files = []
@@ -577,13 +630,18 @@ class ChromaClient:
 
         # Optional validation: try to download and open the database
         if validate_after_upload:
+            import tempfile  # pylint: disable=import-outside-toplevel
+
             with tempfile.TemporaryDirectory() as temp_dir:
+                # Download one key file to validate
                 test_key = uploaded_files[0]
                 local_file = Path(temp_dir) / Path(test_key).name
                 s3_client.download_file(bucket, test_key, str(local_file))
+                # If we can download, the upload was successful
 
         logger.info(
-            "Uploaded delta to S3 (bucket=%s, prefix=%s, key=%s, files=%d)",
+            "Uploaded delta to S3: bucket=%s, prefix=%s, "
+            "actual_delta_key=%s, file_count=%d",
             bucket,
             s3_prefix,
             actual_delta_key,

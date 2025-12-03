@@ -4,7 +4,7 @@ This module provides functions for creating and enriching line metadata
 that will be stored in ChromaDB.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import List, Optional, TypedDict
 
 from receipt_dynamo.entities import ReceiptLine, ReceiptWord
 
@@ -15,16 +15,41 @@ from receipt_chroma.embedding.utils.normalize import (
 )
 
 
+class LineMetadata(TypedDict, total=False):
+    """Metadata structure for line embeddings in ChromaDB."""
+
+    image_id: str
+    receipt_id: int
+    line_id: int
+    text: str
+    confidence: float
+    avg_word_confidence: float
+    x: float
+    y: float
+    width: float
+    height: float
+    prev_line: str
+    next_line: str
+    merchant_name: str
+    source: str
+    section_label: str  # Optional
+    anchor_phone: str  # Optional, only if anchors exist
+    anchor_address: str  # Optional, only if anchors exist
+    anchor_url: str  # Optional, only if anchors exist
+    normalized_phone_10: str  # Optional, only if anchors exist
+    normalized_full_address: str  # Optional, only if anchors exist
+    normalized_url: str  # Optional, only if anchors exist
+
+
 def create_line_metadata(
     line: ReceiptLine,
     prev_line: str,
     next_line: str,
-    *,
     merchant_name: Optional[str] = None,
     avg_word_confidence: Optional[float] = None,
     section_label: Optional[str] = None,
     source: str = "openai_embedding_batch",
-) -> Dict[str, Any]:
+) -> LineMetadata:
     """
     Create comprehensive metadata for a line embedding.
 
@@ -73,9 +98,9 @@ def create_line_metadata(
 
 
 def enrich_line_metadata_with_anchors(
-    metadata: Dict[str, Any],
+    metadata: LineMetadata,
     line_words: List[ReceiptWord],
-) -> Dict[str, Any]:
+) -> LineMetadata:
     """
     Enrich line metadata with anchor fields (phone, address, URL) if available.
 
@@ -118,8 +143,9 @@ def enrich_line_metadata_with_anchors(
             metadata["normalized_full_address"] = anchor_address
         if anchor_url:
             metadata["normalized_url"] = anchor_url
-    except (AttributeError, TypeError, ValueError):
+    except Exception:
         # Silently fail - anchor enrichment is optional
         pass
 
-    return metadata
+    return metadata  # type: ignore[return-value]
+    # Dict operations return Dict[str, Any], but structure matches TypedDict
