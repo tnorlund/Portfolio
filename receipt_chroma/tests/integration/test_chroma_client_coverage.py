@@ -233,7 +233,7 @@ class TestChromaClientErrorPaths:
         # Mock gc.collect to raise an exception
         mocker.patch(
             "receipt_chroma.data.chroma_client.gc.collect",
-            side_effect=RuntimeError("GC error"),
+            side_effect=Exception("GC error"),
         )
 
         # Close should still mark client as closed even on error
@@ -276,7 +276,7 @@ class TestChromaClientErrorPaths:
         # Mock time.sleep to raise an exception
         mocker.patch(
             "receipt_chroma.data.chroma_client.time.sleep",
-            side_effect=OSError("Sleep error"),
+            side_effect=Exception("Sleep error"),
         )
 
         # Close should still mark as closed even if cleanup fails (lines 241-248)
