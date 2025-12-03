@@ -63,12 +63,15 @@ def normalize_address(text: Optional[str]) -> str:
     return " ".join(mapped)
 
 
-def _extract_address_candidates(words: Iterable[object]) -> list[str]:
-    """Collect address candidates from word objects."""
+def build_full_address_from_words(words: Iterable[object]) -> str:
+    """
+    Build a receipt-level full address from word objects.
+    Prefers extracted_data where type == "address"; picks longest value.
+    """
     candidates: list[str] = []
-    for word in words:
+    for w in words:
         try:
-            ext = getattr(word, "extracted_data", None) or {}
+            ext = getattr(w, "extracted_data", None) or {}
         except AttributeError:
             continue
         try:
@@ -78,51 +81,42 @@ def _extract_address_candidates(words: Iterable[object]) -> list[str]:
                     candidates.append(val)
         except (AttributeError, ValueError, TypeError):
             continue
-    return [value.strip() for value in candidates if value.strip()]
+    if candidates:
+        unique = [v.strip() for v in candidates if v.strip()]
+        # Deduplicate while preserving order by length (desc)
+        unique_sorted = sorted(
+            list(dict.fromkeys(unique)), key=len, reverse=True
+        )
 
+        # Prefer combining a street-containing part (has number) with a
+        # city/state/zip part
+        street_idx = None
+        place_idx = None
+        for idx, val in enumerate(unique_sorted):
+            if street_idx is None and re.search(r"\b\d{1,6}\b", val):
+                street_idx = idx
+        for idx, val in enumerate(unique_sorted):
+            if idx == street_idx:
+                continue
+            if re.search(r"\b\d{5}(?:-\d{4})?\b", val) or re.search(
+                r"\b[A-Z]{2}\b", val.upper()
+            ):
+                place_idx = idx
+                break
 
-def _combine_street_and_place(unique_sorted: list[str]) -> Optional[str]:
-    """Combine street-containing and place-containing fragments if present."""
-    street_idx = None
-    place_idx = None
-    for idx, val in enumerate(unique_sorted):
-        if street_idx is None and re.search(r"\b\d{1,6}\b", val):
-            street_idx = idx
-    for idx, val in enumerate(unique_sorted):
-        if idx == street_idx:
-            continue
-        if re.search(r"\b\d{5}(?:-\d{4})?\b", val) or re.search(
-            r"\b[A-Z]{2}\b", val.upper()
-        ):
-            place_idx = idx
-            break
-    if street_idx is not None and place_idx is not None:
-        return f"{unique_sorted[street_idx]} {unique_sorted[place_idx]}"
-    return None
+        if street_idx is not None and place_idx is not None:
+            combined = (
+                f"{unique_sorted[street_idx]} {unique_sorted[place_idx]}"
+            )
+            return normalize_address(combined)
 
+        # Fallback: try joining top two candidates if available
+        if len(unique_sorted) >= 2:
+            return normalize_address(f"{unique_sorted[0]} {unique_sorted[1]}")
 
-def build_full_address_from_words(words: Iterable[object]) -> str:
-    """
-    Build a receipt-level full address from word objects.
-    Prefers extracted_data where type == "address"; picks longest value.
-    """
-    candidates = _extract_address_candidates(words)
-    if not candidates:
-        return ""
-
-    # Deduplicate while preserving order by length (desc)
-    unique_sorted = sorted(
-        list(dict.fromkeys(candidates)), key=len, reverse=True
-    )
-
-    combined = _combine_street_and_place(unique_sorted)
-    if combined:
-        return normalize_address(combined)
-
-    if len(unique_sorted) >= 2:
-        return normalize_address(f"{unique_sorted[0]} {unique_sorted[1]}")
-
-    return normalize_address(unique_sorted[0])
+        # Otherwise use the longest single candidate
+        return normalize_address(unique_sorted[0])
+    return ""
 
 
 def build_full_address_from_lines(lines: Iterable[object]) -> str:
