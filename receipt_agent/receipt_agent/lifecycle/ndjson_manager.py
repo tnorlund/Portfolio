@@ -38,9 +38,13 @@ def export_receipt_ndjson(
     try:
         # Fetch authoritative words/lines from DynamoDB if not provided
         if receipt_lines is None:
-            receipt_lines = client.list_receipt_lines_from_receipt(image_id, receipt_id)
+            receipt_lines = client.list_receipt_lines_from_receipt(
+                image_id, receipt_id
+            )
         if receipt_words is None:
-            receipt_words = client.list_receipt_words_from_receipt(image_id, receipt_id)
+            receipt_words = client.list_receipt_words_from_receipt(
+                image_id, receipt_id
+            )
 
         prefix = f"receipts/{image_id}/receipt-{receipt_id:05d}/"
         lines_key = prefix + "lines.ndjson"
@@ -56,28 +60,36 @@ def export_receipt_ndjson(
 
         # Upload lines NDJSON
         if line_rows:
-            lines_ndjson_content = "\n".join(json.dumps(row, default=str) for row in line_rows)
+            lines_ndjson_content = "\n".join(
+                json.dumps(row, default=str) for row in line_rows
+            )
             s3_client.put_object(
                 Bucket=artifacts_bucket,
                 Key=lines_key,
                 Body=lines_ndjson_content.encode("utf-8"),
                 ContentType="application/x-ndjson",
             )
-            print(f"   ✅ Exported {len(line_rows)} lines to s3://{artifacts_bucket}/{lines_key}")
+            print(
+                f"   ✅ Exported {len(line_rows)} lines to s3://{artifacts_bucket}/{lines_key}"
+            )
 
         # Upload words NDJSON
         if word_rows:
-            words_ndjson_content = "\n".join(json.dumps(row, default=str) for row in word_rows)
+            words_ndjson_content = "\n".join(
+                json.dumps(row, default=str) for row in word_rows
+            )
             s3_client.put_object(
                 Bucket=artifacts_bucket,
                 Key=words_key,
                 Body=words_ndjson_content.encode("utf-8"),
                 ContentType="application/x-ndjson",
             )
-            print(f"   ✅ Exported {len(word_rows)} words to s3://{artifacts_bucket}/{words_key}")
+            print(
+                f"   ✅ Exported {len(word_rows)} words to s3://{artifacts_bucket}/{words_key}"
+            )
 
     except Exception as e:
         print(f"⚠️  Error exporting NDJSON for receipt {receipt_id}: {e}")
         import traceback
-        traceback.print_exc()
 
+        traceback.print_exc()

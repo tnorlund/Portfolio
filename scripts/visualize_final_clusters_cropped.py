@@ -7,8 +7,10 @@ ensuring the cropped receipts are perspective-corrected (not axis-aligned).
 """
 
 import argparse
+import json
 import sys
 from pathlib import Path
+from typing import Dict, List
 
 repo_root = Path(__file__).parent.parent
 sys.path.insert(0, str(repo_root))
@@ -19,7 +21,9 @@ from receipt_dynamo.entities import Line
 from scripts.split_receipt import recluster_receipt_lines, setup_environment
 
 try:
-    from PIL import Image as PIL_Image, ImageDraw, ImageFont
+    from PIL import Image as PIL_Image
+    from PIL import ImageDraw, ImageFont
+
     PIL_AVAILABLE = True
 except ImportError:
     PIL_AVAILABLE = False
@@ -28,9 +32,10 @@ except ImportError:
 
 import boto3
 
+from receipt_upload.cluster import reorder_box_points
+
 # Import geometry functions from receipt_upload (same as scan.py)
 from receipt_upload.geometry import box_points, invert_affine, min_area_rect
-from receipt_upload.cluster import reorder_box_points
 
 
 def get_image_from_s3(bucket: str, key: str) -> PIL_Image.Image:
@@ -78,7 +83,9 @@ def get_line_corners_image_coords(line: Line, img_width: int, img_height: int):
     return [tl, tr, br, bl]
 
 
-def calculate_receipt_bounds_from_lines(cluster_lines: list[Line], img_width: int, img_height: int) -> dict:
+def calculate_receipt_bounds_from_lines(
+    cluster_lines: list[Line], img_width: int, img_height: int
+) -> dict:
     """
     Calculate receipt bounds using the same process as receipt_upload.
 
@@ -174,7 +181,11 @@ def visualize_final_clusters_cropped(
 
     # Download original image
     original_image = None
-    s3_key = image_entity.raw_s3_key if image_entity.raw_s3_key else f"raw/{image_id}.png"
+    s3_key = (
+        image_entity.raw_s3_key
+        if image_entity.raw_s3_key
+        else f"raw/{image_id}.png"
+    )
     try:
         original_image = get_image_from_s3(raw_bucket, s3_key)
         print(f"✅ Loaded image from raw S3: {s3_key}")
@@ -184,13 +195,17 @@ def visualize_final_clusters_cropped(
         if image_entity.cdn_s3_bucket and image_entity.cdn_s3_key:
             try:
                 print(f"   Trying CDN image: {image_entity.cdn_s3_key}")
-                original_image = get_image_from_s3(image_entity.cdn_s3_bucket, image_entity.cdn_s3_key)
+                original_image = get_image_from_s3(
+                    image_entity.cdn_s3_bucket, image_entity.cdn_s3_key
+                )
                 print(f"✅ Loaded image from CDN")
             except Exception as e2:
                 print(f"⚠️  Could not load image from CDN: {e2}")
         if original_image is None:
             print(f"   Creating blank image for visualization...")
-            original_image = PIL_Image.new("RGB", (image_entity.width, image_entity.height), "white")
+            original_image = PIL_Image.new(
+                "RGB", (image_entity.width, image_entity.height), "white"
+            )
 
     img_width, img_height = original_image.size
 
@@ -201,10 +216,14 @@ def visualize_final_clusters_cropped(
     print(f"\n📊 Final clusters for {image_id}:")
     for cluster_id, cluster_lines in sorted(cluster_dict.items()):
         color = get_cluster_color(cluster_id, len(cluster_dict))
-        print(f"   Cluster {cluster_id}: {len(cluster_lines)} lines (color: {color})")
+        print(
+            f"   Cluster {cluster_id}: {len(cluster_lines)} lines (color: {color})"
+        )
 
         # Calculate receipt bounds using same process as receipt_upload
-        bounds = calculate_receipt_bounds_from_lines(cluster_lines, img_width, img_height)
+        bounds = calculate_receipt_bounds_from_lines(
+            cluster_lines, img_width, img_height
+        )
         if not bounds:
             print(f"      ⚠️  No bounds - skipping")
             continue
@@ -229,13 +248,17 @@ def visualize_final_clusters_cropped(
         # Lines are in image coordinate space, need to transform to warped receipt space
         for line in cluster_lines:
             # Get line corners in image coordinate space
-            corners_img = get_line_corners_image_coords(line, img_width, img_height)
+            corners_img = get_line_corners_image_coords(
+                line, img_width, img_height
+            )
 
             # Transform corners to warped receipt space using the inverse affine transform
             # The affine transform maps (receipt_x, receipt_y) -> (image_x, image_y)
             # We need the inverse: (image_x, image_y) -> (receipt_x, receipt_y)
             a_i, b_i, c_i, d_i, e_i, f_i = affine_transform
-            a_f, b_f, c_f, d_f, e_f, f_f = invert_affine(a_i, b_i, c_i, d_i, e_i, f_i)
+            a_f, b_f, c_f, d_f, e_f, f_f = invert_affine(
+                a_i, b_i, c_i, d_i, e_i, f_i
+            )
 
             # Apply inverse transform to each corner
             corners_warped = []
@@ -249,31 +272,109 @@ def visualize_final_clusters_cropped(
 
         # Add legend
         try:
-            font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 24)
-            small_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 18)
+            font = ImageFont.truetype(
+                "/System/Library/Fonts/Helvetica.ttc", 24
+            )
+            small_font = ImageFont.truetype(
+                "/System/Library/Fonts/Helvetica.ttc", 18
+            )
         except:
             font = ImageFont.load_default()
             small_font = ImageFont.load_default()
 
         legend_y = 10
-        draw.rectangle([10, legend_y, 300, legend_y + 30], fill=(255, 255, 255, 200), outline="black", width=2)
-        draw.text((20, legend_y + 5), f"Cluster {cluster_id}: {len(cluster_lines)} lines", fill=color, font=small_font)
+        draw.rectangle(
+            [10, legend_y, 300, legend_y + 30],
+            fill=(255, 255, 255, 200),
+            outline="black",
+            width=2,
+        )
+        draw.text(
+            (20, legend_y + 5),
+            f"Cluster {cluster_id}: {len(cluster_lines)} lines",
+            fill=color,
+            font=small_font,
+        )
 
-        # Save
+        # Save visualization
         output_path = output_dir / f"receipt_{cluster_id}_visualization.png"
         img.save(output_path)
         print(f"      💾 Saved: {output_path}")
 
+        # Export OCR results for comparison
+        ocr_export = {
+            "cluster_id": cluster_id,
+            "image_id": image_id,
+            "image_width": img_width,
+            "image_height": img_height,
+            "warped_width": w,
+            "warped_height": h,
+            "affine_transform": affine_transform,
+            "box_4_ordered": bounds["box_4_ordered"],
+            "lines": [],
+        }
+
+        # Export each line with its coordinates in both image space and warped receipt space
+        for line in cluster_lines:
+            # Get line corners in image coordinate space (PIL space, y=0 at top)
+            corners_img = get_line_corners_image_coords(
+                line, img_width, img_height
+            )
+
+            # Transform to warped receipt space
+            a_i, b_i, c_i, d_i, e_i, f_i = affine_transform
+            a_f, b_f, c_f, d_f, e_f, f_f = invert_affine(
+                a_i, b_i, c_i, d_i, e_i, f_i
+            )
+
+            corners_warped = []
+            for img_x, img_y in corners_img:
+                receipt_x = a_f * img_x + b_f * img_y + c_f
+                receipt_y = d_f * img_x + e_f * img_y + f_f
+                corners_warped.append({"x": receipt_x, "y": receipt_y})
+
+            # Export line data
+            line_data = {
+                "line_id": line.line_id,
+                "text": line.text,
+                "ocr_coords": {
+                    "top_left": line.top_left,
+                    "top_right": line.top_right,
+                    "bottom_left": line.bottom_left,
+                    "bottom_right": line.bottom_right,
+                },
+                "image_coords_pil": [{"x": x, "y": y} for x, y in corners_img],
+                "warped_receipt_coords": corners_warped,
+            }
+            ocr_export["lines"].append(line_data)
+
+        # Save OCR export
+        ocr_export_path = output_dir / f"receipt_{cluster_id}_ocr_export.json"
+        with open(ocr_export_path, "w") as f:
+            json.dump(ocr_export, f, indent=2)
+        print(f"      💾 Saved OCR export: {ocr_export_path}")
+
     print(f"\n✅ Complete! Visualizations saved to: {output_dir}")
     print(f"   Total clusters: {len(cluster_dict)}")
-    print(f"   Total lines: {sum(len(lines) for lines in cluster_dict.values())}")
+    print(
+        f"   Total lines: {sum(len(lines) for lines in cluster_dict.values())}"
+    )
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Visualize final clustered receipts (cropped)")
-    parser.add_argument("--image-id", required=True, help="Image ID to visualize")
-    parser.add_argument("--output-dir", required=True, type=Path, help="Output directory")
-    parser.add_argument("--raw-bucket", help="Raw S3 bucket name (optional, will try to load from environment)")
+    parser = argparse.ArgumentParser(
+        description="Visualize final clustered receipts (cropped)"
+    )
+    parser.add_argument(
+        "--image-id", required=True, help="Image ID to visualize"
+    )
+    parser.add_argument(
+        "--output-dir", required=True, type=Path, help="Output directory"
+    )
+    parser.add_argument(
+        "--raw-bucket",
+        help="Raw S3 bucket name (optional, will try to load from environment)",
+    )
 
     args = parser.parse_args()
 
@@ -284,9 +385,10 @@ def main():
         print("⚠️  Raw bucket not specified and not found in environment")
         sys.exit(1)
 
-    visualize_final_clusters_cropped(args.image_id, args.output_dir, raw_bucket)
+    visualize_final_clusters_cropped(
+        args.image_id, args.output_dir, raw_bucket
+    )
 
 
 if __name__ == "__main__":
     main()
-

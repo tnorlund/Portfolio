@@ -45,16 +45,22 @@ def wait_for_compaction(
     last_state = None
     compaction_run_found = False
 
-    print(f"⏳ Waiting for compaction to complete (max {max_wait_seconds}s)...")
+    print(
+        f"⏳ Waiting for compaction to complete (max {max_wait_seconds}s)..."
+    )
 
     # First, wait a bit for NDJSON worker to create CompactionRun
     if initial_wait_seconds > 0:
-        print(f"   Waiting {initial_wait_seconds}s for CompactionRun to be created...")
+        print(
+            f"   Waiting {initial_wait_seconds}s for CompactionRun to be created..."
+        )
         time.sleep(initial_wait_seconds)
 
     while time.time() - start_time < max_wait_seconds:
         # Get most recent CompactionRun for this receipt
-        runs, _ = client.list_compaction_runs_for_receipt(image_id, receipt_id, limit=1)
+        runs, _ = client.list_compaction_runs_for_receipt(
+            image_id, receipt_id, limit=1
+        )
 
         if runs:
             if not compaction_run_found:
@@ -71,14 +77,18 @@ def wait_for_compaction(
                 last_state = current_state
 
             # Check if both collections are completed
-            if (run.lines_state == CompactionState.COMPLETED.value and
-                run.words_state == CompactionState.COMPLETED.value):
+            if (
+                run.lines_state == CompactionState.COMPLETED.value
+                and run.words_state == CompactionState.COMPLETED.value
+            ):
                 print(f"✅ Compaction completed for run {run_id}")
                 return run_id
 
             # Check for failures
-            if (run.lines_state == CompactionState.FAILED.value or
-                run.words_state == CompactionState.FAILED.value):
+            if (
+                run.lines_state == CompactionState.FAILED.value
+                or run.words_state == CompactionState.FAILED.value
+            ):
                 error_msg = f"Compaction failed: lines={run.lines_state}, words={run.words_state}"
                 if run.lines_error:
                     error_msg += f", lines_error={run.lines_error}"
@@ -90,7 +100,9 @@ def wait_for_compaction(
             if not compaction_run_found:
                 elapsed = int(time.time() - start_time)
                 if elapsed % 10 == 0:  # Print every 10 seconds
-                    print(f"   Waiting for CompactionRun to be created... ({elapsed}s)")
+                    print(
+                        f"   Waiting for CompactionRun to be created... ({elapsed}s)"
+                    )
 
         time.sleep(poll_interval)
 
@@ -123,10 +135,11 @@ def check_compaction_status(
     Returns:
         Tuple of (run_id, lines_state, words_state) or (None, None, None) if no run found
     """
-    runs, _ = client.list_compaction_runs_for_receipt(image_id, receipt_id, limit=1)
+    runs, _ = client.list_compaction_runs_for_receipt(
+        image_id, receipt_id, limit=1
+    )
     if not runs:
         return (None, None, None)
 
     run = runs[0]
     return (run.run_id, run.lines_state, run.words_state)
-
