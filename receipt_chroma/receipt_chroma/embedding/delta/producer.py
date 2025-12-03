@@ -9,7 +9,7 @@ import logging
 import os
 import tempfile
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import boto3
@@ -156,7 +156,7 @@ def produce_embedding_delta(
                     "collection": collection_name,
                     "database": database_name if database_name else "default",
                     "vector_count": len(ids),
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
 
                 # Add batch_id if provided

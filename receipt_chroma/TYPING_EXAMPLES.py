@@ -42,7 +42,7 @@ def download_snapshot_from_s3(
         else:
             s3_client = boto3.client("s3")
         # ✅ Now s3_client is typed as S3Client
-    
+
     s3_client.download_file(...)  # ✅ Full autocomplete and type checking!
 
 
@@ -69,7 +69,7 @@ def download_snapshot_from_s3(
     if s3_client is None:
         import boto3
         s3_client = boto3.client("s3")  # ✅ Works - real client matches protocol
-    
+
     s3_client.download_file(...)  # ✅ Type checked!
 
 
@@ -87,16 +87,18 @@ def download_snapshot_from_s3(...) -> Dict[str, Any]:  # ❌ Loses type informat
     }
 
 # AFTER:
-from typing import TypedDict, Literal
+from typing import Literal, TypedDict
+
+from typing_extensions import NotRequired, Required
 
 class DownloadResult(TypedDict, total=False):
     """Result from downloading a snapshot."""
-    status: Literal["downloaded", "failed"]  # Only these two values allowed
-    snapshot_key: str
-    local_path: str
-    file_count: int
-    total_size_bytes: int
-    error: str  # Only present if status == "failed"
+    status: Required[Literal["downloaded", "failed"]]  # Always present
+    snapshot_key: NotRequired[str]  # Usually present, but not in exception cases
+    local_path: NotRequired[str]  # Only present on successful download
+    file_count: NotRequired[int]  # Only present on successful download
+    total_size_bytes: NotRequired[int]  # Only present on successful download
+    error: NotRequired[str]  # Only present if status == "failed"
 
 def download_snapshot_from_s3(...) -> DownloadResult:  # ✅ Specific type!
     return {
@@ -129,7 +131,7 @@ from typing import Protocol
 class ChromaCollection(Protocol):
     """Protocol for ChromaDB collection interface."""
     name: str
-    
+
     def query(self, **kwargs: Any) -> Dict[str, Any]: ...
     def get(self, **kwargs: Any) -> Dict[str, Any]: ...
     def count(self) -> int: ...
@@ -184,15 +186,15 @@ def _parse_metadata_from_line_id(custom_id: str) -> Dict[str, Any]:  # ❌ Loses
 class LineMetadata(TypedDict):
     """Metadata structure for line embeddings."""
     image_id: str
-    receipt_id: str
-    line_id: str
+    receipt_id: int
+    line_id: int
     source: str
 
 def _parse_metadata_from_line_id(custom_id: str) -> LineMetadata:  # ✅ Specific structure!
     return {
         "image_id": "uuid",
-        "receipt_id": "00001",
-        "line_id": "00001",
+        "receipt_id": 1,
+        "line_id": 1,
         "source": "openai_embedding_batch"
     }
     # ✅ Mypy ensures all required fields are present
