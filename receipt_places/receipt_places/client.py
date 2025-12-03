@@ -7,9 +7,9 @@ with built-in caching to minimize API costs.
 
 import logging
 import re
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
-import requests
+import requests  # type: ignore[import-untyped]  # types-requests in dev dependencies
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -113,7 +113,7 @@ class PlacesClient:
         response = requests.get(url, params=params, timeout=self._timeout)
         response.raise_for_status()
 
-        data = response.json()
+        data = cast(dict[str, Any], response.json())
         status = data.get("status", "UNKNOWN")
 
         if status not in ("OK", "ZERO_RESULTS"):
@@ -311,7 +311,7 @@ class PlacesClient:
             data = self._make_request("textsearch/json", params)
 
             if data.get("status") == "OK" and data.get("results"):
-                return data["results"][0]
+                return cast(dict[str, Any], data["results"][0])
 
             return None
 
@@ -355,7 +355,7 @@ class PlacesClient:
             data = self._make_request("nearbysearch/json", params)
 
             if data.get("status") == "OK":
-                return data.get("results", [])
+                return cast(list[dict[str, Any]], data.get("results", []))
 
             return []
 
@@ -439,7 +439,7 @@ class PlacesClient:
             )
 
             if data.get("status") == "OK" and data.get("predictions"):
-                return data["predictions"][0]
+                return cast(dict[str, Any], data["predictions"][0])
 
             return None
 
