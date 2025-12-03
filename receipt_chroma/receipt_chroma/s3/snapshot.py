@@ -72,7 +72,8 @@ def _validate_snapshot_after_upload(
         if download_result.get("status") != "downloaded":
             validation_duration = time.time() - validation_start_time
             logger.error(
-                "Failed to download snapshot for validation: %s (duration: %.2fs)",
+                "Failed to download snapshot for validation: %s "
+                "(duration: %.2fs)",
                 versioned_key,
                 validation_duration,
             )
@@ -107,7 +108,8 @@ def _validate_snapshot_after_upload(
             if collection_name not in collection_names:
                 validation_duration = time.time() - validation_start_time
                 logger.error(
-                    "Expected collection '%s' not found in snapshot (found: %s, duration: %.2fs)",
+                    "Expected collection '%s' not found in snapshot "
+                    "(found: %s, duration: %.2fs)",
                     collection_name,
                     collection_names,
                     validation_duration,
@@ -124,11 +126,14 @@ def _validate_snapshot_after_upload(
             del test_client
             for _ in range(3):
                 gc.collect()
-            time.sleep(0.1)  # Small delay to ensure SQLite connections are released
+            time.sleep(
+                0.1
+            )  # Small delay to ensure SQLite connections are released
 
             validation_duration = time.time() - validation_start_time
             logger.info(
-                "Snapshot validation successful: %s (collections: %d, count: %d, duration: %.2fs)",
+                "Snapshot validation successful: %s "
+                "(collections: %d, count: %d, duration: %.2fs)",
                 versioned_key,
                 len(collections),
                 count,
@@ -140,7 +145,8 @@ def _validate_snapshot_after_upload(
             # Catch all exceptions during validation to ensure cleanup
             validation_duration = time.time() - validation_start_time
             logger.error(
-                "Failed to open snapshot with ChromaDB during validation: %s (type: %s, duration: %.2fs)",
+                "Failed to open snapshot with ChromaDB during validation: "
+                "%s (type: %s, duration: %.2fs)",
                 versioned_key,
                 type(e).__name__,
                 validation_duration,
@@ -189,7 +195,8 @@ def upload_snapshot_atomic(
         local_path: Path to local ChromaDB directory to upload
         bucket: S3 bucket name
         collection: ChromaDB collection name ("lines" or "words")
-        lock_manager: Optional lock manager to validate ownership during operation
+        lock_manager: Optional lock manager to validate ownership during
+            operation
         metadata: Optional metadata to attach to S3 objects
         keep_versions: Number of versions to retain (default: 4)
         s3_client: Optional boto3 S3 client (creates one if not provided)
@@ -215,7 +222,8 @@ def upload_snapshot_atomic(
         pointer_key = f"{collection}/snapshot/latest-pointer.txt"
 
         logger.info(
-            "Starting atomic snapshot upload: collection=%s, version=%s, local_path=%s",
+            "Starting atomic snapshot upload: collection=%s, version=%s, "
+            "local_path=%s",
             collection,
             version_id,
             local_path,
@@ -236,7 +244,9 @@ def upload_snapshot_atomic(
             logger.error("Step 1 failed - upload_result=%s", upload_result)
             return {
                 "status": "error",
-                "error": f"Failed to upload to versioned location: {upload_result}",
+                "error": (
+                    f"Failed to upload to versioned location: {upload_result}"
+                ),
                 "collection": collection,
                 "version_id": version_id,
             }
@@ -254,7 +264,8 @@ def upload_snapshot_atomic(
         if not validation_result:
             # Clean up versioned upload on validation failure
             logger.error(
-                "Step 2 failed - snapshot validation failed, cleaning up versioned upload: %s (duration: %.2fs)",
+                "Step 2 failed - snapshot validation failed, cleaning up "
+                "versioned upload: %s (duration: %.2fs)",
                 versioned_key,
                 validation_duration,
             )
@@ -332,7 +343,8 @@ def upload_snapshot_atomic(
             logger.warning("Failed to cleanup old versions: %s", cleanup_error)
 
         logger.info(
-            "Atomic snapshot upload completed successfully: collection=%s, version=%s",
+            "Atomic snapshot upload completed successfully: collection=%s, "
+            "version=%s",
             collection,
             version_id,
         )
@@ -400,11 +412,15 @@ def download_snapshot_atomic(
             if e.response["Error"]["Code"] == "NoSuchKey":
                 # No pointer found - try to initialize empty snapshot
                 logger.info(
-                    "No pointer found, will attempt to initialize empty snapshot: %s",
+                    "No pointer found, will attempt to initialize empty "
+                    "snapshot: %s",
                     collection,
                 )
-                # Set versioned_key to trigger initialization in download failure path
-                versioned_key = f"{collection}/snapshot/timestamped/not_found/"
+                # Set versioned_key to trigger initialization in download
+                # failure path
+                versioned_key = (
+                    f"{collection}/snapshot/timestamped/not_found/"
+                )
                 version_id = None
             else:
                 raise
@@ -506,7 +522,8 @@ def initialize_empty_snapshot(
     Args:
         bucket: S3 bucket name
         collection: ChromaDB collection name ("lines" or "words")
-        local_path: Optional local directory path (creates temp dir if not provided)
+        local_path: Optional local directory path (creates temp dir if not
+            provided)
         lock_manager: Optional lock manager for atomic upload
         metadata: Optional metadata for the snapshot
         s3_client: Optional boto3 S3 client (creates one if not provided)
@@ -527,7 +544,8 @@ def initialize_empty_snapshot(
         with ChromaClient(
             persist_directory=temp_dir,
             mode="write",
-            metadata_only=True,  # Use metadata-only to avoid OpenAI API requirement
+            metadata_only=True,  # Use metadata-only to avoid OpenAI API
+            # requirement
         ) as chroma_client:
             # Create the collection (will be empty)
             collection_obj = chroma_client.get_collection(

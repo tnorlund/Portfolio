@@ -46,8 +46,9 @@ def produce_embedding_delta(
         bucket_name: S3 bucket name for storing the delta
         collection_name: ChromaDB collection name (default: "words")
         database_name: Database name for separation (e.g., "lines", "words").
-                      If provided, creates database-specific structure
-        sqs_queue_url: SQS queue URL for compaction notification. If None, skips SQS notification
+            If provided, creates database-specific structure
+        sqs_queue_url: SQS queue URL for compaction notification. If None,
+            skips SQS notification
         batch_id: Optional batch identifier for tracking purposes
         delta_prefix: S3 prefix for delta files (default: "delta/")
         local_temp_dir: Optional local directory for temporary files
@@ -86,14 +87,14 @@ def produce_embedding_delta(
 
     try:
         # Log delta directory for debugging
-        logger.info(f"Delta directory created at: {delta_dir}")
+        logger.info("Delta directory created at: %s", delta_dir)
 
         # Create ChromaDB client in delta mode
         if database_name:
             logger.info(
-                f"Creating ChromaDB client for database '{database_name}'"
+                "Creating ChromaDB client for database '%s'", database_name
             )
-            logger.info(f"Persist directory: {delta_dir}")
+            logger.info("Persist directory: %s", delta_dir)
             chroma = ChromaClient(
                 persist_directory=delta_dir,
                 mode="delta",
@@ -101,10 +102,10 @@ def produce_embedding_delta(
             )
             # Adjust delta prefix to include database name
             delta_prefix = f"{database_name}/{delta_prefix}"
-            logger.info(f"S3 delta prefix will be: {delta_prefix}")
+            logger.info("S3 delta prefix will be: %s", delta_prefix)
         else:
             logger.info("Creating ChromaDB client")
-            logger.info(f"Persist directory: {delta_dir}")
+            logger.info("Persist directory: %s", delta_dir)
             chroma = ChromaClient(
                 persist_directory=delta_dir,
                 mode="delta",
@@ -113,7 +114,9 @@ def produce_embedding_delta(
 
         # Upsert vectors
         logger.info(
-            f"Upserting {len(ids)} vectors to collection '{collection_name}'"
+            "Upserting %d vectors to collection '%s'",
+            len(ids),
+            collection_name,
         )
         chroma.upsert_vectors(
             collection_name=collection_name,
@@ -123,21 +126,23 @@ def produce_embedding_delta(
             metadatas=metadatas,
         )
         logger.info(
-            f"Successfully upserted vectors to collection '{collection_name}'"
+            "Successfully upserted vectors to collection '%s'", collection_name
         )
 
         # Upload to S3 using the specified prefix
         try:
             logger.info(
-                f"Starting S3 upload to bucket '{bucket_name}' with prefix '{delta_prefix}'"
+                "Starting S3 upload to bucket '%s' with prefix '%s'",
+                bucket_name,
+                delta_prefix,
             )
             s3_key = chroma.persist_and_upload_delta(
                 bucket=bucket_name, s3_prefix=delta_prefix
             )
             logger.info("Successfully uploaded delta to S3: %s", s3_key)
         except Exception as e:
-            logger.error(f"Failed to upload delta to S3: {e}")
-            logger.error(f"Delta directory was: {delta_dir}")
+            logger.error("Failed to upload delta to S3: %s", e)
+            logger.error("Delta directory was: %s", delta_dir)
             # Re-raise the exception to be caught by the outer try/except
             raise
 
@@ -158,9 +163,13 @@ def produce_embedding_delta(
                 if batch_id:
                     message_body["batch_id"] = batch_id
 
-                # FIFO compatibility: provide stable group and deduplication IDs
+                # FIFO compatibility: provide stable group and deduplication
+                # IDs
                 message_group_id = f"{collection_name}:{batch_id or 'default'}"
-                message_dedup_id = f"{collection_name}:{(batch_id or uuid.uuid4().hex)}:{s3_key}"
+                batch_or_uuid = batch_id or uuid.uuid4().hex
+                message_dedup_id = (
+                    f"{collection_name}:{batch_or_uuid}:{s3_key}"
+                )
 
                 sqs.send_message(
                     QueueUrl=sqs_queue_url,
@@ -188,7 +197,7 @@ def produce_embedding_delta(
         # Calculate delta size (approximate)
         delta_size = 0
         if os.path.exists(delta_dir):
-            for root, dirs, files in os.walk(delta_dir):
+            for root, _dirs, files in os.walk(delta_dir):
                 for file in files:
                     delta_size += os.path.getsize(os.path.join(root, file))
 
@@ -225,7 +234,7 @@ def produce_embedding_delta(
     finally:
         # Cleanup temporary directory if we created it
         if cleanup_temp and os.path.exists(temp_dir):
-            import shutil
+            import shutil  # pylint: disable=import-outside-toplevel
 
             try:
                 shutil.rmtree(temp_dir)

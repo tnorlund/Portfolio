@@ -36,11 +36,25 @@ class ChromaCollection(Protocol):
 
     name: str
 
-    def query(self, **kwargs: Any) -> Dict[str, Any]: ...
-    def get(self, **kwargs: Any) -> Dict[str, Any]: ...
-    def count(self) -> int: ...
-    def delete(self, **kwargs: Any) -> None: ...
-    def upsert(self, **kwargs: Any) -> None: ...
+    def query(self, **kwargs: Any) -> Dict[str, Any]:
+        """Query the collection with the given parameters."""
+        ...
+
+    def get(self, **kwargs: Any) -> Dict[str, Any]:
+        """Get items from the collection with the given parameters."""
+        ...
+
+    def count(self) -> int:
+        """Return the number of items in the collection."""
+        ...
+
+    def delete(self, **kwargs: Any) -> None:
+        """Delete items from the collection with the given parameters."""
+        ...
+
+    def upsert(self, **kwargs: Any) -> None:
+        """Upsert items into the collection with the given parameters."""
+        ...
 
 
 class ChromaClient:
@@ -264,9 +278,13 @@ class ChromaClient:
                 gc.collect()
 
             # Longer delay to ensure file handles are released by OS
-            # This is critical for preventing file locking issues when uploading to S3
-            # Issue #5868: SQLite files can remain locked even after client is "closed"
-            time.sleep(0.5)  # Increased from 0.1s to 0.5s for more reliable unlocking
+            # This is critical for preventing file locking issues when
+            # uploading to S3
+            # Issue #5868: SQLite files can remain locked even after client
+            # is "closed"
+            time.sleep(
+                0.5
+            )  # Increased from 0.1s to 0.5s for more reliable unlocking
 
             self._closed = True
             logger.debug("ChromaDB client closed successfully")
@@ -342,7 +360,8 @@ class ChromaClient:
                         f"create_if_missing=False. Error: {e}"
                     ) from e
 
-        return self._collections[name]  # type: ignore[return-value]  # ChromaDB returns Any, but matches Protocol
+        return self._collections[name]  # type: ignore[return-value]
+        # ChromaDB returns Any, but matches Protocol
 
     def _assert_writeable(self) -> None:
         """Ensure the client is in a writeable mode."""
@@ -524,9 +543,11 @@ class ChromaClient:
         metadatas: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
         """
-        Upsert vectors into a collection (alias for upsert for backward compatibility).
+        Upsert vectors into a collection (alias for upsert for backward
+        compatibility).
 
-        This method provides compatibility with the old ChromaDBClient interface.
+        This method provides compatibility with the old ChromaDBClient
+        interface.
 
         Args:
             collection_name: Name of the collection
@@ -577,7 +598,7 @@ class ChromaClient:
             raise RuntimeError("persist_directory required for delta uploads")
 
         if s3_client is None:
-            import boto3  # type: ignore[import-untyped]
+            import boto3  # type: ignore[import-untyped]  # pylint: disable=import-outside-toplevel
 
             s3_client = boto3.client("s3")
 
@@ -587,7 +608,7 @@ class ChromaClient:
 
         # Generate a unique delta ID for this upload
         # This ensures each delta has a unique S3 path for parallel processing
-        import uuid as uuid_module
+        import uuid as uuid_module  # pylint: disable=import-outside-toplevel
 
         delta_id = uuid_module.uuid4().hex
 
@@ -609,7 +630,7 @@ class ChromaClient:
 
         # Optional validation: try to download and open the database
         if validate_after_upload:
-            import tempfile
+            import tempfile  # pylint: disable=import-outside-toplevel
 
             with tempfile.TemporaryDirectory() as temp_dir:
                 # Download one key file to validate
@@ -619,7 +640,8 @@ class ChromaClient:
                 # If we can download, the upload was successful
 
         logger.info(
-            "Uploaded delta to S3: bucket=%s, prefix=%s, actual_delta_key=%s, file_count=%d",
+            "Uploaded delta to S3: bucket=%s, prefix=%s, "
+            "actual_delta_key=%s, file_count=%d",
             bucket,
             s3_prefix,
             actual_delta_key,

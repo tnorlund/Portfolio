@@ -352,8 +352,8 @@ def handle_expired_status(
         )
 
     # TODO: Consider marking successful items as COMPLETED
-    # This would require implementing a similar function to mark_items_for_retry
-    # but setting status to COMPLETED instead of FAILED
+    # This would require implementing a similar function to
+    # mark_items_for_retry but setting status to COMPLETED instead of FAILED
 
     return {
         "action": "process_partial",

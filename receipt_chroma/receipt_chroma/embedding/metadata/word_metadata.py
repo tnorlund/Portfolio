@@ -179,7 +179,8 @@ def enrich_word_metadata_with_labels(
         ].timestamp_added
         metadata["label_validated_at"] = label_validated_at
 
-    return metadata  # type: ignore[return-value]  # Dict operations return Dict[str, Any], but structure matches TypedDict
+    return metadata  # type: ignore[return-value]
+    # Dict operations return Dict[str, Any], but structure matches TypedDict
 
 
 def enrich_word_metadata_with_anchors(

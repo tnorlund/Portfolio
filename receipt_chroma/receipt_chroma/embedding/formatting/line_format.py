@@ -10,7 +10,7 @@ from typing import List, Tuple
 from receipt_dynamo.entities import ReceiptLine
 
 
-def _get_line_position(line: ReceiptLine) -> int:
+def _get_line_position(_line: ReceiptLine) -> int:
     """
     Calculate the position of a line within its receipt.
 
@@ -29,7 +29,8 @@ def format_line_context_embedding_input(
     Format line with vertical context matching batch embedding structure.
 
     Replicates the format from embedding/line/submit.py:
-    <TARGET>line text</TARGET> <POS>position</POS> <CONTEXT>prev_line next_line</CONTEXT>
+    <TARGET>line text</TARGET> <POS>position</POS>
+    <CONTEXT>prev_line next_line</CONTEXT>
 
     Args:
         target_line: The line to format

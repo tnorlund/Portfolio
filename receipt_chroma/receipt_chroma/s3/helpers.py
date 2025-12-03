@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Literal, Optional, TypedDict
 
 import boto3
-from botocore.exceptions import ClientError
 
 if TYPE_CHECKING:
     from mypy_boto3_s3 import S3Client
@@ -186,7 +185,8 @@ def upload_snapshot_with_hash(
         Dict with upload status, hash info, and statistics
     """
     logger.info(
-        "Starting snapshot upload with hash: local_path=%s, bucket=%s, key=%s, clear=%s",
+        "Starting snapshot upload with hash: local_path=%s, bucket=%s, "
+        "key=%s, clear=%s",
         local_snapshot_path,
         bucket,
         snapshot_key,
@@ -207,7 +207,9 @@ def upload_snapshot_with_hash(
             )
             return {
                 "status": "failed",
-                "error": f"Snapshot path does not exist: {local_snapshot_path}",
+                "error": (
+                    f"Snapshot path does not exist: {local_snapshot_path}"
+                ),
             }
 
         # Clear destination directory if requested
@@ -220,17 +222,20 @@ def upload_snapshot_with_hash(
         hash_value = None
         if calculate_hash:
             try:
-                # Simple hash calculation - sum of file sizes and modification times
-                # This is a lightweight alternative to full content hashing
-                import hashlib
+                # Simple hash calculation - sum of file sizes and
+                # modification times. This is a lightweight alternative to
+                # full content hashing
+                import hashlib  # pylint: disable=import-outside-toplevel
 
                 hash_obj = hashlib.new(hash_algorithm)
                 for file_path in snapshot_path.rglob("*"):
                     if file_path.is_file():
                         stat = file_path.stat()
-                        hash_obj.update(
-                            f"{file_path.relative_to(snapshot_path)}:{stat.st_size}:{stat.st_mtime}".encode()
+                        rel_path = file_path.relative_to(snapshot_path)
+                        hash_str = (
+                            f"{rel_path}:{stat.st_size}:{stat.st_mtime}"
                         )
+                        hash_obj.update(hash_str.encode())
                 hash_value = hash_obj.hexdigest()
                 logger.info(
                     "Calculated %s hash: %s", hash_algorithm, hash_value
@@ -323,7 +328,8 @@ def _cleanup_old_snapshot_versions(
         if "CommonPrefixes" in page:
             for prefix_info in page["CommonPrefixes"]:
                 version_path = prefix_info["Prefix"]
-                # Extract version ID from path like "lines/snapshot/timestamped/20250826_143052/"
+                # Extract version ID from path like
+                # "lines/snapshot/timestamped/20250826_143052/"
                 version_id = version_path.split("/")[-2]
                 versions.append(version_id)
 
@@ -359,7 +365,8 @@ def upload_delta_tarball(
     tarballs at {delta_prefix}/delta.tar.gz.
 
     Args:
-        local_delta_dir: Path to local delta directory (ChromaDB persist directory)
+        local_delta_dir: Path to local delta directory
+            (ChromaDB persist directory)
         bucket: S3 bucket name
         delta_prefix: S3 prefix for the delta (e.g., "lines/delta/{run_id}")
         metadata: Optional metadata to include in S3 object
@@ -367,7 +374,8 @@ def upload_delta_tarball(
         s3_client: Optional boto3 S3 client (creates one if not provided)
 
     Returns:
-        Dict with status, delta_key (prefix), object_key (full S3 key), and tar_size_bytes
+        Dict with status, delta_key (prefix), object_key (full S3 key),
+        and tar_size_bytes
 
     Example:
         >>> result = upload_delta_tarball(
@@ -427,9 +435,13 @@ def upload_delta_tarball(
                 "ContentEncoding": "gzip",
             }
             if metadata:
-                extra_args["Metadata"] = {k: str(v) for k, v in metadata.items()}
+                extra_args["Metadata"] = {
+                    k: str(v) for k, v in metadata.items()
+                }
 
-            s3_client.upload_file(tar_path, bucket, s3_key, ExtraArgs=extra_args)
+            s3_client.upload_file(
+                tar_path, bucket, s3_key, ExtraArgs=extra_args
+            )
 
             logger.info(
                 "Uploaded delta tarball: bucket=%s, key=%s, size_bytes=%d",

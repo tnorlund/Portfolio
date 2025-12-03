@@ -4,7 +4,7 @@ This module provides functions for creating and enriching line metadata
 that will be stored in ChromaDB.
 """
 
-from typing import Any, Dict, List, Optional, TypedDict
+from typing import List, Optional, TypedDict
 
 from receipt_dynamo.entities import ReceiptLine, ReceiptWord
 
@@ -147,4 +147,5 @@ def enrich_line_metadata_with_anchors(
         # Silently fail - anchor enrichment is optional
         pass
 
-    return metadata  # type: ignore[return-value]  # Dict operations return Dict[str, Any], but structure matches TypedDict
+    return metadata  # type: ignore[return-value]
+    # Dict operations return Dict[str, Any], but structure matches TypedDict
