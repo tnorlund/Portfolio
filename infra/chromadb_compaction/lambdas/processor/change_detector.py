@@ -8,6 +8,7 @@ from typing import Dict, Optional, Union
 
 from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
+from receipt_dynamo.entities.receipt import Receipt
 
 from .models import FieldChange
 
@@ -28,13 +29,15 @@ CHROMADB_RELEVANT_FIELDS = {
         "label_proposed_by",
         "label_consolidated_from",
     ],
+    # RECEIPT deletions don't have field changes - they trigger full deletion
+    "RECEIPT": [],
 }
 
 
 def get_chromadb_relevant_changes(
     entity_type: str,
-    old_entity: Optional[Union[ReceiptMetadata, ReceiptWordLabel]],
-    new_entity: Optional[Union[ReceiptMetadata, ReceiptWordLabel]],
+    old_entity: Optional[Union[ReceiptMetadata, ReceiptWordLabel, Receipt]],
+    new_entity: Optional[Union[ReceiptMetadata, ReceiptWordLabel, Receipt]],
 ) -> Dict[str, FieldChange]:
     """
     Identify changes to fields that affect ChromaDB metadata.

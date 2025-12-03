@@ -1005,6 +1005,123 @@ def create_embeddings_and_compaction_run(
         return None
 
 
+def delete_receipt_embeddings_from_chromadb(
+    chromadb_bucket: str,
+    image_id: str,
+    receipt_id: int,
+    receipt_lines: List[ReceiptLine],
+    receipt_words: List[ReceiptWord],
+) -> None:
+    """
+    Delete all embeddings for a receipt from ChromaDB.
+
+    This deletes embeddings from the main snapshot collections (not deltas).
+    Must be called BEFORE deleting from DynamoDB so we can construct IDs from receipt data.
+
+    Args:
+        chromadb_bucket: S3 bucket containing ChromaDB snapshots
+        image_id: Image ID
+        receipt_id: Receipt ID
+        receipt_lines: List of ReceiptLine entities (for constructing line IDs)
+        receipt_words: List of ReceiptWord entities (for constructing word IDs)
+    """
+    try:
+        from receipt_chroma import ChromaClient
+        from receipt_chroma.s3 import download_snapshot_atomic, upload_snapshot_atomic
+        import tempfile
+        import shutil
+
+        # Construct ChromaDB IDs from receipt data
+        line_ids = [
+            f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line.line_id:05d}"
+            for line in receipt_lines
+        ]
+        word_ids = [
+            f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{word.line_id:05d}#WORD#{word.word_id:05d}"
+            for word in receipt_words
+        ]
+
+        if not line_ids and not word_ids:
+            print(f"   ⚠️  No embeddings to delete (no lines or words)")
+            return
+
+        print(f"   🗑️  Deleting embeddings from ChromaDB...")
+        print(f"      Lines: {len(line_ids)}, Words: {len(word_ids)}")
+
+        # Process lines collection
+        if line_ids:
+            lines_temp_dir = tempfile.mkdtemp()
+            try:
+                # Download snapshot
+                download_snapshot_atomic(
+                    bucket=chromadb_bucket,
+                    collection="lines",
+                    local_path=lines_temp_dir,
+                )
+
+                # Open collection
+                lines_client = ChromaClient(
+                    persist_directory=lines_temp_dir,
+                    mode="write",
+                )
+                lines_collection = lines_client.get_collection("lines")
+
+                # Delete embeddings
+                lines_collection.delete(ids=line_ids)
+                print(f"      ✅ Deleted {len(line_ids)} line embeddings")
+
+                # Upload updated snapshot
+                upload_snapshot_atomic(
+                    local_path=lines_temp_dir,
+                    bucket=chromadb_bucket,
+                    collection="lines",
+                )
+                print(f"      ✅ Uploaded updated lines snapshot")
+            finally:
+                shutil.rmtree(lines_temp_dir, ignore_errors=True)
+
+        # Process words collection
+        if word_ids:
+            words_temp_dir = tempfile.mkdtemp()
+            try:
+                # Download snapshot
+                download_snapshot_atomic(
+                    bucket=chromadb_bucket,
+                    collection="words",
+                    local_path=words_temp_dir,
+                )
+
+                # Open collection
+                words_client = ChromaClient(
+                    persist_directory=words_temp_dir,
+                    mode="write",
+                )
+                words_collection = words_client.get_collection("words")
+
+                # Delete embeddings
+                words_collection.delete(ids=word_ids)
+                print(f"      ✅ Deleted {len(word_ids)} word embeddings")
+
+                # Upload updated snapshot
+                upload_snapshot_atomic(
+                    local_path=words_temp_dir,
+                    bucket=chromadb_bucket,
+                    collection="words",
+                )
+                print(f"      ✅ Uploaded updated words snapshot")
+            finally:
+                shutil.rmtree(words_temp_dir, ignore_errors=True)
+
+        print(f"   ✅ Deleted all embeddings for receipt {receipt_id}")
+
+    except ImportError:
+        print(f"   ⚠️  ChromaDB deletion not available (receipt_chroma not installed)")
+    except Exception as e:
+        print(f"   ⚠️  Error deleting embeddings: {e}")
+        import traceback
+        traceback.print_exc()
+
+
 def wait_for_compaction_complete(
     client: DynamoClient,
     image_id: str,
@@ -1150,6 +1267,11 @@ def main():
         "--skip-embedding",
         action="store_true",
         help="Skip embedding creation (no CompactionRun will be created)",
+    )
+    parser.add_argument(
+        "--delete-original",
+        action="store_true",
+        help="Delete original receipt and its embeddings after split completes (waits for compaction first)",
     )
 
     args = parser.parse_args()
@@ -1447,9 +1569,137 @@ def main():
         else:
             print(f"   No labels to add for receipt {receipt_id}")
 
+    # Wait for ALL compaction runs to complete before deleting original receipt
+    # This ensures new receipts are fully embedded before we delete the original
+    all_compaction_complete = True
+    if args.delete_original and compaction_completed:
+        print(f"\n⏳ Waiting for ALL compaction runs to complete before deleting original receipt...")
+        for result in split_results:
+            receipt_id = result["receipt"].receipt_id
+            if receipt_id in compaction_completed:
+                try:
+                    wait_for_compaction_complete(
+                        client,
+                        image_id,
+                        receipt_id,
+                        max_wait_seconds=300,
+                        poll_interval=5,
+                    )
+                    print(f"   ✅ Compaction completed for receipt {receipt_id}")
+                except (TimeoutError, RuntimeError) as e:
+                    print(f"⚠️  Compaction failed or timed out for receipt {receipt_id}: {e}")
+                    all_compaction_complete = False
+
+        if not all_compaction_complete:
+            print(f"⚠️  Some compaction runs did not complete - original receipt will NOT be deleted")
+            print(f"   You can manually delete it later after compaction completes")
+
+    # Delete original receipt and its embeddings (if compaction completed or skipped)
+    if args.delete_original and (not compaction_completed or all_compaction_complete):
+        print(f"\n🗑️  Deleting original receipt {original_receipt_id}...")
+
+        # Option 1: Manual deletion (immediate, before DynamoDB deletion)
+        # This ensures embeddings are deleted even if compactor hasn't processed yet
+        # First, delete embeddings from ChromaDB (BEFORE deleting from DynamoDB)
+        # We need the receipt data to construct ChromaDB IDs
+        manual_deletion_success = False
+        if chromadb_bucket and not args.skip_embedding:
+            try:
+                delete_receipt_embeddings_from_chromadb(
+                    chromadb_bucket,
+                    image_id,
+                    original_receipt_id,
+                    original_receipt_lines,
+                    original_receipt_words,
+                )
+                manual_deletion_success = True
+                print(f"   ✅ Manually deleted embeddings from ChromaDB")
+            except Exception as e:
+                print(f"⚠️  Error manually deleting embeddings: {e}")
+                print(f"   Compactor will handle deletion automatically when Receipt is deleted")
+
+        # Option 2: Let compactor handle it automatically
+        # When we delete the Receipt from DynamoDB, the stream will trigger
+        # the compactor to delete embeddings automatically
+        # However, if we delete lines/words first, the compactor won't be able
+        # to query them to construct IDs, so manual deletion above is preferred
+
+        # Delete from DynamoDB in reverse order of creation
+        # 1. Delete labels first
+        if original_receipt_labels:
+            print(f"   Deleting {len(original_receipt_labels)} labels...")
+            # Delete in batches of 25
+            CHUNK_SIZE = 25
+            for i in range(0, len(original_receipt_labels), CHUNK_SIZE):
+                chunk = original_receipt_labels[i:i + CHUNK_SIZE]
+                for label in chunk:
+                    try:
+                        client.delete_receipt_word_label(
+                            image_id,
+                            original_receipt_id,
+                            label.line_id,
+                            label.word_id,
+                            label.label,
+                        )
+                    except Exception as e:
+                        print(f"      ⚠️  Error deleting label: {e}")
+            print(f"      ✅ Deleted labels")
+
+        # 2. Delete words
+        if original_receipt_words:
+            print(f"   Deleting {len(original_receipt_words)} words...")
+            client.delete_receipt_words(original_receipt_words)
+            print(f"      ✅ Deleted words")
+
+        # 3. Delete lines
+        if original_receipt_lines:
+            print(f"   Deleting {len(original_receipt_lines)} lines...")
+            client.delete_receipt_lines(original_receipt_lines)
+            print(f"      ✅ Deleted lines")
+
+        # 4. Delete letters (if any)
+        if original_receipt_letters:
+            print(f"   Deleting {len(original_receipt_letters)} letters...")
+            try:
+                client.delete_receipt_letters(original_receipt_letters)
+                print(f"      ✅ Deleted letters")
+            except AttributeError:
+                print(f"      ⚠️  Letter deletion not supported")
+
+        # 5. Delete metadata (if any)
+        try:
+            metadata = client.get_receipt_metadata(image_id, original_receipt_id)
+            if metadata:
+                print(f"   Deleting metadata...")
+                client.delete_receipt_metadata(image_id, original_receipt_id)
+                print(f"      ✅ Deleted metadata")
+        except Exception:
+            pass  # Metadata might not exist
+
+        # 6. Delete CompactionRun (if any)
+        try:
+            runs, _ = client.list_compaction_runs_for_receipt(image_id, original_receipt_id)
+            if runs:
+                print(f"   Deleting {len(runs)} compaction runs...")
+                for run in runs:
+                    client.delete_compaction_run(image_id, original_receipt_id, run.run_id)
+                print(f"      ✅ Deleted compaction runs")
+        except Exception:
+            pass  # Compaction runs might not exist
+
+        # 7. Delete receipt (last)
+        print(f"   Deleting receipt...")
+        client.delete_receipt(image_id, original_receipt_id)
+        print(f"      ✅ Deleted receipt {original_receipt_id}")
+
+        print(f"\n✅ Original receipt {original_receipt_id} deleted (including ChromaDB embeddings)")
+    elif args.delete_original:
+        print(f"\n⚠️  Skipping deletion of original receipt (compaction not complete)")
+    else:
+        print(f"\n💾 Original receipt {original_receipt_id} kept (use --delete-original to remove)")
+
     print(f"\n✅ Split complete!")
     print(f"   Created {len(split_results)} new receipts")
-    print(f"   Original receipt {original_receipt_id} kept for rollback")
     print(f"   Local records saved to: {args.output_dir / image_id}")
 
 

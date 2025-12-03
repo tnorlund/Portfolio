@@ -200,25 +200,28 @@ def process_sqs_messages(
 
 def categorize_stream_messages(
     stream_messages: List[StreamMessage]
-) -> Tuple[List[StreamMessage], List[StreamMessage], List[StreamMessage]]:
+) -> Tuple[List[StreamMessage], List[StreamMessage], List[StreamMessage], List[StreamMessage]]:
     """Categorize stream messages by entity type.
 
     Returns:
-        Tuple of (metadata_updates, label_updates, compaction_runs)
+        Tuple of (metadata_updates, label_updates, compaction_runs, receipt_deletions)
     """
     metadata_updates = []
     label_updates = []
     compaction_runs = []
+    receipt_deletions = []
 
     for message in stream_messages:
-        if message.entity_type == "RECEIPT_METADATA":
+        if message.entity_type == "RECEIPT":
+            receipt_deletions.append(message)
+        elif message.entity_type == "RECEIPT_METADATA":
             metadata_updates.append(message)
         elif message.entity_type == "RECEIPT_WORD_LABEL":
             label_updates.append(message)
         elif message.entity_type == "COMPACTION_RUN":
             compaction_runs.append(message)
 
-    return metadata_updates, label_updates, compaction_runs
+    return metadata_updates, label_updates, compaction_runs, receipt_deletions
 
 
 def group_messages_by_collection(
