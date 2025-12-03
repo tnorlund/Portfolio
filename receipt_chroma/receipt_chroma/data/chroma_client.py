@@ -16,7 +16,8 @@ import os
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, Generator, List, Optional
+from types import TracebackType
+from typing import Any, Dict, Generator, List, Optional, Protocol, Type
 
 import chromadb
 from chromadb.config import Settings
@@ -24,6 +25,22 @@ from chromadb.errors import NotFoundError
 from chromadb.utils import embedding_functions
 
 logger = logging.getLogger(__name__)
+
+
+class ChromaCollection(Protocol):
+    """Protocol for ChromaDB collection interface.
+
+    This protocol defines the methods we use from ChromaDB collections,
+    allowing type checking without requiring ChromaDB type stubs.
+    """
+
+    name: str
+
+    def query(self, **kwargs: Any) -> Dict[str, Any]: ...
+    def get(self, **kwargs: Any) -> Dict[str, Any]: ...
+    def count(self) -> int: ...
+    def delete(self, **kwargs: Any) -> None: ...
+    def upsert(self, **kwargs: Any) -> None: ...
 
 
 class ChromaClient:
@@ -108,7 +125,12 @@ class ChromaClient:
             raise RuntimeError("Cannot use closed ChromaClient")
         return self
 
-    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+    def __exit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> None:
         """Exit context manager and close client."""
         self.close()
 
@@ -263,7 +285,7 @@ class ChromaClient:
         name: str,
         create_if_missing: bool = False,
         metadata: Optional[Dict[str, Any]] = None,
-    ) -> Any:
+    ) -> ChromaCollection:
         """
         Get or create a ChromaDB collection.
 
@@ -320,7 +342,7 @@ class ChromaClient:
                         f"create_if_missing=False. Error: {e}"
                     ) from e
 
-        return self._collections[name]
+        return self._collections[name]  # type: ignore[return-value]  # ChromaDB returns Any, but matches Protocol
 
     def _assert_writeable(self) -> None:
         """Ensure the client is in a writeable mode."""

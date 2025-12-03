@@ -4,7 +4,7 @@ This module provides functionality for saving word embedding results
 as ChromaDB delta files for compaction.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TypedDict
 
 from receipt_chroma.embedding.delta.producer import produce_embedding_delta
 from receipt_chroma.embedding.formatting.word_format import (
@@ -18,7 +18,17 @@ from receipt_chroma.embedding.metadata.word_metadata import (
 )
 
 
-def _parse_metadata_from_custom_id(custom_id: str) -> Dict[str, Any]:
+class WordMetadataBase(TypedDict):
+    """Base metadata structure for word embeddings."""
+
+    image_id: str
+    receipt_id: int
+    line_id: int
+    word_id: int
+    source: str
+
+
+def _parse_metadata_from_custom_id(custom_id: str) -> WordMetadataBase:
     """
     Parse metadata from a word ID in the format IMAGE#uuid#RECEIPT#00001#LINE#00001#WORD#00001.
 

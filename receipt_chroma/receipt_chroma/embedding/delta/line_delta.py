@@ -5,7 +5,7 @@ as ChromaDB delta files for compaction.
 """
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TypedDict
 
 from receipt_chroma.embedding.delta.producer import produce_embedding_delta
 from receipt_chroma.embedding.formatting.line_format import (
@@ -18,7 +18,16 @@ from receipt_chroma.embedding.metadata.line_metadata import (
 )
 
 
-def _parse_metadata_from_line_id(custom_id: str) -> Dict[str, Any]:
+class LineMetadataBase(TypedDict):
+    """Base metadata structure for line embeddings."""
+
+    image_id: str
+    receipt_id: int
+    line_id: int
+    source: str
+
+
+def _parse_metadata_from_line_id(custom_id: str) -> LineMetadataBase:
     """
     Parse metadata from a line ID in the format IMAGE#uuid#RECEIPT#00001#LINE#00001.
 

@@ -5,12 +5,50 @@ import os
 import tarfile
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Literal, Optional, TypedDict
 
 import boto3
 from botocore.exceptions import ClientError
 
+if TYPE_CHECKING:
+    from mypy_boto3_s3 import S3Client
+else:
+    S3Client = Any  # type: ignore[misc,assignment]
+
 logger = logging.getLogger(__name__)
+
+
+class DownloadResult(TypedDict, total=False):
+    """Result from downloading a snapshot from S3."""
+
+    status: Literal["downloaded", "failed"]
+    snapshot_key: str
+    local_path: str
+    file_count: int
+    total_size_bytes: int
+    error: str  # Only present if status == "failed"
+
+
+class UploadResult(TypedDict, total=False):
+    """Result from uploading a snapshot to S3."""
+
+    status: Literal["uploaded", "failed"]
+    snapshot_key: str
+    file_count: int
+    total_size_bytes: int
+    hash: str
+    hash_algorithm: str
+    error: str  # Only present if status == "failed"
+
+
+class DeltaTarballResult(TypedDict, total=False):
+    """Result from uploading a delta tarball to S3."""
+
+    status: Literal["uploaded", "failed"]
+    delta_key: str
+    object_key: str
+    tar_size_bytes: int
+    error: str  # Only present if status == "failed"
 
 
 def download_snapshot_from_s3(
@@ -19,8 +57,8 @@ def download_snapshot_from_s3(
     local_snapshot_path: str,
     verify_integrity: bool = False,
     region: Optional[str] = None,
-    s3_client: Optional[Any] = None,
-) -> Dict[str, Any]:
+    s3_client: Optional[S3Client] = None,
+) -> DownloadResult:
     """
     Download a ChromaDB snapshot from S3 to local filesystem.
 
@@ -43,10 +81,10 @@ def download_snapshot_from_s3(
     )
 
     if s3_client is None:
-        client_kwargs = {"service_name": "s3"}
         if region:
-            client_kwargs["region_name"] = region
-        s3_client = boto3.client(**client_kwargs)
+            s3_client = boto3.client("s3", region_name=region)
+        else:
+            s3_client = boto3.client("s3")
 
     try:
         # Create local directory
@@ -128,8 +166,8 @@ def upload_snapshot_with_hash(
     metadata: Optional[Dict[str, Any]] = None,
     region: Optional[str] = None,
     clear_destination: bool = True,
-    s3_client: Optional[Any] = None,
-) -> Dict[str, Any]:
+    s3_client: Optional[S3Client] = None,
+) -> UploadResult:
     """
     Upload ChromaDB snapshot to S3 with optional hash calculation.
 
@@ -156,10 +194,10 @@ def upload_snapshot_with_hash(
     )
 
     if s3_client is None:
-        client_kwargs = {"service_name": "s3"}
         if region:
-            client_kwargs["region_name"] = region
-        s3_client = boto3.client(**client_kwargs)
+            s3_client = boto3.client("s3", region_name=region)
+        else:
+            s3_client = boto3.client("s3")
 
     try:
         snapshot_path = Path(local_snapshot_path)
@@ -257,7 +295,7 @@ def upload_snapshot_with_hash(
         return {"status": "failed", "error": str(e)}
 
 
-def _cleanup_s3_prefix(s3_client: Any, bucket: str, prefix: str) -> None:
+def _cleanup_s3_prefix(s3_client: S3Client, bucket: str, prefix: str) -> None:
     """Helper function to delete all objects under an S3 prefix."""
     paginator = s3_client.get_paginator("list_objects_v2")
     for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
@@ -270,7 +308,7 @@ def _cleanup_s3_prefix(s3_client: Any, bucket: str, prefix: str) -> None:
 
 
 def _cleanup_old_snapshot_versions(
-    s3_client: Any, bucket: str, collection: str, keep_versions: int
+    s3_client: S3Client, bucket: str, collection: str, keep_versions: int
 ) -> None:
     """Helper function to clean up old timestamped snapshot versions."""
     timestamped_prefix = f"{collection}/snapshot/timestamped/"
@@ -311,8 +349,8 @@ def upload_delta_tarball(
     delta_prefix: str,
     metadata: Optional[Dict[str, Any]] = None,
     region: Optional[str] = None,
-    s3_client: Optional[Any] = None,
-) -> Dict[str, Any]:
+    s3_client: Optional[S3Client] = None,
+) -> DeltaTarballResult:
     """
     Create a gzip-compressed tarball from a delta directory and upload to S3.
 
@@ -348,10 +386,10 @@ def upload_delta_tarball(
     )
 
     if s3_client is None:
-        client_kwargs = {"service_name": "s3"}
         if region:
-            client_kwargs["region_name"] = region
-        s3_client = boto3.client(**client_kwargs)
+            s3_client = boto3.client("s3", region_name=region)
+        else:
+            s3_client = boto3.client("s3")
 
     try:
         delta_path = Path(local_delta_dir)
