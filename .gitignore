@@ -240,3 +240,16 @@ exports/
 # Lambda layer update tool backups (contain sensitive state)
 infra/backups/
 .chroma_snapshots/
+
+# Visualization and debug output files
+*visualization*.png
+*comparison*.png
+*cluster*.png
+*transformation*.png
+*clustering_phases*.png
+*final_clusters*.png
+*split_receipts_output*/
+*receipt_ocr_vs_image*/
+*transformation_steps*/
+*_entities.json
+*_ocr_export.json
