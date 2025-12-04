@@ -239,3 +239,28 @@ exports/
 
 # Lambda layer update tool backups (contain sensitive state)
 infra/backups/
+.chroma_snapshots/
+
+# Visualization and debug output files
+*visualization*.png
+*comparison*.png
+*cluster*.png
+*transformation*.png
+*clustering_phases*.png
+*final_clusters*.png
+*split_receipts_output*/
+*receipt_ocr_vs_image*/
+*transformation_steps*/
+*_entities.json
+*_ocr_export.json
+
+# Large NDJSON data files (should be in S3, not git)
+*.ndjson
+infra/*.ndjson
+
+# Large test data files
+receipt_dynamo/tests/integration/JSON/*.json
+raw_images_to_reupload/
+
+# Large image files
+my-app/public/face.png
