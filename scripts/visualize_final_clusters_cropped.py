@@ -17,7 +17,12 @@ sys.path.insert(0, str(repo_root))
 sys.path.insert(0, str(repo_root / "receipt_upload"))
 
 from receipt_dynamo import DynamoClient
-from receipt_dynamo.entities import Line, ReceiptLine, ReceiptWord
+from receipt_dynamo.entities import (
+    Line,
+    ReceiptLetter,
+    ReceiptLine,
+    ReceiptWord,
+)
 from scripts.split_receipt import recluster_receipt_lines, setup_environment
 
 try:
@@ -976,7 +981,15 @@ def visualize_final_clusters_cropped(
             "affine_transform": affine_transform,
             "box_4_ordered": bounds["box_4_ordered"],
             "lines": [],
+            "words": [],
+            "letters": [],
         }
+
+        # Get inverse affine transform for coordinate transformations
+        a_i, b_i, c_i, d_i, e_i, f_i = affine_transform
+        a_f, b_f, c_f, d_f, e_f, f_f = invert_affine(
+            a_i, b_i, c_i, d_i, e_i, f_i
+        )
 
         # Export each line with its coordinates in both image space and warped receipt space
         # Always use image-level OCR for export (coordinates are correct)
@@ -997,11 +1010,6 @@ def visualize_final_clusters_cropped(
             )
 
             # Transform to warped receipt space
-            a_i, b_i, c_i, d_i, e_i, f_i = affine_transform
-            a_f, b_f, c_f, d_f, e_f, f_f = invert_affine(
-                a_i, b_i, c_i, d_i, e_i, f_i
-            )
-
             corners_warped = []
             for img_x, img_y in corners_img:
                 receipt_x = a_f * img_x + b_f * img_y + c_f
@@ -1019,11 +1027,131 @@ def visualize_final_clusters_cropped(
             }
             ocr_export["lines"].append(line_data)
 
+        # Export ReceiptWords with their coordinates
+        for word in cluster_receipt_words:
+            # Get word corners in original receipt space (normalized 0-1, OCR space)
+            word_corners_receipt = {
+                "top_left": word.top_left,
+                "top_right": word.top_right,
+                "bottom_left": word.bottom_left,
+                "bottom_right": word.bottom_right,
+            }
+
+            # Transform word from original receipt space to image space
+            word_copy = copy.deepcopy(word)
+            forward_coeffs = invert_warp(*transform_coeffs)
+            word_copy.warp_transform(
+                *forward_coeffs,
+                src_width=img_width,
+                src_height=img_height,
+                dst_width=orig_receipt_width,
+                dst_height=orig_receipt_height,
+                flip_y=True,
+            )
+
+            # Get word corners in image space (PIL space, absolute pixels)
+            word_corners_img = []
+            for corner_name in [
+                "top_left",
+                "top_right",
+                "bottom_right",
+                "bottom_left",
+            ]:
+                corner = getattr(word_copy, corner_name)
+                img_x_ocr = corner["x"] * img_width
+                img_y_ocr = corner["y"] * img_height
+                img_x = img_x_ocr
+                img_y = img_height - img_y_ocr  # Flip Y: OCR -> PIL
+                word_corners_img.append({"x": img_x, "y": img_y})
+
+            # Transform to warped receipt space
+            word_corners_warped = []
+            for corner_img in word_corners_img:
+                receipt_x = a_f * corner_img["x"] + b_f * corner_img["y"] + c_f
+                receipt_y = d_f * corner_img["x"] + e_f * corner_img["y"] + f_f
+                word_corners_warped.append({"x": receipt_x, "y": receipt_y})
+
+            # Export word data
+            word_data = {
+                "line_id": word.line_id,
+                "word_id": word.word_id,
+                "text": word.text,
+                "bounding_box": word.bounding_box,
+                "corners": word_corners_receipt,
+                "image_coords_pil": word_corners_img,
+                "warped_receipt_coords": word_corners_warped,
+                "source": "receipt_ocr",
+            }
+            ocr_export["words"].append(word_data)
+
+        # Export ReceiptLetters with their coordinates
+        for letter in cluster_receipt_letters:
+            # Get letter corners in original receipt space (normalized 0-1, OCR space)
+            letter_corners_receipt = {
+                "top_left": letter.top_left,
+                "top_right": letter.top_right,
+                "bottom_left": letter.bottom_left,
+                "bottom_right": letter.bottom_right,
+            }
+
+            # Transform letter from original receipt space to image space
+            # ReceiptLetters are typically accessed via ReceiptWords, so we need to find the parent word
+            # For now, use the letter's coordinates directly
+            letter_copy = copy.deepcopy(letter)
+            forward_coeffs = invert_warp(*transform_coeffs)
+            letter_copy.warp_transform(
+                *forward_coeffs,
+                src_width=img_width,
+                src_height=img_height,
+                dst_width=orig_receipt_width,
+                dst_height=orig_receipt_height,
+                flip_y=True,
+            )
+
+            # Get letter corners in image space (PIL space, absolute pixels)
+            letter_corners_img = []
+            for corner_name in [
+                "top_left",
+                "top_right",
+                "bottom_right",
+                "bottom_left",
+            ]:
+                corner = getattr(letter_copy, corner_name)
+                img_x_ocr = corner["x"] * img_width
+                img_y_ocr = corner["y"] * img_height
+                img_x = img_x_ocr
+                img_y = img_height - img_y_ocr  # Flip Y: OCR -> PIL
+                letter_corners_img.append({"x": img_x, "y": img_y})
+
+            # Transform to warped receipt space
+            letter_corners_warped = []
+            for corner_img in letter_corners_img:
+                receipt_x = a_f * corner_img["x"] + b_f * corner_img["y"] + c_f
+                receipt_y = d_f * corner_img["x"] + e_f * corner_img["y"] + f_f
+                letter_corners_warped.append({"x": receipt_x, "y": receipt_y})
+
+            # Export letter data
+            letter_data = {
+                "line_id": letter.line_id,
+                "word_id": letter.word_id,
+                "letter_id": letter.letter_id,
+                "text": letter.text,
+                "bounding_box": letter.bounding_box,
+                "corners": letter_corners_receipt,
+                "image_coords_pil": letter_corners_img,
+                "warped_receipt_coords": letter_corners_warped,
+                "source": "receipt_ocr",
+            }
+            ocr_export["letters"].append(letter_data)
+
         # Save OCR export
         ocr_export_path = output_dir / f"receipt_{cluster_id}_ocr_export.json"
         with open(ocr_export_path, "w") as f:
             json.dump(ocr_export, f, indent=2)
         print(f"      💾 Saved OCR export: {ocr_export_path}")
+        print(
+            f"         Lines: {len(ocr_export['lines'])}, Words: {len(ocr_export['words'])}, Letters: {len(ocr_export['letters'])}"
+        )
 
     print(f"\n✅ Complete! Visualizations saved to: {output_dir}")
     print(f"   Total clusters: {len(cluster_dict)}")
