@@ -24,24 +24,240 @@ from receipt_dynamo import DynamoClient
 from receipt_dynamo.entities import ReceiptWordLabel
 from scripts.split_receipt import setup_environment
 
+# Import PIL first (should always be available)
+try:
+    from PIL import Image as PIL_Image, ImageDraw, ImageFont
+    PIL_AVAILABLE = True
+except ImportError as e:
+    PIL_AVAILABLE = False
+    PIL_Image = None
+    ImageDraw = None
+    ImageFont = None
+    print(f"⚠️  PIL not available: {e}")
+
+# Import receipt_upload modules
 try:
     from receipt_upload.ocr import apple_vision_ocr_job, process_ocr_dict_as_image
-    from receipt_upload.utils.s3_utils import get_image_from_s3
-    from PIL import Image as PIL_Image
+    OCR_AVAILABLE = True
+except ImportError as e:
+    OCR_AVAILABLE = False
+    apple_vision_ocr_job = None
+    process_ocr_dict_as_image = None
+    print(f"⚠️  receipt_upload not available: {e}")
 
-    PIL_AVAILABLE = True
-except ImportError:
-    PIL_AVAILABLE = False
-    print("⚠️  PIL or receipt_upload not available")
+
+def calculate_line_centroid(line) -> Tuple[float, float]:
+    """Calculate centroid of a line from its corner coordinates.
+
+    Coordinates are expected to be in normalized 0-1 space (warped receipt space).
+    """
+    try:
+        # Try using calculate_centroid method if available
+        return line.calculate_centroid()
+    except AttributeError:
+        # Fallback: calculate from corners
+        tl = line.top_left
+        tr = line.top_right
+        bl = line.bottom_left
+        br = line.bottom_right
+        x = (tl["x"] + tr["x"] + bl["x"] + br["x"]) / 4.0
+        y = (tl["y"] + tr["y"] + bl["y"] + br["y"]) / 4.0
+        return (x, y)
+
+
+def match_lines_by_centroid(
+    old_lines: List,
+    new_lines: List,
+    centroid_tolerance: float = 0.15,  # Increased tolerance for coordinate space differences
+) -> Dict[int, int]:
+    """
+    Match old ReceiptLines to new OCR Lines using centroid position.
+
+    Args:
+        old_lines: List of ReceiptLine entities (from DynamoDB)
+        new_lines: List of Line entities (from OCR)
+        centroid_tolerance: Maximum normalized distance for centroid matching
+
+    Returns:
+        Dict mapping old_line_id -> new_line_id
+    """
+    line_map = {}
+
+    # Calculate centroids for all lines
+    old_centroids = {}
+    for old_line in old_lines:
+        old_centroids[old_line.line_id] = calculate_line_centroid(old_line)
+
+    new_centroids = {}
+    for new_line in new_lines:
+        new_centroids[new_line.line_id] = calculate_line_centroid(new_line)
+
+    # Match lines by centroid proximity
+    for old_line_id, old_centroid in old_centroids.items():
+        best_match = None
+        best_distance = float('inf')
+
+        for new_line_id, new_centroid in new_centroids.items():
+            # Skip if already matched
+            if new_line_id in line_map.values():
+                continue
+
+            # Calculate normalized distance
+            x_diff = abs(old_centroid[0] - new_centroid[0])
+            y_diff = abs(old_centroid[1] - new_centroid[1])
+            distance = (x_diff ** 2 + y_diff ** 2) ** 0.5
+
+            if distance < best_distance and distance < centroid_tolerance:
+                best_distance = distance
+                best_match = new_line_id
+
+        if best_match is not None:
+            line_map[old_line_id] = best_match
+            # Only print successful matches to reduce noise
+            if best_distance < 0.05:  # Only print close matches
+                print(
+                    f"  ✓ Matched line {old_line_id} -> {best_match} "
+                    f"(distance={best_distance:.4f})"
+                )
+        # Don't print unmatched lines - many old lines won't be in the new receipt
+
+    return line_map
+
+
+def match_words_directly(
+    old_words: List,
+    new_words_list: List,
+    position_tolerance: float = 0.15,
+    text_match_weight: float = 0.7,
+    position_match_weight: float = 0.3,
+) -> Dict[Tuple[int, int], Tuple[int, int]]:
+    """
+    Match old ReceiptWords to new OCR words directly by text and position.
+
+    This approach doesn't require line matching first, which allows us to
+    match words even when lines don't match perfectly.
+
+    Args:
+        old_words: List of ReceiptWord entities (from JSON export)
+        new_words_list: List of Word entities (from new OCR)
+        position_tolerance: Maximum normalized distance for position matching
+        text_match_weight: Weight for text matching in combined score
+        position_match_weight: Weight for position matching in combined score
+
+    Returns:
+        Dict mapping (old_line_id, old_word_id) -> (new_line_id, new_word_id)
+    """
+    word_map = {}
+    used_new_words = set()
+
+    # Normalize text for comparison
+    def normalize_text(text):
+        if not text:
+            return ""
+        normalized = text.strip().upper()
+        normalized = normalized.replace('"', "'").replace('"', "'")
+        normalized = normalized.replace('–', '-').replace('—', '-')
+        return normalized
+
+    # Sort old words by text length (longer words are more distinctive)
+    old_words_sorted = sorted(
+        old_words,
+        key=lambda w: (len(w.text or ""), w.calculate_centroid()[0], w.calculate_centroid()[1]),
+        reverse=True
+    )
+
+    print(f"  Matching {len(old_words_sorted)} old words to {len(new_words_list)} new words...")
+
+    for old_word in old_words_sorted:
+        old_text = normalize_text(old_word.text)
+        old_centroid = old_word.calculate_centroid()
+
+        if not old_text:
+            continue
+
+        best_match = None
+        best_match_score = 0.0
+        best_match_key = None
+
+        for new_word in new_words_list:
+            # Skip if already matched
+            new_key = (new_word.line_id, new_word.word_id)
+            if new_key in used_new_words:
+                continue
+
+            new_text = normalize_text(new_word.text)
+            new_centroid = new_word.calculate_centroid()
+
+            # Text match (exact or partial)
+            text_match = 1.0 if old_text == new_text else 0.0
+            if not text_match and old_text and new_text:
+                # Partial text match (substring)
+                if old_text in new_text or new_text in old_text:
+                    # Longer text wins
+                    text_match = min(len(old_text), len(new_text)) / max(len(old_text), len(new_text)) * 0.9
+                # Character overlap (fuzzy match for OCR errors)
+                elif len(set(old_text) & set(new_text)) > 0:
+                    char_overlap = len(set(old_text) & set(new_text))
+                    char_union = len(set(old_text) | set(new_text))
+                    text_match = (char_overlap / char_union) * 0.7 if char_union > 0 else 0.0
+
+                    # Bonus for similar length
+                    length_ratio = min(len(old_text), len(new_text)) / max(len(old_text), len(new_text), 1)
+                    text_match *= (0.5 + 0.5 * length_ratio)
+
+            # Position match (normalized distance)
+            x_diff = abs(old_centroid[0] - new_centroid[0])
+            y_diff = abs(old_centroid[1] - new_centroid[1])
+            position_distance = (x_diff ** 2 + y_diff ** 2) ** 0.5
+            position_match = max(0.0, 1.0 - position_distance / position_tolerance)
+
+            # Combined score
+            score = text_match * text_match_weight + position_match * position_match_weight
+
+            if score > best_match_score and score > 0.3:  # Lower threshold for direct matching
+                best_match_score = score
+                best_match = new_word
+                best_match_key = new_key
+
+        if best_match:
+            word_map[(old_word.line_id, old_word.word_id)] = (
+                best_match.line_id,
+                best_match.word_id,
+            )
+            used_new_words.add(best_match_key)
+            if best_match_score > 0.5:  # Only print high-confidence matches
+                print(
+                    f"    ✓ '{old_word.text}' (L{old_word.line_id}W{old_word.word_id}) -> "
+                    f"'{best_match.text}' (L{best_match.line_id}W{best_match.word_id}) "
+                    f"[score={best_match_score:.2f}]"
+                )
+
+    return word_map
 
 
 def match_words_by_text_and_position(
+    old_lines: List,
     old_words: List,
-    new_words: List,
+    new_lines: List,
+    new_words_list: List,
+    line_map: Dict[int, int],
     position_tolerance: float = 0.1,
 ) -> Dict[Tuple[int, int], Tuple[int, int]]:
     """
-    Match old ReceiptWords to new OCR words using text and position.
+    Match old ReceiptWords to new OCR words using line matches and text/position.
+
+    Strategy:
+    1. First match lines by centroid (already done via line_map)
+    2. Within matched lines, compare word counts and text similarity
+    3. Map words within matched lines by text and position
+
+    Args:
+        old_lines: List of ReceiptLine entities (from DynamoDB)
+        old_words: List of ReceiptWord entities (from DynamoDB)
+        new_lines: List of Line entities (from OCR)
+        new_words_list: List of Word entities (from OCR)
+        line_map: Dict mapping old_line_id -> new_line_id
+        position_tolerance: Maximum normalized distance for position matching
 
     Returns:
         Dict mapping (old_line_id, old_word_id) -> (new_line_id, new_word_id)
@@ -54,76 +270,153 @@ def match_words_by_text_and_position(
         old_words_by_line.setdefault(word.line_id, []).append(word)
 
     new_words_by_line: Dict[int, List] = {}
-    for word in new_words:
+    for word in new_words_list:
         new_words_by_line.setdefault(word.line_id, []).append(word)
 
-    # Match within each line
-    for old_line_id, old_line_words in old_words_by_line.items():
-        # Try to find matching line in new OCR
-        best_line_match = None
-        best_match_score = 0
+    # Process each matched line pair
+    for old_line_id, new_line_id in line_map.items():
+        old_line_words = old_words_by_line.get(old_line_id, [])
+        new_line_words = new_words_by_line.get(new_line_id, [])
 
-        for new_line_id, new_line_words in new_words_by_line.items():
-            # Count text matches between lines
-            old_texts = {w.text.strip().upper() for w in old_line_words}
-            new_texts = {w.text.strip().upper() for w in new_line_words}
-            match_score = len(old_texts & new_texts) / max(len(old_texts), len(new_texts), 1)
-            if match_score > best_match_score:
-                best_match_score = match_score
-                best_line_match = new_line_id
-
-        if best_line_match is None or best_match_score < 0.3:
-            print(f"  ⚠️  No good line match for old line_id={old_line_id} (best_score={best_match_score:.2f})")
+        if not old_line_words or not new_line_words:
+            print(
+                f"  ⚠️  Line {old_line_id}->{new_line_id}: "
+                f"old_words={len(old_line_words)}, new_words={len(new_line_words)}"
+            )
             continue
 
-        # Match words within the matched lines
-        new_line_words = new_words_by_line[best_line_match]
-        old_line_words_sorted = sorted(old_line_words, key=lambda w: w.calculate_centroid()[0])
-        new_line_words_sorted = sorted(new_line_words, key=lambda w: w.calculate_centroid()[0])
+        # Compare word counts and text similarity
+        # Normalize text for comparison (remove special chars, normalize whitespace)
+        def normalize_text(text):
+            if not text:
+                return ""
+            # Remove special characters that OCR might interpret differently
+            normalized = text.strip().upper()
+            # Replace common OCR variations
+            normalized = normalized.replace('"', "'").replace('"', "'")
+            normalized = normalized.replace('–', '-').replace('—', '-')
+            return normalized
 
-        # Try to match words by text and position
+        old_texts = {normalize_text(w.text) for w in old_line_words if w.text}
+        new_texts = {normalize_text(w.text) for w in new_line_words if w.text}
+
+        # Remove empty strings
+        old_texts = {t for t in old_texts if t}
+        new_texts = {t for t in new_texts if t}
+
+        text_overlap = len(old_texts & new_texts)
+        text_union = len(old_texts | new_texts)
+
+        if text_union == 0:
+            print(
+                f"  ⚠️  Line {old_line_id}->{new_line_id}: No text to compare"
+            )
+            continue
+
+        text_similarity = text_overlap / text_union if text_union > 0 else 0.0
+        word_count_ratio = min(len(old_line_words), len(new_line_words)) / max(
+            len(old_line_words), len(new_line_words), 1
+        )
+
+        # Also check for partial text matches (substring matches)
+        partial_matches = 0
+        for old_text in old_texts:
+            for new_text in new_texts:
+                if old_text in new_text or new_text in old_text:
+                    partial_matches += 1
+                    break
+
+        partial_similarity = partial_matches / max(len(old_texts), len(new_texts), 1) if (old_texts or new_texts) else 0.0
+        combined_similarity = max(text_similarity, partial_similarity * 0.7)
+
+        print(
+            f"  Line {old_line_id}->{new_line_id}: "
+            f"words={len(old_line_words)}->{len(new_line_words)}, "
+            f"text_sim={text_similarity:.2f}, "
+            f"partial_sim={partial_similarity:.2f}, "
+            f"count_ratio={word_count_ratio:.2f}"
+        )
+
+        # Only proceed if we have reasonable similarity
+        # Lower threshold since OCR can produce different text
+        if combined_similarity < 0.1 and word_count_ratio < 0.3:
+            print(
+                f"  ⚠️  Line {old_line_id}->{new_line_id}: "
+                f"Low similarity, skipping word matching"
+            )
+            continue
+
+        # Sort words by x-coordinate (left to right)
+        old_line_words_sorted = sorted(
+            old_line_words, key=lambda w: w.calculate_centroid()[0]
+        )
+        new_line_words_sorted = sorted(
+            new_line_words, key=lambda w: w.calculate_centroid()[0]
+        )
+
+        # Match words within the line
+        used_new_indices = set()
         for old_word in old_line_words_sorted:
             old_text = (old_word.text or "").strip().upper()
             old_centroid = old_word.calculate_centroid()
 
             best_match = None
-            best_match_score = 0
+            best_match_score = 0.0
+            best_match_idx = None
 
-            for new_word in new_line_words_sorted:
+            for idx, new_word in enumerate(new_line_words_sorted):
+                if idx in used_new_indices:
+                    continue
+
                 new_text = (new_word.text or "").strip().upper()
                 new_centroid = new_word.calculate_centroid()
 
-                # Text match
-                text_match = 1.0 if old_text == new_text else 0.0
-                if not text_match and old_text and new_text:
-                    # Partial text match
-                    if old_text in new_text or new_text in old_text:
-                        text_match = 0.5
+                # Normalize text for comparison
+                old_text_norm = normalize_text(old_text)
+                new_text_norm = normalize_text(new_text)
+
+                # Text match (exact or partial)
+                text_match = 1.0 if old_text_norm == new_text_norm else 0.0
+                if not text_match and old_text_norm and new_text_norm:
+                    # Partial text match (substring)
+                    if old_text_norm in new_text_norm or new_text_norm in old_text_norm:
+                        text_match = 0.8
+                    # Character overlap (fuzzy match for OCR errors)
+                    elif len(set(old_text_norm) & set(new_text_norm)) > 0:
+                        char_overlap = len(set(old_text_norm) & set(new_text_norm))
+                        char_union = len(set(old_text_norm) | set(new_text_norm))
+                        text_match = (char_overlap / char_union) * 0.6 if char_union > 0 else 0.0
 
                 # Position match (normalized distance)
                 x_diff = abs(old_centroid[0] - new_centroid[0])
                 y_diff = abs(old_centroid[1] - new_centroid[1])
-                position_match = 1.0 - min(x_diff + y_diff, position_tolerance * 2) / (position_tolerance * 2)
+                position_distance = (x_diff ** 2 + y_diff ** 2) ** 0.5
+                position_match = max(
+                    0.0, 1.0 - position_distance / position_tolerance
+                )
 
-                # Combined score
+                # Combined score (prioritize text match, but lower threshold for OCR variations)
                 score = text_match * 0.7 + position_match * 0.3
 
-                if score > best_match_score and score > 0.5:
+                if score > best_match_score and score > 0.3:  # Lower threshold for OCR variations
                     best_match_score = score
                     best_match = new_word
+                    best_match_idx = idx
 
             if best_match:
                 word_map[(old_word.line_id, old_word.word_id)] = (
                     best_match.line_id,
                     best_match.word_id,
                 )
+                used_new_indices.add(best_match_idx)
                 print(
-                    f"    Matched: '{old_word.text}' (L{old_word.line_id}W{old_word.word_id}) -> "
-                    f"'{best_match.text}' (L{best_match.line_id}W{best_match.word_id}) [score={best_match_score:.2f}]"
+                    f"    ✓ '{old_word.text}' (L{old_word.line_id}W{old_word.word_id}) -> "
+                    f"'{best_match.text}' (L{best_match.line_id}W{best_match.word_id}) "
+                    f"[score={best_match_score:.2f}]"
                 )
             else:
                 print(
-                    f"    ⚠️  No match for: '{old_word.text}' (L{old_word.line_id}W{old_word.word_id})"
+                    f"    ⚠️  No match: '{old_word.text}' (L{old_word.line_id}W{old_word.word_id})"
                 )
 
     return word_map
@@ -168,14 +461,312 @@ def map_labels_to_new_words(
     return new_labels
 
 
+def visualize_ocr_comparison(
+    old_words: List,
+    new_words_list: List,
+    word_map: Dict[Tuple[int, int], Tuple[int, int]],
+    old_labels: List[ReceiptWordLabel],
+    new_labels: List[ReceiptWordLabel],
+    receipt_image: PIL_Image.Image,
+    output_path: Path,
+) -> None:
+    """Create a visualization comparing old OCR, new OCR, and label mappings."""
+    if not PIL_AVAILABLE:
+        print("⚠️  Cannot create visualization - PIL not available")
+        return
+
+    img = receipt_image.copy()
+    draw = ImageDraw.Draw(img)
+
+    try:
+        from PIL import ImageFont
+
+        font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 12)
+        small_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 10)
+    except:
+        font = ImageFont.load_default()
+        small_font = ImageFont.load_default()
+
+    receipt_width = img.width
+    receipt_height = img.height
+
+    # Draw old words in red
+    for word in old_words:
+        tl_x = word.top_left["x"] * receipt_width
+        tl_y = (1 - word.top_left["y"]) * receipt_height
+        tr_x = word.top_right["x"] * receipt_width
+        tr_y = (1 - word.top_right["y"]) * receipt_height
+        br_x = word.bottom_right["x"] * receipt_width
+        br_y = (1 - word.bottom_right["y"]) * receipt_height
+        bl_x = word.bottom_left["x"] * receipt_width
+        bl_y = (1 - word.bottom_left["y"]) * receipt_height
+
+        corners = [(tl_x, tl_y), (tr_x, tr_y), (br_x, br_y), (bl_x, bl_y)]
+        draw.polygon(corners, outline="red", width=2)
+
+    # Draw new words in green
+    for word in new_words_list:
+        tl_x = word.top_left["x"] * receipt_width
+        tl_y = (1 - word.top_left["y"]) * receipt_height
+        tr_x = word.top_right["x"] * receipt_width
+        tr_y = (1 - word.top_right["y"]) * receipt_height
+        br_x = word.bottom_right["x"] * receipt_width
+        br_y = (1 - word.bottom_right["y"]) * receipt_height
+        bl_x = word.bottom_left["x"] * receipt_width
+        bl_y = (1 - word.bottom_left["y"]) * receipt_height
+
+        corners = [(tl_x, tl_y), (tr_x, tr_y), (br_x, br_y), (bl_x, bl_y)]
+        draw.polygon(corners, outline="green", width=2)
+
+    # Draw mapping lines for matched words
+    for (old_line_id, old_word_id), (new_line_id, new_word_id) in word_map.items():
+        old_word = next(
+            (w for w in old_words if w.line_id == old_line_id and w.word_id == old_word_id),
+            None,
+        )
+        new_word = next(
+            (w for w in new_words_list if w.line_id == new_line_id and w.word_id == new_word_id),
+            None,
+        )
+
+        if old_word and new_word:
+            old_centroid = old_word.calculate_centroid()
+            new_centroid = new_word.calculate_centroid()
+
+            old_x = old_centroid[0] * receipt_width
+            old_y = (1 - old_centroid[1]) * receipt_height
+            new_x = new_centroid[0] * receipt_width
+            new_y = (1 - new_centroid[1]) * receipt_height
+
+            # Draw line connecting matched words
+            draw.line([(old_x, old_y), (new_x, new_y)], fill="blue", width=1)
+
+    # Draw labels on new words
+    for label in new_labels:
+        new_word = next(
+            (
+                w
+                for w in new_words_list
+                if w.line_id == label.line_id and w.word_id == label.word_id
+            ),
+            None,
+        )
+        if new_word:
+            centroid = new_word.calculate_centroid()
+            x = centroid[0] * receipt_width
+            y = (1 - centroid[1]) * receipt_height
+
+            # Draw label text
+            draw.text(
+                (x + 5, y - 15),
+                label.label,
+                fill="purple",
+                font=small_font,
+            )
+
+    # Add legend
+    legend_y = 10
+    draw.rectangle([(10, legend_y), (200, legend_y + 80)], fill="white", outline="black")
+    draw.text((20, legend_y + 5), "Old OCR (Red)", fill="red", font=small_font)
+    draw.text((20, legend_y + 20), "New OCR (Green)", fill="green", font=small_font)
+    draw.text((20, legend_y + 35), "Mappings (Blue)", fill="blue", font=small_font)
+    draw.text((20, legend_y + 50), f"Matched: {len(word_map)}", fill="black", font=small_font)
+    draw.text((20, legend_y + 65), f"Labels: {len(new_labels)}", fill="purple", font=small_font)
+
+    img.save(output_path)
+    print(f"      💾 Saved comparison visualization: {output_path}")
+
+
+def load_receipt_ocr_from_json(
+    json_path: Path,
+    image_id: str,
+    original_receipt_id: int,
+) -> Tuple[List, List, List, float, float]:
+    """
+    Load ReceiptLines, ReceiptWords, and ReceiptLetters from JSON export.
+
+    The JSON export contains receipt-level OCR data with coordinates in
+    warped receipt space (absolute pixels). We normalize them to 0-1 space
+    to match the new OCR coordinate system.
+
+    Returns:
+        Tuple of (lines, words, letters, warped_width, warped_height)
+    """
+    from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptLetter
+
+    with open(json_path, "r") as f:
+        data = json.load(f)
+
+    # Get warped receipt dimensions for normalization
+    warped_width = data.get("warped_width", 1.0)
+    warped_height = data.get("warped_height", 1.0)
+
+    # Handle invalid height (sometimes it's negative or near zero)
+    # Calculate actual dimensions from coordinates (warped_receipt_coords are in PIL space, absolute pixels)
+    all_x_coords = []
+    all_y_coords = []
+    for line_data in data.get("lines", []):
+        for coord in line_data.get("warped_receipt_coords", []):
+            all_x_coords.append(coord.get("x", 0))
+            all_y_coords.append(coord.get("y", 0))
+    for word_data in data.get("words", []):
+        for corner in word_data.get("warped_receipt_coords", []):
+            all_x_coords.append(corner.get("x", 0))
+            all_y_coords.append(corner.get("y", 0))
+
+    if all_x_coords and all_y_coords:
+        actual_width = max(all_x_coords) - min(all_x_coords) if all_x_coords else warped_width
+        actual_height = max(all_y_coords) - min(all_y_coords) if all_y_coords else warped_height
+
+        # Use actual dimensions if warped dimensions are invalid
+        if warped_width <= 0 or abs(warped_width) < 1:
+            warped_width = actual_width
+        if warped_height <= 0 or abs(warped_height) < 1:
+            warped_height = actual_height
+
+        # Ensure we have valid dimensions
+        if warped_width <= 0:
+            warped_width = 1.0
+        if warped_height <= 0:
+            warped_height = 1.0
+    else:
+        # Fallback
+        if warped_width <= 0:
+            warped_width = 1.0
+        if warped_height <= 0:
+            warped_height = 1.0
+
+    lines = []
+    words = []
+    letters = []
+
+    # Reconstruct ReceiptLines
+    for line_data in data.get("lines", []):
+        # Use warped receipt coordinates (absolute pixels) and normalize to 0-1
+        warped_coords = line_data.get("warped_receipt_coords", [])
+        if len(warped_coords) >= 4:
+            # Normalize coordinates to 0-1 space (OCR space: y=0 at bottom)
+            # The warped_receipt_coords are in absolute pixels, PIL space (y=0 at top)
+            # We need to convert to normalized OCR space (y=0 at bottom)
+            normalized_coords = []
+            for coord in warped_coords:
+                x_norm = coord["x"] / warped_width if warped_width > 0 else coord["x"]
+                # Convert from PIL space (y=0 at top) to OCR space (y=0 at bottom)
+                # In PIL: y=0 is top, y=height is bottom
+                # In OCR: y=0 is bottom, y=1 is top
+                # So: y_ocr = 1 - (y_pil / height)
+                y_pil = coord["y"]
+                y_norm = 1.0 - (y_pil / warped_height) if warped_height > 0 else (1.0 - y_pil)
+                normalized_coords.append({"x": x_norm, "y": y_norm})
+
+            # Calculate bounding box from normalized coordinates
+            x_coords = [c["x"] for c in normalized_coords]
+            y_coords = [c["y"] for c in normalized_coords]
+
+            line = ReceiptLine(
+                receipt_id=original_receipt_id,
+                image_id=image_id,
+                line_id=line_data["line_id"],
+                text=line_data.get("text", ""),
+                bounding_box={
+                    "x": min(x_coords),
+                    "y": min(y_coords),
+                    "width": max(x_coords) - min(x_coords),
+                    "height": max(y_coords) - min(y_coords),
+                },
+                top_left={"x": normalized_coords[0]["x"], "y": normalized_coords[0]["y"]},
+                top_right={"x": normalized_coords[1]["x"], "y": normalized_coords[1]["y"]},
+                bottom_right={"x": normalized_coords[2]["x"], "y": normalized_coords[2]["y"]},
+                bottom_left={"x": normalized_coords[3]["x"], "y": normalized_coords[3]["y"]},
+                angle_degrees=0.0,
+                angle_radians=0.0,
+                confidence=1.0,
+            )
+            lines.append(line)
+
+    # Reconstruct ReceiptWords
+    for word_data in data.get("words", []):
+        # Use warped receipt coordinates (absolute pixels) and normalize to 0-1
+        corners = word_data.get("warped_receipt_coords", [])
+        if len(corners) >= 4:
+            # Normalize coordinates to 0-1 space (OCR space: y=0 at bottom)
+            # The warped_receipt_coords are in absolute pixels, PIL space (y=0 at top)
+            # We need to convert to normalized OCR space (y=0 at bottom)
+            normalized_corners = []
+            for corner in corners:
+                x_norm = corner["x"] / warped_width if warped_width > 0 else corner["x"]
+                # Convert from PIL space (y=0 at top) to OCR space (y=0 at bottom)
+                # In PIL: y=0 is top, y=height is bottom
+                # In OCR: y=0 is bottom, y=1 is top
+                # So: y_ocr = 1 - (y_pil / height)
+                y_pil = corner["y"]
+                y_norm = 1.0 - (y_pil / warped_height) if warped_height > 0 else (1.0 - y_pil)
+                normalized_corners.append({"x": x_norm, "y": y_norm})
+
+            word = ReceiptWord(
+                receipt_id=original_receipt_id,
+                image_id=image_id,
+                line_id=word_data["line_id"],
+                word_id=word_data["word_id"],
+                text=word_data.get("text", ""),
+                bounding_box=word_data.get("bounding_box", {}),
+                top_left={"x": normalized_corners[0]["x"], "y": normalized_corners[0]["y"]},
+                top_right={"x": normalized_corners[1]["x"], "y": normalized_corners[1]["y"]},
+                bottom_right={"x": normalized_corners[2]["x"], "y": normalized_corners[2]["y"]},
+                bottom_left={"x": normalized_corners[3]["x"], "y": normalized_corners[3]["y"]},
+                angle_degrees=0.0,
+                angle_radians=0.0,
+                confidence=1.0,
+            )
+            words.append(word)
+
+    # Reconstruct ReceiptLetters (if present)
+    for letter_data in data.get("letters", []):
+        # Similar structure to words
+        corners = letter_data.get("warped_receipt_coords", [])
+        if len(corners) >= 4:
+            letter = ReceiptLetter(
+                receipt_id=original_receipt_id,
+                image_id=image_id,
+                line_id=letter_data["line_id"],
+                word_id=letter_data["word_id"],
+                letter_id=letter_data["letter_id"],
+                text=letter_data.get("text", ""),
+                bounding_box=letter_data.get("bounding_box", {}),
+                top_left={"x": corners[0]["x"], "y": corners[0]["y"]},
+                top_right={"x": corners[1]["x"], "y": corners[1]["y"]},
+                bottom_right={"x": corners[2]["x"], "y": corners[2]["y"]},
+                bottom_left={"x": corners[3]["x"], "y": corners[3]["y"]},
+                angle_degrees=0.0,
+                angle_radians=0.0,
+                confidence=1.0,
+            )
+            letters.append(letter)
+
+    return lines, words, letters, warped_width, warped_height
+
+
 def re_ocr_receipt_and_map_labels(
     image_id: str,
     receipt_id: int,
     new_receipt_id: Optional[int] = None,
     cropped_image_path: Optional[Path] = None,
+    ocr_export_json_path: Optional[Path] = None,
     dry_run: bool = True,
+    output_dir: Optional[Path] = None,
 ) -> None:
-    """Re-OCR a receipt and map previous labels to new OCR data."""
+    """Re-OCR a receipt and map previous labels to new OCR data.
+
+    Args:
+        image_id: Image ID
+        receipt_id: Original receipt ID (to load labels from)
+        new_receipt_id: New receipt ID (for the split receipt)
+        cropped_image_path: Path to cropped receipt image
+        ocr_export_json_path: Path to JSON export from visualize_final_clusters_cropped.py
+            containing accurate receipt-level OCR data for this cluster
+        dry_run: If True, don't save to DynamoDB
+        output_dir: Directory for output visualizations
+    """
     env = setup_environment()
     table_name = env.get("dynamo_table_name") or "ReceiptsTable-dc5be22"
     client = DynamoClient(table_name)
@@ -190,14 +781,38 @@ def re_ocr_receipt_and_map_labels(
     print(f"Dry Run: {dry_run}")
     print()
 
-    # Load old receipt data
-    print("📥 Loading old receipt data...")
-    receipt = client.get_receipt(image_id, receipt_id)
-    old_words = client.list_receipt_words_from_receipt(image_id, receipt_id)
-    old_labels, _ = client.list_receipt_word_labels_for_receipt(image_id, receipt_id)
+    # Load accurate receipt-level OCR data from JSON export
+    if ocr_export_json_path and ocr_export_json_path.exists():
+        print("📥 Loading receipt-level OCR data from JSON export...")
+        old_lines, old_words, old_letters, warped_width, warped_height = load_receipt_ocr_from_json(
+            ocr_export_json_path, image_id, receipt_id
+        )
+        print(f"   Warped receipt dimensions: {warped_width:.0f} x {warped_height:.0f}")
+        print(f"   Lines: {len(old_lines)}")
+        print(f"   Words: {len(old_words)}")
+        print(f"   Letters: {len(old_letters)}")
 
-    print(f"   Old words: {len(old_words)}")
-    print(f"   Old labels: {len(old_labels)}")
+        # Load labels for these specific words from DynamoDB
+        print("📥 Loading labels for these words from DynamoDB...")
+        old_labels, _ = client.list_receipt_word_labels_for_receipt(image_id, receipt_id)
+        # Filter to only labels for words that are in our export
+        word_keys = {(w.line_id, w.word_id) for w in old_words}
+        old_labels = [
+            label for label in old_labels
+            if (label.line_id, label.word_id) in word_keys
+        ]
+        print(f"   Labels: {len(old_labels)}")
+    else:
+        # Fallback: load from DynamoDB (less accurate)
+        print("📥 Loading receipt data from DynamoDB (fallback)...")
+        print("   ⚠️  Using JSON export is recommended for accurate matching")
+        old_lines = client.list_receipt_lines_from_receipt(image_id, receipt_id)
+        old_words = client.list_receipt_words_from_receipt(image_id, receipt_id)
+        old_labels, _ = client.list_receipt_word_labels_for_receipt(image_id, receipt_id)
+        print(f"   Lines: {len(old_lines)}")
+        print(f"   Words: {len(old_words)}")
+        print(f"   Labels: {len(old_labels)}")
+
     print()
 
     # Get cropped receipt image
@@ -221,10 +836,14 @@ def re_ocr_receipt_and_map_labels(
         )
 
     # Run Swift OCR
+    if not OCR_AVAILABLE:
+        raise ValueError("receipt_upload not available - cannot run OCR")
+
     print("🔍 Running Swift OCR...")
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
-        json_files = apple_vision_ocr_job([str(image_path)], temp_path)
+        image_path_obj = Path(image_path) if isinstance(image_path, str) else image_path
+        json_files = apple_vision_ocr_job([image_path_obj], temp_path)
 
         if not json_files:
             raise ValueError("No OCR results generated")
@@ -233,15 +852,17 @@ def re_ocr_receipt_and_map_labels(
         with open(json_files[0], "r") as f:
             ocr_data = json.load(f)
 
-        new_lines, new_words, new_letters = process_ocr_dict_as_image(
+        new_lines, new_words_list, new_letters = process_ocr_dict_as_image(
             ocr_data, image_id
         )
-        print(f"   New OCR: {len(new_lines)} lines, {len(new_words)} words")
+        # new_words_list is a flat list of Word entities
+        # new_lines is a list of Line entities
+        print(f"   New OCR: {len(new_lines)} lines, {len(new_words_list)} words")
         print()
 
-    # Match old words to new words
-    print("🔗 Matching old words to new OCR words...")
-    word_map = match_words_by_text_and_position(old_words, new_words)
+    # Match words directly (word-first approach for better coverage)
+    print("🔗 Matching words directly by text and position...")
+    word_map = match_words_directly(old_words, new_words_list)
     print(f"   Matched: {len(word_map)}/{len(old_words)} words")
     print()
 
@@ -254,17 +875,75 @@ def re_ocr_receipt_and_map_labels(
     print(f"   Mapped: {len(new_labels)}/{len(old_labels)} labels")
     print()
 
+    # Create visualization comparing old and new OCR
+    if output_dir:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        comparison_path = output_dir / f"receipt_{new_receipt_id if new_receipt_id else receipt_id}_ocr_comparison.png"
+
+        # Load the receipt image (warped/cropped)
+        receipt_image = None
+        if PIL_AVAILABLE:
+            if cropped_image_path and Path(cropped_image_path).exists():
+                receipt_image = PIL_Image.open(cropped_image_path)
+            else:
+                # Use the warped image from visualization if available
+                vis_path = output_dir / f"receipt_{receipt_id}_clean.png"
+                if vis_path.exists():
+                    receipt_image = PIL_Image.open(vis_path)
+                else:
+                    print("⚠️  No receipt image available for visualization")
+
+            if receipt_image:
+                visualize_ocr_comparison(
+                    old_words,
+                    new_words_list,
+                    word_map,
+                    old_labels,
+                    new_labels,
+                    receipt_image,
+                    comparison_path,
+                )
+        else:
+            print("⚠️  Cannot create visualization - PIL not available")
+
     # Save results
     if not dry_run:
         print("💾 Saving new labels to DynamoDB...")
-        for label in new_labels:
-            client.put_receipt_word_label(label)
-        print(f"   ✅ Saved {len(new_labels)} labels")
+        if new_labels:
+            saved_count = 0
+            failed_count = 0
+
+            # Chunk into batches of 25 (DynamoDB limit)
+            chunk_size = 25
+            for i in range(0, len(new_labels), chunk_size):
+                chunk = new_labels[i:i + chunk_size]
+                try:
+                    client.add_receipt_word_labels(chunk)
+                    saved_count += len(chunk)
+                    print(f"   ✅ Saved batch of {len(chunk)} labels")
+                except Exception as e:
+                    print(f"   ⚠️ Bulk add failed for chunk of {len(chunk)}: {e}")
+                    print("   🔄 Attempting individual adds for this chunk...")
+                    for label in chunk:
+                        try:
+                            client.add_receipt_word_label(label)
+                            saved_count += 1
+                        except Exception as individual_error:
+                            print(
+                                f"   ⚠️ Failed to add label {label.label} for word (L{label.line_id}W{label.word_id}): {individual_error}"
+                            )
+                            failed_count += 1
+
+            print(f"   ✅ Saved {saved_count}/{len(new_labels)} labels")
+            if failed_count > 0:
+                print(f"   ⚠️ Failed to save {failed_count} labels")
+        else:
+            print("   ℹ️  No labels to save")
     else:
         print("🔍 DRY RUN - Would save:")
         for label in new_labels[:10]:  # Show first 10
             print(
-                f"   - {label.label} -> (L{label.line_id}W{label.word_id}) '{label.reasoning[:50]}...'"
+                f"   - {label.label} -> (L{label.line_id}W{label.word_id}) '{label.reasoning[:50] if label.reasoning else ''}...'"
             )
         if len(new_labels) > 10:
             print(f"   ... and {len(new_labels) - 10} more")
@@ -301,6 +980,16 @@ def main():
         dest="dry_run",
         help="Actually save to DynamoDB",
     )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        help="Output directory for visualizations",
+    )
+    parser.add_argument(
+        "--ocr-export-json",
+        type=Path,
+        help="Path to JSON export from visualize_final_clusters_cropped.py",
+    )
 
     args = parser.parse_args()
 
@@ -309,7 +998,9 @@ def main():
         args.receipt_id,
         args.new_receipt_id,
         args.cropped_image_path,
+        args.ocr_export_json,
         args.dry_run,
+        args.output_dir,
     )
 
 

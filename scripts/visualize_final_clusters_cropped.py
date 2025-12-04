@@ -970,6 +970,11 @@ def visualize_final_clusters_cropped(
         img.save(output_path)
         print(f"      💾 Saved: {output_path}")
 
+        # Save clean warped image (without bounding boxes) for re-OCR
+        clean_output_path = output_dir / f"receipt_{cluster_id}_clean.png"
+        warped_image.save(clean_output_path)
+        print(f"      💾 Saved clean image for OCR: {clean_output_path}")
+
         # Export OCR results for comparison
         ocr_export = {
             "cluster_id": cluster_id,
