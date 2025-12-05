@@ -10,9 +10,12 @@ This script:
 """
 
 import argparse
+import hashlib
 import json
+import os
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -21,12 +24,105 @@ sys.path.insert(0, str(repo_root))
 sys.path.insert(0, str(repo_root / "receipt_upload"))
 
 from receipt_dynamo import DynamoClient
-from receipt_dynamo.entities import ReceiptWordLabel
-from scripts.split_receipt import setup_environment
+from receipt_dynamo.entities import (
+    Receipt,
+    ReceiptLetter,
+    ReceiptLine,
+    ReceiptWord,
+    ReceiptWordLabel,
+)
+
+# Import setup_environment from split_receipt; fallback to Pulumi/env vars
+try:
+    from scripts.split_receipt import setup_environment
+except ImportError:
+
+    def setup_environment() -> Dict[str, str]:
+        """Load config from Pulumi (dev stack) with env fallbacks."""
+        from receipt_dynamo.data._pulumi import load_env, load_secrets
+
+        repo_root = Path(__file__).parent.parent
+        infra_dir = repo_root / "infra"
+
+        env = {}
+        secrets = {}
+        try:
+            env = load_env("dev", working_dir=str(infra_dir)) or {}
+        except Exception:
+            env = {}
+        try:
+            secrets = load_secrets("dev", working_dir=str(infra_dir)) or {}
+        except Exception:
+            secrets = {}
+
+        table_name = (
+            os.getenv("DYNAMODB_TABLE_NAME")
+            or env.get("dynamodb_table_name")
+            or env.get("receipts_table_name")
+            or "ReceiptsTable-dc5be22"
+        )
+
+        chromadb_bucket = (
+            os.getenv("CHROMADB_BUCKET")
+            or env.get("embedding_chromadb_bucket_name")
+            or env.get("chromadb_bucket_name")
+            or ""
+        )
+
+        artifacts_bucket = (
+            os.getenv("ARTIFACTS_BUCKET")
+            or env.get("artifacts_bucket_name")
+            or ""
+        )
+
+        raw_bucket = (
+            os.getenv("RAW_BUCKET")
+            or env.get("raw_bucket_name")
+            or env.get("raw_bucket")
+            or ""
+        )
+
+        site_bucket = (
+            os.getenv("SITE_BUCKET")
+            or env.get("site_bucket_name")
+            or env.get("cdn_bucket_name")
+            or env.get("cdn_bucket")
+            or ""
+        )
+
+        # Propagate to environment for downstream libs
+        os.environ["DYNAMODB_TABLE_NAME"] = table_name
+        if chromadb_bucket:
+            os.environ["CHROMADB_BUCKET"] = chromadb_bucket
+        if artifacts_bucket:
+            os.environ["ARTIFACTS_BUCKET"] = artifacts_bucket
+        if raw_bucket:
+            os.environ["RAW_BUCKET"] = raw_bucket
+        if site_bucket:
+            os.environ["SITE_BUCKET"] = site_bucket
+
+        # Optionally propagate OpenAI key if present in Pulumi secrets
+        openai_key = secrets.get("OPENAI_API_KEY") or secrets.get(
+            "portfolio:OPENAI_API_KEY"
+        )
+        if openai_key:
+            os.environ["OPENAI_API_KEY"] = openai_key
+
+        return {
+            "dynamo_table_name": table_name,
+            "raw_bucket": raw_bucket,
+            "site_bucket": site_bucket,
+            "artifacts_bucket": artifacts_bucket,
+            "chromadb_bucket": chromadb_bucket,
+            "openai_api_key": openai_key or "",
+        }
+
 
 # Import PIL first (should always be available)
 try:
-    from PIL import Image as PIL_Image, ImageDraw, ImageFont
+    from PIL import Image as PIL_Image
+    from PIL import ImageDraw, ImageFont
+
     PIL_AVAILABLE = True
 except ImportError as e:
     PIL_AVAILABLE = False
@@ -37,12 +133,24 @@ except ImportError as e:
 
 # Import receipt_upload modules
 try:
-    from receipt_upload.ocr import apple_vision_ocr_job, process_ocr_dict_as_image
+    from receipt_upload.ocr import (
+        apple_vision_ocr_job,
+        process_ocr_dict_as_image,
+    )
+    from receipt_upload.utils import (
+        image_ocr_to_receipt_ocr,
+        upload_all_cdn_formats,
+        upload_png_to_s3,
+    )
+
     OCR_AVAILABLE = True
 except ImportError as e:
     OCR_AVAILABLE = False
     apple_vision_ocr_job = None
     process_ocr_dict_as_image = None
+    image_ocr_to_receipt_ocr = None
+    upload_all_cdn_formats = None
+    upload_png_to_s3 = None
     print(f"⚠️  receipt_upload not available: {e}")
 
 
@@ -95,7 +203,7 @@ def match_lines_by_centroid(
     # Match lines by centroid proximity
     for old_line_id, old_centroid in old_centroids.items():
         best_match = None
-        best_distance = float('inf')
+        best_distance = float("inf")
 
         for new_line_id, new_centroid in new_centroids.items():
             # Skip if already matched
@@ -105,7 +213,7 @@ def match_lines_by_centroid(
             # Calculate normalized distance
             x_diff = abs(old_centroid[0] - new_centroid[0])
             y_diff = abs(old_centroid[1] - new_centroid[1])
-            distance = (x_diff ** 2 + y_diff ** 2) ** 0.5
+            distance = (x_diff**2 + y_diff**2) ** 0.5
 
             if distance < best_distance and distance < centroid_tolerance:
                 best_distance = distance
@@ -127,9 +235,9 @@ def match_lines_by_centroid(
 def match_words_directly(
     old_words: List,
     new_words_list: List,
-    position_tolerance: float = 0.15,
-    text_match_weight: float = 0.7,
-    position_match_weight: float = 0.3,
+    position_tolerance: float = 0.08,
+    text_match_weight: float = 0.6,
+    position_match_weight: float = 0.4,
 ) -> Dict[Tuple[int, int], Tuple[int, int]]:
     """
     Match old ReceiptWords to new OCR words directly by text and position.
@@ -156,17 +264,23 @@ def match_words_directly(
             return ""
         normalized = text.strip().upper()
         normalized = normalized.replace('"', "'").replace('"', "'")
-        normalized = normalized.replace('–', '-').replace('—', '-')
+        normalized = normalized.replace("–", "-").replace("—", "-")
         return normalized
 
     # Sort old words by text length (longer words are more distinctive)
     old_words_sorted = sorted(
         old_words,
-        key=lambda w: (len(w.text or ""), w.calculate_centroid()[0], w.calculate_centroid()[1]),
-        reverse=True
+        key=lambda w: (
+            len(w.text or ""),
+            w.calculate_centroid()[0],
+            w.calculate_centroid()[1],
+        ),
+        reverse=True,
     )
 
-    print(f"  Matching {len(old_words_sorted)} old words to {len(new_words_list)} new words...")
+    print(
+        f"  Matching {len(old_words_sorted)} old words to {len(new_words_list)} new words..."
+    )
 
     for old_word in old_words_sorted:
         old_text = normalize_text(old_word.text)
@@ -194,27 +308,49 @@ def match_words_directly(
                 # Partial text match (substring)
                 if old_text in new_text or new_text in old_text:
                     # Longer text wins
-                    text_match = min(len(old_text), len(new_text)) / max(len(old_text), len(new_text)) * 0.9
+                    text_match = (
+                        min(len(old_text), len(new_text))
+                        / max(len(old_text), len(new_text))
+                        * 0.9
+                    )
                 # Character overlap (fuzzy match for OCR errors)
                 elif len(set(old_text) & set(new_text)) > 0:
                     char_overlap = len(set(old_text) & set(new_text))
                     char_union = len(set(old_text) | set(new_text))
-                    text_match = (char_overlap / char_union) * 0.7 if char_union > 0 else 0.0
+                    text_match = (
+                        (char_overlap / char_union) * 0.7
+                        if char_union > 0
+                        else 0.0
+                    )
 
                     # Bonus for similar length
-                    length_ratio = min(len(old_text), len(new_text)) / max(len(old_text), len(new_text), 1)
-                    text_match *= (0.5 + 0.5 * length_ratio)
+                    length_ratio = min(len(old_text), len(new_text)) / max(
+                        len(old_text), len(new_text), 1
+                    )
+                    text_match *= 0.5 + 0.5 * length_ratio
 
             # Position match (normalized distance)
             x_diff = abs(old_centroid[0] - new_centroid[0])
             y_diff = abs(old_centroid[1] - new_centroid[1])
-            position_distance = (x_diff ** 2 + y_diff ** 2) ** 0.5
-            position_match = max(0.0, 1.0 - position_distance / position_tolerance)
+            position_distance = (x_diff**2 + y_diff**2) ** 0.5
+
+            # Hard distance gate to prevent far-away matches of repeated text
+            if position_distance > position_tolerance:
+                continue
+
+            position_match = max(
+                0.0, 1.0 - position_distance / position_tolerance
+            )
 
             # Combined score
-            score = text_match * text_match_weight + position_match * position_match_weight
+            score = (
+                text_match * text_match_weight
+                + position_match * position_match_weight
+            )
 
-            if score > best_match_score and score > 0.3:  # Lower threshold for direct matching
+            if (
+                score > best_match_score and score > 0.3
+            ):  # Lower threshold for direct matching
                 best_match_score = score
                 best_match = new_word
                 best_match_key = new_key
@@ -294,7 +430,7 @@ def match_words_by_text_and_position(
             normalized = text.strip().upper()
             # Replace common OCR variations
             normalized = normalized.replace('"', "'").replace('"', "'")
-            normalized = normalized.replace('–', '-').replace('—', '-')
+            normalized = normalized.replace("–", "-").replace("—", "-")
             return normalized
 
         old_texts = {normalize_text(w.text) for w in old_line_words if w.text}
@@ -326,7 +462,11 @@ def match_words_by_text_and_position(
                     partial_matches += 1
                     break
 
-        partial_similarity = partial_matches / max(len(old_texts), len(new_texts), 1) if (old_texts or new_texts) else 0.0
+        partial_similarity = (
+            partial_matches / max(len(old_texts), len(new_texts), 1)
+            if (old_texts or new_texts)
+            else 0.0
+        )
         combined_similarity = max(text_similarity, partial_similarity * 0.7)
 
         print(
@@ -379,18 +519,29 @@ def match_words_by_text_and_position(
                 text_match = 1.0 if old_text_norm == new_text_norm else 0.0
                 if not text_match and old_text_norm and new_text_norm:
                     # Partial text match (substring)
-                    if old_text_norm in new_text_norm or new_text_norm in old_text_norm:
+                    if (
+                        old_text_norm in new_text_norm
+                        or new_text_norm in old_text_norm
+                    ):
                         text_match = 0.8
                     # Character overlap (fuzzy match for OCR errors)
                     elif len(set(old_text_norm) & set(new_text_norm)) > 0:
-                        char_overlap = len(set(old_text_norm) & set(new_text_norm))
-                        char_union = len(set(old_text_norm) | set(new_text_norm))
-                        text_match = (char_overlap / char_union) * 0.6 if char_union > 0 else 0.0
+                        char_overlap = len(
+                            set(old_text_norm) & set(new_text_norm)
+                        )
+                        char_union = len(
+                            set(old_text_norm) | set(new_text_norm)
+                        )
+                        text_match = (
+                            (char_overlap / char_union) * 0.6
+                            if char_union > 0
+                            else 0.0
+                        )
 
                 # Position match (normalized distance)
                 x_diff = abs(old_centroid[0] - new_centroid[0])
                 y_diff = abs(old_centroid[1] - new_centroid[1])
-                position_distance = (x_diff ** 2 + y_diff ** 2) ** 0.5
+                position_distance = (x_diff**2 + y_diff**2) ** 0.5
                 position_match = max(
                     0.0, 1.0 - position_distance / position_tolerance
                 )
@@ -398,7 +549,9 @@ def match_words_by_text_and_position(
                 # Combined score (prioritize text match, but lower threshold for OCR variations)
                 score = text_match * 0.7 + position_match * 0.3
 
-                if score > best_match_score and score > 0.3:  # Lower threshold for OCR variations
+                if (
+                    score > best_match_score and score > 0.3
+                ):  # Lower threshold for OCR variations
                     best_match_score = score
                     best_match = new_word
                     best_match_idx = idx
@@ -448,9 +601,8 @@ def map_labels_to_new_words(
             line_id=new_line_id,
             word_id=new_word_id,
             label=label.label,
-            reasoning=(
-                label.reasoning or ""
-            ) + f" (Mapped from old L{label.line_id}W{label.word_id} via re-OCR)",
+            reasoning=(label.reasoning or "")
+            + f" (Mapped from old L{label.line_id}W{label.word_id} via re-OCR)",
             timestamp_added=datetime.now(timezone.utc),
             validation_status=label.validation_status,
             label_proposed_by=label.label_proposed_by or "re_ocr_mapping",
@@ -482,7 +634,9 @@ def visualize_ocr_comparison(
         from PIL import ImageFont
 
         font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 12)
-        small_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 10)
+        small_font = ImageFont.truetype(
+            "/System/Library/Fonts/Helvetica.ttc", 10
+        )
     except:
         font = ImageFont.load_default()
         small_font = ImageFont.load_default()
@@ -519,13 +673,24 @@ def visualize_ocr_comparison(
         draw.polygon(corners, outline="green", width=2)
 
     # Draw mapping lines for matched words
-    for (old_line_id, old_word_id), (new_line_id, new_word_id) in word_map.items():
+    for (old_line_id, old_word_id), (
+        new_line_id,
+        new_word_id,
+    ) in word_map.items():
         old_word = next(
-            (w for w in old_words if w.line_id == old_line_id and w.word_id == old_word_id),
+            (
+                w
+                for w in old_words
+                if w.line_id == old_line_id and w.word_id == old_word_id
+            ),
             None,
         )
         new_word = next(
-            (w for w in new_words_list if w.line_id == new_line_id and w.word_id == new_word_id),
+            (
+                w
+                for w in new_words_list
+                if w.line_id == new_line_id and w.word_id == new_word_id
+            ),
             None,
         )
 
@@ -566,12 +731,28 @@ def visualize_ocr_comparison(
 
     # Add legend
     legend_y = 10
-    draw.rectangle([(10, legend_y), (200, legend_y + 80)], fill="white", outline="black")
+    draw.rectangle(
+        [(10, legend_y), (200, legend_y + 80)], fill="white", outline="black"
+    )
     draw.text((20, legend_y + 5), "Old OCR (Red)", fill="red", font=small_font)
-    draw.text((20, legend_y + 20), "New OCR (Green)", fill="green", font=small_font)
-    draw.text((20, legend_y + 35), "Mappings (Blue)", fill="blue", font=small_font)
-    draw.text((20, legend_y + 50), f"Matched: {len(word_map)}", fill="black", font=small_font)
-    draw.text((20, legend_y + 65), f"Labels: {len(new_labels)}", fill="purple", font=small_font)
+    draw.text(
+        (20, legend_y + 20), "New OCR (Green)", fill="green", font=small_font
+    )
+    draw.text(
+        (20, legend_y + 35), "Mappings (Blue)", fill="blue", font=small_font
+    )
+    draw.text(
+        (20, legend_y + 50),
+        f"Matched: {len(word_map)}",
+        fill="black",
+        font=small_font,
+    )
+    draw.text(
+        (20, legend_y + 65),
+        f"Labels: {len(new_labels)}",
+        fill="purple",
+        font=small_font,
+    )
 
     img.save(output_path)
     print(f"      💾 Saved comparison visualization: {output_path}")
@@ -592,7 +773,7 @@ def load_receipt_ocr_from_json(
     Returns:
         Tuple of (lines, words, letters, warped_width, warped_height)
     """
-    from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptLetter
+    from receipt_dynamo.entities import ReceiptLetter, ReceiptLine, ReceiptWord
 
     with open(json_path, "r") as f:
         data = json.load(f)
@@ -615,8 +796,16 @@ def load_receipt_ocr_from_json(
             all_y_coords.append(corner.get("y", 0))
 
     if all_x_coords and all_y_coords:
-        actual_width = max(all_x_coords) - min(all_x_coords) if all_x_coords else warped_width
-        actual_height = max(all_y_coords) - min(all_y_coords) if all_y_coords else warped_height
+        actual_width = (
+            max(all_x_coords) - min(all_x_coords)
+            if all_x_coords
+            else warped_width
+        )
+        actual_height = (
+            max(all_y_coords) - min(all_y_coords)
+            if all_y_coords
+            else warped_height
+        )
 
         # Use actual dimensions if warped dimensions are invalid
         if warped_width <= 0 or abs(warped_width) < 1:
@@ -650,13 +839,21 @@ def load_receipt_ocr_from_json(
             # We need to convert to normalized OCR space (y=0 at bottom)
             normalized_coords = []
             for coord in warped_coords:
-                x_norm = coord["x"] / warped_width if warped_width > 0 else coord["x"]
+                x_norm = (
+                    coord["x"] / warped_width
+                    if warped_width > 0
+                    else coord["x"]
+                )
                 # Convert from PIL space (y=0 at top) to OCR space (y=0 at bottom)
                 # In PIL: y=0 is top, y=height is bottom
                 # In OCR: y=0 is bottom, y=1 is top
                 # So: y_ocr = 1 - (y_pil / height)
                 y_pil = coord["y"]
-                y_norm = 1.0 - (y_pil / warped_height) if warped_height > 0 else (1.0 - y_pil)
+                y_norm = (
+                    1.0 - (y_pil / warped_height)
+                    if warped_height > 0
+                    else (1.0 - y_pil)
+                )
                 normalized_coords.append({"x": x_norm, "y": y_norm})
 
             # Calculate bounding box from normalized coordinates
@@ -674,10 +871,22 @@ def load_receipt_ocr_from_json(
                     "width": max(x_coords) - min(x_coords),
                     "height": max(y_coords) - min(y_coords),
                 },
-                top_left={"x": normalized_coords[0]["x"], "y": normalized_coords[0]["y"]},
-                top_right={"x": normalized_coords[1]["x"], "y": normalized_coords[1]["y"]},
-                bottom_right={"x": normalized_coords[2]["x"], "y": normalized_coords[2]["y"]},
-                bottom_left={"x": normalized_coords[3]["x"], "y": normalized_coords[3]["y"]},
+                top_left={
+                    "x": normalized_coords[0]["x"],
+                    "y": normalized_coords[0]["y"],
+                },
+                top_right={
+                    "x": normalized_coords[1]["x"],
+                    "y": normalized_coords[1]["y"],
+                },
+                bottom_right={
+                    "x": normalized_coords[2]["x"],
+                    "y": normalized_coords[2]["y"],
+                },
+                bottom_left={
+                    "x": normalized_coords[3]["x"],
+                    "y": normalized_coords[3]["y"],
+                },
                 angle_degrees=0.0,
                 angle_radians=0.0,
                 confidence=1.0,
@@ -694,26 +903,50 @@ def load_receipt_ocr_from_json(
             # We need to convert to normalized OCR space (y=0 at bottom)
             normalized_corners = []
             for corner in corners:
-                x_norm = corner["x"] / warped_width if warped_width > 0 else corner["x"]
+                x_norm = (
+                    corner["x"] / warped_width
+                    if warped_width > 0
+                    else corner["x"]
+                )
                 # Convert from PIL space (y=0 at top) to OCR space (y=0 at bottom)
                 # In PIL: y=0 is top, y=height is bottom
                 # In OCR: y=0 is bottom, y=1 is top
                 # So: y_ocr = 1 - (y_pil / height)
                 y_pil = corner["y"]
-                y_norm = 1.0 - (y_pil / warped_height) if warped_height > 0 else (1.0 - y_pil)
+                y_norm = (
+                    1.0 - (y_pil / warped_height)
+                    if warped_height > 0
+                    else (1.0 - y_pil)
+                )
                 normalized_corners.append({"x": x_norm, "y": y_norm})
 
-            word = ReceiptWord(
+            from receipt_dynamo.entities import (
+                ReceiptWord as ReceiptWordEntity,
+            )
+
+            word = ReceiptWordEntity(
                 receipt_id=original_receipt_id,
                 image_id=image_id,
                 line_id=word_data["line_id"],
                 word_id=word_data["word_id"],
                 text=word_data.get("text", ""),
                 bounding_box=word_data.get("bounding_box", {}),
-                top_left={"x": normalized_corners[0]["x"], "y": normalized_corners[0]["y"]},
-                top_right={"x": normalized_corners[1]["x"], "y": normalized_corners[1]["y"]},
-                bottom_right={"x": normalized_corners[2]["x"], "y": normalized_corners[2]["y"]},
-                bottom_left={"x": normalized_corners[3]["x"], "y": normalized_corners[3]["y"]},
+                top_left={
+                    "x": normalized_corners[0]["x"],
+                    "y": normalized_corners[0]["y"],
+                },
+                top_right={
+                    "x": normalized_corners[1]["x"],
+                    "y": normalized_corners[1]["y"],
+                },
+                bottom_right={
+                    "x": normalized_corners[2]["x"],
+                    "y": normalized_corners[2]["y"],
+                },
+                bottom_left={
+                    "x": normalized_corners[3]["x"],
+                    "y": normalized_corners[3]["y"],
+                },
                 angle_degrees=0.0,
                 angle_radians=0.0,
                 confidence=1.0,
@@ -725,7 +958,11 @@ def load_receipt_ocr_from_json(
         # Similar structure to words
         corners = letter_data.get("warped_receipt_coords", [])
         if len(corners) >= 4:
-            letter = ReceiptLetter(
+            from receipt_dynamo.entities import (
+                ReceiptLetter as ReceiptLetterEntity,
+            )
+
+            letter = ReceiptLetterEntity(
                 receipt_id=original_receipt_id,
                 image_id=image_id,
                 line_id=letter_data["line_id"],
@@ -784,21 +1021,28 @@ def re_ocr_receipt_and_map_labels(
     # Load accurate receipt-level OCR data from JSON export
     if ocr_export_json_path and ocr_export_json_path.exists():
         print("📥 Loading receipt-level OCR data from JSON export...")
-        old_lines, old_words, old_letters, warped_width, warped_height = load_receipt_ocr_from_json(
-            ocr_export_json_path, image_id, receipt_id
+        old_lines, old_words, old_letters, warped_width, warped_height = (
+            load_receipt_ocr_from_json(
+                ocr_export_json_path, image_id, receipt_id
+            )
         )
-        print(f"   Warped receipt dimensions: {warped_width:.0f} x {warped_height:.0f}")
+        print(
+            f"   Warped receipt dimensions: {warped_width:.0f} x {warped_height:.0f}"
+        )
         print(f"   Lines: {len(old_lines)}")
         print(f"   Words: {len(old_words)}")
         print(f"   Letters: {len(old_letters)}")
 
         # Load labels for these specific words from DynamoDB
         print("📥 Loading labels for these words from DynamoDB...")
-        old_labels, _ = client.list_receipt_word_labels_for_receipt(image_id, receipt_id)
+        old_labels, _ = client.list_receipt_word_labels_for_receipt(
+            image_id, receipt_id
+        )
         # Filter to only labels for words that are in our export
         word_keys = {(w.line_id, w.word_id) for w in old_words}
         old_labels = [
-            label for label in old_labels
+            label
+            for label in old_labels
             if (label.line_id, label.word_id) in word_keys
         ]
         print(f"   Labels: {len(old_labels)}")
@@ -806,9 +1050,15 @@ def re_ocr_receipt_and_map_labels(
         # Fallback: load from DynamoDB (less accurate)
         print("📥 Loading receipt data from DynamoDB (fallback)...")
         print("   ⚠️  Using JSON export is recommended for accurate matching")
-        old_lines = client.list_receipt_lines_from_receipt(image_id, receipt_id)
-        old_words = client.list_receipt_words_from_receipt(image_id, receipt_id)
-        old_labels, _ = client.list_receipt_word_labels_for_receipt(image_id, receipt_id)
+        old_lines = client.list_receipt_lines_from_receipt(
+            image_id, receipt_id
+        )
+        old_words = client.list_receipt_words_from_receipt(
+            image_id, receipt_id
+        )
+        old_labels, _ = client.list_receipt_word_labels_for_receipt(
+            image_id, receipt_id
+        )
         print(f"   Lines: {len(old_lines)}")
         print(f"   Words: {len(old_words)}")
         print(f"   Labels: {len(old_labels)}")
@@ -816,24 +1066,13 @@ def re_ocr_receipt_and_map_labels(
     print()
 
     # Get cropped receipt image
-    if cropped_image_path and cropped_image_path.exists():
-        print(f"📷 Using existing cropped image: {cropped_image_path}")
-        image_path = cropped_image_path
-    else:
-        print("📷 Downloading and cropping receipt image...")
-        # Download original image
-        image_entity = client.get_image(image_id)
-        raw_bucket = image_entity.raw_s3_bucket or env.get("raw_bucket")
-        s3_key = image_entity.raw_s3_key or f"raw/{image_id}.png"
-
-        original_image = get_image_from_s3(raw_bucket, s3_key)
-        print(f"   Downloaded image: {original_image.size}")
-
-        # Crop receipt region (simplified - would need proper transform)
-        # For now, assume we have the cropped image
+    if not cropped_image_path or not cropped_image_path.exists():
         raise ValueError(
             "Cropped image path required. Please provide --cropped-image-path"
         )
+
+    print(f"📷 Using cropped image: {cropped_image_path}")
+    image_path = cropped_image_path
 
     # Run Swift OCR
     if not OCR_AVAILABLE:
@@ -842,14 +1081,16 @@ def re_ocr_receipt_and_map_labels(
     print("🔍 Running Swift OCR...")
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
-        image_path_obj = Path(image_path) if isinstance(image_path, str) else image_path
+        image_path_obj = (
+            Path(image_path) if isinstance(image_path, str) else image_path
+        )
         json_files = apple_vision_ocr_job([image_path_obj], temp_path)
 
         if not json_files:
             raise ValueError("No OCR results generated")
 
         # Process OCR results
-        with open(json_files[0], "r") as f:
+        with open(json_files[0], "r", encoding="utf-8") as f:
             ocr_data = json.load(f)
 
         new_lines, new_words_list, new_letters = process_ocr_dict_as_image(
@@ -857,7 +1098,9 @@ def re_ocr_receipt_and_map_labels(
         )
         # new_words_list is a flat list of Word entities
         # new_lines is a list of Line entities
-        print(f"   New OCR: {len(new_lines)} lines, {len(new_words_list)} words")
+        print(
+            f"   New OCR: {len(new_lines)} lines, {len(new_words_list)} words"
+        )
         print()
 
     # Match words directly (word-first approach for better coverage)
@@ -866,49 +1109,406 @@ def re_ocr_receipt_and_map_labels(
     print(f"   Matched: {len(word_map)}/{len(old_words)} words")
     print()
 
-    # Map labels
+    # Determine new receipt ID (get max existing + 1)
     if new_receipt_id is None:
-        new_receipt_id = receipt_id
+        print("🔍 Finding next available receipt ID...")
+        try:
+            # Try get_receipts_from_image (even though type says int, it works with string UUIDs)
+            existing_receipts = client.get_receipts_from_image(image_id)  # type: ignore
+            if existing_receipts:
+                max_receipt_id = max(r.receipt_id for r in existing_receipts)
+                new_receipt_id = max_receipt_id + 1
+                print(
+                    f"   Found {len(existing_receipts)} existing receipts, max ID: {max_receipt_id}"
+                )
+                print(f"   Using new receipt ID: {new_receipt_id}")
+            else:
+                new_receipt_id = 1
+                print(f"   No existing receipts found, using receipt ID: 1")
+        except Exception as e:
+            print(f"   ⚠️  Could not query existing receipts: {e}")
+            print(f"   Using receipt ID: 1000 (safe fallback)")
+            new_receipt_id = 1000
 
     print("🏷️  Mapping labels to new words...")
     new_labels = map_labels_to_new_words(old_labels, word_map, new_receipt_id)
     print(f"   Mapped: {len(new_labels)}/{len(old_labels)} labels")
     print()
 
+    # Load warped receipt image and get dimensions
+    warped_image = None
+    if PIL_AVAILABLE:
+        if cropped_image_path and Path(cropped_image_path).exists():
+            warped_image = PIL_Image.open(cropped_image_path)
+        else:
+            # Try to find clean image from output_dir
+            if output_dir:
+                clean_path = output_dir / f"receipt_{receipt_id}_clean.png"
+                if clean_path.exists():
+                    warped_image = PIL_Image.open(clean_path)
+
+    if not warped_image:
+        raise ValueError(
+            "Warped receipt image required. Please provide --cropped-image-path or ensure clean image exists in output_dir"
+        )
+
+    warped_width = warped_image.width
+    warped_height = warped_image.height
+    print(f"📐 Warped receipt dimensions: {warped_width} x {warped_height}")
+
+    # Get corners from JSON export or calculate from warped image
+    # For a warped receipt, corners are: TL=(0,0), TR=(w,0), BR=(w,h), BL=(0,h) in normalized image space
+    # But we need to transform back to original image space for the Receipt entity
+    # Load JSON export to get box_4_ordered (cluster bounds in original image space)
+    receipt_corners = None
+    image_entity = client.get_image(image_id)
+    image_width = image_entity.width
+    image_height = image_entity.height
+
+    if ocr_export_json_path and ocr_export_json_path.exists():
+        with open(ocr_export_json_path, "r", encoding="utf-8") as f:
+            export_data = json.load(f)
+        box_4_ordered = export_data.get("box_4_ordered")
+        if box_4_ordered and len(box_4_ordered) == 4:
+            # box_4_ordered is in PIL space (absolute pixels, y=0 at top)
+            # Convert to normalized OCR space (0-1, y=0 at bottom) for Receipt entity
+            receipt_corners = {
+                "top_left": {
+                    "x": (
+                        box_4_ordered[0][0] / image_width
+                        if image_width > 0
+                        else 0.0
+                    ),
+                    "y": (
+                        1.0 - (box_4_ordered[0][1] / image_height)
+                        if image_height > 0
+                        else 1.0
+                    ),
+                },
+                "top_right": {
+                    "x": (
+                        box_4_ordered[1][0] / image_width
+                        if image_width > 0
+                        else 1.0
+                    ),
+                    "y": (
+                        1.0 - (box_4_ordered[1][1] / image_height)
+                        if image_height > 0
+                        else 1.0
+                    ),
+                },
+                "bottom_right": {
+                    "x": (
+                        box_4_ordered[2][0] / image_width
+                        if image_width > 0
+                        else 1.0
+                    ),
+                    "y": (
+                        1.0 - (box_4_ordered[2][1] / image_height)
+                        if image_height > 0
+                        else 0.0
+                    ),
+                },
+                "bottom_left": {
+                    "x": (
+                        box_4_ordered[3][0] / image_width
+                        if image_width > 0
+                        else 0.0
+                    ),
+                    "y": (
+                        1.0 - (box_4_ordered[3][1] / image_height)
+                        if image_height > 0
+                        else 0.0
+                    ),
+                },
+            }
+            print(f"   ✅ Loaded corners from JSON export")
+        else:
+            print(
+                f"   ⚠️  No valid box_4_ordered in JSON export, using default corners"
+            )
+
+    if not receipt_corners:
+        # Default: warped receipt fills the entire image (shouldn't happen, but fallback)
+        receipt_corners = {
+            "top_left": {"x": 0.0, "y": 1.0},
+            "top_right": {"x": 1.0, "y": 1.0},
+            "bottom_right": {"x": 1.0, "y": 0.0},
+            "bottom_left": {"x": 0.0, "y": 0.0},
+        }
+        print(f"   ⚠️  Using default corners (full image)")
+
+    # Get buckets from environment or image entity
+    raw_bucket = env.get("raw_bucket") or image_entity.raw_s3_bucket or ""
+    site_bucket = env.get("site_bucket") or image_entity.cdn_s3_bucket or ""
+    artifacts_bucket = env.get("artifacts_bucket") or ""
+    chromadb_bucket = env.get("chromadb_bucket") or ""
+
+    if not raw_bucket or not site_bucket:
+        raise ValueError(
+            f"Missing buckets: raw_bucket={raw_bucket}, site_bucket={site_bucket}"
+        )
+
+    print(f"📦 Buckets: raw={raw_bucket}, site={site_bucket}")
+    if artifacts_bucket:
+        print(f"   artifacts={artifacts_bucket}")
+    if chromadb_bucket:
+        print(f"   chromadb={chromadb_bucket}")
+
+    # Convert OCR entities to Receipt entities
+    print("🔄 Converting OCR entities to Receipt entities...")
+    if not image_ocr_to_receipt_ocr:
+        raise ValueError("image_ocr_to_receipt_ocr not available")
+
+    # Ensure new_receipt_id is not None
+    assert new_receipt_id is not None, "new_receipt_id must be set"
+
+    receipt_lines, receipt_words, receipt_letters = image_ocr_to_receipt_ocr(
+        new_lines, new_words_list, new_letters, new_receipt_id
+    )
+    print(
+        f"   Converted: {len(receipt_lines)} lines, {len(receipt_words)} words, {len(receipt_letters)} letters"
+    )
+
+    # Upload images to S3 (skip in dry-run)
+    if not dry_run:
+        print("📤 Uploading images to S3...")
+        raw_s3_key = f"raw/{image_id}_RECEIPT_{new_receipt_id:05d}.png"
+        upload_png_to_s3(warped_image, raw_bucket, raw_s3_key)
+        print(f"   ✅ Uploaded raw image: s3://{raw_bucket}/{raw_s3_key}")
+
+        # Upload CDN formats
+        cdn_base_key = f"assets/{image_id}_RECEIPT_{new_receipt_id:05d}"
+        cdn_keys = upload_all_cdn_formats(
+            warped_image, site_bucket, cdn_base_key, generate_thumbnails=True
+        )
+        print(
+            f"   ✅ Uploaded CDN formats: {len([k for k in cdn_keys.values() if k])} variants"
+        )
+
+        # Calculate SHA256
+        sha256 = hashlib.sha256(warped_image.tobytes()).hexdigest()
+    else:
+        print("🔍 Dry run: skipping S3 uploads")
+        raw_s3_key = ""
+        cdn_keys = {}
+        sha256 = ""
+
+    # Create Receipt entity
+    print("📝 Creating Receipt entity...")
+    # Ensure new_receipt_id is not None
+    assert new_receipt_id is not None, "new_receipt_id must be set"
+
+    receipt = Receipt(
+        image_id=image_id,
+        receipt_id=new_receipt_id,
+        width=warped_width,
+        height=warped_height,
+        timestamp_added=datetime.now(timezone.utc),
+        raw_s3_bucket=raw_bucket,
+        raw_s3_key=raw_s3_key,
+        top_left=receipt_corners["top_left"],
+        top_right=receipt_corners["top_right"],
+        bottom_left=receipt_corners["bottom_left"],
+        bottom_right=receipt_corners["bottom_right"],
+        sha256=sha256,
+        cdn_s3_bucket=site_bucket,
+        cdn_s3_key=cdn_keys.get("jpeg"),
+        cdn_webp_s3_key=cdn_keys.get("webp"),
+        cdn_avif_s3_key=cdn_keys.get("avif"),
+        cdn_thumbnail_s3_key=cdn_keys.get("jpeg_thumbnail"),
+        cdn_thumbnail_webp_s3_key=cdn_keys.get("webp_thumbnail"),
+        cdn_thumbnail_avif_s3_key=cdn_keys.get("avif_thumbnail"),
+        cdn_small_s3_key=cdn_keys.get("jpeg_small"),
+        cdn_small_webp_s3_key=cdn_keys.get("webp_small"),
+        cdn_small_avif_s3_key=cdn_keys.get("avif_small"),
+        cdn_medium_s3_key=cdn_keys.get("jpeg_medium"),
+        cdn_medium_webp_s3_key=cdn_keys.get("webp_medium"),
+        cdn_medium_avif_s3_key=cdn_keys.get("avif_medium"),
+    )
+    print(f"   ✅ Created Receipt entity (ID: {new_receipt_id})")
+
     # Create visualization comparing old and new OCR
     if output_dir:
         output_dir.mkdir(parents=True, exist_ok=True)
-        comparison_path = output_dir / f"receipt_{new_receipt_id if new_receipt_id else receipt_id}_ocr_comparison.png"
+        comparison_path = (
+            output_dir / f"receipt_{new_receipt_id}_ocr_comparison.png"
+        )
 
-        # Load the receipt image (warped/cropped)
-        receipt_image = None
-        if PIL_AVAILABLE:
-            if cropped_image_path and Path(cropped_image_path).exists():
-                receipt_image = PIL_Image.open(cropped_image_path)
-            else:
-                # Use the warped image from visualization if available
-                vis_path = output_dir / f"receipt_{receipt_id}_clean.png"
-                if vis_path.exists():
-                    receipt_image = PIL_Image.open(vis_path)
-                else:
-                    print("⚠️  No receipt image available for visualization")
+        if PIL_AVAILABLE and warped_image:
+            visualize_ocr_comparison(
+                old_words,
+                new_words_list,
+                word_map,
+                old_labels,
+                new_labels,
+                warped_image,
+                comparison_path,
+            )
 
-            if receipt_image:
-                visualize_ocr_comparison(
-                    old_words,
-                    new_words_list,
-                    word_map,
-                    old_labels,
-                    new_labels,
-                    receipt_image,
-                    comparison_path,
-                )
-        else:
-            print("⚠️  Cannot create visualization - PIL not available")
+    # Export all entities to JSON for review
+    export_data = {
+        "image_id": image_id,
+        "original_receipt_id": receipt_id,
+        "new_receipt_id": new_receipt_id,
+        "warped_width": warped_width,
+        "warped_height": warped_height,
+        "receipt": {
+            "image_id": receipt.image_id,
+            "receipt_id": receipt.receipt_id,
+            "width": receipt.width,
+            "height": receipt.height,
+            "raw_s3_bucket": receipt.raw_s3_bucket,
+            "raw_s3_key": receipt.raw_s3_key,
+            "top_left": receipt.top_left,
+            "top_right": receipt.top_right,
+            "bottom_left": receipt.bottom_left,
+            "bottom_right": receipt.bottom_right,
+            "sha256": receipt.sha256,
+            "cdn_s3_bucket": receipt.cdn_s3_bucket,
+            "cdn_s3_key": receipt.cdn_s3_key,
+            "cdn_webp_s3_key": receipt.cdn_webp_s3_key,
+            "cdn_avif_s3_key": receipt.cdn_avif_s3_key,
+        },
+        "receipt_lines": [
+            {
+                "image_id": line.image_id,
+                "receipt_id": line.receipt_id,
+                "line_id": line.line_id,
+                "text": line.text,
+                "bounding_box": line.bounding_box,
+                "top_left": line.top_left,
+                "top_right": line.top_right,
+                "bottom_left": line.bottom_left,
+                "bottom_right": line.bottom_right,
+            }
+            for line in receipt_lines
+        ],
+        "receipt_words": [
+            {
+                "image_id": word.image_id,
+                "receipt_id": word.receipt_id,
+                "line_id": word.line_id,
+                "word_id": word.word_id,
+                "text": word.text,
+                "bounding_box": word.bounding_box,
+                "top_left": word.top_left,
+                "top_right": word.top_right,
+                "bottom_left": word.bottom_left,
+                "bottom_right": word.bottom_right,
+            }
+            for word in receipt_words
+        ],
+        "receipt_letters": [
+            {
+                "image_id": letter.image_id,
+                "receipt_id": letter.receipt_id,
+                "line_id": letter.line_id,
+                "word_id": letter.word_id,
+                "letter_id": letter.letter_id,
+                "text": letter.text,
+                "bounding_box": letter.bounding_box,
+                "top_left": letter.top_left,
+                "top_right": letter.top_right,
+                "bottom_left": letter.bottom_left,
+                "bottom_right": letter.bottom_right,
+            }
+            for letter in receipt_letters
+        ],
+        "receipt_word_labels": [
+            {
+                "image_id": label.image_id,
+                "receipt_id": label.receipt_id,
+                "line_id": label.line_id,
+                "word_id": label.word_id,
+                "label": label.label,
+                "reasoning": label.reasoning,
+                "validation_status": label.validation_status,
+            }
+            for label in new_labels
+        ],
+    }
 
-    # Save results
+    # Save JSON export
+    if output_dir:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        json_path = (
+            output_dir / f"receipt_{new_receipt_id}_entities_export.json"
+        )
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(export_data, f, indent=2, default=str)
+        print(f"💾 Exported entities to: {json_path}")
+
+    # Save to DynamoDB (if not dry_run)
     if not dry_run:
-        print("💾 Saving new labels to DynamoDB...")
+        print("💾 Saving entities to DynamoDB...")
+        client.add_receipt(receipt)
+        client.add_receipt_lines(receipt_lines)
+        client.add_receipt_words(receipt_words)
+        if receipt_letters:
+            client.add_receipt_letters(receipt_letters)
+        print(
+            f"   ✅ Saved Receipt, {len(receipt_lines)} lines, {len(receipt_words)} words, {len(receipt_letters)} letters"
+        )
+
+        # Export NDJSON to S3 (if artifacts_bucket is available)
+        if artifacts_bucket:
+            print("📤 Exporting NDJSON to S3...")
+            try:
+                from receipt_agent.receipt_agent.lifecycle.ndjson_manager import (
+                    export_receipt_ndjson,
+                )
+
+                export_receipt_ndjson(
+                    client=client,
+                    artifacts_bucket=artifacts_bucket,
+                    image_id=image_id,
+                    receipt_id=new_receipt_id,
+                    receipt_lines=receipt_lines,
+                    receipt_words=receipt_words,
+                )
+                print("   ✅ NDJSON exported")
+            except ImportError as e:
+                print(f"   ⚠️  Could not import export_receipt_ndjson: {e}")
+            except Exception as e:
+                print(f"   ⚠️  Error exporting NDJSON: {e}")
+                import traceback
+
+                traceback.print_exc()
+
+        # Create embeddings and CompactionRun (if chromadb_bucket is available)
+        if chromadb_bucket:
+            print("🧠 Creating embeddings and CompactionRun...")
+            try:
+                from receipt_agent.receipt_agent.lifecycle.embedding_manager import (
+                    create_embeddings,
+                )
+
+                compaction_run_id = create_embeddings(
+                    client=client,
+                    chromadb_bucket=chromadb_bucket,
+                    image_id=image_id,
+                    receipt_id=new_receipt_id,
+                    receipt_lines=receipt_lines,
+                    receipt_words=receipt_words,
+                    merchant_name=None,  # Could be extracted from receipt metadata if available
+                )
+                if compaction_run_id:
+                    print(
+                        f"   ✅ Created embeddings and CompactionRun: {compaction_run_id}"
+                    )
+                else:
+                    print(
+                        "   ⚠️  Embedding creation skipped (not available or failed)"
+                    )
+            except ImportError as e:
+                print(f"   ⚠️  Could not import create_embeddings: {e}")
+            except Exception as e:
+                print(f"   ⚠️  Error creating embeddings: {e}")
+                import traceback
+
+                traceback.print_exc()
+
         if new_labels:
             saved_count = 0
             failed_count = 0
@@ -916,13 +1516,15 @@ def re_ocr_receipt_and_map_labels(
             # Chunk into batches of 25 (DynamoDB limit)
             chunk_size = 25
             for i in range(0, len(new_labels), chunk_size):
-                chunk = new_labels[i:i + chunk_size]
+                chunk = new_labels[i : i + chunk_size]
                 try:
                     client.add_receipt_word_labels(chunk)
                     saved_count += len(chunk)
                     print(f"   ✅ Saved batch of {len(chunk)} labels")
                 except Exception as e:
-                    print(f"   ⚠️ Bulk add failed for chunk of {len(chunk)}: {e}")
+                    print(
+                        f"   ⚠️ Bulk add failed for chunk of {len(chunk)}: {e}"
+                    )
                     print("   🔄 Attempting individual adds for this chunk...")
                     for label in chunk:
                         try:
@@ -941,12 +1543,19 @@ def re_ocr_receipt_and_map_labels(
             print("   ℹ️  No labels to save")
     else:
         print("🔍 DRY RUN - Would save:")
-        for label in new_labels[:10]:  # Show first 10
+        print(f"   - Receipt entity (ID: {new_receipt_id})")
+        print(f"   - {len(receipt_lines)} ReceiptLine entities")
+        print(f"   - {len(receipt_words)} ReceiptWord entities")
+        print(f"   - {len(receipt_letters)} ReceiptLetter entities")
+        print(f"   - {len(new_labels)} ReceiptWordLabel entities")
+        print()
+        print("   First 10 labels:")
+        for label in new_labels[:10]:
             print(
-                f"   - {label.label} -> (L{label.line_id}W{label.word_id}) '{label.reasoning[:50] if label.reasoning else ''}...'"
+                f"     - {label.label} -> (L{label.line_id}W{label.word_id}) '{label.reasoning[:50] if label.reasoning else ''}...'"
             )
         if len(new_labels) > 10:
-            print(f"   ... and {len(new_labels) - 10} more")
+            print(f"     ... and {len(new_labels) - 10} more")
 
     print()
     print("✅ Complete!")
@@ -957,7 +1566,9 @@ def main():
         description="Re-OCR a receipt and map previous labels to new OCR data"
     )
     parser.add_argument("--image-id", required=True, help="Image ID")
-    parser.add_argument("--receipt-id", type=int, required=True, help="Receipt ID")
+    parser.add_argument(
+        "--receipt-id", type=int, required=True, help="Receipt ID"
+    )
     parser.add_argument(
         "--new-receipt-id",
         type=int,
@@ -1006,4 +1617,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

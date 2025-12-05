@@ -378,11 +378,8 @@ def visualize_final_clusters_cropped(
     # Get final clusters with parameterized thresholds
     # Default values (tuned for image-level OCR)
     clustering_params = {
-        "x_eps": (
-            x_eps
-            if x_eps is not None
-            else (0.15 if receipt_id is not None else 0.08)
-        ),
+        # Use the tighter default (0.08) regardless of receipt_id to avoid over-merge
+        "x_eps": x_eps if x_eps is not None else 0.08,
         "angle_tolerance": (
             angle_tolerance if angle_tolerance is not None else 3.0
         ),

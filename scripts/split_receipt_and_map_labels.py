@@ -60,7 +60,7 @@ def split_receipt_and_map_labels(
 ) -> None:
     """
     Split a receipt into multiple receipts, re-OCR each, and map labels.
-    
+
     Args:
         image_id: Image ID
         receipt_id: Receipt ID to split
@@ -72,13 +72,13 @@ def split_receipt_and_map_labels(
     table_name = env.get("dynamo_table_name") or "ReceiptsTable-dc5be22"
     client = DynamoClient(table_name)
     raw_bucket = env.get("raw_bucket") or "raw-image-bucket-c779c32"
-    
+
     # Set up output directory
     if output_dir is None:
         output_dir = Path(f"split_receipts_output_{image_id[:8]}")
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     print("=" * 70)
     print(f"SPLIT RECEIPT AND MAP LABELS")
     print("=" * 70)
@@ -87,11 +87,11 @@ def split_receipt_and_map_labels(
     print(f"Output Directory: {output_dir}")
     print(f"Dry Run: {dry_run}")
     print()
-    
+
     # Step 1: Split receipt and export JSON/images
     print("📊 Step 1: Splitting receipt and exporting clusters...")
     print("-" * 70)
-    
+
     visualize_final_clusters_cropped(
         image_id=image_id,
         output_dir=output_dir,
@@ -109,46 +109,46 @@ def split_receipt_and_map_labels(
         join_iou_threshold=join_iou_threshold,
     )
     print()
-    
+
     # Step 2: Find all exported JSON files and re-OCR each cluster
     print("🔍 Step 2: Re-OCRing each split receipt and mapping labels...")
     print("-" * 70)
-    
+
     # Find all receipt_*_ocr_export.json files
     json_files = sorted(output_dir.glob("receipt_*_ocr_export.json"))
-    
+
     if not json_files:
         print("⚠️  No JSON export files found. Cannot proceed with re-OCR.")
         return
-    
+
     print(f"   Found {len(json_files)} split receipt(s) to process")
     print()
-    
+
     # Process each split receipt
     for json_file in json_files:
         # Extract cluster/receipt number from filename (e.g., receipt_1_ocr_export.json -> 1)
         cluster_id = json_file.stem.replace("receipt_", "").replace("_ocr_export", "")
-        
+
         try:
             cluster_num = int(cluster_id)
         except ValueError:
             print(f"⚠️  Could not parse cluster ID from {json_file.name}, skipping")
             continue
-        
+
         # Determine new receipt ID (use cluster number, or receipt_id + cluster_num)
         new_receipt_id = receipt_id + cluster_num
-        
+
         # Find corresponding clean image
         clean_image_path = output_dir / f"receipt_{cluster_id}_clean.png"
-        
+
         if not clean_image_path.exists():
             print(f"⚠️  Clean image not found: {clean_image_path}, skipping cluster {cluster_id}")
             continue
-        
+
         print(f"📋 Processing cluster {cluster_id} (new receipt_id: {new_receipt_id})...")
         print(f"   JSON: {json_file.name}")
         print(f"   Image: {clean_image_path.name}")
-        
+
         # Re-OCR and map labels
         if RE_OCR_AVAILABLE:
             try:
@@ -167,9 +167,9 @@ def split_receipt_and_map_labels(
                 traceback.print_exc()
         else:
             print(f"   ⚠️  Re-OCR functionality not available, skipping")
-        
+
         print()
-    
+
     print("=" * 70)
     print("✅ Complete!")
     print(f"   Output directory: {output_dir}")
@@ -200,7 +200,7 @@ def main():
         dest="dry_run",
         help="Actually save labels to DynamoDB",
     )
-    
+
     # Clustering parameters (optional, will use defaults if not specified)
     parser.add_argument(
         "--x-eps",
@@ -252,9 +252,9 @@ def main():
         type=float,
         help="IoU threshold for joining clusters",
     )
-    
+
     args = parser.parse_args()
-    
+
     split_receipt_and_map_labels(
         args.image_id,
         args.receipt_id,

@@ -254,6 +254,11 @@ infra/backups/
 *_entities.json
 *_ocr_export.json
 
+# Local receipt splitting outputs
+split_out_*/
+split_validation_*/
+test_split_and_map/
+
 # Large NDJSON data files (should be in S3, not git)
 *.ndjson
 infra/*.ndjson
