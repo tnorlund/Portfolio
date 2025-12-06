@@ -1431,9 +1431,6 @@ layers_to_build = [
 SKIP_LAYER_BUILDING = (
     os.environ.get("PYTEST_RUNNING") == "1" or False
 )  # Skip building during tests
-SKIP_LAYER_BUILDING = (
-    os.environ.get("PYTEST_RUNNING") == "1" or False
-)  # Skip building during tests
 
 # SYNC MODE: Set to True when ARNs are needed immediately (e.g., after major changes)
 # Set to False for faster pulumi up once layers are stable

@@ -112,8 +112,8 @@ class EcsLambda(ComponentResource):
         if sync_mode is not None:
             self.sync_mode = sync_mode
         else:
-            config = pulumi.Config("ecs-lambda")
-            if config.get_bool("sync-mode"):
+            ecs_config = pulumi.Config("ecs-lambda")
+            if ecs_config.get_bool("sync-mode"):
                 self.sync_mode = True
             elif os.getenv("CI") or os.getenv("GITHUB_ACTIONS"):
                 self.sync_mode = True
@@ -121,9 +121,9 @@ class EcsLambda(ComponentResource):
                 self.sync_mode = False
 
         # Additional config flags
-        config = pulumi.Config("ecs-lambda")
-        self.force_rebuild = config.get_bool("force-rebuild") or False
-        self.debug_mode = config.get_bool("debug-mode") or False
+        ecs_config = pulumi.Config("ecs-lambda")
+        self.force_rebuild = ecs_config.get_bool("force-rebuild") or False
+        self.debug_mode = ecs_config.get_bool("debug-mode") or False
 
         # Validate input source directory and compute change hash
         self._validate_package_dir()
