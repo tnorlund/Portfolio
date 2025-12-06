@@ -67,11 +67,12 @@ from validation_pipeline import ValidationPipeline
 # Import other necessary components
 try:
     # from infra.components import lambda_layer  # noqa: F401
-    from infra.components import lambda_layer  # noqa: F401
     from lambda_functions.label_count_cache_updater.infra import (  # noqa: F401
         label_count_cache_updater_lambda,
     )
     from routes.health_check.infra import health_check_lambda  # noqa: F401
+
+    from infra.components import lambda_layer  # noqa: F401
 
     print("✓ Successfully imported label_count_cache_updater_lambda")
 except ImportError as e:
