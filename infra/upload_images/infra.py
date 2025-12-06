@@ -5,7 +5,7 @@ from pathlib import Path
 import pulumi
 import pulumi_aws as aws
 from dynamo_db import dynamodb_table
-from lambda_layer import dynamo_layer, label_layer, upload_layer
+from infra.components.lambda_layer import dynamo_layer, label_layer, upload_layer
 from pulumi import (
     AssetArchive,
     ComponentResource,
@@ -25,7 +25,7 @@ from pulumi_aws.ecr import (
 from pulumi_aws.sqs import Queue
 
 # Import the CodeBuildDockerImage component
-from codebuild_docker_image import CodeBuildDockerImage
+from infra.components.codebuild_docker_image import CodeBuildDockerImage
 
 config = Config("portfolio")
 openai_api_key = config.require_secret("OPENAI_API_KEY")

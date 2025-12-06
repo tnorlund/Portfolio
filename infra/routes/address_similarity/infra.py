@@ -6,7 +6,7 @@ import pulumi_aws as aws
 from pulumi import AssetArchive, FileArchive, Input, Output
 
 # Import the Lambda Layer (if needed, though this endpoint doesn't use DynamoDB directly)
-from lambda_layer import dynamo_layer
+from infra.components.lambda_layer import dynamo_layer
 
 # Import the cache bucket name from the cache generator route
 from routes.address_similarity_cache_generator.infra import cache_bucket_name
