@@ -24,6 +24,7 @@ from pulumi_aws.s3 import (
     BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs,
     BucketServerSideEncryptionConfigurationRuleArgs,
     BucketVersioning,
+    BucketVersioningArgs,
     BucketVersioningVersioningConfigurationArgs,
 )
 
@@ -123,6 +124,10 @@ def make_artifact_bucket(
                     sse_algorithm="AES256"
                 )
             )
+        ),
+        # Enable versioning at bucket creation time to satisfy CodePipeline requirements
+        versioning=(
+            BucketVersioningArgs(enabled=True) if enable_versioning else None
         ),
         tags=tags,
         opts=ResourceOptions(parent=parent),
