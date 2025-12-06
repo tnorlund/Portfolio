@@ -40,7 +40,7 @@ class EFSStorage(ComponentResource):
             lifecycle_policy: Optional lifecycle policy for data retention
             opts: Optional resource options
         """
-        super().__init__("efs-storage", name, None, opts)
+        super().__init__("custom:efs:EFSStorage", name, None, opts)
         component_opts = (
             ResourceOptions.merge(opts, ResourceOptions(parent=self))
             if opts is not None
@@ -60,15 +60,8 @@ class EFSStorage(ComponentResource):
                     security_groups=security_group_ids,
                 ),
             ],
-            egress=[
-                # Allow all outbound traffic
-                aws.ec2.SecurityGroupEgressArgs(
-                    from_port=0,
-                    to_port=0,
-                    protocol="-1",
-                    cidr_blocks=["0.0.0.0/0"],
-                ),
-            ],
+            # EFS mount targets do not need outbound rules; default deny is sufficient
+            egress=[],
             opts=component_opts,
         )
 
