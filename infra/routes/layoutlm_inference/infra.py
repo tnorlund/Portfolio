@@ -7,7 +7,7 @@ import pulumi_aws as aws
 from pulumi import AssetArchive, FileArchive, Input, Output
 
 # Import the Lambda Layer (if needed, though this endpoint doesn't use DynamoDB directly)
-from lambda_layer import dynamo_layer
+from infra.components.lambda_layer import dynamo_layer
 
 # Reference the directory containing index.py
 HANDLER_DIR = os.path.join(os.path.dirname(__file__), "handler")

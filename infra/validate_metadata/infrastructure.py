@@ -7,7 +7,7 @@ from typing import Optional
 import pulumi
 import pulumi_aws as aws
 from dynamo_db import dynamodb_table  # pylint: disable=import-error
-from lambda_layer import dynamo_layer  # pylint: disable=import-error
+from infra.components.lambda_layer import dynamo_layer  # pylint: disable=import-error
 from pulumi import (
     AssetArchive,
     ComponentResource,
@@ -22,7 +22,7 @@ from pulumi_aws.lambda_ import Function, FunctionEnvironmentArgs, FunctionVpcCon
 from pulumi_aws.sfn import StateMachine, StateMachineLoggingConfigurationArgs
 
 # Import the CodeBuildDockerImage component
-from codebuild_docker_image import CodeBuildDockerImage
+from infra.components.codebuild_docker_image import CodeBuildDockerImage
 
 config = Config("portfolio")
 ollama_api_key = config.require_secret("OLLAMA_API_KEY")

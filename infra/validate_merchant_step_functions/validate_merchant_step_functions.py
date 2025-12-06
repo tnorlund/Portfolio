@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pulumi
 from dynamo_db import dynamodb_table  # pylint: disable=import-error
-from lambda_layer import dynamo_layer  # pylint: disable=import-error
-from lambda_layer import label_layer
+from infra.components.lambda_layer import dynamo_layer  # pylint: disable=import-error
+from infra.components.lambda_layer import label_layer
 from pulumi import (
     AssetArchive,
     ComponentResource,
@@ -32,7 +32,7 @@ from pulumi_aws.ecr import (
 from pulumi_aws.sfn import StateMachine
 
 # Import the CodeBuildDockerImage component
-from codebuild_docker_image import CodeBuildDockerImage
+from infra.components.codebuild_docker_image import CodeBuildDockerImage
 
 config = Config("portfolio")
 openai_api_key = config.require_secret("OPENAI_API_KEY")
