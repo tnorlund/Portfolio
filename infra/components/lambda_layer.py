@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 lambda_layer.py
 
@@ -19,6 +18,7 @@ import glob
 import json
 import os
 import shlex
+import tempfile
 from typing import Any, Dict, List, Optional
 
 import pulumi
@@ -234,8 +234,9 @@ class LambdaLayer(ComponentResource):
                             pulumi.log.info(
                                 f"📦 Found local dependency: {dir_name} for {self.name}"
                             )
-            except Exception as e:
+            except (OSError, ValueError) as e:
                 pulumi.log.warn(f"Could not parse pyproject.toml: {e}")
+                raise
 
         return local_deps
 
@@ -303,45 +304,15 @@ class LambdaLayer(ComponentResource):
                     if dep and not dep.startswith("#") and current_extra:
                         optional_deps[current_extra].append(dep)
 
-        except Exception as e:
+        except (OSError, ValueError) as e:
             pulumi.log.warn(f"Basic parsing failed: {e}")
+            raise
 
         return result
 
     def _encode_shell_script(self, script_content: str) -> str:
         """Encode a shell script to base64 for use in buildspec to avoid parsing issues."""
         return base64.b64encode(script_content.encode("utf-8")).decode("utf-8")
-
-    def _generate_batched_pip_install(
-        self,
-        packages: List[str],
-        target_dir: str,
-        python_version: str,
-        batch_size: int = 10,
-    ) -> List[str]:
-        """Generate batched pip install commands to avoid ARG_MAX errors.
-
-        Args:
-            packages: List of package names to install
-            target_dir: Target directory for installation
-            python_version: Python version to use
-            batch_size: Number of packages per batch
-
-        Returns:
-            List of pip install commands
-        """
-        if not packages:
-            return []
-
-        commands = []
-        for i in range(0, len(packages), batch_size):
-            batch = packages[i : i + batch_size]
-            pkg_str = " ".join(batch)
-            commands.append(
-                f"python{python_version} -m pip install --no-cache-dir --no-compile "
-                f"{pkg_str} -t {target_dir}"
-            )
-        return commands
 
     def _get_update_functions_script(self) -> str:
         """Generate the shell script for updating Lambda functions."""
@@ -718,7 +689,7 @@ echo "🎉 Parallel function updates completed!"'''
                 environment=ProjectEnvironmentArgs(
                     type="ARM_CONTAINER",
                     compute_type="BUILD_GENERAL1_SMALL",
-                    image=f"aws/codebuild/amazonlinux-aarch64-standard:3.0",
+                    image="aws/codebuild/amazonlinux-aarch64-standard:3.0",
                     environment_variables=[
                         ProjectEnvironmentEnvironmentVariableArgs(
                             name="PYTHON_VERSION", value=v
@@ -1093,16 +1064,19 @@ done
                 bucket, package_path, package_hash
             )
 
-            # Create a persistent script file in /tmp with a unique name
-            script_name = f"pulumi-upload-{self.name}-{package_hash[:8]}.sh"
-            script_path = os.path.join("/tmp", script_name)
+            # Create a persistent script file in a secure temp location
+            fd, script_path = tempfile.mkstemp(
+                prefix=f"pulumi-upload-{self.name}-{package_hash[:8]}-",
+                suffix=".sh",
+            )
+            os.close(fd)
 
             # Write the script file
             with open(script_path, "w") as f:
                 f.write(script_content)
 
-            # Make it executable
-            os.chmod(script_path, 0o755)
+            # Restrict permissions to the current user
+            os.chmod(script_path, 0o700)
 
             # Return just the simple command to execute the script
             # No arguments or environment variables in the command line
@@ -1295,7 +1269,7 @@ PROJECT="{project_name}"
 echo "🔍 Checking if initial layer exists for '{self.name}'..."
 
 # Check if layer exists
-if aws s3api head-object --bucket "$BUCKET" --key "{self.name}/layer.zip" &>/dev/null; then
+if aws s3api head-object --bucket "$BUCKET" --key "{self.name}/combined/layer.zip" &>/dev/null; then
     echo "✅ Layer already exists. No initial build needed."
     exit 0
 fi
@@ -1350,7 +1324,7 @@ if [ "$(aws s3 cp s3://$BUCKET/{self.name}/hash.txt - 2>/dev/null || echo '')" \
     echo "✅ No changes detected. Skipping rebuild."
 
     # Ensure layer exists
-    if ! aws s3api head-object --bucket "$BUCKET" --key "{self.name}/layer.zip" &>/dev/null; then
+    if ! aws s3api head-object --bucket "$BUCKET" --key "{self.name}/combined/layer.zip" &>/dev/null; then
         echo "❌ Layer missing but hash matches. Please run with force-rebuild."
         exit 1
     fi
@@ -1445,7 +1419,7 @@ lambda_layers = {}
 try:
     pulumi.get_stack()  # This will throw if not in a Pulumi context
     _in_pulumi_context = not SKIP_LAYER_BUILDING
-except Exception:
+except pulumi.RunError:
     _in_pulumi_context = False
 
 if _in_pulumi_context:

@@ -163,9 +163,7 @@ class CodeBuildDockerImage(ComponentResource):
         # Push bootstrap image and create Lambda function if config provided
         if self.lambda_config:
             bootstrap_cmd = self._push_bootstrap_image()
-            self._create_lambda_function(
-                bootstrap_cmd, pipeline, pipeline_trigger_cmd
-            )
+            self._create_lambda_function(bootstrap_cmd, pipeline_trigger_cmd)
         else:
             self.lambda_function = None
 
@@ -263,8 +261,6 @@ class CodeBuildDockerImage(ComponentResource):
     def _generate_upload_script(self, bucket: str, content_hash: str) -> str:
         """Generate script to upload build context to S3."""
         safe_bucket = shlex.quote(bucket)
-        safe_context = shlex.quote(str(self.build_context_path))
-        safe_dockerfile = shlex.quote(str(self.dockerfile_path))
 
         # Build source paths string for script
         source_paths_str = ""
@@ -646,7 +642,14 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
                         "Statement": [
                             {
                                 "Effect": "Allow",
-                                "Action": ["s3:*"],
+                                "Action": [
+                                    "s3:GetObject",
+                                    "s3:GetObjectVersion",
+                                    "s3:PutObject",
+                                    "s3:GetBucketAcl",
+                                    "s3:GetBucketLocation",
+                                    "s3:ListBucket",
+                                ],
                                 "Resource": [arn, f"{arn}/*"],
                             },
                         ],
@@ -896,9 +899,7 @@ echo "✅ Bootstrap image pushed to $REPO_URL:latest"
             ),
         )
 
-    def _create_lambda_function(
-        self, bootstrap_cmd, pipeline, pipeline_trigger_cmd
-    ):
+    def _create_lambda_function(self, bootstrap_cmd, pipeline_trigger_cmd):
         """Create Lambda function that will be updated by CodeBuild."""
 
         # Use our ECR repo with :latest tag as initial image
