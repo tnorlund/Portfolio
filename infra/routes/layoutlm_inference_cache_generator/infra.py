@@ -11,7 +11,7 @@ from pulumi import ComponentResource, Input, Output, ResourceOptions
 from dynamo_db import dynamodb_table
 
 # Import the CodeBuildDockerImage component
-from codebuild_docker_image import CodeBuildDockerImage
+from infra.components.codebuild_docker_image import CodeBuildDockerImage
 
 # Reference the directory containing index.py
 HANDLER_DIR = os.path.join(os.path.dirname(__file__), "lambdas")

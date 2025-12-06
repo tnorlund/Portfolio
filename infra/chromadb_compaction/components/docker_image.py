@@ -1,21 +1,21 @@
 """Docker image building component for ChromaDB compaction Lambda functions."""
 
-import json
 import hashlib
+import json
 import subprocess
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 import pulumi
 from pulumi import ComponentResource, Output, ResourceOptions
 from pulumi_aws.ecr import (
+    LifecyclePolicy,
     Repository,
     RepositoryImageScanningConfigurationArgs,
-    LifecyclePolicy,
 )
 
 # Import the CodeBuildDockerImage component
-from codebuild_docker_image import CodeBuildDockerImage
+from infra.components.codebuild_docker_image import CodeBuildDockerImage
 
 
 class DockerImageComponent(ComponentResource):

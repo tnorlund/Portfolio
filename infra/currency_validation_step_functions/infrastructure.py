@@ -7,7 +7,7 @@ import pulumi_aws as aws
 from pulumi import AssetArchive, FileArchive, ResourceOptions
 
 # from dynamo_db import dynamodb_table
-# from lambda_layer import dynamo_layer, label_layer
+# from infra.components.lambda_layer import dynamo_layer, label_layer
 from notifications import NotificationSystem
 
 

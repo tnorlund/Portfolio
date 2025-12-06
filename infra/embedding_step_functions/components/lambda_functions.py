@@ -9,12 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from pulumi import (
-    ComponentResource,
-    FileArchive,
-    Output,
-    ResourceOptions,
-)
+from pulumi import ComponentResource, FileArchive, Output, ResourceOptions
 from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
 from pulumi_aws.lambda_ import (
     Function,
@@ -39,7 +34,7 @@ from .base import (
 infra_path = Path(__file__).parent.parent.parent
 if str(infra_path) not in sys.path:
     sys.path.insert(0, str(infra_path))
-from codebuild_docker_image import CodeBuildDockerImage
+from infra.components.codebuild_docker_image import CodeBuildDockerImage
 
 GIGABYTE = 1024
 MINUTE = 60
@@ -444,13 +439,17 @@ class LambdaFunctionsComponent(ComponentResource):
             "embedding-submit-words": {
                 "memory": GiB(1),  # Similar to polling, lightweight operations
                 "timeout": MINUTE * 15,
-                "ephemeral_storage": GiB(2),  # Minimal disk space needed for NDJSON files
+                "ephemeral_storage": GiB(
+                    2
+                ),  # Minimal disk space needed for NDJSON files
                 "handler_type": "submit_words_openai",
             },
             "embedding-submit-lines": {
                 "memory": GiB(1),  # Similar to polling, lightweight operations
                 "timeout": MINUTE * 15,
-                "ephemeral_storage": GiB(2),  # Minimal disk space needed for NDJSON files
+                "ephemeral_storage": GiB(
+                    2
+                ),  # Minimal disk space needed for NDJSON files
                 "handler_type": "submit_openai",
             },
             "embedding-compact": {
@@ -460,7 +459,8 @@ class LambdaFunctionsComponent(ComponentResource):
                 # Logs show Lambda hitting 4096 MB limit and being killed after ~131 seconds
                 # Final merge operations download large snapshots (578MB+) and merge them,
                 # requiring significant memory headroom for ChromaDB operations
-                "timeout": MINUTE * 15,  # AWS Lambda maximum timeout is 900s (15 minutes)
+                "timeout": MINUTE
+                * 15,  # AWS Lambda maximum timeout is 900s (15 minutes)
                 # Note: If operations need longer, consider breaking into multiple steps
                 # or using Step Functions to orchestrate multiple Lambda invocations
                 "ephemeral_storage": GiB(
@@ -484,13 +484,18 @@ class LambdaFunctionsComponent(ComponentResource):
                 lambda_func = self._create_polling_lambda_with_codebuild(
                     name, config
                 )
-            elif config["handler_type"] in ["submit_words_openai", "submit_openai"]:
+            elif config["handler_type"] in [
+                "submit_words_openai",
+                "submit_openai",
+            ]:
                 # Create submit Lambda (words or lines) using CodeBuildDockerImage
                 lambda_func = self._create_submit_lambda_with_codebuild(
                     name, config
                 )
             else:
-                raise ValueError(f"Unknown handler type: {config['handler_type']}")
+                raise ValueError(
+                    f"Unknown handler type: {config['handler_type']}"
+                )
             self.container_lambda_functions[name] = lambda_func
 
     def _create_compaction_lambda_with_codebuild(
@@ -651,7 +656,11 @@ class LambdaFunctionsComponent(ComponentResource):
     ):
         """Create submit Lambda (words or lines) using CodeBuildDockerImage with lambda_config."""
         # Determine component name based on handler type
-        component_name = "SubmitWords" if config["handler_type"] == "submit_words_openai" else "SubmitLines"
+        component_name = (
+            "SubmitWords"
+            if config["handler_type"] == "submit_words_openai"
+            else "SubmitLines"
+        )
 
         # Build lambda_config dict matching polling Lambda format
         lambda_config_dict = {

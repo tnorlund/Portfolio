@@ -14,7 +14,7 @@ from dynamo_db import dynamodb_table
 from chromadb_buckets import bucket_name as chromadb_bucket_name
 
 # Import the CodeBuildDockerImage component
-from codebuild_docker_image import CodeBuildDockerImage
+from infra.components.codebuild_docker_image import CodeBuildDockerImage
 
 # Reference the directory containing index.py
 HANDLER_DIR = os.path.join(os.path.dirname(__file__), "handler")
