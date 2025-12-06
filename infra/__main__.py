@@ -24,39 +24,33 @@ if config.get_bool("docker-buildkit") != False:  # Default to True if not set
     else:
         print("✓ Docker BuildKit enabled for faster builds")
 
+from typing import Optional
+
 # Import our infrastructure components
 import s3_website  # noqa: F401
-from dynamo_db import (
-    dynamodb_table,  # Import DynamoDB table from original code
-)
-
-from embedding_step_functions import EmbeddingInfrastructure
-from notifications import NotificationSystem
 from billing_alerts import BillingAlerts
-from pulumi import ResourceOptions
-from typing import Optional
-from raw_bucket import raw_bucket  # Import the actual bucket instance
-from s3_website import site_bucket  # Import the site bucket instance
-from upload_images import UploadImages
-from validation_by_merchant import ValidationByMerchantStepFunction
-from validation_pipeline import ValidationPipeline
-from validate_pending_labels import ValidatePendingLabelsStepFunction
-from validate_metadata import ValidateMetadataStepFunction
-
-from chromadb_compaction import (
-    create_chromadb_compaction_infrastructure,
-)
-
+from chromadb_compaction import create_chromadb_compaction_infrastructure
+from create_labels_step_functions import CreateLabelsStepFunction
 from currency_validation_step_functions import (
     create_currency_validation_state_machine,
 )
-from create_labels_step_functions import (
-    CreateLabelsStepFunction,
+from dynamo_db import (
+    dynamodb_table,  # Import DynamoDB table from original code
 )
+from embedding_step_functions import EmbeddingInfrastructure
 
 # Using the optimized docker-build based base images with scoped contexts
 from networking import PublicVpc
+from notifications import NotificationSystem
+from pulumi import ResourceOptions
+from raw_bucket import raw_bucket  # Import the actual bucket instance
+from s3_website import site_bucket  # Import the site bucket instance
 from security import ChromaSecurity
+from upload_images import UploadImages
+from validate_metadata import ValidateMetadataStepFunction
+from validate_pending_labels import ValidatePendingLabelsStepFunction
+from validation_by_merchant import ValidationByMerchantStepFunction
+from validation_pipeline import ValidationPipeline
 
 # from spot_interruption import SpotInterruptionHandler
 # from efs_storage import EFSStorage
@@ -68,11 +62,12 @@ from security import ChromaSecurity
 # Import other necessary components
 try:
     # from infra.components import lambda_layer  # noqa: F401
-    from infra.components import lambda_layer  # noqa: F401
     from lambda_functions.label_count_cache_updater.infra import (  # noqa: F401
         label_count_cache_updater_lambda,
     )
     from routes.health_check.infra import health_check_lambda  # noqa: F401
+
+    from infra.components import lambda_layer  # noqa: F401
 
     print("✓ Successfully imported label_count_cache_updater_lambda")
 except ImportError as e:
@@ -80,11 +75,11 @@ except ImportError as e:
     print(f"⚠️  Failed to import label cache updater: {e}")
     pass
 import step_function
-from step_function_enhanced import create_enhanced_receipt_processor
+from chroma.nat_egress import NatEgress
+from chroma.orchestrator import ChromaOrchestrator
 from chroma.service import ChromaEcsService
 from chroma.workers import ChromaWorkers
-from chroma.orchestrator import ChromaOrchestrator
-from chroma.nat_egress import NatEgress
+from step_function_enhanced import create_enhanced_receipt_processor
 
 # Foundation VPC (public subnets only, no NAT) per Task 350
 public_vpc = PublicVpc("foundation")
@@ -233,13 +228,17 @@ pulumi.export("nat_private_subnet_ids", nat.private_subnet_ids)
 # Based on subnet query: public subnets are in us-east-1a and us-east-1b
 # Both private subnets are in us-east-1b
 # So we need: first public (us-east-1a) + first private (us-east-1b) = 2 unique AZs
-unique_efs_subnets = Output.all(public_vpc.public_subnet_ids, nat.private_subnet_ids).apply(
+unique_efs_subnets = Output.all(
+    public_vpc.public_subnet_ids, nat.private_subnet_ids
+).apply(
     lambda args: [args[0][0], args[1][0]]  # First public + first private
 )
 
 # Compaction lambda needs to be in private subnets for EFS access
 # Use only first private subnet to ensure Lambda is in subnet with EFS mount target
-compaction_lambda_subnets = nat.private_subnet_ids.apply(lambda ids: [ids[0]])  # Single subnet for EFS access
+compaction_lambda_subnets = nat.private_subnet_ids.apply(
+    lambda ids: [ids[0]]
+)  # Single subnet for EFS access
 
 chromadb_infrastructure = create_chromadb_compaction_infrastructure(
     name=f"chromadb-{pulumi.get_stack()}",
@@ -254,7 +253,11 @@ chromadb_infrastructure = create_chromadb_compaction_infrastructure(
 
 # Create embedding infrastructure using shared bucket and queues
 # Depend on EFS mount targets if EFS exists (Lambda needs mount targets in "available" state)
-embedding_depends_on = chromadb_infrastructure.efs.mount_targets if chromadb_infrastructure.efs else None
+embedding_depends_on = (
+    chromadb_infrastructure.efs.mount_targets
+    if chromadb_infrastructure.efs
+    else None
+)
 
 embedding_infrastructure = EmbeddingInfrastructure(
     f"embedding-infra-{pulumi.get_stack()}",
@@ -262,8 +265,16 @@ embedding_infrastructure = EmbeddingInfrastructure(
     chromadb_buckets=shared_chromadb_buckets,
     vpc_subnet_ids=compaction_lambda_subnets,  # Use same subnets as compaction Lambda
     lambda_security_group_id=security.sg_lambda_id,
-    efs_access_point_arn=chromadb_infrastructure.efs.access_point_arn if chromadb_infrastructure.efs else None,
-    efs_mount_targets=chromadb_infrastructure.efs.mount_targets if chromadb_infrastructure.efs else None,  # Pass mount targets dependency
+    efs_access_point_arn=(
+        chromadb_infrastructure.efs.access_point_arn
+        if chromadb_infrastructure.efs
+        else None
+    ),
+    efs_mount_targets=(
+        chromadb_infrastructure.efs.mount_targets
+        if chromadb_infrastructure.efs
+        else None
+    ),  # Pass mount targets dependency
     opts=ResourceOptions(depends_on=embedding_depends_on),
 )
 
@@ -293,7 +304,9 @@ dynamodb_gateway_endpoint = aws.ec2.VpcEndpoint(
 stack = pulumi.get_stack()
 # Use single AZ for both dev and prod - AZ failures are rare (< 0.1%)
 # and Lambda functions have fallback to NAT Instance
-logs_endpoint_subnets = public_vpc.public_subnet_ids.apply(lambda ids: [ids[0]])  # Single AZ
+logs_endpoint_subnets = public_vpc.public_subnet_ids.apply(
+    lambda ids: [ids[0]]
+)  # Single AZ
 
 logs_interface_endpoint = aws.ec2.VpcEndpoint(
     f"logs-interface-{pulumi.get_stack()}",
@@ -310,7 +323,9 @@ logs_interface_endpoint = aws.ec2.VpcEndpoint(
 # Single AZ for cost savings ($0.12/day savings)
 # Lambda functions can access endpoints from any AZ in the VPC
 # If endpoint AZ fails, Lambda falls back to NAT (slower but works)
-sqs_endpoint_subnets = public_vpc.public_subnet_ids.apply(lambda ids: [ids[0]])  # Single AZ
+sqs_endpoint_subnets = public_vpc.public_subnet_ids.apply(
+    lambda ids: [ids[0]]
+)  # Single AZ
 
 sqs_interface_endpoint = aws.ec2.VpcEndpoint(
     f"sqs-interface-{pulumi.get_stack()}",
@@ -357,7 +372,9 @@ pulumi.export("chroma_orchestrator_sfn_arn", orchestrator.state_machine.arn)
 
 # Wire upload-images after NAT and Chroma are available so it can reach OpenAI and Chroma
 # When using EFS, use only first private subnet to ensure Lambda is in subnet with EFS mount target
-upload_images_subnets = nat.private_subnet_ids.apply(lambda ids: [ids[0]])  # Single subnet for EFS access
+upload_images_subnets = nat.private_subnet_ids.apply(
+    lambda ids: [ids[0]]
+)  # Single subnet for EFS access
 
 upload_images = UploadImages(
     "upload-images",
@@ -371,7 +388,11 @@ upload_images = UploadImages(
     ecs_cluster_arn=chroma_service.cluster.arn,
     ecs_service_arn=chroma_service.svc.arn,
     nat_instance_id=nat.nat_instance_id,
-    efs_access_point_arn=chromadb_infrastructure.efs.access_point_arn if chromadb_infrastructure.efs else None,
+    efs_access_point_arn=(
+        chromadb_infrastructure.efs.access_point_arn
+        if chromadb_infrastructure.efs
+        else None
+    ),
 )
 
 pulumi.export("ocr_job_queue_url", upload_images.ocr_queue.url)
@@ -401,14 +422,18 @@ else:
     # Check if training bucket name is provided as config (for inference-only usage)
     training_bucket_config = ml_cfg.get("training-bucket-name")
     if training_bucket_config:
-        layoutlm_training_bucket_name = Output.from_input(training_bucket_config)
+        layoutlm_training_bucket_name = Output.from_input(
+            training_bucket_config
+        )
 
 # Create LayoutLM inference API if we have a training bucket (either from training infra or config)
 if layoutlm_training_bucket_name is not None:
+    from routes.layoutlm_inference.infra import (
+        create_layoutlm_inference_lambda,
+    )
     from routes.layoutlm_inference_cache_generator.infra import (
         create_layoutlm_inference_cache_generator,
     )
-    from routes.layoutlm_inference.infra import create_layoutlm_inference_lambda
 
     # Create cache generator (which creates the cache bucket)
     layoutlm_cache_generator = create_layoutlm_inference_cache_generator(
@@ -424,13 +449,15 @@ if layoutlm_training_bucket_name is not None:
     # Export the Lambda so api_gateway.py can use it
     # Set it as a module-level variable in the inference module
     import routes.layoutlm_inference.infra as inference_module
+
     inference_module.layoutlm_inference_lambda = layoutlm_inference_lambda
 
     # Create API Gateway route for layoutlm_inference
     # This must be done here after Lambda is created, not in api_gateway.py
     # because api_gateway.py is imported before the Lambda exists
     import api_gateway
-    if hasattr(api_gateway, 'api'):
+
+    if hasattr(api_gateway, "api"):
         integration_layoutlm_inference = aws.apigatewayv2.Integration(
             "layoutlm_inference_lambda_integration",
             api_id=api_gateway.api.id,
@@ -469,7 +496,9 @@ if layoutlm_training_bucket_name is not None:
             action="lambda:InvokeFunction",
             function=layoutlm_inference_lambda.name,
             principal="apigateway.amazonaws.com",
-            source_arn=api_gateway.api.execution_arn.apply(lambda arn: f"{arn}/*/*"),
+            source_arn=api_gateway.api.execution_arn.apply(
+                lambda arn: f"{arn}/*/*"
+            ),
         )
 
     pulumi.export(
@@ -1058,8 +1087,8 @@ pulumi.export(
 # Export label cache updater if successfully imported
 try:
     from lambda_functions.label_count_cache_updater.infra import (
-        label_count_cache_updater_lambda,
         cache_update_schedule,
+        label_count_cache_updater_lambda,
     )
 
     pulumi.export(
