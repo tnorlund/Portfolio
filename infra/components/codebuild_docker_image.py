@@ -659,6 +659,8 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
                                     "s3:GetObject",
                                     "s3:GetObjectVersion",
                                     "s3:PutObject",
+                                    "s3:GetBucketVersioning",
+                                    "s3:ListBucketVersions",
                                     "s3:GetBucketAcl",
                                     "s3:GetBucketLocation",
                                     "s3:ListBucket",
@@ -686,6 +688,27 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
                                     "codebuild:StartBuild",
                                     "codebuild:BatchGetBuilds",
                                 ],
+                                "Resource": arn,
+                            }
+                        ],
+                    }
+                )
+            ),
+            opts=ResourceOptions(parent=self),
+        )
+
+        # Allow CodePipeline to pass the CodeBuild service role
+        RolePolicy(
+            f"{self.name}-pl-passrole",
+            role=pipeline_role.id,
+            policy=codebuild_role.arn.apply(
+                lambda arn: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": ["iam:PassRole"],
                                 "Resource": arn,
                             }
                         ],
