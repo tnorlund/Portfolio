@@ -8,7 +8,7 @@
 
 > **getCLS**(): `undefined` \| `number`
 
-Defined in: [utils/performance/monitor.ts:225](https://github.com/tnorlund/Portfolio/blob/9bcab2a4cba48d2e4ca83796f10dc5593699f9e4/portfolio/utils/performance/monitor.ts#L225)
+Defined in: [utils/performance/monitor.ts:225](https://github.com/tnorlund/Portfolio/blob/44fefdfb27bdd537c998fc8a851f50fc959a879c/portfolio/utils/performance/monitor.ts#L225)
 
 ## Returns
 
