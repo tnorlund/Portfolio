@@ -34,7 +34,7 @@ by facilitating scalable embedding of labeled receipt tokens.
 
 
 from dynamo_db import dynamodb_table
-from lambda_layer import dynamo_layer, label_layer
+from infra.components.lambda_layer import dynamo_layer, label_layer
 
 config = Config("portfolio")
 openai_api_key = config.require_secret("OPENAI_API_KEY")

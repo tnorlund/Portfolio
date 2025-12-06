@@ -12,7 +12,7 @@ import pulumi_aws as aws
 from dynamo_db import dynamodb_table
 
 # Import the Lambda Layer from the lambda_layer module
-from lambda_layer import dynamo_layer
+from infra.components.lambda_layer import dynamo_layer
 from pulumi import AssetArchive, FileArchive
 
 # Reference the directory containing index.py

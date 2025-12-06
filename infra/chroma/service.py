@@ -14,7 +14,7 @@ from pulumi_aws.ecr import (
 )
 
 # Import the CodeBuildDockerImage component
-from codebuild_docker_image import CodeBuildDockerImage
+from infra.components.codebuild_docker_image import CodeBuildDockerImage
 
 
 class ChromaEcsService(ComponentResource):
