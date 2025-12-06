@@ -4,17 +4,17 @@ from typing import List, Optional
 
 import pulumi
 import pulumi_aws as aws
-from pulumi import ResourceOptions
+from pulumi import ComponentResource, ResourceOptions
 
 
-class EFSStorage:
+class EFSStorage(ComponentResource):
     """Pulumi component for creating an EFS file system for shared data across instances."""
 
     def __init__(
         self,
         name: str,
         vpc_id: str,
-        subnet_ids: List[str],
+        subnet_ids: pulumi.Output[List[str]] | List[str],
         security_group_ids: List[str],
         instance_role_name: str,
         performance_mode: str = "generalPurpose",
@@ -28,7 +28,7 @@ class EFSStorage:
         Args:
             name: Base name for created resources
             vpc_id: VPC ID where EFS will be deployed
-            subnet_ids: List of subnet IDs for mount targets
+            subnet_ids: Output containing list of subnet IDs for mount targets, or plain list
             security_group_ids: List of security group IDs for the EFS mount targets
             instance_role_name: Name of the IAM role used by EC2 instances
             performance_mode: EFS performance mode (generalPurpose or maxIO)
@@ -37,6 +37,7 @@ class EFSStorage:
             lifecycle_policies: Optional lifecycle policies for data retention
             opts: Optional resource options
         """
+        super().__init__("efs-storage", name, {}, opts)
         # Create security group for EFS access
         self.security_group = aws.ec2.SecurityGroup(
             f"{name}-efs-sg",
@@ -86,6 +87,13 @@ class EFSStorage:
             opts=opts,
         )
 
+        # Convert subnet_ids to Output if it's a plain list
+        subnet_ids_output = (
+            subnet_ids
+            if isinstance(subnet_ids, pulumi.Output)
+            else pulumi.Output.from_input(subnet_ids)
+        )
+
         # Create mount targets in each subnet using apply
         def create_mount_targets(resolved_subnet_ids):
             mount_targets = []
@@ -105,7 +113,9 @@ class EFSStorage:
         # Apply the function to the subnet_ids Output
         # Note: This Output won't be directly iterable,
         # but we can pass it to other resources that accept Output[List[MountTarget]] if needed.
-        self.mount_targets_output = subnet_ids.apply(create_mount_targets)
+        self.mount_targets_output = subnet_ids_output.apply(
+            create_mount_targets
+        )
 
         # Create an access point for shared training data
         self.training_access_point = aws.efs.AccessPoint(
@@ -203,11 +213,12 @@ class EFSStorage:
         self.training_access_point_id = self.training_access_point.id
         self.checkpoints_access_point_id = self.checkpoints_access_point.id
 
-        pulumi.export(f"{name}_efs_file_system_id", self.file_system_id)
-        pulumi.export(f"{name}_efs_dns_name", self.file_system_dns_name)
-        pulumi.export(
-            f"{name}_efs_training_ap_id", self.training_access_point_id
-        )
-        pulumi.export(
-            f"{name}_efs_checkpoints_ap_id", self.checkpoints_access_point_id
+        # Register component outputs
+        self.register_outputs(
+            {
+                "file_system_id": self.file_system_id,
+                "file_system_dns_name": self.file_system_dns_name,
+                "training_access_point_id": self.training_access_point_id,
+                "checkpoints_access_point_id": self.checkpoints_access_point_id,
+            }
         )

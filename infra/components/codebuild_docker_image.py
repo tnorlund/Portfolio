@@ -228,11 +228,6 @@ class CodeBuildDockerImage(ComponentResource):
                     "receipt_label/pyproject.toml",
                 ]
 
-                # Add source_paths if specified (e.g., receipt_upload)
-                if self.source_paths:
-                    for source_path in self.source_paths:
-                        packages_to_hash.append(source_path)
-
                 for package_path in packages_to_hash:
                     full_path = Path(PROJECT_DIR) / package_path
                     if full_path.exists():
