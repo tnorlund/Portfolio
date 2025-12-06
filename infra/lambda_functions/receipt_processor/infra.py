@@ -8,7 +8,7 @@ import pulumi_aws as aws
 from dynamo_db import dynamodb_table
 
 # Import Lambda layers from the lambda_layer module
-from lambda_layer import dynamo_layer, label_layer
+from infra.components.lambda_layer import dynamo_layer, label_layer
 from pulumi import AssetArchive, FileArchive
 
 # Get the directory where this file is located

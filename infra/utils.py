@@ -1,11 +1,13 @@
 import os
 from pathlib import Path
+from typing import Optional
 
 
 def _find_project_root() -> Path:
     """Find the project root directory by looking for common markers."""
-    if os.getenv("GITHUB_WORKSPACE"):
-        return Path(os.getenv("GITHUB_WORKSPACE")).resolve()
+    workspace: Optional[str] = os.getenv("GITHUB_WORKSPACE")
+    if workspace:
+        return Path(workspace).resolve()
 
     current_dir = Path(os.getcwd()).resolve()
     root_markers = [".git", "README.md", "pyproject.toml", ".gitignore"]

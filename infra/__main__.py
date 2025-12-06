@@ -66,8 +66,8 @@ from validation_pipeline import ValidationPipeline
 
 # Import other necessary components
 try:
-    # import lambda_layer  # noqa: F401
-    import lambda_layer  # noqa: F401
+    # from infra.components import lambda_layer  # noqa: F401
+    from infra.components import lambda_layer  # noqa: F401
     from lambda_functions.label_count_cache_updater.infra import (  # noqa: F401
         label_count_cache_updater_lambda,
     )

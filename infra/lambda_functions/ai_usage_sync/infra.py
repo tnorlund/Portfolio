@@ -11,7 +11,7 @@ import pulumi_aws as aws
 
 # Import dependencies
 from dynamo_db import dynamodb_table
-from lambda_layer import dynamo_layer
+from infra.components.lambda_layer import dynamo_layer
 from pulumi import AssetArchive, FileArchive
 
 # Reference the directory containing handler

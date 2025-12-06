@@ -1,21 +1,3 @@
-"""
-Compatibility shim for legacy imports.
-"""
-
-from infra.components.codebuild_docker_image import *  # noqa: F401,F403
-
-"""
-Compatibility shim for legacy imports.
-"""
-
-from infra.components.codebuild_docker_image import *  # noqa: F401,F403
-
-"""
-Compatibility shim for legacy imports.
-"""
-
-from infra.components.codebuild_docker_image import *  # noqa: F401,F403
-
 #!/usr/bin/env python3
 """
 codebuild_docker_image.py
@@ -39,13 +21,6 @@ from typing import Any, Dict, Optional
 
 import pulumi
 import pulumi_command as command
-from build_utils import (
-    compute_hash,
-    make_artifact_bucket,
-    make_log_group,
-    resolve_build_config,
-)
-from buildspecs import docker_image_buildspec
 from pulumi import ComponentResource, Output, ResourceOptions
 from pulumi_aws import config, get_caller_identity
 from pulumi_aws.codebuild import (
@@ -75,7 +50,15 @@ from pulumi_aws.lambda_ import (
     FunctionImageConfigArgs,
     FunctionVpcConfigArgs,
 )
-from utils import _find_project_root
+
+from infra.shared.build_utils import (
+    compute_hash,
+    make_artifact_bucket,
+    make_log_group,
+    resolve_build_config,
+)
+from infra.shared.buildspecs import docker_image_buildspec
+from infra.utils import _find_project_root
 
 PROJECT_DIR = _find_project_root()
 

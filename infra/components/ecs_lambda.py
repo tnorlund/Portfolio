@@ -1,21 +1,3 @@
-"""
-Compatibility shim for legacy imports.
-"""
-
-from infra.components.ecs_lambda import *  # noqa: F401,F403
-
-"""
-Compatibility shim for legacy imports.
-"""
-
-from infra.components.ecs_lambda import *  # noqa: F401,F403
-
-"""
-Compatibility shim for legacy imports.
-"""
-
-from infra.components.ecs_lambda import *  # noqa: F401,F403
-
 #!/usr/bin/env python3
 """
 ecs_lambda.py
@@ -43,7 +25,6 @@ from typing import Any, Dict, List, Optional
 
 import pulumi
 import pulumi_command as command
-from build_utils import compute_hash, make_artifact_bucket, make_log_group
 from pulumi import (
     AssetArchive,
     ComponentResource,
@@ -70,7 +51,13 @@ from pulumi_aws.codepipeline import (
 from pulumi_aws.iam import Role as ROLE
 from pulumi_aws.iam import RolePolicy, RolePolicyAttachment
 from pulumi_aws.lambda_ import Function, FunctionEnvironmentArgs
-from utils import _find_project_root
+
+from infra.shared.build_utils import (
+    compute_hash,
+    make_artifact_bucket,
+    make_log_group,
+)
+from infra.utils import _find_project_root
 
 PROJECT_DIR = _find_project_root()
 
