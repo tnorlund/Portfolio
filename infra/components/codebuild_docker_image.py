@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 codebuild_docker_image.py
 
@@ -155,7 +154,7 @@ class CodeBuildDockerImage(ComponentResource):
         (
             _build_bucket,
             _upload_cmd,
-            pipeline,
+            self.pipeline,
             _codebuild_project,
             pipeline_trigger_cmd,
         ) = self._setup_pipeline(content_hash)
@@ -196,12 +195,27 @@ class CodeBuildDockerImage(ComponentResource):
         if dockerfile.exists():
             paths.append(dockerfile)
 
-        # If source_paths specified, hash only those paths
+        # If source_paths specified, hash those plus shared packages (Lambda default)
         if self.source_paths:
             for source_path in sorted(self.source_paths):
                 full_path = Path(PROJECT_DIR) / source_path
                 if full_path.exists():
                     paths.append(full_path)
+
+            if self.build_context_path == ".":
+                # Also hash the default monorepo packages that are always copied
+                packages_to_hash = [
+                    "receipt_dynamo/receipt_dynamo",
+                    "receipt_dynamo/pyproject.toml",
+                    "receipt_chroma/receipt_chroma",
+                    "receipt_chroma/pyproject.toml",
+                    "receipt_label/receipt_label",
+                    "receipt_label/pyproject.toml",
+                ]
+                for package_path in packages_to_hash:
+                    full_path = Path(PROJECT_DIR) / package_path
+                    if full_path.exists():
+                        paths.append(full_path)
 
             # ALWAYS hash the handler directory (Lambda-specific code)
             handler_dir = Path(PROJECT_DIR) / Path(self.dockerfile_path).parent
@@ -265,9 +279,8 @@ class CodeBuildDockerImage(ComponentResource):
         # Build source paths string for script
         source_paths_str = ""
         if self.source_paths:
-            # Convert paths to space-separated string
-            paths = " ".join(shlex.quote(p) for p in self.source_paths)
-            source_paths_str = paths
+            # Paths are repo-controlled; join directly for shell iteration
+            source_paths_str = " ".join(self.source_paths)
 
         # Paths are relative to project root
         # Get absolute project root path
@@ -974,13 +987,14 @@ echo "✅ Bootstrap image pushed to $REPO_URL:latest"
         # In sync mode (CI/CD), skip bootstrap dependency and wait for pipeline instead
         # Bootstrap may exit early without pushing if Docker isn't available
         # Always depend on bootstrap_cmd if it exists to ensure ECR repo is ready
-        if self.sync_mode and pipeline_trigger_cmd:
-            # In sync mode: wait for pipeline to build and push the image
-            depends_on_list = [pipeline_trigger_cmd]
+        if self.sync_mode:
+            depends_on_list = []
+            if bootstrap_cmd:
+                depends_on_list.append(bootstrap_cmd)
+            if pipeline_trigger_cmd:
+                depends_on_list.append(pipeline_trigger_cmd)
         else:
             # In async mode: ALWAYS wait for bootstrap_cmd to complete
-            # This ensures the ECR repo exists and bootstrap image is attempted
-            # Even if bootstrap fails, we need the repo to exist before Lambda creation
             depends_on_list = [bootstrap_cmd] if bootstrap_cmd else []
 
         # Add aliases if provided (for renaming existing Lambda functions)

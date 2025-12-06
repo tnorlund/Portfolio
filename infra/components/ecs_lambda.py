@@ -146,7 +146,10 @@ class EcsLambda(ComponentResource):
                     f"   📦 Hash: {package_hash[:12]}... - will build only if changed"
                 )
 
-        # Infra setup
+        # Name used by both IAM policies and the actual Lambda
+        self.function_name = f"{self.name}-{pulumi.get_stack()}"
+
+        # Infra setup (policies reference self.function_name)
         (
             _build_bucket,
             upload_cmd,
@@ -154,9 +157,6 @@ class EcsLambda(ComponentResource):
             _publish_project,
             _codebuild_role,
         ) = self._setup_pipeline(package_hash)
-
-        # Create the Lambda function (with small placeholder code), then let pipeline update code
-        self.function_name = f"{self.name}-{pulumi.get_stack()}"
         placeholder_code = self._make_placeholder_code(self.handler)
 
         # Lambda role: allow passing explicit role; otherwise create a basic one
@@ -306,7 +306,7 @@ done
 
                     with open(pyproject_path, "rb") as f:
                         data = tomllib.load(f)
-                except Exception:
+                except ImportError:
                     import toml  # type: ignore
 
                     with open(pyproject_path, "r") as f:
@@ -335,7 +335,7 @@ done
                             pulumi.log.info(
                                 f"📦 Found local dependency: {dir_name} for {self.name}"
                             )
-            except Exception as e:  # pylint: disable=broad-exception-caught
+            except (OSError, ValueError) as e:
                 pulumi.log.warn(
                     f"Could not parse pyproject.toml for deps: {e}"
                 )
@@ -734,6 +734,7 @@ echo "✅ Uploaded source.zip"
             ),
             logs_config=ProjectLogsConfigArgs(
                 cloudwatch_logs=ProjectLogsConfigCloudwatchLogsArgs(
+                    group_name=log_group.name,
                     status="ENABLED",
                 ),
             ),
