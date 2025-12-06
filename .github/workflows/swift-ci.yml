@@ -131,7 +131,7 @@ jobs:
                   swift build -c release --product receipt-ocr
 
             - name: Upload release artifact
-              uses: actions/upload-artifact@v3
+              uses: actions/upload-artifact@v5
               with:
                   name: receipt-ocr-binary
                   path: receipt_ocr_swift/.build/release/receipt-ocr
