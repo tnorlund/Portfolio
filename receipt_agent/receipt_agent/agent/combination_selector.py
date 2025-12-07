@@ -10,8 +10,8 @@ combination or NONE.
 from __future__ import annotations
 
 import json
-import math
 import os
+import sys
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
 from langchain_ollama import ChatOllama
@@ -23,9 +23,25 @@ except ImportError:  # pragma: no cover - optional dependency
     RunTree = None  # type: ignore
 
 from receipt_agent.config.settings import get_settings
+from receipt_agent.utils.receipt_coordinates import (
+    get_receipt_to_image_transform,
+)
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.data._pulumi import load_env, load_secrets
-from receipt_dynamo.entities import Image, Receipt, ReceiptLine
+from receipt_dynamo.entities import Receipt, ReceiptLine
+
+# Make receipt_upload available for geometry helpers (min-area rect, reorder)
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+sys.path.insert(0, REPO_ROOT)
+sys.path.insert(0, os.path.join(REPO_ROOT, "receipt_upload"))
+sys.path.insert(0, os.path.join(REPO_ROOT, "receipt_upload", "receipt_upload"))
+
+from receipt_upload.cluster import reorder_box_points  # noqa: E402
+from receipt_upload.geometry import box_points, min_area_rect  # noqa: E402
+from receipt_upload.geometry.transformations import (  # noqa: E402
+    find_perspective_coeffs,
+    invert_warp,
+)
 
 
 def _warp_point(
@@ -82,39 +98,89 @@ def _sort_lines_ocr_space(lines: Iterable[ReceiptLine]) -> List[ReceiptLine]:
     return [ln for _, _, ln in with_keys]
 
 
-def _sort_lines_image_space(
-    receipt: Receipt,
-    lines: Iterable[ReceiptLine],
-    image_width: int,
-    image_height: int,
-) -> List[ReceiptLine]:
-    """Sort lines top-to-bottom, left-to-right using image-space centroids."""
-    with_centroids = []
-    for ln in lines:
-        cx, cy = _line_centroid_image(receipt, ln, image_width, image_height)
-        with_centroids.append((cy, cx, ln))
-    # Top to bottom (smaller y first), then left to right (smaller x)
-    with_centroids.sort(key=lambda t: (t[0], t[1]))
-    return [ln for _, _, ln in with_centroids]
-
-
-def _format_candidate_text(
+def _warp_lines_to_common_space(
     receipt: Receipt,
     lines: Sequence[ReceiptLine],
     image_width: int,
     image_height: int,
-) -> str:
-    """Render receipt lines in reading order with image-space sorting."""
-    sorted_lines = _sort_lines_image_space(
-        receipt, lines, image_width, image_height
+    src_to_dst: Sequence[float],
+) -> List[Tuple[float, float, float, float, str]]:
+    """Warp lines to common space; return (top, bottom, cx, cy, text)."""
+    coeffs, receipt_w, receipt_h = get_receipt_to_image_transform(
+        receipt, image_width, image_height
     )
-    parts = []
-    for ln in sorted_lines:
-        parts.append(f"- {ln.text}")
-    return "\n".join(parts)
+    a, b, c, d, e, f, g, h = src_to_dst
+    warped: List[Tuple[float, float, float, float, str]] = []
+    for ln in lines:
+        corners = []
+        for corner in [
+            ln.top_left,
+            ln.top_right,
+            ln.bottom_right,
+            ln.bottom_left,
+        ]:
+            rx = corner["x"] * receipt_w
+            # Flip OCR y (0=bottom) -> image y (0=top)
+            ry = (1.0 - corner["y"]) * receipt_h
+            x_img, y_img = _warp_point(coeffs, rx, ry)
+            corners.append((x_img, y_img))
+
+        warped_pts = []
+        for x, y in corners:
+            den = g * x + h * y + 1.0
+            if abs(den) < 1e-12:
+                warped_pts.append((x, y))
+            else:
+                warped_pts.append(
+                    ((a * x + b * y + c) / den, (d * x + e * y + f) / den)
+                )
+        xs = [p[0] for p in warped_pts]
+        ys = [p[1] for p in warped_pts]
+        cx = sum(xs) / 4.0
+        cy = sum(ys) / 4.0
+        top = min(ys)
+        bottom = max(ys)
+        warped.append((top, bottom, cx, cy, ln.text))
+    return warped
 
 
-def _format_combined_text(
+def _group_rows_centroid_span(
+    entries: List[Tuple[float, float, float, float, str]],
+) -> str:
+    """
+    Group lines: mutual centroid-in-span, ordered top->bottom (cy), then left->right.
+    entries: (top, bottom, cx, cy, text)
+    """
+    # Sort by cy, then cx
+    entries.sort(key=lambda t: (t[3], t[2]))
+    rows: List[List[Tuple[float, float, float, float, str]]] = []
+    for top, bottom, cx, cy, text in entries:
+        if not rows:
+            rows.append([(top, bottom, cx, cy, text)])
+            continue
+        prev_row = rows[-1]
+        prev_top = min(p[0] for p in prev_row)
+        prev_bottom = max(p[1] for p in prev_row)
+        prev_cy = prev_row[-1][3]
+
+        in_prev = prev_top <= cy <= prev_bottom
+        in_curr = top <= prev_cy <= bottom
+        if in_prev or in_curr:
+            prev_row.append((top, bottom, cx, cy, text))
+        else:
+            rows.append([(top, bottom, cx, cy, text)])
+
+    rendered: List[str] = []
+    line_id = 1
+    for row in rows:
+        row_sorted = sorted(row, key=lambda t: t[2])  # cx
+        texts = [r[4] for r in row_sorted if r[4]]
+        rendered.append(f"{line_id}: {' '.join(texts)}")
+        line_id += 1
+    return "\n".join(rendered)
+
+
+def _format_combined_text_warped(
     receipt_a: Receipt,
     lines_a: Sequence[ReceiptLine],
     receipt_b: Receipt,
@@ -122,17 +188,268 @@ def _format_combined_text(
     image_width: int,
     image_height: int,
 ) -> str:
+    """Build combined text using warped, re-ID'ed lines."""
+
+    def _collect(
+        receipt: Receipt, lines: Sequence[ReceiptLine]
+    ) -> List[Tuple[float, float]]:
+        coeffs, rw, rh = get_receipt_to_image_transform(
+            receipt, image_width, image_height
+        )
+        res = []
+        for ln in lines:
+            for corner in [
+                ln.top_left,
+                ln.top_right,
+                ln.bottom_right,
+                ln.bottom_left,
+            ]:
+                rx = corner["x"] * rw
+                ry = corner["y"] * rh
+                res.append(_warp_point(coeffs, rx, ry))
+        return res
+
+    all_pts = _collect(receipt_a, lines_a) + _collect(receipt_b, lines_b)
+    if not all_pts:
+        return ""
+
+    (cx, cy), (rw, rh), angle = min_area_rect(all_pts)
+    src_corners = reorder_box_points(box_points((cx, cy), (rw, rh), angle))
+    dst = [(0, 0), (rw - 1, 0), (rw - 1, rh - 1), (0, rh - 1)]
+    pil_coeffs = find_perspective_coeffs(
+        src_points=src_corners, dst_points=dst
+    )
+    src_to_dst = invert_warp(*pil_coeffs)
+
+    warped_entries = []
+    warped_entries.extend(
+        _warp_lines_to_common_space(
+            receipt_a, lines_a, image_width, image_height, src_to_dst
+        )
+    )
+    warped_entries.extend(
+        _warp_lines_to_common_space(
+            receipt_b, lines_b, image_width, image_height, src_to_dst
+        )
+    )
+    # Sort top->bottom, left->right now that y is in image space (0=top)
+    return _group_rows_centroid_span(warped_entries)
+
+
+def _warp_lines_to_image_space(
+    receipt: Receipt,
+    lines: Sequence[ReceiptLine],
+    image_width: int,
+    image_height: int,
+) -> List[Dict[str, Any]]:
     """
-    Render both receipts together in global order using OCR space only.
-    No warp; just OCR y (top has larger y), then x ascending.
+    Warp receipt lines into the original image coordinate system.
+
+    Mirrors the transform path used elsewhere (min-area rect → ReceiptLines)
+    so ordering matches how other agents (e.g., receipt_label) render text.
     """
-    merged: List[Tuple[float, float, ReceiptLine]] = []
-    for ln in lines_a:
-        merged.append((-ln.top_left["y"], ln.top_left["x"], ln))
-    for ln in lines_b:
-        merged.append((-ln.top_left["y"], ln.top_left["x"], ln))
-    merged.sort(key=lambda t: (t[0], t[1]))
-    return "\n".join(f"- {ln.text}" for _, _, ln in merged)
+    try:
+        coeffs, receipt_w, receipt_h = receipt.get_transform_to_image(
+            image_width, image_height
+        )
+    except Exception:
+        return []
+
+    warped_lines: List[Dict[str, Any]] = []
+    for ln in lines:
+        pts = [
+            ln.top_left,
+            ln.top_right,
+            ln.bottom_right,
+            ln.bottom_left,
+        ]
+        warped_corners: List[Tuple[float, float]] = []
+        for pt in pts:
+            rx = pt["x"] * receipt_w
+            ry = pt["y"] * receipt_h
+            warped_corners.append(_warp_point(coeffs, rx, ry))
+
+        cx = sum(p[0] for p in warped_corners) / 4.0
+        cy = sum(p[1] for p in warped_corners) / 4.0
+        xs = [p[0] for p in warped_corners]
+        ys = [p[1] for p in warped_corners]
+        warped_lines.append(
+            {
+                "receipt_id": receipt.receipt_id,
+                "line_id": ln.line_id,
+                "text": ln.text,
+                "centroid_x": cx,
+                "centroid_y": cy,
+                "left_x": min(xs),
+                "right_x": max(xs),
+                "top_y": min(ys),
+                "bottom_y": max(ys),
+            }
+        )
+
+    return warped_lines
+
+
+def _format_id_range(ids: Sequence[int]) -> str:
+    """Format a list of line IDs as a single range or comma list."""
+    unique_ids = sorted(set(ids))
+    if len(unique_ids) == 1:
+        return f"{unique_ids[0]}:"
+    is_consecutive = all(
+        (b - a) == 1 for a, b in zip(unique_ids, unique_ids[1:])
+    )
+    if is_consecutive:
+        return f"{unique_ids[0]}-{unique_ids[-1]}:"
+    return f"{','.join(str(i) for i in unique_ids)}:"
+
+
+def _group_warped_lines(
+    warped_lines: Sequence[Dict[str, Any]],
+) -> List[List[Dict[str, Any]]]:
+    """
+    Group lines that sit on the same visual row in image space using
+    vertical-span overlap (mirrors receipt_label/_format_receipt_lines logic).
+    """
+    if not warped_lines:
+        return []
+
+    sorted_lines = sorted(
+        warped_lines, key=lambda l: (l["centroid_y"], l["centroid_x"])
+    )
+    groups: List[List[Dict[str, Any]]] = [[sorted_lines[0]]]
+
+    for prev, curr in zip(sorted_lines, sorted_lines[1:]):
+        prev_top = prev["top_y"]
+        prev_bottom = prev["bottom_y"]
+        prev_height = max(prev_bottom - prev_top, 1.0)
+        tolerance = max(prev_height * 0.1, 2.0)  # small slack
+        cy = curr["centroid_y"]
+        # Same row if centroid lies within (or slightly around) the previous vertical span
+        if (prev_top - tolerance) <= cy <= (prev_bottom + tolerance):
+            groups[-1].append(curr)
+        else:
+            groups.append([curr])
+
+    # Normalize left-to-right ordering inside each row
+    normalized_groups: List[List[Dict[str, Any]]] = []
+    for grp in groups:
+        normalized_groups.append(
+            sorted(grp, key=lambda l: (l["centroid_x"], l["line_id"]))
+        )
+    return normalized_groups
+
+
+def _format_grouped_warped_lines(
+    warped_lines: Sequence[Dict[str, Any]],
+) -> str:
+    """Render warped lines grouped by visual rows (line-id ranges preserved)."""
+    if not warped_lines:
+        return ""
+
+    grouped = _group_warped_lines(warped_lines)
+    formatted: List[str] = []
+    for grp in grouped:
+        ids = [ln["line_id"] for ln in grp]
+        text = " ".join(ln["text"] for ln in grp)
+        formatted.append(f"{_format_id_range(ids)} {text}")
+    return "\n".join(formatted)
+
+
+def _format_receipt_text_image_space(
+    receipt: Receipt,
+    lines: Sequence[ReceiptLine],
+    image_width: int,
+    image_height: int,
+) -> Tuple[str, List[Dict[str, Any]]]:
+    """
+    Format receipt text the same way other agents do.
+
+    - Warp to image space (shared frame after min-area rect)
+    - Group visually contiguous lines
+    - Prefix each row with its line-id range
+    """
+    warped = _warp_lines_to_image_space(
+        receipt, lines, image_width, image_height
+    )
+    if warped:
+        return _format_grouped_warped_lines(warped), warped
+
+    # Fallback: OCR-space ordering if transform fails
+    sorted_lines = _sort_lines_ocr_space(lines)
+    fallback = [f"{ln.line_id}: {ln.text}" for ln in sorted_lines]
+    return "\n".join(fallback), []
+
+
+def _format_combined_warped_lines(
+    lines_a: Sequence[Dict[str, Any]],
+    lines_b: Sequence[Dict[str, Any]],
+) -> str:
+    """Render both receipts together, grouping lines that share the same row."""
+    merged = sorted(
+        list(lines_a) + list(lines_b),
+        key=lambda l: (l["centroid_y"], l["centroid_x"]),
+    )
+    if not merged:
+        return ""
+
+    grouped_rows: List[List[Dict[str, Any]]] = []
+    grouped_rows.append([merged[0]])
+    for prev, curr in zip(merged, merged[1:]):
+        prev_top = prev["top_y"]
+        prev_bottom = prev["bottom_y"]
+        prev_height = max(prev_bottom - prev_top, 1.0)
+        tolerance = max(prev_height * 0.1, 2.0)
+        cy = curr["centroid_y"]
+        if (prev_top - tolerance) <= cy <= (prev_bottom + tolerance):
+            grouped_rows[-1].append(curr)
+        else:
+            grouped_rows.append([curr])
+
+    rendered_rows = []
+    for row in grouped_rows:
+        row_sorted = sorted(row, key=lambda l: (l["centroid_x"], l["line_id"]))
+        row_text = " ".join(
+            f"[r{ln['receipt_id']} l{ln['line_id']}] {ln['text']}"
+            for ln in row_sorted
+        )
+        rendered_rows.append(f"- {row_text}")
+
+    return "\n".join(rendered_rows)
+
+
+def _format_combined_text_ocr(
+    lines_a: Sequence[ReceiptLine],
+    lines_b: Sequence[ReceiptLine],
+) -> str:
+    """
+    Fallback combined rendering using OCR-space ordering (top-to-bottom, left-to-right),
+    grouping lines that share the same visual row (receipt_label-style).
+    """
+    merged = _sort_lines_ocr_space(list(lines_a) + list(lines_b))
+    if not merged:
+        return ""
+
+    grouped_rows: List[List[ReceiptLine]] = []
+    grouped_rows.append([merged[0]])
+    for prev, curr in zip(merged, merged[1:]):
+        _, cy = curr.calculate_centroid()
+        # OCR space: y increases toward top (top=1, bottom=0)
+        if prev.bottom_left["y"] < cy < prev.top_left["y"]:
+            grouped_rows[-1].append(curr)
+        else:
+            grouped_rows.append([curr])
+
+    rendered_rows = []
+    for row in grouped_rows:
+        row_sorted = sorted(
+            row, key=lambda l: (l.calculate_centroid()[0], l.line_id)
+        )
+        row_text = " ".join(
+            f"[r{ln.receipt_id} l{ln.line_id}] {ln.text}" for ln in row_sorted
+        )
+        rendered_rows.append(f"- {row_text}")
+
+    return "\n".join(rendered_rows)
 
 
 class ReceiptCombinationSelector:
@@ -212,23 +529,23 @@ class ReceiptCombinationSelector:
             lines_other = self.dynamo.list_receipt_lines_from_receipt(
                 image_id, other.receipt_id
             )
+            text_combined = _format_combined_text_warped(
+                target,
+                lines_target,
+                other,
+                lines_other,
+                image_width,
+                image_height,
+            )
+            if not text_combined:
+                # Fallback to simple OCR ordering
+                text_combined = _format_combined_text_ocr(
+                    lines_target, lines_other
+                )
             candidates.append(
                 {
                     "combo": [target.receipt_id, other.receipt_id],
-                    "text_target": _format_candidate_text(
-                        target, lines_target, image_width, image_height
-                    ),
-                    "text_other": _format_candidate_text(
-                        other, lines_other, image_width, image_height
-                    ),
-                    "text_combined": _format_combined_text(
-                        target,
-                        lines_target,
-                        other,
-                        lines_other,
-                        image_width,
-                        image_height,
-                    ),
+                    "text_combined": text_combined,
                 }
             )
         return candidates
@@ -243,6 +560,7 @@ class ReceiptCombinationSelector:
             "- Totals, taxes, card tails should be consistent (not conflicting).",
             "- Item lines should be plausibly the same purchase; no conflicting item sets.",
             "If there is any strong conflict (different merchant names, different dates, very different totals/card tails), return null.",
+            "Receipt text is already ordered in image space and grouped by visual rows (line-id prefixes show ranges).",
             "",
             'Respond ONLY with JSON: {"choice": <int or null>, "reason": "..."}',
             "Use choice=null if none fit.",
@@ -251,13 +569,18 @@ class ReceiptCombinationSelector:
         for idx, cand in enumerate(candidates, start=1):
             a, b = cand["combo"]
             lines.append(f"OPTION {idx}: receipt {a} + receipt {b}")
-            lines.append("Receipt A lines:")
-            lines.append(cand["text_target"])
-            lines.append("Receipt B lines:")
-            lines.append(cand["text_other"])
-            if cand.get("text_combined"):
-                lines.append("Combined lines (image order):")
-                lines.append(cand["text_combined"])
+            combined_text = cand.get("text_combined") or ""
+            if combined_text:
+                lines.append(
+                    "Combined receipt lines (image order, grouped rows, with source ids):"
+                )
+                lines.append(combined_text)
+            else:
+                # Fallback: show individual receipts if combined text is missing
+                lines.append("Receipt A lines (image order, grouped):")
+                lines.append(cand["text_target"])
+                lines.append("Receipt B lines (image order, grouped):")
+                lines.append(cand["text_other"])
             lines.append("")
         lines.append(
             'Return JSON only. Example: {"choice": 2, "reason": "..."} or {"choice": null, "reason": "..."}'
@@ -275,33 +598,25 @@ class ReceiptCombinationSelector:
         prompt = self._build_prompt(candidates)
         prompt_len = len(prompt)
 
-        run: RunTree | None = None
-        if RunTree is not None:
-            try:
-                run = RunTree(
-                    name="receipt-combination-llm",
-                    run_type="llm",
-                    inputs={
-                        "image_id": image_id,
-                        "target_receipt_id": target_receipt_id,
-                        "candidate_pairs": candidate_pairs,
-                        "prompt_length": prompt_len,
-                    },
-                    tags=[
-                        "combine-receipts",
-                        f"image:{image_id}",
-                        os.environ.get("PULUMI_STACK", "dev"),
-                    ],
-                    metadata={
-                        "model": getattr(self.llm, "model", None),
-                        "base_url": getattr(self.llm, "base_url", None),
-                    },
-                )
-            except Exception:
-                run = None
-
+        # Minimal LangSmith-friendly metadata/tags per LC docs
         prompt = self._build_prompt(candidates)
-        result = self.llm.invoke(prompt)
+        result = self.llm.invoke(
+            prompt,
+            config={
+                "tags": [
+                    "combine-receipts",
+                    f"image:{image_id}",
+                    f"target:{target_receipt_id}",
+                    os.environ.get("PULUMI_STACK", "dev"),
+                ],
+                "metadata": {
+                    "image_id": image_id,
+                    "target_receipt_id": target_receipt_id,
+                    "candidate_pairs": candidate_pairs,
+                    "prompt_length": prompt_len,
+                },
+            },
+        )
         raw_answer = (
             result.content if hasattr(result, "content") else str(result)
         )
@@ -322,19 +637,7 @@ class ReceiptCombinationSelector:
             "choice": choice,
             "raw_answer": raw_answer,
             "candidates": candidate_pairs,
+            "image_id": image_id,
+            "target_receipt_id": target_receipt_id,
         }
-        if run is not None:
-            try:
-                run.end(
-                    outputs={
-                        "choice": choice,
-                        "raw_answer_excerpt": raw_answer[:2000],
-                        "status": outputs["status"],
-                        "candidate_pairs": candidate_pairs,
-                        "prompt_length": prompt_len,
-                    }
-                )
-            except Exception:
-                pass
-
         return outputs
