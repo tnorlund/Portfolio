@@ -16,6 +16,12 @@ from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
 from langchain_ollama import ChatOllama
 
+# Optional LangSmith tracing (graceful if not installed)
+try:
+    from langsmith.run_tree import RunTree
+except ImportError:  # pragma: no cover - optional dependency
+    RunTree = None  # type: ignore
+
 from receipt_agent.config.settings import get_settings
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.data._pulumi import load_env, load_secrets
@@ -61,6 +67,21 @@ def _line_centroid_image(
     return cx, cy
 
 
+def _sort_lines_ocr_space(lines: Iterable[ReceiptLine]) -> List[ReceiptLine]:
+    """
+    Sort lines in OCR space (y=0 at bottom) without warping to image space.
+    Top-to-bottom: larger y first, then left-to-right: smaller x first.
+    """
+    with_keys = []
+    for ln in lines:
+        # Use top_left corner (already normalized 0-1 in OCR space)
+        y = ln.top_left["y"]
+        x = ln.top_left["x"]
+        with_keys.append((-y, x, ln))  # negate y to sort descending by y
+    with_keys.sort(key=lambda t: (t[0], t[1]))
+    return [ln for _, _, ln in with_keys]
+
+
 def _sort_lines_image_space(
     receipt: Receipt,
     lines: Iterable[ReceiptLine],
@@ -101,14 +122,15 @@ def _format_combined_text(
     image_width: int,
     image_height: int,
 ) -> str:
-    """Render both receipts together in global image order."""
+    """
+    Render both receipts together in global order using OCR space only.
+    No warp; just OCR y (top has larger y), then x ascending.
+    """
     merged: List[Tuple[float, float, ReceiptLine]] = []
     for ln in lines_a:
-        cx, cy = _line_centroid_image(receipt_a, ln, image_width, image_height)
-        merged.append((cy, cx, ln))
+        merged.append((-ln.top_left["y"], ln.top_left["x"], ln))
     for ln in lines_b:
-        cx, cy = _line_centroid_image(receipt_b, ln, image_width, image_height)
-        merged.append((cy, cx, ln))
+        merged.append((-ln.top_left["y"], ln.top_left["x"], ln))
     merged.sort(key=lambda t: (t[0], t[1]))
     return "\n".join(f"- {ln.text}" for _, _, ln in merged)
 
@@ -214,10 +236,16 @@ class ReceiptCombinationSelector:
     def _build_prompt(self, candidates: Sequence[Dict[str, Any]]) -> str:
         """Build a JSON-only prompt."""
         lines = [
-            "You are choosing which two receipts belong together for the same transaction.",
-            "Options are numbered.",
-            'Respond ONLY with JSON of the form: {"choice": <int or null>, "reason": "..."}',
-            "Use choice=null if none of the options fit.",
+            "Decide if two receipts belong to the SAME transaction.",
+            "Rules to accept a match:",
+            "- Same merchant/store OR clearly identical location/contact info.",
+            "- Same or near-identical date/time (same day; slight time drift ok).",
+            "- Totals, taxes, card tails should be consistent (not conflicting).",
+            "- Item lines should be plausibly the same purchase; no conflicting item sets.",
+            "If there is any strong conflict (different merchant names, different dates, very different totals/card tails), return null.",
+            "",
+            'Respond ONLY with JSON: {"choice": <int or null>, "reason": "..."}',
+            "Use choice=null if none fit.",
             "",
         ]
         for idx, cand in enumerate(candidates, start=1):
@@ -242,6 +270,36 @@ class ReceiptCombinationSelector:
         if not candidates:
             return {"status": "no_candidates", "choice": None}
 
+        # Prepare minimal, privacy-aware trace payload (no full text)
+        candidate_pairs = [c["combo"] for c in candidates]
+        prompt = self._build_prompt(candidates)
+        prompt_len = len(prompt)
+
+        run: RunTree | None = None
+        if RunTree is not None:
+            try:
+                run = RunTree(
+                    name="receipt-combination-llm",
+                    run_type="llm",
+                    inputs={
+                        "image_id": image_id,
+                        "target_receipt_id": target_receipt_id,
+                        "candidate_pairs": candidate_pairs,
+                        "prompt_length": prompt_len,
+                    },
+                    tags=[
+                        "combine-receipts",
+                        f"image:{image_id}",
+                        os.environ.get("PULUMI_STACK", "dev"),
+                    ],
+                    metadata={
+                        "model": getattr(self.llm, "model", None),
+                        "base_url": getattr(self.llm, "base_url", None),
+                    },
+                )
+            except Exception:
+                run = None
+
         prompt = self._build_prompt(candidates)
         result = self.llm.invoke(prompt)
         raw_answer = (
@@ -259,9 +317,24 @@ class ReceiptCombinationSelector:
         except Exception:
             choice = None
 
-        return {
+        outputs = {
             "status": "ok",
             "choice": choice,
             "raw_answer": raw_answer,
-            "candidates": [c["combo"] for c in candidates],
+            "candidates": candidate_pairs,
         }
+        if run is not None:
+            try:
+                run.end(
+                    outputs={
+                        "choice": choice,
+                        "raw_answer_excerpt": raw_answer[:2000],
+                        "status": outputs["status"],
+                        "candidate_pairs": candidate_pairs,
+                        "prompt_length": prompt_len,
+                    }
+                )
+            except Exception:
+                pass
+
+        return outputs
