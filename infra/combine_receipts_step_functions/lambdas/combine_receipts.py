@@ -10,19 +10,9 @@ This is the main processing Lambda that:
 5. Saves to DynamoDB (unless dry_run)
 """
 
-import json
 import logging
 import os
-import sys
 from typing import Any, Dict, cast
-
-# Add repo root to path
-repo_root = os.path.dirname(
-    os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    )
-)
-sys.path.insert(0, repo_root)
 
 # Import the shared combination logic
 from combine_receipts_logic import combine_receipts
@@ -33,41 +23,29 @@ from receipt_dynamo import DynamoClient
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# Cache environment values at cold start (Lambda best practice)
-TABLE_NAME = os.environ.get("DYNAMODB_TABLE_NAME")
-CHROMADB_BUCKET = os.environ.get("CHROMADB_BUCKET")
-RAW_BUCKET = os.environ.get("RAW_BUCKET")
-SITE_BUCKET = os.environ.get("SITE_BUCKET")
-ARTIFACTS_BUCKET = os.environ.get("ARTIFACTS_BUCKET")
-EMBED_NDJSON_QUEUE_URL = os.environ.get("EMBED_NDJSON_QUEUE_URL")
-BATCH_BUCKET_ENV = os.environ.get("BATCH_BUCKET")
+REQUIRED_ENV = [
+    "DYNAMODB_TABLE_NAME",
+    "CHROMADB_BUCKET",
+    "RAW_BUCKET",
+    "SITE_BUCKET",
+    "ARTIFACTS_BUCKET",
+    "BATCH_BUCKET",
+]
 
-if not TABLE_NAME:
-    raise ValueError("DYNAMODB_TABLE_NAME is not set")
-if not CHROMADB_BUCKET:
-    raise ValueError("CHROMADB_BUCKET is not set")
-if not RAW_BUCKET:
-    raise ValueError("RAW_BUCKET is not set")
-if not SITE_BUCKET:
-    raise ValueError("SITE_BUCKET is not set")
-if not ARTIFACTS_BUCKET:
-    raise ValueError("ARTIFACTS_BUCKET is not set")
-if not EMBED_NDJSON_QUEUE_URL:
-    raise ValueError("EMBED_NDJSON_QUEUE_URL is not set")
-if not BATCH_BUCKET_ENV:
-    raise ValueError("BATCH_BUCKET_ENV is not set")
+_env = {key: os.environ.get(key) for key in REQUIRED_ENV}
+missing = [k for k, v in _env.items() if not v]
+if missing:
+    raise ValueError(f"Missing required env vars: {', '.join(missing)}")
 
-# Narrow env vars for type checkers
-TABLE_NAME_STR = cast(str, TABLE_NAME)
-CHROMADB_BUCKET_STR = cast(str, CHROMADB_BUCKET)
-RAW_BUCKET_STR = cast(str, RAW_BUCKET)
-SITE_BUCKET_STR = cast(str, SITE_BUCKET)
-ARTIFACTS_BUCKET_STR = cast(str, ARTIFACTS_BUCKET)
-EMBED_NDJSON_QUEUE_URL_STR = cast(str, EMBED_NDJSON_QUEUE_URL)
-BATCH_BUCKET_ENV_STR = cast(str, BATCH_BUCKET_ENV)
+TABLE_NAME = cast(str, _env["DYNAMODB_TABLE_NAME"])
+CHROMADB_BUCKET = cast(str, _env["CHROMADB_BUCKET"])
+RAW_BUCKET = cast(str, _env["RAW_BUCKET"])
+SITE_BUCKET = cast(str, _env["SITE_BUCKET"])
+ARTIFACTS_BUCKET = cast(str, _env["ARTIFACTS_BUCKET"])
+BATCH_BUCKET_ENV = cast(str, _env["BATCH_BUCKET"])
 
 
-def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     """
     Combine receipts for a single image.
 
@@ -95,7 +73,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     dry_run = event.get("dry_run", True)
     # Always use LLM selection for choosing receipt pairs
     llm_select = True
-    batch_bucket = event.get("batch_bucket") or BATCH_BUCKET_ENV_STR
+    batch_bucket = event.get("batch_bucket") or BATCH_BUCKET_ENV
 
     # Set execution_id and batch_bucket in environment for records JSON saving
     os.environ["EXECUTION_ID"] = execution_id
@@ -110,7 +88,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     )
 
     try:
-        client = DynamoClient(table_name=TABLE_NAME_STR)
+        client = DynamoClient(table_name=TABLE_NAME)
 
         # If there aren't at least two receipts, we cannot combine.
         if len(receipt_ids) < 2:
@@ -152,11 +130,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             client=client,
             image_id=image_id,
             receipt_ids=chosen_receipts,
-            raw_bucket=RAW_BUCKET_STR,
-            site_bucket=SITE_BUCKET_STR,
-            chromadb_bucket=CHROMADB_BUCKET_STR,
-            artifacts_bucket=ARTIFACTS_BUCKET_STR,
-            embed_ndjson_queue_url=EMBED_NDJSON_QUEUE_URL_STR,
+            raw_bucket=RAW_BUCKET,
+            site_bucket=SITE_BUCKET,
+            chromadb_bucket=CHROMADB_BUCKET,
+            artifacts_bucket=ARTIFACTS_BUCKET,
             batch_bucket=batch_bucket,
             execution_id=execution_id,
             dry_run=dry_run,

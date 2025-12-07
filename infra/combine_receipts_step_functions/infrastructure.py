@@ -406,10 +406,9 @@ class CombineReceiptsStepFunction(ComponentResource):
                 "SITE_BUCKET": site_bucket_name,
                 "ARTIFACTS_BUCKET": artifacts_bucket_name
                 or "",  # Required for NDJSON export - must be provided
-                "EMBED_NDJSON_QUEUE_URL": embed_ndjson_queue_url
-                or "",  # Empty string if not provided
                 "DYNAMODB_TABLE_NAME": dynamodb_table_name,
                 "RECEIPT_AGENT_DYNAMO_TABLE_NAME": dynamodb_table_name,
+                "OPENAI_API_KEY": openai_api_key,
                 "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
                 "RECEIPT_AGENT_OLLAMA_API_KEY": ollama_api_key,
                 "RECEIPT_AGENT_OLLAMA_BASE_URL": "https://ollama.com",
