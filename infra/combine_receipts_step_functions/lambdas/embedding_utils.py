@@ -1,9 +1,9 @@
 """
-Embedding management orchestration for receipts.
+Embedding utilities for receipt combination.
 
-Handles realtime embedding generation with OpenAI, creation of ChromaDB deltas
-via receipt_chroma, upload to S3, and CompactionRun creation. Embedding
-cleanup remains the responsibility of the enhanced compactor.
+This module now uses the receipt_chroma package plus the OpenAI SDK directly
+to generate realtime embeddings and produce ChromaDB deltas. The receipt_label
+package is no longer required.
 """
 
 import logging
@@ -11,9 +11,8 @@ import os
 import tempfile
 import uuid
 from collections import defaultdict
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
 
-from receipt_dynamo import DynamoClient
 from receipt_dynamo.entities import (
     CompactionRun,
     ReceiptLine,
@@ -21,43 +20,58 @@ from receipt_dynamo.entities import (
     ReceiptWord,
 )
 
+try:
+    from openai import OpenAI
+
+    from receipt_chroma.data.chroma_client import ChromaClient
+    from receipt_chroma.embedding.formatting.line_format import (
+        format_line_context_embedding_input,
+        get_line_neighbors,
+    )
+    from receipt_chroma.embedding.formatting.word_format import (
+        format_word_context_embedding_input,
+        get_word_neighbors,
+    )
+    from receipt_chroma.embedding.metadata.line_metadata import (
+        create_line_metadata,
+        enrich_line_metadata_with_anchors,
+    )
+    from receipt_chroma.embedding.metadata.word_metadata import (
+        create_word_metadata,
+        enrich_word_metadata_with_anchors,
+    )
+
+    EMBEDDING_AVAILABLE = True
+except ImportError:  # pragma: no cover - handled gracefully at runtime
+    EMBEDDING_AVAILABLE = False
+
+
 logger = logging.getLogger(__name__)
 
 EMBEDDING_MODEL = "text-embedding-3-small"
 
 
 def _embed_texts(
-    openai_client, inputs: Sequence[str], model: str = EMBEDDING_MODEL
+    client: OpenAI, inputs: Sequence[str], model: str = EMBEDDING_MODEL
 ) -> List[List[float]]:
-    response = openai_client.embeddings.create(model=model, input=list(inputs))
+    """Embed a list of input strings using the OpenAI embeddings API."""
+    response = client.embeddings.create(model=model, input=list(inputs))
     return [item.embedding for item in response.data]
 
 
 def _average_word_confidence(words: List[ReceiptWord]) -> Optional[float]:
     if not words:
         return None
-    return sum(word.confidence for word in words) / len(words)
+    return sum(w.confidence for w in words) / len(words)
 
 
 def _build_line_vectors(
     receipt_lines: List[ReceiptLine],
     receipt_words: List[ReceiptWord],
     merchant_name: Optional[str],
-    openai_client,
+    client: OpenAI,
 ) -> Optional[Dict[str, List]]:
-    try:
-        from receipt_chroma.embedding.formatting.line_format import (
-            format_line_context_embedding_input,
-            get_line_neighbors,
-        )
-        from receipt_chroma.embedding.metadata.line_metadata import (
-            create_line_metadata,
-            enrich_line_metadata_with_anchors,
-        )
-    except ImportError as exc:  # pragma: no cover
-        logger.warning("Line embedding helpers unavailable: %s", exc)
-        return None
-
+    """Create line vector payloads for ChromaDB upsert."""
     meaningful_lines = [
         line for line in receipt_lines if not getattr(line, "is_noise", False)
     ]
@@ -69,7 +83,7 @@ def _build_line_vectors(
         format_line_context_embedding_input(line, receipt_lines)
         for line in meaningful_lines
     ]
-    embeddings = _embed_texts(openai_client, formatted_inputs)
+    embeddings = _embed_texts(client, formatted_inputs)
 
     words_by_line: Dict[int, List[ReceiptWord]] = defaultdict(list)
     for word in receipt_words:
@@ -117,21 +131,9 @@ def _build_line_vectors(
 def _build_word_vectors(
     receipt_words: List[ReceiptWord],
     merchant_name: Optional[str],
-    openai_client,
+    client: OpenAI,
 ) -> Optional[Dict[str, List]]:
-    try:
-        from receipt_chroma.embedding.formatting.word_format import (
-            format_word_context_embedding_input,
-            get_word_neighbors,
-        )
-        from receipt_chroma.embedding.metadata.word_metadata import (
-            create_word_metadata,
-            enrich_word_metadata_with_anchors,
-        )
-    except ImportError as exc:  # pragma: no cover
-        logger.warning("Word embedding helpers unavailable: %s", exc)
-        return None
-
+    """Create word vector payloads for ChromaDB upsert."""
     meaningful_words = [
         word for word in receipt_words if not getattr(word, "is_noise", False)
     ]
@@ -143,7 +145,7 @@ def _build_word_vectors(
         format_word_context_embedding_input(word, receipt_words)
         for word in meaningful_words
     ]
-    embeddings = _embed_texts(openai_client, formatted_inputs)
+    embeddings = _embed_texts(client, formatted_inputs)
 
     ids: List[str] = []
     metadatas: List[Dict] = []
@@ -188,77 +190,50 @@ def _build_word_vectors(
 
 
 def create_embeddings_and_compaction_run(
-    client: DynamoClient,
-    chromadb_bucket: str,
+    receipt_lines: List[ReceiptLine],
+    receipt_words: List[ReceiptWord],
+    receipt_metadata: Optional[ReceiptMetadata],
     image_id: str,
-    receipt_id: int,
-    receipt_lines: Optional[List[ReceiptLine]] = None,
-    receipt_words: Optional[List[ReceiptWord]] = None,
-    receipt_metadata: Optional[ReceiptMetadata] = None,
-    merchant_name: Optional[str] = None,
-    add_to_dynamo: bool = False,
+    new_receipt_id: int,
+    chromadb_bucket: str,
 ) -> Optional[CompactionRun]:
     """
-    Create realtime embeddings, upload ChromaDB deltas, and build a CompactionRun.
+    Create embeddings and ChromaDB deltas for combined receipt.
 
-    Args:
-        client: DynamoDB client (used for fetches and optional CompactionRun write)
-        chromadb_bucket: S3 bucket for ChromaDB deltas
-        image_id: Image ID
-        receipt_id: Receipt ID
-        receipt_lines: Optional lines (fetched if None)
-        receipt_words: Optional words (fetched if None)
-        receipt_metadata: Optional metadata for merchant context
-        merchant_name: Explicit merchant name override
-        add_to_dynamo: If True, persist the CompactionRun via the client
+    Returns:
+        CompactionRun entity if embeddings were created, None otherwise.
     """
-    try:
-        from openai import OpenAI
-
-        from receipt_chroma.data.chroma_client import ChromaClient
-    except ImportError as exc:  # pragma: no cover
-        logger.warning("Embedding dependencies unavailable: %s", exc)
+    if not EMBEDDING_AVAILABLE:
+        logger.info(
+            "Embedding dependencies not available; skipping embeddings"
+        )
         return None
 
     if not os.environ.get("OPENAI_API_KEY"):
         logger.info("OPENAI_API_KEY not set; skipping embeddings")
         return None
 
-    if receipt_lines is None:
-        receipt_lines = client.list_receipt_lines_from_receipt(
-            image_id, receipt_id
-        )
-    if receipt_words is None:
-        receipt_words = client.list_receipt_words_from_receipt(
-            image_id, receipt_id
-        )
-
-    if not receipt_lines or not receipt_words:
-        logger.info(
-            "No lines/words found for receipt %s; skipping embedding",
-            receipt_id,
-        )
-        return None
-
-    merchant_name = merchant_name or (
+    openai_client = OpenAI()
+    merchant_name = (
         receipt_metadata.merchant_name if receipt_metadata else None
     )
 
-    openai_client = OpenAI()
     line_payload = _build_line_vectors(
         receipt_lines=receipt_lines,
         receipt_words=receipt_words,
         merchant_name=merchant_name,
-        openai_client=openai_client,
+        client=openai_client,
     )
     word_payload = _build_word_vectors(
         receipt_words=receipt_words,
         merchant_name=merchant_name,
-        openai_client=openai_client,
+        client=openai_client,
     )
 
     if not line_payload or not word_payload:
-        logger.info("Embedding payloads missing; skipping delta upload")
+        logger.info(
+            "Embeddings unavailable for lines or words; skipping delta upload"
+        )
         return None
 
     run_id = str(uuid.uuid4())
@@ -276,8 +251,10 @@ def create_embeddings_and_compaction_run(
         metadata_only=True,
     )
 
-    line_client.upsert_vectors(collection_name="lines", **line_payload)
-    word_client.upsert_vectors(collection_name="words", **word_payload)
+    if line_payload:
+        line_client.upsert_vectors(collection_name="lines", **line_payload)
+    if word_payload:
+        word_client.upsert_vectors(collection_name="words", **word_payload)
 
     lines_prefix = f"lines/delta/{run_id}/"
     words_prefix = f"words/delta/{run_id}/"
@@ -291,44 +268,10 @@ def create_embeddings_and_compaction_run(
         s3_prefix=words_prefix,
     )
 
-    compaction_run = CompactionRun(
+    return CompactionRun(
         run_id=run_id,
         image_id=image_id,
-        receipt_id=receipt_id,
+        receipt_id=new_receipt_id,
         lines_delta_prefix=lines_delta_key,
         words_delta_prefix=words_delta_key,
     )
-
-    if add_to_dynamo:
-        client.add_compaction_run(compaction_run)
-
-    logger.info("Created CompactionRun %s for receipt %s", run_id, receipt_id)
-    return compaction_run
-
-
-def create_embeddings(
-    client: DynamoClient,
-    chromadb_bucket: str,
-    image_id: str,
-    receipt_id: int,
-    receipt_lines: Optional[List[ReceiptLine]] = None,
-    receipt_words: Optional[List[ReceiptWord]] = None,
-    receipt_metadata: Optional[ReceiptMetadata] = None,
-    merchant_name: Optional[str] = None,
-) -> Optional[str]:
-    """
-    Backwards-compatible wrapper that creates embeddings and persists CompactionRun.
-    Returns the run_id if successful.
-    """
-    compaction_run = create_embeddings_and_compaction_run(
-        client=client,
-        chromadb_bucket=chromadb_bucket,
-        image_id=image_id,
-        receipt_id=receipt_id,
-        receipt_lines=receipt_lines,
-        receipt_words=receipt_words,
-        receipt_metadata=receipt_metadata,
-        merchant_name=merchant_name,
-        add_to_dynamo=True,
-    )
-    return compaction_run.run_id if compaction_run else None

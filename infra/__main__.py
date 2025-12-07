@@ -1156,9 +1156,9 @@ combine_receipts_sf = CombineReceiptsStepFunction(
     chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
     raw_bucket_name=raw_bucket.bucket,
     site_bucket_name=site_bucket.bucket,
-    # Reuse the embedding artifacts bucket so enhanced compaction permissions already apply
-    artifacts_bucket_name=embedding_infrastructure.artifacts_bucket.bucket,
-    artifacts_bucket_arn=embedding_infrastructure.artifacts_bucket.arn,
+    # Reuse the embedding batch/artifacts bucket from embedding infrastructure
+    artifacts_bucket_name=embedding_infrastructure.batch_bucket.bucket,
+    artifacts_bucket_arn=embedding_infrastructure.batch_bucket.arn,
     embed_ndjson_queue_url=None,  # dev flow does not need the queue
     embed_ndjson_queue_arn=None,
 )

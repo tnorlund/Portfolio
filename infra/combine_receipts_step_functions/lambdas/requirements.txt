@@ -1,7 +1,6 @@
 # Core dependencies
 receipt-dynamo
 receipt-chroma
-receipt-label
 receipt-upload
 receipt-agent
 

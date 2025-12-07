@@ -160,7 +160,7 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
 
         return response
 
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-except
         logger.error("Error combining receipts: %s", e, exc_info=True)
         return {
             "image_id": image_id,

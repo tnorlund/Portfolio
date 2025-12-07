@@ -27,7 +27,6 @@ COPY receipt_chroma/ /tmp/receipt_chroma/
 COPY receipt_places/ /tmp/receipt_places/
 COPY receipt_agent/ /tmp/receipt_agent/
 COPY receipt_upload/ /tmp/receipt_upload/
-COPY receipt_label/ /tmp/receipt_label/
 
 # Install dependencies from pyproject.toml files
 # Install in dependency order
@@ -35,9 +34,8 @@ RUN pip install --no-cache-dir /tmp/receipt_dynamo && \
     pip install --no-cache-dir /tmp/receipt_chroma && \
     pip install --no-cache-dir /tmp/receipt_places && \
     pip install --no-cache-dir /tmp/receipt_upload && \
-    pip install --no-cache-dir /tmp/receipt_label && \
     pip install --no-cache-dir /tmp/receipt_agent && \
-    rm -rf /tmp/receipt_dynamo /tmp/receipt_chroma /tmp/receipt_places /tmp/receipt_upload /tmp/receipt_label /tmp/receipt_agent
+    rm -rf /tmp/receipt_dynamo /tmp/receipt_chroma /tmp/receipt_places /tmp/receipt_upload /tmp/receipt_agent
 
 # Stage 2: Copy Lambda-specific code (changes frequently, but doesn't invalidate deps cache)
 FROM dependencies
@@ -45,6 +43,11 @@ FROM dependencies
 # Copy the combine receipts handler and shared logic
 COPY infra/combine_receipts_step_functions/lambdas/combine_receipts.py ${LAMBDA_TASK_ROOT}/handler.py
 COPY infra/combine_receipts_step_functions/lambdas/combine_receipts_logic.py ${LAMBDA_TASK_ROOT}/combine_receipts_logic.py
+COPY infra/combine_receipts_step_functions/lambdas/geometry_utils.py ${LAMBDA_TASK_ROOT}/geometry_utils.py
+COPY infra/combine_receipts_step_functions/lambdas/records_builder.py ${LAMBDA_TASK_ROOT}/records_builder.py
+COPY infra/combine_receipts_step_functions/lambdas/metadata_utils.py ${LAMBDA_TASK_ROOT}/metadata_utils.py
+COPY infra/combine_receipts_step_functions/lambdas/s3_io.py ${LAMBDA_TASK_ROOT}/s3_io.py
+COPY infra/combine_receipts_step_functions/lambdas/embedding_utils.py ${LAMBDA_TASK_ROOT}/embedding_utils.py
 
 # Set the handler (Lambda container image format)
 CMD ["handler.handler"]
