@@ -77,3 +77,4 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
         logger.error("Failed to load batches from %s: %s", manifest_key, e)
         raise
 
+

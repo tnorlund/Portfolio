@@ -1,7 +1,7 @@
 # infra/lambda_layer/python/dynamo/entities/image.py
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.constants import ImageType
 from receipt_dynamo.entities.base import DynamoDBEntity
@@ -11,6 +11,14 @@ from receipt_dynamo.entities.util import (
     assert_valid_uuid,
     validate_positive_dimensions,
 )
+
+# Import transform methods from receipt_dynamo utils (no external dependencies)
+try:
+    from receipt_dynamo.utils.transformations import invert_warp
+
+    TRANSFORM_AVAILABLE = True
+except ImportError:
+    TRANSFORM_AVAILABLE = False
 
 
 @dataclass(eq=True, unsafe_hash=False)
@@ -114,7 +122,9 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
             if not isinstance(self.receipt_count, int):
                 raise ValueError("receipt_count must be an integer")
             if self.receipt_count < 0:
-                raise ValueError("receipt_count must be a non-negative integer")
+                raise ValueError(
+                    "receipt_count must be a non-negative integer"
+                )
 
     @property
     def key(self) -> Dict[str, Any]:
@@ -230,6 +240,45 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
             f"receipt_count={_repr_str(self.receipt_count)}"
             ")"
         )
+
+    def get_transform_to_receipt(
+        self, receipt: Any
+    ) -> Tuple[List[float], int, int]:
+        """
+        Calculate transform coefficients to map image coordinates to receipt coordinates.
+
+        This method computes perspective transform coefficients that map coordinates
+        from image space (pixels, PIL space with y=0 at top) to receipt space
+        (normalized 0-1, OCR space with y=0 at bottom).
+
+        Args:
+            receipt: Receipt entity with top_left, top_right, bottom_left, bottom_right corners
+
+        Returns:
+            Tuple of (transform_coeffs, receipt_width, receipt_height)
+            - transform_coeffs: 8 perspective coefficients [a, b, c, d, e, f, g, h]
+            - receipt_width: Receipt width in pixels
+            - receipt_height: Receipt height in pixels
+
+        Raises:
+            ImportError: If transform dependencies are not available
+        """
+        if not TRANSFORM_AVAILABLE:
+            raise ImportError(
+                "Transform methods require receipt_upload.geometry.transformations"
+            )
+
+        # First get the receipt -> image transform, then invert it
+        (
+            receipt_to_image_coeffs,
+            receipt_width,
+            receipt_height,
+        ) = receipt.get_transform_to_image(self.width, self.height)
+
+        # Invert to get image -> receipt transform
+        image_to_receipt_coeffs = invert_warp(*receipt_to_image_coeffs)
+
+        return image_to_receipt_coeffs, receipt_width, receipt_height
 
 
 def item_to_image(item: Dict[str, Any]) -> Image:

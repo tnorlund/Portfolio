@@ -30,6 +30,7 @@ from typing import Optional
 import s3_website  # noqa: F401
 from billing_alerts import BillingAlerts
 from chromadb_compaction import create_chromadb_compaction_infrastructure
+from combine_receipts_step_functions import CombineReceiptsStepFunction
 from create_labels_step_functions import CreateLabelsStepFunction
 from currency_validation_step_functions import (
     create_currency_validation_state_machine,
@@ -1145,6 +1146,27 @@ pulumi.export(
 pulumi.export(
     "create_labels_create_lambda_arn",
     create_labels_sf.create_labels_lambda_arn,
+)
+
+# Combine Receipts Step Function (LLM/analysis-driven receipt merges)
+combine_receipts_sf = CombineReceiptsStepFunction(
+    f"combine-receipts-{stack}",
+    dynamodb_table_name=dynamodb_table.name,
+    dynamodb_table_arn=dynamodb_table.arn,
+    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
+    chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
+    raw_bucket_name=raw_bucket.bucket,
+    site_bucket_name=site_bucket.bucket,
+    # Optional hooks (NDJSON export + queue) can be wired later:
+    artifacts_bucket_name=None,
+    artifacts_bucket_arn=None,
+    embed_ndjson_queue_url=None,
+    embed_ndjson_queue_arn=None,
+)
+
+pulumi.export("combine_receipts_sf_arn", combine_receipts_sf.state_machine_arn)
+pulumi.export(
+    "combine_receipts_batch_bucket_name", combine_receipts_sf.batch_bucket_name
 )
 
 # Create validate metadata Step Function
