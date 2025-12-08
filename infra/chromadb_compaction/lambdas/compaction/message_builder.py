@@ -15,7 +15,7 @@ def process_sqs_messages(
     metrics: Any = None,
     OBSERVABILITY_AVAILABLE: bool = False,
     process_stream_messages_func: Any = None,
-    process_delta_messages_func: Any = None
+    process_delta_messages_func: Any = None,
 ) -> Dict[str, Any]:
     """Process SQS messages from the compaction queue.
 
@@ -25,7 +25,11 @@ def process_sqs_messages(
 
     Returns partial batch failure response for unprocessed delta messages.
     """
-    logger.info("Processing SQS messages", message_count=len(records), batch_size=len(records))
+    logger.info(
+        "Processing SQS messages",
+        message_count=len(records),
+        batch_size=len(records),
+    )
 
     stream_messages = []
     delta_message_records = []  # Store full records for delta messages
@@ -199,30 +203,38 @@ def process_sqs_messages(
 
 
 def categorize_stream_messages(
-    stream_messages: List[StreamMessage]
-) -> Tuple[List[StreamMessage], List[StreamMessage], List[StreamMessage]]:
+    stream_messages: List[StreamMessage],
+) -> Tuple[
+    List[StreamMessage],
+    List[StreamMessage],
+    List[StreamMessage],
+    List[StreamMessage],
+]:
     """Categorize stream messages by entity type.
 
     Returns:
-        Tuple of (metadata_updates, label_updates, compaction_runs)
+        Tuple of (metadata_updates, label_updates, compaction_runs, receipt_deletions)
     """
     metadata_updates = []
     label_updates = []
     compaction_runs = []
+    receipt_deletions = []
 
     for message in stream_messages:
-        if message.entity_type == "RECEIPT_METADATA":
+        if message.entity_type == "RECEIPT":
+            receipt_deletions.append(message)
+        elif message.entity_type == "RECEIPT_METADATA":
             metadata_updates.append(message)
         elif message.entity_type == "RECEIPT_WORD_LABEL":
             label_updates.append(message)
         elif message.entity_type == "COMPACTION_RUN":
             compaction_runs.append(message)
 
-    return metadata_updates, label_updates, compaction_runs
+    return metadata_updates, label_updates, compaction_runs, receipt_deletions
 
 
 def group_messages_by_collection(
-    stream_messages: List[StreamMessage]
+    stream_messages: List[StreamMessage],
 ) -> Dict[ChromaDBCollection, List[StreamMessage]]:
     """Group stream messages by collection for batch processing."""
     messages_by_collection: Dict[ChromaDBCollection, List[StreamMessage]] = {}

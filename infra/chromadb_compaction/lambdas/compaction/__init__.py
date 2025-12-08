@@ -4,31 +4,38 @@ This package contains the modular components extracted from the monolithic
 enhanced_compaction_handler.py for better maintainability and testability.
 """
 
-from .models import (
-    LambdaResponse,
-    StreamMessage,
-    MetadataUpdateResult,
-    LabelUpdateResult,
+from .compaction_run import (
+    merge_compaction_deltas,
+    process_compaction_run_messages,
 )
-
+from .efs_snapshot_manager import get_efs_snapshot_manager
+from .label_handler import apply_label_updates_in_memory, process_label_updates
 from .message_builder import (
-    process_sqs_messages,
     categorize_stream_messages,
     group_messages_by_collection,
+    process_sqs_messages,
 )
-
-from .metadata_handler import process_metadata_updates
-from .label_handler import process_label_updates
-from .compaction_run import process_compaction_run_messages, merge_compaction_deltas
-from .metadata_handler import apply_metadata_updates_in_memory
-from .label_handler import apply_label_updates_in_memory
-from .efs_snapshot_manager import get_efs_snapshot_manager
+from .metadata_handler import (
+    apply_metadata_updates_in_memory,
+    process_metadata_updates,
+)
+from .models import (
+    LabelUpdateResult,
+    LambdaResponse,
+    MetadataUpdateResult,
+    StreamMessage,
+)
 from .operations import (
-    update_receipt_metadata,
-    remove_receipt_metadata,
-    update_word_labels,
-    remove_word_labels,
+    delete_receipt_embeddings,
     reconstruct_label_metadata,
+    remove_receipt_metadata,
+    remove_word_labels,
+    update_receipt_metadata,
+    update_word_labels,
+)
+from .receipt_handler import (
+    apply_receipt_deletions_in_memory,
+    process_receipt_deletions,
 )
 
 __all__ = [
@@ -37,26 +44,25 @@ __all__ = [
     "StreamMessage",
     "MetadataUpdateResult",
     "LabelUpdateResult",
-    
     # Message processing
     "process_sqs_messages",
     "categorize_stream_messages",
     "group_messages_by_collection",
-    
     # Entity handlers
     "process_metadata_updates",
-    "process_label_updates", 
+    "process_label_updates",
+    "process_receipt_deletions",
     "process_compaction_run_messages",
     "merge_compaction_deltas",
     "apply_metadata_updates_in_memory",
     "apply_label_updates_in_memory",
+    "apply_receipt_deletions_in_memory",
     "get_efs_snapshot_manager",
-    
     # ChromaDB operations
     "update_receipt_metadata",
     "remove_receipt_metadata",
+    "delete_receipt_embeddings",
     "update_word_labels",
     "remove_word_labels",
     "reconstruct_label_metadata",
-    
 ]
