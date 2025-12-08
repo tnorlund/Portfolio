@@ -55,7 +55,7 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
         "receipt_ids": [1, 2],
         "execution_id": "abc123",
         "batch_bucket": "bucket-name",
-        "dry_run": true
+        "dry_run": true,
     }
 
     Output:
@@ -64,7 +64,8 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
         "new_receipt_id": 4,
         "original_receipt_ids": [1, 2],
         "status": "success",
-        "compaction_run_id": "run-uuid"  // If embeddings were created
+        "compaction_run_id": "run-uuid",  // If embeddings were created
+        "deleted_receipts": [1, 2]  // If dry_run=false and compaction succeeded
     }
     """
     image_id = event["image_id"]
@@ -125,7 +126,16 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
                     "candidates": selection.get("candidates"),
                 }
 
+            # Log warning if LLM selected more than 2 receipts (should only be pairs)
+            if len(chosen_receipts) > 2:
+                logger.warning(
+                    "LLM selector returned %d receipt IDs (expected 2): %s. This may cause unexpected deletions.",
+                    len(chosen_receipts),
+                    chosen_receipts,
+                )
+
         # Use the shared combination logic
+        # Note: Deletion of original receipts happens automatically when dry_run=False
         result = combine_receipts(
             client=client,
             image_id=image_id,

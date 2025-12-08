@@ -263,7 +263,7 @@ def delete_receipt(
             metadata = client.get_receipt_metadata(image_id, receipt_id)
             if metadata:
                 print(f"   Deleting metadata...")
-                client.delete_receipt_metadata(image_id, receipt_id)
+                client.delete_receipt_metadata(metadata)
                 print(f"      ✅ Deleted metadata")
         except Exception:
             pass  # Metadata might not exist

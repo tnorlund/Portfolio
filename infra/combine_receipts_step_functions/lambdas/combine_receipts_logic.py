@@ -74,7 +74,7 @@ def combine_receipts(
         raw_bucket: S3 bucket for raw images
         site_bucket: S3 bucket for CDN images
         chromadb_bucket: S3 bucket for ChromaDB deltas
-        dry_run: If True, don't save to DynamoDB
+        dry_run: If True, don't save to DynamoDB (and don't delete original receipts)
 
     Returns:
         Dict with:
@@ -88,6 +88,7 @@ def combine_receipts(
             - compaction_run: CompactionRun entity (if embeddings created)
             - status: "success" or "failed"
             - error: Error message if failed
+            - deleted_receipts: List of deleted receipt IDs (if dry_run=False and compaction succeeded)
     """
     try:
         # Get image
@@ -343,9 +344,71 @@ def combine_receipts(
             client.add_receipt(records["receipt"])
             client.add_receipt_lines(records["receipt_lines"])
             client.add_receipt_words(records["receipt_words"])
-            client.add_receipt_letters(records["receipt_letters"])
+
+            # Try to add letters, but if they already exist (from a previous failed attempt),
+            # delete them first and try again
+            try:
+                client.add_receipt_letters(records["receipt_letters"])
+            except Exception as e:  # pylint: disable=broad-except
+                error_str = str(e)
+                if (
+                    "ConditionalCheckFailed" in error_str
+                    or "already exists" in error_str.lower()
+                ):
+                    logger.warning(
+                        "Letters already exist for receipt %s/%s (likely from previous failed attempt), deleting and retrying",
+                        image_id,
+                        new_receipt_id,
+                    )
+                    # Delete the letters we're trying to add (will be no-op if they don't exist)
+                    try:
+                        client.delete_receipt_letters(
+                            records["receipt_letters"]
+                        )
+                    except (
+                        Exception
+                    ) as delete_err:  # pylint: disable=broad-except
+                        logger.warning(
+                            "Error deleting existing letters (may not exist): %s",
+                            delete_err,
+                        )
+                    # Try adding again
+                    client.add_receipt_letters(records["receipt_letters"])
+                else:
+                    # Re-raise if it's a different error
+                    raise
+
+            # Try to add metadata, but if it already exists (from a previous failed attempt),
+            # delete it first and try again
             if receipt_metadata:
-                client.add_receipt_metadata(receipt_metadata)
+                try:
+                    client.add_receipt_metadata(receipt_metadata)
+                except Exception as e:  # pylint: disable=broad-except
+                    error_str = str(e)
+                    if (
+                        "ConditionalCheckFailed" in error_str
+                        or "already exists" in error_str.lower()
+                    ):
+                        logger.warning(
+                            "Receipt metadata already exists for receipt %s/%s (likely from previous failed attempt), deleting and retrying",
+                            image_id,
+                            new_receipt_id,
+                        )
+                        # Delete the existing metadata (pass the ReceiptMetadata object)
+                        try:
+                            client.delete_receipt_metadata(receipt_metadata)
+                        except (
+                            Exception
+                        ) as delete_err:  # pylint: disable=broad-except
+                            logger.warning(
+                                "Error deleting existing metadata (may not exist): %s",
+                                delete_err,
+                            )
+                        # Try adding again
+                        client.add_receipt_metadata(receipt_metadata)
+                    else:
+                        # Re-raise if it's a different error
+                        raise
             for label in migrated_labels:
                 client.add_receipt_word_label(label)
             if compaction_run:
@@ -372,8 +435,112 @@ def combine_receipts(
                         exc_info=True,
                     )
 
+        # Step 3: Wait for compaction and delete original receipts (only if not dry_run)
+        deleted_receipts = []
+        if not dry_run and compaction_run:
+            logger.info(
+                "Waiting for compaction and deleting original receipts for %s/%s",
+                image_id,
+                new_receipt_id,
+            )
+            try:
+                from receipt_agent.lifecycle.compaction_manager import (
+                    wait_for_compaction,
+                )
+                from receipt_agent.lifecycle.receipt_manager import (
+                    delete_receipt,
+                )
+
+                # Wait for compaction to complete
+                logger.info(
+                    "Waiting for compaction to complete for new receipt %s/%s",
+                    image_id,
+                    new_receipt_id,
+                )
+                wait_for_compaction(
+                    client=client,
+                    image_id=image_id,
+                    receipt_id=new_receipt_id,
+                    max_wait_seconds=600,  # 10 minutes
+                    poll_interval=10,  # Poll every 10 seconds
+                    initial_wait_seconds=30,  # Wait 30s for CompactionRun to appear
+                )
+                logger.info(
+                    "Compaction completed for new receipt %s/%s",
+                    image_id,
+                    new_receipt_id,
+                )
+
+                # Delete original receipts in reverse order (highest ID first)
+                # This follows the same pattern as dev.test_realtime_embeddings.py
+                sorted_receipt_ids = sorted(receipt_ids, reverse=True)
+
+                logger.info(
+                    "About to delete %d original receipt(s) for %s/%s: %s (these were combined into the new receipt)",
+                    len(sorted_receipt_ids),
+                    image_id,
+                    new_receipt_id,
+                    sorted_receipt_ids,
+                )
+
+                for receipt_id in sorted_receipt_ids:
+                    logger.info(
+                        "Deleting original receipt %s/%s (was combined into %s/%s)",
+                        image_id,
+                        receipt_id,
+                        image_id,
+                        new_receipt_id,
+                    )
+                    try:
+                        deletion_result = delete_receipt(
+                            client=client,
+                            image_id=image_id,
+                            receipt_id=receipt_id,
+                        )
+
+                        if deletion_result.success:
+                            logger.info(
+                                "Successfully deleted receipt %s/%s",
+                                image_id,
+                                receipt_id,
+                            )
+                            deleted_receipts.append(receipt_id)
+                        else:
+                            logger.error(
+                                "Failed to delete receipt %s/%s: %s",
+                                image_id,
+                                receipt_id,
+                                deletion_result.error,
+                            )
+                    except Exception as e:  # pylint: disable=broad-except
+                        logger.error(
+                            "Error deleting receipt %s/%s: %s",
+                            image_id,
+                            receipt_id,
+                            e,
+                            exc_info=True,
+                        )
+
+            except (TimeoutError, RuntimeError) as e:
+                logger.error(
+                    "Failed to wait for compaction for %s/%s: %s",
+                    image_id,
+                    new_receipt_id,
+                    e,
+                )
+                # Continue anyway - don't fail the whole operation
+            except Exception as e:  # pylint: disable=broad-except
+                logger.error(
+                    "Error during deletion step for %s/%s: %s",
+                    image_id,
+                    new_receipt_id,
+                    e,
+                    exc_info=True,
+                )
+                # Continue anyway - don't fail the whole operation
+
         # Build return dictionary with all fields, including records_s3_key/bucket from result
-        return {
+        result_dict = {
             "new_receipt_id": new_receipt_id,
             "receipt": records["receipt"],
             "receipt_lines": records["receipt_lines"],
@@ -386,6 +553,11 @@ def combine_receipts(
             "records_s3_key": result.get("records_s3_key"),
             "records_s3_bucket": result.get("records_s3_bucket"),
         }
+
+        if deleted_receipts:
+            result_dict["deleted_receipts"] = deleted_receipts
+
+        return result_dict
 
     except Exception as e:  # pylint: disable=broad-except
         logger.error("Error combining receipts: %s", e, exc_info=True)

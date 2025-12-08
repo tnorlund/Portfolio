@@ -12,7 +12,7 @@ from typing import Optional
 
 import pulumi
 import pulumi_aws as aws
-from pulumi import ComponentResource, ResourceOptions, Output
+from pulumi import ComponentResource, Output, ResourceOptions
 
 
 class ChromaDBQueues(ComponentResource):
@@ -85,7 +85,7 @@ class ChromaDBQueues(ComponentResource):
             fifo_queue=True,
             content_based_deduplication=True,
             message_retention_seconds=345600,
-            visibility_timeout_seconds=1200,  # 20 minutes - longer than Lambda timeout
+            visibility_timeout_seconds=900,  # 15 minutes - longer than Lambda timeout, but faster retries
             receive_wait_time_seconds=20,
             redrive_policy=Output.all(self.lines_dlq.arn).apply(
                 lambda args: json.dumps(
@@ -110,7 +110,7 @@ class ChromaDBQueues(ComponentResource):
             fifo_queue=True,
             content_based_deduplication=True,
             message_retention_seconds=345600,
-            visibility_timeout_seconds=1200,  # 20 minutes - longer than Lambda timeout
+            visibility_timeout_seconds=900,  # 15 minutes - longer than Lambda timeout, but faster retries
             receive_wait_time_seconds=20,
             redrive_policy=Output.all(self.words_dlq.arn).apply(
                 lambda args: json.dumps(
