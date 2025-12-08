@@ -30,6 +30,9 @@ except ImportError as e:
     )
     IMAGE_PROCESSING_AVAILABLE = False
 
+# Import helper modules
+# Use local embedding_utils instead of package version to ensure we use upload_bundled_delta_to_s3
+from embedding_utils import create_embeddings_and_compaction_run
 from geometry_utils import calculate_min_area_rect, create_warped_receipt_image
 from metadata_utils import (
     get_best_receipt_metadata,
@@ -42,11 +45,6 @@ from records_builder import (
     create_receipt_letters_from_combined,
 )
 from s3_io import export_receipt_ndjson_and_queue, save_records_json_to_s3
-
-# Import helper modules
-from receipt_agent.lifecycle.embedding_manager import (
-    create_embeddings_and_compaction_run,
-)
 
 logger = logging.getLogger()
 
@@ -298,20 +296,15 @@ def combine_receipts(
         # Create embeddings and ChromaDB deltas
         compaction_run = None
         if not dry_run:
+            # Use local embedding_utils which uses upload_bundled_delta_to_s3
+            # (correct format for compaction handler)
             compaction_run = create_embeddings_and_compaction_run(
-                client=client,
-                chromadb_bucket=chromadb_bucket,
-                image_id=image_id,
-                receipt_id=new_receipt_id,
                 receipt_lines=records["receipt_lines"],
                 receipt_words=records["receipt_words"],
                 receipt_metadata=receipt_metadata,
-                merchant_name=(
-                    receipt_metadata.merchant_name
-                    if receipt_metadata
-                    else None
-                ),
-                add_to_dynamo=False,
+                image_id=image_id,
+                new_receipt_id=new_receipt_id,
+                chromadb_bucket=chromadb_bucket,
             )
 
         # Save receipt records as JSON to S3 for validation

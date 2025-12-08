@@ -19,6 +19,7 @@ from receipt_dynamo.entities import (
     ReceiptLine,
     ReceiptMetadata,
     ReceiptWord,
+    ReceiptWordLabel,
 )
 
 logger = logging.getLogger(__name__)
@@ -118,6 +119,7 @@ def _build_word_vectors(
     receipt_words: List[ReceiptWord],
     merchant_name: Optional[str],
     openai_client,
+    receipt_word_labels: Optional[List[ReceiptWordLabel]] = None,
 ) -> Optional[Dict[str, List]]:
     try:
         from receipt_chroma.embedding.formatting.word_format import (
@@ -127,6 +129,7 @@ def _build_word_vectors(
         from receipt_chroma.embedding.metadata.word_metadata import (
             create_word_metadata,
             enrich_word_metadata_with_anchors,
+            enrich_word_metadata_with_labels,
         )
     except ImportError as exc:  # pragma: no cover
         logger.warning("Word embedding helpers unavailable: %s", exc)
@@ -152,10 +155,14 @@ def _build_word_vectors(
     for word, embedding in zip(meaningful_words, embeddings):
         left_words, right_words = get_word_neighbors(word, receipt_words)
         left_word = (
-            left_words[0] if isinstance(left_words, list) else left_words
+            left_words[0]
+            if isinstance(left_words, list) and len(left_words) > 0
+            else (left_words if not isinstance(left_words, list) else None)
         )
         right_word = (
-            right_words[0] if isinstance(right_words, list) else right_words
+            right_words[0]
+            if isinstance(right_words, list) and len(right_words) > 0
+            else (right_words if not isinstance(right_words, list) else None)
         )
 
         metadata = create_word_metadata(
@@ -167,6 +174,23 @@ def _build_word_vectors(
             source="openai_embedding_realtime",
         )
         metadata = enrich_word_metadata_with_anchors(metadata, word)
+
+        # Enrich with labels if provided
+        if receipt_word_labels:
+            word_labels = [
+                lbl
+                for lbl in receipt_word_labels
+                if (
+                    lbl.image_id == word.image_id
+                    and lbl.receipt_id == word.receipt_id
+                    and lbl.line_id == word.line_id
+                    and lbl.word_id == word.word_id
+                )
+            ]
+            if word_labels:
+                metadata = enrich_word_metadata_with_labels(
+                    metadata, word_labels
+                )
 
         vector_id = (
             f"IMAGE#{word.image_id}"
@@ -195,6 +219,7 @@ def create_embeddings_and_compaction_run(
     receipt_lines: Optional[List[ReceiptLine]] = None,
     receipt_words: Optional[List[ReceiptWord]] = None,
     receipt_metadata: Optional[ReceiptMetadata] = None,
+    receipt_word_labels: Optional[List[ReceiptWordLabel]] = None,
     merchant_name: Optional[str] = None,
     add_to_dynamo: bool = False,
 ) -> Optional[CompactionRun]:
@@ -209,6 +234,7 @@ def create_embeddings_and_compaction_run(
         receipt_lines: Optional lines (fetched if None)
         receipt_words: Optional words (fetched if None)
         receipt_metadata: Optional metadata for merchant context
+        receipt_word_labels: Optional word labels (fetched if None)
         merchant_name: Explicit merchant name override
         add_to_dynamo: If True, persist the CompactionRun via the client
     """
@@ -230,6 +256,10 @@ def create_embeddings_and_compaction_run(
         )
     if receipt_words is None:
         receipt_words = client.list_receipt_words_from_receipt(
+            image_id, receipt_id
+        )
+    if receipt_word_labels is None:
+        receipt_word_labels, _ = client.list_receipt_word_labels_for_receipt(
             image_id, receipt_id
         )
 
@@ -255,6 +285,7 @@ def create_embeddings_and_compaction_run(
         receipt_words=receipt_words,
         merchant_name=merchant_name,
         openai_client=openai_client,
+        receipt_word_labels=receipt_word_labels,
     )
 
     if not line_payload or not word_payload:
@@ -279,17 +310,39 @@ def create_embeddings_and_compaction_run(
     line_client.upsert_vectors(collection_name="lines", **line_payload)
     word_client.upsert_vectors(collection_name="words", **word_payload)
 
+    # Close clients before uploading to ensure files are flushed
+    line_client.close()
+    word_client.close()
+
     lines_prefix = f"lines/delta/{run_id}/"
     words_prefix = f"words/delta/{run_id}/"
 
-    lines_delta_key = line_client.persist_and_upload_delta(
-        bucket=chromadb_bucket,
-        s3_prefix=lines_prefix,
+    # Use upload_bundled_delta_to_s3 to create tar.gz files that the compaction handler expects
+    from receipt_label.utils.chroma_s3_helpers import (
+        upload_bundled_delta_to_s3,
     )
-    words_delta_key = word_client.persist_and_upload_delta(
+
+    lines_result = upload_bundled_delta_to_s3(
+        local_delta_dir=delta_lines_dir,
         bucket=chromadb_bucket,
-        s3_prefix=words_prefix,
+        delta_prefix=lines_prefix,
     )
+    if lines_result.get("status") != "uploaded":
+        logger.error("Failed to upload lines delta: %s", lines_result)
+        return None
+
+    words_result = upload_bundled_delta_to_s3(
+        local_delta_dir=delta_words_dir,
+        bucket=chromadb_bucket,
+        delta_prefix=words_prefix,
+    )
+    if words_result.get("status") != "uploaded":
+        logger.error("Failed to upload words delta: %s", words_result)
+        return None
+
+    # Return the prefix (not the full key) as the delta_prefix
+    lines_delta_key = lines_prefix
+    words_delta_key = words_prefix
 
     compaction_run = CompactionRun(
         run_id=run_id,

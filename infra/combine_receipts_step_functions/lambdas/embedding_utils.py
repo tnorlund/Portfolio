@@ -1,17 +1,23 @@
 """
 Embedding utilities for receipt combination.
 
-This module now uses the receipt_chroma package plus the OpenAI SDK directly
-to generate realtime embeddings and produce ChromaDB deltas. The receipt_label
-package is no longer required.
+This module uses the receipt_chroma package plus the OpenAI SDK directly
+to generate realtime embeddings and produce ChromaDB deltas. It creates
+tar.gz files using upload_bundled_delta_to_s3 (defined locally) that the
+compaction handler expects.
 """
 
 import logging
 import os
+import shutil
+import tarfile
 import tempfile
 import uuid
 from collections import defaultdict
-from typing import Dict, List, Optional, Sequence, Tuple
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Sequence, Tuple
+
+import boto3
 
 from receipt_dynamo.entities import (
     CompactionRun,
@@ -152,13 +158,39 @@ def _build_word_vectors(
     documents: List[str] = []
 
     for word, embedding in zip(meaningful_words, embeddings):
-        left_words, right_words = get_word_neighbors(word, receipt_words)
-        left_word = (
-            left_words[0] if isinstance(left_words, list) else left_words
-        )
-        right_word = (
-            right_words[0] if isinstance(right_words, list) else right_words
-        )
+        try:
+            left_words, right_words = get_word_neighbors(word, receipt_words)
+            # Handle empty lists (no neighbors found) - use "<EDGE>" as fallback
+            left_word = (
+                left_words[0]
+                if (isinstance(left_words, list) and left_words)
+                else "<EDGE>"
+            )
+            right_word = (
+                right_words[0]
+                if (isinstance(right_words, list) and right_words)
+                else "<EDGE>"
+            )
+        except (
+            IndexError,
+            KeyError,
+            AttributeError,
+            TypeError,
+            StopIteration,
+        ) as e:
+            # Fallback if get_word_neighbors fails (e.g., missing geometry attributes,
+            # word not found in list, or calculation errors)
+            # Note: words don't need to be in DynamoDB - they're passed as in-memory objects
+            logger.warning(
+                "Failed to get neighbors for word %s/%s/%s/%s: %s. Using <EDGE> fallback.",
+                word.image_id,
+                word.receipt_id,
+                word.line_id,
+                word.word_id,
+                e,
+            )
+            left_word = "<EDGE>"
+            right_word = "<EDGE>"
 
         metadata = create_word_metadata(
             word=word,
@@ -256,17 +288,35 @@ def create_embeddings_and_compaction_run(
     if word_payload:
         word_client.upsert_vectors(collection_name="words", **word_payload)
 
+    # Close clients before uploading to ensure files are flushed
+    line_client.close()
+    word_client.close()
+
     lines_prefix = f"lines/delta/{run_id}/"
     words_prefix = f"words/delta/{run_id}/"
 
-    lines_delta_key = line_client.persist_and_upload_delta(
+    # Upload bundled delta as tar.gz files that the compaction handler expects
+    lines_result = upload_bundled_delta_to_s3(
+        local_delta_dir=delta_lines_dir,
         bucket=chromadb_bucket,
-        s3_prefix=lines_prefix,
+        delta_prefix=lines_prefix,
     )
-    words_delta_key = word_client.persist_and_upload_delta(
+    if lines_result.get("status") != "uploaded":
+        logger.error("Failed to upload lines delta: %s", lines_result)
+        return None
+
+    words_result = upload_bundled_delta_to_s3(
+        local_delta_dir=delta_words_dir,
         bucket=chromadb_bucket,
-        s3_prefix=words_prefix,
+        delta_prefix=words_prefix,
     )
+    if words_result.get("status") != "uploaded":
+        logger.error("Failed to upload words delta: %s", words_result)
+        return None
+
+    # Return the prefix (not the full key) as the delta_prefix
+    lines_delta_key = lines_prefix
+    words_delta_key = words_prefix
 
     return CompactionRun(
         run_id=run_id,
@@ -275,3 +325,72 @@ def create_embeddings_and_compaction_run(
         lines_delta_prefix=lines_delta_key,
         words_delta_prefix=words_delta_key,
     )
+
+
+def bundle_directory_to_tar_gz(src_dir: str, out_tar_path: str) -> int:
+    """Create a gzip-compressed tarball from a directory. Returns size in bytes."""
+    src = Path(src_dir)
+    if not src.exists() or not src.is_dir():
+        raise ValueError(
+            f"Source directory does not exist or is not a dir: {src_dir}"
+        )
+    with tarfile.open(out_tar_path, "w:gz") as tar:
+        tar.add(src_dir, arcname=".")
+    return os.path.getsize(out_tar_path)
+
+
+def upload_bundled_delta_to_s3(
+    local_delta_dir: str,
+    bucket: str,
+    delta_prefix: str,
+    metadata: Optional[Dict[str, Any]] = None,
+    region: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Tar/gzip a delta directory and upload as a single object delta.tar.gz under delta_prefix."""
+    logger.info(
+        "Bundling and uploading delta tarball: dir=%s bucket=%s prefix=%s",
+        local_delta_dir,
+        bucket,
+        delta_prefix,
+    )
+    try:
+        client_kwargs = {"service_name": "s3"}
+        if region:
+            client_kwargs["region_name"] = region
+        s3 = boto3.client(**client_kwargs)
+
+        # Create tar.gz in temp
+        tmp_dir = tempfile.mkdtemp()
+        tar_path = os.path.join(tmp_dir, "delta.tar.gz")
+        size_bytes = bundle_directory_to_tar_gz(local_delta_dir, tar_path)
+
+        s3_key = f"{delta_prefix.rstrip('/')}/delta.tar.gz"
+
+        # Prepare metadata
+        s3_metadata = {"delta_key": delta_prefix}
+        if metadata:
+            s3_metadata.update({k: str(v) for k, v in metadata.items()})
+
+        extra_args = {
+            "Metadata": s3_metadata,
+            "ContentType": "application/gzip",
+            "ContentEncoding": "gzip",
+        }
+
+        s3.upload_file(tar_path, bucket, s3_key, ExtraArgs=extra_args)
+
+        # Cleanup temp
+        try:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+        except Exception:  # noqa: BLE001
+            pass
+
+        return {
+            "status": "uploaded",
+            "delta_key": delta_prefix,
+            "object_key": s3_key,
+            "tar_size_bytes": size_bytes,
+        }
+    except Exception as e:  # noqa: BLE001
+        logger.error("Error uploading bundled delta to S3: %s", e)
+        return {"status": "failed", "error": str(e)}
