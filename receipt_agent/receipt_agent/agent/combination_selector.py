@@ -551,19 +551,27 @@ class ReceiptCombinationSelector:
         return candidates
 
     def _build_prompt(self, candidates: Sequence[Dict[str, Any]]) -> str:
-        """Build a JSON-only prompt."""
+        """Build a deterministic, JSON-only prompt."""
         lines = [
-            "Decide if two receipts belong to the SAME transaction.",
-            "Rules to accept a match:",
-            "- Same merchant/store OR clearly identical location/contact info.",
-            "- Same or near-identical date/time (same day; slight time drift ok).",
-            "- Totals, taxes, card tails should be consistent (not conflicting).",
-            "- Item lines should be plausibly the same purchase; no conflicting item sets.",
-            "If there is any strong conflict (different merchant names, different dates, very different totals/card tails), return null.",
-            "Receipt text is already ordered in image space and grouped by visual rows (line-id prefixes show ranges).",
+            "You must decide if any candidate pair is the SAME transaction.",
+            "Pick exactly one OPTION number that best matches, or -1 if none.",
             "",
-            'Respond ONLY with JSON: {"choice": <int or null>, "reason": "..."}',
-            "Use choice=null if none fit.",
+            "Decision rules (strict):",
+            "- Reject if merchants/addresses conflict.",
+            "- Reject if dates conflict (different day) or times are far apart.",
+            "- Reject if totals or card tails conflict.",
+            "- Prefer the pair with the strongest overlap in this order:",
+            "  1) order/ticket id",
+            "  2) card tail",
+            "  3) date/time (same day, small drift allowed)",
+            "  4) totals (subtotal/tax/tip/total)",
+            "  5) merchant/address string match",
+            "",
+            "Output JSON ONLY with this exact shape:",
+            '{"choice": <int or -1>, "reason": "<1-3 sentences citing fields>"}',
+            "Never return null. Use -1 if no option satisfies the rules.",
+            "",
+            "Receipt text is ordered in image space with source ids (rX lY).",
             "",
         ]
         for idx, cand in enumerate(candidates, start=1):
@@ -583,7 +591,7 @@ class ReceiptCombinationSelector:
                 lines.append(cand["text_other"])
             lines.append("")
         lines.append(
-            'Return JSON only. Example: {"choice": 2, "reason": "..."} or {"choice": null, "reason": "..."}'
+            'Return JSON only. Example: {"choice": 2, "reason": "Same merchant, same order id 781185, same card tail 3931."} or {"choice": -1, "reason": "Conflicting dates and merchants."}'
         )
         return "\n".join(lines)
 
@@ -598,6 +606,7 @@ class ReceiptCombinationSelector:
         prompt = self._build_prompt(candidates)
         prompt_len = len(prompt)
 
+        prompt_version = "combine-receipts-v2"
         # Minimal LangSmith-friendly metadata/tags per LC docs
         prompt = self._build_prompt(candidates)
         result = self.llm.invoke(
@@ -614,6 +623,7 @@ class ReceiptCombinationSelector:
                     "target_receipt_id": target_receipt_id,
                     "candidate_pairs": candidate_pairs,
                     "prompt_length": prompt_len,
+                    "prompt_version": prompt_version,
                 },
             },
         )
@@ -625,10 +635,11 @@ class ReceiptCombinationSelector:
         try:
             parsed = json.loads(raw_answer)
             pick = parsed.get("choice")
-            if pick is None:
-                choice = None
-            elif isinstance(pick, int) and 1 <= pick <= len(candidates):
-                choice = candidates[pick - 1]["combo"]
+            if isinstance(pick, int):
+                if pick == -1:
+                    choice = None
+                elif 1 <= pick <= len(candidates):
+                    choice = candidates[pick - 1]["combo"]
         except Exception:
             choice = None
 
