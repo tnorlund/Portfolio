@@ -534,17 +534,19 @@ def delete_receipt_embeddings(
 
     if not chromadb_ids:
         # This can happen if ReceiptLine/ReceiptWord entities were already deleted
-        # before the Receipt entity (e.g., in split_receipt.py script)
-        # In this case, we can't construct ChromaDB IDs, so we can't delete embeddings
-        # The embeddings will remain orphaned, but this is expected behavior
+        # before the Receipt entity (e.g., manual deletion or race condition).
+        # The compactor now deletes child records after ChromaDB deletion, so this
+        # should be rare. If it occurs, we can't construct ChromaDB IDs, so we can't
+        # delete embeddings. The embeddings will remain orphaned.
         logger.warning(
             "No entities found in DynamoDB for receipt deletion - lines/words may already be deleted",
             image_id=image_id,
             receipt_id=receipt_id,
         )
         logger.info(
-            "Note: If lines/words were deleted before receipt, embeddings may already be orphaned. "
-            "This is expected when deleting in reverse order (labels -> words -> lines -> receipt)."
+            "Note: If lines/words were deleted before receipt deletion was processed, "
+            "embeddings may remain orphaned. The compactor now automatically deletes "
+            "child records after ChromaDB deletion to prevent this."
         )
         return 0
 

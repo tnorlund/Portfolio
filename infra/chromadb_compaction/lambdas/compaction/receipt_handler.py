@@ -15,6 +15,272 @@ from .models import (
 from .operations import delete_receipt_embeddings
 
 
+def delete_receipt_child_records(
+    dynamo_client: Any,
+    image_id: str,
+    receipt_id: int,
+    logger: Any,
+    metrics: Any = None,
+    OBSERVABILITY_AVAILABLE: bool = False,
+) -> Dict[str, int]:
+    """Delete all child records for a receipt from DynamoDB.
+
+    Deletes in reverse order of creation:
+    1. ReceiptWordLabel
+    2. ReceiptWord
+    3. ReceiptLine
+    4. ReceiptLetter (best effort)
+    5. ReceiptMetadata (best effort)
+    6. CompactionRun (best effort)
+
+    Args:
+        dynamo_client: DynamoDB client instance
+        image_id: Image ID
+        receipt_id: Receipt ID
+        logger: Logger instance
+        metrics: Optional metrics collector
+        OBSERVABILITY_AVAILABLE: Whether observability features are available
+
+    Returns:
+        Dictionary with deletion counts for each entity type
+    """
+    deletion_counts = {
+        "labels": 0,
+        "words": 0,
+        "lines": 0,
+        "letters": 0,
+        "metadata": 0,
+        "compaction_runs": 0,
+    }
+
+    try:
+        # 1. Delete ReceiptWordLabel
+        try:
+            receipt_labels, _ = (
+                dynamo_client.list_receipt_word_labels_for_receipt(
+                    image_id, receipt_id
+                )
+            )
+            if receipt_labels:
+                dynamo_client.delete_receipt_word_labels(receipt_labels)
+                deletion_counts["labels"] = len(receipt_labels)
+                if OBSERVABILITY_AVAILABLE:
+                    logger.info(
+                        "Deleted receipt word labels",
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                        count=len(receipt_labels),
+                    )
+                else:
+                    logger.info(
+                        f"Deleted {len(receipt_labels)} receipt word labels for receipt {receipt_id}"
+                    )
+                if metrics:
+                    metrics.count(
+                        "CompactionReceiptLabelsDeleted", len(receipt_labels)
+                    )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                "Failed to delete receipt word labels",
+                image_id=image_id,
+                receipt_id=receipt_id,
+                error=str(e),
+            )
+
+        # 2. Delete ReceiptWord
+        try:
+            receipt_words = dynamo_client.list_receipt_words_from_receipt(
+                image_id, receipt_id
+            )
+            if receipt_words:
+                dynamo_client.delete_receipt_words(receipt_words)
+                deletion_counts["words"] = len(receipt_words)
+                if OBSERVABILITY_AVAILABLE:
+                    logger.info(
+                        "Deleted receipt words",
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                        count=len(receipt_words),
+                    )
+                else:
+                    logger.info(
+                        f"Deleted {len(receipt_words)} receipt words for receipt {receipt_id}"
+                    )
+                if metrics:
+                    metrics.count(
+                        "CompactionReceiptWordsDeleted", len(receipt_words)
+                    )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                "Failed to delete receipt words",
+                image_id=image_id,
+                receipt_id=receipt_id,
+                error=str(e),
+            )
+
+        # 3. Delete ReceiptLine
+        try:
+            receipt_lines = dynamo_client.list_receipt_lines_from_receipt(
+                image_id, receipt_id
+            )
+            if receipt_lines:
+                dynamo_client.delete_receipt_lines(receipt_lines)
+                deletion_counts["lines"] = len(receipt_lines)
+                if OBSERVABILITY_AVAILABLE:
+                    logger.info(
+                        "Deleted receipt lines",
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                        count=len(receipt_lines),
+                    )
+                else:
+                    logger.info(
+                        f"Deleted {len(receipt_lines)} receipt lines for receipt {receipt_id}"
+                    )
+                if metrics:
+                    metrics.count(
+                        "CompactionReceiptLinesDeleted", len(receipt_lines)
+                    )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                "Failed to delete receipt lines",
+                image_id=image_id,
+                receipt_id=receipt_id,
+                error=str(e),
+            )
+
+        # 4. Delete ReceiptLetter (best effort - may not have direct list method)
+        try:
+            # Try to list letters if method exists
+            if hasattr(
+                dynamo_client, "list_receipt_letters_from_image_and_receipt"
+            ):
+                receipt_letters = (
+                    dynamo_client.list_receipt_letters_from_image_and_receipt(
+                        image_id, receipt_id
+                    )
+                )
+                if receipt_letters:
+                    dynamo_client.delete_receipt_letters(receipt_letters)
+                    deletion_counts["letters"] = len(receipt_letters)
+                    if OBSERVABILITY_AVAILABLE:
+                        logger.info(
+                            "Deleted receipt letters",
+                            image_id=image_id,
+                            receipt_id=receipt_id,
+                            count=len(receipt_letters),
+                        )
+                    else:
+                        logger.info(
+                            f"Deleted {len(receipt_letters)} receipt letters for receipt {receipt_id}"
+                        )
+                    if metrics:
+                        metrics.count(
+                            "CompactionReceiptLettersDeleted",
+                            len(receipt_letters),
+                        )
+        except Exception as e:  # noqa: BLE001
+            # Letters deletion is best effort - log but don't fail
+            logger.debug(
+                "Skipping receipt letters deletion (method may not exist or letters already deleted)",
+                image_id=image_id,
+                receipt_id=receipt_id,
+                error=str(e),
+            )
+
+        # 5. Delete ReceiptMetadata (best effort)
+        try:
+            metadata = dynamo_client.get_receipt_metadata(image_id, receipt_id)
+            if metadata:
+                dynamo_client.delete_receipt_metadata(metadata)
+                deletion_counts["metadata"] = 1
+                if OBSERVABILITY_AVAILABLE:
+                    logger.info(
+                        "Deleted receipt metadata",
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                    )
+                else:
+                    logger.info(
+                        f"Deleted receipt metadata for receipt {receipt_id}"
+                    )
+                if metrics:
+                    metrics.count("CompactionReceiptMetadataDeleted", 1)
+        except Exception as e:  # noqa: BLE001
+            # Metadata might not exist - log but don't fail
+            logger.debug(
+                "Skipping receipt metadata deletion (may not exist)",
+                image_id=image_id,
+                receipt_id=receipt_id,
+                error=str(e),
+            )
+
+        # 6. Delete CompactionRun (best effort)
+        try:
+            runs, _ = dynamo_client.list_compaction_runs_for_receipt(
+                image_id, receipt_id
+            )
+            if runs:
+                for run in runs:
+                    dynamo_client.delete_compaction_run(run)
+                deletion_counts["compaction_runs"] = len(runs)
+                if OBSERVABILITY_AVAILABLE:
+                    logger.info(
+                        "Deleted compaction runs",
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                        count=len(runs),
+                    )
+                else:
+                    logger.info(
+                        f"Deleted {len(runs)} compaction runs for receipt {receipt_id}"
+                    )
+                if metrics:
+                    metrics.count(
+                        "CompactionReceiptCompactionRunsDeleted", len(runs)
+                    )
+        except Exception as e:  # noqa: BLE001
+            # Compaction runs might not exist - log but don't fail
+            logger.debug(
+                "Skipping compaction runs deletion (may not exist)",
+                image_id=image_id,
+                receipt_id=receipt_id,
+                error=str(e),
+            )
+
+        total_deleted = sum(deletion_counts.values())
+        if OBSERVABILITY_AVAILABLE:
+            logger.info(
+                "Completed receipt child record deletion",
+                image_id=image_id,
+                receipt_id=receipt_id,
+                total_deleted=total_deleted,
+                **deletion_counts,
+            )
+        else:
+            logger.info(
+                f"Completed receipt child record deletion for receipt {receipt_id}: "
+                f"{total_deleted} total records deleted"
+            )
+
+    except Exception as e:  # noqa: BLE001
+        # Log error but don't fail - ChromaDB deletion is the primary operation
+        logger.error(
+            "Error during receipt child record deletion",
+            image_id=image_id,
+            receipt_id=receipt_id,
+            error=str(e),
+        )
+        if metrics:
+            metrics.count(
+                "CompactionReceiptChildDeletionError",
+                1,
+                {"error_type": type(e).__name__},
+            )
+
+    return deletion_counts
+
+
 def process_receipt_deletions(
     receipt_deletions: List[Any],  # StreamMessage type
     collection: ChromaDBCollection,
@@ -26,7 +292,11 @@ def process_receipt_deletions(
 ) -> List[MetadataUpdateResult]:
     """Process RECEIPT deletion events for a specific collection.
 
-    Deletes all embeddings for the receipt from the specified collection.
+    Deletes all embeddings for the receipt from ChromaDB and all child records
+    from DynamoDB (ReceiptWordLabel, ReceiptWord, ReceiptLine, ReceiptLetter,
+    ReceiptMetadata, CompactionRun).
+
+    The compactor is responsible for complete cleanup when a Receipt is deleted.
     """
     logger.info("Processing receipt deletions", count=len(receipt_deletions))
     results: List[MetadataUpdateResult] = []
@@ -34,7 +304,6 @@ def process_receipt_deletions(
     bucket = os.environ["CHROMADB_BUCKET"]
     # Use the specific collection instead of hardcoded "words"
     database = collection.value
-    snapshot_key = f"{database}/snapshot/latest/"
 
     try:
         # Download current snapshot using atomic helper
@@ -121,6 +390,27 @@ def process_receipt_deletions(
                         get_dynamo_client_func,
                     )
 
+                    # After successfully deleting ChromaDB embeddings, delete child records from DynamoDB
+                    # This ensures child records exist when we query for them to construct ChromaDB IDs
+                    if get_dynamo_client_func:
+                        dynamo_client = get_dynamo_client_func()
+                        if dynamo_client:
+                            deletion_counts = delete_receipt_child_records(
+                                dynamo_client,
+                                image_id,
+                                receipt_id,
+                                logger,
+                                metrics,
+                                OBSERVABILITY_AVAILABLE,
+                            )
+                            if OBSERVABILITY_AVAILABLE:
+                                logger.info(
+                                    "Deleted receipt child records from DynamoDB",
+                                    image_id=image_id,
+                                    receipt_id=receipt_id,
+                                    **deletion_counts,
+                                )
+
                     result = MetadataUpdateResult(
                         database=database,
                         collection=database,
@@ -170,10 +460,17 @@ def process_receipt_deletions(
                         result=upload_result,
                         collection=database,
                     )
-                    # Mark all results as having upload errors
-                    for result in results:
+                    # Mark all results as having upload errors by recreating them
+                    for i, result in enumerate(results):
                         if result.error is None:
-                            result.error = "Failed to upload snapshot"
+                            results[i] = MetadataUpdateResult(
+                                database=result.database,
+                                collection=result.collection,
+                                updated_count=result.updated_count,
+                                image_id=result.image_id,
+                                receipt_id=result.receipt_id,
+                                error="Failed to upload snapshot",
+                            )
                 else:
                     logger.info(
                         "Successfully uploaded snapshot", collection=database
@@ -214,6 +511,9 @@ def apply_receipt_deletions_in_memory(
     """Apply receipt deletions directly to an in-memory ChromaDB collection.
 
     This is used when the collection is already loaded in memory (e.g., during compaction).
+
+    Also deletes all child records from DynamoDB (ReceiptWordLabel, ReceiptWord,
+    ReceiptLine, ReceiptLetter, ReceiptMetadata, CompactionRun).
     """
     logger.info(
         "Applying receipt deletions in memory", count=len(receipt_deletions)
@@ -250,6 +550,27 @@ def apply_receipt_deletions_in_memory(
                 OBSERVABILITY_AVAILABLE,
                 get_dynamo_client_func,
             )
+
+            # After successfully deleting ChromaDB embeddings, delete child records from DynamoDB
+            # This ensures child records exist when we query for them to construct ChromaDB IDs
+            if get_dynamo_client_func:
+                dynamo_client = get_dynamo_client_func()
+                if dynamo_client:
+                    deletion_counts = delete_receipt_child_records(
+                        dynamo_client,
+                        image_id,
+                        receipt_id,
+                        logger,
+                        metrics,
+                        OBSERVABILITY_AVAILABLE,
+                    )
+                    if OBSERVABILITY_AVAILABLE:
+                        logger.info(
+                            "Deleted receipt child records from DynamoDB",
+                            image_id=image_id,
+                            receipt_id=receipt_id,
+                            **deletion_counts,
+                        )
 
             result = MetadataUpdateResult(
                 database=database,

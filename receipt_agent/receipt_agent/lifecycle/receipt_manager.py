@@ -166,134 +166,58 @@ def delete_receipt(
     receipt_letters: Optional[List[ReceiptLetter]] = None,
 ) -> ReceiptDeletionResult:
     """
-    Delete a receipt and all associated entities from DynamoDB.
+    Delete a receipt from DynamoDB.
 
-    **ChromaDB Embedding Deletion**: The enhanced compactor automatically deletes
-    embeddings when the Receipt entity is deleted from DynamoDB (via DynamoDB streams).
-    The compactor is the source of truth for ChromaDB - do not manually delete embeddings.
+    **Complete Cleanup**: The enhanced compactor automatically handles complete
+    cleanup when the Receipt entity is deleted from DynamoDB (via DynamoDB
+    streams):
+    1. Deletes ChromaDB embeddings (queries DynamoDB for ReceiptLine or
+       ReceiptWord to construct IDs)
+    2. Deletes all child records from DynamoDB (ReceiptWordLabel, ReceiptWord,
+       ReceiptLine, ReceiptLetter, ReceiptMetadata, CompactionRun)
 
-    This handles deletion in the correct order:
-    1. Delete from DynamoDB in reverse order of creation:
-       - ReceiptWordLabel
-       - ReceiptWord
-       - ReceiptLine
-       - ReceiptLetter
-       - ReceiptMetadata
-       - CompactionRun
-       - Receipt (triggers compactor to delete embeddings automatically)
+    The compactor is the single source of truth for cleanup - it handles both
+    ChromaDB and DynamoDB child record deletion automatically.
+
+    This function only deletes the Receipt entity itself. Child records must remain
+    in DynamoDB when the Receipt is deleted so the compactor can query them to construct
+    ChromaDB IDs.
 
     Args:
         client: DynamoDB client
         image_id: Image ID
         receipt_id: Receipt ID
-        receipt_labels: Optional list of ReceiptWordLabel entities (fetched if not provided)
-        receipt_letters: Optional list of ReceiptLetter entities (fetched if not provided)
+        receipt_labels: Deprecated - no longer used (kept for backward compatibility)
+        receipt_letters: Deprecated - no longer used (kept for backward compatibility)
 
     Returns:
         ReceiptDeletionResult with deletion status
 
     Note:
-        The enhanced compactor queries DynamoDB for ReceiptLine/ReceiptWord entities to
-        construct ChromaDB IDs. If you delete lines/words before the Receipt, the compactor
-        won't be able to find them. To ensure proper deletion, delete the Receipt entity
-        while lines/words still exist, or delete the Receipt first (if foreign key constraints allow).
-        The compactor will handle embedding deletion automatically via DynamoDB streams.
+        The enhanced compactor requires child records (ReceiptLine/ReceiptWord) to exist
+        in DynamoDB when the Receipt is deleted, so it can query them to construct
+        ChromaDB IDs. The compactor will then delete both ChromaDB embeddings and
+        all child records from DynamoDB automatically.
     """
     try:
         dynamodb_deleted = False
 
-        # Delete from DynamoDB in reverse order of creation
-        # Fetch data if not provided
-        if receipt_labels is None:
-            try:
-                receipt_labels, _ = (
-                    client.list_receipt_word_labels_for_receipt(
-                        image_id, receipt_id
-                    )
-                )
-            except Exception:
-                receipt_labels = []
-
-        if receipt_letters is None:
-            try:
-                # Note: There may not be a direct method for listing letters, so we'll skip if not available
-                receipt_letters = []
-            except Exception:
-                receipt_letters = []
-
-        # Delete labels first
-        if receipt_labels:
-            print(f"   Deleting {len(receipt_labels)} labels...")
-            try:
-                # Use batch delete method (consistent with delete_receipt_words/delete_receipt_lines)
-                client.delete_receipt_word_labels(receipt_labels)
-                print(f"      ✅ Deleted labels")
-            except Exception as e:
-                print(f"      ⚠️  Error deleting labels: {e}")
-
-        # Delete words
-        receipt_words = client.list_receipt_words_from_receipt(
-            image_id, receipt_id
-        )
-        if receipt_words:
-            print(f"   Deleting {len(receipt_words)} words...")
-            client.delete_receipt_words(receipt_words)
-            print(f"      ✅ Deleted words")
-
-        # Delete lines
-        receipt_lines = client.list_receipt_lines_from_receipt(
-            image_id, receipt_id
-        )
-        if receipt_lines:
-            print(f"   Deleting {len(receipt_lines)} lines...")
-            client.delete_receipt_lines(receipt_lines)
-            print(f"      ✅ Deleted lines")
-
-        # Delete letters
-        if receipt_letters:
-            print(f"   Deleting {len(receipt_letters)} letters...")
-            try:
-                client.delete_receipt_letters(receipt_letters)
-                print(f"      ✅ Deleted letters")
-            except AttributeError:
-                print(f"      ⚠️  Letter deletion not supported")
-
-        # Delete metadata
-        try:
-            metadata = client.get_receipt_metadata(image_id, receipt_id)
-            if metadata:
-                print(f"   Deleting metadata...")
-                client.delete_receipt_metadata(metadata)
-                print(f"      ✅ Deleted metadata")
-        except Exception:
-            pass  # Metadata might not exist
-
-        # Delete CompactionRun
-        try:
-            runs, _ = client.list_compaction_runs_for_receipt(
-                image_id, receipt_id
-            )
-            if runs:
-                print(f"   Deleting {len(runs)} compaction runs...")
-                for run in runs:
-                    client.delete_compaction_run(
-                        image_id, receipt_id, run.run_id
-                    )
-                print(f"      ✅ Deleted compaction runs")
-        except Exception:
-            pass  # Compaction runs might not exist
-
-        # Delete receipt (last)
-        # This triggers the enhanced compactor to automatically delete embeddings via DynamoDB streams
-        # The compactor is the source of truth for ChromaDB - it queries DynamoDB for lines/words
-        # to construct ChromaDB IDs and deletes embeddings from S3/EFS snapshots
-        print(f"   Deleting receipt...")
-        # Get receipt entity to pass to delete method (consistent with other delete methods)
+        # Delete only the Receipt entity
+        # The enhanced compactor will automatically handle:
+        # 1. ChromaDB embedding deletion (queries DynamoDB for child records to construct IDs)
+        # 2. DynamoDB child record deletion (ReceiptWordLabel, ReceiptWord, ReceiptLine,
+        #    ReceiptLetter, ReceiptMetadata, CompactionRun)
+        #
+        # Child records must remain in DynamoDB when the Receipt is deleted so the compactor
+        # can query them to construct ChromaDB IDs.
+        print(f"   Deleting receipt {receipt_id}...")
+        # Get receipt entity to pass to delete method
         receipt = client.get_receipt(image_id, receipt_id)
         client.delete_receipt(receipt)
         print(f"      ✅ Deleted receipt {receipt_id}")
         print(
-            f"      ℹ️  Enhanced compactor will automatically delete embeddings from ChromaDB via DynamoDB streams"
+            f"      ℹ️  Enhanced compactor will automatically delete ChromaDB embeddings "
+            f"and all child records from DynamoDB via DynamoDB streams"
         )
 
         dynamodb_deleted = True

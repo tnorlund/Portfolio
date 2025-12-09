@@ -123,6 +123,7 @@ def combine_receipt_words_to_image_coords(
                             "bottom_right": bottom_right,
                             "angle_degrees": word_copy.angle_degrees,
                             "confidence": word_copy.confidence,
+                            "is_noise": getattr(word, "is_noise", False),
                         }
                     )
                 except Exception:  # pylint: disable=broad-except
@@ -562,6 +563,11 @@ def create_combined_receipt_records(
         new_line_id += 1
 
     # Create ReceiptWord entities
+    # IMPORTANT: We assign word IDs sequentially to ALL words (including noise)
+    # to maintain proper structure (words belong to lines, letters belong to words).
+    # However, we need to ensure word IDs match between DynamoDB and ChromaDB.
+    # Since noise words are filtered out during embedding, we assign IDs to all
+    # words but only non-noise words will be embedded with those IDs.
     receipt_words = []
     word_id_map = {}
     new_word_id = 1
@@ -597,8 +603,16 @@ def create_combined_receipt_records(
         word_min_y_ocr = min(c[1] for c in word_corners_ocr_warped.values())
         word_max_y_ocr = max(c[1] for c in word_corners_ocr_warped.values())
 
+        # Check if word is noise (preserve from original word)
+        is_noise = word.get("is_noise", False)
+
         # Create ReceiptWord with coordinates in warped OCR space,
         # normalized (0-1)
+        # NOTE: We include ALL words (including noise) in DynamoDB to maintain
+        # proper structure (words belong to lines, letters belong to words).
+        # Noise words will be filtered out during embedding, so they won't appear
+        # in ChromaDB, but they must exist in DynamoDB for structural integrity.
+        # Word IDs are assigned sequentially to ALL words to ensure consistency.
         receipt_word = ReceiptWord(
             receipt_id=new_receipt_id,
             image_id=image_id,
@@ -664,9 +678,12 @@ def create_combined_receipt_records(
             * 3.141592653589793
             / 180.0,
             confidence=word.get("confidence", 1.0),
+            is_noise=is_noise,  # Preserve noise flag from original word
         )
 
         receipt_words.append(receipt_word)
+        # Map ALL words (including noise) in word_id_map for letter mapping
+        # Letters need to map to their words even if the word is noise
         word_id_map[original_key] = new_word_id
         new_word_id += 1
 

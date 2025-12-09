@@ -610,8 +610,20 @@ def process_stream_messages(
                     continue
 
                 # Step 2: Quick CAS validation (minimal lock time)
+                # Use exponential backoff for Phase 1 lock acquisition (similar to Phase 3)
+                # Exponential backoff: 0.1s, 0.2s, 0.4s, 0.8s, 1.6s, 3.2s (max ~6.3s total)
+                phase1_backoff_attempts = [
+                    0.1 * (2**i) for i in range(6)
+                ]  # 6 attempts with exponential backoff
+
+                phase1_lock_acquired = False
                 phase1_lock_start = time.time()
-                if not lm.acquire(lock_id):
+                for attempt_idx, delay in enumerate(
+                    phase1_backoff_attempts, start=1
+                ):
+                    if lm.acquire(lock_id):
+                        phase1_lock_acquired = True
+                        break
                     # Track lock collision in Phase 1
                     if metrics:
                         metrics.count(
@@ -621,10 +633,21 @@ def process_stream_messages(
                                 "phase": "1",
                                 "collection": collection.value,
                                 "type": "validation",
+                                "attempt": str(attempt_idx),
                             },
                         )
+                    if attempt_idx < len(phase1_backoff_attempts):
+                        logger.info(
+                            "Lock busy during validation, backing off",
+                            collection=collection.value,
+                            attempt=attempt_idx,
+                            delay_ms=delay * 1000,
+                        )
+                        time.sleep(delay)
+
+                if not phase1_lock_acquired:
                     logger.info(
-                        "Lock busy during validation, skipping",
+                        "Lock busy during validation after all retries, skipping",
                         collection=collection.value,
                         message_count=len(msgs),
                     )

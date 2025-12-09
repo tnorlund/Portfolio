@@ -112,7 +112,7 @@ def delete_receipt_and_children(
     try:
         runs, _ = client.list_compaction_runs_for_receipt(image_id, receipt_id)
         for r in runs:
-            client.delete_compaction_run(image_id, receipt_id, r.run_id)
+            client.delete_compaction_run(r)
         if runs:
             print(f"   ✅ Deleted {len(runs)} compaction runs")
     except Exception:
@@ -159,4 +159,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

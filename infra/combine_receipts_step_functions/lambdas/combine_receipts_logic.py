@@ -346,7 +346,7 @@ def combine_receipts(
             client.add_receipt_words(records["receipt_words"])
 
             # Try to add letters, but if they already exist (from a previous failed attempt),
-            # delete them first and try again
+            # just skip them and continue
             try:
                 client.add_receipt_letters(records["receipt_letters"])
             except Exception as e:  # pylint: disable=broad-except
@@ -356,24 +356,12 @@ def combine_receipts(
                     or "already exists" in error_str.lower()
                 ):
                     logger.warning(
-                        "Letters already exist for receipt %s/%s (likely from previous failed attempt), deleting and retrying",
+                        "Some letters already exist for receipt %s/%s (likely from previous failed attempt), skipping letter addition",
                         image_id,
                         new_receipt_id,
                     )
-                    # Delete the letters we're trying to add (will be no-op if they don't exist)
-                    try:
-                        client.delete_receipt_letters(
-                            records["receipt_letters"]
-                        )
-                    except (
-                        Exception
-                    ) as delete_err:  # pylint: disable=broad-except
-                        logger.warning(
-                            "Error deleting existing letters (may not exist): %s",
-                            delete_err,
-                        )
-                    # Try adding again
-                    client.add_receipt_letters(records["receipt_letters"])
+                    # Letters already exist, which is fine - just skip adding them
+                    # and continue with the rest of the process
                 else:
                     # Re-raise if it's a different error
                     raise
@@ -461,9 +449,9 @@ def combine_receipts(
                     client=client,
                     image_id=image_id,
                     receipt_id=new_receipt_id,
-                    max_wait_seconds=600,  # 10 minutes
-                    poll_interval=10,  # Poll every 10 seconds
-                    initial_wait_seconds=30,  # Wait 30s for CompactionRun to appear
+                    max_wait_seconds=300,  # 5 minutes - reduced for faster retries
+                    poll_interval=5,  # Poll every 5 seconds for faster detection
+                    initial_wait_seconds=15,  # Wait 15s for CompactionRun to appear
                 )
                 logger.info(
                     "Compaction completed for new receipt %s/%s",
