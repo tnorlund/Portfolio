@@ -19,6 +19,8 @@ from typing import Any, Callable, Literal, Optional
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
+from receipt_agent.utils.receipt_text import format_receipt_text_receipt_space
+
 logger = logging.getLogger(__name__)
 
 
@@ -26,9 +28,11 @@ logger = logging.getLogger(__name__)
 # Receipt Context - Injected at runtime
 # ==============================================================================
 
+
 @dataclass
 class ReceiptContext:
     """Context for the receipt being validated. Injected into tools at runtime."""
+
     image_id: str
     receipt_id: int
 
@@ -45,7 +49,9 @@ def _build_line_id(image_id: str, receipt_id: int, line_id: int) -> str:
     return f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
 
 
-def _build_word_id(image_id: str, receipt_id: int, line_id: int, word_id: int) -> str:
+def _build_word_id(
+    image_id: str, receipt_id: int, line_id: int, word_id: int
+) -> str:
     """Build ChromaDB document ID for a word."""
     return f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}"
 
@@ -54,65 +60,95 @@ def _build_word_id(image_id: str, receipt_id: int, line_id: int, word_id: int) -
 # Tool Input Schemas
 # ==============================================================================
 
+
 class FindSimilarToMyLineInput(BaseModel):
     """Input for find_similar_to_my_line tool."""
-    line_id: int = Field(description="Line ID on this receipt to use for similarity search")
-    n_results: int = Field(default=10, ge=1, le=20, description="Number of results (max 20)")
+
+    line_id: int = Field(
+        description="Line ID on this receipt to use for similarity search"
+    )
+    n_results: int = Field(
+        default=10, ge=1, le=20, description="Number of results (max 20)"
+    )
 
 
 class FindSimilarToMyWordInput(BaseModel):
     """Input for find_similar_to_my_word tool."""
+
     line_id: int = Field(description="Line ID containing the word")
     word_id: int = Field(description="Word ID to use for similarity search")
-    n_results: int = Field(default=10, ge=1, le=20, description="Number of results (max 20)")
+    n_results: int = Field(
+        default=10, ge=1, le=20, description="Number of results (max 20)"
+    )
 
 
 class SearchLinesInput(BaseModel):
     """Input for search_lines tool."""
-    query: str = Field(description="Text to search for (address, phone, merchant name)")
-    n_results: int = Field(default=10, ge=1, le=20, description="Number of results (max 20)")
-    merchant_filter: Optional[str] = Field(default=None, description="Optionally filter by merchant")
+
+    query: str = Field(
+        description="Text to search for (address, phone, merchant name)"
+    )
+    n_results: int = Field(
+        default=10, ge=1, le=20, description="Number of results (max 20)"
+    )
+    merchant_filter: Optional[str] = Field(
+        default=None, description="Optionally filter by merchant"
+    )
 
 
 class SearchWordsInput(BaseModel):
     """Input for search_words tool."""
+
     query: str = Field(description="Word text to search for")
     label_filter: Optional[str] = Field(
         default=None,
-        description="Filter by label: MERCHANT_NAME, PHONE, ADDRESS, TOTAL, etc."
+        description="Filter by label: MERCHANT_NAME, PHONE, ADDRESS, TOTAL, etc.",
     )
-    n_results: int = Field(default=10, ge=1, le=20, description="Number of results (max 20)")
+    n_results: int = Field(
+        default=10, ge=1, le=20, description="Number of results (max 20)"
+    )
 
 
 class GetMerchantConsensusInput(BaseModel):
     """Input for get_merchant_consensus tool."""
+
     merchant_name: str = Field(description="Merchant name to look up")
 
 
 class GetPlaceIdInfoInput(BaseModel):
     """Input for get_place_id_info tool."""
+
     place_id: str = Field(description="Google Place ID to look up")
 
 
 class CompareWithReceiptInput(BaseModel):
     """Input for compare_with_receipt tool."""
-    other_image_id: str = Field(description="Image ID of receipt to compare with")
+
+    other_image_id: str = Field(
+        description="Image ID of receipt to compare with"
+    )
     other_receipt_id: int = Field(description="Receipt ID to compare with")
 
 
 class SubmitDecisionInput(BaseModel):
     """Input for submit_decision tool."""
+
     status: Literal["VALIDATED", "INVALID", "NEEDS_REVIEW"] = Field(
         description="Validation status: VALIDATED (correct), INVALID (wrong), NEEDS_REVIEW (uncertain)"
     )
-    confidence: float = Field(ge=0.0, le=1.0, description="Confidence score 0.0 to 1.0")
+    confidence: float = Field(
+        ge=0.0, le=1.0, description="Confidence score 0.0 to 1.0"
+    )
     reasoning: str = Field(description="Brief explanation of the decision")
-    evidence: list[str] = Field(description="Key findings that support the decision")
+    evidence: list[str] = Field(
+        description="Key findings that support the decision"
+    )
 
 
 # ==============================================================================
 # Tool Factory - Creates tools with injected dependencies
 # ==============================================================================
+
 
 def create_agentic_tools(
     dynamo_client: Any,
@@ -158,7 +194,10 @@ def create_agentic_tools(
                     {
                         "line_id": line.line_id,
                         "text": line.text,
-                        "has_embedding": _build_line_id(ctx.image_id, ctx.receipt_id, line.line_id) in (ctx.line_embeddings or {}),
+                        "has_embedding": _build_line_id(
+                            ctx.image_id, ctx.receipt_id, line.line_id
+                        )
+                        in (ctx.line_embeddings or {}),
                     }
                     for line in (receipt_details.lines or [])
                 ]
@@ -208,6 +247,31 @@ def create_agentic_tools(
         return ctx.words
 
     @tool
+    def get_receipt_text() -> dict:
+        """
+        Get formatted receipt text in receipt space (no image warp).
+
+        Groups visually contiguous lines (centroid overlap) into rows and
+        returns merged text with line breaks.
+        """
+        ctx: ReceiptContext = state["context"]
+        if ctx is None:
+            return {"error": "No receipt context set"}
+
+        try:
+            receipt_details = dynamo_client.get_receipt_details(
+                image_id=ctx.image_id,
+                receipt_id=ctx.receipt_id,
+            )
+            lines = receipt_details.lines or []
+        except Exception as exc:
+            logger.error(f"Error loading lines for receipt text: {exc}")
+            return {"error": str(exc)}
+
+        formatted = format_receipt_text_receipt_space(lines)
+        return {"formatted_text": formatted, "line_count": len(lines)}
+
+    @tool
     def get_my_metadata() -> dict:
         """
         Get the current metadata stored for this receipt.
@@ -240,7 +304,9 @@ def create_agentic_tools(
                         "validation_status": metadata.validation_status,
                     }
                 else:
-                    ctx.metadata = {"error": "No metadata found for this receipt"}
+                    ctx.metadata = {
+                        "error": "No metadata found for this receipt"
+                    }
             except Exception as e:
                 logger.error(f"Error loading metadata: {e}")
                 ctx.metadata = {"error": str(e)}
@@ -250,7 +316,9 @@ def create_agentic_tools(
     # ========== SIMILARITY SEARCH TOOLS (using MY embeddings) ==========
 
     @tool(args_schema=FindSimilarToMyLineInput)
-    def find_similar_to_my_line(line_id: int, n_results: int = 10) -> list[dict]:
+    def find_similar_to_my_line(
+        line_id: int, n_results: int = 10
+    ) -> list[dict]:
         """
         Find lines on OTHER receipts similar to one of YOUR lines.
 
@@ -288,7 +356,9 @@ def create_agentic_tools(
                 if result.get("embeddings") and len(result["embeddings"]) > 0:
                     query_embedding = result["embeddings"][0]
                 else:
-                    return [{"error": f"No embedding found for line {line_id}"}]
+                    return [
+                        {"error": f"No embedding found for line {line_id}"}
+                    ]
             except Exception as e:
                 return [{"error": f"Could not get embedding: {e}"}]
 
@@ -307,29 +377,37 @@ def create_agentic_tools(
             metadatas = results.get("metadatas", [[]])[0]
             distances = results.get("distances", [[]])[0]
 
-            for doc_id, doc, meta, dist in zip(ids, documents, metadatas, distances):
+            for doc_id, doc, meta, dist in zip(
+                ids, documents, metadatas, distances
+            ):
                 # Skip if same receipt
-                if (meta.get("image_id") == ctx.image_id and
-                    int(meta.get("receipt_id", -1)) == ctx.receipt_id):
+                if (
+                    meta.get("image_id") == ctx.image_id
+                    and int(meta.get("receipt_id", -1)) == ctx.receipt_id
+                ):
                     continue
 
                 similarity = max(0.0, 1.0 - (dist / 2))
 
-                output.append({
-                    "image_id": meta.get("image_id"),
-                    "receipt_id": meta.get("receipt_id"),
-                    "text": doc,
-                    "similarity": round(similarity, 4),
-                    "merchant_name": meta.get("merchant_name"),
-                    "address": meta.get("normalized_full_address"),
-                    "phone": meta.get("normalized_phone_10"),
-                    "place_id": meta.get("place_id"),
-                })
+                output.append(
+                    {
+                        "image_id": meta.get("image_id"),
+                        "receipt_id": meta.get("receipt_id"),
+                        "text": doc,
+                        "similarity": round(similarity, 4),
+                        "merchant_name": meta.get("merchant_name"),
+                        "address": meta.get("normalized_full_address"),
+                        "phone": meta.get("normalized_phone_10"),
+                        "place_id": meta.get("place_id"),
+                    }
+                )
 
                 if len(output) >= n_results:
                     break
 
-            logger.info(f"find_similar_to_my_line({line_id}) returned {len(output)} results")
+            logger.info(
+                f"find_similar_to_my_line({line_id}) returned {len(output)} results"
+            )
             return output
 
         except Exception as e:
@@ -337,7 +415,9 @@ def create_agentic_tools(
             return [{"error": str(e)}]
 
     @tool(args_schema=FindSimilarToMyWordInput)
-    def find_similar_to_my_word(line_id: int, word_id: int, n_results: int = 10) -> list[dict]:
+    def find_similar_to_my_word(
+        line_id: int, word_id: int, n_results: int = 10
+    ) -> list[dict]:
         """
         Find words on OTHER receipts similar to one of YOUR words.
 
@@ -376,7 +456,11 @@ def create_agentic_tools(
                 if result.get("embeddings") and len(result["embeddings"]) > 0:
                     query_embedding = result["embeddings"][0]
                 else:
-                    return [{"error": f"No embedding found for word {line_id}/{word_id}"}]
+                    return [
+                        {
+                            "error": f"No embedding found for word {line_id}/{word_id}"
+                        }
+                    ]
             except Exception as e:
                 return [{"error": f"Could not get embedding: {e}"}]
 
@@ -395,26 +479,34 @@ def create_agentic_tools(
             metadatas = results.get("metadatas", [[]])[0]
             distances = results.get("distances", [[]])[0]
 
-            for doc_id, doc, meta, dist in zip(ids, documents, metadatas, distances):
+            for doc_id, doc, meta, dist in zip(
+                ids, documents, metadatas, distances
+            ):
                 # Skip if same receipt
-                if (meta.get("image_id") == ctx.image_id and
-                    int(meta.get("receipt_id", -1)) == ctx.receipt_id):
+                if (
+                    meta.get("image_id") == ctx.image_id
+                    and int(meta.get("receipt_id", -1)) == ctx.receipt_id
+                ):
                     continue
 
                 similarity = max(0.0, 1.0 - (dist / 2))
 
-                output.append({
-                    "image_id": meta.get("image_id"),
-                    "receipt_id": meta.get("receipt_id"),
-                    "text": doc,
-                    "label": meta.get("label"),
-                    "similarity": round(similarity, 4),
-                })
+                output.append(
+                    {
+                        "image_id": meta.get("image_id"),
+                        "receipt_id": meta.get("receipt_id"),
+                        "text": doc,
+                        "label": meta.get("label"),
+                        "similarity": round(similarity, 4),
+                    }
+                )
 
                 if len(output) >= n_results:
                     break
 
-            logger.info(f"find_similar_to_my_word({line_id}, {word_id}) returned {len(output)} results")
+            logger.info(
+                f"find_similar_to_my_word({line_id}, {word_id}) returned {len(output)} results"
+            )
             return output
 
         except Exception as e:
@@ -424,7 +516,9 @@ def create_agentic_tools(
     # ========== TEXT SEARCH TOOLS (generate new embedding) ==========
 
     @tool(args_schema=SearchLinesInput)
-    def search_lines(query: str, n_results: int = 10, merchant_filter: Optional[str] = None) -> list[dict]:
+    def search_lines(
+        query: str, n_results: int = 10, merchant_filter: Optional[str] = None
+    ) -> list[dict]:
         """
         Search for lines similar to arbitrary text.
 
@@ -446,7 +540,9 @@ def create_agentic_tools(
             # Build where clause
             where_clause = None
             if merchant_filter:
-                where_clause = {"merchant_name": {"$eq": merchant_filter.strip()}}
+                where_clause = {
+                    "merchant_name": {"$eq": merchant_filter.strip()}
+                }
 
             results = chroma_client.query(
                 collection_name="lines",
@@ -462,28 +558,36 @@ def create_agentic_tools(
             metadatas = results.get("metadatas", [[]])[0]
             distances = results.get("distances", [[]])[0]
 
-            for doc_id, doc, meta, dist in zip(ids, documents, metadatas, distances):
+            for doc_id, doc, meta, dist in zip(
+                ids, documents, metadatas, distances
+            ):
                 # Skip if same receipt (if context is set)
-                if ctx and (meta.get("image_id") == ctx.image_id and
-                           int(meta.get("receipt_id", -1)) == ctx.receipt_id):
+                if ctx and (
+                    meta.get("image_id") == ctx.image_id
+                    and int(meta.get("receipt_id", -1)) == ctx.receipt_id
+                ):
                     continue
 
                 similarity = max(0.0, 1.0 - (dist / 2))
 
-                output.append({
-                    "image_id": meta.get("image_id"),
-                    "receipt_id": meta.get("receipt_id"),
-                    "text": doc,
-                    "similarity": round(similarity, 4),
-                    "merchant_name": meta.get("merchant_name"),
-                    "address": meta.get("normalized_full_address"),
-                    "phone": meta.get("normalized_phone_10"),
-                })
+                output.append(
+                    {
+                        "image_id": meta.get("image_id"),
+                        "receipt_id": meta.get("receipt_id"),
+                        "text": doc,
+                        "similarity": round(similarity, 4),
+                        "merchant_name": meta.get("merchant_name"),
+                        "address": meta.get("normalized_full_address"),
+                        "phone": meta.get("normalized_phone_10"),
+                    }
+                )
 
                 if len(output) >= n_results:
                     break
 
-            logger.info(f"search_lines('{query[:30]}...') returned {len(output)} results")
+            logger.info(
+                f"search_lines('{query[:30]}...') returned {len(output)} results"
+            )
             return output
 
         except Exception as e:
@@ -491,7 +595,9 @@ def create_agentic_tools(
             return [{"error": str(e)}]
 
     @tool(args_schema=SearchWordsInput)
-    def search_words(query: str, label_filter: Optional[str] = None, n_results: int = 10) -> list[dict]:
+    def search_words(
+        query: str, label_filter: Optional[str] = None, n_results: int = 10
+    ) -> list[dict]:
         """
         Search for words similar to arbitrary text.
 
@@ -525,20 +631,26 @@ def create_agentic_tools(
             metadatas = results.get("metadatas", [[]])[0]
             distances = results.get("distances", [[]])[0]
 
-            for doc_id, doc, meta, dist in zip(ids, documents, metadatas, distances):
-                if ctx and (meta.get("image_id") == ctx.image_id and
-                           int(meta.get("receipt_id", -1)) == ctx.receipt_id):
+            for doc_id, doc, meta, dist in zip(
+                ids, documents, metadatas, distances
+            ):
+                if ctx and (
+                    meta.get("image_id") == ctx.image_id
+                    and int(meta.get("receipt_id", -1)) == ctx.receipt_id
+                ):
                     continue
 
                 similarity = max(0.0, 1.0 - (dist / 2))
 
-                output.append({
-                    "image_id": meta.get("image_id"),
-                    "receipt_id": meta.get("receipt_id"),
-                    "text": doc,
-                    "label": meta.get("label"),
-                    "similarity": round(similarity, 4),
-                })
+                output.append(
+                    {
+                        "image_id": meta.get("image_id"),
+                        "receipt_id": meta.get("receipt_id"),
+                        "text": doc,
+                        "label": meta.get("label"),
+                        "similarity": round(similarity, 4),
+                    }
+                )
 
                 if len(output) >= n_results:
                     break
@@ -586,18 +698,34 @@ def create_agentic_tools(
 
             for meta in metadatas:
                 if meta.place_id:
-                    place_ids[meta.place_id] = place_ids.get(meta.place_id, 0) + 1
+                    place_ids[meta.place_id] = (
+                        place_ids.get(meta.place_id, 0) + 1
+                    )
                 if meta.address:
-                    addresses[meta.address] = addresses.get(meta.address, 0) + 1
+                    addresses[meta.address] = (
+                        addresses.get(meta.address, 0) + 1
+                    )
                 if meta.phone_number:
-                    phones[meta.phone_number] = phones.get(meta.phone_number, 0) + 1
+                    phones[meta.phone_number] = (
+                        phones.get(meta.phone_number, 0) + 1
+                    )
 
             total = len(metadatas)
 
             # Find most common
-            most_common_place_id = max(place_ids.items(), key=lambda x: x[1])[0] if place_ids else None
-            most_common_address = max(addresses.items(), key=lambda x: x[1])[0] if addresses else None
-            most_common_phone = max(phones.items(), key=lambda x: x[1])[0] if phones else None
+            most_common_place_id = (
+                max(place_ids.items(), key=lambda x: x[1])[0]
+                if place_ids
+                else None
+            )
+            most_common_address = (
+                max(addresses.items(), key=lambda x: x[1])[0]
+                if addresses
+                else None
+            )
+            most_common_phone = (
+                max(phones.items(), key=lambda x: x[1])[0] if phones else None
+            )
 
             return {
                 "merchant_name": merchant_name,
@@ -605,12 +733,30 @@ def create_agentic_tools(
                 "most_common_place_id": most_common_place_id,
                 "most_common_address": most_common_address,
                 "most_common_phone": most_common_phone,
-                "place_id_agreement": round(place_ids.get(most_common_place_id, 0) / total, 3) if most_common_place_id else 0,
-                "address_agreement": round(addresses.get(most_common_address, 0) / total, 3) if most_common_address else 0,
-                "phone_agreement": round(phones.get(most_common_phone, 0) / total, 3) if most_common_phone else 0,
-                "all_place_ids": dict(sorted(place_ids.items(), key=lambda x: -x[1])[:5]),
-                "all_addresses": dict(sorted(addresses.items(), key=lambda x: -x[1])[:3]),
-                "all_phones": dict(sorted(phones.items(), key=lambda x: -x[1])[:3]),
+                "place_id_agreement": (
+                    round(place_ids.get(most_common_place_id, 0) / total, 3)
+                    if most_common_place_id
+                    else 0
+                ),
+                "address_agreement": (
+                    round(addresses.get(most_common_address, 0) / total, 3)
+                    if most_common_address
+                    else 0
+                ),
+                "phone_agreement": (
+                    round(phones.get(most_common_phone, 0) / total, 3)
+                    if most_common_phone
+                    else 0
+                ),
+                "all_place_ids": dict(
+                    sorted(place_ids.items(), key=lambda x: -x[1])[:5]
+                ),
+                "all_addresses": dict(
+                    sorted(addresses.items(), key=lambda x: -x[1])[:3]
+                ),
+                "all_phones": dict(
+                    sorted(phones.items(), key=lambda x: -x[1])[:3]
+                ),
             }
 
         except Exception as e:
@@ -640,7 +786,11 @@ def create_agentic_tools(
             )
 
             # Query results are nested in lists
-            metadatas = results.get("metadatas", [[]])[0] if results.get("metadatas") else []
+            metadatas = (
+                results.get("metadatas", [[]])[0]
+                if results.get("metadatas")
+                else []
+            )
 
             if not metadatas:
                 return {
@@ -668,14 +818,20 @@ def create_agentic_tools(
                 if addr:
                     addresses[addr] = addresses.get(addr, 0) + 1
 
-            canonical_name = max(merchant_names.items(), key=lambda x: x[1])[0] if merchant_names else None
+            canonical_name = (
+                max(merchant_names.items(), key=lambda x: x[1])[0]
+                if merchant_names
+                else None
+            )
 
             return {
                 "place_id": place_id,
                 "receipt_count": len(receipts),
                 "canonical_merchant_name": canonical_name,
                 "merchant_name_variants": merchant_names,
-                "addresses": dict(sorted(addresses.items(), key=lambda x: -x[1])[:3]),
+                "addresses": dict(
+                    sorted(addresses.items(), key=lambda x: -x[1])[:3]
+                ),
             }
 
         except Exception as e:
@@ -685,7 +841,9 @@ def create_agentic_tools(
     # ========== COMPARISON TOOL ==========
 
     @tool(args_schema=CompareWithReceiptInput)
-    def compare_with_receipt(other_image_id: str, other_receipt_id: int) -> dict:
+    def compare_with_receipt(
+        other_image_id: str, other_receipt_id: int
+    ) -> dict:
         """
         Compare your receipt with another specific receipt.
 
@@ -715,26 +873,38 @@ def create_agentic_tools(
             )
 
             if not other_meta:
-                return {"error": f"No metadata found for {other_image_id}#{other_receipt_id}"}
+                return {
+                    "error": f"No metadata found for {other_image_id}#{other_receipt_id}"
+                }
 
             # Compare
             differences = []
 
-            same_merchant = my_meta.get("merchant_name") == other_meta.merchant_name
+            same_merchant = (
+                my_meta.get("merchant_name") == other_meta.merchant_name
+            )
             if not same_merchant:
-                differences.append(f"Merchant: '{my_meta.get('merchant_name')}' vs '{other_meta.merchant_name}'")
+                differences.append(
+                    f"Merchant: '{my_meta.get('merchant_name')}' vs '{other_meta.merchant_name}'"
+                )
 
             same_place_id = my_meta.get("place_id") == other_meta.place_id
             if not same_place_id:
-                differences.append(f"Place ID: '{my_meta.get('place_id')}' vs '{other_meta.place_id}'")
+                differences.append(
+                    f"Place ID: '{my_meta.get('place_id')}' vs '{other_meta.place_id}'"
+                )
 
             same_address = my_meta.get("address") == other_meta.address
             if not same_address:
-                differences.append(f"Address: '{my_meta.get('address')}' vs '{other_meta.address}'")
+                differences.append(
+                    f"Address: '{my_meta.get('address')}' vs '{other_meta.address}'"
+                )
 
             same_phone = my_meta.get("phone") == other_meta.phone_number
             if not same_phone:
-                differences.append(f"Phone: '{my_meta.get('phone')}' vs '{other_meta.phone_number}'")
+                differences.append(
+                    f"Phone: '{my_meta.get('phone')}' vs '{other_meta.phone_number}'"
+                )
 
             return {
                 "compared_with": f"{other_image_id}#{other_receipt_id}",
@@ -742,7 +912,10 @@ def create_agentic_tools(
                 "same_place_id": same_place_id,
                 "same_address": same_address,
                 "same_phone": same_phone,
-                "all_match": same_merchant and same_place_id and same_address and same_phone,
+                "all_match": same_merchant
+                and same_place_id
+                and same_address
+                and same_phone,
                 "differences": differences,
                 "other_metadata": {
                     "merchant_name": other_meta.merchant_name,
@@ -760,10 +933,19 @@ def create_agentic_tools(
 
     class VerifyWithPlacesInput(BaseModel):
         """Input schema for verify_with_google_places tool."""
-        place_id: Optional[str] = Field(default=None, description="Google Place ID to verify directly")
-        phone_number: Optional[str] = Field(default=None, description="Phone number to search for")
-        address: Optional[str] = Field(default=None, description="Address to search for")
-        merchant_name: Optional[str] = Field(default=None, description="Merchant name for text search")
+
+        place_id: Optional[str] = Field(
+            default=None, description="Google Place ID to verify directly"
+        )
+        phone_number: Optional[str] = Field(
+            default=None, description="Phone number to search for"
+        )
+        address: Optional[str] = Field(
+            default=None, description="Address to search for"
+        )
+        merchant_name: Optional[str] = Field(
+            default=None, description="Merchant name for text search"
+        )
 
     @tool(args_schema=VerifyWithPlacesInput)
     def verify_with_google_places(
@@ -812,7 +994,9 @@ def create_agentic_tools(
             # Try place_id first (most reliable, direct lookup)
             if place_id:
                 result["search_method"] = "place_id"
-                logger.info("🔍 Places lookup by place_id: %s...", place_id[:20])
+                logger.info(
+                    "🔍 Places lookup by place_id: %s...", place_id[:20]
+                )
                 place_data = places_api.get_place_details(place_id)
                 if place_data and place_data.get("name"):
                     result["found"] = True
@@ -820,7 +1004,9 @@ def create_agentic_tools(
                     result["place_id"] = place.get("place_id")
                     result["place_name"] = place.get("name")
                     result["place_address"] = place.get("formatted_address")
-                    result["place_phone"] = place.get("formatted_phone_number") or place.get("international_phone_number")
+                    result["place_phone"] = place.get(
+                        "formatted_phone_number"
+                    ) or place.get("international_phone_number")
                     result["place"] = {
                         "place_id": result["place_id"],
                         "name": result["place_name"],
@@ -832,7 +1018,9 @@ def create_agentic_tools(
             # Try phone search (uses DynamoDB cache via PlacesClient)
             if phone_number and not result["found"]:
                 result["search_method"] = "phone"
-                logger.info("🔍 Places lookup by phone: %s (cached)", phone_number)
+                logger.info(
+                    "🔍 Places lookup by phone: %s (cached)", phone_number
+                )
                 place_data = places_api.search_by_phone(phone_number)
                 if place_data and place_data.get("name"):
                     result["found"] = True
@@ -840,7 +1028,9 @@ def create_agentic_tools(
                     result["place_id"] = place.get("place_id")
                     result["place_name"] = place.get("name")
                     result["place_address"] = place.get("formatted_address")
-                    result["place_phone"] = place.get("formatted_phone_number") or place.get("international_phone_number")
+                    result["place_phone"] = place.get(
+                        "formatted_phone_number"
+                    ) or place.get("international_phone_number")
                     result["place"] = {
                         "place_id": result["place_id"],
                         "name": result["place_name"],
@@ -852,7 +1042,9 @@ def create_agentic_tools(
             # Try address geocoding (uses DynamoDB cache via PlacesClient)
             if address and not result["found"]:
                 result["search_method"] = "address"
-                logger.info("🔍 Places lookup by address: %s... (cached)", address[:50])
+                logger.info(
+                    "🔍 Places lookup by address: %s... (cached)", address[:50]
+                )
                 place_data = places_api.search_by_address(address)
                 if place_data and place_data.get("name"):
                     result["found"] = True
@@ -860,7 +1052,9 @@ def create_agentic_tools(
                     result["place_id"] = place.get("place_id")
                     result["place_name"] = place.get("name")
                     result["place_address"] = place.get("formatted_address")
-                    result["place_phone"] = place.get("formatted_phone_number") or place.get("international_phone_number")
+                    result["place_phone"] = place.get(
+                        "formatted_phone_number"
+                    ) or place.get("international_phone_number")
                     result["place"] = {
                         "place_id": result["place_id"],
                         "name": result["place_name"],
@@ -872,7 +1066,9 @@ def create_agentic_tools(
             # Try text search with merchant name (not cached)
             if merchant_name and not result["found"]:
                 result["search_method"] = "text_search"
-                logger.info("🔍 Places text search: %s (NOT cached)", merchant_name)
+                logger.info(
+                    "🔍 Places text search: %s (NOT cached)", merchant_name
+                )
                 place_data = places_api.search_by_text(merchant_name)
                 if place_data and place_data.get("name"):
                     result["found"] = True
@@ -880,7 +1076,9 @@ def create_agentic_tools(
                     result["place_id"] = place.get("place_id")
                     result["place_name"] = place.get("name")
                     result["place_address"] = place.get("formatted_address")
-                    result["place_phone"] = place.get("formatted_phone_number") or place.get("international_phone_number")
+                    result["place_phone"] = place.get(
+                        "formatted_phone_number"
+                    ) or place.get("international_phone_number")
                     result["place"] = {
                         "place_id": result["place_id"],
                         "name": result["place_name"],
@@ -950,6 +1148,7 @@ def create_agentic_tools(
     tools = [
         get_my_lines,
         get_my_words,
+        get_receipt_text,
         get_my_metadata,
         find_similar_to_my_line,
         find_similar_to_my_word,
@@ -963,7 +1162,10 @@ def create_agentic_tools(
 
     # Add Google Places tools if available
     if places_api is not None:
-        from receipt_agent.tools.places import FindBusinessesAtAddressInput, _format_place_result
+        from receipt_agent.tools.places import (
+            FindBusinessesAtAddressInput,
+            _format_place_result,
+        )
 
         tools.append(verify_with_google_places)
 
@@ -982,7 +1184,10 @@ def create_agentic_tools(
                 return {"error": "Address is required"}
 
             try:
-                logger.info("🔍 Places search for businesses at address: %s...", address[:50])
+                logger.info(
+                    "🔍 Places search for businesses at address: %s...",
+                    address[:50],
+                )
 
                 # First, geocode the address to get lat/lng
                 geocode_result = places_api.search_by_address(address)
@@ -1044,4 +1249,3 @@ def create_agentic_tools(
         tools.append(find_businesses_at_address_wrapper)
 
     return tools, state
-

@@ -36,6 +36,7 @@ from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel, Field
 
 from receipt_agent.config.settings import Settings, get_settings
+from receipt_agent.utils.receipt_text import format_receipt_text_receipt_space
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +88,7 @@ Your job is to:
 ### Group Analysis Tools
 - `get_group_summary`: See all receipts in this group with their current metadata
 - `get_receipt_content`: View the actual content (lines, words) of a specific receipt
-- `display_receipt_text`: Display formatted receipt text (using combine agent formatting) for verification
+- `display_receipt_text`: Display formatted receipt text (receipt-space grouping) for verification
 - `get_field_variations`: See all variations of a field (merchant_name, address, phone) across the group
 
 ### Google Places Tools (Source of Truth)
@@ -96,6 +97,9 @@ Your job is to:
 
 ### Metadata Correction Tools
 - `find_correct_metadata`: Spin up a sub-agent to find the correct metadata for a receipt that appears to have incorrect metadata. Use this when a receipt's metadata doesn't match Google Places or other receipts in the group.
+
+### Text Consistency Verification Tool
+- `verify_text_consistency`: Verify that all receipts in the group actually contain text consistent with the canonical metadata. This uses CoVe (Consistency Verification) to check receipt text and identify outliers. Use this BEFORE submitting to ensure all receipts belong to the same place.
 
 ### Decision Tool (REQUIRED at the end)
 - `submit_harmonization`: Submit your decision for canonical values and which receipts need updates
@@ -115,7 +119,7 @@ Your job is to:
 
 4. **Inspect receipt content** (if needed) with `get_receipt_content` or `display_receipt_text`
    - First call `get_group_summary` to see all receipts with their `image_id` and `receipt_id`
-   - Then use `display_receipt_text(image_id, receipt_id)` to see formatted receipt text in image order (like the combine agent) with verification prompt
+   - Then use `display_receipt_text(image_id, receipt_id)` to see formatted receipt text (receipt-space grouping) with verification prompt
    - Or use `get_receipt_content(image_id, receipt_id)` to see raw lines and labeled words
    - Use these to verify metadata matches what's actually on the receipt
 
@@ -125,7 +129,13 @@ Your job is to:
    - The sub-agent examines receipt content, searches Google Places, and uses similarity search
    - Returns the correct metadata with confidence scores
 
-6. **Submit your decision** with `submit_harmonization`:
+6. **Verify text consistency** (RECOMMENDED before submitting) with `verify_text_consistency`
+   - After determining canonical metadata, use this tool to verify all receipts actually belong to the same place
+   - The CoVe sub-agent checks each receipt's text against canonical metadata
+   - Identifies outliers (receipts that may be from a different place)
+   - Use the results to adjust your harmonization decision if outliers are found
+
+7. **Submit your decision** with `submit_harmonization`:
    - Canonical values from Google Places (preferred) or best-quality receipt data
    - List of receipts that need updates
    - Confidence in your decision
@@ -157,8 +167,9 @@ Your job is to:
 1. ALWAYS start with `get_group_summary` to understand the group
 2. ALWAYS check Google Places with `verify_place_id` before deciding
 3. NEVER accept an address as a merchant name
-4. ALWAYS end with `submit_harmonization`
-5. Be thorough but efficient
+4. RECOMMENDED: Use `verify_text_consistency` before submitting to check for outliers
+5. ALWAYS end with `submit_harmonization`
+6. Be thorough but efficient
 
 ## What Gets Updated
 
@@ -376,48 +387,16 @@ def create_harmonizer_tools(
                     "verification_prompt": "Receipt has no text lines.",
                 }
 
-            # Try to use combine agent's formatting (requires image dimensions)
-            formatted_text = None
             try:
-                # Get image to get dimensions
-                image = dynamo_client.get_image(image_id)
-                if image and image.width and image.height:
-                    # Import combine agent formatting functions
-                    from receipt_agent.agent.combination_selector import (
-                        _format_receipt_text_image_space,
-                    )
-
-                    formatted_text, _ = _format_receipt_text_image_space(
-                        receipt=receipt,
-                        lines=lines,
-                        image_width=image.width,
-                        image_height=image.height,
-                    )
-            except Exception as e:
+                formatted_text = format_receipt_text_receipt_space(lines)
+            except Exception as exc:
                 logger.debug(
-                    f"Could not use combine agent formatting: {e}, using fallback"
+                    f"Could not format receipt text (receipt-space): {exc}"
                 )
-
-            # Fallback to ReceiptTextReconstructor if combine agent formatting fails
-            if not formatted_text:
-                try:
-                    from receipt_label.utils.text_reconstruction import (
-                        ReceiptTextReconstructor,
-                    )
-
-                    reconstructor = ReceiptTextReconstructor()
-                    formatted_text, _ = reconstructor.reconstruct_receipt(
-                        lines
-                    )
-                except Exception as e:
-                    logger.debug(
-                        f"Could not use ReceiptTextReconstructor: {e}"
-                    )
-                    # Final fallback: simple line-by-line
-                    sorted_lines = sorted(lines, key=lambda l: l.line_id)
-                    formatted_text = "\n".join(
-                        f"{ln.line_id}: {ln.text}" for ln in sorted_lines
-                    )
+                sorted_lines = sorted(lines, key=lambda l: l.line_id)
+                formatted_text = "\n".join(
+                    f"{ln.line_id}: {ln.text}" for ln in sorted_lines
+                )
 
             # Build verification prompt
             current_metadata = {
@@ -1041,6 +1020,139 @@ Use this information to make your harmonization decision."""
                 "method": "unknown",
             }
 
+    # ========== TEXT CONSISTENCY VERIFICATION TOOL ==========
+
+    class VerifyTextConsistencyInput(BaseModel):
+        """Input for verify_text_consistency tool."""
+
+        canonical_merchant_name: str = Field(
+            description="The canonical merchant name you plan to use"
+        )
+        canonical_address: Optional[str] = Field(
+            default=None,
+            description="The canonical address you plan to use (or None)",
+        )
+        canonical_phone: Optional[str] = Field(
+            default=None,
+            description="The canonical phone you plan to use (or None)",
+        )
+
+    @tool(args_schema=VerifyTextConsistencyInput)
+    async def verify_text_consistency(
+        canonical_merchant_name: str,
+        canonical_address: Optional[str],
+        canonical_phone: Optional[str],
+    ) -> dict:
+        """
+        Verify text consistency for all receipts in this group using CoVe (Consistency Verification).
+
+        This tool spins up a sub-agent that checks each receipt's text against the canonical
+        metadata to identify outliers (receipts that may be from a different place).
+
+        Use this BEFORE submitting your harmonization decision to ensure all receipts
+        actually belong to the same place.
+
+        Args:
+            canonical_merchant_name: The canonical merchant name you plan to use
+            canonical_address: The canonical address you plan to use (or None)
+            canonical_phone: The canonical phone you plan to use (or None)
+
+        Returns:
+        - status: success, incomplete, or error
+        - result: Consistency check results with per-receipt verdicts
+        - outliers: List of receipts marked as MISMATCH or UNSURE
+        - outlier_count: Number of outliers found
+        """
+        try:
+            group = state["group"]
+            if not group:
+                return {"error": "No group data loaded"}
+
+            place_id = group.get("place_id")
+            receipts = group.get("receipts", [])
+
+            if not place_id:
+                return {"error": "No place_id in group data"}
+
+            if not receipts:
+                return {"error": "No receipts in group"}
+
+            # Import CoVe workflow
+            from receipt_agent.graph.cove_text_consistency_workflow import (
+                create_cove_text_consistency_graph,
+                run_cove_text_consistency,
+            )
+
+            # Create graph if not already cached
+            if "cove_graph" not in state:
+                (
+                    state["cove_graph"],
+                    state["cove_state_holder"],
+                ) = create_cove_text_consistency_graph(
+                    dynamo_client=dynamo_client,
+                    place_id=place_id,
+                    canonical_merchant_name=canonical_merchant_name,
+                    canonical_address=canonical_address,
+                    canonical_phone=canonical_phone,
+                    receipts=[
+                        {
+                            "image_id": r.get("image_id"),
+                            "receipt_id": r.get("receipt_id"),
+                        }
+                        for r in receipts
+                    ],
+                    settings=None,
+                )
+
+            # Run CoVe check
+            result = await run_cove_text_consistency(
+                graph=state["cove_graph"],
+                state_holder=state["cove_state_holder"],
+                place_id=place_id,
+                canonical_merchant_name=canonical_merchant_name,
+                canonical_address=canonical_address,
+                canonical_phone=canonical_phone,
+                receipts=[
+                    {
+                        "image_id": r.get("image_id"),
+                        "receipt_id": r.get("receipt_id"),
+                    }
+                    for r in receipts
+                ],
+            )
+
+            # Store result in state for potential use in harmonization decision
+            state["cove_result"] = result.get("result")
+
+            if result.get("status") == "success":
+                cove_result = result.get("result", {})
+                outlier_count = cove_result.get("outlier_count", 0)
+                logger.info(
+                    f"CoVe check complete: {outlier_count}/{len(receipts)} outliers found"
+                )
+                return {
+                    "status": "success",
+                    "message": f"Text consistency check complete. {outlier_count} outliers found.",
+                    "result": cove_result,
+                    "outliers": cove_result.get("outliers", []),
+                    "outlier_count": outlier_count,
+                    "receipt_results": cove_result.get("receipt_results", []),
+                }
+            else:
+                return {
+                    "status": result.get("status", "error"),
+                    "error": result.get("error", "Unknown error"),
+                    "message": "CoVe check did not complete successfully",
+                }
+
+        except Exception as e:
+            logger.error(f"Error verifying text consistency: {e}")
+            return {
+                "status": "error",
+                "error": str(e),
+                "message": "Failed to run CoVe text consistency check",
+            }
+
     # ========== DECISION TOOL ==========
 
     class SubmitHarmonizationInput(BaseModel):
@@ -1133,6 +1245,15 @@ Use this information to make your harmonization decision."""
             "updates": updates_needed,
         }
 
+        # Include CoVe results if available
+        if "cove_result" in state and state["cove_result"]:
+            result["cove_text_consistency"] = state["cove_result"]
+            outlier_count = state["cove_result"].get("outlier_count", 0)
+            if outlier_count > 0:
+                logger.warning(
+                    f"Harmonization submitted with {outlier_count} outliers identified by CoVe"
+                )
+
         state["result"] = result
 
         logger.info(
@@ -1154,6 +1275,7 @@ Use this information to make your harmonization decision."""
         get_field_variations,
         verify_place_id,
         find_correct_metadata,
+        verify_text_consistency,
         submit_harmonization,
     ]
 

@@ -23,24 +23,25 @@ Key Improvements Over Place ID Finder:
 
 import logging
 import os
-from typing import Any, Callable, Optional
+from typing import Annotated, Any, Callable, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.tools import tool
 from langchain_ollama import ChatOllama
-from langgraph.graph import StateGraph, END
+from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel, Field
-from typing import Annotated
 
 from receipt_agent.config.settings import Settings, get_settings
-from receipt_agent.tools.agentic import create_agentic_tools, ReceiptContext
+from receipt_agent.tools.agentic import ReceiptContext, create_agentic_tools
+
 
 # Helper function for building line IDs (matches agentic.py)
 def _build_line_id(image_id: str, receipt_id: int, line_id: int) -> str:
     """Build ChromaDB document ID for a line."""
     return f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
+
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,7 @@ logger = logging.getLogger(__name__)
 # ==============================================================================
 # Agent State
 # ==============================================================================
+
 
 class ReceiptMetadataFinderState(BaseModel):
     """State for the receipt metadata finder workflow."""
@@ -83,6 +85,7 @@ Find complete metadata for this receipt:
 - `get_my_metadata`: See what metadata already exists (may be incomplete)
 - `get_my_lines`: See all text lines on the receipt
 - `get_my_words`: See labeled words (MERCHANT_NAME, PHONE, ADDRESS, etc.)
+- `get_receipt_text`: View formatted receipt text (receipt order, grouped rows)
 
 ### Similarity Search Tools (find matching receipts)
 - `find_similar_to_my_line`: Use one of YOUR line embeddings to find similar lines elsewhere
@@ -113,6 +116,7 @@ Find complete metadata for this receipt:
    - Get metadata to see what's already known
    - Get lines to see all text on the receipt
    - Get words to see labeled fields (MERCHANT_NAME, ADDRESS, PHONE, etc.)
+   - Use `get_receipt_text` for a human-readable view of the receipt text
 
 2. **Extract metadata from receipt content**:
    - Look for MERCHANT_NAME labels in words
@@ -181,48 +185,49 @@ Begin by examining the receipt content, then systematically find all missing met
 # Metadata Submission Tool
 # ==============================================================================
 
+
 def create_metadata_submission_tool(state_holder: dict):
     """Create a tool for submitting found metadata."""
     from pydantic import BaseModel, Field
 
     class SubmitMetadataInput(BaseModel):
         """Input for submit_metadata tool."""
+
         place_id: Optional[str] = Field(
             default=None,
-            description="Google Place ID found (or None if not found)"
+            description="Google Place ID found (or None if not found)",
         )
         merchant_name: Optional[str] = Field(
             default=None,
-            description="Merchant name (from receipt or Google Places)"
+            description="Merchant name (from receipt or Google Places)",
         )
         address: Optional[str] = Field(
-            default=None,
-            description="Address (from receipt or Google Places)"
+            default=None, description="Address (from receipt or Google Places)"
         )
         phone_number: Optional[str] = Field(
             default=None,
-            description="Phone number (from receipt or Google Places)"
+            description="Phone number (from receipt or Google Places)",
         )
         confidence: float = Field(
             default=0.0,
             ge=0.0,
             le=1.0,
-            description="Overall confidence in the metadata (0.0 to 1.0)"
+            description="Overall confidence in the metadata (0.0 to 1.0)",
         )
         field_confidence: dict[str, float] = Field(
             default_factory=dict,
-            description="Confidence for each field: {'place_id': 0.9, 'merchant_name': 0.95, ...}"
+            description="Confidence for each field: {'place_id': 0.9, 'merchant_name': 0.95, ...}",
         )
         reasoning: str = Field(
             description="Explanation of how you found the metadata and why you're confident"
         )
         sources: dict[str, str] = Field(
             default_factory=dict,
-            description="Source for each field: {'place_id': 'google_places', 'merchant_name': 'receipt_content', ...}"
+            description="Source for each field: {'place_id': 'google_places', 'merchant_name': 'receipt_content', ...}",
         )
         search_methods_used: list[str] = Field(
             default_factory=list,
-            description="List of search methods used (phone, address, text, similar_receipts, etc.)"
+            description="List of search methods used (phone, address, text, similar_receipts, etc.)",
         )
 
     @tool(args_schema=SubmitMetadataInput)
@@ -308,6 +313,7 @@ def create_metadata_submission_tool(state_holder: dict):
 # Workflow Builder
 # ==============================================================================
 
+
 def create_receipt_metadata_finder_graph(
     dynamo_client: Any,
     chroma_client: Any,
@@ -349,7 +355,9 @@ def create_receipt_metadata_finder_graph(
         base_url=settings.ollama_base_url,
         model=settings.ollama_model,
         client_kwargs={
-            "headers": {"Authorization": f"Bearer {api_key}"} if api_key else {},
+            "headers": (
+                {"Authorization": f"Bearer {api_key}"} if api_key else {}
+            ),
             "timeout": 120,
         },
         temperature=0.0,
@@ -361,8 +369,10 @@ def create_receipt_metadata_finder_graph(
         messages = state.messages
         response = llm.invoke(messages)
 
-        if hasattr(response, 'tool_calls') and response.tool_calls:
-            logger.debug(f"Agent tool calls: {[tc['name'] for tc in response.tool_calls]}")
+        if hasattr(response, "tool_calls") and response.tool_calls:
+            logger.debug(
+                f"Agent tool calls: {[tc['name'] for tc in response.tool_calls]}"
+            )
 
         return {"messages": [response]}
 
@@ -384,7 +394,9 @@ def create_receipt_metadata_finder_graph(
                     return "tools"
                 # Give it another chance if no tool calls
                 if len(state.messages) > 10:
-                    logger.warning("Agent has made many steps without submitting - may need reminder")
+                    logger.warning(
+                        "Agent has made many steps without submitting - may need reminder"
+                    )
                 return "agent"
 
         return "agent"
@@ -407,7 +419,7 @@ def create_receipt_metadata_finder_graph(
             "tools": "tools",
             "agent": "agent",  # Loop back if no tool calls
             "end": END,
-        }
+        },
     )
 
     # After tools, go back to agent
@@ -422,6 +434,7 @@ def create_receipt_metadata_finder_graph(
 # ==============================================================================
 # Metadata Finder Runner
 # ==============================================================================
+
 
 async def run_receipt_metadata_finder(
     graph: Any,
@@ -460,8 +473,10 @@ async def run_receipt_metadata_finder(
                 "line_id": line.line_id,
                 "text": line.text,
                 "has_embedding": (
-                    _build_line_id(image_id, receipt_id, line.line_id) in (line_embeddings or {})
-                    if hasattr(line, 'line_id') else False
+                    _build_line_id(image_id, receipt_id, line.line_id)
+                    in (line_embeddings or {})
+                    if hasattr(line, "line_id")
+                    else False
                 ),
             }
             for line in receipt_lines
@@ -504,7 +519,9 @@ async def run_receipt_metadata_finder(
         ],
     )
 
-    logger.info(f"Starting receipt metadata finder for {image_id}#{receipt_id}")
+    logger.info(
+        f"Starting receipt metadata finder for {image_id}#{receipt_id}"
+    )
 
     # Run the workflow
     try:
@@ -536,7 +553,9 @@ async def run_receipt_metadata_finder(
             return result
         else:
             # Agent ended without submitting result
-            logger.warning(f"Agent ended without submitting metadata for {image_id}#{receipt_id}")
+            logger.warning(
+                f"Agent ended without submitting metadata for {image_id}#{receipt_id}"
+            )
             return {
                 "image_id": image_id,
                 "receipt_id": receipt_id,
@@ -564,4 +583,3 @@ async def run_receipt_metadata_finder(
             "reasoning": f"Error during metadata finding: {str(e)}",
             "fields_found": [],
         }
-

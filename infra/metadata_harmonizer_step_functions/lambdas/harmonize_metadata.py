@@ -468,6 +468,13 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     """
     start_time = time.time()
     execution_id = event.get("execution_id", "unknown")
+
+    # Allow Step Function input to override the LangSmith project at runtime
+    langchain_project = event.get("langchain_project")
+    if langchain_project:
+        os.environ["LANGCHAIN_PROJECT"] = langchain_project
+        logger.info("LANGCHAIN_PROJECT overridden to %s", langchain_project)
+
     place_ids = event.get("place_ids", [])
     dry_run = event.get("dry_run", True)
     batch_bucket = event.get("batch_bucket") or os.environ.get(
@@ -565,4 +572,3 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
         logger.error(f"Error processing batch: {e}", exc_info=True)
         flush_langsmith_traces()
         raise
-

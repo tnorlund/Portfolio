@@ -16,18 +16,17 @@ The agent has access to:
 
 import logging
 import os
-from typing import Any, Callable, Optional
+from typing import Annotated, Any, Callable, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama
-from langgraph.graph import StateGraph, END
+from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel, Field
-from typing import Annotated
 
 from receipt_agent.config.settings import Settings, get_settings
-from receipt_agent.tools.agentic import create_agentic_tools, ReceiptContext
+from receipt_agent.tools.agentic import ReceiptContext, create_agentic_tools
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +34,7 @@ logger = logging.getLogger(__name__)
 # ==============================================================================
 # Agent State
 # ==============================================================================
+
 
 class PlaceIdFinderState(BaseModel):
     """State for the place ID finder workflow."""
@@ -70,6 +70,7 @@ Find the Google Place ID for this receipt by:
 - `get_my_metadata`: See the current metadata (may not have place_id)
 - `get_my_lines`: See all text lines on the receipt
 - `get_my_words`: See labeled words (MERCHANT_NAME, PHONE, ADDRESS, etc.)
+- `get_receipt_text`: View formatted receipt text (receipt order, grouped rows)
 
 ### Similarity Search Tools (find matching receipts)
 - `find_similar_to_my_line`: Use one of YOUR line embeddings to find similar lines elsewhere
@@ -104,6 +105,7 @@ Find the Google Place ID for this receipt by:
    - Get metadata to see what's already known
    - Get lines to see all text on the receipt
    - Get words to see labeled fields (MERCHANT_NAME, ADDRESS, PHONE, etc.)
+   - Use `get_receipt_text` for a human-readable view of the receipt text
 
 2. **Extract clues** from the receipt:
    - Merchant name (from MERCHANT_NAME labels or line text)
@@ -182,6 +184,7 @@ Begin by examining the receipt content, then systematically search for the place
 # Place ID Submission Tool
 # ==============================================================================
 
+
 def create_place_id_submission_tool(state_holder: dict):
     """Create a tool for submitting the found place_id."""
     from langchain_core.tools import tool
@@ -190,32 +193,29 @@ def create_place_id_submission_tool(state_holder: dict):
     class SubmitPlaceIdInput(BaseModel):
         place_id: Optional[str] = Field(
             default=None,
-            description="Google Place ID found (or None if not found)"
+            description="Google Place ID found (or None if not found)",
         )
         place_name: Optional[str] = Field(
-            default=None,
-            description="Official name from Google Places"
+            default=None, description="Official name from Google Places"
         )
         place_address: Optional[str] = Field(
-            default=None,
-            description="Formatted address from Google Places"
+            default=None, description="Formatted address from Google Places"
         )
         place_phone: Optional[str] = Field(
-            default=None,
-            description="Phone number from Google Places"
+            default=None, description="Phone number from Google Places"
         )
         confidence: float = Field(
             default=0.0,
             ge=0.0,
             le=1.0,
-            description="Confidence in the match (0.0 to 1.0)"
+            description="Confidence in the match (0.0 to 1.0)",
         )
         reasoning: str = Field(
             description="Explanation of how you found this place_id and why you're confident"
         )
         search_methods_used: list[str] = Field(
             default_factory=list,
-            description="List of search methods used. MUST include at least one Google Places API method (phone, address, text, place_id). Verification methods like 'similar_receipts' or 'merchant_consensus' are optional."
+            description="List of search methods used. MUST include at least one Google Places API method (phone, address, text, place_id). Verification methods like 'similar_receipts' or 'merchant_consensus' are optional.",
         )
 
     @tool(args_schema=SubmitPlaceIdInput)
@@ -275,6 +275,7 @@ def create_place_id_submission_tool(state_holder: dict):
 # Workflow Builder
 # ==============================================================================
 
+
 def create_place_id_finder_graph(
     dynamo_client: Any,
     chroma_client: Any,
@@ -316,7 +317,9 @@ def create_place_id_finder_graph(
         base_url=settings.ollama_base_url,
         model=settings.ollama_model,
         client_kwargs={
-            "headers": {"Authorization": f"Bearer {api_key}"} if api_key else {},
+            "headers": (
+                {"Authorization": f"Bearer {api_key}"} if api_key else {}
+            ),
             "timeout": 120,
         },
         temperature=0.0,
@@ -328,8 +331,10 @@ def create_place_id_finder_graph(
         messages = state.messages
         response = llm.invoke(messages)
 
-        if hasattr(response, 'tool_calls') and response.tool_calls:
-            logger.debug(f"Agent tool calls: {[tc['name'] for tc in response.tool_calls]}")
+        if hasattr(response, "tool_calls") and response.tool_calls:
+            logger.debug(
+                f"Agent tool calls: {[tc['name'] for tc in response.tool_calls]}"
+            )
 
         return {"messages": [response]}
 
@@ -351,8 +356,12 @@ def create_place_id_finder_graph(
                     return "tools"
                 # If agent responded without tool calls and no result, check if it's trying to end
                 # Give it one more chance to call submit_place_id
-                if len(state.messages) > 10:  # After several rounds, remind to submit
-                    logger.warning("Agent has made many steps without submitting - may need reminder")
+                if (
+                    len(state.messages) > 10
+                ):  # After several rounds, remind to submit
+                    logger.warning(
+                        "Agent has made many steps without submitting - may need reminder"
+                    )
                 return "agent"  # Go back to agent to give it another chance
 
         # If no messages or no tool calls, go back to agent
@@ -376,7 +385,7 @@ def create_place_id_finder_graph(
             "tools": "tools",
             "agent": "agent",  # Loop back to agent if no tool calls
             "end": END,
-        }
+        },
     )
 
     # After tools, go back to agent
@@ -391,6 +400,7 @@ def create_place_id_finder_graph(
 # ==============================================================================
 # Place ID Finder Runner
 # ==============================================================================
+
 
 async def run_place_id_finder(
     graph: Any,
@@ -472,7 +482,9 @@ async def run_place_id_finder(
             return result
         else:
             # Agent ended without submitting result
-            logger.warning(f"Agent ended without submitting place_id for {image_id}#{receipt_id}")
+            logger.warning(
+                f"Agent ended without submitting place_id for {image_id}#{receipt_id}"
+            )
             return {
                 "image_id": image_id,
                 "receipt_id": receipt_id,
@@ -494,4 +506,3 @@ async def run_place_id_finder(
             "reasoning": f"Error during place ID finding: {str(e)}",
             "search_methods_used": [],
         }
-
