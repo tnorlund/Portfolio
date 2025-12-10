@@ -11,6 +11,7 @@ ENV HNSWLIB_NO_NATIVE=1
 COPY receipt_dynamo/ /tmp/receipt_dynamo/
 COPY receipt_chroma/ /tmp/receipt_chroma/
 COPY receipt_places/ /tmp/receipt_places/
+COPY receipt_upload/ /tmp/receipt_upload/
 COPY receipt_agent/ /tmp/receipt_agent/
 
 # Install dependencies from pyproject.toml files
@@ -18,8 +19,9 @@ COPY receipt_agent/ /tmp/receipt_agent/
 RUN pip install --no-cache-dir /tmp/receipt_dynamo && \
     pip install --no-cache-dir /tmp/receipt_chroma && \
     pip install --no-cache-dir /tmp/receipt_places && \
+    pip install --no-cache-dir /tmp/receipt_upload && \
     pip install --no-cache-dir /tmp/receipt_agent && \
-    rm -rf /tmp/receipt_dynamo /tmp/receipt_chroma /tmp/receipt_places /tmp/receipt_agent
+    rm -rf /tmp/receipt_dynamo /tmp/receipt_chroma /tmp/receipt_places /tmp/receipt_upload /tmp/receipt_agent
 
 # Stage 2: Copy Lambda-specific code (changes frequently, but doesn't invalidate deps cache)
 FROM dependencies
