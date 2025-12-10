@@ -110,22 +110,17 @@ async def process_place_id_batch(
 
     # Filter to only process the place_ids in this batch
     # The harmonizer has already loaded all receipts, so we need to filter
-    # the groups to only those in our batch
+    # the groups to only those in our batch. We no longer skip "consistent"
+    # groups because the definition has changed to include receipt text checks.
     groups_to_process = []
     for place_id in place_ids:
         if place_id in harmonizer._place_id_groups:
             group = harmonizer._place_id_groups[place_id]
-            # Only process inconsistent groups (skip already consistent ones)
-            if not group.is_consistent:
-                groups_to_process.append(group)
-            else:
-                logger.info(
-                    f"Skipping {place_id}: already consistent ({len(group.receipts)} receipts)"
-                )
+            groups_to_process.append(group)
 
     if not groups_to_process:
         logger.info(
-            f"No inconsistent groups found for {len(place_ids)} place_ids"
+            f"No groups found to process for {len(place_ids)} place_ids"
         )
         return {
             "status": "skipped",
