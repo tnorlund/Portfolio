@@ -7,7 +7,7 @@ This document compares the address similarity cache generator Lambda with the Ch
 | Aspect | Address Similarity Cache | Compaction Lambda |
 |--------|-------------------------|-------------------|
 | **Purpose** | Generate cache for address similarity API | Compact ChromaDB snapshots from DynamoDB streams |
-| **Trigger** | EventBridge (every 5 minutes) | EventBridge + DynamoDB Stream |
+| **Trigger** | EventBridge (once per day) | EventBridge + DynamoDB Stream |
 | **Architecture** | Container-based Lambda | Container-based Lambda |
 | **VPC** | ❌ No VPC (S3-only, cost optimization) | ✅ VPC with EFS access |
 | **Storage** | S3-only (reads snapshots, writes cache) | EFS + S3 hybrid (auto mode) |
@@ -108,7 +108,7 @@ Both use identical structure:
 - Only reads from S3 (no EFS needed)
 - Only writes small JSON cache files to S3
 - Doesn't need persistent storage between invocations
-- Runs every 5 minutes (not time-critical)
+- Runs once per day (not time-critical)
 
 **Trade-offs:**
 - ✅ Lower cost (no NAT Gateway charges)
@@ -122,7 +122,7 @@ Both use identical structure:
 
 ### 3. No Reserved Concurrency
 
-**Why?** Cache generator runs on a schedule (every 5 minutes) and doesn't need to handle concurrent requests. Compaction Lambda processes multiple DynamoDB stream events and needs reserved concurrency to prevent throttling.
+**Why?** Cache generator runs on a schedule (once per day) and doesn't need to handle concurrent requests. Compaction Lambda processes multiple DynamoDB stream events and needs reserved concurrency to prevent throttling.
 
 ### 4. No ECR Lifecycle Policy
 
