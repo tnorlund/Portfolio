@@ -8,7 +8,9 @@ text against canonical metadata to identify outliers.
 
 import logging
 import os
-from typing import Annotated, Any, Optional
+import random
+import time
+from typing import TYPE_CHECKING, Annotated, Any, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.tools import tool
@@ -20,6 +22,9 @@ from pydantic import BaseModel, Field
 
 from receipt_agent.config.settings import Settings, get_settings
 from receipt_agent.utils.receipt_text import format_receipt_text_receipt_space
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data.dynamo_client import DynamoClient
 
 logger = logging.getLogger(__name__)
 
@@ -77,8 +82,9 @@ Your job is to:
 ## Available Tools
 
 ### Receipt Text Tools
-- `get_receipt_text`: Get formatted receipt text (receipt-space grouping) for a specific receipt
-- `get_receipt_content`: Get raw lines and labeled words for a specific receipt
+- `batch_check_receipts`: **RECOMMENDED** - Check multiple receipts' text in a single call (efficient for large groups). Use this for groups with 5+ receipts to reduce tool calls.
+- `get_receipt_text`: Get formatted receipt text (receipt-space grouping) for a specific receipt (use for individual checks or when batch_check_receipts fails)
+- `get_receipt_content`: Get raw lines and labeled words for a specific receipt (use only if you need detailed word-level analysis)
 - `get_group_summary`: See all receipts in this group with their metadata
 
 ## Strategy
@@ -87,10 +93,13 @@ Your job is to:
    - Use `get_group_summary` to list all receipts with their image_id and receipt_id
 
 2. **Examine receipt text** for each receipt:
-   - Use `get_receipt_text` to get formatted text for each receipt
-   - Or use `get_receipt_content` for deeper inspection (raw lines, labeled words)
+   - **For groups with 5+ receipts**: Use `batch_check_receipts` to check multiple receipts at once (recommended batch size: 5-10 receipts per call)
+     - If the batch tool returns `has_more: true`, call it again with the remaining receipts
+     - Continue until all receipts are checked
+   - **For individual checks**: Use `get_receipt_text` to get formatted text for a specific receipt
+   - **For detailed analysis**: Use `get_receipt_content` for deeper inspection (raw lines, labeled words) - only if needed
    - **Note**: Some receipts may not have receipt details (lines/words) in DynamoDB.
-     If `get_receipt_text` returns an error or "not found", mark that receipt as UNSURE
+     If a receipt check returns an error or "not found", mark that receipt as UNSURE
      with evidence "Receipt details not available" and continue with other receipts.
    - Look for the canonical merchant name, address, and phone in the text
 
@@ -117,12 +126,16 @@ Your job is to:
 ## Important Rules
 
 1. ALWAYS start with `get_group_summary` to see all receipts
-2. Check receipt text for EACH receipt in the group (skip if details not available)
+2. Check receipt text for EACH receipt in the group:
+   - **Use `batch_check_receipts` for efficiency** when checking 5+ receipts (batch 5-10 at a time)
+   - Use `get_receipt_text` for individual checks or when batch fails
+   - Skip receipts if details not available (mark as UNSURE)
 3. If a receipt doesn't have text/details, mark it as UNSURE and continue
 4. Be lenient with OCR errors - minor typos are OK
 5. Be strict with complete mismatches - if merchant/address/phone all differ, it's likely a different place
 6. ALWAYS end with `submit_text_consistency` - never end without calling it
 7. You MUST submit results for ALL receipts, even if some don't have text
+8. **Efficiency**: Batch receipts when possible to reduce tool calls and stay within recursion limits
 
 ## Status Definitions
 
@@ -186,6 +199,29 @@ def create_text_consistency_submission_tool(state_holder: dict):
             overall_confidence: Overall confidence in the consistency check (0.0-1.0)
             reasoning: Explanation of the results
         """
+        # Get expected receipts from state
+        expected_receipts = state_holder.get("receipts", [])
+        expected_count = len(expected_receipts)
+
+        # Deduplicate receipt_results by (image_id, receipt_id) - keep first occurrence
+        seen = set()
+        unique_results = []
+        for r in receipt_results:
+            key = (r.image_id, r.receipt_id)
+            if key not in seen:
+                seen.add(key)
+                unique_results.append(r)
+
+        # Warn if we got more/fewer results than expected
+        if len(unique_results) != expected_count:
+            logger.warning(
+                f"CoVe agent submitted {len(unique_results)} receipt_results "
+                f"but expected {expected_count} receipts. Deduplicating..."
+            )
+
+        # Use deduplicated results
+        receipt_results = unique_results
+
         outliers = [
             r for r in receipt_results if r.status in ["MISMATCH", "UNSURE"]
         ]
@@ -242,7 +278,7 @@ def create_text_consistency_submission_tool(state_holder: dict):
 
 
 def _fetch_receipt_details_fallback(
-    dynamo_client: Any, image_id: str, receipt_id: int
+    dynamo_client: "DynamoClient", image_id: str, receipt_id: int
 ) -> Optional[Any]:
     """
     Fallback method to fetch receipt details using alternative queries.
@@ -259,13 +295,13 @@ def _fetch_receipt_details_fallback(
         ReceiptDetails if successful, None otherwise
     """
     try:
+        from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
         from receipt_dynamo.entities.receipt_details import ReceiptDetails
-        from receipt_dynamo.exceptions import EntityNotFoundError
 
         # Sanitize image_id - remove trailing whitespace and special characters
         # Some image_ids may have trailing '?' or other characters
         sanitized_image_id = image_id.rstrip("? \t\n\r")
-        
+
         # Try sanitized version first, then original if different
         image_ids_to_try = [sanitized_image_id]
         if sanitized_image_id != image_id:
@@ -298,12 +334,12 @@ def _fetch_receipt_details_fallback(
         # Try to fetch lines and words directly (they might exist even if receipt doesn't)
         lines = []
         words = []
-        
+
         # Try both sanitized and original image_id for lines/words
         for img_id in image_ids_to_try:
             if lines and words:
                 break  # Already found both
-                
+
             if not lines:
                 try:
                     lines = dynamo_client.list_receipt_lines_from_receipt(
@@ -318,7 +354,7 @@ def _fetch_receipt_details_fallback(
                     logger.debug(
                         f"Could not fetch lines for {img_id}#{receipt_id}: {e}"
                     )
-            
+
             if not words:
                 try:
                     words = dynamo_client.list_receipt_words_from_receipt(
@@ -350,7 +386,9 @@ def _fetch_receipt_details_fallback(
                 # We have lines/words but no receipt entity
                 # Try to get receipt one more time using get_receipt (with sanitized ID)
                 try:
-                    receipt = dynamo_client.get_receipt(sanitized_image_id, receipt_id)
+                    receipt = dynamo_client.get_receipt(
+                        sanitized_image_id, receipt_id
+                    )
                     if receipt:
                         image_id = sanitized_image_id  # Use sanitized version
                         return ReceiptDetails(
@@ -387,7 +425,7 @@ def _fetch_receipt_details_fallback(
 
 
 def create_cove_tools(
-    dynamo_client: Any,
+    dynamo_client: "DynamoClient",
     place_id: str,
     canonical_merchant_name: str,
     canonical_address: Optional[str],
@@ -468,13 +506,50 @@ def create_cove_tools(
             receipt_id: Receipt ID
 
         Returns:
+        - image_id: Image ID of the receipt
+        - receipt_id: Receipt ID
+        - found: Whether receipt details were found
         - formatted_text: Receipt text formatted in receipt-space (grouped rows)
         - line_count: Number of lines on the receipt
+        - error: Error message if receipt not found or error occurred
         """
+        from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+
         try:
-            receipt_details = dynamo_client.get_receipt_details(
-                image_id=image_id, receipt_id=receipt_id
-            )
+            # Sanitize image_id first (remove trailing characters like '?')
+            sanitized_image_id = image_id.rstrip("? \t\n\r")
+
+            # Try sanitized version first, then original if different
+            receipt_details = None
+            for img_id in [sanitized_image_id, image_id]:
+                try:
+                    receipt_details = dynamo_client.get_receipt_details(
+                        image_id=img_id,
+                        receipt_id=receipt_id,
+                    )
+                    if receipt_details and receipt_details.receipt:
+                        break
+                except EntityNotFoundError:
+                    # Receipt doesn't exist - continue to try fallback
+                    if (
+                        img_id == sanitized_image_id
+                        and sanitized_image_id != image_id
+                    ):
+                        logger.debug(
+                            f"Receipt not found for sanitized {img_id}#{receipt_id}, "
+                            f"trying original image_id"
+                        )
+                    continue
+                except Exception as e:
+                    if (
+                        img_id == sanitized_image_id
+                        and sanitized_image_id != image_id
+                    ):
+                        logger.debug(
+                            f"get_receipt_details failed for sanitized {img_id}#{receipt_id}, "
+                            f"trying original: {e}"
+                        )
+                    continue
 
             if not receipt_details or not receipt_details.receipt:
                 # Try alternative methods to fetch receipt details
@@ -483,47 +558,57 @@ def create_cove_tools(
                     f"trying alternative methods..."
                 )
                 receipt_details = _fetch_receipt_details_fallback(
-                    dynamo_client, image_id, receipt_id
+                    dynamo_client, sanitized_image_id, receipt_id
                 )
-
-            if not receipt_details or not receipt_details.receipt:
-                logger.warning(
-                    f"Receipt details not found for {image_id}#{receipt_id} after fallback. "
-                    f"Metadata exists but receipt lines/words are missing from DynamoDB. "
-                    f"Skipping text consistency check for this receipt."
-                )
-                return {
-                    "error": f"Receipt details not found for {image_id}#{receipt_id}",
-                    "found": False,
-                    "formatted_text": "(Receipt details not available)",
-                    "line_count": 0,
-                }
 
             # Handle case where we might have lines/words but no receipt entity
             lines = receipt_details.lines or [] if receipt_details else []
 
-            # If we don't have lines from receipt_details, try direct fetch
+            # If we don't have lines from receipt_details, try direct fetch with sanitized image_id
             if not lines:
-                try:
-                    lines = dynamo_client.list_receipt_lines_from_receipt(
-                        image_id, receipt_id
-                    )
-                    if lines:
-                        logger.info(
-                            f"Fetched {len(lines)} lines directly for {image_id}#{receipt_id} "
-                            f"in get_receipt_text"
+                for img_id in [sanitized_image_id, image_id]:
+                    try:
+                        lines = dynamo_client.list_receipt_lines_from_receipt(
+                            img_id, receipt_id
                         )
-                except Exception as e:
-                    logger.debug(f"Could not fetch lines directly: {e}")
+                        if lines:
+                            logger.info(
+                                f"Fetched {len(lines)} lines directly for {img_id}#{receipt_id} "
+                                f"in get_receipt_text"
+                            )
+                            break
+                    except EntityNotFoundError:
+                        # Lines don't exist for this image_id - try next one
+                        continue
+                    except Exception as e:
+                        logger.debug(
+                            f"Could not fetch lines for {img_id}#{receipt_id}: {e}"
+                        )
 
             if not lines:
-                return {
-                    "image_id": image_id,
-                    "receipt_id": receipt_id,
-                    "found": True,
-                    "formatted_text": "(No lines found on receipt)",
-                    "line_count": 0,
-                }
+                # Check if we have receipt_details but no lines
+                if receipt_details and receipt_details.receipt:
+                    return {
+                        "image_id": image_id,
+                        "receipt_id": receipt_id,
+                        "found": True,
+                        "formatted_text": "(No lines found on receipt)",
+                        "line_count": 0,
+                    }
+                else:
+                    logger.warning(
+                        f"Receipt details not found for {image_id}#{receipt_id} after fallback. "
+                        f"Metadata exists but receipt lines/words are missing from DynamoDB. "
+                        f"Skipping text consistency check for this receipt."
+                    )
+                    return {
+                        "image_id": image_id,
+                        "receipt_id": receipt_id,
+                        "found": False,
+                        "error": f"Receipt details not found for {image_id}#{receipt_id}",
+                        "formatted_text": "(Receipt details not available)",
+                        "line_count": 0,
+                    }
 
             try:
                 formatted_text = format_receipt_text_receipt_space(lines)
@@ -544,6 +629,18 @@ def create_cove_tools(
                 "line_count": len(lines),
             }
 
+        except EntityNotFoundError as e:
+            logger.warning(
+                f"Receipt not found for {image_id}#{receipt_id}: {e}"
+            )
+            return {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "found": False,
+                "error": f"Receipt not found: {str(e)}",
+                "formatted_text": "(Receipt not found)",
+                "line_count": 0,
+            }
         except Exception as e:
             error_str = str(e)
             # Check if this is a "receipt not found" type error
@@ -559,11 +656,236 @@ def create_cove_tools(
                     f"Error getting receipt text for {image_id}#{receipt_id}: {e}"
                 )
             return {
-                "error": str(e),
+                "image_id": image_id,
+                "receipt_id": receipt_id,
                 "found": False,
+                "error": str(e),
                 "formatted_text": "(Error retrieving receipt text)",
                 "line_count": 0,
             }
+
+    class BatchCheckReceiptsInput(BaseModel):
+        """Input for batch_check_receipts tool."""
+
+        receipts: list[dict] = Field(
+            description=(
+                "List of receipts to check. Each receipt should be a dict with "
+                "'image_id' (str) and 'receipt_id' (int). "
+                "Recommended batch size: 5-10 receipts to balance efficiency and context limits."
+            )
+        )
+
+    @tool(args_schema=BatchCheckReceiptsInput)
+    def batch_check_receipts(receipts: list[dict]) -> dict:
+        """
+        Check multiple receipts' text in a single call (efficient for large groups).
+
+        This tool fetches receipt text for multiple receipts at once, reducing the
+        number of tool calls needed. Use this instead of calling get_receipt_text
+        individually for each receipt.
+
+        Args:
+            receipts: List of receipt dicts, each with 'image_id' (str) and 'receipt_id' (int).
+                     Recommended batch size: 5-10 receipts.
+
+        Returns:
+            Dictionary with:
+            - checked_count: Number of receipts successfully checked (with text found)
+            - total_requested: Total number of receipts requested
+            - total_processed: Number of receipts processed in this batch (may be less if batch size limit reached)
+            - has_more: Whether there are more receipts to process (if batch size limit was reached)
+            - results: List of results, one per receipt, each containing:
+              - image_id: Image ID
+              - receipt_id: Receipt ID
+              - found: Whether receipt text was found
+              - formatted_text: Receipt text (truncated if very long to manage context)
+              - line_count: Number of lines
+              - text_preview: First 200 characters of text (for quick scanning)
+              - error: Error message if not found
+            - message: Summary message indicating if more receipts need to be checked
+        """
+        from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+
+        # Limit batch size to prevent context overflow
+        # Estimate: ~500-1000 chars per receipt text = ~125-250 tokens per receipt
+        # With 10 receipts = ~1250-2500 tokens, safe for context
+        # We'll dynamically adjust based on actual text length
+        MAX_BATCH_SIZE = 10
+        MAX_TOTAL_CHARS = 15000  # ~3750 tokens, conservative limit
+
+        if len(receipts) > MAX_BATCH_SIZE:
+            logger.info(
+                f"Batch size {len(receipts)} exceeds max {MAX_BATCH_SIZE}, "
+                f"processing first {MAX_BATCH_SIZE} receipts"
+            )
+            receipts_to_process = receipts[:MAX_BATCH_SIZE]
+        else:
+            receipts_to_process = receipts
+
+        results = []
+        checked_count = 0
+        total_chars_so_far = 0
+
+        for receipt in receipts_to_process:
+            image_id = receipt.get("image_id")
+            receipt_id = receipt.get("receipt_id")
+
+            if not image_id or receipt_id is None:
+                results.append(
+                    {
+                        "image_id": image_id or "unknown",
+                        "receipt_id": receipt_id or -1,
+                        "found": False,
+                        "error": "Missing image_id or receipt_id",
+                        "formatted_text": "",
+                        "line_count": 0,
+                        "text_preview": "",
+                    }
+                )
+                continue
+
+            try:
+                # Sanitize image_id
+                sanitized_image_id = image_id.rstrip("? \t\n\r")
+
+                # Try to get receipt text (reuse logic from get_receipt_text)
+                receipt_details = None
+                for img_id in [sanitized_image_id, image_id]:
+                    try:
+                        receipt_details = dynamo_client.get_receipt_details(
+                            image_id=img_id,
+                            receipt_id=receipt_id,
+                        )
+                        if receipt_details and receipt_details.receipt:
+                            break
+                    except EntityNotFoundError:
+                        continue
+                    except Exception:
+                        continue
+
+                if not receipt_details:
+                    receipt_details = _fetch_receipt_details_fallback(
+                        dynamo_client, sanitized_image_id, receipt_id
+                    )
+
+                lines = receipt_details.lines or [] if receipt_details else []
+
+                if not lines:
+                    # Try direct fetch
+                    for img_id in [sanitized_image_id, image_id]:
+                        try:
+                            lines = (
+                                dynamo_client.list_receipt_lines_from_receipt(
+                                    img_id, receipt_id
+                                )
+                            )
+                            if lines:
+                                break
+                        except Exception:
+                            continue
+
+                if not lines:
+                    results.append(
+                        {
+                            "image_id": image_id,
+                            "receipt_id": receipt_id,
+                            "found": False,
+                            "error": "Receipt details not available",
+                            "formatted_text": "",
+                            "line_count": 0,
+                            "text_preview": "",
+                        }
+                    )
+                    continue
+
+                # Format text
+                try:
+                    formatted_text = format_receipt_text_receipt_space(lines)
+                except Exception:
+                    sorted_lines = sorted(lines, key=lambda l: l.line_id)
+                    formatted_text = "\n".join(
+                        f"{ln.line_id}: {ln.text}" for ln in sorted_lines
+                    )
+
+                # Smart truncation: adjust based on total context used so far
+                # Estimate remaining capacity and truncate if needed
+                text_length = len(formatted_text)
+                remaining_capacity = MAX_TOTAL_CHARS - total_chars_so_far
+
+                # Reserve space for other receipts in batch (estimate 500 chars each)
+                remaining_receipts = (
+                    len(receipts_to_process) - len(results) - 1
+                )
+                reserved_space = remaining_receipts * 500
+                available_space = max(
+                    1000, remaining_capacity - reserved_space
+                )  # At least 1000 chars
+
+                text_preview = formatted_text[:200] if formatted_text else ""
+
+                # Truncate if text is too long or would exceed total capacity
+                MAX_TEXT_LENGTH = min(2000, available_space)  # Dynamic limit
+                if text_length > MAX_TEXT_LENGTH:
+                    formatted_text = (
+                        formatted_text[:MAX_TEXT_LENGTH]
+                        + f"\n... (truncated, {text_length - MAX_TEXT_LENGTH} chars remaining)"
+                    )
+                    text_length = MAX_TEXT_LENGTH
+
+                total_chars_so_far += text_length
+
+                results.append(
+                    {
+                        "image_id": image_id,
+                        "receipt_id": receipt_id,
+                        "found": True,
+                        "formatted_text": formatted_text,
+                        "line_count": len(lines),
+                        "text_preview": text_preview,
+                    }
+                )
+                checked_count += 1
+
+            except EntityNotFoundError:
+                results.append(
+                    {
+                        "image_id": image_id,
+                        "receipt_id": receipt_id,
+                        "found": False,
+                        "error": "Receipt not found",
+                        "formatted_text": "",
+                        "line_count": 0,
+                        "text_preview": "",
+                    }
+                )
+            except Exception as e:
+                error_str = str(e)
+                results.append(
+                    {
+                        "image_id": image_id,
+                        "receipt_id": receipt_id,
+                        "found": False,
+                        "error": error_str[:200],  # Truncate long errors
+                        "formatted_text": "",
+                        "line_count": 0,
+                        "text_preview": "",
+                    }
+                )
+
+        # Check if there are more receipts to process
+        has_more = len(receipts) > len(receipts_to_process)
+
+        return {
+            "checked_count": checked_count,
+            "total_requested": len(receipts),
+            "total_processed": len(receipts_to_process),
+            "has_more": has_more,
+            "results": results,
+            "message": (
+                f"Processed {len(receipts_to_process)} of {len(receipts)} receipts. "
+                f"{'More receipts remain - call batch_check_receipts again with remaining receipts.' if has_more else 'All receipts processed.'}"
+            ),
+        }
 
     class GetReceiptContentInput(BaseModel):
         """Input for get_receipt_content tool."""
@@ -583,13 +905,50 @@ def create_cove_tools(
             receipt_id: Receipt ID
 
         Returns:
+        - image_id: Image ID of the receipt
+        - receipt_id: Receipt ID
+        - found: Whether receipt details were found
         - lines: All text lines on the receipt
         - labeled_words: Words with labels (MERCHANT_NAME, ADDRESS, PHONE, etc.)
+        - error: Error message if receipt not found or error occurred
         """
+        from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+
         try:
-            receipt_details = dynamo_client.get_receipt_details(
-                image_id=image_id, receipt_id=receipt_id
-            )
+            # Sanitize image_id first (remove trailing characters like '?')
+            sanitized_image_id = image_id.rstrip("? \t\n\r")
+
+            # Try sanitized version first, then original if different
+            receipt_details = None
+            for img_id in [sanitized_image_id, image_id]:
+                try:
+                    receipt_details = dynamo_client.get_receipt_details(
+                        image_id=img_id,
+                        receipt_id=receipt_id,
+                    )
+                    if receipt_details and receipt_details.receipt:
+                        break
+                except EntityNotFoundError:
+                    # Receipt doesn't exist - continue to try fallback
+                    if (
+                        img_id == sanitized_image_id
+                        and sanitized_image_id != image_id
+                    ):
+                        logger.debug(
+                            f"Receipt not found for sanitized {img_id}#{receipt_id}, "
+                            f"trying original image_id"
+                        )
+                    continue
+                except Exception as e:
+                    if (
+                        img_id == sanitized_image_id
+                        and sanitized_image_id != image_id
+                    ):
+                        logger.debug(
+                            f"get_receipt_details failed for sanitized {img_id}#{receipt_id}, "
+                            f"trying original: {e}"
+                        )
+                    continue
 
             if not receipt_details or not receipt_details.receipt:
                 # Try alternative methods to fetch receipt details
@@ -598,37 +957,55 @@ def create_cove_tools(
                     f"trying alternative methods..."
                 )
                 receipt_details = _fetch_receipt_details_fallback(
-                    dynamo_client, image_id, receipt_id
+                    dynamo_client, sanitized_image_id, receipt_id
                 )
 
             # Handle case where we might have lines/words but no receipt entity
             lines_list = receipt_details.lines or [] if receipt_details else []
             words_list = receipt_details.words or [] if receipt_details else []
 
-            # If we don't have lines/words from receipt_details, try direct fetch
+            # If we don't have lines/words from receipt_details, try direct fetch with sanitized image_id
             if not lines_list:
-                try:
-                    lines_list = dynamo_client.list_receipt_lines_from_receipt(
-                        image_id, receipt_id
-                    )
-                    if lines_list:
-                        logger.info(
-                            f"Fetched {len(lines_list)} lines directly for {image_id}#{receipt_id}"
+                for img_id in [sanitized_image_id, image_id]:
+                    try:
+                        lines_list = (
+                            dynamo_client.list_receipt_lines_from_receipt(
+                                img_id, receipt_id
+                            )
                         )
-                except Exception as e:
-                    logger.debug(f"Could not fetch lines directly: {e}")
+                        if lines_list:
+                            logger.info(
+                                f"Fetched {len(lines_list)} lines directly for {img_id}#{receipt_id}"
+                            )
+                            break
+                    except EntityNotFoundError:
+                        # Lines don't exist for this image_id - try next one
+                        continue
+                    except Exception as e:
+                        logger.debug(
+                            f"Could not fetch lines for {img_id}#{receipt_id}: {e}"
+                        )
 
             if not words_list:
-                try:
-                    words_list = dynamo_client.list_receipt_words_from_receipt(
-                        image_id, receipt_id
-                    )
-                    if words_list:
-                        logger.info(
-                            f"Fetched {len(words_list)} words directly for {image_id}#{receipt_id}"
+                for img_id in [sanitized_image_id, image_id]:
+                    try:
+                        words_list = (
+                            dynamo_client.list_receipt_words_from_receipt(
+                                img_id, receipt_id
+                            )
                         )
-                except Exception as e:
-                    logger.debug(f"Could not fetch words directly: {e}")
+                        if words_list:
+                            logger.info(
+                                f"Fetched {len(words_list)} words directly for {img_id}#{receipt_id}"
+                            )
+                            break
+                    except EntityNotFoundError:
+                        # Words don't exist for this image_id - try next one
+                        continue
+                    except Exception as e:
+                        logger.debug(
+                            f"Could not fetch words for {img_id}#{receipt_id}: {e}"
+                        )
 
             lines = [
                 {"line_id": line.line_id, "text": line.text}
@@ -648,6 +1025,9 @@ def create_cove_tools(
 
             if not lines and not labeled_words:
                 return {
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                    "found": False,
                     "error": f"Receipt details not found for {image_id}#{receipt_id}",
                     "lines": [],
                     "labeled_words": [],
@@ -656,10 +1036,23 @@ def create_cove_tools(
             return {
                 "image_id": image_id,
                 "receipt_id": receipt_id,
+                "found": True,
                 "lines": lines[:20],  # Limit to first 20 lines
                 "labeled_words": labeled_words,
             }
 
+        except EntityNotFoundError as e:
+            logger.warning(
+                f"Receipt not found for {image_id}#{receipt_id}: {e}"
+            )
+            return {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "found": False,
+                "error": f"Receipt not found: {str(e)}",
+                "lines": [],
+                "labeled_words": [],
+            }
         except Exception as e:
             error_str = str(e)
             # Check if this is a "receipt not found" type error
@@ -675,6 +1068,9 @@ def create_cove_tools(
                     f"Error getting receipt content for {image_id}#{receipt_id}: {e}"
                 )
             return {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "found": False,
                 "error": str(e),
                 "lines": [],
                 "labeled_words": [],
@@ -686,6 +1082,7 @@ def create_cove_tools(
     # Return tools
     tools = [
         get_group_summary,
+        batch_check_receipts,  # Add batch tool first (recommended)
         get_receipt_text,
         get_receipt_content,
         submit_tool,
@@ -700,7 +1097,7 @@ def create_cove_tools(
 
 
 def create_cove_text_consistency_graph(
-    dynamo_client: Any,
+    dynamo_client: "DynamoClient",
     place_id: str,
     canonical_merchant_name: str,
     canonical_address: Optional[str],
@@ -750,18 +1147,91 @@ def create_cove_text_consistency_graph(
         temperature=0.0,
     ).bind_tools(tools)
 
-    # Define the agent node
+    # Define the agent node with retry logic
     def agent_node(state: CoveTextConsistencyState) -> dict:
-        """Call the LLM to decide next action."""
+        """Call the LLM to decide next action with retry logic for transient errors."""
         messages = state.messages
-        response = llm.invoke(messages)
 
-        if hasattr(response, "tool_calls") and response.tool_calls:
-            logger.debug(
-                f"CoVe agent tool calls: {[tc['name'] for tc in response.tool_calls]}"
-            )
+        # Retry logic following Ollama/LangGraph best practices
+        max_retries = 3
+        base_delay = 2.0  # Base delay in seconds (exponential backoff)
+        last_error = None
 
-        return {"messages": [response]}
+        for attempt in range(max_retries):
+            try:
+                response = llm.invoke(messages)
+
+                if hasattr(response, "tool_calls") and response.tool_calls:
+                    logger.debug(
+                        f"CoVe agent tool calls: {[tc['name'] for tc in response.tool_calls]}"
+                    )
+
+                return {"messages": [response]}
+
+            except Exception as e:
+                last_error = e
+                error_str = str(e)
+
+                # Check if this is a rate limit (429) - fail fast, don't retry
+                is_rate_limit = (
+                    "429" in error_str
+                    or "rate limit" in error_str.lower()
+                    or "rate_limit" in error_str.lower()
+                    or "too many concurrent requests" in error_str.lower()
+                    or "too many requests" in error_str.lower()
+                )
+
+                if is_rate_limit:
+                    logger.warning(
+                        f"Rate limit detected in CoVe agent (attempt {attempt + 1}): {error_str[:200]}. "
+                        f"Failing immediately to trigger circuit breaker."
+                    )
+                    # Re-raise rate limit errors immediately (don't retry)
+                    raise RuntimeError(
+                        f"Rate limit error in CoVe agent: {error_str}"
+                    ) from e
+
+                # For other retryable errors, use exponential backoff
+                # 500/502/503 are server errors that may be transient
+                is_retryable = (
+                    "500" in error_str
+                    or "502" in error_str
+                    or "503" in error_str
+                    or "Internal Server Error" in error_str
+                    or "internal server error" in error_str.lower()
+                    or "service unavailable" in error_str.lower()
+                    or "timeout" in error_str.lower()
+                    or "timed out" in error_str.lower()
+                )
+
+                if is_retryable and attempt < max_retries - 1:
+                    # Exponential backoff with jitter to prevent thundering herd
+                    # attempt 0: 2-4s, attempt 1: 4-8s, attempt 2: 8-16s
+                    jitter = random.uniform(0, base_delay)
+                    wait_time = (base_delay * (2**attempt)) + jitter
+                    logger.warning(
+                        f"Ollama retryable error in CoVe agent "
+                        f"(attempt {attempt + 1}/{max_retries}): {error_str[:200]}. "
+                        f"Retrying in {wait_time:.1f}s..."
+                    )
+                    # Note: This is a sync function executed in a thread pool by LangGraph
+                    # Using time.sleep is appropriate here
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    # Not retryable or max retries reached
+                    if attempt >= max_retries - 1:
+                        logger.error(
+                            f"Ollama LLM call failed after {max_retries} attempts in CoVe agent: {error_str}"
+                        )
+                    raise RuntimeError(
+                        f"Failed to get LLM response in CoVe agent: {error_str}"
+                    ) from e
+
+        # Should never reach here, but just in case
+        raise RuntimeError(
+            f"Unexpected error: Failed to get LLM response in CoVe agent"
+        ) from last_error
 
     # Define tool node
     tool_node = ToolNode(tools)
@@ -870,6 +1340,13 @@ async def run_cove_text_consistency(
         f"({len(receipts)} receipts)"
     )
 
+    # Store receipts in state_holder for validation in submit_text_consistency
+    state_holder["receipts"] = receipts
+    state_holder["place_id"] = place_id
+    state_holder["canonical_merchant_name"] = canonical_merchant_name
+    state_holder["canonical_address"] = canonical_address
+    state_holder["canonical_phone"] = canonical_phone
+
     # Run the workflow
     try:
         config = {
@@ -893,8 +1370,12 @@ async def run_cove_text_consistency(
         result = state_holder.get("consistency_result")
 
         if result:
+            # Get actual receipt count from result (after deduplication)
+            receipt_results_count = len(result.get("receipt_results", []))
+            outlier_count = result.get("outlier_count", 0)
             logger.info(
-                f"CoVe check complete: {result.get('outlier_count', 0)}/{len(receipts)} outliers"
+                f"CoVe check complete: {outlier_count}/{receipt_results_count} outliers "
+                f"(expected {len(receipts)} receipts)"
             )
             return {
                 "status": "success",

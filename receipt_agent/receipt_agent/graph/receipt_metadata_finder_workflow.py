@@ -23,6 +23,8 @@ Key Improvements Over Place ID Finder:
 
 import logging
 import os
+import random
+import time
 from typing import Annotated, Any, Callable, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -320,16 +322,18 @@ def create_receipt_metadata_finder_graph(
     embed_fn: Callable[[list[str]], list[list[float]]],
     places_api: Optional[Any] = None,
     settings: Optional[Settings] = None,
+    chromadb_bucket: Optional[str] = None,
 ) -> tuple[Any, dict]:
     """
     Create the receipt metadata finder workflow.
 
     Args:
         dynamo_client: DynamoDB client
-        chroma_client: ChromaDB client
-        embed_fn: Function to generate embeddings
+        chroma_client: ChromaDB client (may be None, will be lazy-loaded if bucket provided)
+        embed_fn: Function to generate embeddings (may be None, will be lazy-loaded if bucket provided)
         places_api: Google Places API client
         settings: Optional settings
+        chromadb_bucket: Optional S3 bucket name for lazy loading ChromaDB collections
 
     Returns:
         (compiled_graph, state_holder) - The graph and state dict
@@ -337,12 +341,13 @@ def create_receipt_metadata_finder_graph(
     if settings is None:
         settings = get_settings()
 
-    # Create base agentic tools
+    # Create base agentic tools (pass chromadb_bucket for lazy loading)
     tools, state_holder = create_agentic_tools(
         dynamo_client=dynamo_client,
         chroma_client=chroma_client,
         embed_fn=embed_fn,
         places_api=places_api,
+        chromadb_bucket=chromadb_bucket,
     )
 
     # Add metadata submission tool
@@ -363,18 +368,91 @@ def create_receipt_metadata_finder_graph(
         temperature=0.0,
     ).bind_tools(tools)
 
-    # Define the agent node
+    # Define the agent node with retry logic
     def agent_node(state: ReceiptMetadataFinderState) -> dict:
-        """Call the LLM to decide next action."""
+        """Call the LLM to decide next action with retry logic for transient errors."""
         messages = state.messages
-        response = llm.invoke(messages)
 
-        if hasattr(response, "tool_calls") and response.tool_calls:
-            logger.debug(
-                f"Agent tool calls: {[tc['name'] for tc in response.tool_calls]}"
-            )
+        # Retry logic following Ollama/LangGraph best practices
+        max_retries = 3
+        base_delay = 2.0  # Base delay in seconds (exponential backoff)
+        last_error = None
 
-        return {"messages": [response]}
+        for attempt in range(max_retries):
+            try:
+                response = llm.invoke(messages)
+
+                if hasattr(response, "tool_calls") and response.tool_calls:
+                    logger.debug(
+                        f"Metadata finder agent tool calls: {[tc['name'] for tc in response.tool_calls]}"
+                    )
+
+                return {"messages": [response]}
+
+            except Exception as e:
+                last_error = e
+                error_str = str(e)
+
+                # Check if this is a rate limit (429) - fail fast, don't retry
+                is_rate_limit = (
+                    "429" in error_str
+                    or "rate limit" in error_str.lower()
+                    or "rate_limit" in error_str.lower()
+                    or "too many concurrent requests" in error_str.lower()
+                    or "too many requests" in error_str.lower()
+                )
+
+                if is_rate_limit:
+                    logger.warning(
+                        f"Rate limit detected in metadata finder agent (attempt {attempt + 1}): {error_str[:200]}. "
+                        f"Failing immediately to trigger circuit breaker."
+                    )
+                    # Re-raise rate limit errors immediately (don't retry)
+                    raise RuntimeError(
+                        f"Rate limit error in metadata finder agent: {error_str}"
+                    ) from e
+
+                # For other retryable errors, use exponential backoff
+                # 500/502/503 are server errors that may be transient
+                is_retryable = (
+                    "500" in error_str
+                    or "502" in error_str
+                    or "503" in error_str
+                    or "Internal Server Error" in error_str
+                    or "internal server error" in error_str.lower()
+                    or "service unavailable" in error_str.lower()
+                    or "timeout" in error_str.lower()
+                    or "timed out" in error_str.lower()
+                )
+
+                if is_retryable and attempt < max_retries - 1:
+                    # Exponential backoff with jitter to prevent thundering herd
+                    # attempt 0: 2-4s, attempt 1: 4-8s, attempt 2: 8-16s
+                    jitter = random.uniform(0, base_delay)
+                    wait_time = (base_delay * (2**attempt)) + jitter
+                    logger.warning(
+                        f"Ollama retryable error in metadata finder agent "
+                        f"(attempt {attempt + 1}/{max_retries}): {error_str[:200]}. "
+                        f"Retrying in {wait_time:.1f}s..."
+                    )
+                    # Note: This is a sync function executed in a thread pool by LangGraph
+                    # Using time.sleep is appropriate here
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    # Not retryable or max retries reached
+                    if attempt >= max_retries - 1:
+                        logger.error(
+                            f"Ollama LLM call failed after {max_retries} attempts in metadata finder agent: {error_str}"
+                        )
+                    raise RuntimeError(
+                        f"Failed to get LLM response in metadata finder agent: {error_str}"
+                    ) from e
+
+        # Should never reach here, but just in case
+        raise RuntimeError(
+            f"Unexpected error: Failed to get LLM response in metadata finder agent"
+        ) from last_error
 
     # Define tool node
     tool_node = ToolNode(tools)
