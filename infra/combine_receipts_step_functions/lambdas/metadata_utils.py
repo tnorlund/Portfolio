@@ -121,3 +121,4 @@ def migrate_receipt_word_labels(
             continue
     return new_labels
 
+
