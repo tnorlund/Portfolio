@@ -7,15 +7,14 @@ all available context (ChromaDB, DynamoDB, Google Places metadata).
 
 import logging
 import os
-from typing import Any, Callable, Optional
+from typing import Annotated, Any, Callable, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama
-from langgraph.graph import StateGraph, END
+from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel, Field
-from typing import Annotated
 
 from receipt_agent.config.settings import Settings, get_settings
 from receipt_agent.tools.label_validation_tools import (
@@ -56,14 +55,21 @@ logger = logging.getLogger(__name__)
 # Agent State
 # ==============================================================================
 
+
 class LabelValidationState(BaseModel):
     """State for the label validation agent."""
 
     # Input
     word_text: str = Field(description="Word text being validated")
-    suggested_label_type: str = Field(description="Suggested label type to validate")
-    merchant_name: Optional[str] = Field(default=None, description="Merchant name")
-    original_reasoning: str = Field(description="Original reasoning from suggestion LLM")
+    suggested_label_type: str = Field(
+        description="Suggested label type to validate"
+    )
+    merchant_name: Optional[str] = Field(
+        default=None, description="Merchant name"
+    )
+    original_reasoning: str = Field(
+        description="Original reasoning from suggestion LLM"
+    )
     image_id: str = Field(description="Image ID")
     receipt_id: int = Field(description="Receipt ID")
     line_id: int = Field(description="Line ID")
@@ -73,7 +79,9 @@ class LabelValidationState(BaseModel):
     messages: Annotated[list[Any], add_messages] = Field(default_factory=list)
 
     # Terminal state
-    decision: Optional[dict] = Field(default=None, description="Final decision when complete")
+    decision: Optional[dict] = Field(
+        default=None, description="Final decision when complete"
+    )
 
     class Config:
         arbitrary_types_allowed = True
@@ -147,6 +155,14 @@ All valid label types and their definitions:
 - **Partial tokens**: If merchant is "The Stand" and word "STAND" appears in merchant name line, it's VALID
 - **Don't be conservative**: If context clearly shows it's the merchant name, mark VALID with high confidence
 
+### UNIT_PRICE vs LINE_TOTAL (disambiguation)
+- Treat amounts as a pair with quantity context:
+  - If two amounts appear on the same line: the trailing/right-aligned one is usually **LINE_TOTAL**; the inline/left one near product name or unit marker is **UNIT_PRICE**.
+  - If a quantity exists and amount ≈ quantity × other_amount (within $0.02), the product is **LINE_TOTAL** and the factor is **UNIT_PRICE**.
+  - Weight/unit markers (`/lb`, `per lb`, `ea`, `each`, `kg`, `oz`) strongly indicate **UNIT_PRICE** for the adjacent amount.
+  - If only one amount is present and quantity == 1, default to **LINE_TOTAL** unless there is a unit marker immediately next to it.
+  - If the same number appears twice, use position/alignment: the column-aligned/trailing instance is **LINE_TOTAL**; the inline instance is **UNIT_PRICE**.
+
 ## Important Rules
 
 1. **Word context (provided above) is PRIMARY** - use it first and trust it when clear
@@ -163,6 +179,7 @@ Use the provided context and tools to make a confident decision."""
 # ==============================================================================
 # Workflow Builder
 # ==============================================================================
+
 
 def create_label_validation_graph(
     dynamo_client: Any,
@@ -205,13 +222,18 @@ def create_label_validation_graph(
     api_key = settings.ollama_api_key.get_secret_value()
     if not api_key:
         try:
-            from receipt_dynamo.data._pulumi import load_secrets as load_pulumi_secrets
-            pulumi_secrets = load_pulumi_secrets("dev") or load_pulumi_secrets("prod")
+            from receipt_dynamo.data._pulumi import (
+                load_secrets as load_pulumi_secrets,
+            )
+
+            pulumi_secrets = load_pulumi_secrets("dev") or load_pulumi_secrets(
+                "prod"
+            )
             if pulumi_secrets:
                 api_key = (
-                    pulumi_secrets.get("portfolio:OLLAMA_API_KEY") or
-                    pulumi_secrets.get("OLLAMA_API_KEY") or
-                    pulumi_secrets.get("RECEIPT_AGENT_OLLAMA_API_KEY")
+                    pulumi_secrets.get("portfolio:OLLAMA_API_KEY")
+                    or pulumi_secrets.get("OLLAMA_API_KEY")
+                    or pulumi_secrets.get("RECEIPT_AGENT_OLLAMA_API_KEY")
                 )
                 if api_key:
                     logger.info("Loaded Ollama API key from Pulumi secrets")
@@ -229,13 +251,17 @@ def create_label_validation_graph(
     # GPT-OSS requires 'reasoning' to be 'low', 'medium', or 'high'
     # LangChain ChatOllama supports 'reasoning' parameter (not 'think')
     # Default to 'medium' for balanced performance
-    reasoning_level = "medium" if "gpt-oss" in settings.ollama_model.lower() else None
+    reasoning_level = (
+        "medium" if "gpt-oss" in settings.ollama_model.lower() else None
+    )
 
     llm_kwargs = {
         "base_url": settings.ollama_base_url,
         "model": settings.ollama_model,
         "client_kwargs": {
-            "headers": {"Authorization": f"Bearer {api_key}"} if api_key else {},
+            "headers": (
+                {"Authorization": f"Bearer {api_key}"} if api_key else {}
+            ),
             "timeout": 120,
         },
         "temperature": 0.0,
@@ -254,7 +280,11 @@ def create_label_validation_graph(
 
         # Check message size to prevent 400 errors
         # Estimate token count (rough: 1 token ≈ 4 characters)
-        total_chars = sum(len(str(msg.content)) for msg in messages if hasattr(msg, 'content'))
+        total_chars = sum(
+            len(str(msg.content))
+            for msg in messages
+            if hasattr(msg, "content")
+        )
         estimated_tokens = total_chars // 4
 
         # Ollama Cloud typically has ~128k token context, but we'll be conservative
@@ -271,7 +301,9 @@ def create_label_validation_graph(
             if original_count > 3:
                 truncated_messages = [messages[0]] + messages[-2:]
                 messages = truncated_messages
-                logger.info(f"Truncated messages from {original_count} to {len(messages)}")
+                logger.info(
+                    f"Truncated messages from {original_count} to {len(messages)}"
+                )
 
         try:
             response = llm.invoke(messages)
@@ -281,9 +313,10 @@ def create_label_validation_graph(
 
             # Check for 400 Bad Request errors
             is_bad_request = (
-                "400" in error_str or
-                "Bad Request" in error_str or
-                error_type == "ResponseError" and "400" in error_str
+                "400" in error_str
+                or "Bad Request" in error_str
+                or error_type == "ResponseError"
+                and "400" in error_str
             )
 
             if is_bad_request:
@@ -296,6 +329,7 @@ def create_label_validation_graph(
                 # For 400 errors, we can't retry (it's a malformed request)
                 # Return a default NEEDS_REVIEW decision
                 from langchain_core.messages import AIMessage
+
                 error_message = AIMessage(
                     content=(
                         "I encountered an error processing this request. "
@@ -306,12 +340,16 @@ def create_label_validation_graph(
                 return {"messages": [error_message]}
 
             # For other errors, re-raise to let LangGraph handle retries
-            logger.error(f"LLM invocation error: {error_type}: {error_str[:500]}")
+            logger.error(
+                f"LLM invocation error: {error_type}: {error_str[:500]}"
+            )
             raise
 
         # Log and track tool calls
-        if hasattr(response, 'tool_calls') and response.tool_calls:
-            tool_names = [tc.get('name', 'unknown') for tc in response.tool_calls]
+        if hasattr(response, "tool_calls") and response.tool_calls:
+            tool_names = [
+                tc.get("name", "unknown") for tc in response.tool_calls
+            ]
             logger.info(f"Agent tool calls: {tool_names}")
             # Track unique tools used
             for tool_name in tool_names:
@@ -339,7 +377,10 @@ def create_label_validation_graph(
             if isinstance(last_message, AIMessage):
                 if last_message.tool_calls:
                     # Check if submit_decision is in the tool calls
-                    tool_names = [tc.get("name") for tc in (last_message.tool_calls or [])]
+                    tool_names = [
+                        tc.get("name")
+                        for tc in (last_message.tool_calls or [])
+                    ]
                     if "submit_decision" in tool_names:
                         # submit_decision was called - will be processed by tool node
                         # After tool node, should_continue will see decision and end
@@ -347,7 +388,9 @@ def create_label_validation_graph(
                     return "tools"
 
         # No tool calls and no decision - end (shouldn't happen with good prompts)
-        logger.warning("No decision submitted and no tool calls - ending workflow")
+        logger.warning(
+            "No decision submitted and no tool calls - ending workflow"
+        )
         return "end"
 
     # Build the graph
@@ -367,7 +410,7 @@ def create_label_validation_graph(
         {
             "tools": "tools",
             "end": END,
-        }
+        },
     )
 
     # After tools, go back to agent
@@ -382,6 +425,7 @@ def create_label_validation_graph(
 # ==============================================================================
 # Runner
 # ==============================================================================
+
 
 async def run_label_validation(
     graph: Any,
@@ -456,7 +500,8 @@ async def run_label_validation(
                     word_texts = [w.text for w in words_in_line]
                     try:
                         word_index = next(
-                            i for i, w in enumerate(words_in_line)
+                            i
+                            for i, w in enumerate(words_in_line)
                             if w.word_id == word_id
                         )
                         start_idx = max(0, word_index - 3)
@@ -465,7 +510,9 @@ async def run_label_validation(
                         # Mark the target word
                         target_idx = word_index - start_idx
                         if surrounding_words_list:
-                            surrounding_words_list[target_idx] = f"[{surrounding_words_list[target_idx]}]"
+                            surrounding_words_list[target_idx] = (
+                                f"[{surrounding_words_list[target_idx]}]"
+                            )
                         surrounding_words = " ".join(surrounding_words_list)
                     except StopIteration:
                         surrounding_words = " ".join(word_texts)
@@ -497,20 +544,29 @@ async def run_label_validation(
                         try:
                             # Find the specific word by word_id within this line
                             target_word_index = next(
-                                i for i, w in enumerate(words_in_target_line)
-                                if w.word_id == word_id  # Specific word_id identifies which word on this line
+                                i
+                                for i, w in enumerate(words_in_target_line)
+                                if w.word_id
+                                == word_id  # Specific word_id identifies which word on this line
                             )
-                            target_word_obj = words_in_target_line[target_word_index]
+                            target_word_obj = words_in_target_line[
+                                target_word_index
+                            ]
                             # Count how many times this word text appears before our target word ON THIS LINE
                             # This ensures we mark the correct instance if the word appears multiple times on the same line
                             target_word_occurrence = sum(
-                                1 for w in words_in_target_line[:target_word_index]
+                                1
+                                for w in words_in_target_line[
+                                    :target_word_index
+                                ]
                                 if w.text == target_word_obj.text
                             )
                         except StopIteration:
                             target_word_obj = None
 
-                sorted_lines = sorted(all_receipt_lines, key=lambda l: l.calculate_centroid()[1])
+                sorted_lines = sorted(
+                    all_receipt_lines, key=lambda l: l.calculate_centroid()[1]
+                )
                 formatted_lines = []
                 for i, receipt_line in enumerate(sorted_lines):
                     line_text = receipt_line.text
@@ -528,14 +584,23 @@ async def run_label_validation(
                             if word_start == -1:
                                 break
                             # Check if it's a whole word (not part of another word)
-                            if (word_start == 0 or not line_text[word_start - 1].isalnum()) and \
-                               (word_start + len(word_text) >= len(line_text) or not line_text[word_start + len(word_text)].isalnum()):
+                            if (
+                                word_start == 0
+                                or not line_text[word_start - 1].isalnum()
+                            ) and (
+                                word_start + len(word_text) >= len(line_text)
+                                or not line_text[
+                                    word_start + len(word_text)
+                                ].isalnum()
+                            ):
                                 if occurrence_count == target_word_occurrence:
                                     # This is our target word instance - mark it
                                     line_text = (
-                                        line_text[:word_start] +
-                                        f"[{word_text}]" +
-                                        line_text[word_start + len(word_text):]
+                                        line_text[:word_start]
+                                        + f"[{word_text}]"
+                                        + line_text[
+                                            word_start + len(word_text) :
+                                        ]
                                     )
                                     break
                                 occurrence_count += 1
@@ -544,7 +609,11 @@ async def run_label_validation(
                     if i > 0:
                         prev_line = sorted_lines[i - 1]
                         curr_centroid = receipt_line.calculate_centroid()
-                        if prev_line.bottom_left["y"] < curr_centroid[1] < prev_line.top_left["y"]:
+                        if (
+                            prev_line.bottom_left["y"]
+                            < curr_centroid[1]
+                            < prev_line.top_left["y"]
+                        ):
                             formatted_lines[-1] += f" {line_text}"
                             continue
                     formatted_lines.append(line_text)
@@ -567,10 +636,13 @@ async def run_label_validation(
                     # Merchant metadata is the same as receipt metadata (from Google Places)
                     merchant_metadata_data = {
                         "merchant_name": metadata.merchant_name,
-                        "formatted_address": metadata.formatted_address or getattr(metadata, 'address', None),
+                        "formatted_address": metadata.formatted_address
+                        or getattr(metadata, "address", None),
                         "place_id": metadata.place_id,
-                        "phone_number": getattr(metadata, 'phone_number', None),
-                        "website": getattr(metadata, 'website', None),
+                        "phone_number": getattr(
+                            metadata, "phone_number", None
+                        ),
+                        "website": getattr(metadata, "website", None),
                     }
             except Exception:
                 pass
@@ -590,29 +662,39 @@ async def run_label_validation(
     if word_context_data:
         word_context_text = "\n### Word Context (Already Fetched)\n\n"
         if word_context_data.get("line_text"):
-            word_context_text += f"- **Line text**: `{word_context_data['line_text']}`\n"
+            word_context_text += (
+                f"- **Line text**: `{word_context_data['line_text']}`\n"
+            )
         if word_context_data.get("surrounding_words"):
             word_context_text += f"- **Surrounding words**: `{word_context_data['surrounding_words']}`\n"
         if word_context_data.get("surrounding_lines"):
             word_context_text += f"- **Full receipt context** (target line marked with brackets):\n  ```\n"
-            word_context_text += "\n  ".join(word_context_data['surrounding_lines'])
+            word_context_text += "\n  ".join(
+                word_context_data["surrounding_lines"]
+            )
             word_context_text += "\n  ```\n"
         if word_context_data.get("receipt_metadata"):
-            meta = word_context_data['receipt_metadata']
+            meta = word_context_data["receipt_metadata"]
             word_context_text += f"- **Receipt metadata**: merchant={meta.get('merchant_name')}, place_id={meta.get('place_id')}\n"
 
     # Format merchant metadata for prompt
     merchant_metadata_text = ""
     if merchant_metadata_data:
-        merchant_metadata_text = "\n### Merchant Metadata (Already Fetched)\n\n"
+        merchant_metadata_text = (
+            "\n### Merchant Metadata (Already Fetched)\n\n"
+        )
         if merchant_metadata_data.get("merchant_name"):
             merchant_metadata_text += f"- **Merchant name**: {merchant_metadata_data['merchant_name']}\n"
         if merchant_metadata_data.get("formatted_address"):
             merchant_metadata_text += f"- **Address**: {merchant_metadata_data['formatted_address']}\n"
         if merchant_metadata_data.get("phone_number"):
-            merchant_metadata_text += f"- **Phone**: {merchant_metadata_data['phone_number']}\n"
+            merchant_metadata_text += (
+                f"- **Phone**: {merchant_metadata_data['phone_number']}\n"
+            )
         if merchant_metadata_data.get("place_id"):
-            merchant_metadata_text += f"- **Place ID**: {merchant_metadata_data['place_id']}\n"
+            merchant_metadata_text += (
+                f"- **Place ID**: {merchant_metadata_data['place_id']}\n"
+            )
 
     # Build CORE_LABELS definitions text
     core_labels_text = "\n".join(
@@ -621,7 +703,9 @@ async def run_label_validation(
     )
 
     # Highlight the specific label being validated
-    suggested_label_definition = CORE_LABELS.get(suggested_label_type, "Unknown label type")
+    suggested_label_definition = CORE_LABELS.get(
+        suggested_label_type, "Unknown label type"
+    )
     core_labels_section = f"""**Validating**: `{suggested_label_type}` - {suggested_label_definition}
 
 All valid label types:
@@ -669,7 +753,9 @@ All valid label types:
     try:
         config = {
             "recursion_limit": 50,
-            "configurable": {"thread_id": f"{image_id}#{receipt_id}#{line_id}#{word_id}"},
+            "configurable": {
+                "thread_id": f"{image_id}#{receipt_id}#{line_id}#{word_id}"
+            },
         }
 
         # Add LangSmith metadata if tracing is enabled
@@ -691,16 +777,24 @@ All valid label types:
 
         if decision:
             # Add tools used to decision
-            decision['tools_used'] = tools_used
+            decision["tools_used"] = tools_used
 
             # Add conversation messages for debugging (optional - can be large)
             # Only include if we want to see the full conversation
             if os.environ.get("LABEL_VALIDATION_DEBUG") == "true":
-                decision['conversation'] = [
+                decision["conversation"] = [
                     {
                         "type": msg.__class__.__name__,
-                        "content": msg.content if hasattr(msg, 'content') else str(msg),
-                        "tool_calls": [tc.get('name') for tc in (msg.tool_calls or [])] if hasattr(msg, 'tool_calls') and msg.tool_calls else None,
+                        "content": (
+                            msg.content
+                            if hasattr(msg, "content")
+                            else str(msg)
+                        ),
+                        "tool_calls": (
+                            [tc.get("name") for tc in (msg.tool_calls or [])]
+                            if hasattr(msg, "tool_calls") and msg.tool_calls
+                            else None
+                        ),
                     }
                     for msg in final_state.messages
                 ]
@@ -730,4 +824,3 @@ All valid label types:
             "reasoning": f"Error during validation: {str(e)}",
             "evidence": [],
         }
-
