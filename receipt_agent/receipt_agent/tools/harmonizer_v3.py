@@ -281,6 +281,95 @@ class MerchantHarmonizerV3:
 
         return total
 
+    def load_receipts_for_place_ids(self, place_ids: list[str]) -> int:
+        """
+        Load receipt metadata from DynamoDB for specific place_ids using GSI2.
+
+        This is much more efficient than loading all receipts when you only
+        need receipts for specific place_ids.
+
+        Args:
+            place_ids: List of place_ids to load receipts for
+
+        Returns:
+            Total number of receipts loaded
+        """
+        logger.info(
+            f"Loading receipt metadata for {len(place_ids)} place_id(s) from DynamoDB..."
+        )
+
+        self._place_id_groups = {}
+        self._no_place_id_receipts = []
+        total = 0
+
+        try:
+            # Query each place_id using GSI2 (efficient)
+            for place_id in place_ids:
+                # Skip invalid place_ids
+                if not place_id or place_id in (
+                    "",
+                    "null",
+                    "NO_RESULTS",
+                    "INVALID",
+                ):
+                    continue
+
+                # Extract base place_id if this is a sub-batch (format: "place_id:sub_batch_idx")
+                base_place_id = place_id
+                if ":" in place_id:
+                    parts = place_id.split(":", 1)
+                    if len(parts) == 2:
+                        base_place_id = parts[0]
+
+                # Query receipts for this place_id using GSI2
+                metadatas = []
+                last_key = None
+                while True:
+                    batch, last_key = (
+                        self.dynamo.list_receipt_metadatas_with_place_id(
+                            place_id=base_place_id,
+                            limit=1000,
+                            last_evaluated_key=last_key,
+                        )
+                    )
+                    metadatas.extend(batch)
+                    if not last_key:
+                        break
+
+                # Group receipts by place_id
+                for meta in metadatas:
+                    receipt = ReceiptRecord(
+                        image_id=meta.image_id,
+                        receipt_id=meta.receipt_id,
+                        merchant_name=meta.merchant_name,
+                        place_id=meta.place_id,
+                        address=meta.address,
+                        phone=meta.phone_number,
+                    )
+
+                    if receipt.place_id not in self._place_id_groups:
+                        self._place_id_groups[receipt.place_id] = PlaceIdGroup(
+                            place_id=receipt.place_id
+                        )
+                    self._place_id_groups[receipt.place_id].receipts.append(
+                        receipt
+                    )
+                    total += 1
+
+            # Mark groups as consistent or inconsistent
+            for group in self._place_id_groups.values():
+                group.is_consistent = self._is_group_consistent(group)
+
+            logger.info(
+                f"Loaded {total} receipts for {len(self._place_id_groups)} place_id group(s)"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to load receipts for place_ids: {e}")
+            raise
+
+        return total
+
     def _is_group_consistent(self, group: PlaceIdGroup) -> bool:
         """
         Check if all receipts in a group have consistent metadata.
