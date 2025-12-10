@@ -13,6 +13,7 @@ Guard Rails:
 """
 
 import logging
+import os
 from dataclasses import dataclass
 from typing import Any, Callable, Literal, Optional
 
@@ -155,15 +156,29 @@ def create_agentic_tools(
     chroma_client: Any,
     embed_fn: Callable[[list[str]], list[list[float]]],
     places_api: Optional[Any] = None,
+    chromadb_bucket: Optional[str] = None,
 ) -> tuple[list[Any], dict]:
     """
     Create guardrailed tools for the agentic validator.
+
+    Args:
+        dynamo_client: DynamoDB client
+        chroma_client: ChromaDB client (may be None, will be lazy-loaded if bucket provided)
+        embed_fn: Embedding function (may be None, will be lazy-loaded if bucket provided)
+        places_api: Optional Google Places API client
+        chromadb_bucket: Optional S3 bucket name for lazy loading ChromaDB collections
 
     Returns:
         (tools, state_holder) - tools list and a dict to hold runtime state
     """
     # State holder - will be populated before each validation
-    state = {"context": None, "decision": None}
+    state = {
+        "context": None,
+        "decision": None,
+        "chroma_client": chroma_client,  # Cache ChromaDB client
+        "embed_fn": embed_fn,  # Cache embedding function
+        "chromadb_bucket": chromadb_bucket,  # Store bucket for lazy loading
+    }
 
     # ========== CONTEXT TOOLS ==========
 
@@ -772,6 +787,266 @@ def create_agentic_tools(
         Use this to verify a Place ID is legitimate and consistently used.
         """
         try:
+            # Lazy-load ChromaDB if needed
+            chroma_client = state.get("chroma_client")
+            embed_fn = state.get("embed_fn")
+            chromadb_bucket = state.get("chromadb_bucket") or os.environ.get(
+                "CHROMADB_BUCKET"
+            )
+
+            # Lazy-load ChromaDB if not already loaded
+            if not chroma_client and chromadb_bucket:
+                try:
+                    logger.info(
+                        "Lazy-loading ChromaDB for get_place_id_info..."
+                    )
+
+                    # Download ChromaDB snapshot using receipt_chroma (atomic download)
+                    from receipt_chroma.s3 import download_snapshot_atomic
+
+                    # Download both lines and words collections
+                    # NOTE: Lines and words are stored in separate ChromaDB collections,
+                    # so we need to download both to have access to all receipt data
+                    chroma_path = os.environ.get(
+                        "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY",
+                        "/tmp/chromadb",
+                    )
+
+                    # Check if already cached
+                    chroma_db_file = os.path.join(
+                        chroma_path, "chroma.sqlite3"
+                    )
+                    if not os.path.exists(chroma_db_file):
+                        # Download lines collection first
+                        logger.info(
+                            f"Downloading ChromaDB lines snapshot from s3://{chromadb_bucket}/lines/"
+                        )
+                        lines_result = download_snapshot_atomic(
+                            bucket=chromadb_bucket,
+                            collection="lines",
+                            local_path=chroma_path,
+                            verify_integrity=False,  # Skip integrity check for faster startup
+                        )
+
+                        if lines_result.get("status") != "downloaded":
+                            raise Exception(
+                                f"Failed to download ChromaDB lines snapshot: {lines_result.get('error')}"
+                            )
+
+                        logger.info(
+                            f"ChromaDB lines snapshot downloaded: version={lines_result.get('version_id')}"
+                        )
+
+                        # Download words collection (merges into same ChromaDB instance)
+                        logger.info(
+                            f"Downloading ChromaDB words snapshot from s3://{chromadb_bucket}/words/"
+                        )
+                        words_result = download_snapshot_atomic(
+                            bucket=chromadb_bucket,
+                            collection="words",
+                            local_path=chroma_path,
+                            verify_integrity=False,  # Skip integrity check for faster startup
+                        )
+
+                        if words_result.get("status") != "downloaded":
+                            raise Exception(
+                                f"Failed to download ChromaDB words snapshot: {words_result.get('error')}"
+                            )
+
+                        logger.info(
+                            f"ChromaDB words snapshot downloaded: version={words_result.get('version_id')}"
+                        )
+                    else:
+                        logger.info(
+                            f"ChromaDB already cached at {chroma_path}"
+                        )
+
+                    # Update environment for receipt_agent to find ChromaDB
+                    os.environ["RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY"] = (
+                        chroma_path
+                    )
+
+                    # Create clients using the receipt_agent factory
+                    from receipt_agent.clients.factory import (
+                        create_chroma_client,
+                        create_embed_fn,
+                    )
+                    from receipt_agent.config.settings import get_settings
+
+                    settings = get_settings()
+
+                    # Verify OpenAI API key is available for embeddings
+                    if not settings.openai_api_key:
+                        logger.warning(
+                            "RECEIPT_AGENT_OPENAI_API_KEY not set - embeddings may fail"
+                        )
+                    else:
+                        logger.info("OpenAI API key available for embeddings")
+
+                    chroma_client = create_chroma_client(settings=settings)
+                    embed_fn = create_embed_fn(settings=settings)
+
+                    # Cache in state for subsequent calls
+                    state["chroma_client"] = chroma_client
+                    state["embed_fn"] = embed_fn
+
+                    logger.info(
+                        "ChromaDB and embeddings loaded and cached for get_place_id_info"
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Could not lazy-load ChromaDB for get_place_id_info: {e}"
+                    )
+                    # Return error - can't proceed without ChromaDB
+                    return {
+                        "error": f"ChromaDB not available: {str(e)}",
+                        "place_id": place_id,
+                        "receipt_count": 0,
+                        "message": "ChromaDB collections not loaded",
+                    }
+
+            if not chroma_client or not embed_fn:
+                return {
+                    "error": "ChromaDB client or embedding function not available",
+                    "place_id": place_id,
+                    "receipt_count": 0,
+                    "message": "ChromaDB not configured",
+                }
+
+            # Verify collection exists before querying
+            try:
+                collection = chroma_client.get_collection("lines")
+                logger.debug(
+                    f"Found 'lines' collection with {collection.count()} vectors"
+                )
+            except Exception as e:
+                error_str = str(e)
+                if (
+                    "not found" in error_str.lower()
+                    or "does not exist" in error_str.lower()
+                ):
+                    logger.warning(
+                        f"'lines' collection not found in ChromaDB. "
+                        f"Attempting to lazy-load from S3..."
+                    )
+
+                    # Try to download if we have bucket info
+                    if chromadb_bucket:
+                        try:
+                            from receipt_chroma.s3 import (
+                                download_snapshot_atomic,
+                            )
+
+                            chroma_path = os.environ.get(
+                                "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY",
+                                "/tmp/chromadb",
+                            )
+
+                            # Check what collections exist before downloading
+                            chroma_db_file = os.path.join(
+                                chroma_path, "chroma.sqlite3"
+                            )
+                            has_existing_chromadb = os.path.exists(
+                                chroma_db_file
+                            )
+
+                            if has_existing_chromadb:
+                                # Check what collections exist
+                                try:
+                                    existing_collections = (
+                                        chroma_client.list_collections()
+                                    )
+                                    collection_names = (
+                                        [c.name for c in existing_collections]
+                                        if hasattr(
+                                            existing_collections[0], "name"
+                                        )
+                                        else [
+                                            str(c)
+                                            for c in existing_collections
+                                        ]
+                                    )
+                                    logger.info(
+                                        f"ChromaDB exists at {chroma_path} with collections: {collection_names}. "
+                                        f"'lines' collection missing. Downloading 'lines' collection..."
+                                    )
+                                except Exception:
+                                    logger.info(
+                                        f"ChromaDB exists at {chroma_path} but 'lines' collection missing. "
+                                        f"Downloading 'lines' collection..."
+                                    )
+                            else:
+                                logger.info(
+                                    f"Downloading 'lines' collection from s3://{chromadb_bucket}/lines/"
+                                )
+
+                            lines_result = download_snapshot_atomic(
+                                bucket=chromadb_bucket,
+                                collection="lines",
+                                local_path=chroma_path,
+                                verify_integrity=False,
+                            )
+
+                            if lines_result.get("status") == "downloaded":
+                                # Recreate client to pick up new collection
+                                from receipt_agent.clients.factory import (
+                                    create_chroma_client,
+                                )
+                                from receipt_agent.config.settings import (
+                                    get_settings,
+                                )
+
+                                settings = get_settings()
+                                chroma_client = create_chroma_client(
+                                    settings=settings
+                                )
+                                state["chroma_client"] = chroma_client
+
+                                # Verify collection now exists
+                                try:
+                                    collection = chroma_client.get_collection(
+                                        "lines"
+                                    )
+                                    logger.info(
+                                        f"Successfully loaded 'lines' collection with {collection.count()} vectors"
+                                    )
+                                except Exception as verify_error:
+                                    logger.error(
+                                        f"'lines' collection still not found after download: {verify_error}"
+                                    )
+                                    return {
+                                        "error": f"Collection 'lines' not found after download: {str(verify_error)}",
+                                        "place_id": place_id,
+                                        "receipt_count": 0,
+                                        "message": "ChromaDB 'lines' collection not available after download",
+                                    }
+                            else:
+                                return {
+                                    "error": f"Failed to download 'lines' collection: {lines_result.get('error')}",
+                                    "place_id": place_id,
+                                    "receipt_count": 0,
+                                    "message": "Could not load ChromaDB 'lines' collection",
+                                }
+                        except Exception as download_error:
+                            logger.error(
+                                f"Failed to lazy-load 'lines' collection: {download_error}"
+                            )
+                            return {
+                                "error": f"Collection 'lines' not found and could not be downloaded: {str(download_error)}",
+                                "place_id": place_id,
+                                "receipt_count": 0,
+                                "message": "ChromaDB 'lines' collection not available",
+                            }
+                    else:
+                        return {
+                            "error": "Collection 'lines' not found and no bucket configured for lazy loading",
+                            "place_id": place_id,
+                            "receipt_count": 0,
+                            "message": "ChromaDB 'lines' collection not available",
+                        }
+                else:
+                    raise  # Re-raise if it's a different error
+
             # Query ChromaDB for lines with this place_id
             # We need to use query() with an embedding and a where filter
             # Generate a dummy embedding to satisfy the query requirement
