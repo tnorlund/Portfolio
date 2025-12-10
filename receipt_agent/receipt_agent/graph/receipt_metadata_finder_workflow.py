@@ -374,7 +374,8 @@ def create_receipt_metadata_finder_graph(
         messages = state.messages
 
         # Retry logic following Ollama/LangGraph best practices
-        max_retries = 3
+        # Increased to 5 retries for better resilience against transient network issues
+        max_retries = 5
         base_delay = 2.0  # Base delay in seconds (exponential backoff)
         last_error = None
 
@@ -412,12 +413,38 @@ def create_receipt_metadata_finder_graph(
                         f"Rate limit error in metadata finder agent: {error_str}"
                     ) from e
 
+                # Check for connection errors (status code -1, network issues, DNS failures)
+                # These are often transient and should be retried
+                is_connection_error = (
+                    "status code: -1" in error_str
+                    or "status_code" in error_str
+                    and "-1" in error_str
+                    or (
+                        "connection" in error_str.lower()
+                        and (
+                            "refused" in error_str.lower()
+                            or "reset" in error_str.lower()
+                            or "failed" in error_str.lower()
+                            or "error" in error_str.lower()
+                        )
+                    )
+                    or "dns" in error_str.lower()
+                    or "name resolution" in error_str.lower()
+                    or (
+                        "network" in error_str.lower()
+                        and "unreachable" in error_str.lower()
+                    )
+                )
+
                 # For other retryable errors, use exponential backoff
                 # 500/502/503 are server errors that may be transient
+                # Connection errors are also retryable
                 is_retryable = (
-                    "500" in error_str
+                    is_connection_error
+                    or "500" in error_str
                     or "502" in error_str
                     or "503" in error_str
+                    or "504" in error_str
                     or "Internal Server Error" in error_str
                     or "internal server error" in error_str.lower()
                     or "service unavailable" in error_str.lower()
@@ -427,11 +454,17 @@ def create_receipt_metadata_finder_graph(
 
                 if is_retryable and attempt < max_retries - 1:
                     # Exponential backoff with jitter to prevent thundering herd
-                    # attempt 0: 2-4s, attempt 1: 4-8s, attempt 2: 8-16s
+                    # attempt 0: 2-4s, attempt 1: 4-8s, attempt 2: 8-16s, attempt 3: 16-32s, attempt 4: 32-64s
                     jitter = random.uniform(0, base_delay)
                     wait_time = (base_delay * (2**attempt)) + jitter
+                    # Cap max wait time at 30 seconds to avoid excessive delays
+                    wait_time = min(wait_time, 30.0)
+
+                    error_type = (
+                        "connection" if is_connection_error else "server"
+                    )
                     logger.warning(
-                        f"Ollama retryable error in metadata finder agent "
+                        f"Ollama {error_type} error in metadata finder agent "
                         f"(attempt {attempt + 1}/{max_retries}): {error_str[:200]}. "
                         f"Retrying in {wait_time:.1f}s..."
                     )
