@@ -1,4 +1,4 @@
-# syntax=public.ecr.aws/docker/library/dockerfile:1
+# syntax=public.ecr.aws/docker/library/dockerfile:1.9.0
 # Multi-stage build for Metadata Harmonizer Lambda
 
 # Stage 1: Build and install dependencies (cached layer)

@@ -1,4 +1,4 @@
-# syntax=public.ecr.aws/docker/library/dockerfile:1
+# syntax=public.ecr.aws/docker/library/dockerfile:1.9.0
 # Multi-stage build for ChromaDB ECS Service
 
 # Stage 1: Install ChromaDB and dependencies
