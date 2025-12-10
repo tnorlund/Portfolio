@@ -5,13 +5,13 @@ from typing import Optional
 
 import pulumi
 import pulumi_aws as aws
-from pulumi import ComponentResource, Input, Output, ResourceOptions
-
-# Import the DynamoDB table name from the dynamo_db module
-from dynamo_db import dynamodb_table
 
 # Import the ChromaDB bucket name from the shared chromadb_buckets module
 from chromadb_buckets import bucket_name as chromadb_bucket_name
+
+# Import the DynamoDB table name from the dynamo_db module
+from dynamo_db import dynamodb_table
+from pulumi import ComponentResource, Input, Output, ResourceOptions
 
 # Import the CodeBuildDockerImage component
 from infra.components.codebuild_docker_image import CodeBuildDockerImage
@@ -186,7 +186,9 @@ class AddressSimilarityCacheGenerator(ComponentResource):
         # Match the compaction component pattern exactly: Dockerfile is in lambdas/ subdirectory
         # Use relative path string (not absolute) to match compaction component
         dockerfile_path = "infra/routes/address_similarity_cache_generator/lambdas/Dockerfile"
-        build_context_path = "."  # Project root (relative path for rsync logic)
+        build_context_path = (
+            "."  # Project root (relative path for rsync logic)
+        )
 
         # Create Lambda function name first (needed for CodeBuild)
         lambda_function_name = f"{name}-lambda-{stack}"
@@ -228,11 +230,11 @@ class AddressSimilarityCacheGenerator(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # EventBridge schedule to run every 5 minutes
+        # EventBridge schedule to run once per day
         self.schedule = aws.cloudwatch.EventRule(
             f"{name}-schedule",
-            description="Trigger address similarity cache generation every 5 minutes",
-            schedule_expression="rate(5 minutes)",
+            description="Trigger address similarity cache generation once per day",
+            schedule_expression="rate(1 day)",
             opts=ResourceOptions(parent=self),
         )
 

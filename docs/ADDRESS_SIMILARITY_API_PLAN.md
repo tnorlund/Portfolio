@@ -2,11 +2,11 @@
 
 ## Overview
 
-Create a new API endpoint that displays ChromaDB similarity search results for address labels. The endpoint will serve pre-computed data from S3 cache, updated every 5 minutes by a background Lambda.
+Create a new API endpoint that displays ChromaDB similarity search results for address labels. The endpoint will serve pre-computed data from S3 cache, updated once per day by a background Lambda.
 
 ## Architecture
 
-1. **Background Lambda** (cache generator): Runs every 5 minutes via EventBridge
+1. **Background Lambda** (cache generator): Runs once per day via EventBridge
    - Gets random word with address label
    - Queries ChromaDB lines collection for similar lines
    - Fetches receipt context (±n lines to include all address words)
@@ -118,7 +118,7 @@ Create a new API endpoint that displays ChromaDB similarity search results for a
 
 ### Infrastructure Components
 
-1. **EventBridge Schedule**: Every 5 minutes
+1. **EventBridge Schedule**: Once per day
 2. **S3 Bucket**: Use existing bucket or create new
 3. **IAM Permissions**:
    - Background Lambda: DynamoDB read, ChromaDB read (EFS/S3), S3 write
@@ -161,7 +161,7 @@ Create a new API endpoint that displays ChromaDB similarity search results for a
 
 2. **Background Lambda Infrastructure** (`infra/routes/address_similarity_cache_generator/infra.py`)
    - IAM roles and policies
-   - EventBridge schedule (every 5 minutes)
+   - EventBridge schedule (once per day)
    - Function factory for proper configuration
 
 3. **API Lambda Handler** (`infra/routes/address_similarity/handler/index.py`)

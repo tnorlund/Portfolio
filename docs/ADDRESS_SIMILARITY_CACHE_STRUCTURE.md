@@ -5,7 +5,7 @@
 The address similarity cache is stored in S3 at:
 - **Bucket**: `chromadb-{stack}-shared-buckets-vectors` (same as ChromaDB bucket)
 - **Key**: `address-similarity-cache/latest.json`
-- **Update Frequency**: Every 5 minutes (via EventBridge schedule)
+- **Update Frequency**: Once per day (via EventBridge schedule)
 - **Content Type**: `application/json`
 
 ## Cache Generation Process
@@ -126,7 +126,7 @@ This cache is designed for:
 
 1. **Single Random Address**: Only one random address is cached at a time
 2. **No Versioning**: Previous cache is overwritten (no history)
-3. **5-Minute Refresh**: Data updates every 5 minutes (may be stale)
+3. **Daily Refresh**: Data updates once per day (may be stale)
 4. **Similar Receipt Limit**: Maximum 8 similar receipts (may be fewer if deduplicated)
 5. **Address Context Only**: Only includes address-related lines/words, not full receipt
 
