@@ -3,10 +3,14 @@ List Place IDs Handler (Zip Lambda)
 
 Scans DynamoDB for all receipt metadatas and extracts unique place_ids.
 Groups place_ids into batches for Step Functions Map processing.
+
+For large place_id groups (e.g., >20 receipts), splits them into sub-batches
+to prevent Lambda timeouts and memory issues.
 """
 
 import logging
 import os
+from collections import defaultdict
 from typing import Any, Dict, Set
 
 from receipt_dynamo import DynamoClient
@@ -19,11 +23,15 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     """
     List unique place_ids from DynamoDB and return batches.
 
+    For large place_id groups (e.g., >max_receipts_per_batch), splits them
+    into sub-batches to prevent Lambda timeouts.
+
     Input:
     {
         "execution_id": "abc123",
         "batch_bucket": "bucket-name",
-        "batch_size": 10  // Optional: place_ids per batch (default: 10)
+        "batch_size": 10,  // Optional: place_ids per batch (default: 10)
+        "max_receipts_per_batch": 20  // Optional: max receipts per batch (default: 20)
     }
 
     Output:
@@ -31,26 +39,33 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
         "place_id_batches": [
             ["place_id_1", "place_id_2", ...],
             ["place_id_3", "place_id_4", ...],
+            ["place_id_large:0", ...],  // Large group split into sub-batches
+            ["place_id_large:1", ...],
             ...
         ],
         "total_place_ids": 25,
-        "total_batches": 3
+        "total_batches": 3,
+        "large_groups_split": 2  // Number of large groups that were split
     }
     """
     execution_id = event.get("execution_id", "unknown")
     batch_size = event.get("batch_size", 10)  # Default: 10 place_ids per batch
+    max_receipts_per_batch = event.get(
+        "max_receipts_per_batch", 20
+    )  # Default: 20 receipts per batch
     table_name = os.environ["DYNAMODB_TABLE_NAME"]
 
     logger.info(
-        "Listing place_ids for execution_id=%s, batch_size=%s",
+        "Listing place_ids for execution_id=%s, batch_size=%s, max_receipts_per_batch=%s",
         execution_id,
         batch_size,
+        max_receipts_per_batch,
     )
 
     dynamo = DynamoClient(table_name)
 
-    # Collect unique place_ids
-    place_ids: Set[str] = set()
+    # Collect place_ids and count receipts per place_id
+    place_id_counts: Dict[str, int] = defaultdict(int)
     last_evaluated_key = None
     total_scanned = 0
 
@@ -69,20 +84,20 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
 
                 for metadata in metadatas:
                     total_scanned += 1
-                    # Only add valid string place_ids
+                    # Count receipts per place_id
                     if (
                         metadata.place_id
                         and isinstance(metadata.place_id, str)
                         and metadata.place_id.strip()
                     ):
-                        place_ids.add(metadata.place_id)
+                        place_id_counts[metadata.place_id] += 1
 
                 # Log progress every 1000 records
                 if total_scanned % 1000 == 0:
                     logger.info(
                         "Scanned %s metadatas, found %s unique place_ids",
                         total_scanned,
-                        len(place_ids),
+                        len(place_id_counts),
                     )
 
                 # Break if no more pages
@@ -113,24 +128,78 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     logger.info(
         "Finished scanning: %s metadatas, %s unique place_ids",
         total_scanned,
-        len(place_ids),
+        len(place_id_counts),
     )
 
-    # Convert to sorted list for consistent batching
-    place_ids_list = sorted(list(place_ids))
+    # Identify large groups that need splitting
+    large_groups = {
+        pid: count
+        for pid, count in place_id_counts.items()
+        if count > max_receipts_per_batch
+    }
+    small_groups = {
+        pid: count
+        for pid, count in place_id_counts.items()
+        if count <= max_receipts_per_batch
+    }
 
-    # Group into batches
+    if large_groups:
+        logger.info(
+            "Found %s large place_id groups (>%s receipts) that will be split: %s",
+            len(large_groups),
+            max_receipts_per_batch,
+            {pid: count for pid, count in list(large_groups.items())[:5]},
+        )
+
+    # Create batches
     batches = []
-    for i in range(0, len(place_ids_list), batch_size):
-        batch = place_ids_list[i : i + batch_size]
+    large_groups_split = 0
+
+    # First, handle small groups (batch by place_id count)
+    small_place_ids = sorted(small_groups.keys())
+    for i in range(0, len(small_place_ids), batch_size):
+        batch = small_place_ids[i : i + batch_size]
         batches.append(batch)
 
-    logger.info("Created %s batches of place_ids", len(batches))
+    # Then, handle large groups (split by receipt count)
+    for place_id, receipt_count in sorted(
+        large_groups.items(), key=lambda x: -x[1]
+    ):  # Process largest first
+        # Split into sub-batches
+        num_sub_batches = (
+            receipt_count + max_receipts_per_batch - 1
+        ) // max_receipts_per_batch
+        large_groups_split += 1
+
+        logger.info(
+            "Splitting place_id %s (%s receipts) into %s sub-batches",
+            place_id[:16],
+            receipt_count,
+            num_sub_batches,
+        )
+
+        # Create sub-batches: place_id:0, place_id:1, etc.
+        # The Lambda handler will need to handle this special format
+        for sub_batch_idx in range(num_sub_batches):
+            # Use special format: "place_id:sub_batch_idx" to indicate this is a sub-batch
+            # The Lambda handler will parse this and process only that portion
+            sub_batch_place_id = f"{place_id}:{sub_batch_idx}"
+            batches.append([sub_batch_place_id])
+
+    logger.info(
+        "Created %s batches: %s from small groups, %s from large groups (split)",
+        len(batches),
+        len(small_place_ids) // batch_size
+        + (1 if len(small_place_ids) % batch_size else 0),
+        large_groups_split,
+    )
 
     result = {
         "place_id_batches": batches,
-        "total_place_ids": len(place_ids_list),
+        "total_place_ids": len(place_id_counts),
         "total_batches": len(batches),
+        "large_groups_split": large_groups_split,
+        "max_receipts_per_batch": max_receipts_per_batch,
     }
 
     return result

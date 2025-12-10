@@ -23,8 +23,12 @@ V2 uses simple majority voting for consensus. This fails for:
 The agent can reason about these cases and make smarter decisions.
 """
 
+import asyncio
 import logging
 import os
+import random
+import re
+import time
 from typing import Annotated, Any, Callable, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -98,6 +102,9 @@ Your job is to:
 ### Metadata Correction Tools
 - `find_correct_metadata`: Spin up a sub-agent to find the correct metadata for a receipt that appears to have incorrect metadata. Use this when a receipt's metadata doesn't match Google Places or other receipts in the group.
 
+### Address Verification Tool
+- `verify_address_on_receipt`: Verify that a specific address (from metadata or Google Places) actually appears on the receipt text. This is CRITICAL for catching wrong place_id assignments. If address doesn't match, use `find_correct_metadata` to fix it.
+
 ### Text Consistency Verification Tool
 - `verify_text_consistency`: Verify that all receipts in the group actually contain text consistent with the canonical metadata. This uses CoVe (Consistency Verification) to check receipt text and identify outliers. Use this BEFORE submitting to ensure all receipts belong to the same place.
 
@@ -117,25 +124,33 @@ Your job is to:
    - Are differences just formatting (case sensitivity)?
    - Are there OCR errors?
 
-4. **Inspect receipt content** (if needed) with `get_receipt_content` or `display_receipt_text`
+4. **CRITICAL: Verify addresses match receipt text** - This is essential to catch wrong place_id assignments
+   - Use `display_receipt_text` or `verify_address_on_receipt` to check each receipt
+   - Compare the address in metadata against what's actually printed on the receipt
+   - If an address like "55 Fulton St, New York, NY 10038, USA" appears but the receipt shows a California address, this is a WRONG place_id assignment
+   - **If address doesn't match receipt text, use `find_correct_metadata` to fix it immediately**
+   - Do NOT proceed with harmonization if addresses don't match - fix them first
+
+5. **Inspect receipt content** (if needed) with `get_receipt_content` or `display_receipt_text`
    - First call `get_group_summary` to see all receipts with their `image_id` and `receipt_id`
    - Then use `display_receipt_text(image_id, receipt_id)` to see formatted receipt text (receipt-space grouping) with verification prompt
    - Or use `get_receipt_content(image_id, receipt_id)` to see raw lines and labeled words
    - Use these to verify metadata matches what's actually on the receipt
 
-5. **Find correct metadata** (if metadata appears incorrect) with `find_correct_metadata`
+6. **Find correct metadata** (if metadata appears incorrect) with `find_correct_metadata`
+   - **USE THIS if address doesn't match receipt text** - this indicates wrong place_id
    - If a receipt's metadata doesn't match Google Places or seems wrong, use this tool
    - It spins up a sub-agent to find the correct place_id, merchant_name, address, and phone
    - The sub-agent examines receipt content, searches Google Places, and uses similarity search
    - Returns the correct metadata with confidence scores
 
-6. **Verify text consistency** (RECOMMENDED before submitting) with `verify_text_consistency`
+7. **Verify text consistency** (RECOMMENDED before submitting) with `verify_text_consistency`
    - After determining canonical metadata, use this tool to verify all receipts actually belong to the same place
    - The CoVe sub-agent checks each receipt's text against canonical metadata
    - Identifies outliers (receipts that may be from a different place)
    - Use the results to adjust your harmonization decision if outliers are found
 
-7. **Submit your decision** with `submit_harmonization`:
+8. **Submit your decision** with `submit_harmonization`:
    - Canonical values from Google Places (preferred) or best-quality receipt data
    - List of receipts that need updates
    - Confidence in your decision
@@ -166,10 +181,12 @@ Your job is to:
 
 1. ALWAYS start with `get_group_summary` to understand the group
 2. ALWAYS check Google Places with `verify_place_id` before deciding
-3. NEVER accept an address as a merchant name
-4. RECOMMENDED: Use `verify_text_consistency` before submitting to check for outliers
-5. ALWAYS end with `submit_harmonization`
-6. Be thorough but efficient
+3. **CRITICAL: ALWAYS verify addresses match receipt text** - Use `display_receipt_text` or `verify_address_on_receipt` to check
+4. **If address doesn't match receipt text, use `find_correct_metadata` to fix it** - Don't proceed with wrong place_id
+5. NEVER accept an address as a merchant name
+6. RECOMMENDED: Use `verify_text_consistency` before submitting to check for outliers
+7. ALWAYS end with `submit_harmonization`
+8. Be thorough but efficient
 
 ## What Gets Updated
 
@@ -179,6 +196,159 @@ When you submit harmonization decisions, receipts with different values will hav
 - `phone_number` → Canonical phone
 
 Begin by getting the group summary, then validate with Google Places."""
+
+
+# ==============================================================================
+# Helper Functions
+# ==============================================================================
+
+
+def _fetch_receipt_details_fallback(
+    dynamo_client: Any, image_id: str, receipt_id: int
+) -> Optional[Any]:
+    """
+    Fallback method to fetch receipt details using alternative queries.
+
+    If get_receipt_details() fails, try to fetch receipt, lines, and words
+    separately and construct ReceiptDetails.
+
+    Args:
+        dynamo_client: DynamoDB client
+        image_id: Image ID (may have trailing characters like '?')
+        receipt_id: Receipt ID
+
+    Returns:
+        ReceiptDetails if successful, None otherwise
+    """
+    try:
+        from receipt_dynamo.entities.receipt_details import ReceiptDetails
+        from receipt_dynamo.exceptions import EntityNotFoundError
+
+        # Sanitize image_id - remove trailing whitespace and special characters
+        # Some image_ids may have trailing '?' or other characters
+        sanitized_image_id = image_id.rstrip("? \t\n\r")
+
+        # Try sanitized version first, then original if different
+        image_ids_to_try = [sanitized_image_id]
+        if sanitized_image_id != image_id:
+            image_ids_to_try.append(image_id)
+            logger.debug(
+                f"Sanitized image_id '{image_id}' to '{sanitized_image_id}'"
+            )
+
+        # Try to get receipt entity
+        receipt = None
+        for img_id in image_ids_to_try:
+            try:
+                receipt = dynamo_client.get_receipt(img_id, receipt_id)
+                if receipt:
+                    # Use the working image_id for subsequent queries
+                    image_id = img_id
+                    break
+            except EntityNotFoundError:
+                continue
+            except Exception as e:
+                logger.debug(
+                    f"Error fetching receipt for {img_id}#{receipt_id}: {e}"
+                )
+                continue
+
+        # If we found receipt with sanitized ID, use that for subsequent queries
+        if receipt:
+            image_id = sanitized_image_id
+
+        # Try to fetch lines and words directly (they might exist even if receipt doesn't)
+        lines = []
+        words = []
+
+        # Try both sanitized and original image_id for lines/words
+        for img_id in image_ids_to_try:
+            if lines and words:
+                break  # Already found both
+
+            if not lines:
+                try:
+                    lines = dynamo_client.list_receipt_lines_from_receipt(
+                        img_id, receipt_id
+                    )
+                    if lines:
+                        image_id = img_id  # Use working image_id
+                        logger.debug(
+                            f"Fetched {len(lines)} lines for {img_id}#{receipt_id} via fallback"
+                        )
+                except Exception as e:
+                    logger.debug(
+                        f"Could not fetch lines for {img_id}#{receipt_id}: {e}"
+                    )
+
+            if not words:
+                try:
+                    words = dynamo_client.list_receipt_words_from_receipt(
+                        img_id, receipt_id
+                    )
+                    if words:
+                        image_id = img_id  # Use working image_id
+                        logger.debug(
+                            f"Fetched {len(words)} words for {img_id}#{receipt_id} via fallback"
+                        )
+                except Exception as e:
+                    logger.debug(
+                        f"Could not fetch words for {img_id}#{receipt_id}: {e}"
+                    )
+
+        # If we have lines or words, we can still work with them
+        if lines or words:
+            if receipt:
+                # Full ReceiptDetails with receipt entity
+                return ReceiptDetails(
+                    receipt=receipt,
+                    lines=lines,
+                    words=words,
+                    letters=[],
+                    labels=[],
+                )
+            else:
+                # We have lines/words but no receipt entity
+                # Create a minimal receipt object from metadata if available
+                # For now, we'll need the receipt entity, so try one more time
+                # or create a minimal one
+                logger.info(
+                    f"Found {len(lines)} lines and {len(words)} words for {image_id}#{receipt_id} "
+                    f"but no receipt entity. Attempting to create minimal receipt..."
+                )
+                # Try to get receipt one more time using get_receipt (with sanitized ID)
+                try:
+                    receipt = dynamo_client.get_receipt(
+                        sanitized_image_id, receipt_id
+                    )
+                    if receipt:
+                        image_id = sanitized_image_id  # Use sanitized version
+                        return ReceiptDetails(
+                            receipt=receipt,
+                            lines=lines,
+                            words=words,
+                            letters=[],
+                            labels=[],
+                        )
+                except Exception as e:
+                    logger.debug(
+                        f"Could not fetch receipt entity via get_receipt: {e}"
+                    )
+
+                # If we still don't have receipt, we can't create ReceiptDetails
+                # But we can work with lines/words directly in the tools
+                logger.warning(
+                    f"Found lines/words for {image_id}#{receipt_id} but no receipt entity. "
+                    f"Tools will work with lines/words only."
+                )
+                # Return None - tools will handle this case
+                return None
+
+        return None
+
+    except Exception as e:
+        logger.debug(f"Fallback fetch failed for {image_id}#{receipt_id}: {e}")
+        return None
 
 
 # ==============================================================================
@@ -302,17 +472,83 @@ def create_harmonizer_tools(
         - labeled_words: Words with labels (MERCHANT_NAME, ADDRESS, PHONE, etc.)
         """
         try:
-            receipt_details = dynamo_client.get_receipt_details(
-                image_id=image_id,
-                receipt_id=receipt_id,
-            )
+            # Sanitize image_id first (remove trailing characters like '?')
+            sanitized_image_id = image_id.rstrip("? \t\n\r")
 
-            if not receipt_details:
-                return {"error": f"Receipt {image_id}#{receipt_id} not found"}
+            # Try sanitized version first, then original if different
+            receipt_details = None
+            for img_id in [sanitized_image_id, image_id]:
+                try:
+                    receipt_details = dynamo_client.get_receipt_details(
+                        image_id=img_id,
+                        receipt_id=receipt_id,
+                    )
+                    if receipt_details and receipt_details.receipt:
+                        break
+                except Exception as e:
+                    if (
+                        img_id == sanitized_image_id
+                        and sanitized_image_id != image_id
+                    ):
+                        logger.debug(
+                            f"get_receipt_details failed for sanitized {img_id}#{receipt_id}, "
+                            f"trying original: {e}"
+                        )
+                    continue
 
-            lines = [
-                {"line_id": line.line_id, "text": line.text}
-                for line in (receipt_details.lines or [])
+            if not receipt_details or not receipt_details.receipt:
+                # Try alternative methods to fetch receipt details
+                logger.info(
+                    f"Primary get_receipt_details failed for {image_id}#{receipt_id}, "
+                    f"trying alternative methods..."
+                )
+                receipt_details = _fetch_receipt_details_fallback(
+                    dynamo_client, sanitized_image_id, receipt_id
+                )
+
+            # Handle case where we might have lines/words but no receipt entity
+            lines = []
+            words_list = []
+            if receipt_details:
+                lines = receipt_details.lines or []
+                words_list = receipt_details.words or []
+            elif not receipt_details:
+                # Try to fetch lines/words directly even if receipt entity is missing
+                # Use sanitized_image_id from above
+                for img_id in [sanitized_image_id, image_id]:
+                    try:
+                        lines = dynamo_client.list_receipt_lines_from_receipt(
+                            img_id, receipt_id
+                        )
+                        words_list = (
+                            dynamo_client.list_receipt_words_from_receipt(
+                                img_id, receipt_id
+                            )
+                        )
+                        if lines or words_list:
+                            logger.info(
+                                f"Fetched {len(lines)} lines and {len(words_list)} words "
+                                f"directly for {img_id}#{receipt_id}"
+                            )
+                            break
+                    except Exception as e:
+                        logger.debug(
+                            f"Could not fetch lines/words for {img_id}#{receipt_id}: {e}"
+                        )
+
+            if not lines and not words_list:
+                logger.warning(
+                    f"Receipt details not found for {image_id}#{receipt_id} after fallback. "
+                    f"Metadata exists but receipt lines/words are missing from DynamoDB."
+                )
+                return {
+                    "error": f"Receipt details not found for {image_id}#{receipt_id}",
+                    "lines": [],
+                    "labeled_words": [],
+                }
+
+            lines_dict = [
+                {"line_id": line.line_id, "text": line.text} for line in lines
             ]
 
             # Get labeled words
@@ -321,7 +557,7 @@ def create_harmonizer_tools(
                     "text": word.text,
                     "label": getattr(word, "label", None),
                 }
-                for word in (receipt_details.words or [])
+                for word in words_list
                 if getattr(word, "label", None)
                 in ["MERCHANT_NAME", "ADDRESS", "PHONE", "TOTAL"]
             ]
@@ -329,13 +565,259 @@ def create_harmonizer_tools(
             return {
                 "image_id": image_id,
                 "receipt_id": receipt_id,
-                "lines": lines[:20],  # Limit to first 20 lines
+                "lines": lines_dict[:20],  # Limit to first 20 lines
                 "labeled_words": labeled_words,
             }
 
         except Exception as e:
             logger.error(f"Error getting receipt content: {e}")
             return {"error": str(e)}
+
+    class VerifyAddressOnReceiptInput(BaseModel):
+        """Input for verify_address_on_receipt tool."""
+
+        image_id: str = Field(description="Image ID of the receipt")
+        receipt_id: int = Field(description="Receipt ID")
+        address_to_check: str = Field(
+            description="The address to verify against the receipt text"
+        )
+
+    @tool(args_schema=VerifyAddressOnReceiptInput)
+    def verify_address_on_receipt(
+        image_id: str, receipt_id: int, address_to_check: str
+    ) -> dict:
+        """
+        Verify that a specific address appears on the receipt text.
+
+        This tool checks if the given address (from metadata or Google Places) actually
+        appears on the receipt. This is critical for catching wrong place_id assignments
+        (e.g., if metadata says "55 Fulton St, New York, NY" but receipt shows a California address).
+
+        Args:
+            image_id: Image ID of the receipt
+            receipt_id: Receipt ID
+            address_to_check: The address to verify (e.g., from metadata or Google Places)
+
+        Returns:
+        - matches: Whether the address appears on the receipt (allowing for OCR errors)
+        - evidence: What address text was found on the receipt (if any)
+        - formatted_text: The formatted receipt text for inspection
+        - recommendation: What to do if address doesn't match (use find_correct_metadata)
+        """
+        try:
+            # Sanitize image_id first (remove trailing characters like '?')
+            sanitized_image_id = image_id.rstrip("? \t\n\r")
+
+            # Try sanitized version first, then original if different
+            receipt_details = None
+            for img_id in [sanitized_image_id, image_id]:
+                try:
+                    receipt_details = dynamo_client.get_receipt_details(
+                        image_id=img_id, receipt_id=receipt_id
+                    )
+                    if receipt_details and receipt_details.receipt:
+                        break
+                except Exception as e:
+                    if (
+                        img_id == sanitized_image_id
+                        and sanitized_image_id != image_id
+                    ):
+                        logger.debug(
+                            f"get_receipt_details failed for sanitized {img_id}#{receipt_id}, "
+                            f"trying original: {e}"
+                        )
+                    continue
+
+            if not receipt_details or not receipt_details.receipt:
+                # Try alternative methods to fetch receipt details
+                logger.info(
+                    f"Primary get_receipt_details failed for {image_id}#{receipt_id}, "
+                    f"trying alternative methods..."
+                )
+                receipt_details = _fetch_receipt_details_fallback(
+                    dynamo_client, sanitized_image_id, receipt_id
+                )
+
+            if not receipt_details or not receipt_details.receipt:
+                logger.warning(
+                    f"Receipt details not found for {image_id}#{receipt_id} after fallback. "
+                    f"Metadata exists but receipt lines/words are missing from DynamoDB. "
+                    f"Skipping address verification for this receipt."
+                )
+                return {
+                    "error": f"Receipt details not found for {image_id}#{receipt_id}",
+                    "found": False,
+                    "matches": False,
+                    "evidence": "Receipt details (lines/words) not available in DynamoDB",
+                    "recommendation": (
+                        "Cannot verify address - receipt details missing. "
+                        "This receipt has metadata but no OCR text. "
+                        "Proceed with harmonization using metadata only."
+                    ),
+                }
+
+            # Handle case where we might have lines/words but no receipt entity
+            lines = receipt_details.lines or [] if receipt_details else []
+
+            # If we don't have lines from receipt_details, try direct fetch
+            if not lines and receipt_details:
+                # Already tried fallback, but lines might be empty
+                pass
+            elif not lines:
+                # Try direct fetch as last resort
+                try:
+                    lines = dynamo_client.list_receipt_lines_from_receipt(
+                        image_id, receipt_id
+                    )
+                    if lines:
+                        logger.info(
+                            f"Fetched {len(lines)} lines directly for {image_id}#{receipt_id}"
+                        )
+                except Exception as e:
+                    logger.debug(f"Could not fetch lines directly: {e}")
+
+            if not lines:
+                return {
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                    "address_to_check": address_to_check,
+                    "matches": False,
+                    "evidence": "No text lines found on receipt",
+                    "formatted_text": "(No lines found)",
+                    "recommendation": "Cannot verify - receipt has no text",
+                }
+
+            try:
+                formatted_text = format_receipt_text_receipt_space(lines)
+            except Exception as exc:
+                logger.debug(
+                    f"Could not format receipt text (receipt-space): {exc}"
+                )
+                sorted_lines = sorted(lines, key=lambda l: l.line_id)
+                formatted_text = "\n".join(
+                    f"{ln.line_id}: {ln.text}" for ln in sorted_lines
+                )
+
+            # Extract key parts of address for matching
+            address_lower = address_to_check.lower()
+            # Get street number and street name
+            address_parts = address_lower.split(",")[
+                0
+            ].strip()  # First part before comma
+            # Extract city/state from address
+            city_state = None
+            if "," in address_to_check:
+                parts = address_to_check.split(",")
+                if len(parts) >= 2:
+                    city_state = parts[-2].strip().lower()  # City
+                    if len(parts) >= 3:
+                        state_part = parts[-1].strip().lower()
+                        # Extract state abbreviation or name
+                        state_state = (
+                            state_part.split()[0] if state_part else None
+                        )
+                        if state_state:
+                            city_state = f"{city_state} {state_state}"
+
+            # Check if address appears in receipt text
+            receipt_text_lower = formatted_text.lower()
+            matches = False
+            evidence = []
+
+            # Check for street address (number + street name)
+            if address_parts:
+                # Look for street number
+                street_num_match = False
+                street_name_match = False
+
+                # Try to find street number (first digits)
+                street_num = re.search(r"^\d+", address_parts)
+                if street_num:
+                    street_num_str = street_num.group()
+                    if street_num_str in receipt_text_lower:
+                        street_num_match = True
+                        evidence.append(
+                            f"Found street number '{street_num_str}' in receipt"
+                        )
+
+                # Check for street name (words after number)
+                street_words = (
+                    address_parts.split()[1:]
+                    if street_num
+                    else address_parts.split()
+                )
+                if street_words:
+                    # Check if any street word appears
+                    for word in street_words[:3]:  # First 3 words
+                        if len(word) > 3 and word in receipt_text_lower:
+                            street_name_match = True
+                            evidence.append(
+                                f"Found street name word '{word}' in receipt"
+                            )
+                            break
+
+                if street_num_match and street_name_match:
+                    matches = True
+
+            # Check for city/state
+            if city_state:
+                city_state_words = city_state.split()
+                city_state_found = any(
+                    word in receipt_text_lower
+                    for word in city_state_words
+                    if len(word) > 2
+                )
+                if city_state_found:
+                    evidence.append(
+                        f"Found city/state '{city_state}' in receipt"
+                    )
+                    if not matches:
+                        # If we found city/state but not street, it's a partial match
+                        matches = False  # Still not a full match
+                else:
+                    evidence.append(
+                        f"City/state '{city_state}' NOT found in receipt"
+                    )
+
+            # If we have full address match, mark as matches
+            if matches:
+                recommendation = "Address appears to match receipt text. Proceed with harmonization."
+            else:
+                recommendation = (
+                    "WARNING: Address does NOT match receipt text. "
+                    "This may indicate a wrong place_id assignment. "
+                    "Use find_correct_metadata to find the correct place_id and metadata for this receipt."
+                )
+
+            return {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "address_to_check": address_to_check,
+                "matches": matches,
+                "evidence": (
+                    "; ".join(evidence)
+                    if evidence
+                    else "No address evidence found"
+                ),
+                "formatted_text": formatted_text[:500],  # Limit length
+                "recommendation": recommendation,
+            }
+
+        except Exception as e:
+            error_str = str(e)
+            # Check if this is a "receipt not found" type error
+            if (
+                "not found" in error_str.lower()
+                or "receipt details" in error_str.lower()
+            ):
+                logger.warning(
+                    f"Receipt details not available for {image_id}#{receipt_id}: {error_str}"
+                )
+            else:
+                logger.error(
+                    f"Error verifying address on receipt {image_id}#{receipt_id}: {e}"
+                )
+            return {"error": str(e), "found": False, "matches": False}
 
     class DisplayReceiptTextInput(BaseModel):
         """Input for display_receipt_text tool."""
@@ -362,20 +844,61 @@ def create_harmonizer_tools(
         - verification_prompt: A prompt to help verify the metadata matches the receipt text
         """
         try:
-            # Get receipt details
-            receipt_details = dynamo_client.get_receipt_details(
-                image_id=image_id,
-                receipt_id=receipt_id,
-            )
+            # Sanitize image_id first (remove trailing characters like '?')
+            sanitized_image_id = image_id.rstrip("? \t\n\r")
+
+            # Try sanitized version first, then original if different
+            receipt_details = None
+            for img_id in [sanitized_image_id, image_id]:
+                try:
+                    receipt_details = dynamo_client.get_receipt_details(
+                        image_id=img_id,
+                        receipt_id=receipt_id,
+                    )
+                    if receipt_details and receipt_details.receipt:
+                        break
+                except Exception as e:
+                    if (
+                        img_id == sanitized_image_id
+                        and sanitized_image_id != image_id
+                    ):
+                        logger.debug(
+                            f"get_receipt_details failed for sanitized {img_id}#{receipt_id}, "
+                            f"trying original: {e}"
+                        )
+                    continue
 
             if not receipt_details or not receipt_details.receipt:
-                return {
-                    "error": f"Receipt {image_id}#{receipt_id} not found",
-                    "found": False,
-                }
+                # Try alternative methods to fetch receipt details
+                logger.info(
+                    f"Primary get_receipt_details failed for {image_id}#{receipt_id}, "
+                    f"trying alternative methods..."
+                )
+                receipt_details = _fetch_receipt_details_fallback(
+                    dynamo_client, sanitized_image_id, receipt_id
+                )
 
-            receipt = receipt_details.receipt
-            lines = receipt_details.lines or []
+            # Handle case where we might have lines/words but no receipt entity
+            receipt = receipt_details.receipt if receipt_details else None
+            lines = receipt_details.lines or [] if receipt_details else []
+
+            # If we still don't have lines, try direct fetch with sanitized image_id
+            if not lines:
+                for img_id in [sanitized_image_id, image_id]:
+                    try:
+                        lines = dynamo_client.list_receipt_lines_from_receipt(
+                            img_id, receipt_id
+                        )
+                        if lines:
+                            logger.info(
+                                f"Fetched {len(lines)} lines directly for {img_id}#{receipt_id} "
+                                f"in display_receipt_text"
+                            )
+                            break
+                    except Exception as e:
+                        logger.debug(
+                            f"Could not fetch lines for {img_id}#{receipt_id}: {e}"
+                        )
 
             if not lines:
                 return {
@@ -385,6 +908,34 @@ def create_harmonizer_tools(
                     "formatted_text": "(No lines found on receipt)",
                     "line_count": 0,
                     "verification_prompt": "Receipt has no text lines.",
+                }
+
+            # Get metadata from ReceiptMetadata (Receipt entity doesn't have these fields)
+            current_metadata = {}
+            try:
+                metadata = dynamo_client.get_receipt_metadata(
+                    image_id, receipt_id
+                )
+                if metadata:
+                    current_metadata = {
+                        "merchant_name": metadata.merchant_name or "(not set)",
+                        "address": metadata.address or "(not set)",
+                        "phone": metadata.phone_number or "(not set)",
+                    }
+                else:
+                    current_metadata = {
+                        "merchant_name": "(not available)",
+                        "address": "(not available)",
+                        "phone": "(not available)",
+                    }
+            except Exception as e:
+                logger.debug(
+                    f"Could not fetch metadata for {image_id}#{receipt_id}: {e}"
+                )
+                current_metadata = {
+                    "merchant_name": "(not available)",
+                    "address": "(not available)",
+                    "phone": "(not available)",
                 }
 
             try:
@@ -398,12 +949,7 @@ def create_harmonizer_tools(
                     f"{ln.line_id}: {ln.text}" for ln in sorted_lines
                 )
 
-            # Build verification prompt
-            current_metadata = {
-                "merchant_name": receipt.merchant_name or "(not set)",
-                "address": receipt.address or "(not set)",
-                "phone": receipt.phone_number or "(not set)",
-            }
+            # Build verification prompt (metadata already set above)
 
             verification_prompt = f"""Please verify the metadata for this receipt matches what's actually on the receipt:
 
@@ -775,7 +1321,7 @@ Use this information to make your harmonization decision."""
                     # Download ChromaDB snapshot using receipt_chroma (atomic download)
                     from receipt_chroma.s3 import download_snapshot_atomic
 
-                    # Download words collection (metadata finder uses word embeddings)
+                    # Download both lines and words collections (metadata finder uses both)
                     chroma_path = os.environ.get(
                         "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY",
                         "/tmp/chromadb",
@@ -786,23 +1332,44 @@ Use this information to make your harmonization decision."""
                         chroma_path, "chroma.sqlite3"
                     )
                     if not os.path.exists(chroma_db_file):
+                        # Download lines collection first
                         logger.info(
-                            f"Downloading ChromaDB snapshot from s3://{chromadb_bucket}/words/"
+                            f"Downloading ChromaDB lines snapshot from s3://{chromadb_bucket}/lines/"
                         )
-                        download_result = download_snapshot_atomic(
+                        lines_result = download_snapshot_atomic(
+                            bucket=chromadb_bucket,
+                            collection="lines",
+                            local_path=chroma_path,
+                            verify_integrity=False,  # Skip integrity check for faster startup
+                        )
+
+                        if lines_result.get("status") != "downloaded":
+                            raise Exception(
+                                f"Failed to download ChromaDB lines snapshot: {lines_result.get('error')}"
+                            )
+
+                        logger.info(
+                            f"ChromaDB lines snapshot downloaded: version={lines_result.get('version_id')}"
+                        )
+
+                        # Download words collection (merges into same ChromaDB instance)
+                        logger.info(
+                            f"Downloading ChromaDB words snapshot from s3://{chromadb_bucket}/words/"
+                        )
+                        words_result = download_snapshot_atomic(
                             bucket=chromadb_bucket,
                             collection="words",
                             local_path=chroma_path,
                             verify_integrity=False,  # Skip integrity check for faster startup
                         )
 
-                        if download_result.get("status") != "downloaded":
+                        if words_result.get("status") != "downloaded":
                             raise Exception(
-                                f"Failed to download ChromaDB snapshot: {download_result.get('error')}"
+                                f"Failed to download ChromaDB words snapshot: {words_result.get('error')}"
                             )
 
                         logger.info(
-                            f"ChromaDB snapshot downloaded: version={download_result.get('version_id')}"
+                            f"ChromaDB words snapshot downloaded: version={words_result.get('version_id')}"
                         )
                     else:
                         logger.info(
@@ -1272,6 +1839,7 @@ Use this information to make your harmonization decision."""
         get_group_summary,
         get_receipt_content,
         display_receipt_text,
+        verify_address_on_receipt,
         get_field_variations,
         verify_place_id,
         find_correct_metadata,
@@ -1376,18 +1944,91 @@ def create_harmonizer_graph(
         temperature=0.0,
     ).bind_tools(tools)
 
-    # Define agent node
+    # Define agent node with retry logic
     def agent_node(state: HarmonizerAgentState) -> dict:
-        """Call the LLM to decide next action."""
+        """Call the LLM to decide next action with retry logic for transient errors."""
         messages = state.messages
-        response = llm.invoke(messages)
 
-        if hasattr(response, "tool_calls") and response.tool_calls:
-            logger.debug(
-                f"Agent tool calls: {[tc['name'] for tc in response.tool_calls]}"
-            )
+        # Retry logic following Ollama/LangGraph best practices
+        max_retries = 3
+        base_delay = 2.0  # Base delay in seconds (exponential backoff)
+        last_error = None
 
-        return {"messages": [response]}
+        for attempt in range(max_retries):
+            try:
+                response = llm.invoke(messages)
+
+                if hasattr(response, "tool_calls") and response.tool_calls:
+                    logger.debug(
+                        f"Agent tool calls: {[tc['name'] for tc in response.tool_calls]}"
+                    )
+
+                return {"messages": [response]}
+
+            except Exception as e:
+                last_error = e
+                error_str = str(e)
+
+                # Check if this is a rate limit (429) - fail fast, don't retry
+                is_rate_limit = (
+                    "429" in error_str
+                    or "rate limit" in error_str.lower()
+                    or "rate_limit" in error_str.lower()
+                    or "too many concurrent requests" in error_str.lower()
+                    or "too many requests" in error_str.lower()
+                )
+
+                if is_rate_limit:
+                    logger.warning(
+                        f"Rate limit detected in harmonizer agent (attempt {attempt + 1}): {error_str[:200]}. "
+                        f"Failing immediately to trigger circuit breaker."
+                    )
+                    # Re-raise rate limit errors immediately (don't retry)
+                    raise RuntimeError(
+                        f"Rate limit error in harmonizer agent: {error_str}"
+                    ) from e
+
+                # For other retryable errors, use exponential backoff
+                # 500/502/503 are server errors that may be transient
+                is_retryable = (
+                    "500" in error_str
+                    or "502" in error_str
+                    or "503" in error_str
+                    or "Internal Server Error" in error_str
+                    or "internal server error" in error_str.lower()
+                    or "service unavailable" in error_str.lower()
+                    or "timeout" in error_str.lower()
+                    or "timed out" in error_str.lower()
+                )
+
+                if is_retryable and attempt < max_retries - 1:
+                    # Exponential backoff with jitter to prevent thundering herd
+                    # attempt 0: 2-4s, attempt 1: 4-8s, attempt 2: 8-16s
+                    jitter = random.uniform(0, base_delay)
+                    wait_time = (base_delay * (2**attempt)) + jitter
+                    logger.warning(
+                        f"Ollama retryable error in harmonizer agent "
+                        f"(attempt {attempt + 1}/{max_retries}): {error_str[:200]}. "
+                        f"Retrying in {wait_time:.1f}s..."
+                    )
+                    # Note: This is a sync function executed in a thread pool by LangGraph
+                    # Using time.sleep is appropriate here
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    # Not retryable or max retries reached
+                    if attempt >= max_retries - 1:
+                        logger.error(
+                            f"Ollama LLM call failed after {max_retries} attempts in harmonizer agent: {error_str}"
+                        )
+                    raise RuntimeError(
+                        f"Failed to get LLM response in harmonizer agent: {error_str}"
+                    ) from e
+
+        # Should never reach here, but just in case
+        raise RuntimeError(
+            f"Unexpected error: Failed to get LLM response in harmonizer agent"
+        ) from last_error
 
     # Tool node
     tool_node = ToolNode(tools)

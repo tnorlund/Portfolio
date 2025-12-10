@@ -59,6 +59,9 @@ google_places_api_key = config.get_secret("GOOGLE_PLACES_API_KEY")  # Optional
 harmonizer_config = Config("metadata-harmonizer")
 max_concurrency_default = harmonizer_config.get_int("max_concurrency") or 5
 batch_size_default = harmonizer_config.get_int("batch_size") or 10
+max_receipts_per_batch_default = (
+    harmonizer_config.get_int("max_receipts_per_batch") or 20
+)
 
 
 class MetadataHarmonizerStepFunction(ComponentResource):
@@ -87,6 +90,7 @@ class MetadataHarmonizerStepFunction(ComponentResource):
         chromadb_bucket_arn: Optional[pulumi.Input[str]] = None,
         max_concurrency: Optional[int] = None,
         batch_size: Optional[int] = None,
+        max_receipts_per_batch: Optional[int] = None,
         opts: Optional[ResourceOptions] = None,
     ):
         super().__init__(f"{__name__}-{name}", name, None, opts)
@@ -95,6 +99,9 @@ class MetadataHarmonizerStepFunction(ComponentResource):
         # Use provided values or fall back to config or defaults
         self.max_concurrency = max_concurrency or max_concurrency_default
         self.batch_size = batch_size or batch_size_default
+        self.max_receipts_per_batch = (
+            max_receipts_per_batch or max_receipts_per_batch_default
+        )
 
         # ============================================================
         # S3 Bucket for batch files and results
@@ -195,11 +202,11 @@ class MetadataHarmonizerStepFunction(ComponentResource):
         )
 
         # DynamoDB access policy
-        RolePolicy(
+        dynamodb_policy = RolePolicy(
             f"{name}-lambda-dynamo-policy",
             role=lambda_role.id,
-            policy=Output.all(dynamodb_table_arn).apply(
-                lambda args: json.dumps(
+            policy=Output.from_input(dynamodb_table_arn).apply(
+                lambda arn: json.dumps(
                     {
                         "Version": "2012-10-17",
                         "Statement": [
@@ -216,8 +223,8 @@ class MetadataHarmonizerStepFunction(ComponentResource):
                                     "dynamodb:BatchWriteItem",
                                 ],
                                 "Resource": [
-                                    args[0],
-                                    f"{args[0]}/index/*",
+                                    arn,
+                                    f"{arn}/index/*",
                                 ],
                             }
                         ],
@@ -357,6 +364,8 @@ class MetadataHarmonizerStepFunction(ComponentResource):
                 "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY": "/tmp/chromadb",
                 # Google Places (optional, but enabled by default)
                 "GOOGLE_PLACES_API_KEY": google_places_api_key,
+                "RECEIPT_PLACES_TABLE_NAME": dynamodb_table_name,
+                "RECEIPT_PLACES_AWS_REGION": "us-east-1",  # Table is in us-east-1
                 # LangSmith tracing (enabled for debugging)
                 "LANGCHAIN_API_KEY": langchain_api_key,
                 "LANGCHAIN_TRACING_V2": "true",
@@ -380,7 +389,9 @@ class MetadataHarmonizerStepFunction(ComponentResource):
             lambda_function_name=f"{name}-harmonize-metadata",
             lambda_config=harmonize_lambda_config,
             platform="linux/arm64",
-            opts=ResourceOptions(parent=self, depends_on=[lambda_role]),
+            opts=ResourceOptions(
+                parent=self, depends_on=[lambda_role, dynamodb_policy]
+            ),
         )
 
         harmonize_metadata_lambda = harmonize_docker_image.lambda_function
@@ -477,6 +488,7 @@ class MetadataHarmonizerStepFunction(ComponentResource):
                     batch_bucket=args[2],
                     max_concurrency=self.max_concurrency,
                     batch_size=self.batch_size,
+                    max_receipts_per_batch=self.max_receipts_per_batch,
                 )
             ),
             logging_configuration=logging_config,
@@ -507,6 +519,7 @@ class MetadataHarmonizerStepFunction(ComponentResource):
         batch_bucket: str,
         max_concurrency: int,
         batch_size: int,
+        max_receipts_per_batch: int,
     ) -> str:
         """Create Step Function definition (ASL)."""
         definition = {
@@ -522,6 +535,7 @@ class MetadataHarmonizerStepFunction(ComponentResource):
                         "dry_run.$": "$.dry_run",
                         "batch_bucket": batch_bucket,
                         "batch_size": batch_size,
+                        "max_receipts_per_batch": max_receipts_per_batch,
                         "langchain_project.$": "$.langchain_project",
                     },
                     "ResultPath": "$.init",
@@ -536,6 +550,7 @@ class MetadataHarmonizerStepFunction(ComponentResource):
                         "execution_id.$": "$.init.execution_id",
                         "batch_bucket.$": "$.init.batch_bucket",
                         "batch_size.$": "$.init.batch_size",
+                        "max_receipts_per_batch.$": "$.init.max_receipts_per_batch",
                     },
                     "ResultPath": "$.place_ids_data",
                     "Retry": [
@@ -579,6 +594,7 @@ class MetadataHarmonizerStepFunction(ComponentResource):
                         "dry_run.$": "$.init.dry_run",
                         "langchain_project.$": "$.init.langchain_project",
                         "batch_bucket.$": "$.init.batch_bucket",
+                        "max_receipts_per_batch.$": "$.place_ids_data.max_receipts_per_batch",
                     },
                     "ItemProcessor": {
                         "ProcessorConfig": {"Mode": "INLINE"},
@@ -648,4 +664,3 @@ class MetadataHarmonizerStepFunction(ComponentResource):
         }
 
         return json.dumps(definition)
-

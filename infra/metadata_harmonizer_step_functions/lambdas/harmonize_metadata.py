@@ -83,6 +83,7 @@ async def process_place_id_batch(
     dry_run: bool = True,
     execution_id: str = "unknown",
     batch_bucket: str = "",
+    max_receipts_per_batch: int = 20,
 ) -> Dict[str, Any]:
     """
     Process a batch of place_ids using MerchantHarmonizerV3.
@@ -112,11 +113,105 @@ async def process_place_id_batch(
     # The harmonizer has already loaded all receipts, so we need to filter
     # the groups to only those in our batch. We no longer skip "consistent"
     # groups because the definition has changed to include receipt text checks.
+    # Handle sub-batches for large groups (format: "place_id:sub_batch_idx")
     groups_to_process = []
-    for place_id in place_ids:
-        if place_id in harmonizer._place_id_groups:
-            group = harmonizer._place_id_groups[place_id]
-            groups_to_process.append(group)
+    for place_id_input in place_ids:
+        # Check if this is a sub-batch (format: "place_id:sub_batch_idx")
+        if ":" in place_id_input:
+            # Parse sub-batch: "place_id:sub_batch_idx"
+            parts = place_id_input.split(":", 1)
+            if len(parts) == 2:
+                base_place_id = parts[0]
+                try:
+                    sub_batch_idx = int(parts[1])
+
+                    # Get the full group for this place_id
+                    if base_place_id in harmonizer._place_id_groups:
+                        full_group = harmonizer._place_id_groups[base_place_id]
+                        all_receipts = full_group.receipts
+
+                        # Sort receipts deterministically by (image_id, receipt_id)
+                        # This ensures sub-batches are consistent across Lambda invocations
+                        # even if DynamoDB scan order varies. The same receipts will always
+                        # be assigned to the same sub-batch index.
+                        #
+                        # IMPORTANT: This sorting must match the order used when calculating
+                        # sub-batch counts in list_place_ids. Both use (image_id, receipt_id)
+                        # as the sort key to ensure consistency.
+                        sorted_receipts = sorted(
+                            all_receipts,
+                            key=lambda r: (r.image_id, r.receipt_id),
+                        )
+
+                        # Split receipts into sub-batches using deterministic order
+                        # Sub-batch 0: receipts 0-19, Sub-batch 1: receipts 20-39, etc.
+                        start_idx = sub_batch_idx * max_receipts_per_batch
+                        end_idx = start_idx + max_receipts_per_batch
+                        sub_batch_receipts = sorted_receipts[start_idx:end_idx]
+
+                        # Validate sub-batch bounds
+                        if start_idx >= len(sorted_receipts):
+                            logger.warning(
+                                f"Sub-batch {sub_batch_idx} start_idx ({start_idx}) >= "
+                                f"total receipts ({len(sorted_receipts)}) for {base_place_id}. "
+                                f"This may indicate receipt count changed between batching and processing."
+                            )
+                            continue
+
+                        if not sub_batch_receipts:
+                            logger.warning(
+                                f"Sub-batch {sub_batch_idx} for {base_place_id} is empty "
+                                f"(start_idx={start_idx}, total_receipts={len(sorted_receipts)})"
+                            )
+                            continue
+
+                        # Log which receipts are in this sub-batch for debugging
+                        receipt_ids = [
+                            f"{r.image_id[:8]}...#{r.receipt_id}"
+                            for r in sub_batch_receipts[:5]
+                        ]
+                        logger.debug(
+                            f"Sub-batch {sub_batch_idx} receipts (first 5): {receipt_ids}"
+                        )
+
+                        # Create a temporary group with only the sub-batch receipts
+                        from receipt_agent.tools.harmonizer_v3 import (
+                            PlaceIdGroup,
+                        )
+
+                        sub_group = PlaceIdGroup(
+                            place_id=base_place_id,
+                            receipts=sub_batch_receipts,
+                        )
+                        groups_to_process.append(sub_group)
+
+                        logger.info(
+                            f"Processing sub-batch {sub_batch_idx} of {base_place_id}: "
+                            f"{len(sub_batch_receipts)}/{len(all_receipts)} receipts "
+                            f"(indices {start_idx}-{min(end_idx, len(all_receipts))-1})"
+                        )
+                    else:
+                        logger.warning(
+                            f"Base place_id {base_place_id} not found for sub-batch {sub_batch_idx}"
+                        )
+                except ValueError:
+                    logger.warning(
+                        f"Invalid sub-batch format: {place_id_input} (expected 'place_id:idx')"
+                    )
+                    # Fall through to regular processing
+                    if place_id_input in harmonizer._place_id_groups:
+                        group = harmonizer._place_id_groups[place_id_input]
+                        groups_to_process.append(group)
+            else:
+                # Invalid format, try as regular place_id
+                if place_id_input in harmonizer._place_id_groups:
+                    group = harmonizer._place_id_groups[place_id_input]
+                    groups_to_process.append(group)
+        else:
+            # Regular place_id (not a sub-batch)
+            if place_id_input in harmonizer._place_id_groups:
+                group = harmonizer._place_id_groups[place_id_input]
+                groups_to_process.append(group)
 
     if not groups_to_process:
         logger.info(
@@ -475,6 +570,7 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     batch_bucket = event.get("batch_bucket") or os.environ.get(
         "BATCH_BUCKET", ""
     )
+    max_receipts_per_batch = event.get("max_receipts_per_batch", 20)
 
     logger.info(
         f"Processing batch of {len(place_ids)} place_ids "
@@ -532,6 +628,7 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
                 dry_run=dry_run,
                 execution_id=execution_id,
                 batch_bucket=batch_bucket,
+                max_receipts_per_batch=max_receipts_per_batch,
             )
         )
 
