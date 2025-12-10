@@ -44,6 +44,7 @@ from label_suggestion_step_functions import LabelSuggestionStepFunction
 from label_validation_agent_step_functions import (
     LabelValidationAgentStepFunction,
 )
+from metadata_harmonizer_step_functions import MetadataHarmonizerStepFunction
 
 # Using the optimized docker-build based base images with scoped contexts
 from networking import PublicVpc
@@ -1205,6 +1206,25 @@ label_harmonizer_sf = LabelHarmonizerStepFunction(
 pulumi.export("label_harmonizer_sf_arn", label_harmonizer_sf.state_machine_arn)
 pulumi.export(
     "label_harmonizer_batch_bucket_name", label_harmonizer_sf.batch_bucket_name
+)
+
+# Metadata Harmonizer Step Function (place_id-based harmonization)
+# Uses shared_chromadb_buckets (same as embedding_infrastructure.chromadb_buckets)
+# This is where ChromaDB snapshots are stored by the compaction process
+metadata_harmonizer_sf = MetadataHarmonizerStepFunction(
+    f"metadata-harmonizer-{stack}",
+    dynamodb_table_name=dynamodb_table.name,
+    dynamodb_table_arn=dynamodb_table.arn,
+    chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
+    chromadb_bucket_arn=shared_chromadb_buckets.bucket_arn,
+)
+
+pulumi.export(
+    "metadata_harmonizer_sf_arn", metadata_harmonizer_sf.state_machine_arn
+)
+pulumi.export(
+    "metadata_harmonizer_batch_bucket_name",
+    metadata_harmonizer_sf.batch_bucket_name,
 )
 
 # Label Validation Agent Step Function (NEEDS_REVIEW labels)

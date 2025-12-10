@@ -53,7 +53,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     execution_id = event["execution_id"]
     batch_bucket = event.get("batch_bucket") or os.environ["BATCH_BUCKET"]
-    label_types: Optional[List[str]] = event.get("label_types")  # Optional filter
+    label_types: Optional[List[str]] = event.get(
+        "label_types"
+    )  # Optional filter
     max_labels: Optional[int] = event.get("max_labels")  # Optional limit
     validation_statuses_input: Optional[List[str]] = event.get(
         "validation_statuses"
@@ -91,10 +93,12 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         for validation_status in validation_statuses:
             last_evaluated_key = None
             while True:
-                labels_batch, last_evaluated_key = dynamo.list_receipt_word_labels_with_status(
-                    status=validation_status,
-                    limit=1000,
-                    last_evaluated_key=last_evaluated_key,
+                labels_batch, last_evaluated_key = (
+                    dynamo.list_receipt_word_labels_with_status(
+                        status=validation_status,
+                        limit=1000,
+                        last_evaluated_key=last_evaluated_key,
+                    )
                 )
 
                 for label in labels_batch:
@@ -246,6 +250,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         "total_batches": len(batches),
     }
 
-    logger.info(f"Preparation complete: {len(batches)} batches, {labels_processed} labels")
+    logger.info(
+        f"Preparation complete: {len(batches)} batches, {labels_processed} labels"
+    )
     return result
-

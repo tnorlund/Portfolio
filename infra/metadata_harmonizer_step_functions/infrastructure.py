@@ -1,16 +1,16 @@
 """
-Pulumi infrastructure for Label Validation Agent Step Function.
+Pulumi infrastructure for Metadata Harmonizer Step Function.
 
 This component creates a Step Function that:
-1. Prepares NEEDS_REVIEW labels (optionally filtered by CORE_LABEL(s))
-2. Processes labels in batches (container Lambda with ChromaDB + LLM)
-3. Aggregates results and generates reports
+1. Lists unique place_ids from DynamoDB (zip Lambda)
+2. Processes place_id groups in batches (container Lambda with LLM agent)
+3. Aggregates results
 
 Architecture:
-- Zip Lambda: prepare_labels (DynamoDB layer only, fast startup)
-- Container Lambda: validate_labels (ChromaDB + LLM, heavy processing)
-- S3 Bucket: batch files and results storage
-- Step Function: orchestration with parallel execution
+- Zip Lambda: list_place_ids (DynamoDB layer only, fast startup)
+- Container Lambda: harmonize_metadata (LLM agent, heavy processing)
+- S3 Bucket: batch files and results storage (optional, for future use)
+- Step Function: orchestration with Map state for parallel processing
 """
 
 import json
@@ -53,56 +53,28 @@ config = Config("portfolio")
 openai_api_key = config.require_secret("OPENAI_API_KEY")
 ollama_api_key = config.require_secret("OLLAMA_API_KEY")
 langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
+google_places_api_key = config.get_secret("GOOGLE_PLACES_API_KEY")  # Optional
 
-# Label validation agent specific config
-validation_config = Config("label-validation-agent")
-max_concurrency_process_default = (
-    validation_config.get_int("max_concurrency_process") or 2
-)  # Conservative default for Ollama rate limits
-
-# CORE_LABELS from receipt_label/constants.py
-CORE_LABELS = [
-    "MERCHANT_NAME",
-    "STORE_HOURS",
-    "PHONE_NUMBER",
-    "WEBSITE",
-    "LOYALTY_ID",
-    "ADDRESS_LINE",
-    "DATE",
-    "TIME",
-    "PAYMENT_METHOD",
-    "COUPON",
-    "DISCOUNT",
-    "PRODUCT_NAME",
-    "QUANTITY",
-    "UNIT_PRICE",
-    "LINE_TOTAL",
-    "SUBTOTAL",
-    "TAX",
-    "GRAND_TOTAL",
-]
+# Metadata harmonizer specific config
+harmonizer_config = Config("metadata-harmonizer")
+max_concurrency_default = harmonizer_config.get_int("max_concurrency") or 5
+batch_size_default = harmonizer_config.get_int("batch_size") or 10
 
 
-class LabelValidationAgentStepFunction(ComponentResource):
+class MetadataHarmonizerStepFunction(ComponentResource):
     """
-    Step Function infrastructure for label validation.
+    Step Function infrastructure for metadata harmonization.
 
     Components:
-    - Zip Lambda: prepare_labels (DynamoDB layer only, fast)
-    - Container Lambda: validate_labels (ChromaDB + LLM)
-    - S3 Bucket: batch files and results
-    - Step Function: orchestration with parallel processing
+    - Zip Lambda: list_place_ids (DynamoDB layer only, fast)
+    - Container Lambda: harmonize_metadata (LLM agent)
+    - S3 Bucket: batch files and results (optional)
+    - Step Function: orchestration with Map state
 
     Workflow:
-    1. Initialize - Set up execution context
-    2. PrepareLabels - Query NEEDS_REVIEW labels (optionally filtered by CORE_LABEL(s))
-    3. ProcessInBatches - Run validation agent (2 parallel by default, LLM-limited)
-    4. AggregateResults - Generate summary report
-
-    Rate Limiting:
-    - Default concurrency: 2 (configurable via Pulumi config)
-    - OllamaRateLimitError retry: 5 retries, 30s backoff, 1.5x rate
-    - 0.5s delay between labels within a batch
+    1. ListPlaceIds - Query DynamoDB for unique place_ids
+    2. ProcessInBatches - Run harmonization for each batch (parallel)
+    3. Done - Aggregate results
     """
 
     def __init__(
@@ -111,18 +83,18 @@ class LabelValidationAgentStepFunction(ComponentResource):
         *,
         dynamodb_table_name: pulumi.Input[str],
         dynamodb_table_arn: pulumi.Input[str],
-        chromadb_bucket_name: pulumi.Input[str],
-        chromadb_bucket_arn: pulumi.Input[str],
-        max_concurrency_process: Optional[int] = None,
+        chromadb_bucket_name: Optional[pulumi.Input[str]] = None,
+        chromadb_bucket_arn: Optional[pulumi.Input[str]] = None,
+        max_concurrency: Optional[int] = None,
+        batch_size: Optional[int] = None,
         opts: Optional[ResourceOptions] = None,
     ):
         super().__init__(f"{__name__}-{name}", name, None, opts)
         stack = pulumi.get_stack()
 
         # Use provided values or fall back to config or defaults
-        self.max_concurrency_process = (
-            max_concurrency_process or max_concurrency_process_default
-        )
+        self.max_concurrency = max_concurrency or max_concurrency_default
+        self.batch_size = batch_size or batch_size_default
 
         # ============================================================
         # S3 Bucket for batch files and results
@@ -132,7 +104,7 @@ class LabelValidationAgentStepFunction(ComponentResource):
             force_destroy=True,
             tags={
                 "environment": stack,
-                "purpose": "label-validation-agent-batches",
+                "purpose": "metadata-harmonizer-batches",
             },
             opts=ResourceOptions(parent=self),
         )
@@ -255,11 +227,9 @@ class LabelValidationAgentStepFunction(ComponentResource):
             opts=ResourceOptions(parent=lambda_role),
         )
 
-        # S3 access policy (batch bucket + ChromaDB bucket)
-        RolePolicy(
-            f"{name}-lambda-s3-policy",
-            role=lambda_role.id,
-            policy=Output.all(
+        # S3 access policy (batch bucket + ChromaDB bucket if provided)
+        if chromadb_bucket_arn:
+            s3_policy = Output.all(
                 self.batch_bucket.arn, chromadb_bucket_arn
             ).apply(
                 lambda args: json.dumps(
@@ -277,34 +247,71 @@ class LabelValidationAgentStepFunction(ComponentResource):
                                 "Resource": [
                                     args[0],
                                     f"{args[0]}/*",
+                                ],
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "s3:GetObject",
+                                    "s3:ListBucket",
+                                ],
+                                "Resource": [
                                     args[1],
                                     f"{args[1]}/*",
+                                ],
+                            },
+                        ],
+                    }
+                )
+            )
+        else:
+            s3_policy = self.batch_bucket.arn.apply(
+                lambda arn: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "s3:GetObject",
+                                    "s3:PutObject",
+                                    "s3:DeleteObject",
+                                    "s3:ListBucket",
+                                ],
+                                "Resource": [
+                                    arn,
+                                    f"{arn}/*",
                                 ],
                             }
                         ],
                     }
                 )
-            ),
+            )
+
+        RolePolicy(
+            f"{name}-lambda-s3-policy",
+            role=lambda_role.id,
+            policy=s3_policy,
             opts=ResourceOptions(parent=lambda_role),
         )
 
         # ============================================================
-        # Zip Lambda: prepare_labels
+        # Zip Lambda: list_place_ids
         # ============================================================
         CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
         HANDLERS_DIR = os.path.join(CURRENT_DIR, "handlers")
 
-        prepare_labels_lambda = Function(
-            f"{name}-prepare-labels",
-            name=f"{name}-prepare-labels",
+        list_place_ids_lambda = Function(
+            f"{name}-list-place-ids",
+            name=f"{name}-list-place-ids",
             role=lambda_role.arn,
             runtime="python3.12",
             architectures=["arm64"],
-            handler="prepare_labels.handler",
+            handler="list_place_ids.handler",
             code=AssetArchive(
                 {
-                    "prepare_labels.py": FileAsset(
-                        os.path.join(HANDLERS_DIR, "prepare_labels.py")
+                    "list_place_ids.py": FileAsset(
+                        os.path.join(HANDLERS_DIR, "list_place_ids.py")
                     ),
                 }
             ),
@@ -324,79 +331,32 @@ class LabelValidationAgentStepFunction(ComponentResource):
             ),
         )
 
-        # Zip Lambda: load_batches
-        load_batches_lambda = Function(
-            f"{name}-load-batches",
-            name=f"{name}-load-batches",
-            role=lambda_role.arn,
-            runtime="python3.12",
-            architectures=["arm64"],
-            handler="load_batches.handler",
-            code=AssetArchive(
-                {
-                    "load_batches.py": FileAsset(
-                        os.path.join(HANDLERS_DIR, "load_batches.py")
-                    ),
-                }
-            ),
-            timeout=60,  # 1 minute
-            memory_size=256,
-            tags={"environment": stack},
-            environment=FunctionEnvironmentArgs(
-                variables={
-                    "BATCH_BUCKET": self.batch_bucket.bucket,
-                }
-            ),
-            opts=ResourceOptions(parent=self),
-        )
-
-        # Zip Lambda: aggregate_results
-        aggregate_results_lambda = Function(
-            f"{name}-aggregate-results",
-            name=f"{name}-aggregate-results",
-            role=lambda_role.arn,
-            runtime="python3.12",
-            architectures=["arm64"],
-            handler="aggregate_results.handler",
-            code=AssetArchive(
-                {
-                    "aggregate_results.py": FileAsset(
-                        os.path.join(HANDLERS_DIR, "aggregate_results.py")
-                    ),
-                }
-            ),
-            timeout=120,  # 2 minutes
-            memory_size=256,
-            tags={"environment": stack},
-            environment=FunctionEnvironmentArgs(
-                variables={
-                    "BATCH_BUCKET": self.batch_bucket.bucket,
-                }
-            ),
-            opts=ResourceOptions(parent=self),
-        )
-
         # ============================================================
-        # Container Lambda: validate_labels
+        # Container Lambda: harmonize_metadata
         # ============================================================
-        validate_lambda_config = {
+        # Note: receipt_agent uses RECEIPT_AGENT_* prefixed env vars
+        # via pydantic-settings. See receipt_agent/config/settings.py
+        harmonize_lambda_config = {
             "role_arn": lambda_role.arn,
             "timeout": 900,  # 15 minutes
-            "memory_size": 3072,  # 3 GB for ChromaDB + LLM
+            "memory_size": 3072,  # 3 GB for LLM agent
             "tags": {"environment": stack},
-            "ephemeral_storage": 10240,  # 10 GB /tmp for ChromaDB snapshot
+            "ephemeral_storage": 10240,  # 10 GB /tmp (may be needed for large data processing and ChromaDB snapshots)
             "environment": {
-                # Lambda-specific (used by handler directly)
+                # Lambda-specific
                 "BATCH_BUCKET": self.batch_bucket.bucket,
-                "CHROMADB_BUCKET": chromadb_bucket_name,
+                # ChromaDB (for metadata finder sub-agent)
+                "CHROMADB_BUCKET": chromadb_bucket_name or "",
                 # receipt_agent Settings (RECEIPT_AGENT_* prefix)
                 "RECEIPT_AGENT_DYNAMO_TABLE_NAME": dynamodb_table_name,
                 "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
                 "RECEIPT_AGENT_OLLAMA_API_KEY": ollama_api_key,
                 "RECEIPT_AGENT_OLLAMA_BASE_URL": "https://ollama.com",
                 "RECEIPT_AGENT_OLLAMA_MODEL": "gpt-oss:120b-cloud",
-                # ChromaDB will be downloaded to /tmp, path set at runtime
-                "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY": "/tmp/chromadb_words",
+                # ChromaDB directory (will be set when downloading snapshots)
+                "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY": "/tmp/chromadb",
+                # Google Places (optional, but enabled by default)
+                "GOOGLE_PLACES_API_KEY": google_places_api_key,
                 # LangSmith tracing (enabled for debugging)
                 "LANGCHAIN_API_KEY": langchain_api_key,
                 "LANGCHAIN_TRACING_V2": "true",
@@ -404,25 +364,26 @@ class LabelValidationAgentStepFunction(ComponentResource):
                 "LANGCHAIN_PROJECT": pulumi.Config("portfolio").get(
                     "langchain_project"
                 )
-                or "label-validation-agent",
+                or "metadata-harmonizer",
             },
         }
 
-        validate_docker_image = CodeBuildDockerImage(
-            f"{name}-validate-img",
-            dockerfile_path="infra/label_validation_agent_step_functions/lambdas/Dockerfile",
+        harmonize_docker_image = CodeBuildDockerImage(
+            f"{name}-harmonize-img",
+            dockerfile_path="infra/metadata_harmonizer_step_functions/lambdas/Dockerfile",
             build_context_path=".",
             source_paths=[
-                "receipt_agent",  # Include receipt_agent package
+                "receipt_agent",  # Include receipt_agent package (not in default rsync)
                 "receipt_places",  # receipt_agent depends on receipt_places
+                "receipt_upload",  # receipt_agent depends on receipt_upload (geometry transformations)
             ],
-            lambda_function_name=f"{name}-validate-labels",
-            lambda_config=validate_lambda_config,
+            lambda_function_name=f"{name}-harmonize-metadata",
+            lambda_config=harmonize_lambda_config,
             platform="linux/arm64",
             opts=ResourceOptions(parent=self, depends_on=[lambda_role]),
         )
 
-        validate_labels_lambda = validate_docker_image.lambda_function
+        harmonize_metadata_lambda = harmonize_docker_image.lambda_function
 
         # ============================================================
         # Step Function role policy
@@ -431,10 +392,8 @@ class LabelValidationAgentStepFunction(ComponentResource):
             f"{name}-sfn-lambda-policy",
             role=sfn_role.id,
             policy=Output.all(
-                prepare_labels_lambda.arn,
-                load_batches_lambda.arn,
-                validate_labels_lambda.arn,
-                aggregate_results_lambda.arn,
+                list_place_ids_lambda.arn,
+                harmonize_metadata_lambda.arn,
             ).apply(
                 lambda arns: json.dumps(
                     {
@@ -508,19 +467,16 @@ class LabelValidationAgentStepFunction(ComponentResource):
             type="STANDARD",
             tags={"environment": stack},
             definition=Output.all(
-                prepare_labels_lambda.arn,
-                load_batches_lambda.arn,
-                validate_labels_lambda.arn,
-                aggregate_results_lambda.arn,
+                list_place_ids_lambda.arn,
+                harmonize_metadata_lambda.arn,
                 self.batch_bucket.bucket,
             ).apply(
                 lambda args: self._create_step_function_definition(
-                    prepare_arn=args[0],
-                    load_batches_arn=args[1],
-                    validate_arn=args[2],
-                    aggregate_arn=args[3],
-                    batch_bucket=args[4],
-                    max_concurrency_process=self.max_concurrency_process,
+                    list_place_ids_arn=args[0],
+                    harmonize_arn=args[1],
+                    batch_bucket=args[2],
+                    max_concurrency=self.max_concurrency,
+                    batch_size=self.batch_size,
                 )
             ),
             logging_configuration=logging_config,
@@ -532,32 +488,29 @@ class LabelValidationAgentStepFunction(ComponentResource):
         # ============================================================
         self.state_machine_arn = self.state_machine.arn
         self.batch_bucket_name = self.batch_bucket.bucket
-        self.prepare_labels_lambda_arn = prepare_labels_lambda.arn
-        self.validate_labels_lambda_arn = validate_labels_lambda.arn
-        self.aggregate_results_lambda_arn = aggregate_results_lambda.arn
+        self.list_place_ids_lambda_arn = list_place_ids_lambda.arn
+        self.harmonize_metadata_lambda_arn = harmonize_metadata_lambda.arn
 
         self.register_outputs(
             {
                 "state_machine_arn": self.state_machine.arn,
                 "batch_bucket_name": self.batch_bucket.bucket,
-                "prepare_labels_lambda_arn": prepare_labels_lambda.arn,
-                "validate_labels_lambda_arn": validate_labels_lambda.arn,
-                "aggregate_results_lambda_arn": aggregate_results_lambda.arn,
+                "list_place_ids_lambda_arn": list_place_ids_lambda.arn,
+                "harmonize_metadata_lambda_arn": harmonize_metadata_lambda.arn,
             }
         )
 
     def _create_step_function_definition(
         self,
-        prepare_arn: str,
-        load_batches_arn: str,
-        validate_arn: str,
-        aggregate_arn: str,
+        list_place_ids_arn: str,
+        harmonize_arn: str,
         batch_bucket: str,
-        max_concurrency_process: int,
+        max_concurrency: int,
+        batch_size: int,
     ) -> str:
         """Create Step Function definition (ASL)."""
         definition = {
-            "Comment": "Label Validation Agent - Process NEEDS_REVIEW labels",
+            "Comment": "Metadata Harmonizer - Process place_id groups in parallel",
             "StartAt": "Initialize",
             "States": {
                 # Initialize execution context
@@ -567,29 +520,24 @@ class LabelValidationAgentStepFunction(ComponentResource):
                         "execution_id.$": "$$.Execution.Name",
                         "start_time.$": "$$.Execution.StartTime",
                         "dry_run.$": "$.dry_run",
-                        "max_labels.$": "$.max_labels",
                         "batch_bucket": batch_bucket,
-                        "label_types.$": "$.label_types",
-                        "validation_statuses.$": "$.validation_statuses",
-                        "min_confidence.$": "$.min_confidence",
+                        "batch_size": batch_size,
                         "langchain_project.$": "$.langchain_project",
                     },
                     "ResultPath": "$.init",
-                    "Next": "PrepareLabels",
+                    "Next": "ListPlaceIds",
                 },
-                # Prepare NEEDS_REVIEW labels (optionally filtered by CORE_LABEL(s))
-                "PrepareLabels": {
+                # List unique place_ids from DynamoDB
+                "ListPlaceIds": {
                     "Type": "Task",
-                    "Resource": prepare_arn,
+                    "Resource": list_place_ids_arn,
                     "TimeoutSeconds": 300,
                     "Parameters": {
                         "execution_id.$": "$.init.execution_id",
-                        "batch_bucket": batch_bucket,
-                        "label_types.$": "$.init.label_types",
-                        "validation_statuses.$": "$.init.validation_statuses",
-                        "max_labels.$": "$.init.max_labels",
+                        "batch_bucket.$": "$.init.batch_bucket",
+                        "batch_size.$": "$.init.batch_size",
                     },
-                    "ResultPath": "$.prepare_result",
+                    "ResultPath": "$.place_ids_data",
                     "Retry": [
                         {
                             "ErrorEquals": [
@@ -601,82 +549,45 @@ class LabelValidationAgentStepFunction(ComponentResource):
                             "BackoffRate": 2.0,
                         }
                     ],
-                    "Next": "LoadBatches",
+                    "Next": "HasPlaceIds",
                 },
-                "NoLabelsToProcess": {
-                    "Type": "Pass",
-                    "Result": {"message": "No NEEDS_REVIEW labels to process"},
-                    "End": True,
-                },
-                # Load batch manifest from S3 and return batch indices
-                "LoadBatches": {
-                    "Type": "Task",
-                    "Resource": load_batches_arn,
-                    "TimeoutSeconds": 60,
-                    "Parameters": {
-                        "manifest_s3_key.$": "$.prepare_result.manifest_s3_key",
-                        "execution_id.$": "$.init.execution_id",
-                        "batch_bucket": batch_bucket,
-                        "langchain_project.$": "$.init.langchain_project",
-                    },
-                    "ResultPath": "$.batches_data",
-                    "Retry": [
-                        {
-                            "ErrorEquals": [
-                                "States.TaskFailed",
-                                "Lambda.ServiceException",
-                            ],
-                            "IntervalSeconds": 2,
-                            "MaxAttempts": 2,
-                            "BackoffRate": 2.0,
-                        }
-                    ],
-                    "Next": "HasBatches",
-                },
-                # Check if there are batches to process
-                "HasBatches": {
+                # Check if there are place_ids to process
+                "HasPlaceIds": {
                     "Type": "Choice",
                     "Choices": [
                         {
-                            "Variable": "$.batches_data.batch_indices[0]",
+                            "Variable": "$.place_ids_data.place_id_batches[0]",
                             "IsPresent": True,
                             "Next": "ProcessInBatches",
                         }
                     ],
-                    "Default": "NoLabelsToProcess",
+                    "Default": "NoPlaceIdsToProcess",
                 },
-                # Process batches in parallel
-                # Use index-based pattern to avoid payload size limits
+                "NoPlaceIdsToProcess": {
+                    "Type": "Pass",
+                    "Result": {"message": "No place_ids to process"},
+                    "End": True,
+                },
+                # Process place_id batches in parallel
                 "ProcessInBatches": {
                     "Type": "Map",
-                    "ItemsPath": "$.batches_data.batch_indices",
-                    "MaxConcurrency": max_concurrency_process,
+                    "ItemsPath": "$.place_ids_data.place_id_batches",
+                    "MaxConcurrency": max_concurrency,
                     "Parameters": {
-                        "batch_index.$": "$$.Map.Item.Value",
-                        "manifest_s3_key.$": "$.batches_data.manifest_s3_key",
+                        "place_ids.$": "$$.Map.Item.Value",
                         "execution_id.$": "$.init.execution_id",
-                        "batch_bucket": batch_bucket,
                         "dry_run.$": "$.init.dry_run",
-                        "min_confidence.$": "$.init.min_confidence",
-                        "langchain_project.$": "$.batches_data.langchain_project",
+                        "langchain_project.$": "$.init.langchain_project",
+                        "batch_bucket.$": "$.init.batch_bucket",
                     },
                     "ItemProcessor": {
                         "ProcessorConfig": {"Mode": "INLINE"},
-                        "StartAt": "ValidateLabels",
+                        "StartAt": "HarmonizeMetadata",
                         "States": {
-                            "ValidateLabels": {
+                            "HarmonizeMetadata": {
                                 "Type": "Task",
-                                "Resource": validate_arn,
+                                "Resource": harmonize_arn,
                                 "TimeoutSeconds": 900,
-                                "Parameters": {
-                                    "batch_index.$": "$.batch_index",
-                                    "manifest_s3_key.$": "$.manifest_s3_key",
-                                    "execution_id.$": "$.execution_id",
-                                    "batch_bucket": batch_bucket,
-                                    "dry_run.$": "$.dry_run",
-                                    "min_confidence.$": "$.min_confidence",
-                                    "langchain_project.$": "$.langchain_project",
-                                },
                                 "Retry": [
                                     {
                                         "ErrorEquals": [
@@ -698,21 +609,19 @@ class LabelValidationAgentStepFunction(ComponentResource):
                                 ],
                                 "ResultSelector": {
                                     "status.$": "$.status",
+                                    "place_ids.$": "$.place_ids",
+                                    "groups_processed.$": "$.groups_processed",
+                                    "receipts_updated.$": "$.receipts_updated",
+                                    "receipts_failed.$": "$.receipts_failed",
+                                    "total_receipts.$": "$.total_receipts",
                                     "results_path.$": "$.results_path",
-                                    "labels_processed.$": "$.labels_processed",
-                                    "valid_count.$": "$.valid_count",
-                                    "invalid_count.$": "$.invalid_count",
-                                    "needs_review_count.$": "$.needs_review_count",
-                                    "updated_count.$": "$.updated_count",
-                                    "skipped_count.$": "$.skipped_count",
-                                    "failed_count.$": "$.failed_count",
                                 },
                                 "End": True,
-                            },
+                            }
                         },
                     },
                     "ResultSelector": {
-                        "batch_count.$": "States.ArrayLength($)"
+                        "batch_count.$": "States.ArrayLength($)",
                     },
                     "ResultPath": "$.process_results",
                     "Catch": [
@@ -722,21 +631,6 @@ class LabelValidationAgentStepFunction(ComponentResource):
                             "ResultPath": "$.error",
                         }
                     ],
-                    "Next": "AggregateResults",
-                },
-                # Aggregate all results
-                # Read results from S3 to avoid 256KB payload limit
-                "AggregateResults": {
-                    "Type": "Task",
-                    "Resource": aggregate_arn,
-                    "TimeoutSeconds": 120,
-                    "Parameters": {
-                        "execution_id.$": "$.init.execution_id",
-                        "batch_bucket": batch_bucket,
-                        "dry_run.$": "$.init.dry_run",
-                        "process_results.$": "$.process_results",
-                    },
-                    "ResultPath": "$.summary",
                     "Next": "Done",
                 },
                 # Success state
@@ -744,13 +638,14 @@ class LabelValidationAgentStepFunction(ComponentResource):
                     "Type": "Pass",
                     "End": True,
                 },
-                # Error states
+                # Error state
                 "ProcessFailed": {
                     "Type": "Fail",
-                    "Error": "ProcessLabelsError",
-                    "Cause": "Failed to process labels",
+                    "Error": "ProcessMetadataError",
+                    "Cause": "Failed to process metadata harmonization",
                 },
             },
         }
 
         return json.dumps(definition)
+

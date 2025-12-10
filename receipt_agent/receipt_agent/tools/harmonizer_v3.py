@@ -65,9 +65,9 @@ Receipts needing updates: 142
 
 import asyncio
 import logging
+from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Optional
-from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +85,7 @@ class ReceiptRecord:
         address: Current address
         phone: Current phone number
     """
+
     image_id: str
     receipt_id: int
     merchant_name: Optional[str] = None
@@ -104,6 +105,7 @@ class PlaceIdGroup:
         is_consistent: Whether all receipts have the same metadata
         agent_result: Result from agent harmonization (if inconsistent)
     """
+
     place_id: str
     receipts: list[ReceiptRecord] = field(default_factory=list)
     is_consistent: bool = True
@@ -121,6 +123,7 @@ class HarmonizationResult:
         changes: List of changes to apply
         canonical_*: The correct values to use
     """
+
     image_id: str
     receipt_id: int
     needs_update: bool = False
@@ -144,6 +147,7 @@ class UpdateResult:
         total_failed: Receipts that failed to update
         errors: Error messages
     """
+
     total_processed: int = 0
     total_updated: int = 0
     total_skipped: int = 0
@@ -243,12 +247,19 @@ class MerchantHarmonizerV3:
                     phone=meta.phone_number,
                 )
 
-                if receipt.place_id and receipt.place_id not in ("", "null", "NO_RESULTS", "INVALID"):
+                if receipt.place_id and receipt.place_id not in (
+                    "",
+                    "null",
+                    "NO_RESULTS",
+                    "INVALID",
+                ):
                     if receipt.place_id not in self._place_id_groups:
                         self._place_id_groups[receipt.place_id] = PlaceIdGroup(
                             place_id=receipt.place_id
                         )
-                    self._place_id_groups[receipt.place_id].receipts.append(receipt)
+                    self._place_id_groups[receipt.place_id].receipts.append(
+                        receipt
+                    )
                 else:
                     self._no_place_id_receipts.append(receipt)
 
@@ -296,7 +307,11 @@ class MerchantHarmonizerV3:
                     phones.add(digits[-10:])
 
         # Consistent if at most one unique value per field
-        return len(merchant_names) <= 1 and len(addresses) <= 1 and len(phones) <= 1
+        return (
+            len(merchant_names) <= 1
+            and len(addresses) <= 1
+            and len(phones) <= 1
+        )
 
     async def harmonize_all(
         self,
@@ -324,10 +339,13 @@ class MerchantHarmonizerV3:
             from receipt_agent.graph.harmonizer_workflow import (
                 create_harmonizer_graph,
             )
-            self._agent_graph, self._agent_state_holder = create_harmonizer_graph(
-                dynamo_client=self.dynamo,
-                places_api=self.places,
-                settings=self.settings,
+
+            self._agent_graph, self._agent_state_holder = (
+                create_harmonizer_graph(
+                    dynamo_client=self.dynamo,
+                    places_api=self.places,
+                    settings=self.settings,
+                )
             )
 
         # Filter groups to process
@@ -342,13 +360,17 @@ class MerchantHarmonizerV3:
         if limit:
             groups_to_process = groups_to_process[:limit]
 
-        logger.info(f"Processing {len(groups_to_process)} inconsistent groups with agent...")
+        logger.info(
+            f"Processing {len(groups_to_process)} inconsistent groups with agent..."
+        )
 
         # Process each group with the agent
         results: list[dict] = []
         for i, group in enumerate(groups_to_process):
             if (i + 1) % 5 == 0:
-                logger.info(f"Processed {i + 1}/{len(groups_to_process)} groups...")
+                logger.info(
+                    f"Processed {i + 1}/{len(groups_to_process)} groups..."
+                )
 
             # Convert receipts to dict format for agent
             receipts_data = [
@@ -367,24 +389,29 @@ class MerchantHarmonizerV3:
             result = None
             for attempt in range(max_retries):
                 try:
-                    from receipt_agent.graph.harmonizer_workflow import run_harmonizer_agent
+                    from receipt_agent.graph.harmonizer_workflow import (
+                        run_harmonizer_agent,
+                    )
 
                     result = await run_harmonizer_agent(
                         graph=self._agent_graph,
                         state_holder=self._agent_state_holder,
                         place_id=group.place_id,
                         receipts=receipts_data,
+                        places_api=self.places,
                     )
                     break
                 except Exception as e:
                     error_str = str(e)
                     is_retryable = (
-                        "500" in error_str or
-                        "Internal Server Error" in error_str or
-                        "disconnected" in error_str.lower()
+                        "500" in error_str
+                        or "Internal Server Error" in error_str
+                        or "disconnected" in error_str.lower()
                     )
                     if is_retryable and attempt < max_retries - 1:
-                        logger.warning(f"Retryable error for {group.place_id} (attempt {attempt + 1}): {error_str[:100]}")
+                        logger.warning(
+                            f"Retryable error for {group.place_id} (attempt {attempt + 1}): {error_str[:100]}"
+                        )
                         await asyncio.sleep(2 * (attempt + 1))
                         continue
                     else:
@@ -400,20 +427,42 @@ class MerchantHarmonizerV3:
             results.append(result)
 
         # Build report
-        consistent_groups = [g for g in self._place_id_groups.values() if g.is_consistent]
-        inconsistent_groups = [g for g in self._place_id_groups.values() if not g.is_consistent]
+        consistent_groups = [
+            g for g in self._place_id_groups.values() if g.is_consistent
+        ]
+        inconsistent_groups = [
+            g for g in self._place_id_groups.values() if not g.is_consistent
+        ]
 
-        high_confidence = [r for r in results if r.get("confidence", 0) >= 0.8 and "error" not in r]
-        medium_confidence = [r for r in results if 0.5 <= r.get("confidence", 0) < 0.8 and "error" not in r]
-        low_confidence = [r for r in results if r.get("confidence", 0) < 0.5 and "error" not in r]
+        high_confidence = [
+            r
+            for r in results
+            if r.get("confidence", 0) >= 0.8 and "error" not in r
+        ]
+        medium_confidence = [
+            r
+            for r in results
+            if 0.5 <= r.get("confidence", 0) < 0.8 and "error" not in r
+        ]
+        low_confidence = [
+            r
+            for r in results
+            if r.get("confidence", 0) < 0.5 and "error" not in r
+        ]
         errors = [r for r in results if "error" in r]
 
-        total_updates_needed = sum(r.get("receipts_needing_update", 0) for r in results)
+        total_updates_needed = sum(
+            r.get("receipts_needing_update", 0) for r in results
+        )
 
         report = {
             "summary": {
-                "total_receipts": sum(len(g.receipts) for g in self._place_id_groups.values()),
-                "total_with_place_id": sum(len(g.receipts) for g in self._place_id_groups.values()),
+                "total_receipts": sum(
+                    len(g.receipts) for g in self._place_id_groups.values()
+                ),
+                "total_with_place_id": sum(
+                    len(g.receipts) for g in self._place_id_groups.values()
+                ),
                 "total_without_place_id": len(self._no_place_id_receipts),
                 "total_groups": len(self._place_id_groups),
                 "consistent_groups": len(consistent_groups),
@@ -475,21 +524,29 @@ class MerchantHarmonizerV3:
                 continue
 
             for update in agent_result.get("updates", []):
-                updates_to_apply.append({
-                    "image_id": update["image_id"],
-                    "receipt_id": update["receipt_id"],
-                    "canonical_merchant_name": agent_result.get("canonical_merchant_name"),
-                    "canonical_address": agent_result.get("canonical_address"),
-                    "canonical_phone": agent_result.get("canonical_phone"),
-                    "changes": update["changes"],
-                    "confidence": confidence,
-                    "source": agent_result.get("source", "agent"),
-                })
+                updates_to_apply.append(
+                    {
+                        "image_id": update["image_id"],
+                        "receipt_id": update["receipt_id"],
+                        "canonical_merchant_name": agent_result.get(
+                            "canonical_merchant_name"
+                        ),
+                        "canonical_address": agent_result.get(
+                            "canonical_address"
+                        ),
+                        "canonical_phone": agent_result.get("canonical_phone"),
+                        "changes": update["changes"],
+                        "confidence": confidence,
+                        "source": agent_result.get("source", "agent"),
+                    }
+                )
 
         result.total_processed = len(updates_to_apply)
 
         if dry_run:
-            logger.info(f"[DRY RUN] Would update {len(updates_to_apply)} receipts")
+            logger.info(
+                f"[DRY RUN] Would update {len(updates_to_apply)} receipts"
+            )
             for update in updates_to_apply[:10]:
                 logger.info(
                     f"  {update['image_id'][:8]}...#{update['receipt_id']}: "
@@ -511,22 +568,36 @@ class MerchantHarmonizerV3:
                 )
 
                 if not metadata:
-                    logger.warning(f"Metadata not found for {update['image_id']}#{update['receipt_id']}")
+                    logger.warning(
+                        f"Metadata not found for {update['image_id']}#{update['receipt_id']}"
+                    )
                     result.total_failed += 1
-                    result.errors.append(f"{update['image_id']}#{update['receipt_id']}: Metadata not found")
+                    result.errors.append(
+                        f"{update['image_id']}#{update['receipt_id']}: Metadata not found"
+                    )
                     continue
 
                 # Update fields
                 updated_fields = []
-                if update["canonical_merchant_name"] and metadata.merchant_name != update["canonical_merchant_name"]:
+                if (
+                    update["canonical_merchant_name"]
+                    and metadata.merchant_name
+                    != update["canonical_merchant_name"]
+                ):
                     metadata.merchant_name = update["canonical_merchant_name"]
                     updated_fields.append("merchant_name")
 
-                if update["canonical_address"] and metadata.address != update["canonical_address"]:
+                if (
+                    update["canonical_address"]
+                    and metadata.address != update["canonical_address"]
+                ):
                     metadata.address = update["canonical_address"]
                     updated_fields.append("address")
 
-                if update["canonical_phone"] and metadata.phone_number != update["canonical_phone"]:
+                if (
+                    update["canonical_phone"]
+                    and metadata.phone_number != update["canonical_phone"]
+                ):
                     metadata.phone_number = update["canonical_phone"]
                     updated_fields.append("phone_number")
 
@@ -541,9 +612,13 @@ class MerchantHarmonizerV3:
                     result.total_skipped += 1
 
             except Exception as e:
-                logger.error(f"Failed to update {update['image_id']}#{update['receipt_id']}: {e}")
+                logger.error(
+                    f"Failed to update {update['image_id']}#{update['receipt_id']}: {e}"
+                )
                 result.total_failed += 1
-                result.errors.append(f"{update['image_id']}#{update['receipt_id']}: {e}")
+                result.errors.append(
+                    f"{update['image_id']}#{update['receipt_id']}: {e}"
+                )
 
         logger.info(
             f"Update complete: {result.total_updated} updated, "
@@ -570,30 +645,48 @@ class MerchantHarmonizerV3:
         print("=" * 70)
         print(f"Total receipts: {summary.get('total_receipts', 0)}")
         print(f"  With place_id: {summary.get('total_with_place_id', 0)}")
-        print(f"  Without place_id: {summary.get('total_without_place_id', 0)} (cannot harmonize)")
+        print(
+            f"  Without place_id: {summary.get('total_without_place_id', 0)} (cannot harmonize)"
+        )
         print()
 
         print(f"Place ID groups: {summary.get('total_groups', 0)}")
-        print(f"  Consistent: {summary.get('consistent_groups', 0)} (no action needed)")
-        print(f"  Inconsistent: {summary.get('inconsistent_groups', 0)} (processed by agent)")
+        print(
+            f"  Consistent: {summary.get('consistent_groups', 0)} (no action needed)"
+        )
+        print(
+            f"  Inconsistent: {summary.get('inconsistent_groups', 0)} (processed by agent)"
+        )
         print()
 
-        processed = summary.get('groups_processed', 0)
+        processed = summary.get("groups_processed", 0)
         if processed > 0:
             print(f"Agent Results ({processed} groups):")
-            print(f"  ✅ High confidence (≥80%): {agent_results.get('high_confidence', 0)}")
-            print(f"  ⚠️  Medium confidence (50-80%): {agent_results.get('medium_confidence', 0)}")
-            print(f"  ❌ Low confidence (<50%): {agent_results.get('low_confidence', 0)}")
+            print(
+                f"  ✅ High confidence (≥80%): {agent_results.get('high_confidence', 0)}"
+            )
+            print(
+                f"  ⚠️  Medium confidence (50-80%): {agent_results.get('medium_confidence', 0)}"
+            )
+            print(
+                f"  ❌ Low confidence (<50%): {agent_results.get('low_confidence', 0)}"
+            )
             if agent_results.get("errors", 0) > 0:
                 print(f"  ⛔ Errors: {agent_results.get('errors', 0)}")
             print()
 
-        print(f"Receipts needing updates: {updates.get('total_receipts_needing_update', 0)}")
+        print(
+            f"Receipts needing updates: {updates.get('total_receipts_needing_update', 0)}"
+        )
         print()
 
         # Show some examples
         results = report.get("results", [])
-        successful = [r for r in results if "error" not in r and r.get("receipts_needing_update", 0) > 0]
+        successful = [
+            r
+            for r in results
+            if "error" not in r and r.get("receipts_needing_update", 0) > 0
+        ]
 
         if successful:
             print("Sample harmonization decisions:")
@@ -612,20 +705,18 @@ class MerchantHarmonizerV3:
         if errors:
             print(f"Errors ({len(errors)}):")
             for e in errors[:3]:
-                print(f"  ⛔ {e.get('place_id', 'Unknown')}: {e.get('error', 'Unknown error')[:50]}")
+                print(
+                    f"  ⛔ {e.get('place_id', 'Unknown')}: {e.get('error', 'Unknown error')[:50]}"
+                )
             if len(errors) > 3:
                 print(f"  ... and {len(errors) - 3} more")
 
     def get_inconsistent_groups(self) -> list[PlaceIdGroup]:
         """Get all inconsistent place_id groups."""
-        return [g for g in self._place_id_groups.values() if not g.is_consistent]
+        return [
+            g for g in self._place_id_groups.values() if not g.is_consistent
+        ]
 
     def get_group(self, place_id: str) -> Optional[PlaceIdGroup]:
         """Get a specific place_id group."""
         return self._place_id_groups.get(place_id)
-
-
-
-
-
-

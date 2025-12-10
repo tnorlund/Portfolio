@@ -120,3 +120,4 @@ def migrate_receipt_word_labels(
         except Exception:  # pylint: disable=broad-except
             continue
     return new_labels
+

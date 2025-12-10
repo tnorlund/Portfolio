@@ -25,16 +25,15 @@ The agent can reason about these cases and make smarter decisions.
 
 import logging
 import os
-from typing import Any, Callable, Optional
+from typing import Annotated, Any, Callable, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.tools import tool
 from langchain_ollama import ChatOllama
-from langgraph.graph import StateGraph, END
+from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel, Field
-from typing import Annotated
 
 from receipt_agent.config.settings import Settings, get_settings
 
@@ -45,12 +44,15 @@ logger = logging.getLogger(__name__)
 # Agent State
 # ==============================================================================
 
+
 class HarmonizerAgentState(BaseModel):
     """State for the harmonizer agent workflow."""
 
     # Target place_id group
     place_id: str = Field(description="Google Place ID being harmonized")
-    receipts: list[dict] = Field(default_factory=list, description="Receipts in this group")
+    receipts: list[dict] = Field(
+        default_factory=list, description="Receipts in this group"
+    )
 
     # Conversation messages
     messages: Annotated[list[Any], add_messages] = Field(default_factory=list)
@@ -85,11 +87,15 @@ Your job is to:
 ### Group Analysis Tools
 - `get_group_summary`: See all receipts in this group with their current metadata
 - `get_receipt_content`: View the actual content (lines, words) of a specific receipt
+- `display_receipt_text`: Display formatted receipt text (using combine agent formatting) for verification
 - `get_field_variations`: See all variations of a field (merchant_name, address, phone) across the group
 
 ### Google Places Tools (Source of Truth)
 - `verify_place_id`: Get official data from Google Places for this place_id
 - `find_businesses_at_address`: If Google returns an address as name, find actual businesses there
+
+### Metadata Correction Tools
+- `find_correct_metadata`: Spin up a sub-agent to find the correct metadata for a receipt that appears to have incorrect metadata. Use this when a receipt's metadata doesn't match Google Places or other receipts in the group.
 
 ### Decision Tool (REQUIRED at the end)
 - `submit_harmonization`: Submit your decision for canonical values and which receipts need updates
@@ -107,11 +113,19 @@ Your job is to:
    - Are differences just formatting (case sensitivity)?
    - Are there OCR errors?
 
-4. **Inspect receipt content** (if needed) with `get_receipt_content`
-   - Look at the actual text on the receipt
-   - Useful for resolving ambiguous cases
+4. **Inspect receipt content** (if needed) with `get_receipt_content` or `display_receipt_text`
+   - First call `get_group_summary` to see all receipts with their `image_id` and `receipt_id`
+   - Then use `display_receipt_text(image_id, receipt_id)` to see formatted receipt text in image order (like the combine agent) with verification prompt
+   - Or use `get_receipt_content(image_id, receipt_id)` to see raw lines and labeled words
+   - Use these to verify metadata matches what's actually on the receipt
 
-5. **Submit your decision** with `submit_harmonization`:
+5. **Find correct metadata** (if metadata appears incorrect) with `find_correct_metadata`
+   - If a receipt's metadata doesn't match Google Places or seems wrong, use this tool
+   - It spins up a sub-agent to find the correct place_id, merchant_name, address, and phone
+   - The sub-agent examines receipt content, searches Google Places, and uses similarity search
+   - Returns the correct metadata with confidence scores
+
+6. **Submit your decision** with `submit_harmonization`:
    - Canonical values from Google Places (preferred) or best-quality receipt data
    - List of receipts that need updates
    - Confidence in your decision
@@ -160,10 +174,14 @@ Begin by getting the group summary, then validate with Google Places."""
 # Tool Factory for Harmonizer
 # ==============================================================================
 
+
 def create_harmonizer_tools(
     dynamo_client: Any,
     places_api: Optional[Any] = None,
     group_data: Optional[dict] = None,
+    chroma_client: Optional[Any] = None,
+    embed_fn: Optional[Callable[[list[str]], list[list[float]]]] = None,
+    chromadb_bucket: Optional[str] = None,
 ) -> tuple[list[Any], dict]:
     """
     Create tools for the harmonizer agent.
@@ -172,6 +190,9 @@ def create_harmonizer_tools(
         dynamo_client: DynamoDB client
         places_api: Google Places API client
         group_data: Dict to hold current group context
+        chroma_client: Optional pre-initialized ChromaDB client
+        embed_fn: Optional pre-initialized embedding function
+        chromadb_bucket: Optional S3 bucket name for lazy loading ChromaDB
 
     Returns:
         (tools, state_holder)
@@ -182,6 +203,9 @@ def create_harmonizer_tools(
     state = {
         "group": group_data,
         "result": None,
+        "chromadb_bucket": chromadb_bucket,  # Store for lazy loading
+        "chroma_client": chroma_client,  # Cache if pre-initialized
+        "embed_fn": embed_fn,  # Cache if pre-initialized
     }
 
     # ========== GROUP ANALYSIS TOOLS ==========
@@ -235,14 +259,19 @@ def create_harmonizer_tools(
                 for r in receipts
             ],
             "field_summary": {
-                "merchant_names": dict(sorted(merchant_names.items(), key=lambda x: -x[1])),
-                "addresses": dict(sorted(addresses.items(), key=lambda x: -x[1])),
+                "merchant_names": dict(
+                    sorted(merchant_names.items(), key=lambda x: -x[1])
+                ),
+                "addresses": dict(
+                    sorted(addresses.items(), key=lambda x: -x[1])
+                ),
                 "phones": dict(sorted(phones.items(), key=lambda x: -x[1])),
             },
         }
 
     class GetReceiptContentInput(BaseModel):
         """Input for get_receipt_content tool."""
+
         image_id: str = Field(description="Image ID of the receipt")
         receipt_id: int = Field(description="Receipt ID")
 
@@ -282,7 +311,8 @@ def create_harmonizer_tools(
                     "label": getattr(word, "label", None),
                 }
                 for word in (receipt_details.words or [])
-                if getattr(word, "label", None) in ["MERCHANT_NAME", "ADDRESS", "PHONE", "TOTAL"]
+                if getattr(word, "label", None)
+                in ["MERCHANT_NAME", "ADDRESS", "PHONE", "TOTAL"]
             ]
 
             return {
@@ -296,9 +326,144 @@ def create_harmonizer_tools(
             logger.error(f"Error getting receipt content: {e}")
             return {"error": str(e)}
 
+    class DisplayReceiptTextInput(BaseModel):
+        """Input for display_receipt_text tool."""
+
+        image_id: str = Field(description="Image ID of the receipt")
+        receipt_id: int = Field(description="Receipt ID")
+
+    @tool(args_schema=DisplayReceiptTextInput)
+    def display_receipt_text(image_id: str, receipt_id: int) -> dict:
+        """
+        Display the formatted receipt text for verification.
+
+        This tool formats the receipt text using the same method as the combine agent,
+        grouping visually contiguous lines and displaying them in image order.
+        Use this to verify what text is actually on the receipt when checking metadata.
+
+        Args:
+            image_id: Image ID of the receipt
+            receipt_id: Receipt ID
+
+        Returns:
+        - formatted_text: Receipt text formatted in image order (grouped by visual rows)
+        - line_count: Number of lines on the receipt
+        - verification_prompt: A prompt to help verify the metadata matches the receipt text
+        """
+        try:
+            # Get receipt details
+            receipt_details = dynamo_client.get_receipt_details(
+                image_id=image_id,
+                receipt_id=receipt_id,
+            )
+
+            if not receipt_details or not receipt_details.receipt:
+                return {
+                    "error": f"Receipt {image_id}#{receipt_id} not found",
+                    "found": False,
+                }
+
+            receipt = receipt_details.receipt
+            lines = receipt_details.lines or []
+
+            if not lines:
+                return {
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                    "found": True,
+                    "formatted_text": "(No lines found on receipt)",
+                    "line_count": 0,
+                    "verification_prompt": "Receipt has no text lines.",
+                }
+
+            # Try to use combine agent's formatting (requires image dimensions)
+            formatted_text = None
+            try:
+                # Get image to get dimensions
+                image = dynamo_client.get_image(image_id)
+                if image and image.width and image.height:
+                    # Import combine agent formatting functions
+                    from receipt_agent.agent.combination_selector import (
+                        _format_receipt_text_image_space,
+                    )
+
+                    formatted_text, _ = _format_receipt_text_image_space(
+                        receipt=receipt,
+                        lines=lines,
+                        image_width=image.width,
+                        image_height=image.height,
+                    )
+            except Exception as e:
+                logger.debug(
+                    f"Could not use combine agent formatting: {e}, using fallback"
+                )
+
+            # Fallback to ReceiptTextReconstructor if combine agent formatting fails
+            if not formatted_text:
+                try:
+                    from receipt_label.utils.text_reconstruction import (
+                        ReceiptTextReconstructor,
+                    )
+
+                    reconstructor = ReceiptTextReconstructor()
+                    formatted_text, _ = reconstructor.reconstruct_receipt(
+                        lines
+                    )
+                except Exception as e:
+                    logger.debug(
+                        f"Could not use ReceiptTextReconstructor: {e}"
+                    )
+                    # Final fallback: simple line-by-line
+                    sorted_lines = sorted(lines, key=lambda l: l.line_id)
+                    formatted_text = "\n".join(
+                        f"{ln.line_id}: {ln.text}" for ln in sorted_lines
+                    )
+
+            # Build verification prompt
+            current_metadata = {
+                "merchant_name": receipt.merchant_name or "(not set)",
+                "address": receipt.address or "(not set)",
+                "phone": receipt.phone_number or "(not set)",
+            }
+
+            verification_prompt = f"""Please verify the metadata for this receipt matches what's actually on the receipt:
+
+Current Metadata:
+- Merchant Name: {current_metadata['merchant_name']}
+- Address: {current_metadata['address']}
+- Phone: {current_metadata['phone']}
+
+Receipt Text (formatted in image order, grouped by visual rows):
+{formatted_text}
+
+Questions to verify:
+1. Does the merchant name on the receipt match the metadata?
+2. Does the address on the receipt match the metadata?
+3. Does the phone number on the receipt match the metadata?
+4. Are there any OCR errors or typos that need correction?
+
+Use this information to make your harmonization decision."""
+
+            return {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "found": True,
+                "formatted_text": formatted_text,
+                "line_count": len(lines),
+                "verification_prompt": verification_prompt,
+                "current_metadata": current_metadata,
+            }
+
+        except Exception as e:
+            logger.error(f"Error displaying receipt text: {e}")
+            return {"error": str(e), "found": False}
+
     class GetFieldVariationsInput(BaseModel):
         """Input for get_field_variations tool."""
-        field: str = Field(description="Field to analyze: merchant_name, address, or phone")
+
+        field: str = Field(
+            description="Field to analyze: merchant_name, address, or phone"
+        )
 
     @tool(args_schema=GetFieldVariationsInput)
     def get_field_variations(field: str) -> dict:
@@ -323,7 +488,9 @@ def create_harmonizer_tools(
         }
 
         if field not in field_map:
-            return {"error": f"Invalid field: {field}. Use: merchant_name, address, or phone"}
+            return {
+                "error": f"Invalid field: {field}. Use: merchant_name, address, or phone"
+            }
 
         receipts = group.get("receipts", [])
 
@@ -339,10 +506,12 @@ def create_harmonizer_tools(
             if value not in variations:
                 variations[value] = []
 
-            variations[value].append({
-                "image_id": r.get("image_id"),
-                "receipt_id": r.get("receipt_id"),
-            })
+            variations[value].append(
+                {
+                    "image_id": r.get("image_id"),
+                    "receipt_id": r.get("receipt_id"),
+                }
+            )
 
             # Track normalized versions
             norm = value.lower().strip()
@@ -369,7 +538,9 @@ def create_harmonizer_tools(
                     "count": len(receipts),
                     "receipts": receipts[:5],  # Limit to 5 examples
                 }
-                for v, receipts in sorted(variations.items(), key=lambda x: -len(x[1]))
+                for v, receipts in sorted(
+                    variations.items(), key=lambda x: -len(x[1])
+                )
             },
             "case_analysis": sorted(case_groups, key=lambda x: -x["count"]),
         }
@@ -425,7 +596,9 @@ def create_harmonizer_tools(
 
             name = details.get("name", "")
             address = details.get("formatted_address", "")
-            phone = details.get("formatted_phone_number") or details.get("international_phone_number")
+            phone = details.get("formatted_phone_number") or details.get(
+                "international_phone_number"
+            )
 
             # Check if name looks like an address
             is_address_like = _is_address_like(name)
@@ -437,7 +610,11 @@ def create_harmonizer_tools(
                 "place_address": address,
                 "place_phone": phone,
                 "is_address_like": is_address_like,
-                "warning": "Google returned an address as the name. Use find_businesses_at_address to find the actual business." if is_address_like else None,
+                "warning": (
+                    "Google returned an address as the name. Use find_businesses_at_address to find the actual business."
+                    if is_address_like
+                    else None
+                ),
             }
 
         except Exception as e:
@@ -446,6 +623,7 @@ def create_harmonizer_tools(
 
     class FindBusinessesAtAddressInput(BaseModel):
         """Input for find_businesses_at_address tool."""
+
         address: str = Field(description="Address to search for businesses")
 
     @tool(args_schema=FindBusinessesAtAddressInput)
@@ -506,17 +684,27 @@ def create_harmonizer_tools(
                 types = biz.get("types", [])
 
                 # Skip if it's just a locality or address-like name
-                if any(t in types for t in ["locality", "political", "administrative_area_level_1"]):
+                if any(
+                    t in types
+                    for t in [
+                        "locality",
+                        "political",
+                        "administrative_area_level_1",
+                    ]
+                ):
                     continue
                 if _is_address_like(name):
                     continue
 
-                businesses.append({
-                    "name": name,
-                    "place_id": biz.get("place_id"),
-                    "address": biz.get("formatted_address") or biz.get("vicinity"),
-                    "types": types[:5],
-                })
+                businesses.append(
+                    {
+                        "name": name,
+                        "place_id": biz.get("place_id"),
+                        "address": biz.get("formatted_address")
+                        or biz.get("vicinity"),
+                        "types": types[:5],
+                    }
+                )
 
             # Get receipt merchant names from group for matching
             group = state["group"]
@@ -531,7 +719,10 @@ def create_harmonizer_tools(
             for biz in businesses:
                 biz_name_lower = biz["name"].lower()
                 for receipt_name in receipt_names:
-                    if biz_name_lower in receipt_name or receipt_name in biz_name_lower:
+                    if (
+                        biz_name_lower in receipt_name
+                        or receipt_name in biz_name_lower
+                    ):
                         recommendation = {
                             "business": biz,
                             "reason": f"Name matches receipt merchant '{receipt_name}'",
@@ -552,16 +743,328 @@ def create_harmonizer_tools(
             logger.error(f"Error finding businesses at address: {e}")
             return {"error": str(e)}
 
+    # ========== METADATA FINDER TOOL ==========
+
+    class FindCorrectMetadataInput(BaseModel):
+        """Input for find_correct_metadata tool."""
+
+        image_id: str = Field(
+            description="Image ID of the receipt with incorrect metadata"
+        )
+        receipt_id: int = Field(description="Receipt ID")
+
+    @tool(args_schema=FindCorrectMetadataInput)
+    async def find_correct_metadata(image_id: str, receipt_id: int) -> dict:
+        """
+        Find the correct metadata for a receipt that appears to have incorrect metadata.
+
+        This tool spins up a sub-agent (metadata finder) to:
+        - Examine the receipt content (lines, words, labels)
+        - Extract metadata from the receipt itself
+        - Search Google Places API for the correct place_id and metadata
+        - Use similarity search (if available) to find similar receipts
+        - Return the correct metadata with confidence scores
+
+        Use this when you suspect a receipt has incorrect metadata (wrong place_id, merchant_name, address, or phone).
+
+        Args:
+            image_id: Image ID of the receipt
+            receipt_id: Receipt ID
+
+        Returns:
+        - found: Whether metadata was found
+        - place_id: Correct Google Place ID (if found)
+        - merchant_name: Correct merchant name (if found)
+        - address: Correct address (if found)
+        - phone_number: Correct phone number (if found)
+        - confidence: Overall confidence (0-1)
+        - reasoning: How the metadata was found
+        - fields_found: List of fields that were found/updated
+        """
+        try:
+            # Lazy-load ChromaDB if not already loaded and bucket is available
+            chroma_client = state.get("chroma_client")
+            embed_fn = state.get("embed_fn")
+            chromadb_bucket = state.get("chromadb_bucket")
+
+            if not chroma_client and chromadb_bucket:
+                try:
+                    logger.info(
+                        "Lazy-loading ChromaDB for metadata finder sub-agent..."
+                    )
+
+                    # Download ChromaDB snapshot using receipt_chroma (atomic download)
+                    from receipt_chroma.s3 import download_snapshot_atomic
+
+                    # Download words collection (metadata finder uses word embeddings)
+                    chroma_path = os.environ.get(
+                        "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY",
+                        "/tmp/chromadb",
+                    )
+
+                    # Check if already cached
+                    chroma_db_file = os.path.join(
+                        chroma_path, "chroma.sqlite3"
+                    )
+                    if not os.path.exists(chroma_db_file):
+                        logger.info(
+                            f"Downloading ChromaDB snapshot from s3://{chromadb_bucket}/words/"
+                        )
+                        download_result = download_snapshot_atomic(
+                            bucket=chromadb_bucket,
+                            collection="words",
+                            local_path=chroma_path,
+                            verify_integrity=False,  # Skip integrity check for faster startup
+                        )
+
+                        if download_result.get("status") != "downloaded":
+                            raise Exception(
+                                f"Failed to download ChromaDB snapshot: {download_result.get('error')}"
+                            )
+
+                        logger.info(
+                            f"ChromaDB snapshot downloaded: version={download_result.get('version_id')}"
+                        )
+                    else:
+                        logger.info(
+                            f"ChromaDB already cached at {chroma_path}"
+                        )
+
+                    # Update environment for receipt_agent to find ChromaDB
+                    os.environ["RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY"] = (
+                        chroma_path
+                    )
+
+                    # Create clients using the receipt_agent factory
+                    from receipt_agent.clients.factory import (
+                        create_chroma_client,
+                        create_embed_fn,
+                    )
+                    from receipt_agent.config.settings import get_settings
+
+                    settings = get_settings()
+
+                    # Verify OpenAI API key is available for embeddings
+                    if not settings.openai_api_key:
+                        logger.warning(
+                            "RECEIPT_AGENT_OPENAI_API_KEY not set - embeddings may fail"
+                        )
+                    else:
+                        logger.info("OpenAI API key available for embeddings")
+
+                    chroma_client = create_chroma_client(settings=settings)
+                    embed_fn = create_embed_fn(settings=settings)
+
+                    # Cache in state for subsequent calls
+                    state["chroma_client"] = chroma_client
+                    state["embed_fn"] = embed_fn
+
+                    logger.info(
+                        "ChromaDB and embeddings loaded and cached for metadata finder sub-agent"
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Could not lazy-load ChromaDB (metadata finder will use fallback): {e}"
+                    )
+                    # Continue without ChromaDB - metadata finder will use Google Places fallback
+                    chroma_client = None
+                    embed_fn = None
+
+            # Check if we have the required dependencies for full metadata finder
+            if chroma_client and embed_fn:
+                # Use full metadata finder agent
+                try:
+                    from receipt_agent.graph.receipt_metadata_finder_workflow import (
+                        create_receipt_metadata_finder_graph,
+                        run_receipt_metadata_finder,
+                    )
+
+                    # Create graph if not already created (cache it in state)
+                    if "metadata_finder_graph" not in state:
+                        (
+                            state["metadata_finder_graph"],
+                            state["metadata_finder_state_holder"],
+                        ) = create_receipt_metadata_finder_graph(
+                            dynamo_client=dynamo_client,
+                            chroma_client=chroma_client,
+                            embed_fn=embed_fn,
+                            places_api=places_api,
+                            settings=None,
+                        )
+
+                    # Get receipt details to pass to metadata finder
+                    receipt_details = dynamo_client.get_receipt_details(
+                        image_id, receipt_id
+                    )
+
+                    # Run metadata finder agent
+                    result = await run_receipt_metadata_finder(
+                        graph=state["metadata_finder_graph"],
+                        state_holder=state["metadata_finder_state_holder"],
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                        receipt_lines=(
+                            receipt_details.lines if receipt_details else None
+                        ),
+                        receipt_words=(
+                            receipt_details.words if receipt_details else None
+                        ),
+                    )
+
+                    if result.get("found"):
+                        logger.info(
+                            f"Metadata finder found {len(result.get('fields_found', []))} fields "
+                            f"for {image_id}#{receipt_id}"
+                        )
+                        return {
+                            "found": True,
+                            "place_id": result.get("place_id"),
+                            "merchant_name": result.get("merchant_name"),
+                            "address": result.get("address"),
+                            "phone_number": result.get("phone_number"),
+                            "confidence": result.get("confidence", 0.0),
+                            "reasoning": result.get("reasoning", ""),
+                            "fields_found": result.get("fields_found", []),
+                            "method": "metadata_finder_agent",
+                        }
+                    else:
+                        return {
+                            "found": False,
+                            "reasoning": result.get(
+                                "reasoning",
+                                "Metadata finder could not find correct metadata",
+                            ),
+                            "method": "metadata_finder_agent",
+                        }
+
+                except Exception as e:
+                    logger.warning(
+                        f"Metadata finder agent failed: {e}, trying fallback"
+                    )
+                    # Fall through to fallback
+
+            # Fallback: Use Google Places search directly
+            if not places_api:
+                return {
+                    "found": False,
+                    "error": "Google Places API not available for metadata search",
+                    "method": "fallback",
+                }
+
+            # Get receipt details
+            receipt_details = dynamo_client.get_receipt_details(
+                image_id, receipt_id
+            )
+            if not receipt_details or not receipt_details.receipt:
+                return {
+                    "found": False,
+                    "error": f"Receipt {image_id}#{receipt_id} not found",
+                    "method": "fallback",
+                }
+
+            receipt = receipt_details.receipt
+
+            # Try to find correct metadata using Google Places
+            # Search by phone first (most reliable)
+            place_data = None
+            search_method = None
+
+            if receipt.phone_number:
+                try:
+                    place_data = places_api.search_by_phone(
+                        receipt.phone_number
+                    )
+                    if place_data:
+                        search_method = "phone"
+                except Exception:
+                    pass
+
+            # Try address if phone didn't work
+            if not place_data and receipt.address:
+                try:
+                    place_data = places_api.search_by_address(receipt.address)
+                    if place_data:
+                        search_method = "address"
+                except Exception:
+                    pass
+
+            # Try merchant name text search as last resort
+            if not place_data and receipt.merchant_name:
+                try:
+                    place_data = places_api.search_by_text(
+                        receipt.merchant_name
+                    )
+                    if place_data:
+                        search_method = "merchant_name"
+                except Exception:
+                    pass
+
+            if place_data:
+                # Get full place details
+                found_place_id = place_data.get("place_id")
+                if found_place_id:
+                    place_details = places_api.get_place_details(
+                        found_place_id
+                    )
+                    if place_details:
+                        return {
+                            "found": True,
+                            "place_id": found_place_id,
+                            "merchant_name": place_details.get("name"),
+                            "address": place_details.get("formatted_address"),
+                            "phone_number": place_details.get(
+                                "formatted_phone_number"
+                            )
+                            or place_details.get("international_phone_number"),
+                            "confidence": 0.7,  # Lower confidence for fallback method
+                            "reasoning": f"Found via Google Places {search_method} search (fallback method - full metadata finder not available)",
+                            "fields_found": [
+                                "place_id",
+                                "merchant_name",
+                                "address",
+                                "phone_number",
+                            ],
+                            "method": "google_places_fallback",
+                        }
+
+            return {
+                "found": False,
+                "reasoning": "Could not find correct metadata using Google Places search",
+                "method": "google_places_fallback",
+            }
+
+        except Exception as e:
+            logger.error(f"Error finding correct metadata: {e}")
+            return {
+                "found": False,
+                "error": str(e),
+                "method": "unknown",
+            }
+
     # ========== DECISION TOOL ==========
 
     class SubmitHarmonizationInput(BaseModel):
         """Input for submit_harmonization tool."""
-        canonical_merchant_name: str = Field(description="The correct merchant name for this place_id")
-        canonical_address: Optional[str] = Field(default=None, description="The correct address (or None if unknown)")
-        canonical_phone: Optional[str] = Field(default=None, description="The correct phone (or None if unknown)")
-        confidence: float = Field(ge=0.0, le=1.0, description="Confidence in this decision (0-1)")
-        reasoning: str = Field(description="Explanation of how you determined the canonical values")
-        source: str = Field(description="Source of truth: 'google_places', 'receipt_consensus', 'manual_selection'")
+
+        canonical_merchant_name: str = Field(
+            description="The correct merchant name for this place_id"
+        )
+        canonical_address: Optional[str] = Field(
+            default=None,
+            description="The correct address (or None if unknown)",
+        )
+        canonical_phone: Optional[str] = Field(
+            default=None, description="The correct phone (or None if unknown)"
+        )
+        confidence: float = Field(
+            ge=0.0, le=1.0, description="Confidence in this decision (0-1)"
+        )
+        reasoning: str = Field(
+            description="Explanation of how you determined the canonical values"
+        )
+        source: str = Field(
+            description="Source of truth: 'google_places', 'receipt_consensus', 'manual_selection'"
+        )
 
     @tool(args_schema=SubmitHarmonizationInput)
     def submit_harmonization(
@@ -596,18 +1099,26 @@ def create_harmonizer_tools(
         for r in receipts:
             changes = []
             if r.get("merchant_name") != canonical_merchant_name:
-                changes.append(f"merchant_name: '{r.get('merchant_name')}' → '{canonical_merchant_name}'")
+                changes.append(
+                    f"merchant_name: '{r.get('merchant_name')}' → '{canonical_merchant_name}'"
+                )
             if canonical_address and r.get("address") != canonical_address:
-                changes.append(f"address: '{r.get('address')}' → '{canonical_address}'")
+                changes.append(
+                    f"address: '{r.get('address')}' → '{canonical_address}'"
+                )
             if canonical_phone and r.get("phone") != canonical_phone:
-                changes.append(f"phone: '{r.get('phone')}' → '{canonical_phone}'")
+                changes.append(
+                    f"phone: '{r.get('phone')}' → '{canonical_phone}'"
+                )
 
             if changes:
-                updates_needed.append({
-                    "image_id": r.get("image_id"),
-                    "receipt_id": r.get("receipt_id"),
-                    "changes": changes,
-                })
+                updates_needed.append(
+                    {
+                        "image_id": r.get("image_id"),
+                        "receipt_id": r.get("receipt_id"),
+                        "changes": changes,
+                    }
+                )
 
         result = {
             "place_id": group.get("place_id"),
@@ -639,8 +1150,10 @@ def create_harmonizer_tools(
     tools = [
         get_group_summary,
         get_receipt_content,
+        display_receipt_text,
         get_field_variations,
         verify_place_id,
+        find_correct_metadata,
         submit_harmonization,
     ]
 
@@ -660,9 +1173,25 @@ def _is_address_like(name: Optional[str]) -> bool:
     # Check if it starts with a number
     if name_lower and name_lower[0].isdigit():
         street_indicators = [
-            'st', 'street', 'ave', 'avenue', 'blvd', 'boulevard',
-            'rd', 'road', 'dr', 'drive', 'ln', 'lane', 'way',
-            'ct', 'court', 'pl', 'place', 'cir', 'circle'
+            "st",
+            "street",
+            "ave",
+            "avenue",
+            "blvd",
+            "boulevard",
+            "rd",
+            "road",
+            "dr",
+            "drive",
+            "ln",
+            "lane",
+            "way",
+            "ct",
+            "court",
+            "pl",
+            "place",
+            "cir",
+            "circle",
         ]
         if any(indicator in name_lower for indicator in street_indicators):
             return True
@@ -674,10 +1203,14 @@ def _is_address_like(name: Optional[str]) -> bool:
 # Workflow Builder
 # ==============================================================================
 
+
 def create_harmonizer_graph(
     dynamo_client: Any,
     places_api: Optional[Any] = None,
     settings: Optional[Settings] = None,
+    chroma_client: Optional[Any] = None,
+    embed_fn: Optional[Callable[[list[str]], list[list[float]]]] = None,
+    chromadb_bucket: Optional[str] = None,
 ) -> tuple[Any, dict]:
     """
     Create the harmonizer agent workflow.
@@ -686,6 +1219,11 @@ def create_harmonizer_graph(
         dynamo_client: DynamoDB client
         places_api: Google Places API client
         settings: Optional settings
+        chroma_client: Optional ChromaDB client (for metadata finder sub-agent)
+                      If None, will be lazy-loaded when find_correct_metadata is called
+        embed_fn: Optional embedding function (for metadata finder sub-agent)
+                  If None, will be lazy-loaded when find_correct_metadata is called
+        chromadb_bucket: Optional S3 bucket name for ChromaDB snapshots (for lazy loading)
 
     Returns:
         (compiled_graph, state_holder)
@@ -693,10 +1231,13 @@ def create_harmonizer_graph(
     if settings is None:
         settings = get_settings()
 
-    # Create tools
+    # Create tools (pass chromadb_bucket for lazy loading)
     tools, state_holder = create_harmonizer_tools(
         dynamo_client=dynamo_client,
         places_api=places_api,
+        chroma_client=chroma_client,
+        embed_fn=embed_fn,
+        chromadb_bucket=chromadb_bucket,
     )
 
     # Create LLM with tools
@@ -705,7 +1246,9 @@ def create_harmonizer_graph(
         base_url=settings.ollama_base_url,
         model=settings.ollama_model,
         client_kwargs={
-            "headers": {"Authorization": f"Bearer {api_key}"} if api_key else {},
+            "headers": (
+                {"Authorization": f"Bearer {api_key}"} if api_key else {}
+            ),
             "timeout": 120,
         },
         temperature=0.0,
@@ -717,8 +1260,10 @@ def create_harmonizer_graph(
         messages = state.messages
         response = llm.invoke(messages)
 
-        if hasattr(response, 'tool_calls') and response.tool_calls:
-            logger.debug(f"Agent tool calls: {[tc['name'] for tc in response.tool_calls]}")
+        if hasattr(response, "tool_calls") and response.tool_calls:
+            logger.debug(
+                f"Agent tool calls: {[tc['name'] for tc in response.tool_calls]}"
+            )
 
         return {"messages": [response]}
 
@@ -763,11 +1308,13 @@ def create_harmonizer_graph(
 # Runner
 # ==============================================================================
 
+
 async def run_harmonizer_agent(
     graph: Any,
     state_holder: dict,
     place_id: str,
     receipts: list[dict],
+    places_api: Optional[Any] = None,
 ) -> dict:
     """
     Run the harmonizer agent for a place_id group.
@@ -777,6 +1324,7 @@ async def run_harmonizer_agent(
         state_holder: State holder dict
         place_id: Google Place ID
         receipts: List of receipt dicts with metadata
+        places_api: Optional Google Places API client to fetch source of truth data
 
     Returns:
         Harmonization result dict
@@ -788,20 +1336,104 @@ async def run_harmonizer_agent(
     }
     state_holder["result"] = None
 
+    # Fetch Google Places data to include in prompt (source of truth)
+    google_places_info = None
+    if places_api:
+        try:
+            # Skip invalid place_ids
+            if not (place_id.startswith("compaction_") or place_id == "null"):
+                place_details = places_api.get_place_details(place_id)
+                if place_details:
+                    google_places_info = {
+                        "name": place_details.get("name", ""),
+                        "formatted_address": place_details.get(
+                            "formatted_address", ""
+                        ),
+                        "formatted_phone_number": place_details.get(
+                            "formatted_phone_number"
+                        )
+                        or place_details.get("international_phone_number", ""),
+                        "website": place_details.get("website", ""),
+                        "rating": place_details.get("rating"),
+                        "user_ratings_total": place_details.get(
+                            "user_ratings_total"
+                        ),
+                        "types": place_details.get("types", [])[
+                            :5
+                        ],  # First 5 types
+                        "business_status": place_details.get(
+                            "business_status", ""
+                        ),
+                    }
+                    logger.info(
+                        f"Fetched Google Places data for {place_id}: {google_places_info.get('name')}"
+                    )
+        except Exception as e:
+            logger.warning(
+                f"Could not fetch Google Places data for {place_id}: {e}"
+            )
+
+    # Build initial prompt with Google Places data
+    prompt_parts = [
+        f"Please harmonize the metadata for place_id '{place_id}' which has {len(receipts)} receipts."
+    ]
+
+    if google_places_info:
+        prompt_parts.append("\n## Google Places API Data (Source of Truth)")
+        prompt_parts.append(f"**Place ID:** {place_id}")
+        if google_places_info.get("name"):
+            prompt_parts.append(
+                f"**Official Name:** {google_places_info['name']}"
+            )
+        if google_places_info.get("formatted_address"):
+            prompt_parts.append(
+                f"**Official Address:** {google_places_info['formatted_address']}"
+            )
+        if google_places_info.get("formatted_phone_number"):
+            prompt_parts.append(
+                f"**Official Phone:** {google_places_info['formatted_phone_number']}"
+            )
+        if google_places_info.get("website"):
+            prompt_parts.append(
+                f"**Website:** {google_places_info['website']}"
+            )
+        if google_places_info.get("rating") is not None:
+            prompt_parts.append(
+                f"**Rating:** {google_places_info['rating']} ({google_places_info.get('user_ratings_total', 0)} reviews)"
+            )
+        if google_places_info.get("types"):
+            prompt_parts.append(
+                f"**Types:** {', '.join(google_places_info['types'])}"
+            )
+        if google_places_info.get("business_status"):
+            prompt_parts.append(
+                f"**Business Status:** {google_places_info['business_status']}"
+            )
+        prompt_parts.append(
+            "\nUse this Google Places data as the source of truth when determining canonical values."
+        )
+    else:
+        prompt_parts.append(
+            "\nNote: Google Places data is not available. Use the verify_place_id tool to fetch it."
+        )
+
+    prompt_parts.append(
+        "\nStart by getting the group summary, then proceed with harmonization."
+    )
+
     # Create initial state
     initial_state = HarmonizerAgentState(
         place_id=place_id,
         receipts=receipts,
         messages=[
             SystemMessage(content=HARMONIZER_PROMPT),
-            HumanMessage(
-                content=f"Please harmonize the metadata for place_id '{place_id}' which has {len(receipts)} receipts. "
-                f"Start by getting the group summary, then verify with Google Places."
-            ),
+            HumanMessage(content="\n".join(prompt_parts)),
         ],
     )
 
-    logger.info(f"Starting harmonizer agent for place_id {place_id} ({len(receipts)} receipts)")
+    logger.info(
+        f"Starting harmonizer agent for place_id {place_id} ({len(receipts)} receipts)"
+    )
 
     try:
         config = {
@@ -829,7 +1461,9 @@ async def run_harmonizer_agent(
             )
             return result
         else:
-            logger.warning(f"Agent ended without submitting harmonization for {place_id}")
+            logger.warning(
+                f"Agent ended without submitting harmonization for {place_id}"
+            )
             return {
                 "place_id": place_id,
                 "error": "Agent did not submit harmonization decision",
@@ -845,9 +1479,3 @@ async def run_harmonizer_agent(
             "total_receipts": len(receipts),
             "receipts_needing_update": 0,
         }
-
-
-
-
-
-

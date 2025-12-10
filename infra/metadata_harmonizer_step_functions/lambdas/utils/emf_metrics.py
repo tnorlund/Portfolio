@@ -1,4 +1,4 @@
-"""EMF (Embedded Metrics Format) utility for label_validation_agent Lambda functions.
+"""EMF (Embedded Metrics Format) utility for label_harmonizer Lambda functions.
 
 Uses AWS Embedded Metric Format to send metrics via CloudWatch Logs instead of
 individual PutMetricData API calls. This reduces costs by ~99.9%.
@@ -12,17 +12,16 @@ Usage:
 
     # Collect metrics during processing
     metrics = {
-        "ValidCount": 30,
-        "InvalidCount": 15,
-        "LabelsProcessed": 50,
+        "OutliersDetected": 5,
+        "LabelsProcessed": 100,
         "ProcessingTimeSeconds": 45.2,
     }
 
     # Emit ONE log line at the end (CloudWatch parses automatically)
     emf_metrics.log_metrics(
         metrics=metrics,
-        dimensions={"LabelType": "MERCHANT_NAME"},
-        properties={"execution_id": "abc123", "batch_file": "..."}
+        dimensions={"LabelType": "GRAND_TOTAL"},
+        properties={"merchant_name": "Sprouts", "batch_file": "..."}
     )
 """
 
@@ -44,7 +43,7 @@ class EmbeddedMetricsFormatter:
     - Same CloudWatch Metrics dashboard visibility
     """
 
-    def __init__(self, namespace: str = "LabelValidationAgent"):
+    def __init__(self, namespace: str = "LabelHarmonizer"):
         """Initialize EMF formatter.
 
         Args:
@@ -129,7 +128,7 @@ class EmbeddedMetricsFormatter:
             units: Optional unit overrides (default: Count)
 
         IMPORTANT: Keep dimensions low-cardinality!
-        - Good: {"LabelType": "MERCHANT_NAME"} - ~15 unique values
+        - Good: {"LabelType": "GRAND_TOTAL"} - ~15 unique values
         - Bad: {"Merchant": "..."} - 1000s of unique values = $$$$
         """
         if not self.enabled:
@@ -142,6 +141,4 @@ class EmbeddedMetricsFormatter:
 
 # Global EMF metrics formatter instance
 emf_metrics = EmbeddedMetricsFormatter()
-
-
 

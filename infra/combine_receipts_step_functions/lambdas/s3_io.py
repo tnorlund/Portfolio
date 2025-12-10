@@ -165,3 +165,4 @@ def export_receipt_ndjson_and_queue(
         QueueUrl=embed_ndjson_queue_url,
         MessageBody=json.dumps(payload),
     )
+
