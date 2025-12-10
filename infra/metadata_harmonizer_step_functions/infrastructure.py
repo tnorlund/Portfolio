@@ -27,7 +27,7 @@ from pulumi import (
     Output,
     ResourceOptions,
 )
-from pulumi_aws.cloudwatch import LogGroup
+from pulumi_aws.cloudwatch import LogGroup, MetricAlarm
 from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
 from pulumi_aws.lambda_ import Function, FunctionEnvironmentArgs
 from pulumi_aws.s3 import (
@@ -95,6 +95,7 @@ class MetadataHarmonizerStepFunction(ComponentResource):
     ):
         super().__init__(f"{__name__}-{name}", name, None, opts)
         stack = pulumi.get_stack()
+        self._name = name  # Store name for use in alarm creation
 
         # Use provided values or fall back to config or defaults
         self.max_concurrency = max_concurrency or max_concurrency_default
@@ -496,6 +497,16 @@ class MetadataHarmonizerStepFunction(ComponentResource):
         )
 
         # ============================================================
+        # CloudWatch Alarms
+        # ============================================================
+        # Create alarms after state machine is created (depends on it)
+        self._create_cloudwatch_alarms(
+            list_place_ids_lambda=list_place_ids_lambda,
+            harmonize_metadata_lambda=harmonize_metadata_lambda,
+            opts=ResourceOptions(parent=self, depends_on=[self.state_machine]),
+        )
+
+        # ============================================================
         # Outputs
         # ============================================================
         self.state_machine_arn = self.state_machine.arn
@@ -510,6 +521,151 @@ class MetadataHarmonizerStepFunction(ComponentResource):
                 "list_place_ids_lambda_arn": list_place_ids_lambda.arn,
                 "harmonize_metadata_lambda_arn": harmonize_metadata_lambda.arn,
             }
+        )
+
+    def _create_cloudwatch_alarms(
+        self,
+        list_place_ids_lambda: Function,
+        harmonize_metadata_lambda: Function,
+        opts: Optional[ResourceOptions] = None,
+    ):
+        """Create CloudWatch alarms for Lambda functions and Step Function."""
+        stack = pulumi.get_stack()
+
+        # Lambda alarms for list_place_ids
+        MetricAlarm(
+            f"{self._name}-list-place-ids-timeout-alarm",
+            alarm_description=f"Lambda {self._name}-list-place-ids approaching timeout",
+            metric_name="Duration",
+            namespace="AWS/Lambda",
+            statistic="Maximum",
+            period=300,  # 5 minutes
+            evaluation_periods=1,
+            threshold=list_place_ids_lambda.timeout.apply(
+                lambda t: t * 1000 * 0.8
+            ),  # 80% of timeout in ms
+            comparison_operator="GreaterThanThreshold",
+            dimensions={"FunctionName": list_place_ids_lambda.name},
+            treat_missing_data="notBreaching",
+            tags={"environment": stack},
+            opts=ResourceOptions(parent=self) if opts is None else opts,
+        )
+
+        MetricAlarm(
+            f"{self._name}-list-place-ids-error-alarm",
+            alarm_description=f"Lambda {self._name}-list-place-ids high error rate",
+            metric_name="Errors",
+            namespace="AWS/Lambda",
+            statistic="Sum",
+            period=300,  # 5 minutes
+            evaluation_periods=2,
+            threshold=1,  # Any error
+            comparison_operator="GreaterThanOrEqualToThreshold",
+            dimensions={"FunctionName": list_place_ids_lambda.name},
+            treat_missing_data="notBreaching",
+            tags={"environment": stack},
+            opts=ResourceOptions(parent=self) if opts is None else opts,
+        )
+
+        MetricAlarm(
+            f"{self._name}-list-place-ids-throttle-alarm",
+            alarm_description=f"Lambda {self._name}-list-place-ids being throttled",
+            metric_name="Throttles",
+            namespace="AWS/Lambda",
+            statistic="Sum",
+            period=300,  # 5 minutes
+            evaluation_periods=1,
+            threshold=1,  # Any throttling
+            comparison_operator="GreaterThanOrEqualToThreshold",
+            dimensions={"FunctionName": list_place_ids_lambda.name},
+            treat_missing_data="notBreaching",
+            tags={"environment": stack},
+            opts=ResourceOptions(parent=self) if opts is None else opts,
+        )
+
+        # Lambda alarms for harmonize_metadata
+        MetricAlarm(
+            f"{self._name}-harmonize-timeout-alarm",
+            alarm_description=f"Lambda {self._name}-harmonize-metadata approaching timeout",
+            metric_name="Duration",
+            namespace="AWS/Lambda",
+            statistic="Maximum",
+            period=300,  # 5 minutes
+            evaluation_periods=1,
+            threshold=harmonize_metadata_lambda.timeout.apply(
+                lambda t: t * 1000 * 0.8
+            ),  # 80% of timeout in ms
+            comparison_operator="GreaterThanThreshold",
+            dimensions={"FunctionName": harmonize_metadata_lambda.name},
+            treat_missing_data="notBreaching",
+            tags={"environment": stack},
+            opts=ResourceOptions(parent=self) if opts is None else opts,
+        )
+
+        MetricAlarm(
+            f"{self._name}-harmonize-error-alarm",
+            alarm_description=f"Lambda {self._name}-harmonize-metadata high error rate",
+            metric_name="Errors",
+            namespace="AWS/Lambda",
+            statistic="Sum",
+            period=300,  # 5 minutes
+            evaluation_periods=2,
+            threshold=1,  # Any error
+            comparison_operator="GreaterThanOrEqualToThreshold",
+            dimensions={"FunctionName": harmonize_metadata_lambda.name},
+            treat_missing_data="notBreaching",
+            tags={"environment": stack},
+            opts=ResourceOptions(parent=self) if opts is None else opts,
+        )
+
+        MetricAlarm(
+            f"{self._name}-harmonize-throttle-alarm",
+            alarm_description=f"Lambda {self._name}-harmonize-metadata being throttled",
+            metric_name="Throttles",
+            namespace="AWS/Lambda",
+            statistic="Sum",
+            period=300,  # 5 minutes
+            evaluation_periods=1,
+            threshold=1,  # Any throttling
+            comparison_operator="GreaterThanOrEqualToThreshold",
+            dimensions={"FunctionName": harmonize_metadata_lambda.name},
+            treat_missing_data="notBreaching",
+            tags={"environment": stack},
+            opts=ResourceOptions(parent=self) if opts is None else opts,
+        )
+
+        # Step Function execution failure alarm
+        MetricAlarm(
+            f"{self._name}-sf-execution-failure-alarm",
+            alarm_description=f"Step Function {self._name}-sf execution failures",
+            metric_name="ExecutionsFailed",
+            namespace="AWS/States",
+            statistic="Sum",
+            period=300,  # 5 minutes
+            evaluation_periods=1,
+            threshold=1,  # Any failure
+            comparison_operator="GreaterThanOrEqualToThreshold",
+            dimensions={"StateMachineArn": self.state_machine.arn},
+            treat_missing_data="notBreaching",
+            tags={"environment": stack},
+            opts=ResourceOptions(parent=self) if opts is None else opts,
+        )
+
+        # Step Function execution timeout alarm (30 minutes)
+        MetricAlarm(
+            f"{self._name}-sf-execution-timeout-alarm",
+            alarm_description=f"Step Function {self._name}-sf execution timeouts",
+            metric_name="ExecutionTime",
+            namespace="AWS/States",
+            statistic="Maximum",
+            period=300,  # 5 minutes
+            evaluation_periods=1,
+            threshold=1800000,  # 30 minutes in milliseconds
+            comparison_operator="GreaterThanThreshold",
+            dimensions={"StateMachineArn": self.state_machine.arn},
+            treat_missing_data="notBreaching",
+            tags={"environment": stack},
+            opts=ResourceOptions(parent=self) if opts is None else opts,
         )
 
     def _create_step_function_definition(

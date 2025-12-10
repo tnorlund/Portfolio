@@ -1,4 +1,4 @@
-"""EMF (Embedded Metrics Format) utility for label_harmonizer Lambda functions.
+"""EMF (Embedded Metrics Format) utility for metadata_harmonizer Lambda functions.
 
 Uses AWS Embedded Metric Format to send metrics via CloudWatch Logs instead of
 individual PutMetricData API calls. This reduces costs by ~99.9%.
@@ -12,16 +12,17 @@ Usage:
 
     # Collect metrics during processing
     metrics = {
-        "OutliersDetected": 5,
-        "LabelsProcessed": 100,
+        "PlaceIdsProcessed": 5,
+        "GroupsProcessed": 10,
+        "ReceiptsUpdated": 50,
         "ProcessingTimeSeconds": 45.2,
     }
 
     # Emit ONE log line at the end (CloudWatch parses automatically)
     emf_metrics.log_metrics(
         metrics=metrics,
-        dimensions={"LabelType": "GRAND_TOTAL"},
-        properties={"merchant_name": "Sprouts", "batch_file": "..."}
+        dimensions={"Status": "success"},
+        properties={"execution_id": "abc123", "dry_run": False}
     )
 """
 
@@ -43,14 +44,16 @@ class EmbeddedMetricsFormatter:
     - Same CloudWatch Metrics dashboard visibility
     """
 
-    def __init__(self, namespace: str = "LabelHarmonizer"):
+    def __init__(self, namespace: str = "MetadataHarmonizer"):
         """Initialize EMF formatter.
 
         Args:
             namespace: CloudWatch namespace for metrics
         """
         self.namespace = namespace
-        self.enabled = os.environ.get("ENABLE_METRICS", "true").lower() == "true"
+        self.enabled = (
+            os.environ.get("ENABLE_METRICS", "true").lower() == "true"
+        )
 
     def create_metric_log(
         self,
@@ -77,7 +80,9 @@ class EmbeddedMetricsFormatter:
 
         emf_log = {
             "_aws": {
-                "Timestamp": int(time.time() * 1000),  # EMF expects milliseconds
+                "Timestamp": int(
+                    time.time() * 1000
+                ),  # EMF expects milliseconds
                 "CloudWatchMetrics": [
                     {
                         "Namespace": self.namespace,
@@ -134,11 +139,12 @@ class EmbeddedMetricsFormatter:
         if not self.enabled:
             return
 
-        emf_log = self.create_metric_log(metrics, dimensions, properties, units)
+        emf_log = self.create_metric_log(
+            metrics, dimensions, properties, units
+        )
         if emf_log:
             print(emf_log, flush=True)
 
 
 # Global EMF metrics formatter instance
 emf_metrics = EmbeddedMetricsFormatter()
-

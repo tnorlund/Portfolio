@@ -78,3 +78,4 @@ The container Lambda requires:
 - LangSmith: Traces for each agent invocation (if enabled)
 - EMF Metrics: PlaceIdsProcessed, GroupsProcessed, ReceiptsUpdated, ProcessingTimeSeconds
 
+

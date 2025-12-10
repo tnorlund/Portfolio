@@ -56,6 +56,14 @@ def flush_langsmith_traces():
     Must be called before Lambda returns to prevent traces from getting
     stuck as "pending" in LangSmith. Lambda freezes/terminates background
     threads after returning, so we must explicitly flush.
+
+    Note: Multipart upload errors ("multipart: NextPart: EOF") are non-fatal
+    and can occur when:
+    - Traces are very large (long-running Lambdas with many agent interactions)
+    - Lambda shutdown interrupts the multipart upload
+    - Network issues during upload
+
+    These errors are logged at DEBUG level since they don't affect Lambda execution.
     """
     if HAS_LANGSMITH and get_langsmith_client:
         try:
@@ -63,7 +71,24 @@ def flush_langsmith_traces():
             client.flush()
             logger.info("LangSmith traces flushed successfully")
         except Exception as e:
-            logger.warning(f"Failed to flush LangSmith traces: {e}")
+            error_str = str(e)
+            # Suppress multipart EOF errors - these are non-fatal and common
+            # for long-running Lambdas with large traces. The error occurs when
+            # Lambda shutdown interrupts the multipart upload, but this doesn't
+            # affect the Lambda's execution or results.
+            if "multipart" in error_str.lower() and (
+                "eof" in error_str.lower() or "nextpart" in error_str.lower()
+            ):
+                logger.debug(
+                    "LangSmith multipart upload error (non-fatal): %s. "
+                    "Large traces may not upload completely before Lambda shutdown. "
+                    "This is expected for long-running executions and does not affect results.",
+                    error_str[:200],  # Truncate long error messages
+                )
+            else:
+                logger.warning(
+                    "Failed to flush LangSmith traces: %s", error_str
+                )
 
 
 logger = logging.getLogger()
@@ -105,9 +130,25 @@ async def process_place_id_batch(
         places_client=places_client,
     )
 
-    # Load all receipts (this groups them by place_id)
-    total_receipts = harmonizer.load_all_receipts()
-    logger.info(f"Loaded {total_receipts} receipts from DynamoDB")
+    # Extract base place_ids (handle sub-batches like "place_id:sub_batch_idx")
+    base_place_ids = set()
+    for place_id_input in place_ids:
+        if ":" in place_id_input:
+            parts = place_id_input.split(":", 1)
+            if len(parts) == 2:
+                base_place_ids.add(parts[0])
+            else:
+                base_place_ids.add(place_id_input)
+        else:
+            base_place_ids.add(place_id_input)
+
+    # Load only receipts for the place_ids in this batch (much more efficient)
+    total_receipts = harmonizer.load_receipts_for_place_ids(
+        list(base_place_ids)
+    )
+    logger.info(
+        f"Loaded {total_receipts} receipts from DynamoDB for {len(base_place_ids)} place_id(s)"
+    )
 
     # Filter to only process the place_ids in this batch
     # The harmonizer has already loaded all receipts, so we need to filter
@@ -256,6 +297,16 @@ async def process_place_id_batch(
     receipts_updated = 0
     total_receipts_in_batch = 0
 
+    # API usage metrics (matching pattern from label-validation-agent)
+    llm_calls_total = 0
+    llm_calls_successful = 0
+    llm_calls_failed = 0
+    server_errors = 0  # 5xx errors
+    retry_attempts = 0
+    timeout_errors = 0
+    rate_limit_errors = 0
+    circuit_breaker_triggers = 0
+
     for group in groups_to_process:
         total_receipts_in_batch += len(group.receipts)
 
@@ -276,6 +327,11 @@ async def process_place_id_batch(
         )
 
         try:
+            # Estimate LLM calls: 1 base call + tools used (rough estimate)
+            # The agent may make multiple calls, but we'll track at the group level
+            estimated_llm_calls = 1  # Base agent call
+            llm_calls_total += estimated_llm_calls
+
             agent_result = await run_harmonizer_agent(
                 graph=agent_graph,
                 state_holder=agent_state_holder,
@@ -283,6 +339,9 @@ async def process_place_id_batch(
                 receipts=receipts_data,
                 places_api=places_client,
             )
+
+            # Track successful call
+            llm_calls_successful += estimated_llm_calls
 
             receipts_needing_update = agent_result.get(
                 "receipts_needing_update", 0
@@ -310,13 +369,43 @@ async def process_place_id_batch(
             )
 
         except Exception as e:
+            error_str = str(e)
             logger.error(f"Error processing place_id {group.place_id}: {e}")
+
+            # Track failed LLM call
+            llm_calls_total += 1
+            llm_calls_failed += 1
+
+            # Track error types (matching pattern from label-validation-agent)
+            is_rate_limit = (
+                "429" in error_str
+                or "rate limit" in error_str.lower()
+                or "rate_limit" in error_str.lower()
+                or "too many concurrent requests" in error_str.lower()
+                or "too many requests" in error_str.lower()
+                or "OllamaRateLimitError" in error_str
+            )
+
+            if is_rate_limit:
+                rate_limit_errors += 1
+
+            # Track server errors (5xx)
+            if any(code in error_str for code in ["500", "502", "503", "504"]):
+                server_errors += 1
+
+            # Track timeout errors
+            if (
+                "timeout" in error_str.lower()
+                or "timed out" in error_str.lower()
+            ):
+                timeout_errors += 1
+
             results.append(
                 {
                     "place_id": group.place_id,
                     "receipts_processed": len(group.receipts),
                     "receipts_needing_update": 0,
-                    "error": str(e),
+                    "error": error_str,
                 }
             )
 
@@ -360,29 +449,38 @@ async def process_place_id_batch(
                             updates_failed += 1
                             continue
 
-                        # Update fields based on canonical values
+                        # TODO: DEPRECATION - Update base fields instead of canonical fields
+                        # See docs/architecture/CANONICAL_FIELDS_DEPRECATION.md
+                        # Currently updating canonical fields for backward compatibility,
+                        # but the goal is to remove canonical fields entirely.
+                        # The harmonizer determines canonical values for the place_id group
+                        # These should be written to base fields (merchant_name, address, phone_number)
+                        # instead of canonical fields.
                         updated_fields = []
                         if (
                             canonical_merchant_name
-                            and metadata.merchant_name
+                            and metadata.canonical_merchant_name
                             != canonical_merchant_name
                         ):
-                            metadata.merchant_name = canonical_merchant_name
-                            updated_fields.append("merchant_name")
+                            metadata.canonical_merchant_name = (
+                                canonical_merchant_name
+                            )
+                            updated_fields.append("canonical_merchant_name")
 
                         if (
                             canonical_address
-                            and metadata.address != canonical_address
+                            and metadata.canonical_address != canonical_address
                         ):
-                            metadata.address = canonical_address
-                            updated_fields.append("address")
+                            metadata.canonical_address = canonical_address
+                            updated_fields.append("canonical_address")
 
                         if (
                             canonical_phone
-                            and metadata.phone_number != canonical_phone
+                            and metadata.canonical_phone_number
+                            != canonical_phone
                         ):
-                            metadata.phone_number = canonical_phone
-                            updated_fields.append("phone_number")
+                            metadata.canonical_phone_number = canonical_phone
+                            updated_fields.append("canonical_phone_number")
 
                         if updated_fields:
                             dynamo_client.update_receipt_metadata(metadata)
@@ -533,6 +631,17 @@ async def process_place_id_batch(
                 if r.get("receipts_needing_update", 0) > 0
             ),
         },
+        # API usage metrics (matching label-validation-agent)
+        "api_metrics": {
+            "llm_calls_total": llm_calls_total,
+            "llm_calls_successful": llm_calls_successful,
+            "llm_calls_failed": llm_calls_failed,
+            "rate_limit_errors": rate_limit_errors,
+            "server_errors": server_errors,
+            "retry_attempts": retry_attempts,  # Step Function handles retries
+            "circuit_breaker_triggers": circuit_breaker_triggers,
+            "timeout_errors": timeout_errors,
+        },
     }
 
 
@@ -634,18 +743,41 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
 
         processing_time = time.time() - start_time
 
-        # Emit metrics
+        # Extract API metrics from result
+        api_metrics = result.get("api_metrics", {})
+
+        # Emit metrics (matching pattern from label-validation-agent)
         emf_metrics.log_metrics(
             metrics={
                 "PlaceIdsProcessed": len(place_ids),
                 "GroupsProcessed": result.get("groups_processed", 0),
+                "ReceiptsProcessed": result.get("total_receipts", 0),
                 "ReceiptsUpdated": result.get("receipts_updated", 0),
-                "ProcessingTimeSeconds": processing_time,
+                "ReceiptsFailed": result.get("receipts_failed", 0),
+                "ProcessingTimeSeconds": round(processing_time, 2),
+                "BatchSucceeded": 1,
+                "BatchFailed": 0,
+                # API usage metrics (matching label-validation-agent)
+                "LLMCallsTotal": api_metrics.get("llm_calls_total", 0),
+                "LLMCallsSuccessful": api_metrics.get(
+                    "llm_calls_successful", 0
+                ),
+                "LLMCallsFailed": api_metrics.get("llm_calls_failed", 0),
+                "RateLimitErrors": api_metrics.get("rate_limit_errors", 0),
+                "ServerErrors": api_metrics.get("server_errors", 0),
+                "RetryAttempts": api_metrics.get("retry_attempts", 0),
+                "CircuitBreakerTriggers": api_metrics.get(
+                    "circuit_breaker_triggers", 0
+                ),
+                "TimeoutErrors": api_metrics.get("timeout_errors", 0),
             },
             dimensions={"Status": result.get("status", "unknown")},
             properties={
                 "execution_id": execution_id,
                 "dry_run": dry_run,
+            },
+            units={
+                "ProcessingTimeSeconds": "Seconds",
             },
         )
 
@@ -661,6 +793,41 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
         return result
 
     except Exception as e:
+        processing_time = time.time() - start_time
         logger.error(f"Error processing batch: {e}", exc_info=True)
+
+        # Emit failure metrics (matching pattern from label-validation-agent)
+        error_str = str(e)
+        emf_metrics.log_metrics(
+            metrics={
+                "PlaceIdsProcessed": len(place_ids),
+                "GroupsProcessed": 0,
+                "ReceiptsProcessed": 0,
+                "ReceiptsUpdated": 0,
+                "ReceiptsFailed": 0,
+                "ProcessingTimeSeconds": round(processing_time, 2),
+                "BatchSucceeded": 0,
+                "BatchFailed": 1,
+                # API usage metrics (default to 0 on error)
+                "LLMCallsTotal": 0,
+                "LLMCallsSuccessful": 0,
+                "LLMCallsFailed": 0,
+                "RateLimitErrors": 0,
+                "ServerErrors": 0,
+                "RetryAttempts": 0,
+                "CircuitBreakerTriggers": 0,
+                "TimeoutErrors": 0,
+            },
+            dimensions={"Status": "error"},
+            properties={
+                "execution_id": execution_id,
+                "dry_run": dry_run,
+                "error": error_str,
+            },
+            units={
+                "ProcessingTimeSeconds": "Seconds",
+            },
+        )
+
         flush_langsmith_traces()
         raise
