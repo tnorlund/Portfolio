@@ -33,6 +33,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import time
 from typing import Any, Dict, List, Optional
 
@@ -129,6 +130,37 @@ async def process_place_id_batch(
         dynamo_client=dynamo_client,
         places_client=places_client,
     )
+
+    def sanitize_canonical_address(
+        address: Optional[str], previous_value: Optional[str] = None
+    ) -> Optional[str]:
+        """
+        Ensure canonical_address is a clean postal address (no reasoning/commentary).
+
+        Returns a sanitized address or previous_value (to avoid overwriting with bad
+        data). If nothing can be salvaged, returns None.
+        """
+        if not address:
+            return previous_value
+
+        cleaned = address.strip().strip('"')
+        lower = cleaned.lower()
+
+        # Reject addresses that clearly contain reasoning/commentary
+        bad_markers = [
+            "?",
+            "actually need",
+            "lind0",  # observed typo injected with reasoning
+        ]
+        if any(marker in lower for marker in bad_markers):
+            return previous_value
+
+        # Fix malformed ZIPs like 913001 → 91301 (truncate extra trailing digits)
+        # Keep formatting (spaces/commas) intact; only trim a trailing 6+ digit run
+        # Pattern: find 5 digits followed by 1-2 extra digits at the end (before non-digits)
+        cleaned = re.sub(r"(\d{5})(\d{1,2})(?=\D*$)", r"\1", cleaned)
+
+        return cleaned
 
     # Extract base place_ids (handle sub-batches like "place_id:sub_batch_idx")
     base_place_ids = set()
@@ -423,7 +455,9 @@ async def process_place_id_batch(
                 continue
 
             canonical_merchant_name = result.get("canonical_merchant_name")
-            canonical_address = result.get("canonical_address")
+            canonical_address = sanitize_canonical_address(
+                result.get("canonical_address")
+            )
             canonical_phone = result.get("canonical_phone")
             updates = result.get("updates", [])
 
@@ -467,11 +501,14 @@ async def process_place_id_batch(
                             )
                             updated_fields.append("canonical_merchant_name")
 
+                        sanitized_address = sanitize_canonical_address(
+                            canonical_address, metadata.canonical_address
+                        )
                         if (
-                            canonical_address
-                            and metadata.canonical_address != canonical_address
+                            sanitized_address
+                            and metadata.canonical_address != sanitized_address
                         ):
-                            metadata.canonical_address = canonical_address
+                            metadata.canonical_address = sanitized_address
                             updated_fields.append("canonical_address")
 
                         if (
@@ -532,11 +569,14 @@ async def process_place_id_batch(
                             metadata.merchant_name = canonical_merchant_name
                             updated_fields.append("merchant_name")
 
+                        sanitized_address = sanitize_canonical_address(
+                            canonical_address, metadata.address
+                        )
                         if (
-                            canonical_address
-                            and metadata.address != canonical_address
+                            sanitized_address
+                            and metadata.address != sanitized_address
                         ):
-                            metadata.address = canonical_address
+                            metadata.address = sanitized_address
                             updated_fields.append("address")
 
                         if (
