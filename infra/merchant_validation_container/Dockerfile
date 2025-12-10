@@ -1,3 +1,4 @@
+# syntax=public.ecr.aws/docker/library/dockerfile:1
 FROM public.ecr.aws/lambda/python:3.12
 
 # Install system dependencies for ChromaDB and other packages
