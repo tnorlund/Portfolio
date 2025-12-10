@@ -8,7 +8,15 @@ from receipt_dynamo.entities import ReceiptLine
 
 
 def _sorted_lines(lines: Iterable[ReceiptLine]) -> list[ReceiptLine]:
-    return sorted(lines, key=lambda line: line.calculate_centroid()[1])
+    """
+    Sort lines by Y coordinate in descending order (top to bottom).
+
+    In OCR coordinate system, y=0 is at the bottom and y=1 is at the top.
+    To display top-to-bottom, we need to sort by descending Y (larger y first).
+    """
+    return sorted(
+        lines, key=lambda line: line.calculate_centroid()[1], reverse=True
+    )
 
 
 def format_receipt_text_receipt_space(
