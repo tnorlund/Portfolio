@@ -8,19 +8,20 @@ text against canonical metadata to identify outliers.
 
 import logging
 import os
-import random
-import time
 from typing import TYPE_CHECKING, Annotated, Any, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.tools import tool
-from langchain_ollama import ChatOllama
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel, Field
 
 from receipt_agent.config.settings import Settings, get_settings
+from receipt_agent.utils.agent_common import (
+    create_agent_node_with_retry,
+    create_ollama_llm,
+)
 from receipt_agent.utils.receipt_text import format_receipt_text_receipt_space
 
 if TYPE_CHECKING:
@@ -1133,138 +1134,15 @@ def create_cove_text_consistency_graph(
         receipts=receipts,
     )
 
-    # Create LLM with tools bound
-    api_key = settings.ollama_api_key.get_secret_value()
-    llm = ChatOllama(
-        base_url=settings.ollama_base_url,
-        model=settings.ollama_model,
-        client_kwargs={
-            "headers": (
-                {"Authorization": f"Bearer {api_key}"} if api_key else {}
-            ),
-            "timeout": 120,
-        },
-        temperature=0.0,
-    ).bind_tools(tools)
+    # Create LLM with tools bound using shared utility
+    llm = create_ollama_llm(settings=settings, temperature=0.0)
+    llm = llm.bind_tools(tools)
 
-    # Define the agent node with retry logic
-    def agent_node(state: CoveTextConsistencyState) -> dict:
-        """Call the LLM to decide next action with retry logic for transient errors."""
-        messages = state.messages
-
-        # Retry logic following Ollama/LangGraph best practices
-        # Increased to 5 retries for better resilience against transient network issues
-        max_retries = 5
-        base_delay = 2.0  # Base delay in seconds (exponential backoff)
-        last_error = None
-
-        for attempt in range(max_retries):
-            try:
-                response = llm.invoke(messages)
-
-                if hasattr(response, "tool_calls") and response.tool_calls:
-                    logger.debug(
-                        f"CoVe agent tool calls: {[tc['name'] for tc in response.tool_calls]}"
-                    )
-
-                return {"messages": [response]}
-
-            except Exception as e:
-                last_error = e
-                error_str = str(e)
-
-                # Check if this is a rate limit (429) - fail fast, don't retry
-                is_rate_limit = (
-                    "429" in error_str
-                    or "rate limit" in error_str.lower()
-                    or "rate_limit" in error_str.lower()
-                    or "too many concurrent requests" in error_str.lower()
-                    or "too many requests" in error_str.lower()
-                )
-
-                if is_rate_limit:
-                    logger.warning(
-                        f"Rate limit detected in CoVe agent (attempt {attempt + 1}): {error_str[:200]}. "
-                        f"Failing immediately to trigger circuit breaker."
-                    )
-                    # Re-raise rate limit errors immediately (don't retry)
-                    raise RuntimeError(
-                        f"Rate limit error in CoVe agent: {error_str}"
-                    ) from e
-
-                # Check for connection errors (status code -1, network issues, DNS failures)
-                # These are often transient and should be retried
-                is_connection_error = (
-                    "status code: -1" in error_str
-                    or "status_code" in error_str
-                    and "-1" in error_str
-                    or (
-                        "connection" in error_str.lower()
-                        and (
-                            "refused" in error_str.lower()
-                            or "reset" in error_str.lower()
-                            or "failed" in error_str.lower()
-                            or "error" in error_str.lower()
-                        )
-                    )
-                    or "dns" in error_str.lower()
-                    or "name resolution" in error_str.lower()
-                    or (
-                        "network" in error_str.lower()
-                        and "unreachable" in error_str.lower()
-                    )
-                )
-
-                # For other retryable errors, use exponential backoff
-                # 500/502/503 are server errors that may be transient
-                # Connection errors are also retryable
-                is_retryable = (
-                    is_connection_error
-                    or "500" in error_str
-                    or "502" in error_str
-                    or "503" in error_str
-                    or "504" in error_str
-                    or "Internal Server Error" in error_str
-                    or "internal server error" in error_str.lower()
-                    or "service unavailable" in error_str.lower()
-                    or "timeout" in error_str.lower()
-                    or "timed out" in error_str.lower()
-                )
-
-                if is_retryable and attempt < max_retries - 1:
-                    # Exponential backoff with jitter to prevent thundering herd
-                    # attempt 0: 2-4s, attempt 1: 4-8s, attempt 2: 8-16s, attempt 3: 16-32s, attempt 4: 32-64s
-                    jitter = random.uniform(0, base_delay)
-                    wait_time = (base_delay * (2**attempt)) + jitter
-                    # Cap max wait time at 30 seconds to avoid excessive delays
-                    wait_time = min(wait_time, 30.0)
-
-                    error_type = (
-                        "connection" if is_connection_error else "server"
-                    )
-                    logger.warning(
-                        f"Ollama {error_type} error in CoVe agent "
-                        f"(attempt {attempt + 1}/{max_retries}): {error_str[:200]}. "
-                        f"Retrying in {wait_time:.1f}s..."
-                    )
-                    # Note: This is a sync function executed in a thread pool by LangGraph
-                    # Using time.sleep is appropriate here
-                    time.sleep(wait_time)
-                    continue
-                else:
-                    # Not retryable or max retries reached
-                    if attempt >= max_retries - 1:
-                        logger.error(
-                            f"Ollama LLM call failed after {max_retries} attempts in CoVe agent: {error_str}"
-                        )
-                    raise RuntimeError(
-                        f"Failed to get LLM response in CoVe agent: {error_str}"
-                    ) from e
-
-        # Should never reach here, but just in case
-        raise RuntimeError(
-            f"Unexpected error: Failed to get LLM response in CoVe agent"
-        ) from last_error
+    # Create agent node with retry logic using shared utility
+    agent_node = create_agent_node_with_retry(
+        llm=llm,
+        agent_name="cove",
+    )
 
     # Define tool node
     tool_node = ToolNode(tools)

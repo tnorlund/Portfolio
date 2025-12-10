@@ -26,20 +26,28 @@ The agent can reason about these cases and make smarter decisions.
 import asyncio
 import logging
 import os
-import random
 import re
-import time
 from typing import TYPE_CHECKING, Annotated, Any, Callable, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.tools import tool
-from langchain_ollama import ChatOllama
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel, Field
 
 from receipt_agent.config.settings import Settings, get_settings
+from receipt_agent.utils.address_validation import (
+    is_address_like,
+    is_clean_address,
+)
+from receipt_agent.utils.agent_common import (
+    create_agent_node_with_retry,
+    create_ollama_llm,
+)
+from receipt_agent.utils.receipt_fetching import (
+    fetch_receipt_details_with_fallback,
+)
 from receipt_agent.utils.receipt_text import format_receipt_text_receipt_space
 
 if TYPE_CHECKING:
@@ -212,152 +220,8 @@ Begin by getting the group summary, then validate with Google Places."""
 # ==============================================================================
 
 
-def _fetch_receipt_details_fallback(
-    dynamo_client: "DynamoClient", image_id: str, receipt_id: int
-) -> Optional[Any]:
-    """
-    Fallback method to fetch receipt details using alternative queries.
-
-    If get_receipt_details() fails, try to fetch receipt, lines, and words
-    separately and construct ReceiptDetails.
-
-    Args:
-        dynamo_client: DynamoDB client
-        image_id: Image ID (may have trailing characters like '?')
-        receipt_id: Receipt ID
-
-    Returns:
-        ReceiptDetails if successful, None otherwise
-    """
-    try:
-        from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
-        from receipt_dynamo.entities.receipt_details import ReceiptDetails
-
-        # Sanitize image_id - remove trailing whitespace and special characters
-        # Some image_ids may have trailing '?' or other characters
-        sanitized_image_id = image_id.rstrip("? \t\n\r")
-
-        # Try sanitized version first, then original if different
-        image_ids_to_try = [sanitized_image_id]
-        if sanitized_image_id != image_id:
-            image_ids_to_try.append(image_id)
-            logger.debug(
-                f"Sanitized image_id '{image_id}' to '{sanitized_image_id}'"
-            )
-
-        # Try to get receipt entity
-        receipt = None
-        for img_id in image_ids_to_try:
-            try:
-                receipt = dynamo_client.get_receipt(img_id, receipt_id)
-                if receipt:
-                    # Use the working image_id for subsequent queries
-                    image_id = img_id
-                    break
-            except EntityNotFoundError:
-                continue
-            except Exception as e:
-                logger.debug(
-                    f"Error fetching receipt for {img_id}#{receipt_id}: {e}"
-                )
-                continue
-
-        # If we found receipt with sanitized ID, use that for subsequent queries
-        if receipt:
-            image_id = sanitized_image_id
-
-        # Try to fetch lines and words directly (they might exist even if receipt doesn't)
-        lines = []
-        words = []
-
-        # Try both sanitized and original image_id for lines/words
-        for img_id in image_ids_to_try:
-            if lines and words:
-                break  # Already found both
-
-            if not lines:
-                try:
-                    lines = dynamo_client.list_receipt_lines_from_receipt(
-                        img_id, receipt_id
-                    )
-                    if lines:
-                        image_id = img_id  # Use working image_id
-                        logger.debug(
-                            f"Fetched {len(lines)} lines for {img_id}#{receipt_id} via fallback"
-                        )
-                except Exception as e:
-                    logger.debug(
-                        f"Could not fetch lines for {img_id}#{receipt_id}: {e}"
-                    )
-
-            if not words:
-                try:
-                    words = dynamo_client.list_receipt_words_from_receipt(
-                        img_id, receipt_id
-                    )
-                    if words:
-                        image_id = img_id  # Use working image_id
-                        logger.debug(
-                            f"Fetched {len(words)} words for {img_id}#{receipt_id} via fallback"
-                        )
-                except Exception as e:
-                    logger.debug(
-                        f"Could not fetch words for {img_id}#{receipt_id}: {e}"
-                    )
-
-        # If we have lines or words, we can still work with them
-        if lines or words:
-            if receipt:
-                # Full ReceiptDetails with receipt entity
-                return ReceiptDetails(
-                    receipt=receipt,
-                    lines=lines,
-                    words=words,
-                    letters=[],
-                    labels=[],
-                )
-            else:
-                # We have lines/words but no receipt entity
-                # Create a minimal receipt object from metadata if available
-                # For now, we'll need the receipt entity, so try one more time
-                # or create a minimal one
-                logger.info(
-                    f"Found {len(lines)} lines and {len(words)} words for {image_id}#{receipt_id} "
-                    f"but no receipt entity. Attempting to create minimal receipt..."
-                )
-                # Try to get receipt one more time using get_receipt (with sanitized ID)
-                try:
-                    receipt = dynamo_client.get_receipt(
-                        sanitized_image_id, receipt_id
-                    )
-                    if receipt:
-                        image_id = sanitized_image_id  # Use sanitized version
-                        return ReceiptDetails(
-                            receipt=receipt,
-                            lines=lines,
-                            words=words,
-                            letters=[],
-                            labels=[],
-                        )
-                except Exception as e:
-                    logger.debug(
-                        f"Could not fetch receipt entity via get_receipt: {e}"
-                    )
-
-                # If we still don't have receipt, we can't create ReceiptDetails
-                # But we can work with lines/words directly in the tools
-                logger.warning(
-                    f"Found lines/words for {image_id}#{receipt_id} but no receipt entity. "
-                    f"Tools will work with lines/words only."
-                )
-                # Return None - tools will handle this case
-                return None
-
-        return None
-
-    except Exception as e:
-        logger.debug(f"Fallback fetch failed for {image_id}#{receipt_id}: {e}")
-        return None
+# Use shared utility instead of local function
+_fetch_receipt_details_fallback = fetch_receipt_details_with_fallback
 
 
 # ==============================================================================
@@ -1135,7 +999,7 @@ Use this information to make your harmonization decision."""
             )
 
             # Check if name looks like an address
-            is_address_like = _is_address_like(name)
+            is_address_like_result = is_address_like(name)
 
             return {
                 "place_id": place_id,
@@ -1227,7 +1091,7 @@ Use this information to make your harmonization decision."""
                     ]
                 ):
                     continue
-                if _is_address_like(name):
+                if is_address_like(name):
                     continue
 
                 businesses.append(
@@ -1782,19 +1646,7 @@ Use this information to make your harmonization decision."""
             source: Where the values came from ('google_places', 'receipt_consensus', 'manual_selection')
         """
 
-        def _is_clean_address(address: str) -> bool:
-            if not address:
-                return True
-            lower = address.lower()
-            # Reject if contains reasoning/commentary
-            if "?" in address or "actually need" in lower or "lind0" in lower:
-                return False
-            # Reject obviously malformed ZIPs (6+ consecutive digits)
-            if re.search(r"\d{6,}", address.replace(" ", "")):
-                return False
-            return True
-
-        if canonical_address and not _is_clean_address(canonical_address):
+        if canonical_address and not is_clean_address(canonical_address):
             return {
                 "error": (
                     "canonical_address must be a clean address (no reasoning/commentary). "
@@ -1888,40 +1740,8 @@ Use this information to make your harmonization decision."""
     return tools, state
 
 
-def _is_address_like(name: Optional[str]) -> bool:
-    """Check if a name looks like an address rather than a business name."""
-    if not name:
-        return False
-
-    name_lower = name.lower().strip()
-
-    # Check if it starts with a number
-    if name_lower and name_lower[0].isdigit():
-        street_indicators = [
-            "st",
-            "street",
-            "ave",
-            "avenue",
-            "blvd",
-            "boulevard",
-            "rd",
-            "road",
-            "dr",
-            "drive",
-            "ln",
-            "lane",
-            "way",
-            "ct",
-            "court",
-            "pl",
-            "place",
-            "cir",
-            "circle",
-        ]
-        if any(indicator in name_lower for indicator in street_indicators):
-            return True
-
-    return False
+# Use shared utility instead of local function
+# _is_address_like is now imported from receipt_agent.utils.address_validation
 
 
 # ==============================================================================
@@ -1965,138 +1785,15 @@ def create_harmonizer_graph(
         chromadb_bucket=chromadb_bucket,
     )
 
-    # Create LLM with tools
-    api_key = settings.ollama_api_key.get_secret_value()
-    llm = ChatOllama(
-        base_url=settings.ollama_base_url,
-        model=settings.ollama_model,
-        client_kwargs={
-            "headers": (
-                {"Authorization": f"Bearer {api_key}"} if api_key else {}
-            ),
-            "timeout": 120,
-        },
-        temperature=0.0,
-    ).bind_tools(tools)
+    # Create LLM with tools using shared utility
+    llm = create_ollama_llm(settings=settings, temperature=0.0)
+    llm = llm.bind_tools(tools)
 
-    # Define agent node with retry logic
-    def agent_node(state: HarmonizerAgentState) -> dict:
-        """Call the LLM to decide next action with retry logic for transient errors."""
-        messages = state.messages
-
-        # Retry logic following Ollama/LangGraph best practices
-        # Increased to 5 retries for better resilience against transient network issues
-        max_retries = 5
-        base_delay = 2.0  # Base delay in seconds (exponential backoff)
-        last_error = None
-
-        for attempt in range(max_retries):
-            try:
-                response = llm.invoke(messages)
-
-                if hasattr(response, "tool_calls") and response.tool_calls:
-                    logger.debug(
-                        f"Agent tool calls: {[tc['name'] for tc in response.tool_calls]}"
-                    )
-
-                return {"messages": [response]}
-
-            except Exception as e:
-                last_error = e
-                error_str = str(e)
-
-                # Check if this is a rate limit (429) - fail fast, don't retry
-                is_rate_limit = (
-                    "429" in error_str
-                    or "rate limit" in error_str.lower()
-                    or "rate_limit" in error_str.lower()
-                    or "too many concurrent requests" in error_str.lower()
-                    or "too many requests" in error_str.lower()
-                )
-
-                if is_rate_limit:
-                    logger.warning(
-                        f"Rate limit detected in harmonizer agent (attempt {attempt + 1}): {error_str[:200]}. "
-                        f"Failing immediately to trigger circuit breaker."
-                    )
-                    # Re-raise rate limit errors immediately (don't retry)
-                    raise RuntimeError(
-                        f"Rate limit error in harmonizer agent: {error_str}"
-                    ) from e
-
-                # Check for connection errors (status code -1, network issues, DNS failures)
-                # These are often transient and should be retried
-                is_connection_error = (
-                    "status code: -1" in error_str
-                    or "status_code" in error_str
-                    and "-1" in error_str
-                    or (
-                        "connection" in error_str.lower()
-                        and (
-                            "refused" in error_str.lower()
-                            or "reset" in error_str.lower()
-                            or "failed" in error_str.lower()
-                            or "error" in error_str.lower()
-                        )
-                    )
-                    or "dns" in error_str.lower()
-                    or "name resolution" in error_str.lower()
-                    or (
-                        "network" in error_str.lower()
-                        and "unreachable" in error_str.lower()
-                    )
-                )
-
-                # For other retryable errors, use exponential backoff
-                # 500/502/503 are server errors that may be transient
-                # Connection errors are also retryable
-                is_retryable = (
-                    is_connection_error
-                    or "500" in error_str
-                    or "502" in error_str
-                    or "503" in error_str
-                    or "504" in error_str
-                    or "Internal Server Error" in error_str
-                    or "internal server error" in error_str.lower()
-                    or "service unavailable" in error_str.lower()
-                    or "timeout" in error_str.lower()
-                    or "timed out" in error_str.lower()
-                )
-
-                if is_retryable and attempt < max_retries - 1:
-                    # Exponential backoff with jitter to prevent thundering herd
-                    # attempt 0: 2-4s, attempt 1: 4-8s, attempt 2: 8-16s, attempt 3: 16-32s, attempt 4: 32-64s
-                    jitter = random.uniform(0, base_delay)
-                    wait_time = (base_delay * (2**attempt)) + jitter
-                    # Cap max wait time at 30 seconds to avoid excessive delays
-                    wait_time = min(wait_time, 30.0)
-
-                    error_type = (
-                        "connection" if is_connection_error else "server"
-                    )
-                    logger.warning(
-                        f"Ollama {error_type} error in harmonizer agent "
-                        f"(attempt {attempt + 1}/{max_retries}): {error_str[:200]}. "
-                        f"Retrying in {wait_time:.1f}s..."
-                    )
-                    # Note: This is a sync function executed in a thread pool by LangGraph
-                    # Using time.sleep is appropriate here
-                    time.sleep(wait_time)
-                    continue
-                else:
-                    # Not retryable or max retries reached
-                    if attempt >= max_retries - 1:
-                        logger.error(
-                            f"Ollama LLM call failed after {max_retries} attempts in harmonizer agent: {error_str}"
-                        )
-                    raise RuntimeError(
-                        f"Failed to get LLM response in harmonizer agent: {error_str}"
-                    ) from e
-
-        # Should never reach here, but just in case
-        raise RuntimeError(
-            f"Unexpected error: Failed to get LLM response in harmonizer agent"
-        ) from last_error
+    # Create agent node with retry logic using shared utility
+    agent_node = create_agent_node_with_retry(
+        llm=llm,
+        agent_name="harmonizer",
+    )
 
     # Tool node
     tool_node = ToolNode(tools)
