@@ -29,7 +29,7 @@ import os
 import random
 import re
 import time
-from typing import Annotated, Any, Callable, Optional
+from typing import TYPE_CHECKING, Annotated, Any, Callable, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.tools import tool
@@ -41,6 +41,9 @@ from pydantic import BaseModel, Field
 
 from receipt_agent.config.settings import Settings, get_settings
 from receipt_agent.utils.receipt_text import format_receipt_text_receipt_space
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data.dynamo_client import DynamoClient
 
 logger = logging.getLogger(__name__)
 
@@ -161,7 +164,13 @@ Your job is to:
 - **Prefer Google Places name** (official, correct spelling)
 - If Google returns an address, find the actual business name
 - Use proper case (Title Case preferred over ALL CAPS)
-- Never accept an address as a merchant name
+- **CRITICAL: NEVER use an address as a merchant name**
+  - Addresses contain street numbers, street names, city, state, ZIP codes
+  - Examples of addresses (NOT merchant names): "55 Fulton St", "123 Main Street", "101 S Westlake Blvd"
+  - If you see something like "55 Fulton Market" and it looks like it could be an address, verify it's actually a business name
+  - If Google Places returns an address as the name, use `find_businesses_at_address` to find the actual business
+  - Merchant names are business names like "Starbucks", "Target", "CVS Pharmacy", "Trader Joe's"
+  - If you're unsure, use `display_receipt_text` to see what's actually printed on the receipt
 
 ### Address
 - **Prefer Google Places address** (properly formatted)
@@ -204,7 +213,7 @@ Begin by getting the group summary, then validate with Google Places."""
 
 
 def _fetch_receipt_details_fallback(
-    dynamo_client: Any, image_id: str, receipt_id: int
+    dynamo_client: "DynamoClient", image_id: str, receipt_id: int
 ) -> Optional[Any]:
     """
     Fallback method to fetch receipt details using alternative queries.
@@ -221,8 +230,8 @@ def _fetch_receipt_details_fallback(
         ReceiptDetails if successful, None otherwise
     """
     try:
+        from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
         from receipt_dynamo.entities.receipt_details import ReceiptDetails
-        from receipt_dynamo.exceptions import EntityNotFoundError
 
         # Sanitize image_id - remove trailing whitespace and special characters
         # Some image_ids may have trailing '?' or other characters
@@ -357,7 +366,7 @@ def _fetch_receipt_details_fallback(
 
 
 def create_harmonizer_tools(
-    dynamo_client: Any,
+    dynamo_client: "DynamoClient",
     places_api: Optional[Any] = None,
     group_data: Optional[dict] = None,
     chroma_client: Optional[Any] = None,
@@ -1436,6 +1445,7 @@ Use this information to make your harmonization decision."""
                             embed_fn=embed_fn,
                             places_api=places_api,
                             settings=None,
+                            chromadb_bucket=chromadb_bucket,  # Pass bucket for lazy loading
                         )
 
                     # Get receipt details to pass to metadata finder
@@ -1694,8 +1704,12 @@ Use this information to make your harmonization decision."""
             if result.get("status") == "success":
                 cove_result = result.get("result", {})
                 outlier_count = cove_result.get("outlier_count", 0)
+                receipt_results_count = len(
+                    cove_result.get("receipt_results", [])
+                )
                 logger.info(
-                    f"CoVe check complete: {outlier_count}/{len(receipts)} outliers found"
+                    f"CoVe check complete: {outlier_count}/{receipt_results_count} outliers found "
+                    f"(expected {len(receipts)} receipts)"
                 )
                 return {
                     "status": "success",
@@ -1895,7 +1909,7 @@ def _is_address_like(name: Optional[str]) -> bool:
 
 
 def create_harmonizer_graph(
-    dynamo_client: Any,
+    dynamo_client: "DynamoClient",
     places_api: Optional[Any] = None,
     settings: Optional[Settings] = None,
     chroma_client: Optional[Any] = None,
