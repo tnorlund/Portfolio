@@ -62,9 +62,9 @@ Search methods:
 
 import asyncio
 import logging
-from dataclasses import dataclass, field
-from typing import Any, Optional, Callable
 from collections import defaultdict
+from dataclasses import dataclass, field
+from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +82,7 @@ class ReceiptRecord:
         phone: Current phone number
         validation_status: Current validation status
     """
+
     image_id: str
     receipt_id: int
     merchant_name: Optional[str] = None
@@ -106,6 +107,7 @@ class PlaceIdMatch:
         found: Whether a place_id was found
         error: Error message if search failed
     """
+
     receipt: ReceiptRecord
     place_id: Optional[str] = None
     place_name: Optional[str] = None
@@ -131,12 +133,15 @@ class FinderResult:
         matches: List of PlaceIdMatch results
         search_method_counts: Count of each search method used
     """
+
     total_processed: int = 0
     total_found: int = 0
     total_not_found: int = 0
     total_errors: int = 0
     matches: list[PlaceIdMatch] = field(default_factory=list)
-    search_method_counts: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    search_method_counts: dict[str, int] = field(
+        default_factory=lambda: defaultdict(int)
+    )
 
 
 @dataclass
@@ -151,6 +156,7 @@ class UpdateResult:
         total_skipped: Number skipped (low confidence, etc.)
         errors: List of error messages
     """
+
     total_processed: int = 0
     total_updated: int = 0
     total_failed: int = 0
@@ -235,7 +241,9 @@ class PlaceIdFinder:
         Returns:
             Total number of receipts without place_id
         """
-        logger.info("Loading receipt metadata without place_id from DynamoDB...")
+        logger.info(
+            "Loading receipt metadata without place_id from DynamoDB..."
+        )
 
         self._receipts_without_place_id = []
         total = 0
@@ -256,7 +264,12 @@ class PlaceIdFinder:
             # Filter to receipts without place_id
             for meta in metadatas:
                 # Skip if place_id exists and is valid
-                if meta.place_id and meta.place_id not in ("", "null", "NO_RESULTS", "INVALID"):
+                if meta.place_id and meta.place_id not in (
+                    "",
+                    "null",
+                    "NO_RESULTS",
+                    "INVALID",
+                ):
                     continue
 
                 receipt = ReceiptRecord(
@@ -265,7 +278,7 @@ class PlaceIdFinder:
                     merchant_name=meta.merchant_name,
                     address=meta.address,
                     phone=meta.phone_number,
-                    validation_status=getattr(meta, 'validation_status', None),
+                    validation_status=getattr(meta, "validation_status", None),
                 )
 
                 self._receipts_without_place_id.append(receipt)
@@ -317,42 +330,58 @@ class PlaceIdFinder:
                     if place_data and place_data.get("place_id"):
                         match.place_id = place_data.get("place_id")
                         match.place_name = place_data.get("name")
-                        match.place_address = place_data.get("formatted_address")
-                        match.place_phone = (
-                            place_data.get("formatted_phone_number") or
-                            place_data.get("international_phone_number")
+                        match.place_address = place_data.get(
+                            "formatted_address"
                         )
+                        match.place_phone = place_data.get(
+                            "formatted_phone_number"
+                        ) or place_data.get("international_phone_number")
                         match.search_method = "phone"
                         match.found = True
-                        match.confidence = self._calculate_confidence(receipt, place_data, "phone")
+                        match.confidence = self._calculate_confidence(
+                            receipt, place_data, "phone"
+                        )
                         return match
                 except Exception as e:
-                    logger.debug(f"Phone search failed for {receipt.image_id}#{receipt.receipt_id}: {e}")
+                    logger.debug(
+                        f"Phone search failed for {receipt.image_id}#{receipt.receipt_id}: {e}"
+                    )
                     match.error = f"Phone search error: {str(e)}"
             else:
-                logger.debug(f"Invalid phone number format: {receipt.phone} (only {len(phone_digits)} digits)")
+                logger.debug(
+                    f"Invalid phone number format: {receipt.phone} (only {len(phone_digits)} digits)"
+                )
 
         # Strategy 2: Try address geocoding
         if receipt.address and not match.found:
             # Validate address has some content
-            if len(receipt.address.strip()) >= 10:  # Address should have some content
+            if (
+                len(receipt.address.strip()) >= 10
+            ):  # Address should have some content
                 try:
-                    logger.debug(f"Searching by address: {receipt.address[:50]}")
+                    logger.debug(
+                        f"Searching by address: {receipt.address[:50]}"
+                    )
                     place_data = self.places.search_by_address(receipt.address)
                     if place_data and place_data.get("place_id"):
                         match.place_id = place_data.get("place_id")
                         match.place_name = place_data.get("name")
-                        match.place_address = place_data.get("formatted_address")
-                        match.place_phone = (
-                            place_data.get("formatted_phone_number") or
-                            place_data.get("international_phone_number")
+                        match.place_address = place_data.get(
+                            "formatted_address"
                         )
+                        match.place_phone = place_data.get(
+                            "formatted_phone_number"
+                        ) or place_data.get("international_phone_number")
                         match.search_method = "address"
                         match.found = True
-                        match.confidence = self._calculate_confidence(receipt, place_data, "address")
+                        match.confidence = self._calculate_confidence(
+                            receipt, place_data, "address"
+                        )
                         return match
                 except Exception as e:
-                    logger.debug(f"Address search failed for {receipt.image_id}#{receipt.receipt_id}: {e}")
+                    logger.debug(
+                        f"Address search failed for {receipt.image_id}#{receipt.receipt_id}: {e}"
+                    )
                     if not match.error:  # Don't overwrite previous error
                         match.error = f"Address search error: {str(e)}"
             else:
@@ -361,32 +390,45 @@ class PlaceIdFinder:
         # Strategy 3: Try text search with merchant name
         if receipt.merchant_name and not match.found:
             # Validate merchant name has some content
-            if len(receipt.merchant_name.strip()) >= 3:  # Name should have some content
+            if (
+                len(receipt.merchant_name.strip()) >= 3
+            ):  # Name should have some content
                 try:
                     logger.debug(f"Searching by text: {receipt.merchant_name}")
-                    place_data = self.places.search_by_text(receipt.merchant_name)
+                    place_data = self.places.search_by_text(
+                        receipt.merchant_name
+                    )
                     if place_data and place_data.get("place_id"):
                         match.place_id = place_data.get("place_id")
                         match.place_name = place_data.get("name")
-                        match.place_address = place_data.get("formatted_address")
-                        match.place_phone = (
-                            place_data.get("formatted_phone_number") or
-                            place_data.get("international_phone_number")
+                        match.place_address = place_data.get(
+                            "formatted_address"
                         )
+                        match.place_phone = place_data.get(
+                            "formatted_phone_number"
+                        ) or place_data.get("international_phone_number")
                         match.search_method = "text"
                         match.found = True
-                        match.confidence = self._calculate_confidence(receipt, place_data, "text")
+                        match.confidence = self._calculate_confidence(
+                            receipt, place_data, "text"
+                        )
                         return match
                 except Exception as e:
-                    logger.debug(f"Text search failed for {receipt.image_id}#{receipt.receipt_id}: {e}")
+                    logger.debug(
+                        f"Text search failed for {receipt.image_id}#{receipt.receipt_id}: {e}"
+                    )
                     if not match.error:  # Don't overwrite previous error
                         match.error = f"Text search error: {str(e)}"
             else:
-                logger.debug(f"Merchant name too short: {receipt.merchant_name}")
+                logger.debug(
+                    f"Merchant name too short: {receipt.merchant_name}"
+                )
 
         # No match found
         match.found = False
-        if not match.error:  # Only set generic error if no specific error was set
+        if (
+            not match.error
+        ):  # Only set generic error if no specific error was set
             match.error = "No matching place found in Google Places"
         return match
 
@@ -426,25 +468,33 @@ class PlaceIdFinder:
         # Check name match
         if receipt.merchant_name and place_data.get("name"):
             total_fields += 1
-            if self._names_match(receipt.merchant_name, place_data.get("name")):
+            if self._names_match(
+                receipt.merchant_name, place_data.get("name")
+            ):
                 matches += 1
 
         # Check address match
         if receipt.address and place_data.get("formatted_address"):
             total_fields += 1
-            if self._addresses_match(receipt.address, place_data.get("formatted_address")):
+            if self._addresses_match(
+                receipt.address, place_data.get("formatted_address")
+            ):
                 matches += 1
 
         # Check phone match
         if receipt.phone and place_data.get("formatted_phone_number"):
             total_fields += 1
-            if self._phones_match(receipt.phone, place_data.get("formatted_phone_number")):
+            if self._phones_match(
+                receipt.phone, place_data.get("formatted_phone_number")
+            ):
                 matches += 1
 
         # Boost confidence based on field matches
         if total_fields > 0:
             match_ratio = matches / total_fields
-            confidence = base_confidence + (match_ratio * 20)  # Up to +20 points
+            confidence = base_confidence + (
+                match_ratio * 20
+            )  # Up to +20 points
         else:
             confidence = base_confidence
 
@@ -462,7 +512,9 @@ class PlaceIdFinder:
         # Check if one contains the other (handles abbreviations)
         return n1 in n2 or n2 in n1 or n1 == n2
 
-    def _addresses_match(self, addr1: Optional[str], addr2: Optional[str]) -> bool:
+    def _addresses_match(
+        self, addr1: Optional[str], addr2: Optional[str]
+    ) -> bool:
         """Check if two addresses are similar."""
         if not addr1 or not addr2:
             return False
@@ -471,7 +523,9 @@ class PlaceIdFinder:
         def extract_street(address: str) -> str:
             parts = address.split(",")
             if parts:
-                return "".join(c.lower() for c in parts[0] if c.isalnum() or c.isspace())
+                return "".join(
+                    c.lower() for c in parts[0] if c.isalnum() or c.isspace()
+                )
             return ""
 
         street1 = extract_street(addr1)
@@ -480,7 +534,9 @@ class PlaceIdFinder:
         # Check if streets match (allowing for minor variations)
         return street1 in street2 or street2 in street1 or street1 == street2
 
-    def _phones_match(self, phone1: Optional[str], phone2: Optional[str]) -> bool:
+    def _phones_match(
+        self, phone1: Optional[str], phone2: Optional[str]
+    ) -> bool:
         """Check if two phone numbers match (digits only)."""
         if not phone1 or not phone2:
             return False
@@ -519,12 +575,16 @@ class PlaceIdFinder:
 
         result.total_processed = len(receipts_to_process)
 
-        logger.info(f"Searching Google Places for {len(receipts_to_process)} receipts...")
+        logger.info(
+            f"Searching Google Places for {len(receipts_to_process)} receipts..."
+        )
 
         # Process each receipt
         for i, receipt in enumerate(receipts_to_process):
             if (i + 1) % 10 == 0:
-                logger.info(f"Processed {i + 1}/{len(receipts_to_process)} receipts...")
+                logger.info(
+                    f"Processed {i + 1}/{len(receipts_to_process)} receipts..."
+                )
 
             match = self._search_places_for_receipt(receipt)
             result.matches.append(match)
@@ -538,7 +598,9 @@ class PlaceIdFinder:
             else:
                 result.total_not_found += 1
 
-        result.total_not_found = result.total_processed - result.total_found - result.total_errors
+        result.total_not_found = (
+            result.total_processed - result.total_found - result.total_errors
+        )
 
         logger.info(
             f"Search complete: {result.total_found} found, "
@@ -583,12 +645,14 @@ class PlaceIdFinder:
                 create_place_id_finder_graph,
             )
 
-            self._agent_graph, self._agent_state_holder = create_place_id_finder_graph(
-                dynamo_client=self.dynamo,
-                chroma_client=self.chroma,
-                embed_fn=self.embed_fn,
-                places_api=self.places,
-                settings=self.settings,
+            self._agent_graph, self._agent_state_holder = (
+                create_place_id_finder_graph(
+                    dynamo_client=self.dynamo,
+                    chroma_client=self.chroma,
+                    embed_fn=self.embed_fn,
+                    places_api=self.places,
+                    settings=self.settings,
+                )
             )
 
         result = FinderResult()
@@ -606,7 +670,9 @@ class PlaceIdFinder:
         # Process each receipt with agent
         for i, receipt in enumerate(receipts_to_process):
             if (i + 1) % 5 == 0:
-                logger.info(f"Processed {i + 1}/{len(receipts_to_process)} receipts...")
+                logger.info(
+                    f"Processed {i + 1}/{len(receipts_to_process)} receipts..."
+                )
 
             # Retry logic for server errors
             max_retries = 3
@@ -634,10 +700,10 @@ class PlaceIdFinder:
 
                     # Check if it's a retryable server error
                     is_retryable = (
-                        "500" in error_str or
-                        "Internal Server Error" in error_str or
-                        "Server disconnected" in error_str or
-                        "disconnected" in error_str.lower()
+                        "500" in error_str
+                        or "Internal Server Error" in error_str
+                        or "Server disconnected" in error_str
+                        or "disconnected" in error_str.lower()
                     )
 
                     if is_retryable and attempt < max_retries - 1:
@@ -645,7 +711,9 @@ class PlaceIdFinder:
                             f"Retryable error for {receipt.image_id}#{receipt.receipt_id} "
                             f"(attempt {attempt + 1}/{max_retries}): {error_str[:100]}"
                         )
-                        await asyncio.sleep(retry_delay * (attempt + 1))  # Exponential backoff
+                        await asyncio.sleep(
+                            retry_delay * (attempt + 1)
+                        )  # Exponential backoff
                         continue
                     else:
                         # Not retryable or max retries reached
@@ -663,7 +731,13 @@ class PlaceIdFinder:
                 # Prioritize Google Places API methods in reporting
                 # The place_id MUST come from Google Places API, not from similar receipts
                 search_methods = agent_result.get("search_methods_used", [])
-                google_places_methods = ["phone", "address", "text", "text_search", "place_id"]
+                google_places_methods = [
+                    "phone",
+                    "address",
+                    "text",
+                    "text_search",
+                    "place_id",
+                ]
                 primary_method = None
                 verification_methods = []
 
@@ -691,15 +765,28 @@ class PlaceIdFinder:
                 match.found = True
             else:
                 # No place_id found - check if it's due to no searchable data
-                error_msg = agent_result.get("reasoning", "No place_id found") if agent_result else str(last_error) if last_error else "No place_id found"
+                error_msg = (
+                    agent_result.get("reasoning", "No place_id found")
+                    if agent_result
+                    else str(last_error) if last_error else "No place_id found"
+                )
                 match.found = False
                 match.error = error_msg
                 match.confidence = 0.0
 
                 # Check if receipt has no searchable data
-                has_phone = bool(receipt.phone and len("".join(c for c in receipt.phone if c.isdigit())) >= 10)
-                has_address = bool(receipt.address and len(receipt.address.strip()) >= 10)
-                has_name = bool(receipt.merchant_name and len(receipt.merchant_name.strip()) >= 3)
+                has_phone = bool(
+                    receipt.phone
+                    and len("".join(c for c in receipt.phone if c.isdigit()))
+                    >= 10
+                )
+                has_address = bool(
+                    receipt.address and len(receipt.address.strip()) >= 10
+                )
+                has_name = bool(
+                    receipt.merchant_name
+                    and len(receipt.merchant_name.strip()) >= 3
+                )
 
                 if not (has_phone or has_address or has_name):
                     # Mark as needing review - no searchable data
@@ -785,10 +872,14 @@ class PlaceIdFinder:
 
             matches_to_update.append(match)
 
-        result.total_processed = len(matches_to_update) + len(matches_needing_review)
+        result.total_processed = len(matches_to_update) + len(
+            matches_needing_review
+        )
 
         if dry_run:
-            logger.info(f"[DRY RUN] Would update {len(matches_to_update)} receipts with place_ids and Google Places data")
+            logger.info(
+                f"[DRY RUN] Would update {len(matches_to_update)} receipts with place_ids and Google Places data"
+            )
             for match in matches_to_update[:10]:  # Show first 10
                 fields = [f"place_id={match.place_id}"]
                 if match.place_name:
@@ -805,20 +896,26 @@ class PlaceIdFinder:
                 logger.info(f"  ... and {len(matches_to_update) - 10} more")
 
             if matches_needing_review:
-                logger.info(f"[DRY RUN] Would mark {len(matches_needing_review)} receipts as needing review")
+                logger.info(
+                    f"[DRY RUN] Would mark {len(matches_needing_review)} receipts as needing review"
+                )
                 for match in matches_needing_review[:5]:
                     logger.info(
                         f"  {match.receipt.image_id[:8]}...#{match.receipt.receipt_id}: "
                         f"needs_review=True ({match.error})"
                     )
                 if len(matches_needing_review) > 5:
-                    logger.info(f"  ... and {len(matches_needing_review) - 5} more")
+                    logger.info(
+                        f"  ... and {len(matches_needing_review) - 5} more"
+                    )
 
             result.total_updated = len(matches_to_update)
             return result
 
         # Actually apply updates
-        logger.info(f"Applying place_id updates to {len(matches_to_update)} receipts...")
+        logger.info(
+            f"Applying place_id updates to {len(matches_to_update)} receipts..."
+        )
 
         for match in matches_to_update:
             try:
@@ -834,9 +931,11 @@ class PlaceIdFinder:
                     # Check if it's a "not found" error
                     error_str = str(e)
                     error_type = type(e).__name__
-                    if ("does not exist" in error_str or
-                        "EntityNotFoundError" in error_type or
-                        "not found" in error_str.lower()):
+                    if (
+                        "does not exist" in error_str
+                        or "EntityNotFoundError" in error_type
+                        or "not found" in error_str.lower()
+                    ):
                         metadata_exists = False
                     else:
                         # Some other error - re-raise
@@ -845,7 +944,11 @@ class PlaceIdFinder:
                 if not metadata_exists:
                     # Create new metadata from Google Places data
                     from datetime import datetime, timezone
-                    from receipt_dynamo.constants import ValidationMethod, MerchantValidationStatus
+
+                    from receipt_dynamo.constants import (
+                        MerchantValidationStatus,
+                        ValidationMethod,
+                    )
                     from receipt_dynamo.entities import ReceiptMetadata
 
                     # Determine matched fields based on search method
@@ -860,8 +963,12 @@ class PlaceIdFinder:
                             matched_fields.append("name")
 
                     # Use Google Places data (preferred) or fallback to receipt data
-                    merchant_name = match.place_name or match.receipt.merchant_name or ""
-                    address = match.place_address or match.receipt.address or ""
+                    merchant_name = (
+                        match.place_name or match.receipt.merchant_name or ""
+                    )
+                    address = (
+                        match.place_address or match.receipt.address or ""
+                    )
                     phone = match.place_phone or match.receipt.phone or ""
 
                     # Create new ReceiptMetadata
@@ -873,7 +980,9 @@ class PlaceIdFinder:
                         merchant_category="",  # Could extract from Google Places types if available
                         address=address,
                         phone_number=phone,
-                        matched_fields=matched_fields if matched_fields else ["place_id"],
+                        matched_fields=(
+                            matched_fields if matched_fields else ["place_id"]
+                        ),
                         validated_by=ValidationMethod.TEXT_SEARCH.value,
                         timestamp=datetime.now(timezone.utc),
                         reasoning=f"Created by place_id_finder: {match.search_method or 'unknown method'}",
@@ -896,15 +1005,64 @@ class PlaceIdFinder:
                 updated_fields.append(f"place_id={match.place_id}")
 
                 # Always update other fields from Google Places
-                if match.place_name and metadata.merchant_name != match.place_name:
-                    metadata.merchant_name = match.place_name
-                    updated_fields.append(f"merchant_name={match.place_name}")
+                # CRITICAL: Never use an address as a merchant name
+                if (
+                    match.place_name
+                    and metadata.merchant_name != match.place_name
+                ):
+                    # Validate that place_name is NOT an address
+                    import re
 
-                if match.place_address and metadata.address != match.place_address:
+                    place_name_upper = match.place_name.upper()
+                    looks_like_address = any(
+                        suffix in place_name_upper
+                        for suffix in [
+                            "BLVD",
+                            "RD",
+                            "ST",
+                            "STREET",
+                            "AVE",
+                            "AVENUE",
+                            "DR",
+                            "DRIVE",
+                            "LANE",
+                            "LN",
+                            "WAY",
+                            "CT",
+                            "COURT",
+                            "PL",
+                            "PLACE",
+                        ]
+                    ) and (
+                        re.match(r"^\d+", match.place_name.strip())
+                        or "#" in match.place_name
+                        or "," in match.place_name
+                    )
+
+                    if looks_like_address:
+                        logger.warning(
+                            f"Skipping merchant_name update for {match.receipt.image_id[:8]}...#{match.receipt.receipt_id}: "
+                            f"'{match.place_name}' from Google Places looks like an address, not a merchant name"
+                        )
+                    else:
+                        metadata.merchant_name = match.place_name
+                        updated_fields.append(
+                            f"merchant_name={match.place_name}"
+                        )
+
+                if (
+                    match.place_address
+                    and metadata.address != match.place_address
+                ):
                     metadata.address = match.place_address
-                    updated_fields.append(f"address={match.place_address[:30]}...")
+                    updated_fields.append(
+                        f"address={match.place_address[:30]}..."
+                    )
 
-                if match.place_phone and metadata.phone_number != match.place_phone:
+                if (
+                    match.place_phone
+                    and metadata.phone_number != match.place_phone
+                ):
                     metadata.phone_number = match.place_phone
                     updated_fields.append(f"phone_number={match.place_phone}")
 
@@ -922,11 +1080,15 @@ class PlaceIdFinder:
                     f"Failed to update {match.receipt.image_id}#{match.receipt.receipt_id}: {e}"
                 )
                 result.total_failed += 1
-                result.errors.append(f"{match.receipt.image_id}#{match.receipt.receipt_id}: {e}")
+                result.errors.append(
+                    f"{match.receipt.image_id}#{match.receipt.receipt_id}: {e}"
+                )
 
         # Mark receipts as needing review (no searchable data)
         if matches_needing_review:
-            logger.info(f"Marking {len(matches_needing_review)} receipts as needing review...")
+            logger.info(
+                f"Marking {len(matches_needing_review)} receipts as needing review..."
+            )
 
             for match in matches_needing_review:
                 try:
@@ -942,9 +1104,11 @@ class PlaceIdFinder:
                         # Check if it's a "not found" error
                         error_str = str(e)
                         error_type = type(e).__name__
-                        if ("does not exist" in error_str or
-                            "EntityNotFoundError" in error_type or
-                            "not found" in error_str.lower()):
+                        if (
+                            "does not exist" in error_str
+                            or "EntityNotFoundError" in error_type
+                            or "not found" in error_str.lower()
+                        ):
                             metadata_exists = False
                         else:
                             # Some other error - re-raise
@@ -953,7 +1117,11 @@ class PlaceIdFinder:
                     if not metadata_exists:
                         # Create minimal metadata marked as needing review
                         from datetime import datetime, timezone
-                        from receipt_dynamo.constants import ValidationMethod, MerchantValidationStatus
+
+                        from receipt_dynamo.constants import (
+                            MerchantValidationStatus,
+                            ValidationMethod,
+                        )
                         from receipt_dynamo.entities import ReceiptMetadata
 
                         metadata = ReceiptMetadata(
@@ -967,7 +1135,8 @@ class PlaceIdFinder:
                             matched_fields=[],
                             validated_by=ValidationMethod.TEXT_SEARCH.value,
                             timestamp=datetime.now(timezone.utc),
-                            reasoning=match.error or "No searchable data available for place_id lookup",
+                            reasoning=match.error
+                            or "No searchable data available for place_id lookup",
                             validation_status=MerchantValidationStatus.UNSURE.value,
                         )
 
@@ -980,9 +1149,17 @@ class PlaceIdFinder:
                         continue
 
                     # Update existing metadata to mark as needing review
-                    from receipt_dynamo.constants import MerchantValidationStatus
-                    metadata.validation_status = MerchantValidationStatus.UNSURE.value
-                    metadata.reasoning = match.error or "No searchable data available for place_id lookup"
+                    from receipt_dynamo.constants import (
+                        MerchantValidationStatus,
+                    )
+
+                    metadata.validation_status = (
+                        MerchantValidationStatus.UNSURE.value
+                    )
+                    metadata.reasoning = (
+                        match.error
+                        or "No searchable data available for place_id lookup"
+                    )
 
                     # Update the record
                     self.dynamo.update_receipt_metadata(metadata)
@@ -997,7 +1174,9 @@ class PlaceIdFinder:
                         f"Failed to mark {match.receipt.image_id}#{match.receipt.receipt_id} as needing review: {e}"
                     )
                     result.total_failed += 1
-                    result.errors.append(f"{match.receipt.image_id}#{match.receipt.receipt_id}: {e}")
+                    result.errors.append(
+                        f"{match.receipt.image_id}#{match.receipt.receipt_id}: {e}"
+                    )
 
         logger.info(
             f"Update complete: {result.total_updated} updated, "
@@ -1019,8 +1198,12 @@ class PlaceIdFinder:
         print("PLACE ID FINDER REPORT")
         print("=" * 70)
         print(f"Total receipts without place_id: {report.total_processed}")
-        print(f"  ✅ Found place_id: {report.total_found} ({report.total_found/report.total_processed*100:.1f}%)")
-        print(f"  ❌ Not found: {report.total_not_found} ({report.total_not_found/report.total_processed*100:.1f}%)")
+        print(
+            f"  ✅ Found place_id: {report.total_found} ({report.total_found/report.total_processed*100:.1f}%)"
+        )
+        print(
+            f"  ❌ Not found: {report.total_not_found} ({report.total_not_found/report.total_processed*100:.1f}%)"
+        )
         if report.total_errors > 0:
             print(f"  ⚠️  Errors: {report.total_errors}")
         print()
@@ -1029,7 +1212,9 @@ class PlaceIdFinder:
         if report.search_method_counts:
             print("Search methods:")
             total_found = sum(report.search_method_counts.values())
-            for method, count in sorted(report.search_method_counts.items(), key=lambda x: -x[1]):
+            for method, count in sorted(
+                report.search_method_counts.items(), key=lambda x: -x[1]
+            ):
                 pct = count / total_found * 100 if total_found > 0 else 0
                 print(f"  {method.capitalize()}: {count} ({pct:.1f}%)")
             print()
@@ -1080,7 +1265,10 @@ class PlaceIdFinder:
                 # Show what data was available
                 has_phone = bool(match.receipt.phone)
                 has_address = bool(match.receipt.address)
-                has_name = bool(match.receipt.merchant_name and len(match.receipt.merchant_name.strip()) >= 3)
+                has_name = bool(
+                    match.receipt.merchant_name
+                    and len(match.receipt.merchant_name.strip()) >= 3
+                )
                 data_info = []
                 if has_phone:
                     data_info.append("phone")
@@ -1088,8 +1276,11 @@ class PlaceIdFinder:
                     data_info.append("address")
                 if has_name:
                     data_info.append("name")
-                data_str = ", ".join(data_info) if data_info else "no searchable data"
-                print(f"  ⚠️  {merchant[:30]:30} ({data_str}) - {error_msg[:40]}")
+                data_str = (
+                    ", ".join(data_info) if data_info else "no searchable data"
+                )
+                print(
+                    f"  ⚠️  {merchant[:30]:30} ({data_str}) - {error_msg[:40]}"
+                )
             if len(errors) > 5:
                 print(f"  ... and {len(errors) - 5} more")
-
