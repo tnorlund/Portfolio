@@ -415,6 +415,7 @@ class LabelValidationAgentStepFunction(ComponentResource):
             source_paths=[
                 "receipt_agent",  # Include receipt_agent package
                 "receipt_places",  # receipt_agent depends on receipt_places
+                "receipt_upload",  # Needed by receipt_agent tools
             ],
             lambda_function_name=f"{name}-validate-labels",
             lambda_config=validate_lambda_config,
