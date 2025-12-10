@@ -1,4 +1,3 @@
-# syntax=ghcr.io/docker/dockerfile:1.9.0
 # Multi-stage build for Address Similarity Cache Generator Lambda
 
 # Stage 1: Build and install dependencies (cached layer)

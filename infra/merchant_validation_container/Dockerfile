@@ -1,4 +1,3 @@
-# syntax=ghcr.io/docker/dockerfile:1.9.0
 FROM public.ecr.aws/lambda/python:3.12
 
 # Install system dependencies for ChromaDB and other packages

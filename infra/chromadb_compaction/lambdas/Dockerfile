@@ -1,4 +1,3 @@
-# syntax=ghcr.io/docker/dockerfile:1.9.0
 # Multi-stage build for ChromaDB Compaction Lambda
 # Updated to fix compaction package import issues
 
