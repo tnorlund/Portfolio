@@ -52,6 +52,7 @@ class HybridLambdaDeployment(ComponentResource):
         vpc_subnet_ids=None,
         lambda_security_group_id: str | None = None,
         efs_access_point_arn: str | None = None,
+        storage_mode: str = "auto",
         stack: Optional[str] = None,
         opts: Optional[ResourceOptions] = None,
     ):
@@ -125,6 +126,10 @@ class HybridLambdaDeployment(ComponentResource):
         )
 
         # Now create Docker image component with Lambda config
+        use_efs_mount = (
+            efs_access_point_arn is not None and storage_mode.lower() != "s3"
+        )
+
         self.docker_image = DockerImageComponent(
             f"{name}-docker",
             lambda_config={
@@ -163,12 +168,12 @@ class HybridLambdaDeployment(ComponentResource):
                     "LOCK_DURATION_MINUTES": "3",
                     "MAX_HEARTBEAT_FAILURES": "3",
                     "LOG_LEVEL": "INFO",
-                    "CHROMA_ROOT": "/mnt/chroma" if efs_access_point_arn else "/tmp/chroma",
+                    "CHROMA_ROOT": "/mnt/chroma" if use_efs_mount else "/tmp/chroma",
                     # Storage mode configuration: "auto", "s3", or "efs"
                     # - "auto": Use EFS if available, fallback to S3
                     # - "s3": Force S3-only mode (ignore EFS)
                     # - "efs": Force EFS mode (fail if EFS not available)
-                    "CHROMADB_STORAGE_MODE": "auto",  # Use EFS if available, fallback to S3. Elastic throughput should handle fast copies now
+                    "CHROMADB_STORAGE_MODE": storage_mode,
                     # Enable custom CloudWatch metrics now that Lambda has internet
                     # access via NAT instance. If timeouts occur, consider adding a
                     # CloudWatch Metrics Interface VPC Endpoint (~$7/month).
@@ -182,7 +187,7 @@ class HybridLambdaDeployment(ComponentResource):
                 "file_system_config": {
                     "arn": efs_access_point_arn,
                     "local_mount_path": "/mnt/chroma",
-                } if efs_access_point_arn else None,
+                } if use_efs_mount else None,
             },
             opts=ResourceOptions(parent=self, depends_on=[self.lambda_role]),
         )
@@ -685,6 +690,7 @@ def create_hybrid_lambda_deployment(
     vpc_subnet_ids=None,
     lambda_security_group_id: str | None = None,
     efs_access_point_arn: str | None = None,
+    storage_mode: str = "auto",
     opts: Optional[ResourceOptions] = None,
 ) -> HybridLambdaDeployment:
     """
@@ -719,5 +725,6 @@ def create_hybrid_lambda_deployment(
         vpc_subnet_ids=vpc_subnet_ids,
         lambda_security_group_id=lambda_security_group_id,
         efs_access_point_arn=efs_access_point_arn,
+        storage_mode=storage_mode,
         opts=opts,
     )

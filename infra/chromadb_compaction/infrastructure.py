@@ -36,6 +36,8 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
         subnet_ids=None,
         efs_subnet_ids=None,
         lambda_security_group_id: str | None = None,
+        use_efs: bool = True,
+        storage_mode: str = "auto",
         opts: Optional[ResourceOptions] = None,
     ):
         """
@@ -73,7 +75,12 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
         # Optionally create EFS for Chroma if networking details provided
         # Use efs_subnet_ids if provided (unique AZs), otherwise fallback to subnet_ids
         self.efs = None
-        if vpc_id and (efs_subnet_ids or subnet_ids) and lambda_security_group_id:
+        if (
+            use_efs
+            and vpc_id
+            and (efs_subnet_ids or subnet_ids)
+            and lambda_security_group_id
+        ):
             subnet_ids_for_efs = efs_subnet_ids if efs_subnet_ids else subnet_ids
             self.efs = ChromaEfs(
                 f"{name}-efs",
@@ -100,6 +107,7 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
             efs_access_point_arn=(
                 self.efs.access_point_arn if self.efs else None
             ),
+            storage_mode=storage_mode,
             opts=ResourceOptions(parent=self, depends_on=lambda_depends_on),
         )
 
@@ -134,6 +142,8 @@ def create_chromadb_compaction_infrastructure(
     subnet_ids=None,
     efs_subnet_ids=None,
     lambda_security_group_id: str | None = None,
+    use_efs: bool = True,
+    storage_mode: str = "auto",
     opts: Optional[ResourceOptions] = None,
 ) -> ChromaDBCompactionInfrastructure:
     """
@@ -165,5 +175,7 @@ def create_chromadb_compaction_infrastructure(
         subnet_ids=subnet_ids,
         efs_subnet_ids=efs_subnet_ids,
         lambda_security_group_id=lambda_security_group_id,
+        use_efs=use_efs,
+        storage_mode=storage_mode,
         opts=opts,
     )
