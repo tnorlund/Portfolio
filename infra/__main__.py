@@ -240,6 +240,11 @@ compaction_lambda_subnets = nat.private_subnet_ids.apply(
     lambda ids: [ids[0]]
 )  # Single subnet for EFS access
 
+compaction_use_efs = portfolio_config.get_bool("compaction-use-efs")
+if compaction_use_efs is None:
+    compaction_use_efs = True  # default to EFS enabled for performance
+compaction_storage_mode = "auto" if compaction_use_efs else "s3"
+
 chromadb_infrastructure = create_chromadb_compaction_infrastructure(
     name=f"chromadb-{pulumi.get_stack()}",
     dynamodb_table_arn=dynamodb_table.arn,
@@ -249,6 +254,8 @@ chromadb_infrastructure = create_chromadb_compaction_infrastructure(
     subnet_ids=compaction_lambda_subnets,  # Private subnets only for Lambda
     efs_subnet_ids=unique_efs_subnets,  # EFS requires unique AZs (public + first private)
     lambda_security_group_id=security.sg_lambda_id,
+    use_efs=compaction_use_efs,
+    storage_mode=compaction_storage_mode,
 )
 
 # Create embedding infrastructure using shared bucket and queues

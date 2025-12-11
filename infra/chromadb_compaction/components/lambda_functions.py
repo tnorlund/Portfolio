@@ -11,13 +11,14 @@ pattern from embedding_step_functions.
 import json
 from pathlib import Path
 from typing import Optional
+
 import pulumi
 import pulumi_aws as aws
 from pulumi import ComponentResource, Output, ResourceOptions
 
-from .sqs_queues import ChromaDBQueues
-from .s3_buckets import ChromaDBBuckets
 from .docker_image import DockerImageComponent
+from .s3_buckets import ChromaDBBuckets
+from .sqs_queues import ChromaDBQueues
 
 try:
     from lambda_layer import dynamo_layer  # type: ignore[import-not-found]
@@ -52,6 +53,7 @@ class HybridLambdaDeployment(ComponentResource):
         vpc_subnet_ids=None,
         lambda_security_group_id: str | None = None,
         efs_access_point_arn: str | None = None,
+        storage_mode: str = "auto",
         stack: Optional[str] = None,
         opts: Optional[ResourceOptions] = None,
     ):
@@ -124,7 +126,27 @@ class HybridLambdaDeployment(ComponentResource):
             name, dynamodb_table_arn, chromadb_queues, chromadb_buckets
         )
 
-        # Now create Docker image component with Lambda config
+        # Normalize and validate storage mode once
+        normalized_storage_mode = storage_mode.lower()
+        if normalized_storage_mode not in {"auto", "s3", "efs"}:
+            raise ValueError(
+                f"Invalid storage_mode='{storage_mode}'. "
+                "Expected one of: 'auto', 's3', or 'efs'."
+            )
+
+        # Decide whether to mount EFS based on access point and mode
+        use_efs_mount = (
+            efs_access_point_arn is not None
+            and normalized_storage_mode != "s3"
+        )
+
+        # Validate storage_mode='efs' requires EFS access point
+        if normalized_storage_mode == "efs" and not use_efs_mount:
+            raise ValueError(
+                "storage_mode='efs' requires efs_access_point_arn to be provided. "
+                "Cannot set CHROMADB_STORAGE_MODE='efs' without an EFS access point."
+            )
+
         self.docker_image = DockerImageComponent(
             f"{name}-docker",
             lambda_config={
@@ -163,12 +185,16 @@ class HybridLambdaDeployment(ComponentResource):
                     "LOCK_DURATION_MINUTES": "3",
                     "MAX_HEARTBEAT_FAILURES": "3",
                     "LOG_LEVEL": "INFO",
-                    "CHROMA_ROOT": "/mnt/chroma" if efs_access_point_arn else "/tmp/chroma",
+                    "CHROMA_ROOT": (
+                        "/mnt/chroma"
+                        if use_efs_mount
+                        else "/tmp/chroma"  # noqa: S108
+                    ),
                     # Storage mode configuration: "auto", "s3", or "efs"
                     # - "auto": Use EFS if available, fallback to S3
                     # - "s3": Force S3-only mode (ignore EFS)
                     # - "efs": Force EFS mode (fail if EFS not available)
-                    "CHROMADB_STORAGE_MODE": "auto",  # Use EFS if available, fallback to S3. Elastic throughput should handle fast copies now
+                    "CHROMADB_STORAGE_MODE": normalized_storage_mode,
                     # Enable custom CloudWatch metrics now that Lambda has internet
                     # access via NAT instance. If timeouts occur, consider adding a
                     # CloudWatch Metrics Interface VPC Endpoint (~$7/month).
@@ -179,10 +205,14 @@ class HybridLambdaDeployment(ComponentResource):
                     "security_group_ids": [lambda_security_group_id],
                 },
                 # EFS mount enabled for networking
-                "file_system_config": {
-                    "arn": efs_access_point_arn,
-                    "local_mount_path": "/mnt/chroma",
-                } if efs_access_point_arn else None,
+                "file_system_config": (
+                    {
+                        "arn": efs_access_point_arn,
+                        "local_mount_path": "/mnt/chroma",
+                    }
+                    if use_efs_mount
+                    else None
+                ),
             },
             opts=ResourceOptions(parent=self, depends_on=[self.lambda_role]),
         )
@@ -393,7 +423,9 @@ class HybridLambdaDeployment(ComponentResource):
         # VPC and EFS configuration is now handled in lambda_config
 
         # Use the Lambda function created by DockerImageComponent
-        self.enhanced_compaction_function = self.docker_image.docker_image.lambda_function
+        self.enhanced_compaction_function = (
+            self.docker_image.docker_image.lambda_function
+        )
 
         # Create event source mappings
         self._create_event_source_mappings(
@@ -425,7 +457,11 @@ class HybridLambdaDeployment(ComponentResource):
             memory_size=256,
             environment={
                 "variables": {
-                    "CHROMA_ROOT": "/mnt/chroma" if efs_access_point_arn else "/tmp/chroma",
+                    "CHROMA_ROOT": (
+                        "/mnt/chroma"
+                        if use_efs_mount
+                        else "/tmp/chroma"  # noqa: S108
+                    ),
                 }
             },
             vpc_config=(
@@ -441,7 +477,7 @@ class HybridLambdaDeployment(ComponentResource):
                     arn=efs_access_point_arn,
                     local_mount_path="/mnt/chroma",
                 )
-                if efs_access_point_arn
+                if use_efs_mount
                 else None
             ),
             opts=ResourceOptions(parent=self, depends_on=[self.lambda_role]),
@@ -685,6 +721,7 @@ def create_hybrid_lambda_deployment(
     vpc_subnet_ids=None,
     lambda_security_group_id: str | None = None,
     efs_access_point_arn: str | None = None,
+    storage_mode: str = "auto",
     opts: Optional[ResourceOptions] = None,
 ) -> HybridLambdaDeployment:
     """
@@ -719,5 +756,6 @@ def create_hybrid_lambda_deployment(
         vpc_subnet_ids=vpc_subnet_ids,
         lambda_security_group_id=lambda_security_group_id,
         efs_access_point_arn=efs_access_point_arn,
+        storage_mode=storage_mode,
         opts=opts,
     )
