@@ -30,7 +30,11 @@ from pulumi import (
 from pulumi_aws.cloudwatch import LogGroup
 from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
 from pulumi_aws.lambda_ import Function, FunctionEnvironmentArgs
-from pulumi_aws.s3 import Bucket, BucketVersioningV2, BucketVersioningV2VersioningConfigurationArgs
+from pulumi_aws.s3 import (
+    Bucket,
+    BucketVersioningV2,
+    BucketVersioningV2VersioningConfigurationArgs,
+)
 from pulumi_aws.sfn import StateMachine, StateMachineLoggingConfigurationArgs
 
 # Import shared components
@@ -52,8 +56,12 @@ langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
 
 # Label harmonizer specific config
 harmonizer_config = Config("label-harmonizer")
-max_concurrency_process_default = harmonizer_config.get_int("max_concurrency_process") or 10
-max_concurrency_prepare_default = harmonizer_config.get_int("max_concurrency_prepare") or 18
+max_concurrency_process_default = (
+    harmonizer_config.get_int("max_concurrency_process") or 10
+)
+max_concurrency_prepare_default = (
+    harmonizer_config.get_int("max_concurrency_prepare") or 18
+)
 
 # CORE_LABELS from receipt_label/constants.py
 CORE_LABELS = [
@@ -112,8 +120,12 @@ class LabelHarmonizerStepFunction(ComponentResource):
         stack = pulumi.get_stack()
 
         # Use provided values or fall back to config or defaults
-        self.max_concurrency_prepare = max_concurrency_prepare or max_concurrency_prepare_default
-        self.max_concurrency_process = max_concurrency_process or max_concurrency_process_default
+        self.max_concurrency_prepare = (
+            max_concurrency_prepare or max_concurrency_prepare_default
+        )
+        self.max_concurrency_process = (
+            max_concurrency_process or max_concurrency_process_default
+        )
 
         # ============================================================
         # S3 Bucket for batch files and results
@@ -323,7 +335,9 @@ class LabelHarmonizerStepFunction(ComponentResource):
             code=AssetArchive(
                 {
                     "flatten_merchant_groups.py": FileAsset(
-                        os.path.join(HANDLERS_DIR, "flatten_merchant_groups.py")
+                        os.path.join(
+                            HANDLERS_DIR, "flatten_merchant_groups.py"
+                        )
                     ),
                 }
             ),
@@ -417,7 +431,10 @@ class LabelHarmonizerStepFunction(ComponentResource):
                 "LANGCHAIN_API_KEY": langchain_api_key,
                 "LANGCHAIN_TRACING_V2": "true",
                 "LANGCHAIN_ENDPOINT": "https://api.smith.langchain.com",
-                "LANGCHAIN_PROJECT": pulumi.Config("portfolio").get("langchain_project") or "label-harmonizer",
+                "LANGCHAIN_PROJECT": pulumi.Config("portfolio").get(
+                    "langchain_project"
+                )
+                or "label-harmonizer",
             },
         }
 
@@ -610,7 +627,7 @@ class LabelHarmonizerStepFunction(ComponentResource):
                                 {
                                     "Variable": "$.init.label_types",
                                     "IsNull": False,
-                                }
+                                },
                             ],
                             "Next": "UseProvidedLabelTypes",
                         }
@@ -790,7 +807,9 @@ class LabelHarmonizerStepFunction(ComponentResource):
                                         "BackoffRate": 2.0,
                                     },
                                     {
-                                        "ErrorEquals": ["OllamaRateLimitError"],
+                                        "ErrorEquals": [
+                                            "OllamaRateLimitError"
+                                        ],
                                         "IntervalSeconds": 30,
                                         "MaxAttempts": 5,
                                         "BackoffRate": 1.5,
@@ -867,3 +886,534 @@ class LabelHarmonizerStepFunction(ComponentResource):
 
         return json.dumps(definition)
 
+
+class LabelHarmonizerV3StepFunction(ComponentResource):
+    """
+    Step Function infrastructure for label harmonization V3 (whole receipt processing).
+
+    Components:
+    - Zip Lambda: list_receipts (DynamoDB layer only, fast)
+    - Container Lambda: harmonize_labels_v3 (LLM agent for whole receipts)
+    - S3 Bucket: batch files and results
+    - Step Function: orchestration with Map state for parallel processing
+
+    Workflow:
+    1. ListReceipts - Query DynamoDB for all receipts and batch them
+    2. ProcessInBatches - Run harmonization for each batch (parallel)
+    3. Done - Aggregate results
+    """
+
+    def __init__(
+        self,
+        name: str,
+        *,
+        dynamodb_table_name: pulumi.Input[str],
+        dynamodb_table_arn: pulumi.Input[str],
+        chromadb_bucket_name: Optional[pulumi.Input[str]] = None,
+        chromadb_bucket_arn: Optional[pulumi.Input[str]] = None,
+        max_concurrency: Optional[int] = None,
+        batch_size: Optional[int] = None,
+        opts: Optional[ResourceOptions] = None,
+    ):
+        super().__init__(f"{__name__}-v3-{name}", name, None, opts)
+        stack = pulumi.get_stack()
+        self._name = name
+
+        # Use provided values or fall back to defaults
+        self.max_concurrency = max_concurrency or 5
+        self.batch_size = batch_size or 50
+
+        # ============================================================
+        # S3 Bucket for batch files and results
+        # ============================================================
+        self.batch_bucket = Bucket(
+            f"{name}-v3-batch-bucket",
+            force_destroy=True,
+            tags={
+                "environment": stack,
+                "purpose": "label-harmonizer-v3-batches",
+            },
+            opts=ResourceOptions(parent=self),
+        )
+
+        BucketVersioningV2(
+            f"{name}-v3-batch-bucket-versioning",
+            bucket=self.batch_bucket.id,
+            versioning_configuration=BucketVersioningV2VersioningConfigurationArgs(
+                status="Enabled"
+            ),
+            opts=ResourceOptions(parent=self.batch_bucket),
+        )
+
+        # ============================================================
+        # IAM Roles (similar to V2 but simpler)
+        # ============================================================
+        sfn_role = Role(
+            f"{name}-v3-sfn-role",
+            name=f"{name}-v3-sfn-role",
+            assume_role_policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"Service": "states.amazonaws.com"},
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            ),
+            opts=ResourceOptions(parent=self),
+        )
+
+        lambda_role = Role(
+            f"{name}-v3-lambda-role",
+            name=f"{name}-v3-lambda-role",
+            assume_role_policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {"Service": "lambda.amazonaws.com"},
+                            "Action": "sts:AssumeRole",
+                        }
+                    ],
+                }
+            ),
+            opts=ResourceOptions(parent=self),
+        )
+
+        RolePolicyAttachment(
+            f"{name}-v3-lambda-basic-exec",
+            role=lambda_role.name,
+            policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+            opts=ResourceOptions(parent=lambda_role),
+        )
+
+        # ECR permissions for container Lambda
+        RolePolicy(
+            f"{name}-v3-lambda-ecr-policy",
+            role=lambda_role.id,
+            policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "ecr:GetAuthorizationToken",
+                                "ecr:BatchGetImage",
+                                "ecr:GetDownloadUrlForLayer",
+                            ],
+                            "Resource": "*",
+                        }
+                    ],
+                }
+            ),
+            opts=ResourceOptions(parent=lambda_role),
+        )
+
+        # DynamoDB access policy
+        dynamodb_policy = RolePolicy(
+            f"{name}-v3-lambda-dynamo-policy",
+            role=lambda_role.id,
+            policy=Output.from_input(dynamodb_table_arn).apply(
+                lambda arn: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "dynamodb:DescribeTable",
+                                    "dynamodb:GetItem",
+                                    "dynamodb:PutItem",
+                                    "dynamodb:UpdateItem",
+                                    "dynamodb:Query",
+                                    "dynamodb:Scan",
+                                    "dynamodb:BatchGetItem",
+                                    "dynamodb:BatchWriteItem",
+                                ],
+                                "Resource": [arn, f"{arn}/index/*"],
+                            }
+                        ],
+                    }
+                )
+            ),
+            opts=ResourceOptions(parent=lambda_role),
+        )
+
+        # S3 access policy
+        s3_resources = [self.batch_bucket.arn]
+        if chromadb_bucket_arn:
+            s3_resources.append(chromadb_bucket_arn)
+
+        s3_policy = Output.all(*s3_resources).apply(
+            lambda arns: json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "s3:GetObject",
+                                "s3:PutObject",
+                                "s3:DeleteObject",
+                                "s3:ListBucket",
+                            ],
+                            "Resource": [arns[0], f"{arns[0]}/*"],
+                        }
+                    ]
+                    + (
+                        [
+                            {
+                                "Effect": "Allow",
+                                "Action": ["s3:GetObject", "s3:ListBucket"],
+                                "Resource": [arns[1], f"{arns[1]}/*"],
+                            }
+                        ]
+                        if len(arns) > 1
+                        else []
+                    ),
+                }
+            )
+        )
+
+        RolePolicy(
+            f"{name}-v3-lambda-s3-policy",
+            role=lambda_role.id,
+            policy=s3_policy,
+            opts=ResourceOptions(parent=lambda_role),
+        )
+
+        # ============================================================
+        # Zip Lambda: list_receipts
+        # ============================================================
+        CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+        HANDLERS_DIR = os.path.join(CURRENT_DIR, "handlers")
+
+        list_receipts_lambda = Function(
+            f"{name}-v3-list-receipts",
+            name=f"{name}-v3-list-receipts",
+            role=lambda_role.arn,
+            runtime="python3.12",
+            architectures=["arm64"],
+            handler="list_receipts.handler",
+            code=AssetArchive(
+                {
+                    "list_receipts.py": FileAsset(
+                        os.path.join(HANDLERS_DIR, "list_receipts.py")
+                    ),
+                }
+            ),
+            timeout=300,
+            memory_size=512,
+            layers=[dynamo_layer.arn] if dynamo_layer else [],
+            tags={"environment": stack},
+            environment=FunctionEnvironmentArgs(
+                variables={
+                    "DYNAMODB_TABLE_NAME": dynamodb_table_name,
+                    "BATCH_BUCKET": self.batch_bucket.bucket,
+                }
+            ),
+            opts=ResourceOptions(
+                parent=self,
+                ignore_changes=["layers"],
+            ),
+        )
+
+        # ============================================================
+        # Container Lambda: harmonize_labels_v3
+        # ============================================================
+        harmonize_lambda_config = {
+            "role_arn": lambda_role.arn,
+            "timeout": 900,
+            "memory_size": 3072,
+            "tags": {"environment": stack},
+            "ephemeral_storage": 10240,
+            "environment": {
+                "BATCH_BUCKET": self.batch_bucket.bucket,
+                "CHROMADB_BUCKET": chromadb_bucket_name or "",
+                "RECEIPT_AGENT_DYNAMO_TABLE_NAME": dynamodb_table_name,
+                "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
+                "RECEIPT_AGENT_OLLAMA_API_KEY": ollama_api_key,
+                "RECEIPT_AGENT_OLLAMA_BASE_URL": "https://ollama.com",
+                "RECEIPT_AGENT_OLLAMA_MODEL": "gpt-oss:120b-cloud",
+                "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY": "/tmp/chromadb",
+                "LANGCHAIN_API_KEY": langchain_api_key,
+                "LANGCHAIN_TRACING_V2": "true",
+                "LANGCHAIN_ENDPOINT": "https://api.smith.langchain.com",
+                "LANGCHAIN_PROJECT": pulumi.Config("portfolio").get(
+                    "langchain_project"
+                )
+                or "label-harmonizer-v3",
+            },
+        }
+
+        harmonize_docker_image = CodeBuildDockerImage(
+            f"{name}-v3-harmonize-img",
+            dockerfile_path="infra/label_harmonizer_step_functions/lambdas/Dockerfile.v3",
+            build_context_path=".",
+            source_paths=[
+                "receipt_agent",
+                "receipt_places",
+                "receipt_upload",
+            ],
+            lambda_function_name=f"{name}-v3-harmonize-labels",
+            lambda_config=harmonize_lambda_config,
+            platform="linux/arm64",
+            opts=ResourceOptions(
+                parent=self, depends_on=[lambda_role, dynamodb_policy]
+            ),
+        )
+
+        harmonize_labels_v3_lambda = harmonize_docker_image.lambda_function
+
+        # ============================================================
+        # Step Function role policy
+        # ============================================================
+        RolePolicy(
+            f"{name}-v3-sfn-lambda-policy",
+            role=sfn_role.id,
+            policy=Output.all(
+                list_receipts_lambda.arn,
+                harmonize_labels_v3_lambda.arn,
+            ).apply(
+                lambda arns: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": ["lambda:InvokeFunction"],
+                                "Resource": arns,
+                            }
+                        ],
+                    }
+                )
+            ),
+            opts=ResourceOptions(parent=sfn_role),
+        )
+
+        # CloudWatch Logs policy
+        RolePolicy(
+            f"{name}-v3-sfn-logs-policy",
+            role=sfn_role.id,
+            policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "logs:CreateLogDelivery",
+                                "logs:GetLogDelivery",
+                                "logs:UpdateLogDelivery",
+                                "logs:DeleteLogDelivery",
+                                "logs:ListLogDeliveries",
+                                "logs:PutResourcePolicy",
+                                "logs:DescribeResourcePolicies",
+                                "logs:DescribeLogGroups",
+                            ],
+                            "Resource": "*",
+                        }
+                    ],
+                }
+            ),
+            opts=ResourceOptions(parent=sfn_role),
+        )
+
+        # ============================================================
+        # CloudWatch Log Group
+        # ============================================================
+        log_group = LogGroup(
+            f"{name}-v3-sf-logs",
+            name=f"/aws/stepfunctions/{name}-v3-sf",
+            retention_in_days=14,
+            opts=ResourceOptions(parent=self),
+        )
+
+        # ============================================================
+        # Step Function State Machine
+        # ============================================================
+        logging_config = log_group.arn.apply(
+            lambda arn: StateMachineLoggingConfigurationArgs(
+                level="ALL",
+                include_execution_data=True,
+                log_destination=f"{arn}:*",
+            )
+        )
+
+        self.state_machine = StateMachine(
+            f"{name}-v3-sf",
+            name=f"{name}-v3-sf",
+            role_arn=sfn_role.arn,
+            type="STANDARD",
+            tags={"environment": stack},
+            definition=Output.all(
+                list_receipts_lambda.arn,
+                harmonize_labels_v3_lambda.arn,
+                self.batch_bucket.bucket,
+            ).apply(
+                lambda args: self._create_step_function_definition(
+                    list_receipts_arn=args[0],
+                    harmonize_arn=args[1],
+                    batch_bucket=args[2],
+                    max_concurrency=self.max_concurrency,
+                    batch_size=self.batch_size,
+                )
+            ),
+            logging_configuration=logging_config,
+            opts=ResourceOptions(parent=self, depends_on=[log_group]),
+        )
+
+        # ============================================================
+        # Outputs
+        # ============================================================
+        self.state_machine_arn = self.state_machine.arn
+        self.batch_bucket_name = self.batch_bucket.bucket
+        self.list_receipts_lambda_arn = list_receipts_lambda.arn
+        self.harmonize_labels_v3_lambda_arn = harmonize_labels_v3_lambda.arn
+
+        self.register_outputs(
+            {
+                "state_machine_arn": self.state_machine.arn,
+                "batch_bucket_name": self.batch_bucket.bucket,
+                "list_receipts_lambda_arn": list_receipts_lambda.arn,
+                "harmonize_labels_v3_lambda_arn": harmonize_labels_v3_lambda.arn,
+            }
+        )
+
+    def _create_step_function_definition(
+        self,
+        list_receipts_arn: str,
+        harmonize_arn: str,
+        batch_bucket: str,
+        max_concurrency: int,
+        batch_size: int,
+    ) -> str:
+        """Create Step Function definition (ASL)."""
+        definition = {
+            "Comment": "Label Harmonizer V3 - Process receipts in parallel",
+            "StartAt": "Initialize",
+            "States": {
+                "Initialize": {
+                    "Type": "Pass",
+                    "Parameters": {
+                        "execution_id.$": "$$.Execution.Name",
+                        "start_time.$": "$$.Execution.StartTime",
+                        "dry_run.$": "$.dry_run",
+                        "batch_bucket": batch_bucket,
+                        "batch_size": batch_size,
+                        "limit.$": "$.limit",
+                        "langchain_project.$": "$.langchain_project",
+                    },
+                    "ResultPath": "$.init",
+                    "Next": "ListReceipts",
+                },
+                "ListReceipts": {
+                    "Type": "Task",
+                    "Resource": list_receipts_arn,
+                    "TimeoutSeconds": 300,
+                    "Parameters": {
+                        "execution_id.$": "$.init.execution_id",
+                        "batch_bucket.$": "$.init.batch_bucket",
+                        "batch_size.$": "$.init.batch_size",
+                        "limit.$": "$.init.limit",
+                    },
+                    "ResultPath": "$.receipts_data",
+                    "Retry": [
+                        {
+                            "ErrorEquals": [
+                                "States.TaskFailed",
+                                "Lambda.ServiceException",
+                            ],
+                            "IntervalSeconds": 2,
+                            "MaxAttempts": 3,
+                            "BackoffRate": 2.0,
+                        }
+                    ],
+                    "Next": "HasReceipts",
+                },
+                "HasReceipts": {
+                    "Type": "Choice",
+                    "Choices": [
+                        {
+                            "Variable": "$.receipts_data.receipt_batches[0]",
+                            "IsPresent": True,
+                            "Next": "ProcessInBatches",
+                        }
+                    ],
+                    "Default": "NoReceiptsToProcess",
+                },
+                "NoReceiptsToProcess": {
+                    "Type": "Pass",
+                    "Result": {"message": "No receipts to process"},
+                    "End": True,
+                },
+                "ProcessInBatches": {
+                    "Type": "Map",
+                    "ItemsPath": "$.receipts_data.receipt_batches",
+                    "MaxConcurrency": max_concurrency,
+                    "Parameters": {
+                        "receipts.$": "$$.Map.Item.Value",
+                        "execution_id.$": "$.init.execution_id",
+                        "dry_run.$": "$.init.dry_run",
+                        "langchain_project.$": "$.init.langchain_project",
+                        "batch_bucket.$": "$.init.batch_bucket",
+                    },
+                    "ItemProcessor": {
+                        "ProcessorConfig": {"Mode": "INLINE"},
+                        "StartAt": "HarmonizeLabels",
+                        "States": {
+                            "HarmonizeLabels": {
+                                "Type": "Task",
+                                "Resource": harmonize_arn,
+                                "TimeoutSeconds": 900,
+                                "Retry": [
+                                    {
+                                        "ErrorEquals": [
+                                            "States.TaskFailed",
+                                            "Lambda.ServiceException",
+                                        ],
+                                        "IntervalSeconds": 5,
+                                        "MaxAttempts": 2,
+                                        "BackoffRate": 2.0,
+                                    },
+                                    {
+                                        "ErrorEquals": [
+                                            "OllamaRateLimitError"
+                                        ],
+                                        "IntervalSeconds": 30,
+                                        "MaxAttempts": 5,
+                                        "BackoffRate": 1.5,
+                                    },
+                                ],
+                                "End": True,
+                            }
+                        },
+                    },
+                    "ResultPath": "$.process_results",
+                    "Catch": [
+                        {
+                            "ErrorEquals": ["States.ALL"],
+                            "Next": "ProcessFailed",
+                            "ResultPath": "$.error",
+                        }
+                    ],
+                    "Next": "Done",
+                },
+                "Done": {
+                    "Type": "Pass",
+                    "End": True,
+                },
+                "ProcessFailed": {
+                    "Type": "Fail",
+                    "Error": "ProcessLabelsError",
+                    "Cause": "Failed to process label harmonization",
+                },
+            },
+        }
+
+        return json.dumps(definition)

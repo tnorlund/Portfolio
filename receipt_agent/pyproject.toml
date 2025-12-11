@@ -45,6 +45,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+test = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.0.0",
+    "pytest-mock>=3.14.0",
+    "pytest-timeout>=2.1.0",
+    "moto>=5.1.0",
+]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
@@ -52,12 +60,49 @@ dev = [
     "ruff>=0.5.0",
     "mypy>=1.10.0",
     "pre-commit>=3.7.0",
+    "boto3-stubs[dynamodb,s3]>=1.34.0",
 ]
 
 [project.urls]
 Homepage = "https://github.com/tnorlund/Portfolio"
 Documentation = "https://github.com/tnorlund/Portfolio/tree/main/receipt_agent"
 Repository = "https://github.com/tnorlund/Portfolio"
+
+[tool.hatch.build]
+exclude = [
+  "tests/",
+  "test/",
+  "**/*.md",
+  "**/*.txt",
+  "**/*.json",
+  "**/*.yaml",
+  "**/*.yml",
+  "**/*.ini",
+  "**/*.cfg",
+  "**/*.sh",
+  "**/conftest.py",
+  "**/pytest.ini",
+  "fix_*.py",
+  "migrate_*.py",
+  "analyze_*.py",
+  "refactor_*.py",
+  "update_*.py",
+  "standardize_*.py",
+  "remove_*.py",
+  "add_*.py",
+  "test_*.py",
+  "example_*.py",
+  "run_tests.py",
+  "final_*.py",
+  "**/__pycache__/",
+  "**/*.pyc",
+  "**/*.pyo",
+  "**/*.pyd",
+  ".coverage",
+  ".pytest_cache/",
+  "pylint_*.json",
+  "missing_*.json",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["receipt_agent"]
@@ -95,20 +140,35 @@ plugins = ["pydantic.mypy"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+python_files = ["test_*.py"]
 addopts = "-v --tb=short"
+markers = [
+    "unit: mark test as a unit test",
+    "integration: mark test as an integration test",
+    "end_to_end: mark test as an end-to-end test that requires AWS credentials",
+]
 filterwarnings = [
     "ignore::DeprecationWarning",
+    "ignore::ResourceWarning",
+    "ignore:.*urllib3.*:DeprecationWarning",
 ]
 
 [tool.coverage.run]
 source = ["receipt_agent"]
 branch = true
 omit = ["tests/*"]
+parallel = true
+concurrency = ["multiprocessing"]
+data_file = ".coverage"
 
 [tool.coverage.report]
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",
     "raise NotImplementedError",
+    "def __repr__",
+    "if __name__ == .__main__.:",
+    "pass",
+    "raise ImportError",
 ]
 
