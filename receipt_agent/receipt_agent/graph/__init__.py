@@ -1,24 +1,11 @@
-"""LangGraph workflow definitions for receipt validation."""
+"""
+Graph utilities for receipt agents.
 
-from receipt_agent.graph.workflow import (
-    create_validation_graph,
-    run_validation,
-)
-from receipt_agent.graph.nodes import (
-    load_metadata,
-    search_similar_receipts,
-    verify_consistency,
-    check_google_places,
-    make_decision,
-)
+This package contains node functions used by validation workflows.
+The deprecated workflow shims have been removed.
+New code should import from receipt_agent.agents.* instead.
+"""
 
-__all__ = [
-    "create_validation_graph",
-    "run_validation",
-    "load_metadata",
-    "search_similar_receipts",
-    "verify_consistency",
-    "check_google_places",
-    "make_decision",
-]
+# nodes.py is imported directly, no need to export here
 
+__all__: list[str] = []

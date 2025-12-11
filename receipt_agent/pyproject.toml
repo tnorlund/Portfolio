@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "receipt_agent"
-version = "0.1.0"
+version = "0.2.0"
 description = "Agentic validation for receipt metadata using LangGraph and ChromaDB"
 readme = "README.md"
 license = { text = "MIT" }
