@@ -5,22 +5,25 @@ This module creates reusable base images that contain the installed packages,
 allowing Lambda containers to build faster by using these as base images.
 """
 
-import json
 import hashlib
+import json
 import os
 import subprocess
 from pathlib import Path
+from typing import Optional
 
 import pulumi
+import pulumi_docker_build as docker_build
 from pulumi import ComponentResource, ResourceOptions
-from pulumi_aws import get_caller_identity, config
+from pulumi_aws import config, get_caller_identity
 from pulumi_aws.ecr import (
+    get_authorization_token_output,  # Use output version for docker-build
+)
+from pulumi_aws.ecr import (
+    LifecyclePolicy,
     Repository,
     RepositoryImageScanningConfigurationArgs,
-    get_authorization_token_output,  # Use output version for docker-build
-    LifecyclePolicy,
 )
-import pulumi_docker_build as docker_build
 
 
 class BaseImages(ComponentResource):
@@ -451,6 +454,13 @@ class BaseImages(ComponentResource):
             ),
         )
 
+        # Build dependency graph for base image resolution
+        from infra.shared.package_dependencies import DependencyGraph
+
+        self.dependency_graph = DependencyGraph.from_project_root(
+            build_context_path
+        )
+
         # Register outputs
         self.register_outputs(
             {
@@ -460,3 +470,47 @@ class BaseImages(ComponentResource):
                 "label_base_repo_url": self.label_base_repo.repository_url,
             }
         )
+
+    def get_base_image_uri_for_package(
+        self, package_name: str
+    ) -> Optional[pulumi.Output[str]]:
+        """Get the appropriate base image URI for a package.
+
+        Uses the dependency graph to determine which existing base image
+        contains the package and its dependencies.
+
+        Args:
+            package_name: Name of the package (e.g., "receipt-dynamo", "receipt_label")
+
+        Returns:
+            Base image URI (Pulumi Output) or None if no suitable base image exists
+        """
+        # Normalize package name
+        normalized = package_name.replace("_", "-")
+
+        # Check if we have a direct base image for this package
+        if normalized == "receipt-dynamo":
+            return self.dynamo_base_image.tags[0]
+        if normalized == "receipt-label":
+            return self.label_base_image.tags[0]
+
+        # Check if package is included in label base image
+        label_packages = self.dependency_graph.get_base_image_packages(
+            "receipt_label"
+        )
+        if normalized in [pkg.replace("_", "-") for pkg in label_packages]:
+            return self.label_base_image.tags[0]
+
+        # Check if package is included in dynamo base image
+        dynamo_packages = self.dependency_graph.get_base_image_packages(
+            "receipt-dynamo"
+        )
+        if normalized in [pkg.replace("_", "-") for pkg in dynamo_packages]:
+            return self.dynamo_base_image.tags[0]
+
+        # No suitable base image found
+        pulumi.log.warn(
+            f"No base image found for package {package_name}. "
+            "Consider creating a base image for this package."
+        )
+        return None

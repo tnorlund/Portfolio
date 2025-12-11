@@ -28,6 +28,9 @@ from typing import Optional
 
 # Import our infrastructure components
 import s3_website  # noqa: F401
+
+# Using the optimized docker-build based base images with scoped contexts
+from base_images.base_images import BaseImages
 from billing_alerts import BillingAlerts
 from chromadb_compaction import create_chromadb_compaction_infrastructure
 from create_labels_step_functions import CreateLabelsStepFunction
@@ -38,9 +41,6 @@ from dynamo_db import (
     dynamodb_table,  # Import DynamoDB table from original code
 )
 from embedding_step_functions import EmbeddingInfrastructure
-
-# Using the optimized docker-build based base images with scoped contexts
-from base_images.base_images import BaseImages
 from networking import PublicVpc
 from notifications import NotificationSystem
 from pulumi import ResourceOptions
@@ -93,8 +93,18 @@ pulumi.export("foundation_public_subnet_ids", public_vpc.public_subnet_ids)
 # Create base images for faster Lambda builds (built in parallel, early in infrastructure)
 # These contain pre-installed receipt_dynamo and receipt_label packages
 base_images = BaseImages("base", pulumi.get_stack())
-pulumi.export("dynamo_base_image_url", base_images.dynamo_base_repo.repository_url)
-pulumi.export("label_base_image_url", base_images.label_base_repo.repository_url)
+pulumi.export(
+    "dynamo_base_image_url", base_images.dynamo_base_repo.repository_url
+)
+pulumi.export(
+    "label_base_image_url", base_images.label_base_repo.repository_url
+)
+
+# Export dependency graph information for debugging
+dependency_graph_dict = base_images.dependency_graph.to_dict()
+pulumi.export(
+    "dependency_graph", pulumi.Output.from_input(dependency_graph_dict)
+)
 
 # Task 2: Security (depends on VPC)
 security = ChromaSecurity("chroma", vpc_id=public_vpc.vpc_id)
@@ -150,7 +160,9 @@ create_labels_sf = CreateLabelsStepFunction(
     dynamodb_table_name=dynamodb_table.name,
     dynamodb_table_arn=dynamodb_table.arn,
     max_concurrency=3,  # Reduced to avoid Ollama rate limiting (matches validate_pending_labels)
-    base_image_uri=base_images.label_base_image.tags[0],  # Use label base image with receipt_dynamo + receipt_label
+    base_image_uri=base_images.label_base_image.tags[
+        0
+    ],  # Use label base image with receipt_dynamo + receipt_label
 )
 
 validation_by_merchant_step_functions = ValidationByMerchantStepFunction(
