@@ -188,6 +188,14 @@ class CodeBuildDockerImage(ComponentResource):
             }
         )
 
+    def _should_include_base_packages(self) -> bool:
+        """Determine if base packages should be included in hash/upload.
+        
+        Returns False when using a base image (packages already in base).
+        Returns True when not using a base image (need to include packages).
+        """
+        return not self.base_image_uri
+
     def _calculate_content_hash(self) -> str:
         """Calculate hash of Dockerfile and relevant context files."""
         paths: list[Path] = []
@@ -205,7 +213,7 @@ class CodeBuildDockerImage(ComponentResource):
                     paths.append(full_path)
 
             # If using a base image, skip hashing base packages (they're already in the base)
-            if not self.base_image_uri and self.build_context_path == ".":
+            if self._should_include_base_packages() and self.build_context_path == ".":
                 # Also hash the default monorepo packages that are always copied
                 packages_to_hash = [
                     "receipt_dynamo/receipt_dynamo",
@@ -234,7 +242,7 @@ class CodeBuildDockerImage(ComponentResource):
             if self.build_context_path == ".":
                 # Lambda images - hash Python packages and handler directory
                 # If using a base image, skip hashing base packages
-                if not self.base_image_uri:
+                if self._should_include_base_packages():
                     # Default packages that all Lambda images need
                     packages_to_hash = [
                         "receipt_dynamo/receipt_dynamo",
@@ -433,7 +441,7 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
                 self.lambda_function_name if self.lambda_config else None
             ),
             debug_mode=self.debug_mode,
-            base_image_uri=self.base_image_uri,  # Pass base image to buildspec
+            base_image_uri="placeholder" if self.base_image_uri else None,  # Just indicate presence
         )
 
     def _setup_pipeline(self, content_hash: str):
