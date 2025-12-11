@@ -942,90 +942,110 @@ def create_agentic_tools(
                                 "/tmp/chromadb",
                             )
 
-                            # Check what collections exist before downloading
-                            chroma_db_file = os.path.join(
-                                chroma_path, "chroma.sqlite3"
+                            # Use separate directories for lines and words to avoid overwriting
+                            base_chroma_path = chroma_path
+                            lines_path = os.path.join(
+                                base_chroma_path, "lines"
                             )
-                            has_existing_chromadb = os.path.exists(
-                                chroma_db_file
+                            words_path = os.path.join(
+                                base_chroma_path, "words"
                             )
 
-                            if has_existing_chromadb:
-                                # Check what collections exist
-                                try:
-                                    existing_collections = (
-                                        chroma_client.list_collections()
-                                    )
-                                    collection_names = (
-                                        [c.name for c in existing_collections]
-                                        if hasattr(
-                                            existing_collections[0], "name"
-                                        )
-                                        else [
-                                            str(c)
-                                            for c in existing_collections
-                                        ]
-                                    )
-                                    logger.info(
-                                        f"ChromaDB exists at {chroma_path} with collections: {collection_names}. "
-                                        f"'lines' collection missing. Downloading 'lines' collection..."
-                                    )
-                                except Exception:
-                                    logger.info(
-                                        f"ChromaDB exists at {chroma_path} but 'lines' collection missing. "
-                                        f"Downloading 'lines' collection..."
-                                    )
-                            else:
+                            # Check if already cached
+                            lines_db_file = os.path.join(
+                                lines_path, "chroma.sqlite3"
+                            )
+                            words_db_file = os.path.join(
+                                words_path, "chroma.sqlite3"
+                            )
+
+                            # Download lines collection if needed
+                            if not os.path.exists(lines_db_file):
                                 logger.info(
                                     f"Downloading 'lines' collection from s3://{chromadb_bucket}/lines/"
                                 )
 
-                            lines_result = download_snapshot_atomic(
-                                bucket=chromadb_bucket,
-                                collection="lines",
-                                local_path=chroma_path,
-                                verify_integrity=False,
-                            )
-
-                            if lines_result.get("status") == "downloaded":
-                                # Recreate client to pick up new collection
-                                from receipt_agent.clients.factory import (
-                                    create_chroma_client,
-                                )
-                                from receipt_agent.config.settings import (
-                                    get_settings,
+                                lines_result = download_snapshot_atomic(
+                                    bucket=chromadb_bucket,
+                                    collection="lines",
+                                    local_path=lines_path,
+                                    verify_integrity=False,
                                 )
 
-                                settings = get_settings()
-                                chroma_client = create_chroma_client(
-                                    settings=settings
-                                )
-                                state["chroma_client"] = chroma_client
-
-                                # Verify collection now exists
-                                try:
-                                    collection = chroma_client.get_collection(
-                                        "lines"
-                                    )
-                                    logger.info(
-                                        f"Successfully loaded 'lines' collection with {collection.count()} vectors"
-                                    )
-                                except Exception as verify_error:
-                                    logger.error(
-                                        f"'lines' collection still not found after download: {verify_error}"
-                                    )
+                                if lines_result.get("status") != "downloaded":
                                     return {
-                                        "error": f"Collection 'lines' not found after download: {str(verify_error)}",
+                                        "error": f"Failed to download 'lines' collection: {lines_result.get('error')}",
                                         "place_id": place_id,
                                         "receipt_count": 0,
-                                        "message": "ChromaDB 'lines' collection not available after download",
+                                        "message": "Could not load ChromaDB 'lines' collection",
                                     }
-                            else:
+
+                                logger.info(
+                                    f"ChromaDB lines snapshot downloaded: version={lines_result.get('version_id')}"
+                                )
+
+                            # Download words collection if needed (for completeness)
+                            if not os.path.exists(words_db_file):
+                                logger.info(
+                                    f"Downloading 'words' collection from s3://{chromadb_bucket}/words/"
+                                )
+
+                                words_result = download_snapshot_atomic(
+                                    bucket=chromadb_bucket,
+                                    collection="words",
+                                    local_path=words_path,
+                                    verify_integrity=False,
+                                )
+
+                                if words_result.get("status") != "downloaded":
+                                    logger.warning(
+                                        f"Failed to download 'words' collection: {words_result.get('error')}"
+                                    )
+                                    # Non-fatal - we only need lines for this tool
+                                else:
+                                    logger.info(
+                                        f"ChromaDB words snapshot downloaded: version={words_result.get('version_id')}"
+                                    )
+
+                            # Set environment variables for DualChromaClient
+                            os.environ[
+                                "RECEIPT_AGENT_CHROMA_LINES_DIRECTORY"
+                            ] = lines_path
+                            os.environ[
+                                "RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"
+                            ] = words_path
+
+                            # Recreate client to pick up new collections
+                            from receipt_agent.clients.factory import (
+                                create_chroma_client,
+                            )
+                            from receipt_agent.config.settings import (
+                                get_settings,
+                            )
+
+                            settings = get_settings()
+                            chroma_client = create_chroma_client(
+                                settings=settings
+                            )
+                            state["chroma_client"] = chroma_client
+
+                            # Verify collection now exists
+                            try:
+                                collection = chroma_client.get_collection(
+                                    "lines"
+                                )
+                                logger.info(
+                                    f"Successfully loaded 'lines' collection with {collection.count()} vectors"
+                                )
+                            except Exception as verify_error:
+                                logger.error(
+                                    f"'lines' collection still not found after download: {verify_error}"
+                                )
                                 return {
-                                    "error": f"Failed to download 'lines' collection: {lines_result.get('error')}",
+                                    "error": f"Collection 'lines' not found after download: {str(verify_error)}",
                                     "place_id": place_id,
                                     "receipt_count": 0,
-                                    "message": "Could not load ChromaDB 'lines' collection",
+                                    "message": "ChromaDB 'lines' collection not available after download",
                                 }
                         except Exception as download_error:
                             logger.error(

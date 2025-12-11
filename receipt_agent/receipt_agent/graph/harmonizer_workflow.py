@@ -720,58 +720,61 @@ def create_harmonizer_tools(
             # Sanitize image_id first (remove trailing characters like '?')
             sanitized_image_id = image_id.rstrip("? \t\n\r")
 
-            # Try sanitized version first, then original if different
-            receipt_details = None
+            # Log table name for debugging
+            table_name = getattr(dynamo_client, "table_name", "unknown")
+            logger.debug(
+                f"display_receipt_text: Using table '{table_name}' for {image_id}#{receipt_id}"
+            )
+
+            # Simplified: Use list_receipt_lines_from_receipt directly
+            # This is the most direct method and uses GSI3 for efficient querying
+            lines = []
             for img_id in [sanitized_image_id, image_id]:
                 try:
-                    receipt_details = dynamo_client.get_receipt_details(
-                        image_id=img_id,
-                        receipt_id=receipt_id,
+                    lines = dynamo_client.list_receipt_lines_from_receipt(
+                        img_id, receipt_id
                     )
-                    if receipt_details and receipt_details.receipt:
+                    if lines:
+                        logger.info(
+                            f"Fetched {len(lines)} lines for {img_id}#{receipt_id} "
+                            f"using list_receipt_lines_from_receipt()"
+                        )
                         break
                 except Exception as e:
-                    if (
-                        img_id == sanitized_image_id
-                        and sanitized_image_id != image_id
-                    ):
-                        logger.debug(
-                            f"get_receipt_details failed for sanitized {img_id}#{receipt_id}, "
-                            f"trying original: {e}"
-                        )
-                    continue
+                    logger.debug(
+                        f"list_receipt_lines_from_receipt failed for {img_id}#{receipt_id}: {e}"
+                    )
 
-            if not receipt_details or not receipt_details.receipt:
-                # Try alternative methods to fetch receipt details
-                logger.info(
-                    f"Primary get_receipt_details failed for {image_id}#{receipt_id}, "
-                    f"trying alternative methods..."
+            # Fallback: Try get_receipt_details if direct query failed
+            if not lines:
+                logger.debug(
+                    f"Direct line query failed, trying get_receipt_details() for {image_id}#{receipt_id}"
+                )
+                try:
+                    receipt_details = dynamo_client.get_receipt_details(
+                        sanitized_image_id, receipt_id
+                    )
+                    if receipt_details and receipt_details.lines:
+                        lines = receipt_details.lines
+                        logger.info(
+                            f"Fetched {len(lines)} lines via get_receipt_details()"
+                        )
+                except Exception as e:
+                    logger.debug(f"get_receipt_details also failed: {e}")
+
+            # Final fallback: Try fetch_receipt_details_with_fallback
+            if not lines:
+                logger.debug(
+                    f"Trying fetch_receipt_details_with_fallback() for {image_id}#{receipt_id}"
                 )
                 receipt_details = _fetch_receipt_details_fallback(
                     dynamo_client, sanitized_image_id, receipt_id
                 )
-
-            # Handle case where we might have lines/words but no receipt entity
-            receipt = receipt_details.receipt if receipt_details else None
-            lines = receipt_details.lines or [] if receipt_details else []
-
-            # If we still don't have lines, try direct fetch with sanitized image_id
-            if not lines:
-                for img_id in [sanitized_image_id, image_id]:
-                    try:
-                        lines = dynamo_client.list_receipt_lines_from_receipt(
-                            img_id, receipt_id
-                        )
-                        if lines:
-                            logger.info(
-                                f"Fetched {len(lines)} lines directly for {img_id}#{receipt_id} "
-                                f"in display_receipt_text"
-                            )
-                            break
-                    except Exception as e:
-                        logger.debug(
-                            f"Could not fetch lines for {img_id}#{receipt_id}: {e}"
-                        )
+                if receipt_details and receipt_details.lines:
+                    lines = receipt_details.lines
+                    logger.info(
+                        f"Fetched {len(lines)} lines via fetch_receipt_details_with_fallback()"
+                    )
 
             if not lines:
                 return {
@@ -1191,67 +1194,85 @@ Use this information to make your harmonization decision."""
                         "Lazy-loading ChromaDB for metadata finder sub-agent..."
                     )
 
-                    # Download ChromaDB snapshot using receipt_chroma (atomic download)
+                    # Download ChromaDB snapshots using receipt_chroma (atomic download)
+                    # Use separate directories for lines and words to avoid overwriting
                     from receipt_chroma.s3 import download_snapshot_atomic
 
-                    # Download both lines and words collections (metadata finder uses both)
-                    chroma_path = os.environ.get(
+                    base_chroma_path = os.environ.get(
                         "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY",
                         "/tmp/chromadb",
                     )
 
+                    lines_path = os.path.join(base_chroma_path, "lines")
+                    words_path = os.path.join(base_chroma_path, "words")
+
                     # Check if already cached
-                    chroma_db_file = os.path.join(
-                        chroma_path, "chroma.sqlite3"
-                    )
-                    if not os.path.exists(chroma_db_file):
-                        # Download lines collection first
-                        logger.info(
-                            f"Downloading ChromaDB lines snapshot from s3://{chromadb_bucket}/lines/"
-                        )
-                        lines_result = download_snapshot_atomic(
-                            bucket=chromadb_bucket,
-                            collection="lines",
-                            local_path=chroma_path,
-                            verify_integrity=False,  # Skip integrity check for faster startup
-                        )
+                    lines_db_file = os.path.join(lines_path, "chroma.sqlite3")
+                    words_db_file = os.path.join(words_path, "chroma.sqlite3")
 
-                        if lines_result.get("status") != "downloaded":
-                            raise Exception(
-                                f"Failed to download ChromaDB lines snapshot: {lines_result.get('error')}"
+                    if not os.path.exists(lines_db_file) or not os.path.exists(
+                        words_db_file
+                    ):
+                        # Download lines collection to separate directory
+                        if not os.path.exists(lines_db_file):
+                            logger.info(
+                                f"Downloading ChromaDB lines snapshot from s3://{chromadb_bucket}/lines/"
+                            )
+                            lines_result = download_snapshot_atomic(
+                                bucket=chromadb_bucket,
+                                collection="lines",
+                                local_path=lines_path,
+                                verify_integrity=False,  # Skip integrity check for faster startup
                             )
 
-                        logger.info(
-                            f"ChromaDB lines snapshot downloaded: version={lines_result.get('version_id')}"
-                        )
+                            if lines_result.get("status") != "downloaded":
+                                raise Exception(
+                                    f"Failed to download ChromaDB lines snapshot: {lines_result.get('error')}"
+                                )
 
-                        # Download words collection (merges into same ChromaDB instance)
-                        logger.info(
-                            f"Downloading ChromaDB words snapshot from s3://{chromadb_bucket}/words/"
-                        )
-                        words_result = download_snapshot_atomic(
-                            bucket=chromadb_bucket,
-                            collection="words",
-                            local_path=chroma_path,
-                            verify_integrity=False,  # Skip integrity check for faster startup
-                        )
-
-                        if words_result.get("status") != "downloaded":
-                            raise Exception(
-                                f"Failed to download ChromaDB words snapshot: {words_result.get('error')}"
+                            logger.info(
+                                f"ChromaDB lines snapshot downloaded: version={lines_result.get('version_id')}"
+                            )
+                        else:
+                            logger.info(
+                                f"ChromaDB lines already cached at {lines_path}"
                             )
 
-                        logger.info(
-                            f"ChromaDB words snapshot downloaded: version={words_result.get('version_id')}"
-                        )
+                        # Download words collection to separate directory
+                        if not os.path.exists(words_db_file):
+                            logger.info(
+                                f"Downloading ChromaDB words snapshot from s3://{chromadb_bucket}/words/"
+                            )
+                            words_result = download_snapshot_atomic(
+                                bucket=chromadb_bucket,
+                                collection="words",
+                                local_path=words_path,
+                                verify_integrity=False,  # Skip integrity check for faster startup
+                            )
+
+                            if words_result.get("status") != "downloaded":
+                                raise Exception(
+                                    f"Failed to download ChromaDB words snapshot: {words_result.get('error')}"
+                                )
+
+                            logger.info(
+                                f"ChromaDB words snapshot downloaded: version={words_result.get('version_id')}"
+                            )
+                        else:
+                            logger.info(
+                                f"ChromaDB words already cached at {words_path}"
+                            )
                     else:
                         logger.info(
-                            f"ChromaDB already cached at {chroma_path}"
+                            f"ChromaDB already cached at {base_chroma_path}"
                         )
 
-                    # Update environment for receipt_agent to find ChromaDB
-                    os.environ["RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY"] = (
-                        chroma_path
+                    # Set environment variables for DualChromaClient (separate directories)
+                    os.environ["RECEIPT_AGENT_CHROMA_LINES_DIRECTORY"] = (
+                        lines_path
+                    )
+                    os.environ["RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"] = (
+                        words_path
                     )
 
                     # Create clients using the receipt_agent factory
