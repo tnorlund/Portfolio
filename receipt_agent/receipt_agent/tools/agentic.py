@@ -7,7 +7,7 @@ while enforcing constraints on how ChromaDB can be queried.
 Guard Rails:
 - Tools construct record IDs internally (agent can't make arbitrary queries)
 - Collections are hardcoded ("lines", "words")
-- Current receipt is automatically excluded from search results
+- Current receipt is automatically excluded from search results (when context is set)
 - Result counts are capped
 - Decision tool enforces valid status values
 """
@@ -466,6 +466,11 @@ def create_agentic_tools(
                         {"error": f"No embedding found for line {line_id}"}
                     ]
             except Exception as e:
+                logger.exception(
+                    "Error getting embedding for line_id=%s doc_id=%s",
+                    line_id,
+                    doc_id,
+                )
                 return [{"error": f"Could not get embedding: {e}"}]
 
         # Search for similar lines
@@ -574,6 +579,12 @@ def create_agentic_tools(
                         }
                     ]
             except Exception as e:
+                logger.exception(
+                    "Error getting embedding for word line_id=%s word_id=%s doc_id=%s",
+                    line_id,
+                    word_id,
+                    doc_id,
+                )
                 return [{"error": f"Could not get embedding: {e}"}]
 
         # Search for similar words
@@ -1102,6 +1113,8 @@ def create_agentic_tools(
             return {
                 "error": "Google Places API not configured",
                 "found": False,
+                "place_id": None,
+                "confidence": 0.0,
             }
 
         try:
@@ -1113,11 +1126,12 @@ def create_agentic_tools(
             )
 
             if not results:
-                result = {
+                return {
                     "found": False,
+                    "place_id": None,
+                    "confidence": 0.0,
                     "message": "No matching business found in Google Places",
                 }
-                return result
 
             # Return the top match
             top = results[0] if isinstance(results, list) else results
@@ -1135,6 +1149,8 @@ def create_agentic_tools(
             return {
                 "error": f"{e!s}",
                 "found": False,
+                "place_id": None,
+                "confidence": 0.0,
             }
 
     # ========== DECISION TOOL (terminates agent loop) ==========
@@ -1178,6 +1194,7 @@ def create_agentic_tools(
     tools = [
         get_my_lines,
         get_my_words,
+        get_receipt_text,
         get_my_metadata,
         find_similar_to_my_line,
         find_similar_to_my_word,
@@ -1215,13 +1232,21 @@ def create_agentic_tools(
 
                 # Search for businesses near those coordinates
                 businesses = places_api.search_nearby(
-                    lat=lat, lng=lng, radius=50
+                    lat=lat,
+                    lng=lng,
+                    radius=50,
                 )
 
                 return {
                     "address": address,
                     "coordinates": {"lat": lat, "lng": lng},
                     "count": len(businesses),
+                    "businesses": businesses,
+                    "place_ids": [
+                        b.get("place_id")
+                        for b in businesses
+                        if isinstance(b, dict)
+                    ],
                     "message": f"Found {len(businesses)} business(es) at address",
                 }
 

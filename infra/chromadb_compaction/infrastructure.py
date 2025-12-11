@@ -86,9 +86,11 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
 
         # Optionally create EFS for Chroma if networking details provided
         # Use efs_subnet_ids if provided (unique AZs), otherwise fallback to subnet_ids
+        # Skip EFS creation when explicitly in S3-only mode to avoid wasting resources
         self.efs = None
         if (
             use_efs
+            and normalized_storage_mode != "s3"
             and vpc_id
             and (efs_subnet_ids or subnet_ids)
             and lambda_security_group_id
