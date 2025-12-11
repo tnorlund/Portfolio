@@ -7,7 +7,7 @@ while enforcing constraints on how ChromaDB can be queried.
 Guard Rails:
 - Tools construct record IDs internally (agent can't make arbitrary queries)
 - Collections are hardcoded ("lines", "words")
-- Current receipt is automatically excluded from search results
+- Current receipt is automatically excluded from search results (when context is set)
 - Result counts are capped
 - Decision tool enforces valid status values
 """
@@ -375,6 +375,11 @@ def create_agentic_tools(
                         {"error": f"No embedding found for line {line_id}"}
                     ]
             except Exception as e:
+                logger.exception(
+                    "Error getting embedding for line_id=%s doc_id=%s",
+                    line_id,
+                    doc_id,
+                )
                 return [{"error": f"Could not get embedding: {e}"}]
 
         # Search for similar lines
@@ -477,6 +482,12 @@ def create_agentic_tools(
                         }
                     ]
             except Exception as e:
+                logger.exception(
+                    "Error getting embedding for word line_id=%s word_id=%s doc_id=%s",
+                    line_id,
+                    word_id,
+                    doc_id,
+                )
                 return [{"error": f"Could not get embedding: {e}"}]
 
         # Search for similar words
@@ -1277,6 +1288,8 @@ def create_agentic_tools(
             return {
                 "error": "Google Places API not configured",
                 "found": False,
+                "place_id": None,
+                "confidence": 0.0,
             }
 
         try:
@@ -1284,6 +1297,8 @@ def create_agentic_tools(
                 "search_method": None,
                 "found": False,
                 "place": None,
+                "place_id": None,
+                "confidence": 0.0,
             }
 
             # Try place_id first (most reliable, direct lookup)
@@ -1386,10 +1401,15 @@ def create_agentic_tools(
             return result
 
         except Exception as e:
-            logger.error(f"Error in verify_with_google_places: {e}")
+            logger.exception("Error in verify_with_google_places")
             return {
                 "error": str(e),
                 "found": False,
+                "place_id": None,
+                "confidence": 0.0,
+                "found": False,
+                "place_id": None,
+                "confidence": 0.0,
             }
 
     # ========== DECISION TOOL (terminates agent loop) ==========
@@ -1534,6 +1554,12 @@ def create_agentic_tools(
                     "address_searched": address,
                     "coordinates": {"lat": lat, "lng": lng},
                     "count": len(businesses),
+                    "businesses": businesses,
+                    "place_ids": [
+                        b.get("place_id")
+                        for b in businesses
+                        if isinstance(b, dict)
+                    ],
                     "message": f"Found {len(businesses)} business(es) at address",
                 }
 

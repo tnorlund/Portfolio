@@ -11,13 +11,14 @@ pattern from embedding_step_functions.
 import json
 from pathlib import Path
 from typing import Optional
+
 import pulumi
 import pulumi_aws as aws
 from pulumi import ComponentResource, Output, ResourceOptions
 
-from .sqs_queues import ChromaDBQueues
-from .s3_buckets import ChromaDBBuckets
 from .docker_image import DockerImageComponent
+from .s3_buckets import ChromaDBBuckets
+from .sqs_queues import ChromaDBQueues
 
 try:
     from lambda_layer import dynamo_layer  # type: ignore[import-not-found]
@@ -202,10 +203,14 @@ class HybridLambdaDeployment(ComponentResource):
                     "security_group_ids": [lambda_security_group_id],
                 },
                 # EFS mount enabled for networking
-                "file_system_config": {
-                    "arn": efs_access_point_arn,
-                    "local_mount_path": "/mnt/chroma",
-                } if efs_access_point_arn else None,
+                "file_system_config": (
+                    {
+                        "arn": efs_access_point_arn,
+                        "local_mount_path": "/mnt/chroma",
+                    }
+                    if efs_access_point_arn
+                    else None
+                ),
             },
             opts=ResourceOptions(parent=self, depends_on=[self.lambda_role]),
         )
@@ -416,7 +421,9 @@ class HybridLambdaDeployment(ComponentResource):
         # VPC and EFS configuration is now handled in lambda_config
 
         # Use the Lambda function created by DockerImageComponent
-        self.enhanced_compaction_function = self.docker_image.docker_image.lambda_function
+        self.enhanced_compaction_function = (
+            self.docker_image.docker_image.lambda_function
+        )
 
         # Create event source mappings
         self._create_event_source_mappings(

@@ -247,7 +247,7 @@ class UpdateResult:
 
     Attributes:
         total_processed: Total receipts processed
-        total_updated: Number successfully updated
+        total_updated: Number successfully updated (or "would update" in dry-run mode)
         total_failed: Number that failed to update
         total_skipped: Number skipped (low confidence, etc.)
         errors: List of error messages
@@ -351,63 +351,61 @@ class ReceiptMetadataFinder:
         total = 0
 
         try:
-            # Get all receipt metadata (paginated)
-            metadatas = []
+            # Paginate and filter in one pass to avoid accumulating all metadatas
             last_key = None
             while True:
                 batch, last_key = self.dynamo.list_receipt_metadatas(
                     limit=1000,
                     last_evaluated_key=last_key,
                 )
-                metadatas.extend(batch)
-                if not last_key:
-                    break
 
-            # Filter to receipts with missing metadata
-            for meta in metadatas:
-                # Check if any field is missing
-                has_place_id = meta.place_id and meta.place_id not in (
-                    "",
-                    "null",
-                    "NO_RESULTS",
-                    "INVALID",
-                )
-                has_merchant_name = bool(
-                    meta.merchant_name and meta.merchant_name.strip()
-                )
-                has_address = bool(meta.address and meta.address.strip())
-                has_phone = bool(
-                    meta.phone_number and meta.phone_number.strip()
-                )
-
-                # If any field is missing, include it
-                if not (
-                    has_place_id
-                    and has_merchant_name
-                    and has_address
-                    and has_phone
-                ):
-                    receipt = ReceiptRecord(
-                        image_id=meta.image_id,
-                        receipt_id=meta.receipt_id,
-                        merchant_name=(
-                            meta.merchant_name if has_merchant_name else None
-                        ),
-                        place_id=meta.place_id if has_place_id else None,
-                        address=meta.address if has_address else None,
-                        phone=meta.phone_number if has_phone else None,
-                        validation_status=getattr(
-                            meta, "validation_status", None
-                        ),
+                # Filter to receipts with missing metadata within this batch
+                for meta in batch:
+                    # Check if any field is missing
+                    has_place_id = meta.place_id and meta.place_id not in (
+                        "",
+                        "null",
+                        "NO_RESULTS",
+                        "INVALID",
                     )
+                    has_merchant_name = bool(
+                        meta.merchant_name and meta.merchant_name.strip()
+                    )
+                    has_address = bool(meta.address and meta.address.strip())
+                    has_phone = bool(
+                        meta.phone_number and meta.phone_number.strip()
+                    )
+
+                    # If any field is missing, include it
+                    if not (
+                        has_place_id
+                        and has_merchant_name
+                        and has_address
+                        and has_phone
+                    ):
+                        receipt = ReceiptRecord(
+                            image_id=meta.image_id,
+                            receipt_id=meta.receipt_id,
+                            merchant_name=(
+                                meta.merchant_name
+                                if has_merchant_name
+                                else None
+                            ),
+                            place_id=meta.place_id if has_place_id else None,
+                            address=meta.address if has_address else None,
+                            phone=meta.phone_number if has_phone else None,
+                            validation_status=getattr(
+                                meta, "validation_status", None
+                            ),
+                        )
 
                     self._receipts_with_missing_metadata.append(receipt)
                     total += 1
 
-            logger.info(
-                f"Loaded {total} receipts with missing metadata "
-                f"(out of {len(metadatas)} total receipts)"
-            )
+                if not last_key:
+                    break
+
+            logger.info(f"Loaded {total} receipts with missing metadata")
 
         except Exception as e:
             logger.error(f"Failed to load receipts: {e}")
@@ -461,7 +459,7 @@ class ReceiptMetadataFinder:
         result = FinderResult()
         receipts_to_process = self._receipts_with_missing_metadata
 
-        if limit:
+        if limit is not None:
             receipts_to_process = receipts_to_process[:limit]
 
         result.total_processed = len(receipts_to_process)
@@ -515,7 +513,15 @@ class ReceiptMetadataFinder:
                         await asyncio.sleep(retry_delay * (attempt + 1))
                         continue
                     else:
-                        raise
+                        # Give up on this receipt but continue processing others
+                        logger.error(
+                            "Giving up on %s#%s after %d attempts: %s",
+                            receipt.image_id,
+                            receipt.receipt_id,
+                            attempt + 1,
+                            error_str[:200],
+                        )
+                        break  # Fall through to record match.error / total_errors
 
             # Convert agent result to MetadataMatch
             match = MetadataMatch(receipt=receipt)
@@ -638,6 +644,8 @@ class ReceiptMetadataFinder:
             if len(matches_to_update) > 10:
                 logger.info(f"  ... and {len(matches_to_update) - 10} more")
 
+            # In dry-run mode, total_updated represents "would update" count
+            # (no actual DynamoDB writes occur)
             result.total_updated = len(matches_to_update)
             return result
 
