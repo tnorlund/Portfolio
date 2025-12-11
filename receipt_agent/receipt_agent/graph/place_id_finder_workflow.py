@@ -26,7 +26,10 @@ from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel, Field
 from receipt_agent.config.settings import Settings, get_settings
 from receipt_agent.tools.agentic import ReceiptContext, create_agentic_tools
-from receipt_agent.utils.agent_common import create_ollama_llm
+from receipt_agent.utils.agent_common import (
+    create_agent_node_with_retry,
+    create_ollama_llm,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -314,18 +317,11 @@ def create_place_id_finder_graph(
     # Create LLM with tools bound
     llm = create_ollama_llm(settings).bind_tools(tools)
 
-    # Define the agent node
-    def agent_node(state: PlaceIdFinderState) -> dict:
-        """Call the LLM to decide next action."""
-        messages = state.messages
-        response = llm.invoke(messages)
-
-        if hasattr(response, "tool_calls") and response.tool_calls:
-            logger.debug(
-                f"Agent tool calls: {[tc['name'] for tc in response.tool_calls]}"
-            )
-
-        return {"messages": [response]}
+    # Create agent node with retry logic and robust logging
+    agent_node = create_agent_node_with_retry(
+        llm=llm,
+        agent_name="place_id_finder",
+    )
 
     # Define tool node
     tool_node = ToolNode(tools)

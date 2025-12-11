@@ -145,6 +145,28 @@ class SubmitDecisionInput(BaseModel):
     )
 
 
+class VerifyWithGooglePlacesInput(BaseModel):
+    """Input for verify_with_google_places tool."""
+
+    merchant_name: str = Field(
+        description="Merchant name to verify against Google Places"
+    )
+    address: Optional[str] = Field(
+        default=None,
+        description="Optional address to narrow the search",
+    )
+    phone: Optional[str] = Field(
+        default=None,
+        description="Optional phone number to narrow the search",
+    )
+
+
+class FindBusinessesAtAddressInput(BaseModel):
+    """Input for find_businesses_at_address_wrapper tool."""
+
+    address: str = Field(description="Address to search for businesses")
+
+
 # ==============================================================================
 # Tool Factory - Creates tools with injected dependencies
 # ==============================================================================
@@ -1055,8 +1077,26 @@ def create_agentic_tools(
             return {"error": "No receipt context set"}
 
         try:
-            # Get metadata for both receipts
-            my_metadata = ctx.metadata
+            # Ensure my_metadata is a proper entity with attribute access
+            # ctx.metadata may be None or a dict (from get_my_metadata)
+            if ctx.metadata is None or isinstance(ctx.metadata, dict):
+                # Fetch as proper entity for attribute access
+                my_metadata = dynamo_client.get_receipt_metadata(
+                    image_id=ctx.image_id,
+                    receipt_id=ctx.receipt_id,
+                )
+                # Cache the entity for subsequent accesses
+                ctx.metadata = my_metadata
+            else:
+                # Already a proper entity
+                my_metadata = ctx.metadata
+
+            if not my_metadata:
+                return {
+                    "error": f"Receipt {ctx.image_id}#{ctx.receipt_id} metadata not found"
+                }
+
+            # Get metadata for the other receipt
             other_metadata = dynamo_client.get_receipt_metadata(
                 image_id=other_image_id, receipt_id=other_receipt_id
             )
@@ -1147,6 +1187,17 @@ def create_agentic_tools(
                     "message": "No matching business found in Google Places",
                 }
                 return result
+
+            # Return the top match
+            top = results[0] if isinstance(results, list) else results
+            return {
+                "found": True,
+                "place_id": top.get("place_id"),
+                "confidence": (
+                    top.get("rating", 0) / 5.0 if top.get("rating") else 0.5
+                ),
+                "message": f"Found {top.get('name', 'business')} via Google Places",
+            }
 
         except Exception as e:
             logger.exception("Error in verify_with_google_places")

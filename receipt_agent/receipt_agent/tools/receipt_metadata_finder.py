@@ -133,6 +133,7 @@ class MetadataMatch:
     found: bool = False
     fields_found: list[str] = field(default_factory=list)
     error: Optional[str] = None
+    not_found_reason: Optional[str] = None
     reasoning: str = ""
 
 
@@ -331,7 +332,7 @@ class ReceiptMetadataFinder:
                 f"(out of {len(metadatas)} total receipts)"
             )
 
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to load receipts")
             raise
 
@@ -478,22 +479,37 @@ class ReceiptMetadataFinder:
                 elif len(found_required) > 0:
                     result.total_found_partial += 1
                 else:
+                    # Agent said "found" but no required fields - treat as not found
                     result.total_not_found += 1
             else:
-                error_msg = (
-                    agent_result.get("reasoning", "No metadata found")
-                    if agent_result
-                    else str(last_error) if last_error else "No metadata found"
-                )
+                # No metadata found - distinguish between errors and normal "not found"
                 match.found = False
-                match.error = error_msg
                 match.confidence = 0.0
-                result.total_not_found += 1
+
+                if last_error:
+                    # Actual exception/API failure occurred - this is a real error
+                    match.error = str(last_error)
+                elif agent_result:
+                    # Agent completed but found no metadata - normal "not found" outcome
+                    match.not_found_reason = agent_result.get(
+                        "reasoning", "no_match"
+                    )
+                else:
+                    # No result and no error - should not happen, but treat as not found
+                    match.not_found_reason = "no_match"
 
             result.matches.append(match)
 
-            if match.error:
+            # Count errors separately (only for actual exceptions/API failures)
+            # Found cases (total_found_all, total_found_partial, or total_not_found when found=True
+            # but no required fields) are already counted above
+            if not match.found and match.error:
+                # Only count as error if error is actually set (exceptions/API failures)
                 result.total_errors += 1
+            elif not match.found and not match.error:
+                # Not found but no error - normal "no match" outcome
+                # (This only happens when agent_result.get("found") was False/None)
+                result.total_not_found += 1
 
         logger.info(
             f"Metadata finder complete: {result.total_found_all} all fields, "

@@ -468,8 +468,6 @@ async def run_receipt_metadata_finder(
                 "has_embedding": (
                     _build_line_id(image_id, receipt_id, line.line_id)
                     in (line_embeddings or {})
-                    if hasattr(line, "line_id")
-                    else False
                 ),
             }
             for line in receipt_lines

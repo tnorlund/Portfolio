@@ -44,6 +44,7 @@ from receipt_agent.utils.agent_common import (
     create_agent_node_with_retry,
     create_ollama_llm,
 )
+from receipt_agent.utils.chroma_helpers import load_dual_chroma_from_s3
 from receipt_agent.utils.receipt_fetching import (
     fetch_receipt_details_with_fallback,
 )
@@ -1189,106 +1190,11 @@ Use this information to make your harmonization decision."""
                         "Lazy-loading ChromaDB for metadata finder sub-agent..."
                     )
 
-                    # Download ChromaDB snapshots using receipt_chroma (atomic download)
-                    # Use separate directories for lines and words to avoid overwriting
-                    from receipt_chroma.s3 import download_snapshot_atomic
-
-                    base_chroma_path = os.environ.get(
-                        "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY",
-                        "/tmp/chromadb",
+                    # Use shared helper to load dual-chroma setup
+                    chroma_client, embed_fn = load_dual_chroma_from_s3(
+                        chromadb_bucket=chromadb_bucket,
+                        verify_integrity=False,  # Skip integrity check for faster startup
                     )
-
-                    lines_path = os.path.join(base_chroma_path, "lines")
-                    words_path = os.path.join(base_chroma_path, "words")
-
-                    # Check if already cached
-                    lines_db_file = os.path.join(lines_path, "chroma.sqlite3")
-                    words_db_file = os.path.join(words_path, "chroma.sqlite3")
-
-                    if not os.path.exists(lines_db_file) or not os.path.exists(
-                        words_db_file
-                    ):
-                        # Download lines collection to separate directory
-                        if not os.path.exists(lines_db_file):
-                            logger.info(
-                                f"Downloading ChromaDB lines snapshot from s3://{chromadb_bucket}/lines/"
-                            )
-                            lines_result = download_snapshot_atomic(
-                                bucket=chromadb_bucket,
-                                collection="lines",
-                                local_path=lines_path,
-                                verify_integrity=False,  # Skip integrity check for faster startup
-                            )
-
-                            if lines_result.get("status") != "downloaded":
-                                raise Exception(
-                                    f"Failed to download ChromaDB lines snapshot: {lines_result.get('error')}"
-                                )
-
-                            logger.info(
-                                f"ChromaDB lines snapshot downloaded: version={lines_result.get('version_id')}"
-                            )
-                        else:
-                            logger.info(
-                                f"ChromaDB lines already cached at {lines_path}"
-                            )
-
-                        # Download words collection to separate directory
-                        if not os.path.exists(words_db_file):
-                            logger.info(
-                                f"Downloading ChromaDB words snapshot from s3://{chromadb_bucket}/words/"
-                            )
-                            words_result = download_snapshot_atomic(
-                                bucket=chromadb_bucket,
-                                collection="words",
-                                local_path=words_path,
-                                verify_integrity=False,  # Skip integrity check for faster startup
-                            )
-
-                            if words_result.get("status") != "downloaded":
-                                raise Exception(
-                                    f"Failed to download ChromaDB words snapshot: {words_result.get('error')}"
-                                )
-
-                            logger.info(
-                                f"ChromaDB words snapshot downloaded: version={words_result.get('version_id')}"
-                            )
-                        else:
-                            logger.info(
-                                f"ChromaDB words already cached at {words_path}"
-                            )
-                    else:
-                        logger.info(
-                            f"ChromaDB already cached at {base_chroma_path}"
-                        )
-
-                    # Set environment variables for DualChromaClient (separate directories)
-                    os.environ["RECEIPT_AGENT_CHROMA_LINES_DIRECTORY"] = (
-                        lines_path
-                    )
-                    os.environ["RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"] = (
-                        words_path
-                    )
-
-                    # Create clients using the receipt_agent factory
-                    from receipt_agent.clients.factory import (
-                        create_chroma_client,
-                        create_embed_fn,
-                    )
-                    from receipt_agent.config.settings import get_settings
-
-                    settings = get_settings()
-
-                    # Verify OpenAI API key is available for embeddings
-                    if not settings.openai_api_key:
-                        logger.warning(
-                            "RECEIPT_AGENT_OPENAI_API_KEY not set - embeddings may fail"
-                        )
-                    else:
-                        logger.info("OpenAI API key available for embeddings")
-
-                    chroma_client = create_chroma_client(settings=settings)
-                    embed_fn = create_embed_fn(settings=settings)
 
                     # Cache in state for subsequent calls
                     state["chroma_client"] = chroma_client

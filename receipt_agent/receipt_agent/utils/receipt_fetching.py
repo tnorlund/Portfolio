@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.dynamo_client import DynamoClient
+    from receipt_dynamo.entities.receipt_details import ReceiptDetails
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,7 @@ def fetch_receipt_details_with_fallback(
     dynamo_client: "DynamoClient",
     image_id: str,
     receipt_id: int,
-) -> Optional["ReceiptDetails"]:
+) -> Optional[ReceiptDetails]:
     """
     Fetch receipt details using primary method, with fallback methods.
 

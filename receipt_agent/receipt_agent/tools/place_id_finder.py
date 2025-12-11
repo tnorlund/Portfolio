@@ -117,6 +117,7 @@ class PlaceIdMatch:
     confidence: float = 0.0
     found: bool = False
     error: Optional[str] = None
+    not_found_reason: Optional[str] = None
     needs_review: bool = False
 
 
@@ -289,7 +290,7 @@ class PlaceIdFinder:
                 f"(out of {len(metadatas)} total receipts)"
             )
 
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to load receipts")
             raise
 
@@ -424,12 +425,10 @@ class PlaceIdFinder:
                     f"Merchant name too short: {receipt.merchant_name}"
                 )
 
-        # No match found
+        # No match found - this is a normal outcome, not an error
         match.found = False
-        if (
-            not match.error
-        ):  # Only set generic error if no specific error was set
-            match.error = "No matching place found in Google Places"
+        if not match.error:  # Only set not_found_reason if no error occurred
+            match.not_found_reason = "no_match"
         return match
 
     def _calculate_confidence(
@@ -594,11 +593,11 @@ class PlaceIdFinder:
                 if match.search_method:
                     result.search_method_counts[match.search_method] += 1
             elif match.error:
+                # Only count as error if error is actually set (exceptions/API failures)
                 result.total_errors += 1
-
-        result.total_not_found = (
-            result.total_processed - result.total_found - result.total_errors
-        )
+            else:
+                # Not found but no error - normal "no match" outcome
+                result.total_not_found += 1
 
         logger.info(
             f"Search complete: {result.total_found} found, "
@@ -762,14 +761,8 @@ class PlaceIdFinder:
                 match.confidence = agent_result.get("confidence", 0.0) * 100.0
                 match.found = True
             else:
-                # No place_id found - check if it's due to no searchable data
-                error_msg = (
-                    agent_result.get("reasoning", "No place_id found")
-                    if agent_result
-                    else str(last_error) if last_error else "No place_id found"
-                )
+                # No place_id found - distinguish between errors and normal "not found"
                 match.found = False
-                match.error = error_msg
                 match.confidence = 0.0
 
                 # Check if receipt has no searchable data
@@ -789,7 +782,18 @@ class PlaceIdFinder:
                 if not (has_phone or has_address or has_name):
                     # Mark as needing review - no searchable data
                     match.needs_review = True
-                    match.error = "No searchable data (no valid phone, address, or merchant name)"
+                    match.not_found_reason = "no_searchable_data"
+                elif last_error:
+                    # Actual exception/API failure occurred - this is a real error
+                    match.error = str(last_error)
+                elif agent_result:
+                    # Agent completed but found no match - normal "not found" outcome
+                    match.not_found_reason = agent_result.get(
+                        "reasoning", "no_match"
+                    )
+                else:
+                    # No result and no error - should not happen, but treat as not found
+                    match.not_found_reason = "no_match"
 
             result.matches.append(match)
 
@@ -803,11 +807,11 @@ class PlaceIdFinder:
                             result.search_method_counts.get(methods[0], 0) + 1
                         )
             elif match.error:
+                # Only count as error if error is actually set (exceptions/API failures)
                 result.total_errors += 1
-
-        result.total_not_found = (
-            result.total_processed - result.total_found - result.total_errors
-        )
+            else:
+                # Not found but no error - normal "no match" outcome
+                result.total_not_found += 1
 
         logger.info(
             f"Agent search complete: {result.total_found} found, "
@@ -956,6 +960,20 @@ class PlaceIdFinder:
                         if "text" in search_lower or "name" in search_lower:
                             matched_fields.append("name")
 
+                    # Determine validated_by based on search method
+                    if match.search_method:
+                        search_lower = match.search_method.lower()
+                        if "phone" in search_lower:
+                            validated_by = ValidationMethod.PHONE_LOOKUP.value
+                        elif "address" in search_lower:
+                            validated_by = (
+                                ValidationMethod.ADDRESS_LOOKUP.value
+                            )
+                        else:
+                            validated_by = ValidationMethod.TEXT_SEARCH.value
+                    else:
+                        validated_by = ValidationMethod.TEXT_SEARCH.value
+
                     # Use Google Places data (preferred) or fallback to receipt data
                     merchant_name = (
                         match.place_name or match.receipt.merchant_name or ""
@@ -977,7 +995,7 @@ class PlaceIdFinder:
                         matched_fields=(
                             matched_fields if matched_fields else ["place_id"]
                         ),
-                        validated_by=ValidationMethod.TEXT_SEARCH.value,
+                        validated_by=validated_by,
                         timestamp=datetime.now(timezone.utc),
                         reasoning=f"Created by place_id_finder: {match.search_method or 'unknown method'}",
                         validation_status=MerchantValidationStatus.MATCHED.value,

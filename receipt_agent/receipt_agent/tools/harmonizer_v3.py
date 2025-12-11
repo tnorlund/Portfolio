@@ -275,7 +275,7 @@ class MerchantHarmonizerV3:
                 f"{len(self._no_place_id_receipts)} without place_id"
             )
 
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to load receipts")
             raise
 
@@ -364,8 +364,8 @@ class MerchantHarmonizerV3:
                 f"Loaded {total} receipts for {len(self._place_id_groups)} place_id group(s)"
             )
 
-        except Exception as e:
-            logger.error(f"Failed to load receipts for place_ids: {e}")
+        except Exception:
+            logger.exception("Failed to load receipts for place_ids")
             raise
 
         return total
