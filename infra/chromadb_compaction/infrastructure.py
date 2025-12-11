@@ -48,8 +48,12 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
             dynamodb_table_arn: ARN of the DynamoDB table
             dynamodb_stream_arn: ARN of the DynamoDB stream
             chromadb_buckets: Shared ChromaDB S3 buckets component
+            vpc_id: VPC ID for Lambda and EFS placement
             subnet_ids: Subnet IDs for Lambda placement (can be same AZ)
             efs_subnet_ids: Subnet IDs for EFS mount targets (must be unique AZs)
+            lambda_security_group_id: Security group ID for Lambda VPC access
+            use_efs: Whether to create EFS resources (default: True)
+            storage_mode: Storage mode for ChromaDB - "auto", "s3", or "efs" (default: "auto")
             opts: Optional resource options
         """
         super().__init__(
@@ -96,6 +100,10 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
         if not use_efs and storage_mode.lower() == "efs":
             raise ValueError(
                 "storage_mode='efs' requires use_efs=True to create EFS resources"
+            )
+        if storage_mode.lower() == "efs" and self.efs is None:
+            raise ValueError(
+                "storage_mode='efs' requires EFS to be created (provide vpc_id, subnet_ids, and lambda_security_group_id)"
             )
 
         # Create hybrid Lambda deployment

@@ -78,6 +78,62 @@ from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
+# ==============================================================================
+# Module-level constants
+# ==============================================================================
+
+# Field name mapping for matched_fields (canonical format)
+FIELD_NAME_MAPPING = {
+    "merchant_name": "name",
+    "phone_number": "phone",
+    "address": "address",
+    "place_id": "place_id",
+}
+
+
+# ==============================================================================
+# Helper functions
+# ==============================================================================
+
+
+def _looks_like_address(name: str) -> bool:
+    """
+    Check if a string looks like an address rather than a merchant name.
+
+    Args:
+        name: Name to check
+
+    Returns:
+        True if name looks like an address
+    """
+    if not name:
+        return False
+
+    ADDRESS_SUFFIXES = [
+        "BLVD",
+        "RD",
+        "ST",
+        "STREET",
+        "AVE",
+        "AVENUE",
+        "DR",
+        "DRIVE",
+        "LANE",
+        "LN",
+        "WAY",
+        "CT",
+        "COURT",
+        "PL",
+        "PLACE",
+    ]
+
+    name_upper = name.upper()
+    has_suffix = any(suffix in name_upper for suffix in ADDRESS_SUFFIXES)
+    has_address_markers = (
+        re.match(r"^\d+", name.strip()) or "#" in name or "," in name
+    )
+    return has_suffix and has_address_markers
+
 
 @dataclass
 class ReceiptRecord:
@@ -421,6 +477,8 @@ class ReceiptMetadataFinder:
                         image_id=receipt.image_id,
                         receipt_id=receipt.receipt_id,
                     )
+                    # Clear any previous error since this attempt succeeded
+                    last_error = None
                     break
 
                 except Exception as e:
@@ -620,15 +678,9 @@ class ReceiptMetadataFinder:
                     from receipt_dynamo.entities import ReceiptMetadata
 
                     # Determine matched fields in canonical format
-                    # Map field names to matched_fields format (name, phone, address, place_id)
-                    field_mapping = {
-                        "merchant_name": "name",
-                        "phone_number": "phone",
-                        "address": "address",
-                        "place_id": "place_id",
-                    }
                     matched_fields = [
-                        field_mapping.get(f, f) for f in match.fields_found
+                        FIELD_NAME_MAPPING.get(f, f)
+                        for f in match.fields_found
                     ]
 
                     # Create new ReceiptMetadata
@@ -672,30 +724,8 @@ class ReceiptMetadataFinder:
                 # CRITICAL: Never use an address as a merchant name
                 if match.merchant_name:
                     # Validate that match.merchant_name is NOT an address
-                    match_name_upper = match.merchant_name.upper()
-                    match_looks_like_address = any(
-                        suffix in match_name_upper
-                        for suffix in [
-                            "BLVD",
-                            "RD",
-                            "ST",
-                            "STREET",
-                            "AVE",
-                            "AVENUE",
-                            "DR",
-                            "DRIVE",
-                            "LANE",
-                            "LN",
-                            "WAY",
-                            "CT",
-                            "COURT",
-                            "PL",
-                            "PLACE",
-                        ]
-                    ) and (
-                        re.match(r"^\d+", match.merchant_name.strip())
-                        or "#" in match.merchant_name
-                        or "," in match.merchant_name
+                    match_looks_like_address = _looks_like_address(
+                        match.merchant_name
                     )
 
                     # Skip if the match itself looks like an address
@@ -709,30 +739,8 @@ class ReceiptMetadataFinder:
                         updated_fields.append("merchant_name")
                     elif metadata.merchant_name != match.merchant_name:
                         # Check if current merchant_name looks like an address
-                        current_name = metadata.merchant_name.upper()
-                        looks_like_address = any(
-                            suffix in current_name
-                            for suffix in [
-                                "BLVD",
-                                "RD",
-                                "ST",
-                                "STREET",
-                                "AVE",
-                                "AVENUE",
-                                "DR",
-                                "DRIVE",
-                                "LANE",
-                                "LN",
-                                "WAY",
-                                "CT",
-                                "COURT",
-                                "PL",
-                                "PLACE",
-                            ]
-                        ) and (
-                            re.match(r"^\d+", metadata.merchant_name.strip())
-                            or "#" in metadata.merchant_name
-                            or "," in metadata.merchant_name
+                        looks_like_address = _looks_like_address(
+                            metadata.merchant_name
                         )
                         # Always update if different and we have high confidence, or if current looks like address
                         if looks_like_address or match.confidence >= 80:
@@ -748,20 +756,13 @@ class ReceiptMetadataFinder:
                     updated_fields.append("phone_number")
 
                 # Update matched_fields to include all fields we found
-                # Map field names to matched_fields format (name, phone, address, place_id)
-                field_mapping = {
-                    "merchant_name": "name",
-                    "phone_number": "phone",
-                    "address": "address",
-                    "place_id": "place_id",
-                }
                 new_matched_fields = (
                     list(metadata.matched_fields)
                     if metadata.matched_fields
                     else []
                 )
                 for field in match.fields_found:
-                    mapped_field = field_mapping.get(field, field)
+                    mapped_field = FIELD_NAME_MAPPING.get(field, field)
                     if mapped_field not in new_matched_fields:
                         new_matched_fields.append(mapped_field)
 

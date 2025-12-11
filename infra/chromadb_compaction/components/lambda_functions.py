@@ -131,6 +131,13 @@ class HybridLambdaDeployment(ComponentResource):
             efs_access_point_arn is not None and storage_mode.lower() != "s3"
         )
 
+        # Validate storage_mode='efs' requires EFS access point
+        if storage_mode.lower() == "efs" and not use_efs_mount:
+            raise ValueError(
+                "storage_mode='efs' requires efs_access_point_arn to be provided. "
+                "Cannot set CHROMADB_STORAGE_MODE='efs' without an EFS access point."
+            )
+
         self.docker_image = DockerImageComponent(
             f"{name}-docker",
             lambda_config={

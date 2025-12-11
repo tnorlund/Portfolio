@@ -29,6 +29,9 @@ from receipt_agent.utils.receipt_text import format_receipt_text_receipt_space
 if TYPE_CHECKING:
     from receipt_dynamo.data.dynamo_client import DynamoClient
 
+# Import for exception handling in tools
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+
 logger = logging.getLogger(__name__)
 
 # ==============================================================================
@@ -456,6 +459,9 @@ def create_cove_tools(
         - error: Error message if receipt not found or error occurred
         """
         try:
+            # Sanitize image_id for fallback fetches
+            sanitized_image_id = image_id.rstrip("? \t\n\r")
+
             # Use shared fetch logic
             receipt_details = _fetch_receipt_with_fallback(
                 dynamo_client, image_id, receipt_id
@@ -816,6 +822,9 @@ def create_cove_tools(
         - error: Error message if receipt not found or error occurred
         """
         try:
+            # Sanitize image_id for fallback fetches
+            sanitized_image_id = image_id.rstrip("? \t\n\r")
+
             # Use shared fetch logic
             receipt_details = _fetch_receipt_with_fallback(
                 dynamo_client, image_id, receipt_id
@@ -1091,6 +1100,10 @@ async def run_cove_text_consistency(
     Returns:
         Consistency result dict
     """
+    # Clear any stale consistency result from previous runs
+    # (important when graph is cached and reused)
+    state_holder["consistency_result"] = None
+
     # Create initial state
     initial_state = CoveTextConsistencyState(
         place_id=place_id,
