@@ -290,7 +290,7 @@ class PlaceIdFinder:
             )
 
         except Exception as e:
-            logger.error(f"Failed to load receipts: {e}")
+            logger.exception("Failed to load receipts")
             raise
 
         return total
@@ -346,7 +346,7 @@ class PlaceIdFinder:
                     logger.debug(
                         f"Phone search failed for {receipt.image_id}#{receipt.receipt_id}: {e}"
                     )
-                    match.error = f"Phone search error: {str(e)}"
+                    match.error = f"Phone search error: {e!s}"
             else:
                 logger.debug(
                     f"Invalid phone number format: {receipt.phone} (only {len(phone_digits)} digits)"
@@ -595,8 +595,6 @@ class PlaceIdFinder:
                     result.search_method_counts[match.search_method] += 1
             elif match.error:
                 result.total_errors += 1
-            else:
-                result.total_not_found += 1
 
         result.total_not_found = (
             result.total_processed - result.total_found - result.total_errors
@@ -806,8 +804,6 @@ class PlaceIdFinder:
                         )
             elif match.error:
                 result.total_errors += 1
-            else:
-                result.total_not_found += 1
 
         result.total_not_found = (
             result.total_processed - result.total_found - result.total_errors
@@ -825,7 +821,6 @@ class PlaceIdFinder:
         self,
         dry_run: bool = True,
         min_confidence: float = 50.0,
-        update_other_fields: bool = True,  # Always update other fields by default
     ) -> UpdateResult:
         """
         Apply place_id updates to DynamoDB.
@@ -837,7 +832,6 @@ class PlaceIdFinder:
         Args:
             dry_run: If True, only report what would be updated (no actual writes)
             min_confidence: Minimum confidence to apply fix (0-100)
-            update_other_fields: Always True - always updates merchant_name, address, phone from Google Places
 
         Returns:
             UpdateResult with counts and any errors
@@ -1076,12 +1070,12 @@ class PlaceIdFinder:
                 )
 
             except Exception as e:
-                logger.error(
-                    f"Failed to update {match.receipt.image_id}#{match.receipt.receipt_id}: {e}"
+                logger.exception(
+                    f"Failed to update {match.receipt.image_id}#{match.receipt.receipt_id}"
                 )
                 result.total_failed += 1
                 result.errors.append(
-                    f"{match.receipt.image_id}#{match.receipt.receipt_id}: {e}"
+                    f"{match.receipt.image_id}#{match.receipt.receipt_id}: {e!s}"
                 )
 
         # Mark receipts as needing review (no searchable data)
@@ -1170,12 +1164,12 @@ class PlaceIdFinder:
                     )
 
                 except Exception as e:
-                    logger.error(
-                        f"Failed to mark {match.receipt.image_id}#{match.receipt.receipt_id} as needing review: {e}"
+                    logger.exception(
+                        f"Failed to mark {match.receipt.image_id}#{match.receipt.receipt_id} as needing review"
                     )
                     result.total_failed += 1
                     result.errors.append(
-                        f"{match.receipt.image_id}#{match.receipt.receipt_id}: {e}"
+                        f"{match.receipt.image_id}#{match.receipt.receipt_id}: {e!s}"
                     )
 
         logger.info(
@@ -1198,11 +1192,26 @@ class PlaceIdFinder:
         print("PLACE ID FINDER REPORT")
         print("=" * 70)
         print(f"Total receipts without place_id: {report.total_processed}")
+        # Calculate percentages safely (guard against division by zero)
+        safe_denominator = (
+            report.total_processed if report.total_processed > 0 else 1
+        )
+        found_percentage = (
+            (report.total_found / safe_denominator * 100)
+            if report.total_processed > 0
+            else 0.0
+        )
+        not_found_percentage = (
+            (report.total_not_found / safe_denominator * 100)
+            if report.total_processed > 0
+            else 0.0
+        )
+
         print(
-            f"  ✅ Found place_id: {report.total_found} ({report.total_found/report.total_processed*100:.1f}%)"
+            f"  ✅ Found place_id: {report.total_found} ({found_percentage:.1f}%)"
         )
         print(
-            f"  ❌ Not found: {report.total_not_found} ({report.total_not_found/report.total_processed*100:.1f}%)"
+            f"  ❌ Not found: {report.total_not_found} ({not_found_percentage:.1f}%)"
         )
         if report.total_errors > 0:
             print(f"  ⚠️  Errors: {report.total_errors}")
@@ -1225,7 +1234,7 @@ class PlaceIdFinder:
             avg_confidence = sum(confidences) / len(confidences)
             min_confidence = min(confidences)
             max_confidence = max(confidences)
-            print(f"Confidence scores:")
+            print("Confidence scores:")
             print(f"  Average: {avg_confidence:.1f}")
             print(f"  Range: {min_confidence:.1f} - {max_confidence:.1f}")
             print()

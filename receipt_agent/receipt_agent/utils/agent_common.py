@@ -11,7 +11,6 @@ import time
 from typing import Any, Callable, Optional
 
 from langchain_ollama import ChatOllama
-
 from receipt_agent.config.settings import Settings, get_settings
 
 logger = logging.getLogger(__name__)
@@ -90,7 +89,7 @@ def create_agent_node_with_retry(
                 if hasattr(response, "tool_calls") and response.tool_calls:
                     logger.debug(
                         f"{agent_name} tool calls: "
-                        f"{[tc['name'] for tc in response.tool_calls]}"
+                        f"{[tc.get('name') if isinstance(tc, dict) else getattr(tc, 'name', str(tc)) for tc in response.tool_calls]}"
                     )
 
                 return {"messages": [response]}
@@ -174,7 +173,7 @@ def create_agent_node_with_retry(
                 else:
                     # Not retryable or max retries reached
                     if attempt >= max_retries - 1:
-                        logger.error(
+                        logger.exception(
                             f"Ollama LLM call failed after {max_retries} attempts "
                             f"in {agent_name}: {error_str}"
                         )

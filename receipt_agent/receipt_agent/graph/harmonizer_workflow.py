@@ -35,7 +35,6 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel, Field
-
 from receipt_agent.config.settings import Settings, get_settings
 from receipt_agent.utils.address_validation import (
     is_address_like,
@@ -532,12 +531,8 @@ def create_harmonizer_tools(
             # Handle case where we might have lines/words but no receipt entity
             lines = receipt_details.lines or [] if receipt_details else []
 
-            # If we don't have lines from receipt_details, try direct fetch
-            if not lines and receipt_details:
-                # Already tried fallback, but lines might be empty
-                pass
-            elif not lines:
-                # Try direct fetch as last resort
+            # If we don't have lines, try direct fetch
+            if not lines:
                 try:
                     lines = dynamo_client.list_receipt_lines_from_receipt(
                         image_id, receipt_id
@@ -1010,10 +1005,10 @@ Use this information to make your harmonization decision."""
                 "place_name": name,
                 "place_address": address,
                 "place_phone": phone,
-                "is_address_like": is_address_like,
+                "is_address_like": is_address_like_result,
                 "warning": (
                     "Google returned an address as the name. Use find_businesses_at_address to find the actual business."
-                    if is_address_like
+                    if is_address_like_result
                     else None
                 ),
             }

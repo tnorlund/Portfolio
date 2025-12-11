@@ -16,7 +16,6 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel, Field
-
 from receipt_agent.config.settings import Settings, get_settings
 from receipt_agent.utils.agent_common import (
     create_agent_node_with_retry,
@@ -617,9 +616,9 @@ def create_cove_tools(
                 logger.debug(
                     f"Could not format receipt text (receipt-space): {exc}"
                 )
-                sorted_lines = sorted(lines, key=lambda l: l.line_id)
+                sorted_lines = sorted(lines, key=lambda line: line.line_id)
                 formatted_text = "\n".join(
-                    f"{ln.line_id}: {ln.text}" for ln in sorted_lines
+                    f"{line.line_id}: {line.text}" for line in sorted_lines
                 )
 
             return {
@@ -653,8 +652,8 @@ def create_cove_tools(
                     f"Receipt details not available for {image_id}#{receipt_id}: {error_str}"
                 )
             else:
-                logger.error(
-                    f"Error getting receipt text for {image_id}#{receipt_id}: {e}"
+                logger.exception(
+                    f"Error getting receipt text for {image_id}#{receipt_id}"
                 )
             return {
                 "image_id": image_id,
@@ -762,6 +761,9 @@ def create_cove_tools(
                     except EntityNotFoundError:
                         continue
                     except Exception:
+                        logger.debug(
+                            f"get_receipt_details failed for {img_id}#{receipt_id}"
+                        )
                         continue
 
                 if not receipt_details:
@@ -783,6 +785,9 @@ def create_cove_tools(
                             if lines:
                                 break
                         except Exception:
+                            logger.debug(
+                                f"get_receipt_details failed for {img_id}#{receipt_id}"
+                            )
                             continue
 
                 if not lines:
@@ -803,9 +808,9 @@ def create_cove_tools(
                 try:
                     formatted_text = format_receipt_text_receipt_space(lines)
                 except Exception:
-                    sorted_lines = sorted(lines, key=lambda l: l.line_id)
+                    sorted_lines = sorted(lines, key=lambda line: line.line_id)
                     formatted_text = "\n".join(
-                        f"{ln.line_id}: {ln.text}" for ln in sorted_lines
+                        f"{line.line_id}: {line.text}" for line in sorted_lines
                     )
 
                 # Smart truncation: adjust based on total context used so far
@@ -1065,8 +1070,8 @@ def create_cove_tools(
                     f"Receipt details not available for {image_id}#{receipt_id}: {error_str}"
                 )
             else:
-                logger.error(
-                    f"Error getting receipt content for {image_id}#{receipt_id}: {e}"
+                logger.exception(
+                    f"Error getting receipt content for {image_id}#{receipt_id}"
                 )
             return {
                 "image_id": image_id,
@@ -1165,6 +1170,9 @@ def create_cove_text_consistency_graph(
                     logger.warning(
                         "CoVe agent has made many steps without submitting - may need reminder"
                     )
+                if len(state.messages) > 20:
+                    logger.error("CoVe agent exceeded 20 steps - forcing end")
+                    return "end"
                 return "agent"
 
         return "agent"
@@ -1275,7 +1283,7 @@ async def run_cove_text_consistency(
                 "workflow": "cove_text_consistency",
             }
 
-        final_state = await graph.ainvoke(initial_state, config=config)
+        await graph.ainvoke(initial_state, config=config)
 
         # Get result from state holder
         result = state_holder.get("consistency_result")
@@ -1305,10 +1313,10 @@ async def run_cove_text_consistency(
             }
 
     except Exception as e:
-        logger.error(f"Error in CoVe text consistency check: {e}")
+        logger.exception("Error in CoVe text consistency check")
         return {
             "status": "error",
-            "error": str(e),
+            "error": f"{e!s}",
             "place_id": place_id,
             "receipt_count": len(receipts),
         }

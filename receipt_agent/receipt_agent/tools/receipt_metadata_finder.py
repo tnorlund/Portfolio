@@ -332,7 +332,7 @@ class ReceiptMetadataFinder:
             )
 
         except Exception as e:
-            logger.error(f"Failed to load receipts: {e}")
+            logger.exception("Failed to load receipts")
             raise
 
         return total
@@ -360,7 +360,7 @@ class ReceiptMetadataFinder:
         if not self.chroma or not self.embed_fn:
             raise ValueError(
                 "Agent-based search requires chroma_client and embed_fn. "
-                "Use find_all_metadata() for simple search."
+                "Provide both when initializing ReceiptMetadataFinder."
             )
 
         # Load receipts if not already loaded
@@ -784,12 +784,12 @@ class ReceiptMetadataFinder:
                     result.total_skipped += 1
 
             except Exception as e:
-                logger.error(
-                    f"Failed to update {match.receipt.image_id}#{match.receipt.receipt_id}: {e}"
+                logger.exception(
+                    f"Failed to update {match.receipt.image_id}#{match.receipt.receipt_id}"
                 )
                 result.total_failed += 1
                 result.errors.append(
-                    f"{match.receipt.image_id}#{match.receipt.receipt_id}: {e}"
+                    f"{match.receipt.image_id}#{match.receipt.receipt_id}: {e!s}"
                 )
 
         logger.info(
@@ -816,14 +816,30 @@ class ReceiptMetadataFinder:
         print(
             f"Total receipts with missing metadata: {report.total_processed}"
         )
+        # Calculate percentages safely (guard against division by zero)
+        if report.total_processed == 0:
+            found_all_percentage = 0.0
+            found_partial_percentage = 0.0
+            not_found_percentage = 0.0
+        else:
+            found_all_percentage = (
+                report.total_found_all / report.total_processed * 100
+            )
+            found_partial_percentage = (
+                report.total_found_partial / report.total_processed * 100
+            )
+            not_found_percentage = (
+                report.total_not_found / report.total_processed * 100
+            )
+
         print(
-            f"  ✅ Found all fields: {report.total_found_all} ({report.total_found_all/report.total_processed*100:.1f}%)"
+            f"  ✅ Found all fields: {report.total_found_all} ({found_all_percentage:.1f}%)"
         )
         print(
-            f"  ⚠️  Found partial: {report.total_found_partial} ({report.total_found_partial/report.total_processed*100:.1f}%)"
+            f"  ⚠️  Found partial: {report.total_found_partial} ({found_partial_percentage:.1f}%)"
         )
         print(
-            f"  ❌ Not found: {report.total_not_found} ({report.total_not_found/report.total_processed*100:.1f}%)"
+            f"  ❌ Not found: {report.total_not_found} ({not_found_percentage:.1f}%)"
         )
         if report.total_errors > 0:
             print(f"  ⛔ Errors: {report.total_errors}")

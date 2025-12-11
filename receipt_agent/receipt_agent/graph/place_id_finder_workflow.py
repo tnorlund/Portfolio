@@ -24,9 +24,9 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel, Field
-
 from receipt_agent.config.settings import Settings, get_settings
 from receipt_agent.tools.agentic import ReceiptContext, create_agentic_tools
+from receipt_agent.utils.agent_common import create_ollama_llm
 
 logger = logging.getLogger(__name__)
 
@@ -226,7 +226,7 @@ def create_place_id_submission_tool(state_holder: dict):
         place_phone: Optional[str] = None,
         confidence: float = 0.0,
         reasoning: str = "",
-        search_methods_used: list[str] = None,
+        search_methods_used: list[str] | None = None,
     ) -> dict:
         """
         Submit the place_id you found for this receipt.
@@ -312,18 +312,7 @@ def create_place_id_finder_graph(
     tools.append(submit_tool)
 
     # Create LLM with tools bound
-    api_key = settings.ollama_api_key.get_secret_value()
-    llm = ChatOllama(
-        base_url=settings.ollama_base_url,
-        model=settings.ollama_model,
-        client_kwargs={
-            "headers": (
-                {"Authorization": f"Bearer {api_key}"} if api_key else {}
-            ),
-            "timeout": 120,
-        },
-        temperature=0.0,
-    ).bind_tools(tools)
+    llm = create_ollama_llm(settings).bind_tools(tools)
 
     # Define the agent node
     def agent_node(state: PlaceIdFinderState) -> dict:
@@ -362,6 +351,12 @@ def create_place_id_finder_graph(
                     logger.warning(
                         "Agent has made many steps without submitting - may need reminder"
                     )
+                    # Force end after too many iterations without progress
+                    if len(state.messages) > 30:
+                        logger.error(
+                            "Agent exceeded max iterations without submitting - forcing end"
+                        )
+                        return "end"
                 return "agent"  # Go back to agent to give it another chance
 
         # If no messages or no tool calls, go back to agent
@@ -469,7 +464,7 @@ async def run_place_id_finder(
                 "workflow": "place_id_finder",
             }
 
-        final_state = await graph.ainvoke(initial_state, config=config)
+        _ = await graph.ainvoke(initial_state, config=config)
 
         # Get result from state holder
         result = state_holder.get("place_id_result")
@@ -496,7 +491,9 @@ async def run_place_id_finder(
             }
 
     except Exception as e:
-        logger.error(f"Error in place ID finder: {e}")
+        logger.exception(
+            f"Error in place ID finder for {image_id}#{receipt_id}"
+        )
         return {
             "image_id": image_id,
             "receipt_id": receipt_id,

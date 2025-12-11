@@ -276,7 +276,7 @@ class MerchantHarmonizerV3:
             )
 
         except Exception as e:
-            logger.error(f"Failed to load receipts: {e}")
+            logger.exception("Failed to load receipts")
             raise
 
         return total
@@ -548,7 +548,8 @@ class MerchantHarmonizerV3:
             "summary": {
                 "total_receipts": sum(
                     len(g.receipts) for g in self._place_id_groups.values()
-                ),
+                )
+                + len(self._no_place_id_receipts),
                 "total_with_place_id": sum(
                     len(g.receipts) for g in self._place_id_groups.values()
                 ),
@@ -701,12 +702,12 @@ class MerchantHarmonizerV3:
                     result.total_skipped += 1
 
             except Exception as e:
-                logger.error(
-                    f"Failed to update {update['image_id']}#{update['receipt_id']}: {e}"
+                logger.exception(
+                    f"Failed to update {update['image_id']}#{update['receipt_id']}"
                 )
                 result.total_failed += 1
                 result.errors.append(
-                    f"{update['image_id']}#{update['receipt_id']}: {e}"
+                    f"{update['image_id']}#{update['receipt_id']}: {e!s}"
                 )
 
         logger.info(
