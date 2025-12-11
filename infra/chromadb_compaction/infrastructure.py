@@ -10,10 +10,10 @@ from typing import Optional
 
 from pulumi import ComponentResource, ResourceOptions
 
+from .components.efs import ChromaEfs
 from .components.lambda_functions import create_hybrid_lambda_deployment
 from .components.s3_buckets import create_chromadb_buckets
 from .components.sqs_queues import create_chromadb_queues
-from .components.efs import ChromaEfs
 
 
 class ChromaDBCompactionInfrastructure(ComponentResource):
@@ -81,13 +81,21 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
             and (efs_subnet_ids or subnet_ids)
             and lambda_security_group_id
         ):
-            subnet_ids_for_efs = efs_subnet_ids if efs_subnet_ids else subnet_ids
+            subnet_ids_for_efs = (
+                efs_subnet_ids if efs_subnet_ids else subnet_ids
+            )
             self.efs = ChromaEfs(
                 f"{name}-efs",
                 vpc_id=vpc_id,
                 subnet_ids=subnet_ids_for_efs,
                 lambda_security_group_id=lambda_security_group_id,
                 opts=ResourceOptions(parent=self),
+            )
+
+        # Validate storage_mode against use_efs to prevent misconfiguration
+        if not use_efs and storage_mode.lower() == "efs":
+            raise ValueError(
+                "storage_mode='efs' requires use_efs=True to create EFS resources"
             )
 
         # Create hybrid Lambda deployment
@@ -116,7 +124,9 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
         self.words_queue_url = self.chromadb_queues.words_queue_url
         self.bucket_name = self.chromadb_buckets.bucket_name
         self.stream_processor_arn = self.hybrid_deployment.stream_processor_arn
-        self.enhanced_compaction_arn = self.hybrid_deployment.enhanced_compaction_arn
+        self.enhanced_compaction_arn = (
+            self.hybrid_deployment.enhanced_compaction_arn
+        )
 
         # Register outputs
         self.register_outputs(

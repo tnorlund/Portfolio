@@ -31,6 +31,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# ==============================================================================
+# Module-level constants for batch processing
+# ==============================================================================
+
+COVE_MAX_BATCH_SIZE = 10
+COVE_MAX_TOTAL_CHARS = 15000  # ~3750 tokens, conservative limit
 
 # ==============================================================================
 # Agent State
@@ -283,6 +289,67 @@ def create_text_consistency_submission_tool(state_holder: dict):
 _fetch_receipt_details_fallback = fetch_receipt_details_with_fallback
 
 
+def _fetch_receipt_with_fallback(
+    dynamo_client: "DynamoClient", image_id: str, receipt_id: int
+) -> Optional[Any]:
+    """
+    Shared fetch logic for CoVe tools.
+
+    Sanitizes image_id, tries multiple IDs, and falls back to alternative methods
+    if primary fetch fails.
+
+    Args:
+        dynamo_client: DynamoDB client
+        image_id: Image ID (may have trailing characters like '?')
+        receipt_id: Receipt ID
+
+    Returns:
+        ReceiptDetails if found, None otherwise
+    """
+    from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+
+    # Sanitize image_id first (remove trailing characters like '?')
+    sanitized_image_id = image_id.rstrip("? \t\n\r")
+
+    # Try sanitized version first, then original if different
+    receipt_details = None
+    for img_id in [sanitized_image_id, image_id]:
+        try:
+            receipt_details = dynamo_client.get_receipt_details(
+                image_id=img_id,
+                receipt_id=receipt_id,
+            )
+            if receipt_details and receipt_details.receipt:
+                break
+        except EntityNotFoundError:
+            # Receipt doesn't exist - continue to try fallback
+            if img_id == sanitized_image_id and sanitized_image_id != image_id:
+                logger.debug(
+                    f"Receipt not found for sanitized {img_id}#{receipt_id}, "
+                    f"trying original image_id"
+                )
+            continue
+        except Exception as e:
+            if img_id == sanitized_image_id and sanitized_image_id != image_id:
+                logger.debug(
+                    f"get_receipt_details failed for sanitized {img_id}#{receipt_id}, "
+                    f"trying original: {e}"
+                )
+            continue
+
+    if not receipt_details or not receipt_details.receipt:
+        # Try alternative methods to fetch receipt details
+        logger.info(
+            f"Primary get_receipt_details failed for {image_id}#{receipt_id}, "
+            f"trying alternative methods..."
+        )
+        receipt_details = _fetch_receipt_details_fallback(
+            dynamo_client, sanitized_image_id, receipt_id
+        )
+
+    return receipt_details
+
+
 # ==============================================================================
 # Tool Factory for CoVe
 # ==============================================================================
@@ -334,18 +401,29 @@ def create_cove_tools(
         - receipt_count: Number of receipts
         - receipts: List of receipts with their image_id and receipt_id
         """
+        # Read from state_holder to support cached graph reuse
+        current_place_id = state_holder.get("place_id", place_id)
+        current_merchant_name = state_holder.get(
+            "canonical_merchant_name", canonical_merchant_name
+        )
+        current_address = state_holder.get(
+            "canonical_address", canonical_address
+        )
+        current_phone = state_holder.get("canonical_phone", canonical_phone)
+        current_receipts = state_holder.get("receipts", receipts)
+
         return {
-            "place_id": place_id,
-            "canonical_merchant_name": canonical_merchant_name,
-            "canonical_address": canonical_address,
-            "canonical_phone": canonical_phone,
-            "receipt_count": len(receipts),
+            "place_id": current_place_id,
+            "canonical_merchant_name": current_merchant_name,
+            "canonical_address": current_address,
+            "canonical_phone": current_phone,
+            "receipt_count": len(current_receipts),
             "receipts": [
                 {
                     "image_id": r.get("image_id"),
                     "receipt_id": r.get("receipt_id"),
                 }
-                for r in receipts
+                for r in current_receipts
             ],
         }
 
@@ -377,53 +455,11 @@ def create_cove_tools(
         - line_count: Number of lines on the receipt
         - error: Error message if receipt not found or error occurred
         """
-        from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
-
         try:
-            # Sanitize image_id first (remove trailing characters like '?')
-            sanitized_image_id = image_id.rstrip("? \t\n\r")
-
-            # Try sanitized version first, then original if different
-            receipt_details = None
-            for img_id in [sanitized_image_id, image_id]:
-                try:
-                    receipt_details = dynamo_client.get_receipt_details(
-                        image_id=img_id,
-                        receipt_id=receipt_id,
-                    )
-                    if receipt_details and receipt_details.receipt:
-                        break
-                except EntityNotFoundError:
-                    # Receipt doesn't exist - continue to try fallback
-                    if (
-                        img_id == sanitized_image_id
-                        and sanitized_image_id != image_id
-                    ):
-                        logger.debug(
-                            f"Receipt not found for sanitized {img_id}#{receipt_id}, "
-                            f"trying original image_id"
-                        )
-                    continue
-                except Exception as e:
-                    if (
-                        img_id == sanitized_image_id
-                        and sanitized_image_id != image_id
-                    ):
-                        logger.debug(
-                            f"get_receipt_details failed for sanitized {img_id}#{receipt_id}, "
-                            f"trying original: {e}"
-                        )
-                    continue
-
-            if not receipt_details or not receipt_details.receipt:
-                # Try alternative methods to fetch receipt details
-                logger.info(
-                    f"Primary get_receipt_details failed for {image_id}#{receipt_id}, "
-                    f"trying alternative methods..."
-                )
-                receipt_details = _fetch_receipt_details_fallback(
-                    dynamo_client, sanitized_image_id, receipt_id
-                )
+            # Use shared fetch logic
+            receipt_details = _fetch_receipt_with_fallback(
+                dynamo_client, image_id, receipt_id
+            )
 
             # Handle case where we might have lines/words but no receipt entity
             lines = receipt_details.lines or [] if receipt_details else []
@@ -574,15 +610,12 @@ def create_cove_tools(
         # Estimate: ~500-1000 chars per receipt text = ~125-250 tokens per receipt
         # With 10 receipts = ~1250-2500 tokens, safe for context
         # We'll dynamically adjust based on actual text length
-        MAX_BATCH_SIZE = 10
-        MAX_TOTAL_CHARS = 15000  # ~3750 tokens, conservative limit
-
-        if len(receipts) > MAX_BATCH_SIZE:
+        if len(receipts) > COVE_MAX_BATCH_SIZE:
             logger.info(
-                f"Batch size {len(receipts)} exceeds max {MAX_BATCH_SIZE}, "
-                f"processing first {MAX_BATCH_SIZE} receipts"
+                f"Batch size {len(receipts)} exceeds max {COVE_MAX_BATCH_SIZE}, "
+                f"processing first {COVE_MAX_BATCH_SIZE} receipts"
             )
-            receipts_to_process = receipts[:MAX_BATCH_SIZE]
+            receipts_to_process = receipts[:COVE_MAX_BATCH_SIZE]
         else:
             receipts_to_process = receipts
 
@@ -680,7 +713,7 @@ def create_cove_tools(
                 # Smart truncation: adjust based on total context used so far
                 # Estimate remaining capacity and truncate if needed
                 text_length = len(formatted_text)
-                remaining_capacity = MAX_TOTAL_CHARS - total_chars_so_far
+                remaining_capacity = COVE_MAX_TOTAL_CHARS - total_chars_so_far
 
                 # Reserve space for other receipts in batch (estimate 500 chars each)
                 remaining_receipts = (
@@ -782,53 +815,11 @@ def create_cove_tools(
         - labeled_words: Words with labels (MERCHANT_NAME, ADDRESS, PHONE, etc.)
         - error: Error message if receipt not found or error occurred
         """
-        from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
-
         try:
-            # Sanitize image_id first (remove trailing characters like '?')
-            sanitized_image_id = image_id.rstrip("? \t\n\r")
-
-            # Try sanitized version first, then original if different
-            receipt_details = None
-            for img_id in [sanitized_image_id, image_id]:
-                try:
-                    receipt_details = dynamo_client.get_receipt_details(
-                        image_id=img_id,
-                        receipt_id=receipt_id,
-                    )
-                    if receipt_details and receipt_details.receipt:
-                        break
-                except EntityNotFoundError:
-                    # Receipt doesn't exist - continue to try fallback
-                    if (
-                        img_id == sanitized_image_id
-                        and sanitized_image_id != image_id
-                    ):
-                        logger.debug(
-                            f"Receipt not found for sanitized {img_id}#{receipt_id}, "
-                            f"trying original image_id"
-                        )
-                    continue
-                except Exception as e:
-                    if (
-                        img_id == sanitized_image_id
-                        and sanitized_image_id != image_id
-                    ):
-                        logger.debug(
-                            f"get_receipt_details failed for sanitized {img_id}#{receipt_id}, "
-                            f"trying original: {e}"
-                        )
-                    continue
-
-            if not receipt_details or not receipt_details.receipt:
-                # Try alternative methods to fetch receipt details
-                logger.info(
-                    f"Primary get_receipt_details failed for {image_id}#{receipt_id}, "
-                    f"trying alternative methods..."
-                )
-                receipt_details = _fetch_receipt_details_fallback(
-                    dynamo_client, sanitized_image_id, receipt_id
-                )
+            # Use shared fetch logic
+            receipt_details = _fetch_receipt_with_fallback(
+                dynamo_client, image_id, receipt_id
+            )
 
             # Handle case where we might have lines/words but no receipt entity
             lines_list = receipt_details.lines or [] if receipt_details else []

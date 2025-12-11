@@ -587,7 +587,9 @@ class MerchantHarmonizerV3:
 
         Args:
             dry_run: If True, only report what would be updated
-            min_confidence: Minimum confidence to apply fix
+            min_confidence: Minimum confidence fraction to apply fix (0.0 to 1.0).
+                          Note: This uses a 0-1 scale, unlike place_id_finder and
+                          receipt_metadata_finder which use 0-100 scale.
 
         Returns:
             UpdateResult with counts and errors

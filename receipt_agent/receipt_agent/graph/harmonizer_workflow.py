@@ -562,9 +562,9 @@ def create_harmonizer_tools(
                 logger.debug(
                     f"Could not format receipt text (receipt-space): {exc}"
                 )
-                sorted_lines = sorted(lines, key=lambda l: l.line_id)
+                sorted_lines = sorted(lines, key=lambda line: line.line_id)
                 formatted_text = "\n".join(
-                    f"{ln.line_id}: {ln.text}" for ln in sorted_lines
+                    f"{line.line_id}: {line.text}" for line in sorted_lines
                 )
 
             # Extract key parts of address for matching
@@ -816,9 +816,9 @@ def create_harmonizer_tools(
                 logger.debug(
                     f"Could not format receipt text (receipt-space): {exc}"
                 )
-                sorted_lines = sorted(lines, key=lambda l: l.line_id)
+                sorted_lines = sorted(lines, key=lambda line: line.line_id)
                 formatted_text = "\n".join(
-                    f"{ln.line_id}: {ln.text}" for ln in sorted_lines
+                    f"{line.line_id}: {line.text}" for line in sorted_lines
                 )
 
             # Build verification prompt (metadata already set above)
@@ -1318,8 +1318,8 @@ Use this information to make your harmonization decision."""
                     )
                     if place_data:
                         search_method = "phone"
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Phone search failed: {e}")
 
             # Try address if phone didn't work
             if not place_data and receipt.address:
@@ -1327,8 +1327,8 @@ Use this information to make your harmonization decision."""
                     place_data = places_api.search_by_address(receipt.address)
                     if place_data:
                         search_method = "address"
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Address search failed: {e}")
 
             # Try merchant name text search as last resort
             if not place_data and receipt.merchant_name:
@@ -1338,8 +1338,8 @@ Use this information to make your harmonization decision."""
                     )
                     if place_data:
                         search_method = "merchant_name"
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Text search failed: {e}")
 
             if place_data:
                 # Get full place details
@@ -1733,8 +1733,12 @@ def create_harmonizer_graph(
             if isinstance(last_message, AIMessage):
                 if last_message.tool_calls:
                     return "tools"
+                # If agent responded without tool calls and no result,
+                # give it another chance to call submit_decision
+                return "agent"
 
-        return "end"
+        # If no messages or no tool calls, go back to agent
+        return "agent"
 
     # Build graph
     workflow = StateGraph(HarmonizerAgentState)
@@ -1745,7 +1749,11 @@ def create_harmonizer_graph(
     workflow.add_conditional_edges(
         "agent",
         should_continue,
-        {"tools": "tools", "end": END},
+        {
+            "tools": "tools",
+            "agent": "agent",  # Loop back to agent if no tool calls
+            "end": END,
+        },
     )
     workflow.add_edge("tools", "agent")
 

@@ -371,7 +371,7 @@ def create_agentic_tools(
                     for line in (receipt_details.lines or [])
                 ]
             except Exception as e:
-                logger.error(f"Error loading lines: {e}")
+                logger.exception("Error loading lines")
                 return [{"error": str(e)}]
 
         return ctx.lines
@@ -410,7 +410,7 @@ def create_agentic_tools(
                     for word in (receipt_details.words or [])
                 ]
             except Exception as e:
-                logger.error(f"Error loading words: {e}")
+                logger.exception("Error loading words")
                 return [{"error": str(e)}]
 
         return ctx.words
@@ -434,7 +434,7 @@ def create_agentic_tools(
             )
             lines = receipt_details.lines or []
         except Exception as exc:
-            logger.error(f"Error loading lines for receipt text: {exc}")
+            logger.exception("Error loading lines for receipt text")
             return {"error": str(exc)}
 
         formatted = format_receipt_text_receipt_space(lines)
@@ -477,7 +477,7 @@ def create_agentic_tools(
                         "error": "No metadata found for this receipt"
                     }
             except Exception as e:
-                logger.error(f"Error loading metadata: {e}")
+                logger.exception("Error loading metadata")
                 ctx.metadata = {"error": str(e)}
 
         return ctx.metadata
@@ -586,7 +586,7 @@ def create_agentic_tools(
             return output
 
         except Exception as e:
-            logger.error(f"Error in similarity search: {e}")
+            logger.exception("Error in similarity search")
             return [{"error": str(e)}]
 
     @tool(args_schema=FindSimilarToMyWordInput)
@@ -660,8 +660,8 @@ def create_agentic_tools(
             metadatas = results.get("metadatas", [[]])[0]
             distances = results.get("distances", [[]])[0]
 
-            for doc_id, doc, meta, dist in zip(
-                ids, documents, metadatas, distances
+            for _doc_id, doc, meta, dist in zip(
+                ids, documents, metadatas, distances, strict=True
             ):
                 # Skip if same receipt
                 if (
@@ -691,7 +691,7 @@ def create_agentic_tools(
             return output
 
         except Exception as e:
-            logger.error(f"Error in word similarity search: {e}")
+            logger.exception("Error in word similarity search")
             return [{"error": str(e)}]
 
     # ========== TEXT SEARCH TOOLS (generate new embedding) ==========
@@ -778,7 +778,7 @@ def create_agentic_tools(
             return output
 
         except Exception as e:
-            logger.error(f"Error in search_lines: {e}")
+            logger.exception("Error in search_lines")
             return [{"error": str(e)}]
 
     @tool(args_schema=SearchWordsInput)
@@ -851,7 +851,7 @@ def create_agentic_tools(
             return output
 
         except Exception as e:
-            logger.error(f"Error in search_words: {e}")
+            logger.exception("Error in search_words")
             return [{"error": str(e)}]
 
     # ========== AGGREGATION TOOLS ==========
@@ -953,7 +953,7 @@ def create_agentic_tools(
             }
 
         except Exception as e:
-            logger.error(f"Error in get_merchant_consensus: {e}")
+            logger.exception("Error in get_merchant_consensus")
             return {"error": str(e)}
 
     @tool(args_schema=GetPlaceIdInfoInput)

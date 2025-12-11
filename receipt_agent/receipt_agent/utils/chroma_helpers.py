@@ -7,6 +7,7 @@ from S3 and initializing clients, reducing code duplication across workflows.
 
 import logging
 import os
+import tempfile
 from typing import Any, Callable, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -39,7 +40,8 @@ def load_dual_chroma_from_s3(
 
     if base_chroma_path is None:
         base_chroma_path = os.environ.get(
-            "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY", "/tmp/chromadb"
+            "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY",
+            os.path.join(tempfile.gettempdir(), "chromadb"),
         )
 
     lines_path = os.path.join(base_chroma_path, "lines")

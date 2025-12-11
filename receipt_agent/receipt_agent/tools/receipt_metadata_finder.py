@@ -619,8 +619,17 @@ class ReceiptMetadataFinder:
                     )
                     from receipt_dynamo.entities import ReceiptMetadata
 
-                    # Determine matched fields
-                    matched_fields = match.fields_found.copy()
+                    # Determine matched fields in canonical format
+                    # Map field names to matched_fields format (name, phone, address, place_id)
+                    field_mapping = {
+                        "merchant_name": "name",
+                        "phone_number": "phone",
+                        "address": "address",
+                        "place_id": "place_id",
+                    }
+                    matched_fields = [
+                        field_mapping.get(f, f) for f in match.fields_found
+                    ]
 
                     # Create new ReceiptMetadata
                     metadata = ReceiptMetadata(
