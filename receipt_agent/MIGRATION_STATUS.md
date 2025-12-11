@@ -82,6 +82,8 @@
 - ✅ `graph/__init__.py` updated to reflect cleanup
 - ✅ No remaining imports of deprecated modules found in codebase
 - ✅ Only `graph/nodes.py` remains (used by validation workflow)
+- ✅ Legacy v1/v2 harmonizer and label harmonizer implementations removed; v3 agents only
+- ✅ Top-level `tools/` trimmed to shared connectors (chroma/dynamo/places/registry); agent-specific tools live under `agents/<name>/tools`
 
 ## Migration Pattern
 
@@ -101,6 +103,23 @@ subagents/<subagent_name>/
 └── graph.py             # Graph creation and execution functions
 ```
 
+## Agents at a Glance 📌
+
+- `agentic/` — Agentic validation workflow (LLM-driven validation)
+- `validation/` — Deterministic validation workflow (non-agentic)
+- `label_harmonizer/` — Label harmonizer v3 (whole-receipt consistency); uses `subagents/financial_validation`
+- `harmonizer/` — Metadata/merchant harmonizer (place_id groups); uses `subagents/metadata_finder` and `subagents/cove_text_consistency`
+- `label_suggestion/` — Label suggestion helper (async, non-LangGraph)
+- `label_validation/` — Label validation agent/state
+- `place_id_finder/` — Finds missing place_ids
+- `receipt_grouping/` — Combines/splits receipts (the “combiner” logic)
+
+Subagents:
+- `financial_validation/` — Financial consistency checks (used by label_harmonizer)
+- `cove_text_consistency/` — Cross-line text consistency (used by harmonizer)
+- `metadata_finder/` — Metadata fill-in (used by harmonizer)
+- `table_columns/` — Placeholder/embedded table column helper for label_harmonizer
+
 ## Migration Complete ✅
 
 All migration steps have been completed:
@@ -108,4 +127,6 @@ All migration steps have been completed:
 2. ✅ ~~Update all remaining imports to use new paths~~ - DONE (infra + internal)
 3. ✅ ~~Extract sub-agents from their current locations into `subagents/`~~ - DONE
 4. ✅ ~~Remove deprecated code once all callers are updated~~ - DONE
-5. Add comprehensive tests for each migrated agent (future work)
+5. ✅ Move agent-specific tools under `agents/<name>/tools` (legacy `tools/place_id_finder.py` relocated)
+6. ✅ Add `receipt_agent/api.py` façade and update examples to import from it
+7. Add comprehensive tests for each migrated agent (future work)

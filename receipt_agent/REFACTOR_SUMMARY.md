@@ -49,6 +49,23 @@ receipt_agent/
     └── table_columns/             # Placeholder (embedded in label_harmonizer)
 ```
 
+## Agents at a Glance
+
+- `agentic/` — Agentic validation workflow (LLM-driven validation)
+- `validation/` — Deterministic validation workflow (non-agentic)
+- `label_harmonizer/` — Label harmonizer v3 (whole-receipt consistency); uses `subagents/financial_validation`
+- `harmonizer/` — Metadata/merchant harmonizer (place_id groups); uses `subagents/metadata_finder` + `subagents/cove_text_consistency`
+- `label_suggestion/` — Label suggestion helper (async, non-LangGraph)
+- `label_validation/` — Label validation agent/state
+- `place_id_finder/` — Finds missing place_ids
+- `receipt_grouping/` — Combines/splits receipts (the “combiner” logic)
+
+Subagents:
+- `financial_validation/` — Financial consistency checks (used by label_harmonizer)
+- `cove_text_consistency/` — Cross-line text consistency (used by harmonizer)
+- `metadata_finder/` — Metadata fill-in (used by harmonizer)
+- `table_columns/` — Placeholder/embedded helper for label_harmonizer
+
 ## Migration Pattern
 
 Each agent follows this structure:
@@ -59,6 +76,8 @@ Each agent follows this structure:
 ## Cleanup Completed ✅
 
 All deprecated `graph/*_workflow.py` shim files have been removed. The migration is complete and all code now uses the new `agents/*` import paths.
+- Legacy harmonizer/label_harmonizer v1/v2 removed; v3 agents live under `agents/<name>/tools`.
+- Top-level `tools/` now limited to shared connectors (`chroma.py`, `dynamo.py`, `places.py`, `registry.py`); agent-specific tools reside under each agent.
 
 ## Updated Imports
 
@@ -84,7 +103,9 @@ All migration steps have been completed:
 1. ✅ ~~**Extract Sub-Agents**~~ - Sub-agents moved from `graph/*` to `subagents/*` with full implementations
 2. ✅ ~~**Update Internal Imports**~~ - Internal imports already use `subagents/*` paths
 3. ✅ ~~**Remove Deprecated Code**~~ - All old `graph/*_workflow.py` shim files removed
-4. **Add Tests** - Create comprehensive tests for each agent module (future work)
+4. ✅ Move agent-specific tools under `agents/<name>/tools` (e.g., place_id_finder)
+5. ✅ Add `receipt_agent/api.py` façade; examples now import from `receipt_agent.api`
+6. **Add Tests** - Create comprehensive tests for each agent module (future work)
 
 ## Files Modified
 
