@@ -921,8 +921,8 @@ def create_agentic_tools(
                 ):
                     # Collection not found - this shouldn't happen if ensure_chroma_state succeeded
                     # Return error since ensure_chroma_state should have loaded everything
-                    logger.error(
-                        f"'lines' collection not found in ChromaDB even after lazy loading"
+                    logger.exception(
+                        "'lines' collection not found in ChromaDB even after lazy loading"
                     )
                     return {
                         "error": "Collection 'lines' not found in ChromaDB",

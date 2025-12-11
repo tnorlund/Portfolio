@@ -126,13 +126,22 @@ class HybridLambdaDeployment(ComponentResource):
             name, dynamodb_table_arn, chromadb_queues, chromadb_buckets
         )
 
-        # Now create Docker image component with Lambda config
+        # Normalize and validate storage mode once
+        normalized_storage_mode = storage_mode.lower()
+        if normalized_storage_mode not in {"auto", "s3", "efs"}:
+            raise ValueError(
+                f"Invalid storage_mode='{storage_mode}'. "
+                "Expected one of: 'auto', 's3', or 'efs'."
+            )
+
+        # Decide whether to mount EFS based on access point and mode
         use_efs_mount = (
-            efs_access_point_arn is not None and storage_mode.lower() != "s3"
+            efs_access_point_arn is not None
+            and normalized_storage_mode != "s3"
         )
 
         # Validate storage_mode='efs' requires EFS access point
-        if storage_mode.lower() == "efs" and not use_efs_mount:
+        if normalized_storage_mode == "efs" and not use_efs_mount:
             raise ValueError(
                 "storage_mode='efs' requires efs_access_point_arn to be provided. "
                 "Cannot set CHROMADB_STORAGE_MODE='efs' without an EFS access point."
@@ -177,13 +186,15 @@ class HybridLambdaDeployment(ComponentResource):
                     "MAX_HEARTBEAT_FAILURES": "3",
                     "LOG_LEVEL": "INFO",
                     "CHROMA_ROOT": (
-                        "/mnt/chroma" if use_efs_mount else "/tmp/chroma"
+                        "/mnt/chroma"
+                        if use_efs_mount
+                        else "/tmp/chroma"  # noqa: S108
                     ),
                     # Storage mode configuration: "auto", "s3", or "efs"
                     # - "auto": Use EFS if available, fallback to S3
                     # - "s3": Force S3-only mode (ignore EFS)
                     # - "efs": Force EFS mode (fail if EFS not available)
-                    "CHROMADB_STORAGE_MODE": storage_mode,
+                    "CHROMADB_STORAGE_MODE": normalized_storage_mode,
                     # Enable custom CloudWatch metrics now that Lambda has internet
                     # access via NAT instance. If timeouts occur, consider adding a
                     # CloudWatch Metrics Interface VPC Endpoint (~$7/month).
@@ -447,7 +458,9 @@ class HybridLambdaDeployment(ComponentResource):
             environment={
                 "variables": {
                     "CHROMA_ROOT": (
-                        "/mnt/chroma" if use_efs_mount else "/tmp/chroma"
+                        "/mnt/chroma"
+                        if use_efs_mount
+                        else "/tmp/chroma"  # noqa: S108
                     ),
                 }
             },

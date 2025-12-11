@@ -90,6 +90,40 @@ FIELD_NAME_MAPPING = {
     "place_id": "place_id",
 }
 
+# Address suffixes for address detection
+ADDRESS_SUFFIXES = [
+    "BLVD",
+    "RD",
+    "ST",
+    "STREET",
+    "AVE",
+    "AVENUE",
+    "DR",
+    "DRIVE",
+    "LANE",
+    "LN",
+    "WAY",
+    "CT",
+    "COURT",
+    "PL",
+    "PLACE",
+]
+
+
+# ==============================================================================
+# Custom exceptions
+# ==============================================================================
+
+
+class AgenticSearchRequirementsError(ValueError):
+    """Raised when agent-based search is requested without required dependencies."""
+
+    def __init__(self):
+        super().__init__(
+            "Agent-based search requires chroma_client and embed_fn. "
+            "Provide both when initializing ReceiptMetadataFinder."
+        )
+
 
 # ==============================================================================
 # Helper functions
@@ -108,24 +142,6 @@ def _looks_like_address(name: str) -> bool:
     """
     if not name:
         return False
-
-    ADDRESS_SUFFIXES = [
-        "BLVD",
-        "RD",
-        "ST",
-        "STREET",
-        "AVE",
-        "AVENUE",
-        "DR",
-        "DRIVE",
-        "LANE",
-        "LN",
-        "WAY",
-        "CT",
-        "COURT",
-        "PL",
-        "PLACE",
-    ]
 
     name_upper = name.upper()
     has_suffix = any(suffix in name_upper for suffix in ADDRESS_SUFFIXES)
@@ -415,10 +431,7 @@ class ReceiptMetadataFinder:
             FinderResult with all matches
         """
         if not self.chroma or not self.embed_fn:
-            raise ValueError(
-                "Agent-based search requires chroma_client and embed_fn. "
-                "Provide both when initializing ReceiptMetadataFinder."
-            )
+            raise AgenticSearchRequirementsError()
 
         # Load receipts if not already loaded
         if not self._receipts_with_missing_metadata:
@@ -693,7 +706,7 @@ class ReceiptMetadataFinder:
                         address=match.address or "",
                         phone_number=match.phone_number or "",
                         matched_fields=matched_fields,
-                        validated_by=ValidationMethod.TEXT_SEARCH.value,
+                        validated_by=ValidationMethod.INFERENCE.value,
                         timestamp=datetime.now(timezone.utc),
                         reasoning=match.reasoning
                         or "Created by receipt_metadata_finder",
