@@ -144,11 +144,13 @@ currency_validation_state_machine = create_currency_validation_state_machine(
 
 # Create labels state machine (creates/updates labels with PENDING status)
 # No VPC needed - downloads from DynamoDB, needs internet for Ollama API
+# Uses base image for faster builds and smaller S3 uploads
 create_labels_sf = CreateLabelsStepFunction(
     f"create-labels-{pulumi.get_stack()}",
     dynamodb_table_name=dynamodb_table.name,
     dynamodb_table_arn=dynamodb_table.arn,
     max_concurrency=3,  # Reduced to avoid Ollama rate limiting (matches validate_pending_labels)
+    base_image_uri=base_images.label_base_image.tags[0],  # Use label base image with receipt_dynamo + receipt_label
 )
 
 validation_by_merchant_step_functions = ValidationByMerchantStepFunction(
