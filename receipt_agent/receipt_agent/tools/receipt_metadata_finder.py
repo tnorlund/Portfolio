@@ -157,6 +157,7 @@ def _looks_like_address(name: str) -> bool:
     )
     return has_suffix and has_address_markers
 
+
 @dataclass
 class ReceiptRecord:
     """
@@ -211,6 +212,7 @@ class MetadataMatch:
     found: bool = False
     fields_found: list[str] = field(default_factory=list)
     error: Optional[str] = None
+    not_found_reason: Optional[str] = None
     reasoning: str = ""
 
 
@@ -407,8 +409,8 @@ class ReceiptMetadataFinder:
 
             logger.info(f"Loaded {total} receipts with missing metadata")
 
-        except Exception as e:
-            logger.error(f"Failed to load receipts: {e}")
+        except Exception:
+            logger.exception("Failed to load receipts")
             raise
 
         return total
@@ -493,6 +495,8 @@ class ReceiptMetadataFinder:
                         image_id=receipt.image_id,
                         receipt_id=receipt.receipt_id,
                     )
+                    # Clear any previous error since this attempt succeeded
+                    last_error = None
                     break
 
                 except Exception as e:
@@ -559,22 +563,37 @@ class ReceiptMetadataFinder:
                 elif len(found_required) > 0:
                     result.total_found_partial += 1
                 else:
+                    # Agent said "found" but no required fields - treat as not found
                     result.total_not_found += 1
             else:
-                error_msg = (
-                    agent_result.get("reasoning", "No metadata found")
-                    if agent_result
-                    else str(last_error) if last_error else "No metadata found"
-                )
+                # No metadata found - distinguish between errors and normal "not found"
                 match.found = False
-                match.error = error_msg
                 match.confidence = 0.0
-                result.total_not_found += 1
+
+                if last_error:
+                    # Actual exception/API failure occurred - this is a real error
+                    match.error = str(last_error)
+                elif agent_result:
+                    # Agent completed but found no metadata - normal "not found" outcome
+                    match.not_found_reason = agent_result.get(
+                        "reasoning", "no_match"
+                    )
+                else:
+                    # No result and no error - should not happen, but treat as not found
+                    match.not_found_reason = "no_match"
 
             result.matches.append(match)
 
-            if match.error:
+            # Count errors separately (only for actual exceptions/API failures)
+            # Found cases (total_found_all, total_found_partial, or total_not_found when found=True
+            # but no required fields) are already counted above
+            if not match.found and match.error:
+                # Only count as error if error is actually set (exceptions/API failures)
                 result.total_errors += 1
+            elif not match.found and not match.error:
+                # Not found but no error - normal "no match" outcome
+                # (This only happens when agent_result.get("found") was False/None)
+                result.total_not_found += 1
 
         logger.info(
             f"Metadata finder complete: {result.total_found_all} all fields, "
@@ -686,8 +705,11 @@ class ReceiptMetadataFinder:
                     )
                     from receipt_dynamo.entities import ReceiptMetadata
 
-                    # Determine matched fields
-                    matched_fields = match.fields_found.copy()
+                    # Determine matched fields in canonical format
+                    matched_fields = [
+                        FIELD_NAME_MAPPING.get(f, f)
+                        for f in match.fields_found
+                    ]
 
                     # Create new ReceiptMetadata
                     metadata = ReceiptMetadata(
@@ -730,30 +752,8 @@ class ReceiptMetadataFinder:
                 # CRITICAL: Never use an address as a merchant name
                 if match.merchant_name:
                     # Validate that match.merchant_name is NOT an address
-                    match_name_upper = match.merchant_name.upper()
-                    match_looks_like_address = any(
-                        suffix in match_name_upper
-                        for suffix in [
-                            "BLVD",
-                            "RD",
-                            "ST",
-                            "STREET",
-                            "AVE",
-                            "AVENUE",
-                            "DR",
-                            "DRIVE",
-                            "LANE",
-                            "LN",
-                            "WAY",
-                            "CT",
-                            "COURT",
-                            "PL",
-                            "PLACE",
-                        ]
-                    ) and (
-                        re.match(r"^\d+", match.merchant_name.strip())
-                        or "#" in match.merchant_name
-                        or "," in match.merchant_name
+                    match_looks_like_address = _looks_like_address(
+                        match.merchant_name
                     )
 
                     # Skip if the match itself looks like an address
@@ -767,30 +767,8 @@ class ReceiptMetadataFinder:
                         updated_fields.append("merchant_name")
                     elif metadata.merchant_name != match.merchant_name:
                         # Check if current merchant_name looks like an address
-                        current_name = metadata.merchant_name.upper()
-                        looks_like_address = any(
-                            suffix in current_name
-                            for suffix in [
-                                "BLVD",
-                                "RD",
-                                "ST",
-                                "STREET",
-                                "AVE",
-                                "AVENUE",
-                                "DR",
-                                "DRIVE",
-                                "LANE",
-                                "LN",
-                                "WAY",
-                                "CT",
-                                "COURT",
-                                "PL",
-                                "PLACE",
-                            ]
-                        ) and (
-                            re.match(r"^\d+", metadata.merchant_name.strip())
-                            or "#" in metadata.merchant_name
-                            or "," in metadata.merchant_name
+                        looks_like_address = _looks_like_address(
+                            metadata.merchant_name
                         )
                         # Always update if different and we have high confidence, or if current looks like address
                         if looks_like_address or match.confidence >= 80:
@@ -806,20 +784,13 @@ class ReceiptMetadataFinder:
                     updated_fields.append("phone_number")
 
                 # Update matched_fields to include all fields we found
-                # Map field names to matched_fields format (name, phone, address, place_id)
-                field_mapping = {
-                    "merchant_name": "name",
-                    "phone_number": "phone",
-                    "address": "address",
-                    "place_id": "place_id",
-                }
                 new_matched_fields = (
                     list(metadata.matched_fields)
                     if metadata.matched_fields
                     else []
                 )
                 for field in match.fields_found:
-                    mapped_field = field_mapping.get(field, field)
+                    mapped_field = FIELD_NAME_MAPPING.get(field, field)
                     if mapped_field not in new_matched_fields:
                         new_matched_fields.append(mapped_field)
 
@@ -869,12 +840,12 @@ class ReceiptMetadataFinder:
                     result.total_skipped += 1
 
             except Exception as e:
-                logger.error(
-                    f"Failed to update {match.receipt.image_id}#{match.receipt.receipt_id}: {e}"
+                logger.exception(
+                    f"Failed to update {match.receipt.image_id}#{match.receipt.receipt_id}"
                 )
                 result.total_failed += 1
                 result.errors.append(
-                    f"{match.receipt.image_id}#{match.receipt.receipt_id}: {e}"
+                    f"{match.receipt.image_id}#{match.receipt.receipt_id}: {e!s}"
                 )
 
         logger.info(
@@ -901,14 +872,30 @@ class ReceiptMetadataFinder:
         print(
             f"Total receipts with missing metadata: {report.total_processed}"
         )
+        # Calculate percentages safely (guard against division by zero)
+        if report.total_processed == 0:
+            found_all_percentage = 0.0
+            found_partial_percentage = 0.0
+            not_found_percentage = 0.0
+        else:
+            found_all_percentage = (
+                report.total_found_all / report.total_processed * 100
+            )
+            found_partial_percentage = (
+                report.total_found_partial / report.total_processed * 100
+            )
+            not_found_percentage = (
+                report.total_not_found / report.total_processed * 100
+            )
+
         print(
-            f"  ✅ Found all fields: {report.total_found_all} ({report.total_found_all/report.total_processed*100:.1f}%)"
+            f"  ✅ Found all fields: {report.total_found_all} ({found_all_percentage:.1f}%)"
         )
         print(
-            f"  ⚠️  Found partial: {report.total_found_partial} ({report.total_found_partial/report.total_processed*100:.1f}%)"
+            f"  ⚠️  Found partial: {report.total_found_partial} ({found_partial_percentage:.1f}%)"
         )
         print(
-            f"  ❌ Not found: {report.total_not_found} ({report.total_not_found/report.total_processed*100:.1f}%)"
+            f"  ❌ Not found: {report.total_not_found} ({not_found_percentage:.1f}%)"
         )
         if report.total_errors > 0:
             print(f"  ⛔ Errors: {report.total_errors}")

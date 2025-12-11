@@ -19,7 +19,7 @@ from typing import Any, Callable, Literal, Optional
 
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
-
+from receipt_agent.utils.chroma_helpers import load_dual_chroma_from_s3
 from receipt_agent.utils.receipt_text import format_receipt_text_receipt_space
 
 logger = logging.getLogger(__name__)
@@ -142,13 +142,93 @@ class SubmitDecisionInput(BaseModel):
     )
     reasoning: str = Field(description="Brief explanation of the decision")
     evidence: list[str] = Field(
-        description="Key findings that support the decision"
+        default_factory=list,
+        description="Key findings that support the decision",
     )
+
+
+class VerifyWithGooglePlacesInput(BaseModel):
+    """Input for verify_with_google_places tool."""
+
+    merchant_name: str = Field(
+        description="Merchant name to verify against Google Places"
+    )
+    address: Optional[str] = Field(
+        default=None,
+        description="Optional address to narrow the search",
+    )
+    phone: Optional[str] = Field(
+        default=None,
+        description="Optional phone number to narrow the search",
+    )
+
+
+class FindBusinessesAtAddressInput(BaseModel):
+    """Input for find_businesses_at_address_wrapper tool."""
+
+    address: str = Field(description="Address to search for businesses")
 
 
 # ==============================================================================
 # Tool Factory - Creates tools with injected dependencies
 # ==============================================================================
+
+
+def ensure_chroma_state(
+    state: dict,
+) -> tuple[Any, Callable[[list[str]], list[list[float]]]]:
+    """
+    Ensure chroma_client and embed_fn are loaded in state, lazy-loading if needed.
+
+    Args:
+        state: State dictionary that may contain chroma_client, embed_fn, chromadb_bucket
+
+    Returns:
+        Tuple of (chroma_client, embed_fn)
+
+    Raises:
+        RuntimeError: If chroma_client/embed_fn are not available and cannot be lazy-loaded
+    """
+    chroma_client = state.get("chroma_client")
+    embed_fn = state.get("embed_fn")
+
+    # If both are already loaded, return them
+    if chroma_client and embed_fn:
+        return chroma_client, embed_fn
+
+    # Try to lazy-load if bucket is available
+    chromadb_bucket = state.get("chromadb_bucket") or os.environ.get(
+        "CHROMADB_BUCKET"
+    )
+    if not chromadb_bucket:
+        raise RuntimeError(
+            "ChromaDB client and embedding function are not available and "
+            "cannot be lazy-loaded: chromadb_bucket is not configured. "
+            "Either provide chroma_client and embed_fn when creating tools, "
+            "or set chromadb_bucket for lazy loading."
+        )
+
+    try:
+        logger.info(
+            "Lazy-loading ChromaDB (dual collections) and embeddings..."
+        )
+        chroma_client, embed_fn = load_dual_chroma_from_s3(
+            chromadb_bucket=chromadb_bucket,
+            base_chroma_path=os.environ.get(
+                "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY"
+            ),
+            verify_integrity=False,
+        )
+        # Cache in state for subsequent calls
+        state["chroma_client"] = chroma_client
+        state["embed_fn"] = embed_fn
+        return chroma_client, embed_fn
+
+    except Exception as e:
+        raise RuntimeError(
+            f"Failed to lazy-load ChromaDB client and embedding function: {e!s}. "
+            "Ensure chromadb_bucket is configured correctly and accessible."
+        ) from e
 
 
 def create_agentic_tools(
@@ -163,13 +243,18 @@ def create_agentic_tools(
 
     Args:
         dynamo_client: DynamoDB client
-        chroma_client: ChromaDB client (may be None, will be lazy-loaded if bucket provided)
-        embed_fn: Embedding function (may be None, will be lazy-loaded if bucket provided)
+        chroma_client: ChromaDB client (may be None, will be lazy-loaded via ensure_chroma_state if bucket provided)
+        embed_fn: Embedding function (may be None, will be lazy-loaded via ensure_chroma_state if bucket provided)
         places_api: Optional Google Places API client
         chromadb_bucket: Optional S3 bucket name for lazy loading ChromaDB collections
 
     Returns:
         (tools, state_holder) - tools list and a dict to hold runtime state
+
+    Note:
+        Tools that use chroma_client or embed_fn will automatically lazy-load them
+        via ensure_chroma_state() if they are None and chromadb_bucket is configured.
+        If lazy loading fails, tools will return error responses.
     """
     # State holder - will be populated before each validation
     state = {
@@ -217,7 +302,7 @@ def create_agentic_tools(
                     for line in (receipt_details.lines or [])
                 ]
             except Exception as e:
-                logger.error(f"Error loading lines: {e}")
+                logger.exception("Error loading lines")
                 return [{"error": str(e)}]
 
         return ctx.lines
@@ -256,7 +341,7 @@ def create_agentic_tools(
                     for word in (receipt_details.words or [])
                 ]
             except Exception as e:
-                logger.error(f"Error loading words: {e}")
+                logger.exception("Error loading words")
                 return [{"error": str(e)}]
 
         return ctx.words
@@ -280,7 +365,7 @@ def create_agentic_tools(
             )
             lines = receipt_details.lines or []
         except Exception as exc:
-            logger.error(f"Error loading lines for receipt text: {exc}")
+            logger.exception("Error loading lines for receipt text")
             return {"error": str(exc)}
 
         formatted = format_receipt_text_receipt_space(lines)
@@ -323,7 +408,7 @@ def create_agentic_tools(
                         "error": "No metadata found for this receipt"
                     }
             except Exception as e:
-                logger.error(f"Error loading metadata: {e}")
+                logger.exception("Error loading metadata")
                 ctx.metadata = {"error": str(e)}
 
         return ctx.metadata
@@ -353,6 +438,12 @@ def create_agentic_tools(
         ctx: ReceiptContext = state["context"]
         if ctx is None:
             return [{"error": "No receipt context set"}]
+
+        # Ensure ChromaDB is loaded
+        try:
+            chroma_client, _ = ensure_chroma_state(state)
+        except RuntimeError as e:
+            return [{"error": str(e)}]
 
         # Build the record ID for this line
         doc_id = _build_line_id(ctx.image_id, ctx.receipt_id, line_id)
@@ -397,8 +488,8 @@ def create_agentic_tools(
             metadatas = results.get("metadatas", [[]])[0]
             distances = results.get("distances", [[]])[0]
 
-            for doc_id, doc, meta, dist in zip(
-                ids, documents, metadatas, distances
+            for _doc_id, doc, meta, dist in zip(
+                ids, documents, metadatas, distances, strict=True
             ):
                 # Skip if same receipt
                 if (
@@ -431,7 +522,7 @@ def create_agentic_tools(
             return output
 
         except Exception as e:
-            logger.error(f"Error in similarity search: {e}")
+            logger.exception("Error in similarity search")
             return [{"error": str(e)}]
 
     @tool(args_schema=FindSimilarToMyWordInput)
@@ -458,6 +549,12 @@ def create_agentic_tools(
         ctx: ReceiptContext = state["context"]
         if ctx is None:
             return [{"error": "No receipt context set"}]
+
+        # Ensure ChromaDB is loaded
+        try:
+            chroma_client, _ = ensure_chroma_state(state)
+        except RuntimeError as e:
+            return [{"error": str(e)}]
 
         # Build the record ID for this word
         doc_id = _build_word_id(ctx.image_id, ctx.receipt_id, line_id, word_id)
@@ -505,8 +602,8 @@ def create_agentic_tools(
             metadatas = results.get("metadatas", [[]])[0]
             distances = results.get("distances", [[]])[0]
 
-            for doc_id, doc, meta, dist in zip(
-                ids, documents, metadatas, distances
+            for _doc_id, doc, meta, dist in zip(
+                ids, documents, metadatas, distances, strict=True
             ):
                 # Skip if same receipt
                 if (
@@ -536,7 +633,7 @@ def create_agentic_tools(
             return output
 
         except Exception as e:
-            logger.error(f"Error in word similarity search: {e}")
+            logger.exception("Error in word similarity search")
             return [{"error": str(e)}]
 
     # ========== TEXT SEARCH TOOLS (generate new embedding) ==========
@@ -558,6 +655,12 @@ def create_agentic_tools(
         Returns matching lines with merchant metadata.
         """
         ctx: ReceiptContext = state["context"]
+
+        # Ensure ChromaDB is loaded
+        try:
+            chroma_client, embed_fn = ensure_chroma_state(state)
+        except RuntimeError as e:
+            return [{"error": str(e)}]
 
         try:
             # Generate embedding for query
@@ -584,8 +687,8 @@ def create_agentic_tools(
             metadatas = results.get("metadatas", [[]])[0]
             distances = results.get("distances", [[]])[0]
 
-            for doc_id, doc, meta, dist in zip(
-                ids, documents, metadatas, distances
+            for _doc_id, doc, meta, dist in zip(
+                ids, documents, metadatas, distances, strict=True
             ):
                 # Skip if same receipt (if context is set)
                 if ctx and (
@@ -617,7 +720,7 @@ def create_agentic_tools(
             return output
 
         except Exception as e:
-            logger.error(f"Error in search_lines: {e}")
+            logger.exception("Error in search_lines")
             return [{"error": str(e)}]
 
     @tool(args_schema=SearchWordsInput)
@@ -635,6 +738,12 @@ def create_agentic_tools(
         Returns matching words with their labels.
         """
         ctx: ReceiptContext = state["context"]
+
+        # Ensure ChromaDB is loaded
+        try:
+            chroma_client, embed_fn = ensure_chroma_state(state)
+        except RuntimeError as e:
+            return [{"error": str(e)}]
 
         try:
             query_embedding = embed_fn([query])[0]
@@ -657,8 +766,8 @@ def create_agentic_tools(
             metadatas = results.get("metadatas", [[]])[0]
             distances = results.get("distances", [[]])[0]
 
-            for doc_id, doc, meta, dist in zip(
-                ids, documents, metadatas, distances
+            for _doc_id, doc, meta, dist in zip(
+                ids, documents, metadatas, distances, strict=True
             ):
                 if ctx and (
                     meta.get("image_id") == ctx.image_id
@@ -684,7 +793,7 @@ def create_agentic_tools(
             return output
 
         except Exception as e:
-            logger.error(f"Error in search_words: {e}")
+            logger.exception("Error in search_words")
             return [{"error": str(e)}]
 
     # ========== AGGREGATION TOOLS ==========
@@ -786,7 +895,7 @@ def create_agentic_tools(
             }
 
         except Exception as e:
-            logger.error(f"Error in get_merchant_consensus: {e}")
+            logger.exception("Error in get_merchant_consensus")
             return {"error": str(e)}
 
     @tool(args_schema=GetPlaceIdInfoInput)
@@ -798,130 +907,15 @@ def create_agentic_tools(
         Use this to verify a Place ID is legitimate and consistently used.
         """
         try:
-            # Lazy-load ChromaDB if needed
-            chroma_client = state.get("chroma_client")
-            embed_fn = state.get("embed_fn")
-            chromadb_bucket = state.get("chromadb_bucket") or os.environ.get(
-                "CHROMADB_BUCKET"
-            )
-
-            # Lazy-load ChromaDB if not already loaded
-            if not chroma_client and chromadb_bucket:
-                try:
-                    logger.info(
-                        "Lazy-loading ChromaDB for get_place_id_info..."
-                    )
-
-                    # Download ChromaDB snapshot using receipt_chroma (atomic download)
-                    from receipt_chroma.s3 import download_snapshot_atomic
-
-                    # Download both lines and words collections
-                    # NOTE: Lines and words are stored in separate ChromaDB collections,
-                    # so we need to download both to have access to all receipt data
-                    chroma_path = os.environ.get(
-                        "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY",
-                        "/tmp/chromadb",
-                    )
-
-                    # Check if already cached
-                    chroma_db_file = os.path.join(
-                        chroma_path, "chroma.sqlite3"
-                    )
-                    if not os.path.exists(chroma_db_file):
-                        # Download lines collection first
-                        logger.info(
-                            f"Downloading ChromaDB lines snapshot from s3://{chromadb_bucket}/lines/"
-                        )
-                        lines_result = download_snapshot_atomic(
-                            bucket=chromadb_bucket,
-                            collection="lines",
-                            local_path=chroma_path,
-                            verify_integrity=False,  # Skip integrity check for faster startup
-                        )
-
-                        if lines_result.get("status") != "downloaded":
-                            raise Exception(
-                                f"Failed to download ChromaDB lines snapshot: {lines_result.get('error')}"
-                            )
-
-                        logger.info(
-                            f"ChromaDB lines snapshot downloaded: version={lines_result.get('version_id')}"
-                        )
-
-                        # Download words collection (merges into same ChromaDB instance)
-                        logger.info(
-                            f"Downloading ChromaDB words snapshot from s3://{chromadb_bucket}/words/"
-                        )
-                        words_result = download_snapshot_atomic(
-                            bucket=chromadb_bucket,
-                            collection="words",
-                            local_path=chroma_path,
-                            verify_integrity=False,  # Skip integrity check for faster startup
-                        )
-
-                        if words_result.get("status") != "downloaded":
-                            raise Exception(
-                                f"Failed to download ChromaDB words snapshot: {words_result.get('error')}"
-                            )
-
-                        logger.info(
-                            f"ChromaDB words snapshot downloaded: version={words_result.get('version_id')}"
-                        )
-                    else:
-                        logger.info(
-                            f"ChromaDB already cached at {chroma_path}"
-                        )
-
-                    # Update environment for receipt_agent to find ChromaDB
-                    os.environ["RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY"] = (
-                        chroma_path
-                    )
-
-                    # Create clients using the receipt_agent factory
-                    from receipt_agent.clients.factory import (
-                        create_chroma_client,
-                        create_embed_fn,
-                    )
-                    from receipt_agent.config.settings import get_settings
-
-                    settings = get_settings()
-
-                    # Verify OpenAI API key is available for embeddings
-                    if not settings.openai_api_key:
-                        logger.warning(
-                            "RECEIPT_AGENT_OPENAI_API_KEY not set - embeddings may fail"
-                        )
-                    else:
-                        logger.info("OpenAI API key available for embeddings")
-
-                    chroma_client = create_chroma_client(settings=settings)
-                    embed_fn = create_embed_fn(settings=settings)
-
-                    # Cache in state for subsequent calls
-                    state["chroma_client"] = chroma_client
-                    state["embed_fn"] = embed_fn
-
-                    logger.info(
-                        "ChromaDB and embeddings loaded and cached for get_place_id_info"
-                    )
-                except Exception as e:
-                    logger.warning(
-                        f"Could not lazy-load ChromaDB for get_place_id_info: {e}"
-                    )
-                    # Return error - can't proceed without ChromaDB
-                    return {
-                        "error": f"ChromaDB not available: {str(e)}",
-                        "place_id": place_id,
-                        "receipt_count": 0,
-                        "message": "ChromaDB collections not loaded",
-                    }
-
-            if not chroma_client or not embed_fn:
+            # Ensure ChromaDB is loaded
+            try:
+                chroma_client, embed_fn = ensure_chroma_state(state)
+            except RuntimeError as e:
                 return {
-                    "error": "ChromaDB client or embedding function not available",
+                    "error": str(e),
                     "place_id": place_id,
                     "receipt_count": 0,
-                    "message": "ChromaDB not configured",
+                    "message": "ChromaDB not available",
                 }
 
             # Verify collection exists before querying
@@ -936,145 +930,17 @@ def create_agentic_tools(
                     "not found" in error_str.lower()
                     or "does not exist" in error_str.lower()
                 ):
-                    logger.warning(
-                        f"'lines' collection not found in ChromaDB. "
-                        f"Attempting to lazy-load from S3..."
+                    # Collection not found - this shouldn't happen if ensure_chroma_state succeeded
+                    # Return error since ensure_chroma_state should have loaded everything
+                    logger.exception(
+                        "'lines' collection not found in ChromaDB even after lazy loading"
                     )
-
-                    # Try to download if we have bucket info
-                    if chromadb_bucket:
-                        try:
-                            from receipt_chroma.s3 import (
-                                download_snapshot_atomic,
-                            )
-
-                            chroma_path = os.environ.get(
-                                "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY",
-                                "/tmp/chromadb",
-                            )
-
-                            # Use separate directories for lines and words to avoid overwriting
-                            base_chroma_path = chroma_path
-                            lines_path = os.path.join(
-                                base_chroma_path, "lines"
-                            )
-                            words_path = os.path.join(
-                                base_chroma_path, "words"
-                            )
-
-                            # Check if already cached
-                            lines_db_file = os.path.join(
-                                lines_path, "chroma.sqlite3"
-                            )
-                            words_db_file = os.path.join(
-                                words_path, "chroma.sqlite3"
-                            )
-
-                            # Download lines collection if needed
-                            if not os.path.exists(lines_db_file):
-                                logger.info(
-                                    f"Downloading 'lines' collection from s3://{chromadb_bucket}/lines/"
-                                )
-
-                                lines_result = download_snapshot_atomic(
-                                    bucket=chromadb_bucket,
-                                    collection="lines",
-                                    local_path=lines_path,
-                                    verify_integrity=False,
-                                )
-
-                                if lines_result.get("status") != "downloaded":
-                                    return {
-                                        "error": f"Failed to download 'lines' collection: {lines_result.get('error')}",
-                                        "place_id": place_id,
-                                        "receipt_count": 0,
-                                        "message": "Could not load ChromaDB 'lines' collection",
-                                    }
-
-                                logger.info(
-                                    f"ChromaDB lines snapshot downloaded: version={lines_result.get('version_id')}"
-                                )
-
-                            # Download words collection if needed (for completeness)
-                            if not os.path.exists(words_db_file):
-                                logger.info(
-                                    f"Downloading 'words' collection from s3://{chromadb_bucket}/words/"
-                                )
-
-                                words_result = download_snapshot_atomic(
-                                    bucket=chromadb_bucket,
-                                    collection="words",
-                                    local_path=words_path,
-                                    verify_integrity=False,
-                                )
-
-                                if words_result.get("status") != "downloaded":
-                                    logger.warning(
-                                        f"Failed to download 'words' collection: {words_result.get('error')}"
-                                    )
-                                    # Non-fatal - we only need lines for this tool
-                                else:
-                                    logger.info(
-                                        f"ChromaDB words snapshot downloaded: version={words_result.get('version_id')}"
-                                    )
-
-                            # Set environment variables for DualChromaClient
-                            os.environ[
-                                "RECEIPT_AGENT_CHROMA_LINES_DIRECTORY"
-                            ] = lines_path
-                            os.environ[
-                                "RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"
-                            ] = words_path
-
-                            # Recreate client to pick up new collections
-                            from receipt_agent.clients.factory import (
-                                create_chroma_client,
-                            )
-                            from receipt_agent.config.settings import (
-                                get_settings,
-                            )
-
-                            settings = get_settings()
-                            chroma_client = create_chroma_client(
-                                settings=settings
-                            )
-                            state["chroma_client"] = chroma_client
-
-                            # Verify collection now exists
-                            try:
-                                collection = chroma_client.get_collection(
-                                    "lines"
-                                )
-                                logger.info(
-                                    f"Successfully loaded 'lines' collection with {collection.count()} vectors"
-                                )
-                            except Exception as verify_error:
-                                logger.error(
-                                    f"'lines' collection still not found after download: {verify_error}"
-                                )
-                                return {
-                                    "error": f"Collection 'lines' not found after download: {str(verify_error)}",
-                                    "place_id": place_id,
-                                    "receipt_count": 0,
-                                    "message": "ChromaDB 'lines' collection not available after download",
-                                }
-                        except Exception as download_error:
-                            logger.error(
-                                f"Failed to lazy-load 'lines' collection: {download_error}"
-                            )
-                            return {
-                                "error": f"Collection 'lines' not found and could not be downloaded: {str(download_error)}",
-                                "place_id": place_id,
-                                "receipt_count": 0,
-                                "message": "ChromaDB 'lines' collection not available",
-                            }
-                    else:
-                        return {
-                            "error": "Collection 'lines' not found and no bucket configured for lazy loading",
-                            "place_id": place_id,
-                            "receipt_count": 0,
-                            "message": "ChromaDB 'lines' collection not available",
-                        }
+                    return {
+                        "error": "Collection 'lines' not found in ChromaDB",
+                        "place_id": place_id,
+                        "receipt_count": 0,
+                        "message": "ChromaDB 'lines' collection not available",
+                    }
                 else:
                     raise  # Re-raise if it's a different error
 
@@ -1105,44 +971,30 @@ def create_agentic_tools(
                     "message": "No receipts found with this Place ID",
                 }
 
-            # Aggregate
-            receipts = set()
-            merchant_names: dict[str, int] = {}
-            addresses: dict[str, int] = {}
-
+            # Extract unique receipts
+            receipt_set = set()
             for meta in metadatas:
-                img_id = meta.get("image_id")
-                rcpt_id = meta.get("receipt_id")
-                if img_id and rcpt_id:
-                    receipts.add((img_id, int(rcpt_id)))
+                image_id = meta.get("image_id")
+                receipt_id = meta.get("receipt_id")
+                if image_id and receipt_id:
+                    receipt_set.add((image_id, int(receipt_id)))
 
-                name = meta.get("merchant_name")
-                if name:
-                    merchant_names[name] = merchant_names.get(name, 0) + 1
-
-                addr = meta.get("normalized_full_address")
-                if addr:
-                    addresses[addr] = addresses.get(addr, 0) + 1
-
-            canonical_name = (
-                max(merchant_names.items(), key=lambda x: x[1])[0]
-                if merchant_names
-                else None
-            )
+            receipt_count = len(receipt_set)
 
             return {
                 "place_id": place_id,
-                "receipt_count": len(receipts),
-                "canonical_merchant_name": canonical_name,
-                "merchant_name_variants": merchant_names,
-                "addresses": dict(
-                    sorted(addresses.items(), key=lambda x: -x[1])[:3]
-                ),
+                "receipt_count": receipt_count,
+                "message": f"Found {receipt_count} receipt(s) with this Place ID",
             }
 
         except Exception as e:
-            logger.error(f"Error in get_place_id_info: {e}")
-            return {"error": str(e)}
+            logger.exception("Error in get_place_id_info")
+            return {
+                "error": f"{e!s}",
+                "place_id": place_id,
+                "receipt_count": 0,
+                "message": "Error querying ChromaDB",
+            }
 
     # ========== COMPARISON TOOL ==========
 
@@ -1167,124 +1019,97 @@ def create_agentic_tools(
             return {"error": "No receipt context set"}
 
         try:
-            # Get my metadata
-            my_meta = get_my_metadata()
-            if "error" in my_meta:
-                return my_meta
+            # Ensure my_metadata is a proper entity with attribute access
+            # ctx.metadata may be None or a dict (from get_my_metadata)
+            if ctx.metadata is None or isinstance(ctx.metadata, dict):
+                # Fetch as proper entity for attribute access
+                my_metadata = dynamo_client.get_receipt_metadata(
+                    image_id=ctx.image_id,
+                    receipt_id=ctx.receipt_id,
+                )
+                # Cache the entity for subsequent accesses
+                ctx.metadata = my_metadata
+            else:
+                # Already a proper entity
+                my_metadata = ctx.metadata
 
-            # Get other receipt's metadata
-            other_meta = dynamo_client.get_receipt_metadata(
-                image_id=other_image_id,
-                receipt_id=other_receipt_id,
+            if not my_metadata:
+                return {
+                    "error": f"Receipt {ctx.image_id}#{ctx.receipt_id} metadata not found"
+                }
+
+            # Get metadata for the other receipt
+            other_metadata = dynamo_client.get_receipt_metadata(
+                image_id=other_image_id, receipt_id=other_receipt_id
             )
 
-            if not other_meta:
+            if not other_metadata:
                 return {
-                    "error": f"No metadata found for {other_image_id}#{other_receipt_id}"
+                    "error": f"Receipt {other_image_id}#{other_receipt_id} not found"
                 }
 
             # Compare
             differences = []
-
             same_merchant = (
-                my_meta.get("merchant_name") == other_meta.merchant_name
+                my_metadata.merchant_name == other_metadata.merchant_name
             )
             if not same_merchant:
                 differences.append(
-                    f"Merchant: '{my_meta.get('merchant_name')}' vs '{other_meta.merchant_name}'"
+                    f"Merchant: '{my_metadata.merchant_name}' vs '{other_metadata.merchant_name}'"
                 )
 
-            same_place_id = my_meta.get("place_id") == other_meta.place_id
+            same_place_id = my_metadata.place_id == other_metadata.place_id
             if not same_place_id:
                 differences.append(
-                    f"Place ID: '{my_meta.get('place_id')}' vs '{other_meta.place_id}'"
+                    f"Place ID: '{my_metadata.place_id}' vs '{other_metadata.place_id}'"
                 )
 
-            same_address = my_meta.get("address") == other_meta.address
+            same_address = my_metadata.address == other_metadata.address
             if not same_address:
                 differences.append(
-                    f"Address: '{my_meta.get('address')}' vs '{other_meta.address}'"
+                    f"Address: '{my_metadata.address}' vs '{other_metadata.address}'"
                 )
 
-            same_phone = my_meta.get("phone") == other_meta.phone_number
+            same_phone = (
+                my_metadata.phone_number == other_metadata.phone_number
+            )
             if not same_phone:
                 differences.append(
-                    f"Phone: '{my_meta.get('phone')}' vs '{other_meta.phone_number}'"
+                    f"Phone: '{my_metadata.phone_number}' vs '{other_metadata.phone_number}'"
                 )
 
             return {
-                "compared_with": f"{other_image_id}#{other_receipt_id}",
                 "same_merchant": same_merchant,
                 "same_place_id": same_place_id,
                 "same_address": same_address,
                 "same_phone": same_phone,
-                "all_match": same_merchant
-                and same_place_id
-                and same_address
-                and same_phone,
                 "differences": differences,
-                "other_metadata": {
-                    "merchant_name": other_meta.merchant_name,
-                    "place_id": other_meta.place_id,
-                    "address": other_meta.address,
-                    "phone": other_meta.phone_number,
-                },
             }
 
         except Exception as e:
-            logger.error(f"Error in compare_with_receipt: {e}")
-            return {"error": str(e)}
+            logger.exception("Error in compare_with_receipt")
+            return {"error": f"{e!s}"}
 
-    # ========== GOOGLE PLACES TOOL ==========
+    # ========== GOOGLE PLACES TOOLS ==========
 
-    class VerifyWithPlacesInput(BaseModel):
-        """Input schema for verify_with_google_places tool."""
-
-        place_id: Optional[str] = Field(
-            default=None, description="Google Place ID to verify directly"
-        )
-        phone_number: Optional[str] = Field(
-            default=None, description="Phone number to search for"
-        )
-        address: Optional[str] = Field(
-            default=None, description="Address to search for"
-        )
-        merchant_name: Optional[str] = Field(
-            default=None, description="Merchant name for text search"
-        )
-
-    @tool(args_schema=VerifyWithPlacesInput)
+    @tool(args_schema=VerifyWithGooglePlacesInput)
     def verify_with_google_places(
-        place_id: Optional[str] = None,
-        phone_number: Optional[str] = None,
+        merchant_name: str,
         address: Optional[str] = None,
-        merchant_name: Optional[str] = None,
+        phone: Optional[str] = None,
     ) -> dict:
         """
-        Search Google Places API to find or verify a place_id.
-
-        This is the PRIMARY way to find place_ids for receipts that don't have them.
-        Use this instead of just copying place_ids from similar receipts.
-
-        Search priority:
-        1. phone_number: Most reliable if available
-        2. address: Good if you have a complete address
-        3. merchant_name: Text search as fallback
-        4. place_id: Verify an existing place_id
+        Verify merchant information against Google Places API.
 
         Returns:
-        - found: Whether a place was found
-        - place_id: Google Place ID
-        - place_name: Official business name
-        - place_address: Formatted address
-        - place_phone: Phone number
-        - search_method: Which method found it (phone/address/text/place_id)
+        - found: Whether a matching business was found
+        - place_id: Google Place ID if found
+        - confidence: How confident the match is (0.0 to 1.0)
+        - message: Human-readable result
 
-        IMPORTANT: Always use this tool to search Google Places API, don't just copy
-        place_ids from get_merchant_consensus. This ensures you're finding the correct
-        place_id for THIS specific receipt location.
+        Use this to validate merchant metadata against Google's database.
         """
-        if places_api is None:
+        if not places_api:
             return {
                 "error": "Google Places API not configured",
                 "found": False,
@@ -1293,120 +1118,36 @@ def create_agentic_tools(
             }
 
         try:
-            result: dict[str, Any] = {
-                "search_method": None,
-                "found": False,
-                "place": None,
-                "place_id": None,
-                "confidence": 0.0,
+            # Search for business
+            results = places_api.search_places(
+                query=merchant_name,
+                address=address,
+                phone=phone,
+            )
+
+            if not results:
+                return {
+                    "found": False,
+                    "place_id": None,
+                    "confidence": 0.0,
+                    "message": "No matching business found in Google Places",
+                }
+
+            # Return the top match
+            top = results[0] if isinstance(results, list) else results
+            return {
+                "found": True,
+                "place_id": top.get("place_id"),
+                "confidence": (
+                    top.get("rating", 0) / 5.0 if top.get("rating") else 0.5
+                ),
+                "message": f"Found {top.get('name', 'business')} via Google Places",
             }
-
-            # Try place_id first (most reliable, direct lookup)
-            if place_id:
-                result["search_method"] = "place_id"
-                logger.info(
-                    "🔍 Places lookup by place_id: %s...", place_id[:20]
-                )
-                place_data = places_api.get_place_details(place_id)
-                if place_data and place_data.get("name"):
-                    result["found"] = True
-                    place = place_data.get("place", place_data)
-                    result["place_id"] = place.get("place_id")
-                    result["place_name"] = place.get("name")
-                    result["place_address"] = place.get("formatted_address")
-                    result["place_phone"] = place.get(
-                        "formatted_phone_number"
-                    ) or place.get("international_phone_number")
-                    result["place"] = {
-                        "place_id": result["place_id"],
-                        "name": result["place_name"],
-                        "formatted_address": result["place_address"],
-                        "phone_number": result["place_phone"],
-                    }
-                    return result
-
-            # Try phone search (uses DynamoDB cache via PlacesClient)
-            if phone_number and not result["found"]:
-                result["search_method"] = "phone"
-                logger.info(
-                    "🔍 Places lookup by phone: %s (cached)", phone_number
-                )
-                place_data = places_api.search_by_phone(phone_number)
-                if place_data and place_data.get("name"):
-                    result["found"] = True
-                    place = place_data.get("place", place_data)
-                    result["place_id"] = place.get("place_id")
-                    result["place_name"] = place.get("name")
-                    result["place_address"] = place.get("formatted_address")
-                    result["place_phone"] = place.get(
-                        "formatted_phone_number"
-                    ) or place.get("international_phone_number")
-                    result["place"] = {
-                        "place_id": result["place_id"],
-                        "name": result["place_name"],
-                        "formatted_address": result["place_address"],
-                        "phone_number": result["place_phone"],
-                    }
-                    return result
-
-            # Try address geocoding (uses DynamoDB cache via PlacesClient)
-            if address and not result["found"]:
-                result["search_method"] = "address"
-                logger.info(
-                    "🔍 Places lookup by address: %s... (cached)", address[:50]
-                )
-                place_data = places_api.search_by_address(address)
-                if place_data and place_data.get("name"):
-                    result["found"] = True
-                    place = place_data.get("place", place_data)
-                    result["place_id"] = place.get("place_id")
-                    result["place_name"] = place.get("name")
-                    result["place_address"] = place.get("formatted_address")
-                    result["place_phone"] = place.get(
-                        "formatted_phone_number"
-                    ) or place.get("international_phone_number")
-                    result["place"] = {
-                        "place_id": result["place_id"],
-                        "name": result["place_name"],
-                        "formatted_address": result["place_address"],
-                        "phone_number": result["place_phone"],
-                    }
-                    return result
-
-            # Try text search with merchant name (not cached)
-            if merchant_name and not result["found"]:
-                result["search_method"] = "text_search"
-                logger.info(
-                    "🔍 Places text search: %s (NOT cached)", merchant_name
-                )
-                place_data = places_api.search_by_text(merchant_name)
-                if place_data and place_data.get("name"):
-                    result["found"] = True
-                    place = place_data.get("place", place_data)
-                    result["place_id"] = place.get("place_id")
-                    result["place_name"] = place.get("name")
-                    result["place_address"] = place.get("formatted_address")
-                    result["place_phone"] = place.get(
-                        "formatted_phone_number"
-                    ) or place.get("international_phone_number")
-                    result["place"] = {
-                        "place_id": result["place_id"],
-                        "name": result["place_name"],
-                        "formatted_address": result["place_address"],
-                        "phone_number": result["place_phone"],
-                    }
-                    return result
-
-            result["message"] = "No matching business found in Google Places"
-            return result
 
         except Exception as e:
             logger.exception("Error in verify_with_google_places")
             return {
-                "error": str(e),
-                "found": False,
-                "place_id": None,
-                "confidence": 0.0,
+                "error": f"{e!s}",
                 "found": False,
                 "place_id": None,
                 "confidence": 0.0,
@@ -1417,49 +1158,39 @@ def create_agentic_tools(
     @tool(args_schema=SubmitDecisionInput)
     def submit_decision(
         status: Literal["VALIDATED", "INVALID", "NEEDS_REVIEW"],
-        confidence: float,
         reasoning: str,
-        evidence: list[str],
+        confidence: float = 0.0,
+        evidence: list[str] | None = None,
     ) -> dict:
         """
-        Submit your final validation decision. THIS ENDS THE VALIDATION.
+        Submit your final decision about this receipt's metadata.
 
-        Call this ONLY when you have gathered sufficient evidence.
+        This ends the validation workflow. Call this when you've made a decision.
 
         Args:
-            status:
-                - VALIDATED: The metadata is correct
-                - INVALID: The metadata is incorrect
-                - NEEDS_REVIEW: Uncertain, human review needed
-            confidence: Your confidence (0.0 to 1.0)
-            reasoning: Brief explanation of your decision
-            evidence: List of key findings that support your decision
+            status: VALIDATED (metadata is correct), INVALID (metadata is wrong),
+                   or NEEDS_REVIEW (uncertain, needs human review)
+            reasoning: Your explanation for this decision
+            confidence: How confident you are (0.0 to 1.0)
+            evidence: Key findings that support the decision
 
-        Returns confirmation that the decision was recorded.
+        Returns:
+            Confirmation of your decision
         """
-        ctx: ReceiptContext = state["context"]
-
-        # Store the decision
+        if evidence is None:
+            evidence = []
         state["decision"] = {
-            "image_id": ctx.image_id if ctx else "unknown",
-            "receipt_id": ctx.receipt_id if ctx else -1,
             "status": status,
-            "confidence": confidence,
             "reasoning": reasoning,
+            "confidence": confidence,
             "evidence": evidence,
         }
-
-        logger.info(
-            f"Decision submitted: {status} ({confidence:.2%}) - {reasoning[:100]}..."
-        )
-
         return {
-            "success": True,
-            "decision": state["decision"],
-            "message": "Validation complete. Decision recorded.",
+            "status": "submitted",
+            "message": f"Decision submitted: {status}",
         }
 
-    # Return all tools and state holder
+    # Add Google Places tools if API is available
     tools = [
         get_my_lines,
         get_my_words,
@@ -1472,86 +1203,42 @@ def create_agentic_tools(
         get_merchant_consensus,
         get_place_id_info,
         compare_with_receipt,
+        verify_with_google_places,
         submit_decision,
     ]
 
-    # Add Google Places tools if available
-    if places_api is not None:
-        from receipt_agent.tools.places import (
-            FindBusinessesAtAddressInput,
-            _format_place_result,
-        )
-
-        tools.append(verify_with_google_places)
-
-        # Create a wrapper for find_businesses_at_address that has access to places_api
+    if places_api:
+        # Add find_businesses_at_address tool
         @tool(args_schema=FindBusinessesAtAddressInput)
         def find_businesses_at_address_wrapper(address: str) -> dict:
             """
-            Find businesses at a specific address using Google Places API.
+            Find businesses at a specific address using Google Places.
 
-            Use this when Google Places returns an address as the merchant name
-            (e.g., "166 W Hillcrest Dr" instead of a business name). This tool
-            searches for actual businesses at that address so you can identify
-            the correct merchant.
+            Returns businesses found at that address with their place_ids.
+            Use this when you have an address but need to find the business.
             """
-            if not address:
-                return {"error": "Address is required"}
-
             try:
-                logger.info(
-                    "🔍 Places search for businesses at address: %s...",
-                    address[:50],
-                )
-
-                # First, geocode the address to get lat/lng
-                geocode_result = places_api.search_by_address(address)
+                # Geocode address to get coordinates
+                geocode_result = places_api.geocode_address(address)
                 if not geocode_result:
                     return {
-                        "found": False,
-                        "businesses": [],
-                        "message": f"Could not geocode address: {address}",
+                        "error": f"Could not geocode address: {address}",
+                        "address": address,
+                        "count": 0,
                     }
 
-                # Extract location from geocode result
-                geometry = geocode_result.get("geometry", {})
-                location = geometry.get("location", {})
-                lat = location.get("lat")
-                lng = location.get("lng")
+                lat = geocode_result["lat"]
+                lng = geocode_result["lng"]
 
-                if not lat or not lng:
-                    return {
-                        "found": False,
-                        "businesses": [],
-                        "message": f"Could not get coordinates for address: {address}",
-                    }
-
-                # Now search for nearby businesses (within 50 meters of the address)
-                nearby_businesses = places_api.search_nearby(
+                # Search for businesses near those coordinates
+                businesses = places_api.search_nearby(
                     lat=lat,
                     lng=lng,
-                    radius=50,  # 50 meters - very close to the address
+                    radius=50,
                 )
 
-                if not nearby_businesses:
-                    return {
-                        "found": False,
-                        "businesses": [],
-                        "address_searched": address,
-                        "coordinates": {"lat": lat, "lng": lng},
-                        "message": f"No businesses found within 50m of address",
-                    }
-
-                # Format results
-                businesses = []
-                for business in nearby_businesses[:10]:  # Limit to 10
-                    formatted = _format_place_result(business)
-                    businesses.append(formatted)
-
                 return {
-                    "found": True,
-                    "businesses": businesses,
-                    "address_searched": address,
+                    "address": address,
                     "coordinates": {"lat": lat, "lng": lng},
                     "count": len(businesses),
                     "businesses": businesses,
@@ -1564,8 +1251,8 @@ def create_agentic_tools(
                 }
 
             except Exception as e:
-                logger.error("Error finding businesses at address: %s", e)
-                return {"error": str(e)}
+                logger.exception("Error finding businesses at address")
+                return {"error": f"{e!s}"}
 
         tools.append(find_businesses_at_address_wrapper)
 

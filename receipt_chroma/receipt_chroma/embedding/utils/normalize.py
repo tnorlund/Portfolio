@@ -88,7 +88,8 @@ def build_full_address_from_words(words: Iterable[object]) -> str:
             list(dict.fromkeys(unique)), key=len, reverse=True
         )
 
-        # Prefer combining a street-containing part (has number) with a city/state/zip part
+        # Prefer combining a street-containing part (has number) with a
+        # city/state/zip part
         street_idx = None
         place_idx = None
         for idx, val in enumerate(unique_sorted):

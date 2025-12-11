@@ -1,9 +1,9 @@
 """
 Distributed lock manager with heartbeat support for DynamoDB.
 
-This module provides a thread-safe lock manager that maintains distributed locks
-in DynamoDB with automatic heartbeat updates to prevent timeout during long-running
-operations.
+This module provides a thread-safe lock manager that maintains distributed
+locks in DynamoDB with automatic heartbeat updates to prevent timeout during
+long-running operations.
 """
 
 import logging
@@ -21,7 +21,8 @@ logger = logging.getLogger(__name__)
 
 class LockManager:
     """
-    Manages distributed locks with heartbeat support for long-running operations.
+    Manages distributed locks with heartbeat support for long-running
+    operations.
 
     This class provides:
     - Distributed lock acquisition via DynamoDB
@@ -64,9 +65,12 @@ class LockManager:
         Args:
             dynamo_client: DynamoDB client for lock operations
             collection: ChromaDB collection this lock protects (lines or words)
-            heartbeat_interval: Seconds between heartbeat updates (default: 60)
-            lock_duration_minutes: Initial lock duration in minutes (default: 5)
-            max_heartbeat_failures: Max consecutive heartbeat failures before release (default: 3)
+            heartbeat_interval: Seconds between heartbeat updates
+                (default: 60)
+            lock_duration_minutes: Initial lock duration in minutes
+                (default: 5)
+            max_heartbeat_failures: Max consecutive heartbeat failures
+                before release (default: 3)
         """
         self.dynamo_client = dynamo_client
         self.collection = collection
@@ -93,7 +97,8 @@ class LockManager:
         Acquire a distributed lock.
 
         Args:
-            lock_id: Identifier for the lock (default: "chromadb_compaction_lock")
+            lock_id: Identifier for the lock
+                (default: "chromadb_compaction_lock")
 
         Returns:
             True if lock was acquired, False otherwise
@@ -277,7 +282,8 @@ class LockManager:
                 with self._lock:
                     self.consecutive_heartbeat_failures += 1
                     logger.error(
-                        "Heartbeat update failed (attempt %d/%d) - lock may be lost",
+                        "Heartbeat update failed (attempt %d/%d) - "
+                        "lock may be lost",
                         self.consecutive_heartbeat_failures,
                         self.max_heartbeat_failures,
                     )
@@ -288,7 +294,8 @@ class LockManager:
                         >= self.max_heartbeat_failures
                     ):
                         logger.critical(
-                            "Maximum heartbeat failures reached (%d) - releasing lock %s",
+                            "Maximum heartbeat failures reached (%d) - "
+                            "releasing lock %s",
                             self.max_heartbeat_failures,
                             self.lock_id,
                         )
@@ -414,7 +421,8 @@ class LockManager:
         Get the remaining time before the lock expires.
 
         Returns:
-            Timedelta representing remaining time, or None if no lock held or error
+            Timedelta representing remaining time, or None if no lock held
+            or error
         """
         with self._lock:
             if not self.lock_id or not self.lock_owner:

@@ -31,7 +31,6 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel, Field
-
 from receipt_agent.config.settings import Settings, get_settings
 from receipt_agent.tools.agentic import ReceiptContext, create_agentic_tools
 from receipt_agent.utils.agent_common import (
@@ -240,10 +239,10 @@ def create_metadata_submission_tool(state_holder: dict):
         address: Optional[str] = None,
         phone_number: Optional[str] = None,
         confidence: float = 0.0,
-        field_confidence: dict[str, float] = None,
+        field_confidence: Optional[dict[str, float]] = None,
         reasoning: str = "",
-        sources: dict[str, str] = None,
-        search_methods_used: list[str] = None,
+        sources: Optional[dict[str, str]] = None,
+        search_methods_used: Optional[list[str]] = None,
     ) -> dict:
         """
         Submit ALL metadata you found for this receipt.
@@ -386,6 +385,11 @@ def create_receipt_metadata_finder_graph(
                     logger.warning(
                         "Agent has made many steps without submitting - may need reminder"
                     )
+                if len(state.messages) > 20:
+                    logger.error(
+                        "Agent exceeded 20 steps without submitting - forcing end"
+                    )
+                    return "end"
                 return "agent"
 
         return "agent"
@@ -464,8 +468,6 @@ async def run_receipt_metadata_finder(
                 "has_embedding": (
                     _build_line_id(image_id, receipt_id, line.line_id)
                     in (line_embeddings or {})
-                    if hasattr(line, "line_id")
-                    else False
                 ),
             }
             for line in receipt_lines
@@ -559,7 +561,7 @@ async def run_receipt_metadata_finder(
             }
 
     except Exception as e:
-        logger.error(f"Error in receipt metadata finder: {e}")
+        logger.exception("Error in receipt metadata finder")
         return {
             "image_id": image_id,
             "receipt_id": receipt_id,
@@ -569,6 +571,6 @@ async def run_receipt_metadata_finder(
             "phone_number": None,
             "found": False,
             "confidence": 0.0,
-            "reasoning": f"Error during metadata finding: {str(e)}",
+            "reasoning": f"Error during metadata finding: {e!s}",
             "fields_found": [],
         }

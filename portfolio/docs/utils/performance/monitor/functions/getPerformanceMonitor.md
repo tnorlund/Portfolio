@@ -6,10 +6,10 @@
 
 # Function: getPerformanceMonitor()
 
-> **getPerformanceMonitor**(): `null` \| [`PerformanceMonitor`](../classes/PerformanceMonitor.md)
+> **getPerformanceMonitor**(): [`PerformanceMonitor`](../classes/PerformanceMonitor.md) \| `null`
 
-Defined in: [utils/performance/monitor.ts:192](https://github.com/tnorlund/Portfolio/blob/ec14721ddbaed57935125ac7244e977aad1c2e30/portfolio/utils/performance/monitor.ts#L192)
+Defined in: [utils/performance/monitor.ts:192](https://github.com/tnorlund/Portfolio/blob/36b19dbd774c554bd98c92d563ba41c4f85b388f/portfolio/utils/performance/monitor.ts#L192)
 
 ## Returns
 
-`null` \| [`PerformanceMonitor`](../classes/PerformanceMonitor.md)
+[`PerformanceMonitor`](../classes/PerformanceMonitor.md) \| `null`

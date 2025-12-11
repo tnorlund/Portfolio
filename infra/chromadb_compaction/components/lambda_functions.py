@@ -53,6 +53,7 @@ class HybridLambdaDeployment(ComponentResource):
         vpc_subnet_ids=None,
         lambda_security_group_id: str | None = None,
         efs_access_point_arn: str | None = None,
+        storage_mode: str = "auto",
         stack: Optional[str] = None,
         opts: Optional[ResourceOptions] = None,
     ):
@@ -145,6 +146,7 @@ class HybridLambdaDeployment(ComponentResource):
                 "storage_mode='efs' requires efs_access_point_arn to be provided. "
                 "Cannot set CHROMADB_STORAGE_MODE='efs' without an EFS access point."
             )
+
         self.docker_image = DockerImageComponent(
             f"{name}-docker",
             lambda_config={
@@ -208,7 +210,7 @@ class HybridLambdaDeployment(ComponentResource):
                         "arn": efs_access_point_arn,
                         "local_mount_path": "/mnt/chroma",
                     }
-                    if efs_access_point_arn
+                    if use_efs_mount
                     else None
                 ),
             },
@@ -475,7 +477,7 @@ class HybridLambdaDeployment(ComponentResource):
                     arn=efs_access_point_arn,
                     local_mount_path="/mnt/chroma",
                 )
-                if efs_access_point_arn
+                if use_efs_mount
                 else None
             ),
             opts=ResourceOptions(parent=self, depends_on=[self.lambda_role]),
@@ -719,6 +721,7 @@ def create_hybrid_lambda_deployment(
     vpc_subnet_ids=None,
     lambda_security_group_id: str | None = None,
     efs_access_point_arn: str | None = None,
+    storage_mode: str = "auto",
     opts: Optional[ResourceOptions] = None,
 ) -> HybridLambdaDeployment:
     """
@@ -753,5 +756,6 @@ def create_hybrid_lambda_deployment(
         vpc_subnet_ids=vpc_subnet_ids,
         lambda_security_group_id=lambda_security_group_id,
         efs_access_point_arn=efs_access_point_arn,
+        storage_mode=storage_mode,
         opts=opts,
     )

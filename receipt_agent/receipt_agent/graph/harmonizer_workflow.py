@@ -35,7 +35,6 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel, Field
-
 from receipt_agent.config.settings import Settings, get_settings
 from receipt_agent.utils.address_validation import (
     is_address_like,
@@ -45,6 +44,7 @@ from receipt_agent.utils.agent_common import (
     create_agent_node_with_retry,
     create_ollama_llm,
 )
+from receipt_agent.utils.chroma_helpers import load_dual_chroma_from_s3
 from receipt_agent.utils.receipt_fetching import (
     fetch_receipt_details_with_fallback,
 )
@@ -532,12 +532,8 @@ def create_harmonizer_tools(
             # Handle case where we might have lines/words but no receipt entity
             lines = receipt_details.lines or [] if receipt_details else []
 
-            # If we don't have lines from receipt_details, try direct fetch
-            if not lines and receipt_details:
-                # Already tried fallback, but lines might be empty
-                pass
-            elif not lines:
-                # Try direct fetch as last resort
+            # If we don't have lines, try direct fetch
+            if not lines:
                 try:
                     lines = dynamo_client.list_receipt_lines_from_receipt(
                         image_id, receipt_id
@@ -566,9 +562,9 @@ def create_harmonizer_tools(
                 logger.debug(
                     f"Could not format receipt text (receipt-space): {exc}"
                 )
-                sorted_lines = sorted(lines, key=lambda l: l.line_id)
+                sorted_lines = sorted(lines, key=lambda line: line.line_id)
                 formatted_text = "\n".join(
-                    f"{ln.line_id}: {ln.text}" for ln in sorted_lines
+                    f"{line.line_id}: {line.text}" for line in sorted_lines
                 )
 
             # Extract key parts of address for matching
@@ -820,9 +816,9 @@ def create_harmonizer_tools(
                 logger.debug(
                     f"Could not format receipt text (receipt-space): {exc}"
                 )
-                sorted_lines = sorted(lines, key=lambda l: l.line_id)
+                sorted_lines = sorted(lines, key=lambda line: line.line_id)
                 formatted_text = "\n".join(
-                    f"{ln.line_id}: {ln.text}" for ln in sorted_lines
+                    f"{line.line_id}: {line.text}" for line in sorted_lines
                 )
 
             # Build verification prompt (metadata already set above)
@@ -1010,10 +1006,10 @@ Use this information to make your harmonization decision."""
                 "place_name": name,
                 "place_address": address,
                 "place_phone": phone,
-                "is_address_like": is_address_like,
+                "is_address_like": is_address_like_result,
                 "warning": (
                     "Google returned an address as the name. Use find_businesses_at_address to find the actual business."
-                    if is_address_like
+                    if is_address_like_result
                     else None
                 ),
             }
@@ -1194,106 +1190,11 @@ Use this information to make your harmonization decision."""
                         "Lazy-loading ChromaDB for metadata finder sub-agent..."
                     )
 
-                    # Download ChromaDB snapshots using receipt_chroma (atomic download)
-                    # Use separate directories for lines and words to avoid overwriting
-                    from receipt_chroma.s3 import download_snapshot_atomic
-
-                    base_chroma_path = os.environ.get(
-                        "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY",
-                        "/tmp/chromadb",
+                    # Use shared helper to load dual-chroma setup
+                    chroma_client, embed_fn = load_dual_chroma_from_s3(
+                        chromadb_bucket=chromadb_bucket,
+                        verify_integrity=False,  # Skip integrity check for faster startup
                     )
-
-                    lines_path = os.path.join(base_chroma_path, "lines")
-                    words_path = os.path.join(base_chroma_path, "words")
-
-                    # Check if already cached
-                    lines_db_file = os.path.join(lines_path, "chroma.sqlite3")
-                    words_db_file = os.path.join(words_path, "chroma.sqlite3")
-
-                    if not os.path.exists(lines_db_file) or not os.path.exists(
-                        words_db_file
-                    ):
-                        # Download lines collection to separate directory
-                        if not os.path.exists(lines_db_file):
-                            logger.info(
-                                f"Downloading ChromaDB lines snapshot from s3://{chromadb_bucket}/lines/"
-                            )
-                            lines_result = download_snapshot_atomic(
-                                bucket=chromadb_bucket,
-                                collection="lines",
-                                local_path=lines_path,
-                                verify_integrity=False,  # Skip integrity check for faster startup
-                            )
-
-                            if lines_result.get("status") != "downloaded":
-                                raise Exception(
-                                    f"Failed to download ChromaDB lines snapshot: {lines_result.get('error')}"
-                                )
-
-                            logger.info(
-                                f"ChromaDB lines snapshot downloaded: version={lines_result.get('version_id')}"
-                            )
-                        else:
-                            logger.info(
-                                f"ChromaDB lines already cached at {lines_path}"
-                            )
-
-                        # Download words collection to separate directory
-                        if not os.path.exists(words_db_file):
-                            logger.info(
-                                f"Downloading ChromaDB words snapshot from s3://{chromadb_bucket}/words/"
-                            )
-                            words_result = download_snapshot_atomic(
-                                bucket=chromadb_bucket,
-                                collection="words",
-                                local_path=words_path,
-                                verify_integrity=False,  # Skip integrity check for faster startup
-                            )
-
-                            if words_result.get("status") != "downloaded":
-                                raise Exception(
-                                    f"Failed to download ChromaDB words snapshot: {words_result.get('error')}"
-                                )
-
-                            logger.info(
-                                f"ChromaDB words snapshot downloaded: version={words_result.get('version_id')}"
-                            )
-                        else:
-                            logger.info(
-                                f"ChromaDB words already cached at {words_path}"
-                            )
-                    else:
-                        logger.info(
-                            f"ChromaDB already cached at {base_chroma_path}"
-                        )
-
-                    # Set environment variables for DualChromaClient (separate directories)
-                    os.environ["RECEIPT_AGENT_CHROMA_LINES_DIRECTORY"] = (
-                        lines_path
-                    )
-                    os.environ["RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"] = (
-                        words_path
-                    )
-
-                    # Create clients using the receipt_agent factory
-                    from receipt_agent.clients.factory import (
-                        create_chroma_client,
-                        create_embed_fn,
-                    )
-                    from receipt_agent.config.settings import get_settings
-
-                    settings = get_settings()
-
-                    # Verify OpenAI API key is available for embeddings
-                    if not settings.openai_api_key:
-                        logger.warning(
-                            "RECEIPT_AGENT_OPENAI_API_KEY not set - embeddings may fail"
-                        )
-                    else:
-                        logger.info("OpenAI API key available for embeddings")
-
-                    chroma_client = create_chroma_client(settings=settings)
-                    embed_fn = create_embed_fn(settings=settings)
 
                     # Cache in state for subsequent calls
                     state["chroma_client"] = chroma_client
@@ -1417,8 +1318,8 @@ Use this information to make your harmonization decision."""
                     )
                     if place_data:
                         search_method = "phone"
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Phone search failed: {e}")
 
             # Try address if phone didn't work
             if not place_data and receipt.address:
@@ -1426,8 +1327,8 @@ Use this information to make your harmonization decision."""
                     place_data = places_api.search_by_address(receipt.address)
                     if place_data:
                         search_method = "address"
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Address search failed: {e}")
 
             # Try merchant name text search as last resort
             if not place_data and receipt.merchant_name:
@@ -1437,8 +1338,8 @@ Use this information to make your harmonization decision."""
                     )
                     if place_data:
                         search_method = "merchant_name"
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Text search failed: {e}")
 
             if place_data:
                 # Get full place details
@@ -1832,8 +1733,12 @@ def create_harmonizer_graph(
             if isinstance(last_message, AIMessage):
                 if last_message.tool_calls:
                     return "tools"
+                # If agent responded without tool calls and no result,
+                # give it another chance to call submit_decision
+                return "agent"
 
-        return "end"
+        # If no messages or no tool calls, go back to agent
+        return "agent"
 
     # Build graph
     workflow = StateGraph(HarmonizerAgentState)
@@ -1844,7 +1749,11 @@ def create_harmonizer_graph(
     workflow.add_conditional_edges(
         "agent",
         should_continue,
-        {"tools": "tools", "end": END},
+        {
+            "tools": "tools",
+            "agent": "agent",  # Loop back to agent if no tool calls
+            "end": END,
+        },
     )
     workflow.add_edge("tools", "agent")
 

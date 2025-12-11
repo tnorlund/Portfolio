@@ -275,8 +275,8 @@ class MerchantHarmonizerV3:
                 f"{len(self._no_place_id_receipts)} without place_id"
             )
 
-        except Exception as e:
-            logger.error(f"Failed to load receipts: {e}")
+        except Exception:
+            logger.exception("Failed to load receipts")
             raise
 
         return total
@@ -364,8 +364,8 @@ class MerchantHarmonizerV3:
                 f"Loaded {total} receipts for {len(self._place_id_groups)} place_id group(s)"
             )
 
-        except Exception as e:
-            logger.error(f"Failed to load receipts for place_ids: {e}")
+        except Exception:
+            logger.exception("Failed to load receipts for place_ids")
             raise
 
         return total
@@ -548,7 +548,8 @@ class MerchantHarmonizerV3:
             "summary": {
                 "total_receipts": sum(
                     len(g.receipts) for g in self._place_id_groups.values()
-                ),
+                )
+                + len(self._no_place_id_receipts),
                 "total_with_place_id": sum(
                     len(g.receipts) for g in self._place_id_groups.values()
                 ),
@@ -586,7 +587,9 @@ class MerchantHarmonizerV3:
 
         Args:
             dry_run: If True, only report what would be updated
-            min_confidence: Minimum confidence to apply fix
+            min_confidence: Minimum confidence fraction to apply fix (0.0 to 1.0).
+                          Note: This uses a 0-1 scale, unlike place_id_finder and
+                          receipt_metadata_finder which use 0-100 scale.
 
         Returns:
             UpdateResult with counts and errors
@@ -701,12 +704,12 @@ class MerchantHarmonizerV3:
                     result.total_skipped += 1
 
             except Exception as e:
-                logger.error(
-                    f"Failed to update {update['image_id']}#{update['receipt_id']}: {e}"
+                logger.exception(
+                    f"Failed to update {update['image_id']}#{update['receipt_id']}"
                 )
                 result.total_failed += 1
                 result.errors.append(
-                    f"{update['image_id']}#{update['receipt_id']}: {e}"
+                    f"{update['image_id']}#{update['receipt_id']}: {e!s}"
                 )
 
         logger.info(

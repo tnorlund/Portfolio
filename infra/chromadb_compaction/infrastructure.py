@@ -10,10 +10,10 @@ from typing import Optional
 
 from pulumi import ComponentResource, ResourceOptions
 
+from .components.efs import ChromaEfs
 from .components.lambda_functions import create_hybrid_lambda_deployment
 from .components.s3_buckets import create_chromadb_buckets
 from .components.sqs_queues import create_chromadb_queues
-from .components.efs import ChromaEfs
 
 
 class ChromaDBCompactionInfrastructure(ComponentResource):
@@ -36,6 +36,8 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
         subnet_ids=None,
         efs_subnet_ids=None,
         lambda_security_group_id: str | None = None,
+        use_efs: bool = True,
+        storage_mode: str = "auto",
         opts: Optional[ResourceOptions] = None,
     ):
         """
@@ -46,8 +48,12 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
             dynamodb_table_arn: ARN of the DynamoDB table
             dynamodb_stream_arn: ARN of the DynamoDB stream
             chromadb_buckets: Shared ChromaDB S3 buckets component
+            vpc_id: VPC ID for Lambda and EFS placement
             subnet_ids: Subnet IDs for Lambda placement (can be same AZ)
             efs_subnet_ids: Subnet IDs for EFS mount targets (must be unique AZs)
+            lambda_security_group_id: Security group ID for Lambda VPC access
+            use_efs: Whether to create EFS resources (default: True)
+            storage_mode: Storage mode for ChromaDB - "auto", "s3", or "efs" (default: "auto")
             opts: Optional resource options
         """
         super().__init__(
@@ -109,6 +115,7 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
             raise ValueError(
                 "storage_mode='efs' requires EFS to be created (provide vpc_id, subnet_ids, and lambda_security_group_id)"
             )
+
         # Create hybrid Lambda deployment
         # Depend on EFS mount targets if EFS exists (Lambda needs mount targets in "available" state)
         # mount_targets is an Output[List[Resource]], so we need to pass it directly
@@ -135,7 +142,9 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
         self.words_queue_url = self.chromadb_queues.words_queue_url
         self.bucket_name = self.chromadb_buckets.bucket_name
         self.stream_processor_arn = self.hybrid_deployment.stream_processor_arn
-        self.enhanced_compaction_arn = self.hybrid_deployment.enhanced_compaction_arn
+        self.enhanced_compaction_arn = (
+            self.hybrid_deployment.enhanced_compaction_arn
+        )
 
         # Register outputs
         self.register_outputs(
@@ -161,6 +170,8 @@ def create_chromadb_compaction_infrastructure(
     subnet_ids=None,
     efs_subnet_ids=None,
     lambda_security_group_id: str | None = None,
+    use_efs: bool = True,
+    storage_mode: str = "auto",
     opts: Optional[ResourceOptions] = None,
 ) -> ChromaDBCompactionInfrastructure:
     """
@@ -196,5 +207,7 @@ def create_chromadb_compaction_infrastructure(
         subnet_ids=subnet_ids,
         efs_subnet_ids=efs_subnet_ids,
         lambda_security_group_id=lambda_security_group_id,
+        use_efs=use_efs,
+        storage_mode=storage_mode,
         opts=opts,
     )

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.dynamo_client import DynamoClient
+    from receipt_dynamo.entities.receipt_details import ReceiptDetails
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,7 @@ def fetch_receipt_details_with_fallback(
     dynamo_client: "DynamoClient",
     image_id: str,
     receipt_id: int,
-) -> Optional[Any]:
+) -> Optional[ReceiptDetails]:
     """
     Fetch receipt details using primary method, with fallback methods.
 
@@ -67,10 +68,6 @@ def fetch_receipt_details_with_fallback(
                     f"Error fetching receipt for {img_id}#{receipt_id}: {e}"
                 )
                 continue
-
-        # If we found receipt with sanitized ID, use that for subsequent queries
-        if receipt:
-            image_id = sanitized_image_id
 
         # Try to fetch lines and words directly (they might exist even if receipt doesn't)
         lines = []
@@ -124,34 +121,11 @@ def fetch_receipt_details_with_fallback(
                 )
             else:
                 # We have lines/words but no receipt entity
-                # Try to get receipt one more time using get_receipt (with sanitized ID)
-                logger.info(
-                    f"Found {len(lines)} lines and {len(words)} words for {image_id}#{receipt_id} "
-                    f"but no receipt entity. Attempting to create minimal receipt..."
-                )
-                try:
-                    receipt = dynamo_client.get_receipt(
-                        sanitized_image_id, receipt_id
-                    )
-                    if receipt:
-                        image_id = sanitized_image_id  # Use sanitized version
-                        return ReceiptDetails(
-                            receipt=receipt,
-                            lines=lines,
-                            words=words,
-                            letters=[],
-                            labels=[],
-                        )
-                except Exception as e:
-                    logger.debug(
-                        f"Could not fetch receipt entity via get_receipt: {e}"
-                    )
-
-                # If we still don't have receipt, we can't create ReceiptDetails
-                # But we can work with lines/words directly in the tools
+                # Note: Receipt fetch was already attempted in the loop above (lines 56-69),
+                # so if it failed there, it will fail here too. Return None and let tools handle it.
                 logger.warning(
-                    f"Found lines/words for {image_id}#{receipt_id} but no receipt entity. "
-                    f"Tools will work with lines/words only."
+                    f"Found {len(lines)} lines and {len(words)} words for {image_id}#{receipt_id} "
+                    f"but no receipt entity. Tools will work with lines/words only."
                 )
                 # Return None - tools will handle this case
                 return None

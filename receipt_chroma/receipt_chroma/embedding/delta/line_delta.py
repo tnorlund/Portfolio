@@ -4,8 +4,7 @@ This module provides functionality for saving line embedding results
 as ChromaDB delta files for compaction.
 """
 
-import re
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional, TypedDict
 
 from receipt_chroma.embedding.delta.producer import produce_embedding_delta
 from receipt_chroma.embedding.formatting.line_format import (
@@ -18,9 +17,19 @@ from receipt_chroma.embedding.metadata.line_metadata import (
 )
 
 
-def _parse_metadata_from_line_id(custom_id: str) -> Dict[str, Any]:
+class LineMetadataBase(TypedDict):
+    """Base metadata structure for line embeddings."""
+
+    image_id: str
+    receipt_id: int
+    line_id: int
+    source: str
+
+
+def _parse_metadata_from_line_id(custom_id: str) -> LineMetadataBase:
     """
-    Parse metadata from a line ID in the format IMAGE#uuid#RECEIPT#00001#LINE#00001.
+    Parse metadata from a line ID in the format
+    IMAGE#uuid#RECEIPT#00001#LINE#00001.
 
     Args:
         custom_id: Custom ID string in format IMAGE#<id>#RECEIPT#<id>#LINE#<id>
@@ -44,7 +53,8 @@ def _parse_metadata_from_line_id(custom_id: str) -> Dict[str, Any]:
     # Additional validation: check that this is NOT a word embedding
     if "WORD" in parts:
         raise ValueError(
-            f"Custom ID appears to be for word embedding, not line embedding: {custom_id}"
+            f"Custom ID appears to be for word embedding, not line "
+            f"embedding: {custom_id}"
         )
 
     return {
@@ -147,7 +157,8 @@ def save_line_embeddings_as_delta(
             source="openai_embedding_batch",
         )
 
-        # Anchor-only enrichment for lines: attach fields only if this line has anchor words
+        # Anchor-only enrichment for lines: attach fields only if this line
+        # has anchor words
         line_metadata = enrich_line_metadata_with_anchors(
             line_metadata, line_words
         )
@@ -165,7 +176,8 @@ def save_line_embeddings_as_delta(
         documents=documents,
         metadatas=metadatas,
         bucket_name=bucket_name,
-        collection_name="lines",  # Must match ChromaDBCollection.LINES and database_name
+        collection_name="lines",  # Must match ChromaDBCollection.LINES and
+        # database_name
         database_name="lines",  # Separate database for line embeddings
         sqs_queue_url=sqs_queue_url,
         batch_id=batch_id,

@@ -6,9 +6,9 @@
 
 # Function: consistentAngleFromPoints()
 
-> **consistentAngleFromPoints**(`pts`): `null` \| `number`
+> **consistentAngleFromPoints**(`pts`): `number` \| `null`
 
-Defined in: [utils/receipt/boundingBox.ts:224](https://github.com/tnorlund/Portfolio/blob/ec14721ddbaed57935125ac7244e977aad1c2e30/portfolio/utils/receipt/boundingBox.ts#L224)
+Defined in: [utils/receipt/boundingBox.ts:224](https://github.com/tnorlund/Portfolio/blob/36b19dbd774c554bd98c92d563ba41c4f85b388f/portfolio/utils/receipt/boundingBox.ts#L224)
 
 Compute angle from points ensuring consistent left-to-right direction.
 This eliminates angle direction inconsistencies caused by hull point ordering.
@@ -23,4 +23,4 @@ are treated as being close to 0°.
 
 ## Returns
 
-`null` \| `number`
+`number` \| `null`

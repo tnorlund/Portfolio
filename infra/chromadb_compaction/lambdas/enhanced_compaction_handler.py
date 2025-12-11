@@ -22,67 +22,60 @@ import boto3
 
 # Enhanced observability imports
 from utils import (
-    emf_metrics,
-    format_response,
     get_operation_logger,
     metrics,
+    emf_metrics,
+    trace_function,
+    trace_compaction_operation,
     start_compaction_lambda_monitoring,
     stop_compaction_lambda_monitoring,
-    trace_compaction_operation,
-    trace_function,
     with_compaction_timeout_protection,
+    format_response,
 )
-
-from receipt_chroma import LockManager
 
 # Import receipt_dynamo for proper DynamoDB operations
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_chroma import LockManager
 
 # Import modular components - flexible for both Lambda and test environments
 try:
     # Try absolute import first (Lambda environment)
     from compaction import (
-        LabelUpdateResult,
-        LambdaResponse,
-        MetadataUpdateResult,
-        StreamMessage,
-        apply_label_updates_in_memory,
-        apply_metadata_updates_in_memory,
-        apply_receipt_deletions_in_memory,
-        categorize_stream_messages,
-        get_efs_snapshot_manager,
-        group_messages_by_collection,
-        merge_compaction_deltas,
-        process_compaction_run_messages,
-        process_label_updates,
-        process_metadata_updates,
-        process_receipt_deletions,
         process_sqs_messages,
+        categorize_stream_messages,
+        group_messages_by_collection,
+        process_metadata_updates,
+        process_label_updates,
+        process_compaction_run_messages,
+        merge_compaction_deltas,
+        apply_metadata_updates_in_memory,
+        apply_label_updates_in_memory,
+        LambdaResponse,
+        StreamMessage,
+        MetadataUpdateResult,
+        LabelUpdateResult,
+        get_efs_snapshot_manager,
     )
-
     MODULAR_MODE = True
 except ImportError:
     try:
         # Try relative import (test environment)
         from .compaction import (
-            LabelUpdateResult,
-            LambdaResponse,
-            MetadataUpdateResult,
-            StreamMessage,
-            apply_label_updates_in_memory,
-            apply_metadata_updates_in_memory,
-            apply_receipt_deletions_in_memory,
-            categorize_stream_messages,
-            get_efs_snapshot_manager,
-            group_messages_by_collection,
-            merge_compaction_deltas,
-            process_compaction_run_messages,
-            process_label_updates,
-            process_metadata_updates,
-            process_receipt_deletions,
             process_sqs_messages,
+            categorize_stream_messages,
+            group_messages_by_collection,
+            process_metadata_updates,
+            process_label_updates,
+            process_compaction_run_messages,
+            merge_compaction_deltas,
+            apply_metadata_updates_in_memory,
+            apply_label_updates_in_memory,
+            LambdaResponse,
+            StreamMessage,
+            MetadataUpdateResult,
+            LabelUpdateResult,
+            get_efs_snapshot_manager,
         )
-
         MODULAR_MODE = True
     except ImportError:
         MODULAR_MODE = False
@@ -125,26 +118,20 @@ except ImportError:
 
     def process_sqs_messages(records, logger, metrics=None, **kwargs):
         """Fallback implementation that logs messages instead of processing."""
-        logger.info(
-            f"Fallback mode: Would process {len(records)} SQS messages"
-        )
+        logger.info(f"Fallback mode: Would process {len(records)} SQS messages")
         return LambdaResponse(
             status_code=200,
             message=f"Fallback mode: {len(records)} messages logged",
-            processed_messages=len(records),
+            processed_messages=len(records)
         ).to_dict()
 
-    def process_stream_messages(
-        stream_messages, logger, metrics=None, **kwargs
-    ):
+    def process_stream_messages(stream_messages, logger, metrics=None, **kwargs):
         """Fallback implementation that logs messages instead of processing."""
-        logger.info(
-            f"Fallback mode: Would process {len(stream_messages)} stream messages"
-        )
+        logger.info(f"Fallback mode: Would process {len(stream_messages)} stream messages")
         return LambdaResponse(
             status_code=200,
             message=f"Fallback mode: {len(stream_messages)} stream messages logged",
-            stream_messages=len(stream_messages),
+            stream_messages=len(stream_messages)
         ).to_dict()
 
 
@@ -169,15 +156,9 @@ def get_dynamo_client():
 # Get configuration from environment
 # Optimized lock parameters for performance
 # Note: heartbeat_interval should be < lock_duration_minutes * 60 to ensure lock is extended before expiration
-heartbeat_interval = int(
-    os.environ.get("HEARTBEAT_INTERVAL_SECONDS", "30")
-)  # 30 seconds (must be < lock_duration)
-lock_duration_minutes = int(
-    os.environ.get("LOCK_DURATION_MINUTES", "1")
-)  # 1 minute (reduced duration)
-max_heartbeat_failures = int(
-    os.environ.get("MAX_HEARTBEAT_FAILURES", "2")
-)  # 2 failures (faster recovery)
+heartbeat_interval = int(os.environ.get("HEARTBEAT_INTERVAL_SECONDS", "30"))  # 30 seconds (must be < lock_duration)
+lock_duration_minutes = int(os.environ.get("LOCK_DURATION_MINUTES", "1"))      # 1 minute (reduced duration)
+max_heartbeat_failures = int(os.environ.get("MAX_HEARTBEAT_FAILURES", "2"))     # 2 failures (faster recovery)
 compaction_queue_url = os.environ.get("COMPACTION_QUEUE_URL", "")
 
 
@@ -211,7 +192,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Use the same JSON formatter as ChromaDB if available, otherwise simple format
         try:
             from utils.logging import StructuredFormatter
-
             formatter = StructuredFormatter()
         except ImportError:
             # Fallback to simple format
@@ -267,66 +247,35 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     # Create a metrics collector wrapper that accumulates metrics instead of making API calls
     class MetricsAccumulator:
         """Wrapper that collects metrics in a dict instead of making API calls."""
-
         def __init__(self, collected_metrics: Dict[str, Any]):
             self.collected_metrics = collected_metrics
 
-        def count(
-            self,
-            metric_name: str,
-            value: int = 1,
-            dimensions: Optional[Dict[str, str]] = None,
-        ):
+        def count(self, metric_name: str, value: int = 1, dimensions: Optional[Dict[str, str]] = None):
             """Accumulate count metric."""
             key = metric_name
             if dimensions:
                 # Include dimensions in key for uniqueness
-                dim_str = "_".join(
-                    f"{k}={v}" for k, v in sorted(dimensions.items())
-                )
+                dim_str = "_".join(f"{k}={v}" for k, v in sorted(dimensions.items()))
                 key = f"{metric_name}_{dim_str}"
-            self.collected_metrics[key] = (
-                self.collected_metrics.get(key, 0) + value
-            )
+            self.collected_metrics[key] = self.collected_metrics.get(key, 0) + value
 
-        def gauge(
-            self,
-            metric_name: str,
-            value: Union[int, float],
-            unit: str = "None",
-            dimensions: Optional[Dict[str, str]] = None,
-        ):
+        def gauge(self, metric_name: str, value: Union[int, float], unit: str = "None", dimensions: Optional[Dict[str, str]] = None):
             """Accumulate gauge metric (use latest value)."""
             key = metric_name
             if dimensions:
-                dim_str = "_".join(
-                    f"{k}={v}" for k, v in sorted(dimensions.items())
-                )
+                dim_str = "_".join(f"{k}={v}" for k, v in sorted(dimensions.items()))
                 key = f"{metric_name}_{dim_str}"
             # For gauges, we want the latest value, but for counts we sum
             # Store as-is for now, can be processed later
             self.collected_metrics[key] = value
 
-        def put_metric(
-            self,
-            metric_name: str,
-            value: Union[int, float],
-            unit: str = "Count",
-            dimensions: Optional[Dict[str, str]] = None,
-            timestamp: Optional[float] = None,
-        ):
+        def put_metric(self, metric_name: str, value: Union[int, float], unit: str = "Count", dimensions: Optional[Dict[str, str]] = None, timestamp: Optional[float] = None):
             """Accumulate metric (same as gauge for our purposes)."""
             self.gauge(metric_name, value, unit, dimensions)
 
-        def timer(
-            self,
-            metric_name: str,
-            dimensions: Optional[Dict[str, str]] = None,
-            unit: str = "Seconds",
-        ):
+        def timer(self, metric_name: str, dimensions: Optional[Dict[str, str]] = None, unit: str = "Seconds"):
             """Context manager for timing (not used in nested functions, but needed for interface)."""
             from contextlib import contextmanager
-
             @contextmanager
             def _timer():
                 start = time.time()
@@ -335,7 +284,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 finally:
                     duration = time.time() - start
                     self.put_metric(metric_name, duration, unit, dimensions)
-
             return _timer()
 
     metrics_accumulator = MetricsAccumulator(collected_metrics)
@@ -344,9 +292,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Check if this is an SQS trigger
         if "Records" in event:
             # Collect metrics instead of immediate API calls
-            collected_metrics["CompactionRecordsReceived"] = len(
-                event["Records"]
-            )
+            collected_metrics["CompactionRecordsReceived"] = len(event["Records"])
 
             result = process_sqs_messages(
                 records=event["Records"],
@@ -363,13 +309,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if isinstance(result, dict) and "batchItemFailures" in result:
                 # Still emit metrics before returning partial batch failure
                 execution_time = time.time() - start_time
-                collected_metrics["CompactionLambdaExecutionTime"] = (
-                    execution_time
-                )
+                collected_metrics["CompactionLambdaExecutionTime"] = execution_time
                 collected_metrics["CompactionPartialBatchFailure"] = 1
-                collected_metrics["CompactionFailedMessages"] = len(
-                    result.get("batchItemFailures", [])
-                )
+                collected_metrics["CompactionFailedMessages"] = len(result.get("batchItemFailures", []))
 
                 # Emit metrics via EMF (no API call cost)
                 emf_metrics.log_metrics(
@@ -377,7 +319,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     properties={
                         "error_types": error_types,
                         "correlation_id": correlation_id,
-                    },
+                    }
                 )
                 return result
 
@@ -397,7 +339,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 properties={
                     "error_types": error_types,
                     "correlation_id": correlation_id,
-                },
+                }
             )
 
             # Format response with observability
@@ -449,7 +391,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "error_types": error_types,
                 "correlation_id": correlation_id,
                 "error": str(e),
-            },
+            }
         )
 
         error_response = LambdaResponse(
@@ -458,7 +400,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             error=str(e),
         )
 
-        return format_response(error_response.to_dict(), event, is_error=True)
+        return format_response(
+            error_response.to_dict(), event, is_error=True
+        )
 
     finally:
         # Stop monitoring
@@ -505,25 +449,17 @@ def process_stream_messages(
     total_metadata_updates = 0
     total_label_updates = 0
     total_compaction_merged = 0
-    total_receipt_deletions = 0
     failed_receipt_handles: List[str] = []
 
     for collection, msgs in messages_by_collection.items():
-        (
-            metadata_msgs,
-            label_msgs,
-            compaction_run_msgs,
-            receipt_deletion_msgs,
-        ) = categorize_stream_messages(msgs)
+        metadata_msgs, label_msgs, compaction_run_msgs = categorize_stream_messages(
+            msgs
+        )
 
         # Phase A: off-lock snapshot download/open once
         import tempfile
-
         from receipt_chroma import ChromaClient
-        from receipt_chroma.s3 import (
-            download_snapshot_atomic,
-            upload_snapshot_atomic,
-        )
+        from receipt_chroma.s3 import download_snapshot_atomic, upload_snapshot_atomic
 
         # Storage mode configuration - easily switchable
         storage_mode = os.environ.get("CHROMADB_STORAGE_MODE", "auto").lower()
@@ -543,9 +479,7 @@ def process_stream_messages(
         else:
             # Default to S3-only for unknown modes
             use_efs = False
-            mode_reason = (
-                f"unknown mode '{storage_mode}', defaulting to S3-only"
-            )
+            mode_reason = f"unknown mode '{storage_mode}', defaulting to S3-only"
 
         logger.info(
             "Storage mode configuration",
@@ -553,17 +487,13 @@ def process_stream_messages(
             efs_root=efs_root,
             use_efs=use_efs,
             mode_reason=mode_reason,
-            collection=collection.value,
+            collection=collection.value
         )
 
         if use_efs:
-            logger.info(
-                "Using EFS + S3 hybrid approach", collection=collection.value
-            )
+            logger.info("Using EFS + S3 hybrid approach", collection=collection.value)
             # Use EFS + S3 hybrid approach with optimized locking
-            efs_manager = get_efs_snapshot_manager(
-                collection.value, logger, metrics
-            )
+            efs_manager = get_efs_snapshot_manager(collection.value, logger, metrics)
 
             # Phase A: Optimized lock strategy - minimal lock time
             lock_id = f"chroma-{collection.value}-update"
@@ -579,84 +509,37 @@ def process_stream_messages(
                 # Step 1: Read operations OFF-LOCK (optimization)
                 latest_version = efs_manager.get_latest_s3_version()
                 if not latest_version:
-                    logger.error(
-                        "Failed to get latest S3 version",
-                        collection=collection.value,
-                    )
+                    logger.error("Failed to get latest S3 version", collection=collection.value)
                     failed_receipt_handles.extend(
-                        [
-                            m.receipt_handle
-                            for m in msgs
-                            if getattr(m, "receipt_handle", None)
-                        ]
+                        [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
                     )
                     continue
 
-                snapshot_result = efs_manager.ensure_snapshot_available(
-                    latest_version
-                )
+                snapshot_result = efs_manager.ensure_snapshot_available(latest_version)
                 if snapshot_result["status"] != "available":
-                    logger.error(
-                        "Failed to ensure snapshot availability",
-                        result=snapshot_result,
-                    )
+                    logger.error("Failed to ensure snapshot availability", result=snapshot_result)
                     failed_receipt_handles.extend(
-                        [
-                            m.receipt_handle
-                            for m in msgs
-                            if getattr(m, "receipt_handle", None)
-                        ]
+                        [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
                     )
                     continue
 
                 # Step 2: Quick CAS validation (minimal lock time)
-                # Use exponential backoff for Phase 1 lock acquisition (similar to Phase 3)
-                # Exponential backoff: 0.1s, 0.2s, 0.4s, 0.8s, 1.6s, 3.2s (max ~6.3s total)
-                phase1_backoff_attempts = [
-                    0.1 * (2**i) for i in range(6)
-                ]  # 6 attempts with exponential backoff
-
-                phase1_lock_acquired = False
                 phase1_lock_start = time.time()
-                for attempt_idx, delay in enumerate(
-                    phase1_backoff_attempts, start=1
-                ):
-                    if lm.acquire(lock_id):
-                        phase1_lock_acquired = True
-                        break
+                if not lm.acquire(lock_id):
                     # Track lock collision in Phase 1
                     if metrics:
                         metrics.count(
                             "CompactionLockCollision",
                             1,
-                            {
-                                "phase": "1",
-                                "collection": collection.value,
-                                "type": "validation",
-                                "attempt": str(attempt_idx),
-                            },
+                            {"phase": "1", "collection": collection.value, "type": "validation"}
                         )
-                    if attempt_idx < len(phase1_backoff_attempts):
-                        logger.info(
-                            "Lock busy during validation, backing off",
-                            collection=collection.value,
-                            attempt=attempt_idx,
-                            delay_ms=delay * 1000,
-                        )
-                        time.sleep(delay)
-
-                if not phase1_lock_acquired:
                     logger.info(
-                        "Lock busy during validation after all retries, skipping",
+                        "Lock busy during validation, skipping",
                         collection=collection.value,
-                        message_count=len(msgs),
+                        message_count=len(msgs)
                     )
                     failed_receipt_handles.extend(
-                        [
-                            m.receipt_handle
-                            for m in msgs
-                            if getattr(m, "receipt_handle", None)
-                        ]
+                        [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
                     )
                     continue
 
@@ -666,31 +549,20 @@ def process_stream_messages(
                         "CompactionLockDuration",
                         phase1_lock_duration * 1000,  # Convert to milliseconds
                         unit="Milliseconds",
-                        dimensions={
-                            "phase": "1",
-                            "collection": collection.value,
-                            "type": "validation",
-                        },
+                        dimensions={"phase": "1", "collection": collection.value, "type": "validation"}
                     )
 
                 try:
                     lm.start_heartbeat()
                     # CAS: Validate pointer hasn't changed since we read it
                     # (Quick validation under lock, then release for heavy I/O)
-                    pointer_key = (
-                        f"{collection.value}/snapshot/latest-pointer.txt"
-                    )
+                    pointer_key = f"{collection.value}/snapshot/latest-pointer.txt"
                     bucket = os.environ["CHROMADB_BUCKET"]
                     import boto3 as _boto
-
                     s3_client = _boto.client("s3")
                     try:
-                        resp = s3_client.get_object(
-                            Bucket=bucket, Key=pointer_key
-                        )
-                        current_pointer = (
-                            resp["Body"].read().decode("utf-8").strip()
-                        )
+                        resp = s3_client.get_object(Bucket=bucket, Key=pointer_key)
+                        current_pointer = resp["Body"].read().decode("utf-8").strip()
                     except Exception:
                         current_pointer = "latest-direct"
 
@@ -702,11 +574,7 @@ def process_stream_messages(
                             current=current_pointer,
                         )
                         failed_receipt_handles.extend(
-                            [
-                                m.receipt_handle
-                                for m in msgs
-                                if getattr(m, "receipt_handle", None)
-                            ]
+                            [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
                         )
                         continue
                 finally:
@@ -721,9 +589,7 @@ def process_stream_messages(
                 local_snapshot_path = tempfile.mkdtemp()
 
                 copy_start_time = time.time()
-                shutil.copytree(
-                    efs_snapshot_path, local_snapshot_path, dirs_exist_ok=True
-                )
+                shutil.copytree(efs_snapshot_path, local_snapshot_path, dirs_exist_ok=True)
                 copy_time_ms = (time.time() - copy_start_time) * 1000
 
                 snapshot_path = local_snapshot_path
@@ -735,28 +601,16 @@ def process_stream_messages(
                     efs_path=efs_snapshot_path,
                     local_path=local_snapshot_path,
                     copy_time_ms=copy_time_ms,
-                    source=snapshot_result.get("source", "unknown"),
+                    source=snapshot_result.get("source", "unknown")
                 )
             except Exception as e:
-                logger.error(
-                    "Failed during EFS setup",
-                    error=str(e),
-                    collection=collection.value,
-                )
+                logger.error("Failed during EFS setup", error=str(e), collection=collection.value)
                 failed_receipt_handles.extend(
-                    [
-                        m.receipt_handle
-                        for m in msgs
-                        if getattr(m, "receipt_handle", None)
-                    ]
+                    [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
                 )
                 continue
         else:
-            logger.info(
-                "Using S3-only approach",
-                collection=collection.value,
-                mode_reason=mode_reason,
-            )
+            logger.info("Using S3-only approach", collection=collection.value, mode_reason=mode_reason)
             # Fallback to S3-only approach
             temp_dir = tempfile.mkdtemp()
             bucket = os.environ["CHROMADB_BUCKET"]
@@ -769,15 +623,9 @@ def process_stream_messages(
             if dl.get("status") != "downloaded":
                 # download_snapshot_atomic will now automatically initialize empty snapshot
                 # if none exists, so if it still fails, it's a real error
-                logger.error(
-                    "Failed to download or initialize snapshot", result=dl
-                )
+                logger.error("Failed to download or initialize snapshot", result=dl)
                 failed_receipt_handles.extend(
-                    [
-                        m.receipt_handle
-                        for m in msgs
-                        if getattr(m, "receipt_handle", None)
-                    ]
+                    [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
                 )
                 continue
 
@@ -796,7 +644,7 @@ def process_stream_messages(
                 "Using S3 snapshot",
                 collection=collection.value,
                 version=expected_pointer,
-                temp_path=snapshot_path,
+                temp_path=snapshot_path
             )
 
         # Initialize ChromaDB client using receipt_chroma
@@ -831,9 +679,7 @@ def process_stream_messages(
                     get_dynamo_client_func=get_dynamo_client,
                 )
                 total_metadata_updates += sum(
-                    r.updated_count
-                    for r in md_results
-                    if getattr(r, "error", None) is None
+                    r.updated_count for r in md_results if getattr(r, "error", None) is None
                 )
 
             # Apply label updates
@@ -848,26 +694,7 @@ def process_stream_messages(
                     get_dynamo_client_func=get_dynamo_client,
                 )
                 total_label_updates += sum(
-                    r.updated_count
-                    for r in lb_results
-                    if getattr(r, "error", None) is None
-                )
-
-            # Apply receipt deletions
-            if receipt_deletion_msgs:
-                receipt_results = apply_receipt_deletions_in_memory(
-                    chroma_client=chroma_client,
-                    receipt_deletions=receipt_deletion_msgs,
-                    collection=collection,
-                    logger=logger,
-                    metrics=metrics,
-                    OBSERVABILITY_AVAILABLE=True,
-                    get_dynamo_client_func=get_dynamo_client,
-                )
-                total_receipt_deletions += sum(
-                    r.updated_count
-                    for r in receipt_results
-                    if getattr(r, "error", None) is None
+                    r.updated_count for r in lb_results if getattr(r, "error", None) is None
                 )
 
             # Phase B: Optimized upload with minimal lock time
@@ -879,15 +706,11 @@ def process_stream_messages(
 
             published = False
             import boto3 as _boto
-
             s3_client = _boto.client("s3")
 
             if use_efs:
                 # EFS case: Re-acquire lock only for critical S3 operations
-                # Exponential backoff: 0.1s, 0.2s, 0.4s, 0.8s, 1.6s, 3.2s (max ~6.3s total)
-                backoff_attempts = [
-                    0.1 * (2**i) for i in range(6)
-                ]  # 6 attempts with exponential backoff
+                backoff_attempts = [0.1, 0.2]  # Shorter backoff for EFS case
 
                 for attempt_idx, delay in enumerate(backoff_attempts, start=1):
                     phase3_lock_start = time.time()
@@ -898,22 +721,13 @@ def process_stream_messages(
                             metrics.count(
                                 "CompactionLockCollision",
                                 1,
-                                {
-                                    "phase": "3",
-                                    "collection": collection.value,
-                                    "type": "upload",
-                                    "attempt": str(attempt_idx),
-                                },
+                                {"phase": "3", "collection": collection.value, "type": "upload", "attempt": str(attempt_idx)}
                             )
                             metrics.put_metric(
                                 "CompactionLockWaitTime",
                                 (delay + phase3_lock_duration) * 1000,
                                 unit="Milliseconds",
-                                dimensions={
-                                    "phase": "3",
-                                    "collection": collection.value,
-                                    "type": "backoff",
-                                },
+                                dimensions={"phase": "3", "collection": collection.value, "type": "backoff"}
                             )
                         logger.info(
                             "Lock busy during upload, backing off",
@@ -928,38 +742,24 @@ def process_stream_messages(
                     if metrics:
                         metrics.put_metric(
                             "CompactionLockDuration",
-                            phase3_lock_duration
-                            * 1000,  # Convert to milliseconds
+                            phase3_lock_duration * 1000,  # Convert to milliseconds
                             unit="Milliseconds",
-                            dimensions={
-                                "phase": "3",
-                                "collection": collection.value,
-                                "type": "upload",
-                            },
+                            dimensions={"phase": "3", "collection": collection.value, "type": "upload"}
                         )
 
                     try:
                         lm.start_heartbeat()
 
                         # CAS: re-read pointer and compare
-                        pointer_key = (
-                            f"{collection.value}/snapshot/latest-pointer.txt"
-                        )
+                        pointer_key = f"{collection.value}/snapshot/latest-pointer.txt"
                         bucket = os.environ["CHROMADB_BUCKET"]
                         try:
-                            resp = s3_client.get_object(
-                                Bucket=bucket, Key=pointer_key
-                            )
-                            current_pointer = (
-                                resp["Body"].read().decode("utf-8").strip()
-                            )
+                            resp = s3_client.get_object(Bucket=bucket, Key=pointer_key)
+                            current_pointer = resp["Body"].read().decode("utf-8").strip()
                         except Exception:
                             current_pointer = "latest-direct"
 
-                        if (
-                            expected_pointer
-                            and current_pointer != expected_pointer
-                        ):
+                        if expected_pointer and current_pointer != expected_pointer:
                             logger.info(
                                 "Pointer drift detected, skipping upload",
                                 collection=collection.value,
@@ -967,11 +767,7 @@ def process_stream_messages(
                                 current=current_pointer,
                             )
                             failed_receipt_handles.extend(
-                                [
-                                    m.receipt_handle
-                                    for m in msgs
-                                    if getattr(m, "receipt_handle", None)
-                                ]
+                                [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
                             )
                             break
 
@@ -1003,9 +799,7 @@ def process_stream_messages(
                 if published and new_version:
                     try:
                         # Copy the updated local snapshot back to EFS
-                        efs_snapshot_path = os.path.join(
-                            efs_manager.efs_snapshots_dir, new_version
-                        )
+                        efs_snapshot_path = os.path.join(efs_manager.efs_snapshots_dir, new_version)
                         if os.path.exists(efs_snapshot_path):
                             shutil.rmtree(efs_snapshot_path)
 
@@ -1018,7 +812,7 @@ def process_stream_messages(
                             collection=collection.value,
                             version=new_version,
                             efs_path=efs_snapshot_path,
-                            copy_time_ms=copy_time_ms,
+                            copy_time_ms=copy_time_ms
                         )
                         # Update EFS version file to reflect latest published snapshot
                         try:
@@ -1027,9 +821,7 @@ def process_stream_messages(
                                 "Updated EFS .version",
                                 collection=collection.value,
                                 version=new_version,
-                                version_file=os.path.join(
-                                    efs_manager.efs_snapshots_dir, ".version"
-                                ),
+                                version_file=os.path.join(efs_manager.efs_snapshots_dir, ".version"),
                             )
                         except Exception as e:  # noqa: BLE001
                             logger.warning(
@@ -1045,7 +837,7 @@ def process_stream_messages(
                             "Failed to update EFS cache (non-critical)",
                             error=str(e),
                             collection=collection.value,
-                            version=new_version,
+                            version=new_version
                         )
 
                 # Mark compaction runs as completed after successful upload
@@ -1079,10 +871,7 @@ def process_stream_messages(
                             )
             else:
                 # S3-only case: Standard lock acquisition
-                # Exponential backoff: 0.15s, 0.3s, 0.6s, 1.2s, 2.4s, 4.8s (max ~9.45s total)
-                backoff_attempts = [
-                    0.15 * (2**i) for i in range(6)
-                ]  # 6 attempts with exponential backoff
+                backoff_attempts = [0.15, 0.3]  # seconds
 
                 for attempt_idx, delay in enumerate(backoff_attempts, start=1):
                     lock_id = f"chroma-{collection.value}-update"
@@ -1096,29 +885,18 @@ def process_stream_messages(
 
                     phase3_s3_lock_start = time.time()
                     if not lm.acquire(lock_id):
-                        phase3_s3_lock_duration = (
-                            time.time() - phase3_s3_lock_start
-                        )
+                        phase3_s3_lock_duration = time.time() - phase3_s3_lock_start
                         if metrics:
                             metrics.count(
                                 "CompactionLockCollision",
                                 1,
-                                {
-                                    "phase": "3",
-                                    "collection": collection.value,
-                                    "type": "upload_s3",
-                                    "attempt": str(attempt_idx),
-                                },
+                                {"phase": "3", "collection": collection.value, "type": "upload_s3", "attempt": str(attempt_idx)}
                             )
                             metrics.put_metric(
                                 "CompactionLockWaitTime",
                                 (delay + phase3_s3_lock_duration) * 1000,
                                 unit="Milliseconds",
-                                dimensions={
-                                    "phase": "3",
-                                    "collection": collection.value,
-                                    "type": "backoff_s3",
-                                },
+                                dimensions={"phase": "3", "collection": collection.value, "type": "backoff_s3"}
                             )
                         logger.info(
                             "Lock busy, backing off",
@@ -1129,43 +907,27 @@ def process_stream_messages(
                         time.sleep(delay)
                         continue
 
-                    phase3_s3_lock_duration = (
-                        time.time() - phase3_s3_lock_start
-                    )
+                    phase3_s3_lock_duration = time.time() - phase3_s3_lock_start
                     if metrics:
                         metrics.put_metric(
                             "CompactionLockDuration",
-                            phase3_s3_lock_duration
-                            * 1000,  # Convert to milliseconds
+                            phase3_s3_lock_duration * 1000,  # Convert to milliseconds
                             unit="Milliseconds",
-                            dimensions={
-                                "phase": "3",
-                                "collection": collection.value,
-                                "type": "upload_s3",
-                            },
+                            dimensions={"phase": "3", "collection": collection.value, "type": "upload_s3"}
                         )
 
                     try:
                         lm.start_heartbeat()
                         # CAS: re-read pointer and compare
-                        pointer_key = (
-                            f"{collection.value}/snapshot/latest-pointer.txt"
-                        )
+                        pointer_key = f"{collection.value}/snapshot/latest-pointer.txt"
                         bucket = os.environ["CHROMADB_BUCKET"]
                         try:
-                            resp = s3_client.get_object(
-                                Bucket=bucket, Key=pointer_key
-                            )
-                            current_pointer = (
-                                resp["Body"].read().decode("utf-8").strip()
-                            )
+                            resp = s3_client.get_object(Bucket=bucket, Key=pointer_key)
+                            current_pointer = resp["Body"].read().decode("utf-8").strip()
                         except Exception:
                             current_pointer = "latest-direct"
 
-                        if (
-                            expected_pointer
-                            and current_pointer != expected_pointer
-                        ):
+                        if expected_pointer and current_pointer != expected_pointer:
                             logger.info(
                                 "Pointer drift detected, will retry",
                                 collection=collection.value,
@@ -1233,30 +995,26 @@ def process_stream_messages(
             if not published:
                 # Mark this collection's messages as failed for partial retry
                 failed_receipt_handles.extend(
-                    [
-                        m.receipt_handle
-                        for m in msgs
-                        if getattr(m, "receipt_handle", None)
-                    ]
+                    [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
                 )
                 continue
         finally:
             # CRITICAL: Ensure ChromaDB client is closed even if errors occurred
             # This prevents SQLite file locks from persisting
-            if "chroma_client" in locals() and chroma_client is not None:
+            if 'chroma_client' in locals() and chroma_client is not None:
                 try:
                     chroma_client.close()
                 except Exception as e:
                     logger.warning(
                         "Error closing ChromaDB client in finally block",
                         error=str(e),
-                        collection=collection.value,
+                        collection=collection.value
                     )
 
             # Cleanup temp directories
-            if use_efs and "local_snapshot_path" in locals():
+            if use_efs and 'local_snapshot_path' in locals():
                 shutil.rmtree(local_snapshot_path, ignore_errors=True)
-            elif not use_efs and "temp_dir" in locals():
+            elif not use_efs and 'temp_dir' in locals():
                 shutil.rmtree(temp_dir, ignore_errors=True)
 
     if failed_receipt_handles:

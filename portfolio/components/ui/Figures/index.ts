@@ -38,4 +38,5 @@ export { default as CroppedAddressImage } from "./CroppedAddressImage";
 export { default as ImageStack } from "./ImageStack";
 export { default as LayoutLMInferenceVisualization } from "./LayoutLMInferenceCarousel";
 export { default as RandomReceiptWithLabels } from "./RandomReceiptWithLabels";
+export { default as CICDLoop } from "./CICDLoop";
 

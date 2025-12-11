@@ -6,9 +6,9 @@
 
 # Function: computeReceiptBoxFromSkewedExtents()
 
-> **computeReceiptBoxFromSkewedExtents**(`hull`, `cx`, `cy`, `rotationDeg`): `null` \| [`Point`](../../basic/interfaces/Point.md)[]
+> **computeReceiptBoxFromSkewedExtents**(`hull`, `cx`, `cy`, `rotationDeg`): [`Point`](../../basic/interfaces/Point.md)[] \| `null`
 
-Defined in: [utils/geometry/receipt.ts:16](https://github.com/tnorlund/Portfolio/blob/ec14721ddbaed57935125ac7244e977aad1c2e30/portfolio/utils/geometry/receipt.ts#L16)
+Defined in: [utils/geometry/receipt.ts:16](https://github.com/tnorlund/Portfolio/blob/36b19dbd774c554bd98c92d563ba41c4f85b388f/portfolio/utils/geometry/receipt.ts#L16)
 
 Determine a bounding box from a skewed hull by estimating the
 vertical extents after de-skewing.
@@ -42,7 +42,7 @@ the hull.
 
 ## Returns
 
-`null` \| [`Point`](../../basic/interfaces/Point.md)[]
+[`Point`](../../basic/interfaces/Point.md)[] \| `null`
 
 Four points representing the receipt box in clockwise
 order or `null` when the hull is empty.

@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Multi-stage build for LayoutLM Inference Cache Generator Lambda
 
 # Stage 1: Build and install dependencies (cached layer)

@@ -8,6 +8,9 @@ addresses to prevent reasoning text and malformed ZIP codes.
 import re
 from typing import Optional
 
+# Module-level constant
+_BAD_ADDRESS_MARKERS = ["?", "actually need", "lind0"]
+
 
 def is_address_like(name: Optional[str]) -> bool:
     """
@@ -47,7 +50,9 @@ def is_address_like(name: Optional[str]) -> bool:
             "cir",
             "circle",
         ]
-        if any(indicator in name_lower for indicator in street_indicators):
+        # Split into words and check if any word matches a street indicator
+        words = name_lower.split()
+        if any(word.rstrip(".,") in street_indicators for word in words):
             return True
 
     return False
@@ -74,8 +79,7 @@ def sanitize_address(
     lower = cleaned.lower()
 
     # Reject addresses that clearly contain reasoning/commentary
-    bad_markers = ["?", "actually need", "lind0"]  # observed typo
-    if any(marker in lower for marker in bad_markers):
+    if any(marker in lower for marker in _BAD_ADDRESS_MARKERS):
         return previous_value
 
     # Fix malformed ZIPs like 913001 → 91301 (truncate extra trailing digits)
@@ -85,7 +89,7 @@ def sanitize_address(
     return cleaned
 
 
-def is_clean_address(address: str) -> bool:
+def is_clean_address(address: Optional[str]) -> bool:
     """
     Check if an address is clean (no reasoning/commentary, no malformed ZIPs).
 

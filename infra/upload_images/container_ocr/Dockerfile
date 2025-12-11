@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Multi-stage build for Process OCR Results Lambda with Merchant Validation
 
 # Stage 1: Build and install dependencies (cached layer)

@@ -4,7 +4,7 @@ This module provides functions for creating and enriching word metadata
 that will be stored in ChromaDB.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TypedDict
 
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
@@ -16,6 +16,33 @@ from receipt_chroma.embedding.utils.normalize import (
 )
 
 
+class WordMetadata(TypedDict, total=False):
+    """Metadata structure for word embeddings in ChromaDB."""
+
+    image_id: str
+    receipt_id: int
+    line_id: int
+    word_id: int
+    source: str
+    text: str
+    x: float
+    y: float
+    width: float
+    height: float
+    confidence: float
+    left: str
+    right: str
+    merchant_name: str
+    label_status: str
+    label: str  # Optional, only if labels exist
+    label_confidence: float  # Optional, only if labels exist
+    label_validation_status: str  # Optional, only if labels exist
+    label_proposed_by: str  # Optional, only if labels exist
+    valid_labels: str  # Optional, only if labels exist
+    invalid_labels: str  # Optional, only if labels exist
+    label_validated_at: str  # Optional, only if labels exist
+
+
 def create_word_metadata(
     word: ReceiptWord,
     left_word: str,
@@ -23,7 +50,7 @@ def create_word_metadata(
     merchant_name: Optional[str] = None,
     label_status: str = "unvalidated",
     source: str = "openai_embedding_batch",
-) -> Dict[str, Any]:
+) -> WordMetadata:
     """
     Create comprehensive metadata for a word embedding.
 
@@ -66,9 +93,9 @@ def create_word_metadata(
 
 
 def enrich_word_metadata_with_labels(
-    metadata: Dict[str, Any],
+    metadata: WordMetadata,
     word_labels: List[ReceiptWordLabel],
-) -> Dict[str, Any]:
+) -> WordMetadata:
     """
     Enrich word metadata with label information from DynamoDB.
 
@@ -152,7 +179,8 @@ def enrich_word_metadata_with_labels(
         ].timestamp_added
         metadata["label_validated_at"] = label_validated_at
 
-    return metadata
+    return metadata  # type: ignore[return-value]
+    # Dict operations return Dict[str, Any], but structure matches TypedDict
 
 
 def enrich_word_metadata_with_anchors(

@@ -13,7 +13,6 @@ from typing import Literal
 from openai import OpenAI
 from openai.types.batch import Batch
 from openai.types.file_object import FileObject
-from receipt_dynamo.constants import BatchType
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import BatchSummary
 

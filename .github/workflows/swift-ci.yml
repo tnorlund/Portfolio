@@ -32,7 +32,7 @@ jobs:
         runs-on: macos-latest
 
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v6
 
             - name: Setup Swift
               uses: swift-actions/setup-swift@v1
@@ -45,7 +45,7 @@ jobs:
                   swift package resolve
 
             - name: Cache Swift packages
-              uses: actions/cache@v3
+              uses: actions/cache@v4
               with:
                   path: receipt_ocr_swift/.build
                   key: ${{ runner.os }}-spm-${{ hashFiles('receipt_ocr_swift/Package.resolved') }}
@@ -118,7 +118,7 @@ jobs:
         needs: test
 
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v6
 
             - name: Setup Swift
               uses: swift-actions/setup-swift@v1
@@ -131,7 +131,7 @@ jobs:
                   swift build -c release --product receipt-ocr
 
             - name: Upload release artifact
-              uses: actions/upload-artifact@v3
+              uses: actions/upload-artifact@v5
               with:
                   name: receipt-ocr-binary
                   path: receipt_ocr_swift/.build/release/receipt-ocr

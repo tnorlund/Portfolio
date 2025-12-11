@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional
 
 from receipt_dynamo.entities.base import DynamoDBEntity
 from receipt_dynamo.entities.entity_mixins import CDNFieldsMixin
@@ -12,17 +12,6 @@ from receipt_dynamo.entities.util import (
     validate_positive_dimensions,
     validate_positive_int,
 )
-
-# Import transform methods from receipt_dynamo utils (no external dependencies)
-try:
-    from receipt_dynamo.utils.transformations import (
-        find_perspective_coeffs,
-        invert_affine,
-    )
-
-    TRANSFORM_AVAILABLE = True
-except ImportError:
-    TRANSFORM_AVAILABLE = False
 
 
 @dataclass(eq=True, unsafe_hash=False)
@@ -288,116 +277,6 @@ class Receipt(DynamoDBEntity, CDNFieldsMixin):
                 self.cdn_medium_avif_s3_key,
             )
         )
-
-    def get_transform_to_image(
-        self, image_width: int, image_height: int
-    ) -> Tuple[List[float], int, int]:
-        """
-        Calculate transform coefficients to map receipt coordinates to image coordinates.
-
-        This method computes perspective transform coefficients that map coordinates
-        from receipt space (normalized 0-1, OCR space with y=0 at bottom) to image
-        space (pixels, PIL space with y=0 at top).
-
-        Args:
-            image_width: Original image width in pixels
-            image_height: Original image height in pixels
-
-        Returns:
-            Tuple of (transform_coeffs, receipt_width, receipt_height)
-            - transform_coeffs: 8 perspective coefficients [a, b, c, d, e, f, g, h]
-            - receipt_width: Receipt width in pixels
-            - receipt_height: Receipt height in pixels
-
-        Raises:
-            ImportError: If transform dependencies are not available
-        """
-        if not TRANSFORM_AVAILABLE:
-            raise ImportError(
-                "Transform methods require receipt_upload.geometry.transformations"
-            )
-
-        # Get receipt corners in image coordinates (normalized 0-1)
-        # Note: Receipt stores corners in normalized image coordinates
-        # where Y is in OCR space (top=1, bottom=0)
-        src_tl = (
-            self.top_left["x"] * image_width,
-            (1 - self.top_left["y"]) * image_height,  # Flip Y: OCR -> PIL
-        )
-        src_tr = (
-            self.top_right["x"] * image_width,
-            (1 - self.top_right["y"]) * image_height,  # Flip Y: OCR -> PIL
-        )
-        src_br = (
-            self.bottom_right["x"] * image_width,
-            (1 - self.bottom_right["y"]) * image_height,  # Flip Y: OCR -> PIL
-        )
-        src_bl = (
-            self.bottom_left["x"] * image_width,
-            (1 - self.bottom_left["y"]) * image_height,  # Flip Y: OCR -> PIL
-        )
-
-        # Destination corners in receipt space (normalized 0-1, then to pixels)
-        # Receipt is warped to a rectangle: top-left, top-right, bottom-right, bottom-left
-        receipt_width = self.width
-        receipt_height = self.height
-
-        dst_tl = (0.0, 0.0)
-        dst_tr = (float(receipt_width - 1), 0.0)
-        dst_br = (float(receipt_width - 1), float(receipt_height - 1))
-        dst_bl = (0.0, float(receipt_height - 1))
-
-        # Compute perspective transform coefficients
-        # This maps from receipt space (dst) back to image space (src)
-        src_points = [src_tl, src_tr, src_br, src_bl]
-        dst_points = [dst_tl, dst_tr, dst_br, dst_bl]
-
-        try:
-            # find_perspective_coeffs returns coefficients that map dst -> src
-            # So we can use it directly to transform receipt coords -> image coords
-            transform_coeffs = find_perspective_coeffs(
-                src_points=src_points,  # Image corners
-                dst_points=dst_points,  # Receipt corners
-            )
-        except ValueError:
-            # Fallback to affine if perspective fails
-            # For affine, we can compute from 3 points
-            # Use top-left, top-right, bottom-left
-            # Compute affine transform from receipt space to image space
-            # Receipt space: (0,0) -> src_tl, (w-1,0) -> src_tr, (0,h-1) -> src_bl
-            if receipt_width > 1:
-                a = (src_tr[0] - src_tl[0]) / (receipt_width - 1)
-                d = (src_tr[1] - src_tl[1]) / (receipt_width - 1)
-            else:
-                a = d = 0.0
-
-            if receipt_height > 1:
-                b = (src_bl[0] - src_tl[0]) / (receipt_height - 1)
-                e = (src_bl[1] - src_tl[1]) / (receipt_height - 1)
-            else:
-                b = e = 0.0
-
-            c = src_tl[0]
-            f = src_tl[1]
-
-            # Invert to get receipt -> image transform
-            a_inv, b_inv, c_inv, d_inv, e_inv, f_inv = invert_affine(
-                a, b, c, d, e, f
-            )
-
-            # Convert to perspective coefficients (affine is perspective with g=h=0)
-            transform_coeffs = [
-                a_inv,
-                b_inv,
-                c_inv,
-                d_inv,
-                e_inv,
-                f_inv,
-                0.0,
-                0.0,
-            ]
-
-        return transform_coeffs, receipt_width, receipt_height
 
 
 def item_to_receipt(item: Dict[str, Any]) -> Receipt:

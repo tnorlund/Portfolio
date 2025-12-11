@@ -177,7 +177,7 @@ def solve_8x8_system(A, b):  # pylint: disable=invalid-name
 def find_perspective_coeffs(
     src_points: List[Tuple[float, float]],
     dst_points: List[Tuple[float, float]],
-) -> Tuple[float, float, float, float, float, float, float, float]:
+) -> List[float]:
     """
     src_points: list of 4 (x, y) source corners
     dst_points: list of 4 (x, y) destination corners

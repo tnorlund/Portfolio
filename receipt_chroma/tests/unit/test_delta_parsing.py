@@ -57,7 +57,7 @@ class TestParseWordId:
             _parse_metadata_from_custom_id(custom_id)
 
     def test_invalid_word_id_no_word(self):
-        """Test parsing line ID as word ID."""
-        custom_id = "IMAGE#img123#RECEIPT#456#LINE#789"
-        with pytest.raises(ValueError, match="line embedding|6 parts"):
+        """Test parsing word ID with correct number of parts but missing WORD component."""
+        custom_id = "IMAGE#img123#RECEIPT#456#LINE#789#EXTRA#123"
+        with pytest.raises(ValueError, match="line embedding"):
             _parse_metadata_from_custom_id(custom_id)

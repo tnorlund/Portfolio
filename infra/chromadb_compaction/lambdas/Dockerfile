@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Multi-stage build for ChromaDB Compaction Lambda
 # Updated to fix compaction package import issues
 

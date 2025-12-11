@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Multi-stage build for Validate Pending Labels Lambda
 
 # Stage 1: Build and install dependencies (cached layer)

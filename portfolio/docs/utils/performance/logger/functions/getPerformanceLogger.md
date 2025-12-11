@@ -6,10 +6,10 @@
 
 # Function: getPerformanceLogger()
 
-> **getPerformanceLogger**(): `null` \| [`PerformanceLogger`](../classes/PerformanceLogger.md)
+> **getPerformanceLogger**(): [`PerformanceLogger`](../classes/PerformanceLogger.md) \| `null`
 
-Defined in: [utils/performance/logger.ts:261](https://github.com/tnorlund/Portfolio/blob/ec14721ddbaed57935125ac7244e977aad1c2e30/portfolio/utils/performance/logger.ts#L261)
+Defined in: [utils/performance/logger.ts:261](https://github.com/tnorlund/Portfolio/blob/36b19dbd774c554bd98c92d563ba41c4f85b388f/portfolio/utils/performance/logger.ts#L261)
 
 ## Returns
 
-`null` \| [`PerformanceLogger`](../classes/PerformanceLogger.md)
+[`PerformanceLogger`](../classes/PerformanceLogger.md) \| `null`

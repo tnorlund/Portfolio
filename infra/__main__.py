@@ -30,7 +30,6 @@ from typing import Optional
 import s3_website  # noqa: F401
 from billing_alerts import BillingAlerts
 from chromadb_compaction import create_chromadb_compaction_infrastructure
-from combine_receipts_step_functions import CombineReceiptsStepFunction
 from create_labels_step_functions import CreateLabelsStepFunction
 from currency_validation_step_functions import (
     create_currency_validation_state_machine,
@@ -39,12 +38,6 @@ from dynamo_db import (
     dynamodb_table,  # Import DynamoDB table from original code
 )
 from embedding_step_functions import EmbeddingInfrastructure
-from label_harmonizer_step_functions import LabelHarmonizerStepFunction
-from label_suggestion_step_functions import LabelSuggestionStepFunction
-from label_validation_agent_step_functions import (
-    LabelValidationAgentStepFunction,
-)
-from metadata_harmonizer_step_functions import MetadataHarmonizerStepFunction
 
 # Using the optimized docker-build based base images with scoped contexts
 from networking import PublicVpc
@@ -247,6 +240,11 @@ compaction_lambda_subnets = nat.private_subnet_ids.apply(
     lambda ids: [ids[0]]
 )  # Single subnet for EFS access
 
+compaction_use_efs = portfolio_config.get_bool("compaction-use-efs")
+if compaction_use_efs is None:
+    compaction_use_efs = True  # default to EFS enabled for performance
+compaction_storage_mode = "auto" if compaction_use_efs else "s3"
+
 chromadb_infrastructure = create_chromadb_compaction_infrastructure(
     name=f"chromadb-{pulumi.get_stack()}",
     dynamodb_table_arn=dynamodb_table.arn,
@@ -256,6 +254,8 @@ chromadb_infrastructure = create_chromadb_compaction_infrastructure(
     subnet_ids=compaction_lambda_subnets,  # Private subnets only for Lambda
     efs_subnet_ids=unique_efs_subnets,  # EFS requires unique AZs (public + first private)
     lambda_security_group_id=security.sg_lambda_id,
+    use_efs=compaction_use_efs,
+    storage_mode=compaction_storage_mode,
 )
 
 # Create embedding infrastructure using shared bucket and queues
@@ -1149,26 +1149,6 @@ pulumi.export(
     create_labels_sf.create_labels_lambda_arn,
 )
 
-combine_receipts_sf = CombineReceiptsStepFunction(
-    f"combine-receipts-{stack}",
-    dynamodb_table_name=dynamodb_table.name,
-    dynamodb_table_arn=dynamodb_table.arn,
-    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
-    chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
-    raw_bucket_name=raw_bucket.bucket,
-    site_bucket_name=site_bucket.bucket,
-    # Reuse the embedding batch/artifacts bucket from embedding infrastructure
-    artifacts_bucket_name=embedding_infrastructure.batch_bucket.bucket,
-    artifacts_bucket_arn=embedding_infrastructure.batch_bucket.arn,
-    embed_ndjson_queue_url=None,  # dev flow does not need the queue
-    embed_ndjson_queue_arn=None,
-)
-
-pulumi.export("combine_receipts_sf_arn", combine_receipts_sf.state_machine_arn)
-pulumi.export(
-    "combine_receipts_batch_bucket_name", combine_receipts_sf.batch_bucket_name
-)
-
 # Create validate metadata Step Function
 # No VPC needed - downloads ChromaDB from S3, needs internet for Ollama API
 validate_metadata_sf = ValidateMetadataStepFunction(
@@ -1192,69 +1172,4 @@ pulumi.export(
 pulumi.export(
     "validate_metadata_validate_lambda_arn",
     validate_metadata_sf.validate_metadata_lambda_arn,
-)
-
-# Label Harmonizer Step Function (parallel prepare + batch harmonization)
-label_harmonizer_sf = LabelHarmonizerStepFunction(
-    f"label-harmonizer-{stack}",
-    dynamodb_table_name=dynamodb_table.name,
-    dynamodb_table_arn=dynamodb_table.arn,
-    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
-    chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
-)
-
-pulumi.export("label_harmonizer_sf_arn", label_harmonizer_sf.state_machine_arn)
-pulumi.export(
-    "label_harmonizer_batch_bucket_name", label_harmonizer_sf.batch_bucket_name
-)
-
-# Metadata Harmonizer Step Function (place_id-based harmonization)
-# Uses shared_chromadb_buckets (same as embedding_infrastructure.chromadb_buckets)
-# This is where ChromaDB snapshots are stored by the compaction process
-metadata_harmonizer_sf = MetadataHarmonizerStepFunction(
-    f"metadata-harmonizer-{stack}",
-    dynamodb_table_name=dynamodb_table.name,
-    dynamodb_table_arn=dynamodb_table.arn,
-    chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
-    chromadb_bucket_arn=shared_chromadb_buckets.bucket_arn,
-)
-
-pulumi.export(
-    "metadata_harmonizer_sf_arn", metadata_harmonizer_sf.state_machine_arn
-)
-pulumi.export(
-    "metadata_harmonizer_batch_bucket_name",
-    metadata_harmonizer_sf.batch_bucket_name,
-)
-
-# Label Validation Agent Step Function (NEEDS_REVIEW labels)
-label_validation_agent_sf = LabelValidationAgentStepFunction(
-    f"label-validation-agent-{stack}",
-    dynamodb_table_name=dynamodb_table.name,
-    dynamodb_table_arn=dynamodb_table.arn,
-    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
-    chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
-)
-
-pulumi.export(
-    "label_validation_agent_sf_arn",
-    label_validation_agent_sf.state_machine_arn,
-)
-pulumi.export(
-    "label_validation_agent_batch_bucket_name",
-    label_validation_agent_sf.batch_bucket_name,
-)
-
-# Label Suggestion Agent Step Function (unlabeled words → suggestions)
-label_suggestion_sf = LabelSuggestionStepFunction(
-    f"label-suggestion-{stack}",
-    dynamodb_table_name=dynamodb_table.name,
-    dynamodb_table_arn=dynamodb_table.arn,
-    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
-    chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
-)
-
-pulumi.export("label_suggestion_sf_arn", label_suggestion_sf.state_machine_arn)
-pulumi.export(
-    "label_suggestion_batch_bucket_name", label_suggestion_sf.batch_bucket_name
 )

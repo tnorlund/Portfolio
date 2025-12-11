@@ -7,7 +7,6 @@ Handles parsing of stream records into typed entities using receipt_dynamo parse
 import logging
 from typing import Any, Dict, Optional, Union
 
-from receipt_dynamo.entities.receipt import Receipt, item_to_receipt
 from receipt_dynamo.entities.receipt_metadata import (
     ReceiptMetadata,
     item_to_receipt_metadata,
@@ -33,20 +32,6 @@ def detect_entity_type(sk: str) -> Optional[str]:
     Returns:
         Entity type string or None if not relevant
     """
-    # Check for RECEIPT entity (SK pattern: RECEIPT#{receipt_id:05d})
-    # Must check this first before other patterns that contain "RECEIPT#"
-    # SK is exactly "RECEIPT#{id:05d}" with no additional parts after the ID
-    if sk.startswith("RECEIPT#"):
-        parts = sk.split("#")
-        # Should have exactly 2 parts: "RECEIPT" and the ID
-        if len(parts) == 2:
-            # Verify the ID part is numeric (receipt_id:05d format)
-            try:
-                int(parts[1])
-                return "RECEIPT"
-            except ValueError:
-                pass  # Not a valid receipt ID, continue checking
-
     if "#METADATA" in sk:
         return "RECEIPT_METADATA"
     if "#LABEL#" in sk:
@@ -63,7 +48,7 @@ def parse_entity(
     pk: str,
     sk: str,
     metrics=None,
-) -> Optional[Union[Receipt, ReceiptMetadata, ReceiptWordLabel]]:
+) -> Optional[Union[ReceiptMetadata, ReceiptWordLabel]]:
     """
     Parse DynamoDB image into typed entity.
 
@@ -98,13 +83,10 @@ def parse_entity(
                     "sk": sk,
                     "has_timestamp_added": "timestamp_added" in complete_item,
                     "has_reasoning": "reasoning" in complete_item,
-                    "has_validation_status": "validation_status"
-                    in complete_item,
+                    "has_validation_status": "validation_status" in complete_item,
                 },
             )
 
-        if entity_type == "RECEIPT":
-            return item_to_receipt(complete_item)
         if entity_type == "RECEIPT_METADATA":
             return item_to_receipt_metadata(complete_item)
         if entity_type == "RECEIPT_WORD_LABEL":
@@ -185,12 +167,8 @@ def parse_stream_record(
         new_image = record["dynamodb"].get("NewImage")
 
         # Parse entities using receipt_dynamo parsers
-        old_entity = parse_entity(
-            old_image, entity_type, "old", pk, sk, metrics
-        )
-        new_entity = parse_entity(
-            new_image, entity_type, "new", pk, sk, metrics
-        )
+        old_entity = parse_entity(old_image, entity_type, "old", pk, sk, metrics)
+        new_entity = parse_entity(new_image, entity_type, "new", pk, sk, metrics)
 
         # Enhanced diagnostic logging for parsing failures
         if old_image and not old_entity:
@@ -229,3 +207,4 @@ def parse_stream_record(
             metrics.count("StreamRecordParsingError", 1)
 
         return None
+

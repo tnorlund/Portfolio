@@ -6,10 +6,10 @@
 
 # Function: getFCP()
 
-> **getFCP**(): `undefined` \| `number`
+> **getFCP**(): `number` \| `undefined`
 
-Defined in: [utils/performance/monitor.ts:240](https://github.com/tnorlund/Portfolio/blob/ec14721ddbaed57935125ac7244e977aad1c2e30/portfolio/utils/performance/monitor.ts#L240)
+Defined in: [utils/performance/monitor.ts:240](https://github.com/tnorlund/Portfolio/blob/36b19dbd774c554bd98c92d563ba41c4f85b388f/portfolio/utils/performance/monitor.ts#L240)
 
 ## Returns
 
-`undefined` \| `number`
+`number` \| `undefined`
