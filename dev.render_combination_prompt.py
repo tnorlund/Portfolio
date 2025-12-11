@@ -22,10 +22,10 @@ sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(REPO_ROOT / "receipt_upload"))
 sys.path.insert(0, str(REPO_ROOT / "receipt_upload" / "receipt_upload"))
 
-from receipt_agent.agent.combination_selector import (
+from receipt_agent.utils.combination_selector import (
     _warp_point,  # type: ignore
 )
-from receipt_agent.agent.combination_selector import ReceiptCombinationSelector
+from receipt_agent.utils.combination_selector import ReceiptCombinationSelector
 from receipt_agent.utils.receipt_coordinates import (
     get_receipt_to_image_transform,
 )

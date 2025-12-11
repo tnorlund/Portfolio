@@ -40,7 +40,9 @@ def download_chromadb_snapshot(
         logger.info(f"ChromaDB already cached at {cache_path}")
         return cache_path
 
-    logger.info(f"Downloading ChromaDB snapshot from s3://{bucket}/{collection}/")
+    logger.info(
+        f"Downloading ChromaDB snapshot from s3://{bucket}/{collection}/"
+    )
 
     # Get latest pointer
     pointer_key = f"{collection}/snapshot/latest-pointer.txt"
@@ -95,7 +97,9 @@ async def process_batch(
     Returns:
         Dictionary with processing results
     """
-    from receipt_agent.graph.label_suggestion_workflow import suggest_labels_for_receipt
+    from receipt_agent.agents.label_suggestion import (
+        suggest_labels_for_receipt,
+    )
 
     # Initialize metrics
     receipts_processed = 0
@@ -137,8 +141,12 @@ async def process_batch(
             receipts_processed += 1
             total_suggestions += result.get("suggestions_count", 0)
             total_llm_calls += result.get("llm_calls", 0)
-            total_skipped_no_candidates += result.get("skipped_no_candidates", 0)
-            total_skipped_low_confidence += result.get("skipped_low_confidence", 0)
+            total_skipped_no_candidates += result.get(
+                "skipped_no_candidates", 0
+            )
+            total_skipped_low_confidence += result.get(
+                "skipped_low_confidence", 0
+            )
             total_unlabeled_words += result.get("unlabeled_words_count", 0)
 
             logger.info(
@@ -147,12 +155,16 @@ async def process_batch(
             )
 
         except Exception as e:
-            logger.error(f"Error processing receipt {receipt_data.get('image_id')}#{receipt_data.get('receipt_id')}: {e}")
-            errors.append({
-                "image_id": receipt_data.get("image_id"),
-                "receipt_id": receipt_data.get("receipt_id"),
-                "error": str(e),
-            })
+            logger.error(
+                f"Error processing receipt {receipt_data.get('image_id')}#{receipt_data.get('receipt_id')}: {e}"
+            )
+            errors.append(
+                {
+                    "image_id": receipt_data.get("image_id"),
+                    "receipt_id": receipt_data.get("receipt_id"),
+                    "error": str(e),
+                }
+            )
 
     return {
         "status": "completed" if not errors else "partial",
@@ -192,7 +204,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     execution_id = event.get("execution_id", "unknown")
     batch_index = event.get("batch_index")  # Required: index into manifest
     manifest_s3_key = event.get("manifest_s3_key")  # Required: manifest key
-    batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET", "")
+    batch_bucket = event.get("batch_bucket") or os.environ.get(
+        "BATCH_BUCKET", ""
+    )
     dry_run = event.get("dry_run", True)
     chromadb_bucket = os.environ.get("CHROMADB_BUCKET", "")
 
@@ -207,12 +221,16 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     manifest_content = response["Body"].read().decode("utf-8")
     batches = json.loads(manifest_content)
     if batch_index >= len(batches):
-        raise ValueError(f"Batch index {batch_index} out of range for manifest with {len(batches)} batches")
+        raise ValueError(
+            f"Batch index {batch_index} out of range for manifest with {len(batches)} batches"
+        )
     batch_file = batches[batch_index].get("batch_file", "")
     logger.info(f"Found batch_file: {batch_file}")
 
     # Set LangSmith project from Step Function input
-    langchain_project = event.get("langchain_project") or os.environ.get("LANGCHAIN_PROJECT", "label-suggestion-agent")
+    langchain_project = event.get("langchain_project") or os.environ.get(
+        "LANGCHAIN_PROJECT", "label-suggestion-agent"
+    )
     os.environ["LANGCHAIN_PROJECT"] = langchain_project
     logger.info(f"Using LangSmith project: {langchain_project}")
 
@@ -234,13 +252,14 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         os.environ["RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY"] = chroma_path
 
         # Create clients using the receipt_agent factory
+        from langchain_ollama import ChatOllama
+
         from receipt_agent.clients.factory import (
-            create_dynamo_client,
             create_chroma_client,
+            create_dynamo_client,
             create_embed_fn,
         )
         from receipt_agent.config.settings import get_settings
-        from langchain_ollama import ChatOllama
 
         settings = get_settings()
         logger.info(f"Settings loaded: table={settings.dynamo_table_name}")
@@ -259,10 +278,14 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             )
             logger.info("LLM initialized for ambiguous cases")
         else:
-            logger.warning("No Ollama API key - will use ChromaDB only (no LLM calls)")
+            logger.warning(
+                "No Ollama API key - will use ChromaDB only (no LLM calls)"
+            )
 
         # Download receipts from S3
-        logger.info(f"Downloading receipts from s3://{batch_bucket}/{batch_file}")
+        logger.info(
+            f"Downloading receipts from s3://{batch_bucket}/{batch_file}"
+        )
         response = s3.get_object(Bucket=batch_bucket, Key=batch_file)
         ndjson_content = response["Body"].read().decode("utf-8")
 
@@ -317,4 +340,3 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "error": str(e),
             "batch_index": batch_index,
         }
-

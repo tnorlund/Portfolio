@@ -8,7 +8,7 @@ version = "0.2.0"
 description = "Agentic validation for receipt metadata using LangGraph and ChromaDB"
 readme = "README.md"
 license = { text = "MIT" }
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 authors = [
     { name = "Tyler Norlund" }
 ]
@@ -106,10 +106,11 @@ exclude = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["receipt_agent"]
+include = ["receipt_agent/py.typed"]
 
 [tool.ruff]
-target-version = "py311"
-line-length = 88
+target-version = "py312"
+line-length = 79
 select = [
     "E",      # pycodestyle errors
     "W",      # pycodestyle warnings
@@ -130,13 +131,44 @@ ignore = [
 [tool.ruff.isort]
 known-first-party = ["receipt_agent", "receipt_dynamo", "receipt_chroma", "receipt_places"]
 
+[tool.black]
+line-length = 79
+target-version = ["py312"]
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 79
+
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
 plugins = ["pydantic.mypy"]
 
+[tool.pylint.format]
+max-line-length = 79
+
+[tool.pylint.messages_control]
+disable = [
+    "too-few-public-methods",
+    "too-many-arguments",
+    "too-many-locals",
+    "too-many-instance-attributes",
+    "too-many-branches",
+    "missing-module-docstring",
+    "missing-class-docstring",
+    "missing-function-docstring",
+]
+
+[tool.pylint.basic]
+good-names = ["i", "j", "k", "ex", "Run", "_", "id", "pk", "sk"]
+
+[tool.pylint.design]
+max-args = 10
+max-locals = 20
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

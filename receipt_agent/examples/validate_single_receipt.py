@@ -21,7 +21,7 @@ import sys
 # Add parent to path for local development
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from receipt_agent import MetadataValidatorAgent
+from receipt_agent.api import MetadataValidatorAgent
 from receipt_agent.config.settings import get_settings
 
 
@@ -44,8 +44,8 @@ async def main(image_id: str, receipt_id: int, verbose: bool = False) -> None:
 
     # Import the actual clients
     try:
-        from receipt_dynamo.data.dynamo_client import DynamoClient
         from receipt_chroma.data.chroma_client import ChromaClient
+        from receipt_dynamo.data.dynamo_client import DynamoClient
     except ImportError as e:
         logger.error(
             f"Failed to import clients: {e}\n"
@@ -57,7 +57,9 @@ async def main(image_id: str, receipt_id: int, verbose: bool = False) -> None:
     logger.info("Initializing clients...")
 
     dynamo = DynamoClient(table_name=settings.dynamo_table_name)
-    logger.info(f"DynamoDB client initialized for table: {settings.dynamo_table_name}")
+    logger.info(
+        f"DynamoDB client initialized for table: {settings.dynamo_table_name}"
+    )
 
     chroma_path = settings.chroma_persist_directory
     if not chroma_path:
@@ -73,6 +75,7 @@ async def main(image_id: str, receipt_id: int, verbose: bool = False) -> None:
     if places_key:
         try:
             from receipt_label.data.places_api import PlacesAPI
+
             places_api = PlacesAPI(api_key=places_key)
             logger.info("Google Places API configured")
         except ImportError:
@@ -115,13 +118,17 @@ async def main(image_id: str, receipt_id: int, verbose: bool = False) -> None:
 
     print("\nVerification Steps:")
     for step in result.verification_steps:
-        status = "✅" if step.passed else ("❌" if step.passed is False else "⏸️")
+        status = (
+            "✅" if step.passed else ("❌" if step.passed is False else "⏸️")
+        )
         print(f"  {status} {step.step_name}: {step.answer or 'N/A'}")
 
     if result.evidence_summary:
         print("\nEvidence Summary:")
         for evidence in result.evidence_summary[:5]:  # Limit to top 5
-            print(f"  - {evidence.evidence_type.value}: {evidence.description}")
+            print(
+                f"  - {evidence.evidence_type.value}: {evidence.description}"
+            )
             print(f"    Confidence: {evidence.confidence:.2%}")
 
     print("\nReasoning:")
@@ -143,10 +150,13 @@ if __name__ == "__main__":
         description="Validate receipt metadata using agentic search"
     )
     parser.add_argument("image_id", help="UUID of the receipt image")
-    parser.add_argument("receipt_id", type=int, help="Receipt ID within the image")
-    parser.add_argument("-v", "--verbose", action="store_true", help="Verbose logging")
+    parser.add_argument(
+        "receipt_id", type=int, help="Receipt ID within the image"
+    )
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Verbose logging"
+    )
 
     args = parser.parse_args()
 
     asyncio.run(main(args.image_id, args.receipt_id, args.verbose))
-

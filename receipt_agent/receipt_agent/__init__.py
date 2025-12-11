@@ -5,7 +5,8 @@ This package provides LangGraph-based agents for validating receipt metadata
 using ChromaDB similarity search and cross-reference verification.
 """
 
-from receipt_agent.agent.metadata_validator import MetadataValidatorAgent
+from receipt_agent.agents.metadata_validator import MetadataValidatorAgent
+from receipt_agent.agents.validation import create_validation_graph
 from receipt_agent.clients.factory import (
     create_all_clients,
     create_chroma_client,
@@ -13,7 +14,6 @@ from receipt_agent.clients.factory import (
     create_embed_fn,
     create_places_api,
 )
-from receipt_agent.graph.workflow import create_validation_graph
 from receipt_agent.state.models import (
     ValidationResult,
     ValidationState,
@@ -40,4 +40,3 @@ __all__ = [
     "create_embed_fn",
     "create_places_api",
 ]
-

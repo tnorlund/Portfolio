@@ -137,7 +137,7 @@ async def process_receipt_batch(
     min_confidence: float = 0.7,
 ) -> Dict[str, Any]:
     """Process a batch of receipts using LabelHarmonizerV3."""
-    from receipt_agent.tools.label_harmonizer_v3 import LabelHarmonizerV3
+    from receipt_agent.agents.label_harmonizer.tools import LabelHarmonizerV3
 
     # Create harmonizer
     harmonizer = LabelHarmonizerV3(

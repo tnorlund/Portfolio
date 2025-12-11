@@ -147,7 +147,7 @@ class MetadataFinderProcessor:
                     _log(f"⚠️ Failed to create Places client: {e}")
 
             # Import and run the metadata finder agent
-            from receipt_agent.graph.receipt_metadata_finder_workflow import (
+            from receipt_agent.subagents.metadata_finder import (
                 create_receipt_metadata_finder_graph,
                 run_receipt_metadata_finder,
             )

@@ -39,10 +39,7 @@ from dynamo_db import (
     dynamodb_table,  # Import DynamoDB table from original code
 )
 from embedding_step_functions import EmbeddingInfrastructure
-from label_harmonizer_step_functions import (
-    LabelHarmonizerStepFunction,
-    LabelHarmonizerV3StepFunction,
-)
+from label_harmonizer_step_functions import LabelHarmonizerV3StepFunction
 from label_suggestion_step_functions import LabelSuggestionStepFunction
 from label_validation_agent_step_functions import (
     LabelValidationAgentStepFunction,
@@ -1163,20 +1160,6 @@ combine_receipts_sf = CombineReceiptsStepFunction(
 pulumi.export("combine_receipts_sf_arn", combine_receipts_sf.state_machine_arn)
 pulumi.export(
     "combine_receipts_batch_bucket_name", combine_receipts_sf.batch_bucket_name
-)
-
-# Label Harmonizer Step Function (parallel prepare + batch harmonization)
-label_harmonizer_sf = LabelHarmonizerStepFunction(
-    f"label-harmonizer-{stack}",
-    dynamodb_table_name=dynamodb_table.name,
-    dynamodb_table_arn=dynamodb_table.arn,
-    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
-    chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
-)
-
-pulumi.export("label_harmonizer_sf_arn", label_harmonizer_sf.state_machine_arn)
-pulumi.export(
-    "label_harmonizer_batch_bucket_name", label_harmonizer_sf.batch_bucket_name
 )
 
 # Label Harmonizer V3 Step Function (whole receipt processing)

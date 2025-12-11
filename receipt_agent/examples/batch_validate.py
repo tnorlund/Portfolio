@@ -21,9 +21,14 @@ from collections import Counter
 from pathlib import Path
 
 # Add parent to path for local development
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(
+    0,
+    os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    ),
+)
 
-from receipt_agent import MetadataValidatorAgent
+from receipt_agent.api import MetadataValidatorAgent
 from receipt_agent.state.models import ValidationStatus
 
 
@@ -32,7 +37,9 @@ def setup_environment():
     from receipt_dynamo.data._pulumi import load_env, load_secrets
 
     # Explicitly set the infra directory for Pulumi
-    repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    repo_root = os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    )
     infra_dir = os.path.join(repo_root, "infra")
     env = load_env("dev", working_dir=infra_dir)
     secrets = load_secrets("dev", working_dir=infra_dir)
@@ -49,12 +56,18 @@ def setup_environment():
     snapshot_base_dir = os.path.join(repo_root, ".chroma_snapshots")
     lines_snapshot_dir = os.path.join(snapshot_base_dir, "lines")
     words_snapshot_dir = os.path.join(snapshot_base_dir, "words")
-    local_chroma = os.path.join(repo_root, ".chromadb_local", "words")  # Old local path
+    local_chroma = os.path.join(
+        repo_root, ".chromadb_local", "words"
+    )  # Old local path
 
     # Prefer local snapshot directories (downloaded from S3)
     chroma_dirs_set = False
-    if (os.path.exists(lines_snapshot_dir) and os.listdir(lines_snapshot_dir) and
-            os.path.exists(words_snapshot_dir) and os.listdir(words_snapshot_dir)):
+    if (
+        os.path.exists(lines_snapshot_dir)
+        and os.listdir(lines_snapshot_dir)
+        and os.path.exists(words_snapshot_dir)
+        and os.listdir(words_snapshot_dir)
+    ):
         os.environ["RECEIPT_AGENT_CHROMA_LINES_DIRECTORY"] = lines_snapshot_dir
         os.environ["RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"] = words_snapshot_dir
         print(f"✅ ChromaDB snapshots found:")
@@ -65,20 +78,29 @@ def setup_environment():
         # Check if old local ChromaDB has both collections needed
         try:
             from receipt_chroma import ChromaClient
-            with ChromaClient(persist_directory=local_chroma, mode="read") as client:
+
+            with ChromaClient(
+                persist_directory=local_chroma, mode="read"
+            ) as client:
                 collections = client.list_collections()
                 has_lines = "lines" in collections
                 has_words = "words" in collections
 
                 if has_lines and has_words:
-                    os.environ["RECEIPT_AGENT_CHROMA_LINES_DIRECTORY"] = local_chroma
-                    os.environ["RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"] = local_chroma
+                    os.environ["RECEIPT_AGENT_CHROMA_LINES_DIRECTORY"] = (
+                        local_chroma
+                    )
+                    os.environ["RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"] = (
+                        local_chroma
+                    )
                     print(f"✅ ChromaDB local (old format): {local_chroma}")
                     print(f"   Collections: {', '.join(collections)}")
                     chroma_dirs_set = True
                 else:
                     print(f"⚠️  Local ChromaDB missing required collections")
-                    print(f"   Found: {', '.join(collections) if collections else 'none'}")
+                    print(
+                        f"   Found: {', '.join(collections) if collections else 'none'}"
+                    )
                     print(f"   Needed: lines, words")
                     print(f"   Will download from S3...")
         except Exception as e:
@@ -94,12 +116,17 @@ def setup_environment():
         )
 
         if bucket_name:
-            print(f"📥 Downloading ChromaDB snapshots from S3 bucket: {bucket_name}")
-            print("   (Downloading 'lines' and 'words' collections to separate directories...)")
+            print(
+                f"📥 Downloading ChromaDB snapshots from S3 bucket: {bucket_name}"
+            )
+            print(
+                "   (Downloading 'lines' and 'words' collections to separate directories...)"
+            )
             try:
-                from receipt_chroma import download_snapshot_atomic
-                import tempfile
                 import shutil
+                import tempfile
+
+                from receipt_chroma import download_snapshot_atomic
 
                 os.makedirs(lines_snapshot_dir, exist_ok=True)
                 os.makedirs(words_snapshot_dir, exist_ok=True)
@@ -117,14 +144,20 @@ def setup_environment():
                     )
 
                     if lines_result.get("status") == "downloaded":
-                        print(f"✅ Lines collection downloaded: {lines_result.get('version_id', 'unknown')}")
+                        print(
+                            f"✅ Lines collection downloaded: {lines_result.get('version_id', 'unknown')}"
+                        )
                         # Copy to final destination
                         if os.path.exists(lines_snapshot_dir):
                             shutil.rmtree(lines_snapshot_dir)
                         shutil.copytree(lines_temp, lines_snapshot_dir)
-                        print(f"   Copied lines collection to {lines_snapshot_dir}")
+                        print(
+                            f"   Copied lines collection to {lines_snapshot_dir}"
+                        )
                     else:
-                        print(f"⚠️  Lines download failed: {lines_result.get('error', 'unknown error')}")
+                        print(
+                            f"⚠️  Lines download failed: {lines_result.get('error', 'unknown error')}"
+                        )
 
                     # Download words collection to temp directory
                     words_result = download_snapshot_atomic(
@@ -135,46 +168,90 @@ def setup_environment():
                     )
 
                     if words_result.get("status") == "downloaded":
-                        print(f"✅ Words collection downloaded: {words_result.get('version_id', 'unknown')}")
+                        print(
+                            f"✅ Words collection downloaded: {words_result.get('version_id', 'unknown')}"
+                        )
                         # Copy to final destination
                         if os.path.exists(words_snapshot_dir):
                             shutil.rmtree(words_snapshot_dir)
                         shutil.copytree(words_temp, words_snapshot_dir)
-                        print(f"   Copied words collection to {words_snapshot_dir}")
+                        print(
+                            f"   Copied words collection to {words_snapshot_dir}"
+                        )
                     else:
-                        print(f"⚠️  Words download failed: {words_result.get('error', 'unknown error')}")
+                        print(
+                            f"⚠️  Words download failed: {words_result.get('error', 'unknown error')}"
+                        )
 
                     # Verify both collections are available
-                    if lines_result.get("status") == "downloaded" and words_result.get("status") == "downloaded":
+                    if (
+                        lines_result.get("status") == "downloaded"
+                        and words_result.get("status") == "downloaded"
+                    ):
                         # Verify the collections exist in their respective directories
                         try:
                             from receipt_chroma import ChromaClient
-                            with ChromaClient(persist_directory=lines_snapshot_dir, mode="read") as lines_client:
-                                lines_collections = lines_client.list_collections()
-                            with ChromaClient(persist_directory=words_snapshot_dir, mode="read") as words_client:
-                                words_collections = words_client.list_collections()
 
-                            if "lines" in lines_collections and "words" in words_collections:
-                                os.environ["RECEIPT_AGENT_CHROMA_LINES_DIRECTORY"] = lines_snapshot_dir
-                                os.environ["RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"] = words_snapshot_dir
+                            with ChromaClient(
+                                persist_directory=lines_snapshot_dir,
+                                mode="read",
+                            ) as lines_client:
+                                lines_collections = (
+                                    lines_client.list_collections()
+                                )
+                            with ChromaClient(
+                                persist_directory=words_snapshot_dir,
+                                mode="read",
+                            ) as words_client:
+                                words_collections = (
+                                    words_client.list_collections()
+                                )
+
+                            if (
+                                "lines" in lines_collections
+                                and "words" in words_collections
+                            ):
+                                os.environ[
+                                    "RECEIPT_AGENT_CHROMA_LINES_DIRECTORY"
+                                ] = lines_snapshot_dir
+                                os.environ[
+                                    "RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"
+                                ] = words_snapshot_dir
                                 print(f"✅ ChromaDB snapshots ready:")
-                                print(f"   Lines: {lines_snapshot_dir} (Collections: {', '.join(lines_collections)})")
-                                print(f"   Words: {words_snapshot_dir} (Collections: {', '.join(words_collections)})")
+                                print(
+                                    f"   Lines: {lines_snapshot_dir} (Collections: {', '.join(lines_collections)})"
+                                )
+                                print(
+                                    f"   Words: {words_snapshot_dir} (Collections: {', '.join(words_collections)})"
+                                )
                             else:
-                                print(f"⚠️  Collections not found after download (lines: {', '.join(lines_collections)}, words: {', '.join(words_collections)})")
+                                print(
+                                    f"⚠️  Collections not found after download (lines: {', '.join(lines_collections)}, words: {', '.join(words_collections)})"
+                                )
                         except Exception as e:
-                            print(f"⚠️  Could not verify collections after download: {e}")
+                            print(
+                                f"⚠️  Could not verify collections after download: {e}"
+                            )
                             import traceback
+
                             traceback.print_exc()
                     else:
-                        print(f"⚠️  One or both downloads failed, falling back to HTTP URL if available")
+                        print(
+                            f"⚠️  One or both downloads failed, falling back to HTTP URL if available"
+                        )
                         chroma_dns = env.get("chroma_service_dns")
                         if chroma_dns:
                             chroma_host = chroma_dns.split(":")[0]
-                            os.environ["RECEIPT_AGENT_CHROMA_HTTP_URL"] = f"http://{chroma_host}:8000"
-                            print(f"✅ ChromaDB URL: http://{chroma_host}:8000")
+                            os.environ["RECEIPT_AGENT_CHROMA_HTTP_URL"] = (
+                                f"http://{chroma_host}:8000"
+                            )
+                            print(
+                                f"✅ ChromaDB URL: http://{chroma_host}:8000"
+                            )
                         else:
-                            print("⚠️  ChromaDB not available - will fail if needed")
+                            print(
+                                "⚠️  ChromaDB not available - will fail if needed"
+                            )
                 finally:
                     shutil.rmtree(lines_temp, ignore_errors=True)
                     shutil.rmtree(words_temp, ignore_errors=True)
@@ -182,12 +259,15 @@ def setup_environment():
             except Exception as e:
                 print(f"⚠️  Failed to download snapshot: {e}")
                 import traceback
+
                 traceback.print_exc()
                 # Fall back to HTTP URL if available
                 chroma_dns = env.get("chroma_service_dns")
                 if chroma_dns:
                     chroma_host = chroma_dns.split(":")[0]
-                    os.environ["RECEIPT_AGENT_CHROMA_HTTP_URL"] = f"http://{chroma_host}:8000"
+                    os.environ["RECEIPT_AGENT_CHROMA_HTTP_URL"] = (
+                        f"http://{chroma_host}:8000"
+                    )
                     print(f"✅ ChromaDB URL: http://{chroma_host}:8000")
                 else:
                     print("⚠️  ChromaDB not available - will fail if needed")
@@ -196,7 +276,9 @@ def setup_environment():
             chroma_dns = env.get("chroma_service_dns")
             if chroma_dns:
                 chroma_host = chroma_dns.split(":")[0]
-                os.environ["RECEIPT_AGENT_CHROMA_HTTP_URL"] = f"http://{chroma_host}:8000"
+                os.environ["RECEIPT_AGENT_CHROMA_HTTP_URL"] = (
+                    f"http://{chroma_host}:8000"
+                )
                 print(f"✅ ChromaDB URL: http://{chroma_host}:8000")
             else:
                 print("⚠️  ChromaDB not found - will fail if needed")
@@ -281,7 +363,9 @@ async def main(
         sys.exit(1)
 
     # Initialize DynamoDB client
-    dynamo = DynamoClient(table_name=env.get("dynamodb_table_name", "receipts"))
+    dynamo = DynamoClient(
+        table_name=env.get("dynamodb_table_name", "receipts")
+    )
 
     # Create ChromaDB client using factory (handles separate lines/words directories)
     chroma_client = None
@@ -301,6 +385,7 @@ async def main(
     except Exception as e:
         logger.warning(f"Could not create ChromaDB client: {e}")
         import traceback
+
         traceback.print_exc()
 
     # Create Places client (optional)
@@ -378,7 +463,9 @@ async def main(
             ValidationStatus.ERROR: "💥",
         }
         emoji = status_emoji.get(result.status, "❓")
-        print(f"  {emoji} {image_id[:8]}...#{receipt_id}: {result.status.value} ({result.confidence:.0%})")
+        print(
+            f"  {emoji} {image_id[:8]}...#{receipt_id}: {result.status.value} ({result.confidence:.0%})"
+        )
 
     # Print summary
     print("\n" + "=" * 60)
@@ -412,33 +499,39 @@ if __name__ == "__main__":
         description="Batch validate receipt metadata for a merchant"
     )
     parser.add_argument(
-        "--merchant", "-m",
+        "--merchant",
+        "-m",
         required=True,
         help="Merchant name to validate",
     )
     parser.add_argument(
-        "--limit", "-l",
+        "--limit",
+        "-l",
         type=int,
         default=10,
         help="Maximum receipts to validate",
     )
     parser.add_argument(
-        "--concurrency", "-c",
+        "--concurrency",
+        "-c",
         type=int,
         default=5,
         help="Maximum concurrent validations",
     )
     parser.add_argument(
-        "--verbose", "-v",
+        "--verbose",
+        "-v",
         action="store_true",
         help="Verbose logging",
     )
 
     args = parser.parse_args()
 
-    asyncio.run(main(
-        args.merchant,
-        args.limit,
-        args.concurrency,
-        args.verbose,
-    ))
+    asyncio.run(
+        main(
+            args.merchant,
+            args.limit,
+            args.concurrency,
+            args.verbose,
+        )
+    )

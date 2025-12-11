@@ -93,6 +93,7 @@ exclude = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["receipt_dynamo"]
+include = ["receipt_dynamo/py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

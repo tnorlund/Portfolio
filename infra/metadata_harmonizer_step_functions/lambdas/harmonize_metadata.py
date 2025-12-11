@@ -123,7 +123,7 @@ async def process_place_id_batch(
     Returns:
         Dictionary with processing results
     """
-    from receipt_agent.tools.harmonizer_v3 import MerchantHarmonizerV3
+    from receipt_agent.agents.harmonizer.tools import MerchantHarmonizerV3
 
     # Create harmonizer
     harmonizer = MerchantHarmonizerV3(
@@ -248,7 +248,7 @@ async def process_place_id_batch(
                         )
 
                         # Create a temporary group with only the sub-batch receipts
-                        from receipt_agent.tools.harmonizer_v3 import (
+                        from receipt_agent.agents.harmonizer.tools import (
                             PlaceIdGroup,
                         )
 
@@ -309,7 +309,7 @@ async def process_place_id_batch(
     # Run harmonization for the filtered groups
     # We'll need to manually process each group since harmonize_all() processes all groups
     # Let's use the agent directly for each group
-    from receipt_agent.graph.harmonizer_workflow import (
+    from receipt_agent.agents.harmonizer import (
         create_harmonizer_graph,
         run_harmonizer_agent,
     )

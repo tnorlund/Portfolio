@@ -1,4 +1,10 @@
-"""Tools for the receipt validation agent."""
+"""
+Shared connector tools for receipt_agent.
+
+Agent-specific tools live under `agents/<name>/tools`.
+This package only exposes shared connectors (chroma, dynamo, places)
+and the tool registry helper.
+"""
 
 from receipt_agent.tools.chroma import (
     query_similar_lines,
@@ -29,4 +35,3 @@ __all__ = [
     # Registry
     "create_tool_registry",
 ]
-

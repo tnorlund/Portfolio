@@ -17,7 +17,7 @@ from typing import Any, Dict, cast
 # Import the shared combination logic
 from combine_receipts_logic import combine_receipts
 
-from receipt_agent.agent import ReceiptCombinationSelector
+from receipt_agent.utils.combination_selector import ReceiptCombinationSelector
 from receipt_dynamo import DynamoClient
 
 logger = logging.getLogger()

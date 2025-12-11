@@ -12,13 +12,13 @@ import json
 import logging
 import os
 import time
-from typing import Any, Dict, List, Optional
 from collections import Counter
+from typing import Any, Dict, List, Optional
 
 import boto3
+from utils.emf_metrics import emf_metrics
 
 from receipt_dynamo.constants import ValidationStatus
-from utils.emf_metrics import emf_metrics
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -31,11 +31,14 @@ class OllamaRateLimitError(RuntimeError):
 
     Step Functions can catch this by error type name.
     """
+
     pass
+
 
 # LangSmith tracing - ensure traces are flushed before Lambda exits
 try:
     from langsmith.run_trees import get_cached_client as get_langsmith_client
+
     HAS_LANGSMITH = True
 except ImportError:
     HAS_LANGSMITH = False
@@ -57,6 +60,7 @@ def flush_langsmith_traces():
             logger.info("LangSmith traces flushed successfully")
         except Exception as e:
             logger.warning(f"Failed to flush LangSmith traces: {e}")
+
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -82,7 +86,9 @@ def download_chromadb_snapshot(
         logger.info(f"ChromaDB already cached at {cache_path}")
         return cache_path
 
-    logger.info(f"Downloading ChromaDB snapshot from s3://{bucket}/{collection}/")
+    logger.info(
+        f"Downloading ChromaDB snapshot from s3://{bucket}/{collection}/"
+    )
 
     # Get latest pointer
     pointer_key = f"{collection}/snapshot/latest-pointer.txt"
@@ -156,7 +162,9 @@ def _save_state_to_s3(
         raise
 
 
-def _load_state_from_s3(batch_bucket: str, execution_id: str, batch_file: str) -> Optional[Dict[str, Any]]:
+def _load_state_from_s3(
+    batch_bucket: str, execution_id: str, batch_file: str
+) -> Optional[Dict[str, Any]]:
     """Load processing state from S3 if it exists."""
     state_key = f"state/{execution_id}/{os.path.basename(batch_file).replace('.ndjson', '.state.json')}"
 
@@ -167,14 +175,18 @@ def _load_state_from_s3(batch_bucket: str, execution_id: str, batch_file: str) -
         logger.info(f"Loaded state from s3://{batch_bucket}/{state_key}")
         return state
     except s3.exceptions.NoSuchKey:
-        logger.info(f"No existing state found at s3://{batch_bucket}/{state_key}")
+        logger.info(
+            f"No existing state found at s3://{batch_bucket}/{state_key}"
+        )
         return None
     except Exception as e:
         logger.warning(f"Failed to load state from S3: {e}")
         return None
 
 
-def _delete_state_from_s3(batch_bucket: str, execution_id: str, batch_file: str) -> None:
+def _delete_state_from_s3(
+    batch_bucket: str, execution_id: str, batch_file: str
+) -> None:
     """Delete state file from S3 after successful completion."""
     state_key = f"state/{execution_id}/{os.path.basename(batch_file).replace('.ndjson', '.state.json')}"
 
@@ -214,12 +226,14 @@ async def process_batch(
     Returns:
         Dictionary with processing results
     """
-    from receipt_agent.graph.label_validation_workflow import run_label_validation
+    from receipt_agent.agents.label_validation import run_label_validation
 
     # Check for existing state (circuit breaker recovery)
     existing_state = None
     if batch_bucket and execution_id and batch_file:
-        existing_state = _load_state_from_s3(batch_bucket, execution_id, batch_file)
+        existing_state = _load_state_from_s3(
+            batch_bucket, execution_id, batch_file
+        )
 
     # Initialize metrics
     results = []
@@ -246,8 +260,12 @@ async def process_batch(
     # If we have existing state, restore it and filter labels
     processed_label_ids = set()
     if existing_state:
-        logger.info(f"Resuming from saved state: {len(existing_state.get('processed_label_ids', []))} labels already processed")
-        processed_label_ids = set(existing_state.get("processed_label_ids", []))
+        logger.info(
+            f"Resuming from saved state: {len(existing_state.get('processed_label_ids', []))} labels already processed"
+        )
+        processed_label_ids = set(
+            existing_state.get("processed_label_ids", [])
+        )
         results = existing_state.get("processed_results", [])
 
         # Restore metrics from state
@@ -265,7 +283,11 @@ async def process_batch(
         timeout_errors = restored_metrics.get("timeout_errors", 0)
 
         # Filter out already-processed labels
-        labels = [label for label in labels if _get_label_id(label) not in processed_label_ids]
+        labels = [
+            label
+            for label in labels
+            if _get_label_id(label) not in processed_label_ids
+        ]
         logger.info(f"Filtered to {len(labels)} remaining labels to process")
 
     for i, label_data in enumerate(labels, 1):
@@ -276,7 +298,7 @@ async def process_batch(
                 f"consecutive rate limit errors. Remaining labels: {len(labels) - i + 1}"
             )
             # Mark remaining labels as failed
-            for remaining_label in labels[i - 1:]:
+            for remaining_label in labels[i - 1 :]:
                 failed_count += 1
                 results.append(
                     {
@@ -334,9 +356,17 @@ async def process_batch(
                 error_str = str(e)
 
                 # Track error types
-                if "500" in error_str or "502" in error_str or "503" in error_str or "504" in error_str:
+                if (
+                    "500" in error_str
+                    or "502" in error_str
+                    or "503" in error_str
+                    or "504" in error_str
+                ):
                     server_errors += 1
-                elif "timeout" in error_str.lower() or "timed out" in error_str.lower():
+                elif (
+                    "timeout" in error_str.lower()
+                    or "timed out" in error_str.lower()
+                ):
                     timeout_errors += 1
 
                 # Re-raise to be handled by outer exception handler
@@ -371,10 +401,14 @@ async def process_batch(
                     if label:
                         # Update validation_status
                         if decision == "VALID":
-                            label.validation_status = ValidationStatus.VALID.value
+                            label.validation_status = (
+                                ValidationStatus.VALID.value
+                            )
                             updated_count += 1
                         elif decision == "INVALID":
-                            label.validation_status = ValidationStatus.INVALID.value
+                            label.validation_status = (
+                                ValidationStatus.INVALID.value
+                            )
                             updated_count += 1
                         # NEEDS_REVIEW: leave as is
 
@@ -388,14 +422,18 @@ async def process_batch(
                             f"Updated label: {decision} ({confidence:.0%} confidence)"
                         )
                     else:
-                        logger.warning(f"Label not found in DynamoDB, skipping update")
+                        logger.warning(
+                            f"Label not found in DynamoDB, skipping update"
+                        )
                         skipped_count += 1
                 except Exception as e:
                     logger.error(f"Failed to update label in DynamoDB: {e}")
                     failed_count += 1
             else:
                 if dry_run:
-                    logger.info(f"DRY RUN: Would update to {decision} ({confidence:.0%})")
+                    logger.info(
+                        f"DRY RUN: Would update to {decision} ({confidence:.0%})"
+                    )
                 else:
                     logger.info(
                         f"Skipped update: confidence {confidence:.0%} < {min_confidence:.0%}"
@@ -440,7 +478,9 @@ async def process_batch(
 
                 # Save state to S3 before failing (if we have bucket info)
                 if batch_bucket and execution_id and batch_file:
-                    remaining_labels = labels[i - 1:]  # Labels not yet processed
+                    remaining_labels = labels[
+                        i - 1 :
+                    ]  # Labels not yet processed
                     metrics = {
                         "valid_count": valid_count,
                         "invalid_count": invalid_count,
@@ -464,9 +504,13 @@ async def process_batch(
                             remaining_labels=remaining_labels,
                             metrics=metrics,
                         )
-                        logger.info("State saved to S3 for circuit breaker recovery")
+                        logger.info(
+                            "State saved to S3 for circuit breaker recovery"
+                        )
                     except Exception as save_error:
-                        logger.error(f"Failed to save state before circuit breaker: {save_error}")
+                        logger.error(
+                            f"Failed to save state before circuit breaker: {save_error}"
+                        )
 
                 # Re-raise to fail the Lambda (Step Function will retry)
                 raise OllamaRateLimitError(
@@ -486,11 +530,11 @@ async def process_batch(
 
             # Check if this is a rate limit error (non-OllamaRateLimitError exception)
             is_rate_limit = (
-                "429" in error_str or
-                "rate limit" in error_str.lower() or
-                "rate_limit" in error_str.lower() or
-                "too many concurrent requests" in error_str.lower() or
-                "too many requests" in error_str.lower()
+                "429" in error_str
+                or "rate limit" in error_str.lower()
+                or "rate_limit" in error_str.lower()
+                or "too many concurrent requests" in error_str.lower()
+                or "too many requests" in error_str.lower()
             )
 
             if is_rate_limit:
@@ -499,9 +543,17 @@ async def process_batch(
                     f"Rate limit error {rate_limit_errors}/{circuit_breaker_threshold} for label {i}: {e}"
                 )
             # Track other error types
-            elif "500" in error_str or "502" in error_str or "503" in error_str or "504" in error_str:
+            elif (
+                "500" in error_str
+                or "502" in error_str
+                or "503" in error_str
+                or "504" in error_str
+            ):
                 server_errors += 1
-            elif "timeout" in error_str.lower() or "timed out" in error_str.lower():
+            elif (
+                "timeout" in error_str.lower()
+                or "timed out" in error_str.lower()
+            ):
                 timeout_errors += 1
 
                 if rate_limit_errors >= circuit_breaker_threshold:
@@ -517,7 +569,9 @@ async def process_batch(
                     ) from e
 
                 # Re-raise for Step Function retry
-                raise OllamaRateLimitError(f"Rate limit error: {error_str}") from e
+                raise OllamaRateLimitError(
+                    f"Rate limit error: {error_str}"
+                ) from e
 
             # Non-rate-limit error - just track as failed
             failed_count += 1
@@ -603,7 +657,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     batch_file = event.get("batch_file", "")
     batch_index = event.get("batch_index")  # Optional: index into manifest
     manifest_s3_key = event.get("manifest_s3_key")  # Optional: manifest key
-    batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET", "")
+    batch_bucket = event.get("batch_bucket") or os.environ.get(
+        "BATCH_BUCKET", ""
+    )
     dry_run = event.get("dry_run", True)
     min_confidence = event.get("min_confidence", 0.8)
     chromadb_bucket = os.environ.get("CHROMADB_BUCKET", "")
@@ -617,12 +673,16 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         manifest_content = response["Body"].read().decode("utf-8")
         batches = json.loads(manifest_content)
         if batch_index >= len(batches):
-            raise ValueError(f"Batch index {batch_index} out of range for manifest with {len(batches)} batches")
+            raise ValueError(
+                f"Batch index {batch_index} out of range for manifest with {len(batches)} batches"
+            )
         batch_file = batches[batch_index].get("batch_file", "")
         logger.info(f"Found batch_file: {batch_file}")
 
     # Set LangSmith project from Step Function input
-    langchain_project = event.get("langchain_project") or os.environ.get("LANGCHAIN_PROJECT", "label-validation-agent")
+    langchain_project = event.get("langchain_project") or os.environ.get(
+        "LANGCHAIN_PROJECT", "label-validation-agent"
+    )
     os.environ["LANGCHAIN_PROJECT"] = langchain_project
     logger.info(f"Using LangSmith project: {langchain_project}")
 
@@ -644,15 +704,15 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         os.environ["RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY"] = chroma_path
 
         # Create clients using the receipt_agent factory
+        from receipt_agent.agents.label_validation import (
+            create_label_validation_graph,
+        )
         from receipt_agent.clients.factory import (
-            create_dynamo_client,
             create_chroma_client,
+            create_dynamo_client,
             create_embed_fn,
         )
         from receipt_agent.config.settings import get_settings
-        from receipt_agent.graph.label_validation_workflow import (
-            create_label_validation_graph,
-        )
 
         settings = get_settings()
         logger.info(f"Settings loaded: table={settings.dynamo_table_name}")
@@ -670,7 +730,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         )
 
         # Download labels from S3
-        logger.info(f"Downloading labels from s3://{batch_bucket}/{batch_file}")
+        logger.info(
+            f"Downloading labels from s3://{batch_bucket}/{batch_file}"
+        )
         response = s3.get_object(Bucket=batch_bucket, Key=batch_file)
         ndjson_content = response["Body"].read().decode("utf-8")
 
@@ -723,7 +785,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         processing_time = time.time() - start_time
 
         # Check if circuit breaker was triggered (from result)
-        circuit_breaker_triggered = result.get("circuit_breaker_triggered", False)
+        circuit_breaker_triggered = result.get(
+            "circuit_breaker_triggered", False
+        )
         rate_limit_errors = result.get("rate_limit_errors", 0)
         api_metrics = result.get("api_metrics", {})
 
@@ -732,7 +796,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Aggregate by label type for dimensions (keep cardinality LOW)
         # Count labels by type for dimension aggregation
-        label_type_counter = Counter(label.get("label", "UNKNOWN") for label in labels)
+        label_type_counter = Counter(
+            label.get("label", "UNKNOWN") for label in labels
+        )
         label_type_counts = dict(label_type_counter)
 
         # Emit metrics per label type (if multiple types in batch, emit separate metrics)
@@ -742,7 +808,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             primary_label_type = list(label_type_counts.keys())[0]
         else:
             # Use most common label type as primary dimension
-            primary_label_type = label_type_counter.most_common(1)[0][0] if label_type_counter else "UNKNOWN"
+            primary_label_type = (
+                label_type_counter.most_common(1)[0][0]
+                if label_type_counter
+                else "UNKNOWN"
+            )
 
         emf_metrics.log_metrics(
             metrics={
@@ -757,15 +827,21 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "LabelsUpdated": result.get("updated_count", 0),
                 "LabelsSkipped": result.get("skipped_count", 0),
                 "LabelsFailed": result.get("failed_count", 0),
-                "LabelsNeedsReview": result.get("needs_review_count", 0),  # Like harmonizer
+                "LabelsNeedsReview": result.get(
+                    "needs_review_count", 0
+                ),  # Like harmonizer
                 # API usage metrics (like harmonizer)
                 "LLMCallsTotal": api_metrics.get("llm_calls_total", 0),
-                "LLMCallsSuccessful": api_metrics.get("llm_calls_successful", 0),
+                "LLMCallsSuccessful": api_metrics.get(
+                    "llm_calls_successful", 0
+                ),
                 "LLMCallsFailed": api_metrics.get("llm_calls_failed", 0),
                 "RateLimitErrors": api_metrics.get("rate_limit_errors", 0),
                 "ServerErrors": api_metrics.get("server_errors", 0),
                 "RetryAttempts": api_metrics.get("retry_attempts", 0),
-                "CircuitBreakerTriggers": api_metrics.get("circuit_breaker_triggers", 0),
+                "CircuitBreakerTriggers": api_metrics.get(
+                    "circuit_breaker_triggers", 0
+                ),
                 "TimeoutErrors": api_metrics.get("timeout_errors", 0),
             },
             # IMPORTANT: Keep dimensions LOW cardinality to control costs
@@ -855,4 +931,3 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "skipped_count": 0,
             "failed_count": 0,
         }
-

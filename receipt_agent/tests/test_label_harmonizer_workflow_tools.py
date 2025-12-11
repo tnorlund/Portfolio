@@ -1,6 +1,6 @@
 import pytest
 
-from receipt_agent.graph.label_harmonizer_workflow import (
+from receipt_agent.agents.label_harmonizer.tools.helpers import (
     extract_pricing_table_from_words,
 )
 
