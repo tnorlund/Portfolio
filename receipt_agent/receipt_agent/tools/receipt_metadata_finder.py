@@ -78,6 +78,84 @@ from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
+# ==============================================================================
+# Module-level constants
+# ==============================================================================
+
+# Field name mapping for matched_fields (canonical format)
+FIELD_NAME_MAPPING = {
+    "merchant_name": "name",
+    "phone_number": "phone",
+    "address": "address",
+    "place_id": "place_id",
+}
+
+# Address suffixes for address detection
+ADDRESS_SUFFIXES = [
+    "BLVD",
+    "RD",
+    "ST",
+    "STREET",
+    "AVE",
+    "AVENUE",
+    "DR",
+    "DRIVE",
+    "LANE",
+    "LN",
+    "WAY",
+    "CT",
+    "COURT",
+    "PL",
+    "PLACE",
+]
+
+
+# ==============================================================================
+# Custom exceptions
+# ==============================================================================
+
+
+class AgenticSearchRequirementsError(ValueError):
+    """Raised when agent-based search is requested without required dependencies."""
+
+    def __init__(self):
+        super().__init__(
+            "Agent-based search requires chroma_client and embed_fn. "
+            "Provide both when initializing ReceiptMetadataFinder."
+        )
+
+
+# ==============================================================================
+# Helper functions
+# ==============================================================================
+
+
+def _looks_like_address(name: str) -> bool:
+    """
+    Check if a string looks like an address rather than a merchant name.
+
+    Args:
+        name: Name to check
+
+    Returns:
+        True if name looks like an address
+    """
+    if not name:
+        return False
+
+    name_upper = name.upper()
+    # Use word-boundary matching to avoid false positives like "1ST BANK"
+    # Match suffixes only at word boundaries
+    suffix_pattern = (
+        r"\b("
+        + "|".join(re.escape(suffix) for suffix in ADDRESS_SUFFIXES)
+        + r")\b"
+    )
+    has_suffix = bool(re.search(suffix_pattern, name_upper))
+    has_address_markers = (
+        re.match(r"^\d+", name.strip()) or "#" in name or "," in name
+    )
+    return has_suffix and has_address_markers
 
 @dataclass
 class ReceiptRecord:
@@ -358,10 +436,7 @@ class ReceiptMetadataFinder:
             FinderResult with all matches
         """
         if not self.chroma or not self.embed_fn:
-            raise ValueError(
-                "Agent-based search requires chroma_client and embed_fn. "
-                "Use find_all_metadata() for simple search."
-            )
+            raise AgenticSearchRequirementsError()
 
         # Load receipts if not already loaded
         if not self._receipts_with_missing_metadata:
@@ -616,7 +691,7 @@ class ReceiptMetadataFinder:
                         address=match.address or "",
                         phone_number=match.phone_number or "",
                         matched_fields=matched_fields,
-                        validated_by=ValidationMethod.TEXT_SEARCH.value,
+                        validated_by=ValidationMethod.INFERENCE.value,
                         timestamp=datetime.now(timezone.utc),
                         reasoning=match.reasoning
                         or "Created by receipt_metadata_finder",
@@ -754,7 +829,9 @@ class ReceiptMetadataFinder:
                 confidence = (
                     match.confidence / 100.0
                 )  # Convert from percentage to decimal
-                has_place_id = bool(match.place_id)
+                # Base status on the place_id that will actually be stored
+                # (use metadata.place_id to avoid downgrading existing place_ids when match.place_id is None)
+                has_place_id = bool(metadata.place_id)
 
                 # Determine appropriate validation status
                 if (

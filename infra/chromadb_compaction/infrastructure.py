@@ -54,6 +54,14 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
             "chromadb:compaction:Infrastructure", name, None, opts
         )
 
+        # Normalize and validate storage mode once
+        normalized_storage_mode = storage_mode.lower()
+        if normalized_storage_mode not in {"auto", "s3", "efs"}:
+            raise ValueError(
+                f"Invalid storage_mode='{storage_mode}'. "
+                "Expected one of: 'auto', 's3', or 'efs'."
+            )
+
         # Create SQS queues for message processing
         self.chromadb_queues = create_chromadb_queues(
             name=f"{name}-queues",
@@ -83,6 +91,15 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
                 opts=ResourceOptions(parent=self),
             )
 
+        # Validate storage_mode against use_efs to prevent misconfiguration
+        if not use_efs and normalized_storage_mode == "efs":
+            raise ValueError(
+                "storage_mode='efs' requires use_efs=True to create EFS resources"
+            )
+        if normalized_storage_mode == "efs" and self.efs is None:
+            raise ValueError(
+                "storage_mode='efs' requires EFS to be created (provide vpc_id, subnet_ids, and lambda_security_group_id)"
+            )
         # Create hybrid Lambda deployment
         # Depend on EFS mount targets if EFS exists (Lambda needs mount targets in "available" state)
         # mount_targets is an Output[List[Resource]], so we need to pass it directly
@@ -100,6 +117,7 @@ class ChromaDBCompactionInfrastructure(ComponentResource):
             efs_access_point_arn=(
                 self.efs.access_point_arn if self.efs else None
             ),
+            storage_mode=normalized_storage_mode,
             opts=ResourceOptions(parent=self, depends_on=lambda_depends_on),
         )
 
@@ -144,8 +162,12 @@ def create_chromadb_compaction_infrastructure(
         dynamodb_table_arn: ARN of the DynamoDB table
         dynamodb_stream_arn: ARN of the DynamoDB stream
         chromadb_buckets: Shared ChromaDB S3 buckets component
+        vpc_id: VPC ID for Lambda and EFS placement
         subnet_ids: Subnet IDs for Lambda placement (can be same AZ)
         efs_subnet_ids: Subnet IDs for EFS mount targets (must be unique AZs)
+        lambda_security_group_id: Security group ID for Lambda VPC access
+        use_efs: Whether to create EFS resources (default: True)
+        storage_mode: Storage mode for ChromaDB - "auto", "s3", or "efs" (default: "auto")
         opts: Optional resource options
 
     Returns:
