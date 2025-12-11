@@ -15,9 +15,14 @@ Key Features:
 import asyncio
 import logging
 import re
-from typing import TYPE_CHECKING, Annotated, Any, Callable, Optional
+from typing import TYPE_CHECKING, Annotated, Any, Callable, Optional, cast
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import (
+    AIMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langchain_core.tools import tool
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
@@ -254,77 +259,33 @@ class LabelHarmonizerAgentState(BaseModel):
 # System Prompt
 # ==============================================================================
 
-LABEL_HARMONIZER_PROMPT = """You are a receipt label harmonizer. Your job is to validate and harmonize all labels on a receipt, ensuring they are correct and financially consistent.
+LABEL_HARMONIZER_PROMPT = """You are a receipt label harmonizer. Keep the context focused and concise while ensuring financial consistency.
 
-## Your Task
+## Task
+1) Read the receipt text (source of truth).
+2) Detect currency and validate totals (grand total, subtotal, tax, line items).
+3) Fix incorrect or missing labels.
+4) Submit your harmonization once.
 
-You're given a receipt with words, lines, and labels. Your job is to:
-1. Examine the receipt text (source of truth)
-2. Validate all labels are correct
-3. Detect currency from receipt text
-4. Validate financial totals (grand total, subtotal, tax, line items)
-5. Identify and fix any label errors
-6. Submit your harmonization decisions
+## Tools (use sparingly and purposefully)
+- `get_line_id_text_list`: Lines with IDs, top-to-bottom (no geometry).
+- `run_table_subagent`: For a chosen financial/table block (line items/totals/tax), infer columns. Use its summary/columns for downstream financial labels.
+- `run_label_subagent`: Focused pass for a single CORE_LABEL (optionally scoped to the table range).
+- `submit_harmonization` (REQUIRED): Submit decisions once.
 
-## Available Tools
+## Strategy (tight)
+1. Call `get_line_id_text_list` to see the lines.
+2. Identify the financial/table block; choose the tightest contiguous line-id range that covers line items/totals/tax.
+3. **Immediately call `run_table_subagent`** on that range (before any per-label calls). Read its summary/columns and use them for all financial labels (TOTAL, SUBTOTAL, TAX, LINE_TOTAL, UNIT_PRICE, QUANTITY, PRODUCT_NAME, PAYMENT_METHOD, etc.).
+4. For each CORE_LABEL, call `run_label_subagent` (scope to the same table range when relevant) to stay focused.
+5. End with a single `submit_harmonization`, aggregating all updates.
 
-### Core Tools
-- `get_line_id_text_list`: List lines with IDs top-to-bottom (no geometry)
-- `run_table_subagent`: Given a start/end line_id, infer columns for that block and store results
-- `run_label_subagent`: Scoped pass for a single CORE_LABEL (optionally limited to the table range)
-- `submit_harmonization` (REQUIRED): Submit your harmonization decisions
+## Rules
+- Use receipt text as source of truth; avoid external info.
+- Be concise; avoid redundant tool calls.
+- If unsure, prefer not to change labels; confidence < 0.5 means hold back.
 
-## Strategy
-
-1. **Start** with `get_line_id_text_list` to list lines top-to-bottom with line_ids and text (no geometry).
-2. **Table block**: If there is a line-item/total block, call `run_table_subagent` with the start/end line_ids to infer columns; keep this in state for downstream steps. Geometry (centroid/left/right) stays within the sub-agent.
-3. **Per-label focused passes**: For each CORE_LABEL of interest (e.g., TOTAL, SUBTOTAL, TAX, LINE_TOTAL, UNIT_PRICE, QUANTITY, PRODUCT_NAME, PAYMENT_METHOD, DATE, TIME, ADDRESS_LINE, PHONE_NUMBER), call `run_label_subagent` (optionally scoped to the table range) to get a focused summary; then propose fixes and aggregate.
-4. **Submit decisions** with `submit_harmonization` once, aggregating the per-label updates.
-
-## Financial Validation
-
-Use `validate_financial_consistency` to run a sub-agent that:
-- Detects currency from receipt text
-- Validates grand total = subtotal + tax (with tolerance)
-- Validates subtotal = sum of line totals
-- Identifies which labels are incorrect
-- Proposes corrections with reasoning
-
-## Label Validation Rules
-
-- Labels must match what's actually printed on the receipt
-- Use receipt text as source of truth (not external APIs)
-- If a label doesn't match receipt text, it's likely wrong
-- Use similarity search to find similar words with correct labels
-
-## Decision Guidelines
-
-### Confidence Scoring
-- High (0.8-1.0): Clear evidence from receipt text, financial math checks out
-- Medium (0.5-0.8): Some uncertainty but reasonable decision
-- Low (0.0-0.5): Significant uncertainty, may need manual review
-
-### When to Update Labels
-- Label doesn't match receipt text
-- Financial math doesn't add up (and label is likely wrong)
-- Similar words have different labels (inconsistency)
-- Label is missing but should exist
-
-### When NOT to Update
-- Label matches receipt text and financial math checks out
-- Uncertainty is too high (confidence < 0.5)
-- Receipt text is unclear or ambiguous
-
-## Important Rules
-
-1. ALWAYS start with `get_line_id_text_list` to see the receipt lines and IDs.
-2. For table-like financial sections, call `run_table_subagent` with the chosen line-id range to understand columns before labeling totals/line items; geometry is handled inside the sub-agent.
-3. For each label type, prefer `run_label_subagent` (optionally scoped to the table range) to keep context tight.
-4. Use receipt text as source of truth (not external APIs).
-5. ALWAYS end with `submit_harmonization`.
-6. Be thorough but efficient.
-
-Begin by getting the receipt text, then validate financial consistency."""
+Begin by listing the receipt lines, then run the table sub-agent on the financial block, then perform per-label checks, then submit once."""
 
 
 # ==============================================================================
@@ -381,9 +342,14 @@ def create_label_harmonizer_tools(
             sub_llm,
             tools=[analyze_block],
             prompt=(
-                "You are a table structure helper. "
-                "Call the analyze_block tool exactly once with the provided line_id range. "
-                "Return only the tool result."
+                "You are a table structure helper for analyzing financial sections "
+                "of receipts. Your job is to identify column structure and provide "
+                "a clear description for the main agent.\n\n"
+                "Call the analyze_block tool exactly once with the provided "
+                "line_id range. The tool will return column positions, semantic "
+                "hints, and a summary. Return the complete tool result including "
+                "the 'summary' field which describes the column structure in "
+                "natural language for the main agent to understand."
             ),
         )
 
@@ -876,6 +842,14 @@ def create_label_harmonizer_tools(
             "reasoning": reasoning,
         }
 
+        return {
+            "success": True,
+            "updates_applied": len(enriched_updates),
+            "currency": currency,
+            "totals_valid": totals_valid,
+            "confidence": confidence,
+        }
+
     # ========== PRICING TABLE EXTRACTION TOOL ==========
 
     @tool
@@ -908,15 +882,28 @@ def create_label_harmonizer_tools(
         if not lines:
             return {"error": "No lines found"}
 
-        block = [
-            ln
-            for ln in lines
-            if isinstance(ln, dict)
-            and ln.get("line_id") is not None
-            and line_id_start <= ln.get("line_id") <= line_id_end
-        ]
+        block = []
+        for ln in lines:
+            if not isinstance(ln, dict):
+                continue
+            line_id = ln.get("line_id")
+            if line_id is not None and line_id_start <= line_id <= line_id_end:
+                block.append(ln)
         if not block:
             return {"error": "No lines in range"}
+
+        # Get words for semantic analysis
+        words = receipt.get("words", [])
+        block_words = []
+        for w in words:
+            if not isinstance(w, dict):
+                continue
+            word_line_id = w.get("line_id")
+            if (
+                word_line_id is not None
+                and line_id_start <= word_line_id <= line_id_end
+            ):
+                block_words.append(w)
 
         prepared = []
         for ln in block:
@@ -967,9 +954,10 @@ def create_label_harmonizer_tools(
                 current = [xc]
         if current:
             bands.append(current)
+        # Sort columns by x_center (left to right)
+        column_x_centers = sorted([sum(b) / len(b) for b in bands])
         columns = [
-            {"col": i, "x_center": sum(b) / len(b)}
-            for i, b in enumerate(bands)
+            {"col": i, "x_center": xc} for i, xc in enumerate(column_x_centers)
         ]
 
         def assign_col(xc: float) -> int:
@@ -984,10 +972,11 @@ def create_label_harmonizer_tools(
         for p in sorted(
             prepared, key=lambda v: v["cy"], reverse=True
         ):  # higher y = higher on page
+            assigned_col = assign_col(p["cx"])
             lines_with_cols.append(
                 {
                     "line_id": p["line_id"],
-                    "col": assign_col(p["cx"]),
+                    "col": assigned_col,
                     "text": p["text"],
                     "left_x": p["left_x"],
                     "right_x": p["right_x"],
@@ -995,11 +984,120 @@ def create_label_harmonizer_tools(
                 }
             )
 
-        return {
+        # Calculate column spans (left/right bounds)
+        col_bounds = {}
+        for line_data in lines_with_cols:
+            col = line_data["col"]
+            if col not in col_bounds:
+                col_bounds[col] = {
+                    "left": line_data["left_x"],
+                    "right": line_data["right_x"],
+                }
+            else:
+                col_bounds[col]["left"] = min(
+                    col_bounds[col]["left"], line_data["left_x"]
+                )
+                col_bounds[col]["right"] = max(
+                    col_bounds[col]["right"], line_data["right_x"]
+                )
+
+        # Add spans to columns
+        for col_info in columns:
+            col_num = col_info["col"]
+            if col_num in col_bounds:
+                col_info["left_bound"] = col_bounds[col_num]["left"]
+                col_info["right_bound"] = col_bounds[col_num]["right"]
+            else:
+                col_info["left_bound"] = col_info["x_center"]
+                col_info["right_bound"] = col_info["x_center"]
+
+        # Analyze column content for semantic hints
+        def analyze_column_content(col_num: int) -> dict:
+            """Analyze text content in a column to infer its purpose."""
+            col_lines = [l for l in lines_with_cols if l["col"] == col_num]
+            col_texts = [l["text"].strip() for l in col_lines if l["text"]]
+
+            # Get words in this column
+            col_words = []
+            for word in block_words:
+                word_bb = word.get("bounding_box") or {}
+                word_cx = (
+                    word_bb.get("x", 0) + word_bb.get("width", 0) / 2
+                    if word_bb.get("x") is not None
+                    else None
+                )
+                if word_cx is not None:
+                    word_col = assign_col(word_cx)
+                    if word_col == col_num:
+                        col_words.append(word.get("text", ""))
+
+            all_text = " ".join(col_texts + col_words).lower()
+
+            # Detect numeric content
+            numeric_pattern = re.compile(r"[\d.,$€£¥]")
+            has_numbers = bool(numeric_pattern.search(all_text))
+
+            # Detect totals keywords
+            totals_keywords = [
+                "total",
+                "subtotal",
+                "tax",
+                "amount",
+                "due",
+                "balance",
+                "sum",
+            ]
+            has_totals_keywords = any(kw in all_text for kw in totals_keywords)
+
+            # Detect quantity keywords
+            quantity_keywords = ["qty", "quantity", "count", "x", "#"]
+            has_quantity_keywords = any(
+                kw in all_text for kw in quantity_keywords
+            )
+
+            # Detect price keywords
+            price_keywords = ["price", "cost", "each", "unit"]
+            has_price_keywords = any(kw in all_text for kw in price_keywords)
+
+            # Detect product/description keywords
+            product_keywords = ["item", "product", "description", "name"]
+            has_product_keywords = any(
+                kw in all_text for kw in product_keywords
+            )
+
+            hints = []
+            if has_totals_keywords:
+                hints.append("totals")
+            if has_quantity_keywords:
+                hints.append("quantity")
+            if has_price_keywords:
+                hints.append("price")
+            if has_product_keywords:
+                hints.append("product")
+            if has_numbers and not hints:
+                hints.append("numeric")
+
+            return {
+                "content_type": "numeric" if has_numbers else "text",
+                "hints": hints,
+                "sample_text": col_texts[0] if col_texts else "",
+            }
+
+        # Add semantic hints to columns
+        for col_info in columns:
+            semantic = analyze_column_content(col_info["col"])
+            col_info["content_type"] = semantic["content_type"]
+            col_info["hints"] = semantic["hints"]
+            col_info["sample_text"] = semantic["sample_text"]
+
+        result = {
             "columns": columns,
             "lines": lines_with_cols,
+            "line_range": {"start": line_id_start, "end": line_id_end},
             "note": "y=0 is bottom; lines sorted top-to-bottom by decreasing y",
         }
+
+        return result
 
     @tool
     def analyze_line_block_columns(
@@ -1036,15 +1134,41 @@ def create_label_harmonizer_tools(
         except Exception:
             receipt_id = 0
 
+        # Carry prior summaries so the sub-agent can refine/append descriptions
+        prior_summary = state.get("column_analysis_summary")
+
         # Follow the GH example: invoke the sub-agent with messages-only state
         result_msg = subgraph.invoke(
             {
                 "messages": [
                     HumanMessage(
                         content=(
-                            "Call analyze_block exactly once using the provided "
-                            f"line_id_start={line_id_start} and line_id_end={line_id_end}. "
-                            "Return only the tool result."
+                            "Analyze the financial section structure for lines "
+                            f"{line_id_start} to {line_id_end}. "
+                            "Call analyze_block exactly once with these parameters. "
+                            "Return ONLY valid JSON of the form: "
+                            "{"
+                            '"summary": "<1-2 sentences about the table>", '
+                            '"line_range": {"start": <int>, "end": <int>}, '
+                            '"price_column": <int|null>, '
+                            '"rows": ['
+                            '  {"line_id": <int>, "price": "<text>", "price_col": <int>, '
+                            '   "left": "<text to left or empty>", "right": "<text to right or empty>"}'
+                            "], "
+                            '"columns": ['
+                            '  {"col": <int>, "role_hint": "text|price|qty|total|numeric|other", '
+                            '   "x_center": <float>, "sample": "<optional short sample>"}'
+                            "]"
+                            "}. "
+                            "Summary and rows are REQUIRED; do NOT return empty or placeholder text. "
+                            "Keep it concise; no tool logs or extra prose."
+                            + (
+                                " Prior summaries so far: "
+                                f"{prior_summary}. Update or append with any new "
+                                "information for this line range."
+                                if prior_summary
+                                else ""
+                            )
                         )
                     )
                 ]
@@ -1052,19 +1176,88 @@ def create_label_harmonizer_tools(
         )
         col_result = None
         if result_msg and result_msg.get("messages"):
-            for m in result_msg["messages"]:
+            # Prefer the final AI message (LLM-produced structured JSON)
+            for m in reversed(result_msg["messages"]):
                 if isinstance(m, AIMessage) and isinstance(m.content, dict):
                     col_result = m.content
                     break
+            # Fall back to tool messages only if no AI JSON was found
+            if not col_result:
+                for m in result_msg["messages"]:
+                    if isinstance(m, ToolMessage):
+                        try:
+                            if isinstance(m.content, dict):
+                                col_result = m.content
+                                break
+                            if isinstance(m.content, str):
+                                import json
+
+                                col_result = json.loads(m.content)
+                                break
+                        except Exception:
+                            continue
         if not col_result:
-            col_result = {"error": "table sub-agent returned no result"}
+            # Final fallback: call analyze_block directly
+            col_result = _analyze_line_block_columns_impl(
+                line_id_start=line_id_start, line_id_end=line_id_end
+            )
+            if "error" in col_result:
+                col_result = {"error": "table sub-agent returned no result"}
+
+        # Normalize to dict for downstream use
+        if not isinstance(col_result, dict):
+            col_result = {"error": "table sub-agent returned invalid result"}
+        col_dict: dict[str, Any] = cast(dict[str, Any], col_result)
+
+        # Ensure line_range is present
+        if "line_range" not in col_dict:
+            col_dict["line_range"] = {
+                "start": line_id_start,
+                "end": line_id_end,
+            }
+
+        # Ensure summary exists
+        summary = col_dict.get("summary")
+        if not summary:
+            summary = "Summary missing from sub-agent."
+            col_dict["summary"] = summary
+        line_range = col_dict.get("line_range", {})
+
+        # Maintain history of summaries in state
+        history: list[dict] = state.get("column_analysis_history", [])
+
+        def _same_range(entry: dict) -> bool:
+            lr = entry.get("line_range", {}) if isinstance(entry, dict) else {}
+            return (
+                lr.get("start") == line_id_start
+                and lr.get("end") == line_id_end
+            )
+
+        # Replace any existing entry for the same line range
+        history = [h for h in history if not _same_range(h)]
+        history.append({"summary": summary, "line_range": line_range})
+
+        aggregate_summary = "\n".join(
+            f"Lines {h.get('line_range', {}).get('start', '?')}"
+            f"-{h.get('line_range', {}).get('end', '?')}: "
+            f"{h.get('summary', '')}"
+            for h in history
+            if isinstance(h, dict)
+        )
 
         state["table_line_range"] = {
             "line_id_start": line_id_start,
             "line_id_end": line_id_end,
         }
-        state["column_analysis"] = col_result
-        return col_result
+        state["column_analysis"] = col_dict
+        state["column_analysis_history"] = history
+        state["column_analysis_summary"] = aggregate_summary
+
+        # Return payload plus rollups
+        col_dict["history"] = history
+        col_dict["aggregate_summary"] = aggregate_summary
+
+        return col_dict
 
     @tool
     def run_label_subagent(
