@@ -300,12 +300,19 @@ def docker_image_buildspec(
     platform: str,
     lambda_function_name: Optional[str],
     debug_mode: bool,
+    base_image_uri: Optional[Any] = None,  # Can be pulumi.Output or str
 ) -> Dict[str, Any]:
     """Buildspec for CodeBuild Docker image builds."""
     build_args_str = " ".join(
         [f"--build-arg {k}={v}" for k, v in build_args.items()]
     )
     platform_flag = f"--platform {platform}" if platform else ""
+    
+    # Add BASE_IMAGE_URI as a build arg if provided
+    if base_image_uri:
+        # Note: base_image_uri will be resolved by Pulumi before creating the buildspec
+        # and will be available as an environment variable in CodeBuild
+        build_args_str += " --build-arg BASE_IMAGE_URI=$BASE_IMAGE_URI"
 
     return {
         "version": 0.2,

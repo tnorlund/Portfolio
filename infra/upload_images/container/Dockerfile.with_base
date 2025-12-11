@@ -1,0 +1,12 @@
+# syntax=docker/dockerfile:1
+# Multi-stage build for Upload Images Lambda using base image
+
+# Use base image with pre-installed receipt_dynamo, receipt_chroma, and receipt_label packages
+ARG BASE_IMAGE_URI
+FROM ${BASE_IMAGE_URI:-public.ecr.aws/lambda/python:3.12}
+
+# Only copy the Lambda-specific handler code (dependencies already in base)
+COPY infra/upload_images/container/ ${LAMBDA_TASK_ROOT}/
+
+# Set the handler
+CMD ["handler.lambda_handler"]

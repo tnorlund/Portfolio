@@ -1,0 +1,12 @@
+# syntax=docker/dockerfile:1
+# Multi-stage build for Create Labels Lambda using base image
+
+# Use base image with pre-installed receipt_dynamo and receipt_label packages
+ARG BASE_IMAGE_URI
+FROM ${BASE_IMAGE_URI:-public.ecr.aws/lambda/python:3.12}
+
+# Only copy the Lambda-specific handler code (dependencies already in base)
+COPY infra/create_labels_step_functions/lambdas/process_receipt_handler.py ${LAMBDA_TASK_ROOT}/handler.py
+
+# Set the handler
+CMD ["handler.lambda_handler"]
