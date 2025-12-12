@@ -8,6 +8,7 @@ Updates DynamoDB records with suggested labels.
 """
 
 import asyncio
+import io
 import json
 import logging
 import os
@@ -65,7 +66,7 @@ def download_chromadb_snapshot(
     for page in pages:
         for obj in page.get("Contents", []):
             key = obj["Key"]
-            
+
             # Special handling for chroma.sqlite3: place it directly at cache_path root
             if key.endswith("chroma.sqlite3"):
                 local_path = os.path.join(cache_path, "chroma.sqlite3")
@@ -74,7 +75,7 @@ def download_chromadb_snapshot(
                 relative_key = key.lstrip('/')
                 local_path = os.path.join(cache_path, relative_key)
                 os.makedirs(os.path.dirname(local_path), exist_ok=True)
-            
+
             s3.download_file(bucket, key, local_path)
             file_count += 1
 
@@ -108,6 +109,10 @@ async def process_batch(
         suggest_labels_for_receipt,
     )
 
+    # Get configurable limits from environment
+    receipt_delay_seconds = float(os.environ.get("RECEIPT_DELAY_SECONDS", "0.5"))
+    max_llm_calls_per_receipt = int(os.environ.get("MAX_LLM_CALLS_PER_RECEIPT", "10"))
+
     # Initialize metrics
     receipts_processed = 0
     total_suggestions = 0
@@ -128,9 +133,9 @@ async def process_batch(
                 f"({unlabeled_count} unlabeled words)"
             )
 
-            # Add small delay between receipts to avoid rate limits
+            # Add configurable delay between receipts to avoid rate limits
             if i > 1:
-                await asyncio.sleep(0.5)  # 500ms delay between receipts
+                await asyncio.sleep(receipt_delay_seconds)
 
             # Run suggestion agent
             result = await suggest_labels_for_receipt(
@@ -140,7 +145,7 @@ async def process_batch(
                 chroma_client=chroma_client,
                 embed_fn=embed_fn,
                 llm=llm,
-                max_llm_calls=10,  # Limit LLM calls per receipt
+                max_llm_calls=max_llm_calls_per_receipt,
                 dry_run=dry_run,
             )
 
@@ -220,6 +225,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     # Read batch_file from manifest
     if batch_index is None or not manifest_s3_key:
         raise ValueError("batch_index and manifest_s3_key are required")
+    if not batch_bucket:
+        raise ValueError("batch_bucket (or env BATCH_BUCKET) is required")
+    if not chromadb_bucket:
+        raise ValueError("CHROMADB_BUCKET env var is required")
 
     logger.info(
         f"Loading batch {batch_index} from manifest s3://{batch_bucket}/{manifest_s3_key}"
@@ -294,11 +303,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             f"Downloading receipts from s3://{batch_bucket}/{batch_file}"
         )
         response = s3.get_object(Bucket=batch_bucket, Key=batch_file)
-        ndjson_content = response["Body"].read().decode("utf-8")
 
-        # Parse NDJSON
+        # Parse NDJSON (streaming)
         receipts = []
-        for line in ndjson_content.strip().split("\n"):
+        for line in io.TextIOWrapper(response["Body"], encoding="utf-8"):
+            line = line.strip()
             if line:
                 receipts.append(json.loads(line))
 
