@@ -239,3 +239,8 @@ exports/
 
 # Lambda layer update tool backups (contain sensitive state)
 infra/backups/
+
+# PR review tool intermediate files (keep scripts and summaries, ignore raw data)
+.github/pr-reviews/data/*.json
+.github/pr-reviews/reports/*-detailed-review.md
+.github/pr-reviews/reports/*-review-tracking.md

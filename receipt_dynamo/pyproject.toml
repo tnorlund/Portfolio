@@ -43,7 +43,7 @@ test = [
 ]
 dev = [
     "pulumi>=3.0.0",
-    "pulumi-aws>=6.0.0",
+    "pulumi-aws>=7.0.0,<8.0.0",
     "pulumi-command>=0.9.0",
     "black==25.11.0",
     "pylint>=3.0.0,<5.0.0",
@@ -93,6 +93,7 @@ exclude = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["receipt_dynamo"]
+include = ["receipt_dynamo/py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
