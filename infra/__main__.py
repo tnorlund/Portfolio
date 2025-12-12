@@ -1142,6 +1142,13 @@ pulumi.export(
     validate_pending_labels_sf.validate_receipt_lambda_arn,
 )
 
+# Combine Receipts Step Function - deployed to all stacks (dev, prod, etc.)
+# This workflow combines multiple receipts into single receipts based on LLM analysis.
+# Note: NDJSON export to embedding queue is optional. When embed_ndjson_queue_url=None,
+# the NDJSON export step is silently skipped (see combine_receipts_logic.py:406).
+# The workflow still creates embeddings and ChromaDB deltas directly, but does not
+# queue NDJSON files for downstream embedding processing. If production requires
+# NDJSON export to the embedding queue, provide the queue URL here.
 combine_receipts_sf = CombineReceiptsStepFunction(
     f"combine-receipts-{stack}",
     dynamodb_table_name=dynamodb_table.name,
@@ -1153,7 +1160,9 @@ combine_receipts_sf = CombineReceiptsStepFunction(
     # Reuse the embedding batch/artifacts bucket from embedding infrastructure
     artifacts_bucket_name=embedding_infrastructure.batch_bucket.bucket,
     artifacts_bucket_arn=embedding_infrastructure.batch_bucket.arn,
-    embed_ndjson_queue_url=None,  # dev flow does not need the queue
+    # NDJSON export is optional - workflow creates embeddings directly
+    # If downstream embedding queue processing is required, provide queue URL here
+    embed_ndjson_queue_url=None,
     embed_ndjson_queue_arn=None,
 )
 
