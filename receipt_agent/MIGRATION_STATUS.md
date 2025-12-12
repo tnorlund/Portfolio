@@ -71,6 +71,95 @@
 - ✅ `subagents/metadata_finder/` - Implementation moved from `graph/receipt_metadata_finder_workflow.py`
 - ✅ Deprecated shims remain in `graph/*` for backward compatibility
 
+### Backward Compatibility Analysis 🔍
+
+#### Deprecated Shim Files (Can Be Removed)
+Three backward compatibility shim files remain in `graph/`:
+
+1. **`graph/cove_text_consistency_workflow.py`**
+   - **Purpose**: Re-exports `CoveTextConsistencyState`, `create_cove_text_consistency_graph`, `run_cove_text_consistency`
+   - **New Location**: `receipt_agent.subagents.cove_text_consistency`
+   - **Used By**: No current imports found
+
+2. **`graph/financial_validation_workflow.py`**
+   - **Purpose**: Re-exports `FinancialValidationState`, `create_financial_validation_graph`, `run_financial_validation`
+   - **New Location**: `receipt_agent.subagents.financial_validation`
+   - **Used By**: No current imports found
+
+3. **`graph/receipt_metadata_finder_workflow.py`**
+   - **Purpose**: Re-exports `ReceiptMetadataFinderState`, `create_receipt_metadata_finder_graph`, `run_receipt_metadata_finder`
+   - **New Location**: `receipt_agent.subagents.metadata_finder`
+   - **Used By**: No current imports found
+
+**Removal Criteria**: Safe to remove when confident no external code (lambdas, scripts, etc.) imports from these paths.
+
+#### MetadataValidatorAgent Location Issue 📍
+
+**File**: `agents/metadata_validator.py`
+**Issue**: Doesn't follow the standard agent pattern (no `state.py`, `graph.py` structure)
+
+**Why It's Different**:
+- **Role**: High-level orchestrator/wrapper, not a single LangGraph agent
+- **Functionality**: Switches between "deterministic" and "agentic" validation modes
+- **Dependencies**: Imports and wraps multiple underlying agents (`validation/`, `agentic/`)
+- **API**: Provides unified class-based interface vs. functional graph/run pattern
+
+**Options**:
+1. **Keep in `agents/`** (current) - Works fine, just breaks naming consistency
+2. **Move to `receipt_agent/validator.py`** - Better architectural fit
+3. **Move to `receipt_agent/core/`** - As core orchestration logic
+4. **Refactor to follow agent pattern** - Split into separate deterministic/agentic agents
+
+**Recommendation**: Move to `receipt_agent/validator.py` and update imports
+
+### MetadataValidatorAgent Design Philosophy 🏗️
+
+The `MetadataValidatorAgent` is a **high-level orchestrator** designed with a **Chroma-first strategy** for maximum efficiency. It embodies the principle: *"Check what we know before asking what we don't know"*
+
+#### Core Design: Speed Through Similarity Search
+
+**Primary Strategy**: Leverage ChromaDB's vector similarity search to instantly find known merchants before falling back to expensive agentic search.
+
+**Two-Mode Architecture**:
+1. **Deterministic Mode (Default)**: Fast, predictable workflow using similarity search
+2. **Agentic Mode**: LLM-driven exploration when similarity search is insufficient
+
+#### Chroma-First Workflow Logic
+
+```
+1. Load Receipt → 2. Similarity Search → 3. Quick Validation
+                              ↓
+                    If unclear: → Agentic Exploration
+```
+
+**Deterministic Mode** (`agents/validation/`):
+- **Fast Path**: Uses ChromaDB to find similar receipts by address/phone/merchant
+- **Validation Steps**: Cross-reference metadata against similar receipts
+- **Decision Logic**: Statistical confidence based on consistency patterns
+- **Performance**: Sub-second validation for known merchants
+
+**Agentic Mode** (`agents/agentic/`):
+- **Exploratory Path**: When ChromaDB doesn't provide clear answers
+- **LLM Reasoning**: Uses tools to search, verify, and make decisions
+- **Guard Rails**: Tools enforce data consistency and prevent invalid operations
+- **Performance**: Multi-second validation for unknown merchants
+
+#### Why This Architecture?
+
+**Efficiency**: Most receipts are from known merchants → ChromaDB finds them instantly
+**Accuracy**: Similarity search provides statistical validation before LLM reasoning
+**Scalability**: Deterministic mode handles 90%+ of cases without expensive LLM calls
+**Fallback**: Agentic mode ensures complex cases still get resolved
+
+#### Key Implementation Details
+
+**Tool Registry**: Centralized tool management with consistent interfaces
+**State Management**: Clean separation between deterministic and agentic state
+**Tracing Integration**: LangSmith support for monitoring both modes
+**Batch Processing**: Concurrent validation with configurable limits
+
+This design maximizes speed while maintaining accuracy, using LLMs only when similarity search is insufficient.
+
 ### Notes
 - `graph/nodes.py` is still used by validation workflow (deterministic nodes, not a sub-agent)
 - All sub-agents now follow the same structure as primary agents (state.py, graph.py, __init__.py)

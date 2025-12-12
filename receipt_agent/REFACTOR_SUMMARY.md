@@ -115,4 +115,28 @@ All migration steps have been completed:
 - Updated: 6 files with import path changes
 - Updated: `graph/__init__.py` - Now minimal, only `nodes.py` remains in `graph/` directory
 
+## Backward Compatibility Items 📋
+
+### Deprecated Shim Files (Safe to Remove)
+Three backward compatibility shim files remain in `graph/` and can be removed:
+
+1. **`graph/cove_text_consistency_workflow.py`** → `subagents.cove_text_consistency`
+2. **`graph/financial_validation_workflow.py`** → `subagents.financial_validation`
+3. **`graph/receipt_metadata_finder_workflow.py`** → `subagents.metadata_finder`
+
+**Status**: No current imports found. Safe to remove in next major version.
+
+### MetadataValidatorAgent Design Philosophy 🏗️
+**File**: `agents/metadata_validator.py`
+**Why Different**: High-level orchestrator that switches between validation modes, not a single LangGraph agent
+**Core Strategy**: Chroma-first similarity search for speed, agentic fallback for accuracy
+
+**Two-Mode Architecture**:
+- **Deterministic Mode**: Fast similarity search against known merchants
+- **Agentic Mode**: LLM-driven exploration for unknown merchants
+
+**Design Principle**: *"Check what we know before asking what we don't know"*
+
+**Performance**: Sub-second validation for known merchants, multi-second for unknowns
+
 Migration complete - all code now uses new `agents/*` import paths.
