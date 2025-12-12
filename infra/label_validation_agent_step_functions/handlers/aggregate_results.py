@@ -18,10 +18,50 @@ logger.setLevel(logging.INFO)
 s3 = boto3.client("s3")
 
 
+def coerce_int(value, default: int = 0, field_name: str = "unknown") -> int:
+    """
+    Safely coerce a value to integer, handling None, strings, and invalid types.
+    
+    Args:
+        value: The value to coerce
+        default: Default value to return for None or coercion failures
+        field_name: Name of the field for logging purposes
+        
+    Returns:
+        Integer value or default
+    """
+    if value is None:
+        return default
+    
+    if isinstance(value, int):
+        return value
+    
+    if isinstance(value, float):
+        return int(value)  # Floor the float
+    
+    if isinstance(value, str):
+        try:
+            # Try to convert string to float first, then int (handles "123.0")
+            return int(float(value))
+        except (ValueError, TypeError):
+            logger.warning(
+                f"Failed to coerce string value '{value}' to int for field '{field_name}', using default {default}"
+            )
+            return default
+    
+    # For any other type, log warning and return default
+    logger.warning(
+        f"Cannot coerce value of type {type(value).__name__} ('{value}') to int for field '{field_name}', using default {default}"
+    )
+    return default
+
+
 def _load_results_from_s3(batch_bucket: str, execution_id: str) -> List[Dict]:
     """Load all results from S3 for the given execution_id."""
     results: List[Dict] = []
     prefix = f"results/{execution_id}/"
+    failed_keys: List[str] = []
+    total_objects = 0
 
     try:
         paginator = s3.get_paginator("list_objects_v2")
@@ -31,22 +71,45 @@ def _load_results_from_s3(batch_bucket: str, execution_id: str) -> List[Dict]:
             for obj in page.get("Contents", []):
                 key = obj["Key"]
                 if key.endswith(".json"):
+                    total_objects += 1
                     try:
                         response = s3.get_object(Bucket=batch_bucket, Key=key)
                         result = json.loads(response["Body"].read().decode("utf-8"))
                         results.append(result)
                     except Exception as e:
-                        logger.warning(f"Failed to load result from {key}: {e}")
+                        failed_keys.append(key)
+                        logger.exception(f"Failed to load result from {key}: {e}")
 
-        logger.info(f"Loaded {len(results)} results from S3")
+        # Calculate failure rate and log summary
+        failure_count = len(failed_keys)
+        success_count = len(results)
+        failure_rate = failure_count / total_objects if total_objects > 0 else 0.0
+
+        logger.info(
+            f"S3 results summary: {success_count}/{total_objects} objects loaded successfully "
+            f"({failure_count} failures, {failure_rate:.1%} failure rate)"
+        )
+
+        if failed_keys:
+            logger.warning(f"Failed to load {failure_count} objects: {failed_keys}")
+
+        # Raise exception if failure rate exceeds threshold (50%)
+        FAILURE_THRESHOLD = 0.5
+        if failure_rate > FAILURE_THRESHOLD and total_objects > 0:
+            raise RuntimeError(
+                f"S3 failure rate ({failure_rate:.1%}) exceeds threshold ({FAILURE_THRESHOLD:.0%}). "
+                f"Failed objects: {failed_keys}"
+            )
+
+        logger.info(f"Successfully loaded {len(results)} results from S3")
     except Exception as e:
-        logger.error(f"Failed to load results from S3: {e}")
+        logger.exception(f"Failed to load results from S3: {e}")
         raise
 
     return results
 
 
-def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     """
     Aggregate results from all validation runs.
 
@@ -77,7 +140,23 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     execution_id = event.get("execution_id", "unknown")
     process_results: List[Dict] = event.get("process_results", [])
     dry_run = event.get("dry_run", True)
-    batch_bucket = os.environ.get("BATCH_BUCKET", "")
+    
+    # Validate batch bucket configuration with fallback to event
+    batch_bucket = os.environ.get("BATCH_BUCKET")
+    if not batch_bucket:
+        # Try fallback to event parameter
+        batch_bucket = event.get("batch_bucket")
+        if not batch_bucket:
+            logger.error(
+                f"Missing BATCH_BUCKET configuration for execution_id={execution_id}. "
+                "Set BATCH_BUCKET environment variable or provide 'batch_bucket' in event payload."
+            )
+            raise ValueError(
+                f"BATCH_BUCKET environment variable is required for execution_id={execution_id}"
+            )
+        logger.info(f"Using batch_bucket from event: {batch_bucket}")
+    else:
+        logger.info(f"Using batch_bucket from environment: {batch_bucket}")
 
     logger.info(f"Aggregating results for execution {execution_id}")
 
@@ -108,13 +187,13 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             errors.append(result)
             continue
 
-        labels_processed = result.get("labels_processed", 0)
-        valid_count = result.get("valid_count", 0)
-        invalid_count = result.get("invalid_count", 0)
-        needs_review_count = result.get("needs_review_count", 0)
-        updated_count = result.get("updated_count", 0)
-        skipped_count = result.get("skipped_count", 0)
-        failed_count = result.get("failed_count", 0)
+        labels_processed = coerce_int(result.get("labels_processed"), field_name="labels_processed")
+        valid_count = coerce_int(result.get("valid_count"), field_name="valid_count")
+        invalid_count = coerce_int(result.get("invalid_count"), field_name="invalid_count")
+        needs_review_count = coerce_int(result.get("needs_review_count"), field_name="needs_review_count")
+        updated_count = coerce_int(result.get("updated_count"), field_name="updated_count")
+        skipped_count = coerce_int(result.get("skipped_count"), field_name="skipped_count")
+        failed_count = coerce_int(result.get("failed_count"), field_name="failed_count")
 
         total_labels += labels_processed
         total_valid += valid_count
@@ -165,7 +244,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             )
             logger.info(f"Report uploaded to s3://{batch_bucket}/{report_key}")
         except Exception as e:
-            logger.error(f"Failed to upload report: {e}")
+            logger.exception(f"Failed to upload report to s3://{batch_bucket}/{report_key}: {e}")
 
     return {
         "execution_id": execution_id,

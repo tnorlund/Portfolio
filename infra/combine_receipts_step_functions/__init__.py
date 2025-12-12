@@ -1,6 +1,6 @@
 """Combine Receipts Step Function infrastructure."""
 
-from combine_receipts_step_functions.infrastructure import CombineReceiptsStepFunction
+from .infrastructure import CombineReceiptsStepFunction
 
 __all__ = ["CombineReceiptsStepFunction"]
 

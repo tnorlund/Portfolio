@@ -12,7 +12,7 @@ This is the main processing Lambda that:
 
 import logging
 import os
-from typing import Any, Dict, cast
+from typing import Any, Dict, Optional, cast
 
 # Import the shared combination logic
 from combine_receipts_logic import combine_receipts
@@ -28,7 +28,6 @@ REQUIRED_ENV = [
     "CHROMADB_BUCKET",
     "RAW_BUCKET",
     "SITE_BUCKET",
-    "ARTIFACTS_BUCKET",
     "BATCH_BUCKET",
 ]
 
@@ -41,7 +40,7 @@ TABLE_NAME = cast(str, _env["DYNAMODB_TABLE_NAME"])
 CHROMADB_BUCKET = cast(str, _env["CHROMADB_BUCKET"])
 RAW_BUCKET = cast(str, _env["RAW_BUCKET"])
 SITE_BUCKET = cast(str, _env["SITE_BUCKET"])
-ARTIFACTS_BUCKET = cast(str, _env["ARTIFACTS_BUCKET"])
+ARTIFACTS_BUCKET: Optional[str] = os.environ.get("ARTIFACTS_BUCKET")  # Optional for NDJSON export
 BATCH_BUCKET_ENV = cast(str, _env["BATCH_BUCKET"])
 
 

@@ -49,6 +49,14 @@ except ImportError:
     HAS_LANGSMITH = False
     get_langsmith_client = None  # type: ignore
 
+# Configure logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+# Suppress noisy HTTP request logs from httpx/httpcore (used by langchain-ollama)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 
 def flush_langsmith_traces():
     """
@@ -91,13 +99,6 @@ def flush_langsmith_traces():
                     "Failed to flush LangSmith traces: %s", error_str
                 )
 
-
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-
-# Suppress noisy HTTP request logs from httpx/httpcore (used by langchain-ollama)
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 s3 = boto3.client("s3")
 

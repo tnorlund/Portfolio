@@ -89,7 +89,6 @@ class CombineReceiptsStepFunction(ComponentResource):
         site_bucket_name: pulumi.Input[str],
         artifacts_bucket_name: Optional[pulumi.Input[str]] = None,
         artifacts_bucket_arn: Optional[pulumi.Input[str]] = None,
-        embed_ndjson_queue_url: Optional[pulumi.Input[str]] = None,
         embed_ndjson_queue_arn: Optional[pulumi.Input[str]] = None,
         max_concurrency: Optional[int] = None,
         opts: Optional[ResourceOptions] = None,
@@ -404,8 +403,6 @@ class CombineReceiptsStepFunction(ComponentResource):
                 "CHROMADB_BUCKET": chromadb_bucket_name,
                 "RAW_BUCKET": raw_bucket_name,
                 "SITE_BUCKET": site_bucket_name,
-                "ARTIFACTS_BUCKET": artifacts_bucket_name
-                or "",  # Required for NDJSON export - must be provided
                 "DYNAMODB_TABLE_NAME": dynamodb_table_name,
                 "RECEIPT_AGENT_DYNAMO_TABLE_NAME": dynamodb_table_name,
                 "OPENAI_API_KEY": openai_api_key,
@@ -421,6 +418,7 @@ class CombineReceiptsStepFunction(ComponentResource):
                 )
                 or "combine-receipts",
                 "PULUMI_STACK": stack,
+                **({} if not artifacts_bucket_name else {"ARTIFACTS_BUCKET": artifacts_bucket_name}),
             },
         }
 

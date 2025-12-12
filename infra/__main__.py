@@ -1161,8 +1161,7 @@ combine_receipts_sf = CombineReceiptsStepFunction(
     artifacts_bucket_name=embedding_infrastructure.batch_bucket.bucket,
     artifacts_bucket_arn=embedding_infrastructure.batch_bucket.arn,
     # NDJSON export is optional - workflow creates embeddings directly
-    # If downstream embedding queue processing is required, provide queue URL here
-    embed_ndjson_queue_url=None,
+    # embed_ndjson_queue_url parameter was removed as it was unused
     embed_ndjson_queue_arn=None,
 )
 

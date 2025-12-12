@@ -388,9 +388,17 @@ class MetadataFinderProcessor:
                 def _embed_texts(texts):
                     if not texts:
                         return []
-                    from receipt_label.utils import get_client_manager
+                    from receipt_label.utils.client_manager import ClientConfig, ClientManager
 
-                    openai_client = get_client_manager().openai
+                    # Create a ClientManager with the specific API key instead of using environment
+                    config = ClientConfig(
+                        dynamo_table=os.environ.get("DYNAMODB_TABLE_NAME", ""),
+                        openai_api_key=self.openai_api_key,
+                        track_usage=False  # Disable usage tracking for embeddings
+                    )
+                    client_manager = ClientManager(config)
+                    openai_client = client_manager.openai
+                    
                     resp = openai_client.embeddings.create(
                         model="text-embedding-3-small", input=list(texts)
                     )

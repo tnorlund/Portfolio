@@ -555,20 +555,24 @@ async def process_batch(
                 or "timed out" in error_str.lower()
             ):
                 timeout_errors += 1
+                # Re-raise timeout errors for Step Function retry
+                raise
 
-                if rate_limit_errors >= circuit_breaker_threshold:
-                    circuit_breaker_triggered = True
-                    logger.error(
-                        f"Circuit breaker triggered: {rate_limit_errors} consecutive rate limit errors. "
-                        f"Stopping label processing to prevent API spam."
-                    )
-                    # Re-raise as OllamaRateLimitError for Step Function retry
-                    raise OllamaRateLimitError(
-                        f"Circuit breaker triggered: {rate_limit_errors} consecutive rate limit errors. "
-                        f"Stopping Lambda to prevent API spam."
-                    ) from e
+            # Check circuit breaker threshold after incrementing rate_limit_errors
+            if rate_limit_errors >= circuit_breaker_threshold:
+                circuit_breaker_triggered = True
+                logger.error(
+                    f"Circuit breaker triggered: {rate_limit_errors} consecutive rate limit errors. "
+                    f"Stopping label processing to prevent API spam."
+                )
+                # Re-raise as OllamaRateLimitError for Step Function retry
+                raise OllamaRateLimitError(
+                    f"Circuit breaker triggered: {rate_limit_errors} consecutive rate limit errors. "
+                    f"Stopping Lambda to prevent API spam."
+                ) from e
 
-                # Re-raise for Step Function retry
+            # For rate limit errors that don't trigger the circuit breaker
+            if is_rate_limit:
                 raise OllamaRateLimitError(
                     f"Rate limit error: {error_str}"
                 ) from e

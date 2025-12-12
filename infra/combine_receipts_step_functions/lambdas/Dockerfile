@@ -4,15 +4,14 @@
 FROM public.ecr.aws/lambda/python:3.12 AS dependencies
 
 # Install system dependencies for image processing
-# Use microdnf (lightweight, C-based) instead of dnf (Python-based) for smaller image size
-# microdnf is optimized for containers and reduces Lambda cold start time
+# Use dnf package manager (microdnf may not be available in all Lambda base images)
 # Add libpng for Pillow PNG support and libheif for AVIF plugin usage.
-RUN microdnf install -y \
+RUN dnf install -y \
     libjpeg-turbo-devel \
     libpng-devel \
     zlib-devel \
     libheif \
-    && microdnf clean all
+    && dnf clean all
 
 # Ensure Pillow wheel is present before local package installs
 RUN pip install --no-cache-dir Pillow

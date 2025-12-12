@@ -65,7 +65,10 @@ def download_chromadb_snapshot(
     for page in pages:
         for obj in page.get("Contents", []):
             key = obj["Key"]
-            local_path = os.path.join(cache_path, os.path.basename(key))
+            # Preserve the S3 key's relative path structure
+            relative_key = key.lstrip('/')
+            local_path = os.path.join(cache_path, relative_key)
+            os.makedirs(os.path.dirname(local_path), exist_ok=True)
             s3.download_file(bucket, key, local_path)
             file_count += 1
 

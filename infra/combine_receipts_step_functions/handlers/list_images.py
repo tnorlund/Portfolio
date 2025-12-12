@@ -154,72 +154,78 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     execution_id = event["execution_id"]
     batch_bucket = event.get("batch_bucket") or os.environ["BATCH_BUCKET"]
     limit = event.get("limit")
+    llm_analysis_s3_key = event.get("llm_analysis_s3_key")
     table_name = os.environ.get("DYNAMODB_TABLE_NAME")
 
     logger.info(f"Listing images for combination, execution_id={execution_id}")
 
     images = []
 
-    logger.info("Listing receipts and metadatas to find missing merchants")
-    if not table_name:
-        raise ValueError("DYNAMODB_TABLE_NAME required")
+    # If LLM analysis S3 key is provided, use pre-computed analysis
+    if llm_analysis_s3_key:
+        logger.info(f"Loading images from LLM analysis: s3://{batch_bucket}/{llm_analysis_s3_key}")
+        images = get_image_ids_from_llm_analysis(batch_bucket, llm_analysis_s3_key)
+    else:
+        logger.info("Listing receipts and metadatas to find missing merchants")
+        if not table_name:
+            raise ValueError("DYNAMODB_TABLE_NAME required")
 
-    dynamo = DynamoClient(table_name)
+        dynamo = DynamoClient(table_name)
 
-    # Collect all receipts
-    receipts_by_image: Dict[str, set[int]] = {}
-    last_key = None
-    while True:
-        recs, last_key = dynamo.list_receipts(
-            limit=100, last_evaluated_key=last_key
-        )
-        for r in recs:
-            receipts_by_image.setdefault(r.image_id, set()).add(r.receipt_id)
-        if not last_key:
-            break
-
-    # Collect metadata and note which have missing merchant_name
-    meta_missing_merchant: Dict[str, set[int]] = {}
-    meta_seen: Dict[str, set[int]] = {}
-    last_key = None
-    while True:
-        metas, last_key = dynamo.list_receipt_metadatas(
-            limit=100, last_evaluated_key=last_key
-        )
-        for m in metas:
-            meta_seen.setdefault(m.image_id, set()).add(m.receipt_id)
-            if not m.merchant_name or not str(m.merchant_name).strip():
-                meta_missing_merchant.setdefault(m.image_id, set()).add(
-                    m.receipt_id
-                )
-        if not last_key:
-            break
-
-    # Receipts with no metadata
-    no_metadata: Dict[str, set[int]] = {}
-    for img, rids in receipts_by_image.items():
-        missing = rids - meta_seen.get(img, set())
-        if missing:
-            no_metadata.setdefault(img, set()).update(missing)
-
-    # Union of “no metadata” and “metadata missing merchant”
-    target_receipts_by_image: Dict[str, set[int]] = {}
-    for img, rids in no_metadata.items():
-        target_receipts_by_image.setdefault(img, set()).update(rids)
-    for img, rids in meta_missing_merchant.items():
-        target_receipts_by_image.setdefault(img, set()).update(rids)
-
-    # For any image with at least one target receipt, include ALL receipts on that image
-    # (so the LLM can choose the best combination among all).
-    for image_id, target_rids in target_receipts_by_image.items():
-        all_rids = receipts_by_image.get(image_id, set())
-        if len(all_rids) >= 2:
-            images.append(
-                {
-                    "image_id": image_id,
-                    "receipt_ids": sorted(list(all_rids)),
-                }
+        # Collect all receipts
+        receipts_by_image: Dict[str, set[int]] = {}
+        last_key = None
+        while True:
+            recs, last_key = dynamo.list_receipts(
+                limit=100, last_evaluated_key=last_key
             )
+            for r in recs:
+                receipts_by_image.setdefault(r.image_id, set()).add(r.receipt_id)
+            if not last_key:
+                break
+
+        # Collect metadata and note which have missing merchant_name
+        meta_missing_merchant: Dict[str, set[int]] = {}
+        meta_seen: Dict[str, set[int]] = {}
+        last_key = None
+        while True:
+            metas, last_key = dynamo.list_receipt_metadatas(
+                limit=100, last_evaluated_key=last_key
+            )
+            for m in metas:
+                meta_seen.setdefault(m.image_id, set()).add(m.receipt_id)
+                if not m.merchant_name or not str(m.merchant_name).strip():
+                    meta_missing_merchant.setdefault(m.image_id, set()).add(
+                        m.receipt_id
+                    )
+            if not last_key:
+                break
+
+        # Receipts with no metadata
+        no_metadata: Dict[str, set[int]] = {}
+        for img, rids in receipts_by_image.items():
+            missing = rids - meta_seen.get(img, set())
+            if missing:
+                no_metadata.setdefault(img, set()).update(missing)
+
+        # Union of “no metadata” and “metadata missing merchant”
+        target_receipts_by_image: Dict[str, set[int]] = {}
+        for img, rids in no_metadata.items():
+            target_receipts_by_image.setdefault(img, set()).update(rids)
+        for img, rids in meta_missing_merchant.items():
+            target_receipts_by_image.setdefault(img, set()).update(rids)
+
+        # For any image with at least one target receipt, include ALL receipts on that image
+        # (so the LLM can choose the best combination among all).
+        for image_id, target_rids in target_receipts_by_image.items():
+            all_rids = receipts_by_image.get(image_id, set())
+            if len(all_rids) >= 2:
+                images.append(
+                    {
+                        "image_id": image_id,
+                        "receipt_ids": sorted(list(all_rids)),
+                    }
+                )
 
     # Apply limit if specified
     if limit and len(images) > limit:
