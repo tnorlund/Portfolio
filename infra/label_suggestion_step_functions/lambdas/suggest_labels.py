@@ -66,14 +66,16 @@ def download_chromadb_snapshot(
     for page in pages:
         for obj in page.get("Contents", []):
             key = obj["Key"]
+            relative_path = key[len(prefix):]
+            if not relative_path or key.endswith(".snapshot_hash"):
+                continue
 
             # Special handling for chroma.sqlite3: place it directly at cache_path root
             if key.endswith("chroma.sqlite3"):
                 local_path = os.path.join(cache_path, "chroma.sqlite3")
             else:
                 # Preserve the S3 key's relative path structure for other files
-                relative_key = key.lstrip('/')
-                local_path = os.path.join(cache_path, relative_key)
+                local_path = os.path.join(cache_path, relative_path)
                 os.makedirs(os.path.dirname(local_path), exist_ok=True)
 
             s3.download_file(bucket, key, local_path)

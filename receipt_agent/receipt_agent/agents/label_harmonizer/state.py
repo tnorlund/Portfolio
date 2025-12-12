@@ -5,7 +5,7 @@ State definition for the Label Harmonizer agent.
 from typing import Annotated, Any, Optional
 
 from langgraph.graph.message import add_messages
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class LabelHarmonizerAgentState(BaseModel):
@@ -48,7 +48,7 @@ class LabelHarmonizerAgentState(BaseModel):
         default=None, description="Final harmonization result"
     )
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
 
 

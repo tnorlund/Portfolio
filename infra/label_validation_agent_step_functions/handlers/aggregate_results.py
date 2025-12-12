@@ -21,24 +21,31 @@ s3 = boto3.client("s3")
 def coerce_int(value, default: int = 0, field_name: str = "unknown") -> int:
     """
     Safely coerce a value to integer, handling None, strings, and invalid types.
-    
+
     Args:
         value: The value to coerce
         default: Default value to return for None or coercion failures
         field_name: Name of the field for logging purposes
-        
+
     Returns:
         Integer value or default
     """
     if value is None:
         return default
-    
+
+    # Check bool BEFORE int (bool is subclass of int in Python)
+    if isinstance(value, bool):
+        logger.warning(
+            f"Boolean value '{value}' provided for integer field '{field_name}', using default {default}"
+        )
+        return default
+
     if isinstance(value, int):
         return value
-    
+
     if isinstance(value, float):
         return int(value)  # Floor the float
-    
+
     if isinstance(value, str):
         try:
             # Try to convert string to float first, then int (handles "123.0")
@@ -48,7 +55,7 @@ def coerce_int(value, default: int = 0, field_name: str = "unknown") -> int:
                 f"Failed to coerce string value '{value}' to int for field '{field_name}', using default {default}"
             )
             return default
-    
+
     # For any other type, log warning and return default
     logger.warning(
         f"Cannot coerce value of type {type(value).__name__} ('{value}') to int for field '{field_name}', using default {default}"
@@ -90,8 +97,13 @@ def _load_results_from_s3(batch_bucket: str, execution_id: str) -> List[Dict]:
             f"({failure_count} failures, {failure_rate:.1%} failure rate)"
         )
 
+        # Log sample of failed keys instead of full list to prevent unbounded log growth
         if failed_keys:
-            logger.warning(f"Failed to load {failure_count} objects: {failed_keys}")
+            sample_size = min(10, len(failed_keys))
+            logger.warning(
+                f"Failed to load {failure_count} objects. Sample: {failed_keys[:sample_size]}"
+                + (f" ... and {len(failed_keys) - sample_size} more" if len(failed_keys) > sample_size else "")
+            )
 
         # Raise exception if failure rate exceeds threshold (50%)
         FAILURE_THRESHOLD = 0.5
@@ -140,7 +152,7 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     execution_id = event.get("execution_id", "unknown")
     process_results: List[Dict] = event.get("process_results", [])
     dry_run = event.get("dry_run", True)
-    
+
     # Validate batch bucket configuration with fallback to event
     batch_bucket = os.environ.get("BATCH_BUCKET")
     if not batch_bucket:

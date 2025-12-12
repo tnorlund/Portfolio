@@ -40,7 +40,9 @@ TABLE_NAME = cast(str, _env["DYNAMODB_TABLE_NAME"])
 CHROMADB_BUCKET = cast(str, _env["CHROMADB_BUCKET"])
 RAW_BUCKET = cast(str, _env["RAW_BUCKET"])
 SITE_BUCKET = cast(str, _env["SITE_BUCKET"])
-ARTIFACTS_BUCKET: Optional[str] = os.environ.get("ARTIFACTS_BUCKET")  # Optional for NDJSON export
+ARTIFACTS_BUCKET: Optional[str] = os.environ.get(
+    "ARTIFACTS_BUCKET"
+)  # Optional for NDJSON export
 BATCH_BUCKET_ENV = cast(str, _env["BATCH_BUCKET"])
 
 
@@ -128,11 +130,22 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
 
         # Safety check: Fail if more than 2 receipts selected (should only be pairs)
         if len(chosen_receipts) > 2:
+            error_msg = (
+                f"Safety check failed: Selected {len(chosen_receipts)} receipt IDs (expected 2): "
+                f"{chosen_receipts}. Rejecting to prevent unexpected deletions."
+            )
+            logger.error(
+                "Image %s: %s (original_receipt_ids=%s, llm_select=%s)",
+                image_id,
+                error_msg,
+                receipt_ids,
+                llm_select,
+            )
             return {
                 "image_id": image_id,
                 "original_receipt_ids": receipt_ids,
                 "status": "failed",
-                "error": f"Selected {len(chosen_receipts)} receipt IDs (expected 2): {chosen_receipts}. Rejecting to prevent unexpected deletions.",
+                "error": error_msg,
             }
 
         # Use the shared combination logic
