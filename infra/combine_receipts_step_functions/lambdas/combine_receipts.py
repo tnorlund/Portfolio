@@ -126,14 +126,14 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
                 "candidates": receipt_ids,
             }
 
-            # Fail if LLM selected more than 2 receipts (should only be pairs)
-            if len(chosen_receipts) > 2:
-                return {
-                    "image_id": image_id,
-                    "original_receipt_ids": receipt_ids,
-                    "status": "failed",
-                    "error": f"LLM selector returned {len(chosen_receipts)} receipt IDs (expected 2): {chosen_receipts}. Rejecting to prevent unexpected deletions.",
-                }
+        # Safety check: Fail if more than 2 receipts selected (should only be pairs)
+        if len(chosen_receipts) > 2:
+            return {
+                "image_id": image_id,
+                "original_receipt_ids": receipt_ids,
+                "status": "failed",
+                "error": f"Selected {len(chosen_receipts)} receipt IDs (expected 2): {chosen_receipts}. Rejecting to prevent unexpected deletions.",
+            }
 
         # Use the shared combination logic
         # Note: Deletion of original receipts happens automatically when dry_run=False
