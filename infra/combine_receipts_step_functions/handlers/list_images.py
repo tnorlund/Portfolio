@@ -212,7 +212,7 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
                 )
 
     # Apply limit if specified
-    if limit and len(images) > limit:
+    if limit is not None and len(images) > limit:
         images = images[:limit]
 
     logger.info("Found %d images to process", len(images))
