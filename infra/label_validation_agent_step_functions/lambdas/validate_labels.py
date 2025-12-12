@@ -23,6 +23,10 @@ from receipt_dynamo.constants import ValidationStatus
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+# Suppress noisy HTTP request logs
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 s3 = boto3.client("s3")
 
 
@@ -62,16 +66,6 @@ def flush_langsmith_traces():
             logger.warning(f"Failed to flush LangSmith traces: {e}")
 
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-
-# Suppress noisy HTTP request logs
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("httpcore").setLevel(logging.WARNING)
-
-s3 = boto3.client("s3")
-
-
 def download_chromadb_snapshot(
     bucket: str, collection: str, cache_path: str
 ) -> str:
@@ -97,7 +91,7 @@ def download_chromadb_snapshot(
         timestamp = response["Body"].read().decode().strip()
         logger.info(f"Latest snapshot timestamp: {timestamp}")
     except Exception as e:
-        logger.error(f"Failed to get pointer: {e}")
+        logger.exception(f"Failed to get pointer: {e}")
         raise
 
     # Download snapshot files
@@ -158,7 +152,7 @@ def _save_state_to_s3(
         logger.info(f"State saved to s3://{batch_bucket}/{state_key}")
         return state_key
     except Exception as e:
-        logger.error(f"Failed to save state to S3: {e}")
+        logger.exception(f"Failed to save state to S3: {e}")
         raise
 
 
@@ -200,8 +194,6 @@ def _delete_state_from_s3(
 async def process_batch(
     labels: List[Dict[str, Any]],
     dynamo_client: Any,
-    chroma_client: Any,
-    embed_fn: Any,
     graph: Any,
     state_holder: Dict[str, Any],
     dry_run: bool = True,
@@ -216,8 +208,6 @@ async def process_batch(
     Args:
         labels: List of label dictionaries
         dynamo_client: DynamoDB client
-        chroma_client: ChromaDB client
-        embed_fn: Embedding function
         graph: Compiled LangGraph workflow
         state_holder: State holder for the graph
         dry_run: If True, don't update DynamoDB
@@ -249,7 +239,6 @@ async def process_batch(
     llm_calls_successful = 0
     llm_calls_failed = 0
     server_errors = 0  # 5xx errors
-    retry_attempts = 0
     timeout_errors = 0
 
     # Circuit breaker: stop processing if we hit too many rate limits
@@ -352,7 +341,6 @@ async def process_batch(
             except Exception as e:
                 # Track failed LLM call (at least 1 call was attempted)
                 llm_calls_total += 1
-                llm_calls_failed += 1
                 error_str = str(e)
 
                 # Track error types
@@ -508,7 +496,7 @@ async def process_batch(
                             "State saved to S3 for circuit breaker recovery"
                         )
                     except Exception as save_error:
-                        logger.error(
+                        logger.exception(
                             f"Failed to save state before circuit breaker: {save_error}"
                         )
 
@@ -618,7 +606,7 @@ async def process_batch(
             "llm_calls_failed": llm_calls_failed,
             "rate_limit_errors": rate_limit_errors,
             "server_errors": server_errors,
-            "retry_attempts": 0,  # Step Function handles retries, not Lambda
+            # Step Function handles retries, not Lambda
             "circuit_breaker_triggers": 1 if circuit_breaker_triggered else 0,
             "timeout_errors": timeout_errors,
         },
@@ -753,8 +741,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             process_batch(
                 labels=labels,
                 dynamo_client=dynamo,
-                chroma_client=chroma,
-                embed_fn=embed_fn,
                 graph=graph,
                 state_holder=state_holder,
                 dry_run=dry_run,

@@ -137,7 +137,7 @@ def get_image_ids_from_llm_analysis(
     return images
 
 
-def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     """
     List images/receipts that need combination because they lack merchant metadata.
 
@@ -217,7 +217,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # For any image with at least one target receipt, include ALL receipts on that image
         # (so the LLM can choose the best combination among all).
-        for image_id, target_rids in target_receipts_by_image.items():
+        for image_id, _target_rids in target_receipts_by_image.items():
             all_rids = receipts_by_image.get(image_id, set())
             if len(all_rids) >= 2:
                 images.append(

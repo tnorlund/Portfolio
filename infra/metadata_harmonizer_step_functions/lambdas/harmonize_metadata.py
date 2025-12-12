@@ -200,8 +200,8 @@ async def process_place_id_batch(
                     sub_batch_idx = int(parts[1])
 
                     # Get the full group for this place_id
-                    if base_place_id in harmonizer._place_id_groups:
-                        full_group = harmonizer._place_id_groups[base_place_id]
+                    full_group = harmonizer.get_group(base_place_id)
+                    if full_group is not None:
                         all_receipts = full_group.receipts
 
                         # Sort receipts deterministically by (image_id, receipt_id)
@@ -273,18 +273,18 @@ async def process_place_id_batch(
                         f"Invalid sub-batch format: {place_id_input} (expected 'place_id:idx')"
                     )
                     # Fall through to regular processing
-                    if place_id_input in harmonizer._place_id_groups:
-                        group = harmonizer._place_id_groups[place_id_input]
+                    group = harmonizer.get_group(place_id_input)
+                    if group is not None:
                         groups_to_process.append(group)
             else:
                 # Invalid format, try as regular place_id
-                if place_id_input in harmonizer._place_id_groups:
-                    group = harmonizer._place_id_groups[place_id_input]
+                group = harmonizer.get_group(place_id_input)
+                if group is not None:
                     groups_to_process.append(group)
         else:
             # Regular place_id (not a sub-batch)
-            if place_id_input in harmonizer._place_id_groups:
-                group = harmonizer._place_id_groups[place_id_input]
+            group = harmonizer.get_group(place_id_input)
+            if group is not None:
                 groups_to_process.append(group)
 
     if not groups_to_process:
@@ -406,7 +406,6 @@ async def process_place_id_batch(
             logger.error(f"Error processing place_id {group.place_id}: {e}")
 
             # Track failed LLM call
-            llm_calls_total += 1
             llm_calls_failed += 1
 
             # Track error types (matching pattern from label-validation-agent)
@@ -770,17 +769,21 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
 
     # Process batch
     try:
-        result = asyncio.run(
-            process_place_id_batch(
-                place_ids=place_ids,
-                dynamo_client=dynamo_client,
-                places_client=places_client,
-                dry_run=dry_run,
-                execution_id=execution_id,
-                batch_bucket=batch_bucket,
-                max_receipts_per_batch=max_receipts_per_batch,
-            )
+        coro = process_place_id_batch(
+            place_ids=place_ids,
+            dynamo_client=dynamo_client,
+            places_client=places_client,
+            dry_run=dry_run,
+            execution_id=execution_id,
+            batch_bucket=batch_bucket,
+            max_receipts_per_batch=max_receipts_per_batch,
         )
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            result = asyncio.run(coro)
+        else:
+            result = asyncio.get_event_loop().run_until_complete(coro)
 
         processing_time = time.time() - start_time
 

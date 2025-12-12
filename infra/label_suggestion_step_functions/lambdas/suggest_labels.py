@@ -51,7 +51,7 @@ def download_chromadb_snapshot(
         timestamp = response["Body"].read().decode().strip()
         logger.info(f"Latest snapshot timestamp: {timestamp}")
     except Exception as e:
-        logger.error(f"Failed to get pointer: {e}")
+        logger.exception(f"Failed to get pointer: {e}")
         raise
 
     # Download snapshot files
@@ -65,10 +65,16 @@ def download_chromadb_snapshot(
     for page in pages:
         for obj in page.get("Contents", []):
             key = obj["Key"]
-            # Preserve the S3 key's relative path structure
-            relative_key = key.lstrip('/')
-            local_path = os.path.join(cache_path, relative_key)
-            os.makedirs(os.path.dirname(local_path), exist_ok=True)
+            
+            # Special handling for chroma.sqlite3: place it directly at cache_path root
+            if key.endswith("chroma.sqlite3"):
+                local_path = os.path.join(cache_path, "chroma.sqlite3")
+            else:
+                # Preserve the S3 key's relative path structure for other files
+                relative_key = key.lstrip('/')
+                local_path = os.path.join(cache_path, relative_key)
+                os.makedirs(os.path.dirname(local_path), exist_ok=True)
+            
             s3.download_file(bucket, key, local_path)
             file_count += 1
 
@@ -83,8 +89,6 @@ async def process_batch(
     embed_fn: Any,
     llm: Any,
     dry_run: bool = True,
-    batch_bucket: str = "",
-    execution_id: str = "unknown",
 ) -> Dict[str, Any]:
     """
     Process a batch of receipts using the Label Suggestion Agent.
@@ -158,7 +162,7 @@ async def process_batch(
             )
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Error processing receipt {receipt_data.get('image_id')}#{receipt_data.get('receipt_id')}: {e}"
             )
             errors.append(
@@ -309,8 +313,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 embed_fn=embed_fn,
                 llm=llm,
                 dry_run=dry_run,
-                batch_bucket=batch_bucket,
-                execution_id=execution_id,
             )
         )
 

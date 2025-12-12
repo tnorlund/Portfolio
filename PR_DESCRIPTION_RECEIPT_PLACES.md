@@ -83,11 +83,11 @@ This PR fixes all mypy type errors in the `receipt_places` package by adding pro
 
 ## 🔄 Type of Change
 
-- [x] 🔧 Refactoring (no functional changes)
 - [ ] 🐛 Bug fix (non-breaking change which fixes an issue)
 - [ ] ✨ New feature (non-breaking change which adds functionality)
 - [ ] 💥 Breaking change (fix or feature that would cause existing functionality to not work as expected)
 - [ ] 📚 Documentation update
+- [x] 🔧 Refactoring (no functional changes)
 - [ ] ⚡ Performance improvement
 - [ ] 🧪 Test changes
 
