@@ -55,6 +55,7 @@ Repository = "https://github.com/tnorlund/Portfolio"
 
 [tool.hatch.build.targets.wheel]
 packages = ["receipt_places"]
+include = ["receipt_places/py.typed"]
 
 [tool.ruff]
 target-version = "py311"

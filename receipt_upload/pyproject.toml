@@ -78,6 +78,7 @@ exclude = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["receipt_upload"]
+include = ["receipt_upload/py.typed"]
 
 [tool.black]
 line-length = 79

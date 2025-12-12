@@ -89,6 +89,7 @@ exclude = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["receipt_chroma"]
+include = ["receipt_chroma/py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

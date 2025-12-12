@@ -364,6 +364,20 @@ if [ "$CONTEXT_PATH" = "." ]; then
           --exclude='__pycache__' \
           --exclude='*.pyc' \
           --exclude='.git' \
+          --exclude='.mypy_cache' \
+          --exclude='.mypy_cache/' \
+          --exclude='**/.mypy_cache' \
+          --exclude='**/.mypy_cache/' \
+          --exclude='.pytest_cache' \
+          --exclude='.pytest_cache/' \
+          --exclude='**/.pytest_cache' \
+          --exclude='**/.pytest_cache/' \
+          --exclude='.venv' \
+          --exclude='.venv/' \
+          --exclude='venv' \
+          --exclude='venv/' \
+          --exclude='*.egg-info' \
+          --exclude='**/*.egg-info' \
           "$SOURCE_PATH/" "$TMP/context/$SOURCE_PATH/"
       fi
     done

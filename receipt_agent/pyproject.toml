@@ -1,0 +1,206 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "receipt_agent"
+version = "0.2.0"
+description = "Agentic validation for receipt metadata using LangGraph and ChromaDB"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.12"
+authors = [
+    { name = "Tyler Norlund" }
+]
+keywords = [
+    "receipt",
+    "validation",
+    "agent",
+    "langgraph",
+    "chromadb",
+    "langsmith",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    # Internal packages (transitive deps: boto3, requests, pydantic*, tenacity, structlog, chromadb, openai)
+    "receipt-dynamo",              # DynamoDB client for receipts
+    "receipt-chroma",              # ChromaDB client (brings chromadb, openai)
+    "receipt-places",              # Google Places API (brings pydantic*, tenacity, structlog)
+    # LangGraph/LangChain for agent orchestration
+    "langgraph>=0.2.0",
+    "langchain-core>=0.3.0",
+    "langchain-ollama>=0.2.0",
+    "langsmith>=0.1.0",
+    # HTTP client for async operations
+    "httpx>=0.27.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.0.0",
+    "pytest-mock>=3.14.0",
+    "pytest-timeout>=2.1.0",
+    "moto>=5.1.0",
+]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.5.0",
+    "mypy>=1.10.0",
+    "pre-commit>=3.7.0",
+    "boto3-stubs[dynamodb,s3]>=1.34.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/tnorlund/Portfolio"
+Documentation = "https://github.com/tnorlund/Portfolio/tree/main/receipt_agent"
+Repository = "https://github.com/tnorlund/Portfolio"
+
+[tool.hatch.build]
+exclude = [
+  "tests/",
+  "test/",
+  "**/*.md",
+  "**/*.txt",
+  "**/*.json",
+  "**/*.yaml",
+  "**/*.yml",
+  "**/*.ini",
+  "**/*.cfg",
+  "**/*.sh",
+  "**/conftest.py",
+  "**/pytest.ini",
+  "fix_*.py",
+  "migrate_*.py",
+  "analyze_*.py",
+  "refactor_*.py",
+  "update_*.py",
+  "standardize_*.py",
+  "remove_*.py",
+  "add_*.py",
+  "test_*.py",
+  "example_*.py",
+  "run_tests.py",
+  "final_*.py",
+  "**/__pycache__/",
+  "**/*.pyc",
+  "**/*.pyo",
+  "**/*.pyd",
+  ".coverage",
+  ".pytest_cache/",
+  "pylint_*.json",
+  "missing_*.json",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["receipt_agent"]
+include = ["receipt_agent/py.typed"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 79
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "ARG",    # flake8-unused-arguments
+    "SIM",    # flake8-simplify
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # function call in default argument
+    "B904",   # raise without from inside except
+]
+
+[tool.ruff.isort]
+known-first-party = ["receipt_agent", "receipt_dynamo", "receipt_chroma", "receipt_places"]
+
+[tool.black]
+line-length = 79
+target-version = ["py312"]
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 79
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+plugins = ["pydantic.mypy"]
+
+[tool.pylint.format]
+max-line-length = 79
+
+[tool.pylint.messages_control]
+disable = [
+    "too-few-public-methods",
+    "too-many-arguments",
+    "too-many-locals",
+    "too-many-instance-attributes",
+    "too-many-branches",
+    "missing-module-docstring",
+    "missing-class-docstring",
+    "missing-function-docstring",
+]
+
+[tool.pylint.basic]
+good-names = ["i", "j", "k", "ex", "Run", "_", "id", "pk", "sk"]
+
+[tool.pylint.design]
+max-args = 10
+max-locals = 20
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --tb=short"
+markers = [
+    "unit: mark test as a unit test",
+    "integration: mark test as an integration test",
+    "end_to_end: mark test as an end-to-end test that requires AWS credentials",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::ResourceWarning",
+    "ignore:.*urllib3.*:DeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["receipt_agent"]
+branch = true
+omit = ["tests/*"]
+parallel = true
+concurrency = ["multiprocessing"]
+data_file = ".coverage"
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "def __repr__",
+    "if __name__ == .__main__.:",
+    "pass",
+    "raise ImportError",
+]
+

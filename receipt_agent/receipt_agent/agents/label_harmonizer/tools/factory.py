@@ -1,0 +1,1085 @@
+"""
+Tool factory for the Label Harmonizer agent.
+
+Creates all tools needed for the label harmonizer workflow.
+"""
+
+import asyncio
+import logging
+import re
+from typing import TYPE_CHECKING, Any, Callable, Optional, TypedDict, cast
+
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.tools import tool
+from langgraph.prebuilt import create_react_agent
+
+from receipt_agent.agents.label_harmonizer.tools.helpers import (
+    extract_pricing_table_from_words,
+    label_to_dict,
+)
+from receipt_agent.config.settings import Settings, get_settings
+from receipt_agent.utils.agent_common import create_ollama_llm
+
+if TYPE_CHECKING:
+    from receipt_dynamo.data.dynamo_client import DynamoClient
+
+logger = logging.getLogger(__name__)
+
+
+class LabelHarmonizerStateDict(TypedDict):
+    """Type definition for the state dictionary used in label harmonizer tools."""
+
+    receipt: dict[str, Any]
+    result: Optional[dict[str, Any]]
+    chroma_client: Optional[Any]
+    embed_fn: Optional[Callable[[list[str]], list[list[float]]]]
+    dynamo_client: "DynamoClient"
+    settings: Settings
+    table_subagent_graph: Any
+    column_analysis: Any
+    column_analysis_summary: Optional[str]
+    column_analysis_history: list[dict]
+
+
+def create_label_harmonizer_tools(
+    dynamo_client: "DynamoClient",
+    chroma_client: Optional[Any] = None,
+    embed_fn: Optional[Callable[[list[str]], list[list[float]]]] = None,
+    receipt_data: Optional[dict[str, Any]] = None,
+    settings: Optional[Settings] = None,
+) -> tuple[list[Any], LabelHarmonizerStateDict]:
+    """
+    Create tools for the label harmonizer agent.
+
+    Args:
+        dynamo_client: DynamoDB client
+        chroma_client: ChromaDB client for similarity search
+        embed_fn: Embedding function
+        receipt_data: Dict to hold current receipt context
+        settings: Settings for the agent
+
+    Returns:
+        (tools, state_holder)
+    """
+    if receipt_data is None:
+        receipt_data = {}
+    if settings is None:
+        settings = get_settings()
+
+    state: LabelHarmonizerStateDict = {
+        "receipt": receipt_data,
+        "result": None,
+        "chroma_client": chroma_client,
+        "embed_fn": embed_fn,
+        "dynamo_client": dynamo_client,
+        "settings": settings,
+    }
+
+    # Pre-build a simple table sub-agent graph (LLM + single analyze_block tool)
+    def _build_table_subagent_graph() -> Any:
+        @tool
+        def analyze_block(line_id_start: int, line_id_end: int) -> dict:
+            """Infer columns for the given line_id range using stored line geometry."""
+            return _analyze_line_block_columns_impl(
+                line_id_start=line_id_start,
+                line_id_end=line_id_end,
+            )
+
+        sub_llm = create_ollama_llm(settings)
+        # Mirror the GH multi-agent example: wrap the sub-agent with create_react_agent
+        return create_react_agent(
+            sub_llm,
+            tools=[analyze_block],
+            prompt=(
+                "You are a table structure helper for analyzing financial sections "
+                "of receipts. Your job is to identify column structure and provide "
+                "a clear description for the main agent.\n\n"
+                "Call the analyze_block tool exactly once with the provided "
+                "line_id range. The tool will return column positions, semantic "
+                "hints, and a summary. Return the complete tool result including "
+                "the 'summary' field which describes the column structure in "
+                "natural language for the main agent to understand."
+            ),
+        )
+
+    state["table_subagent_graph"] = _build_table_subagent_graph()
+
+    # ========== RECEIPT DATA TOOLS ==========
+
+    @tool
+    def get_receipt_text() -> dict:
+        """
+        Get the full receipt text formatted for display.
+
+        Returns:
+        - receipt_text: Formatted receipt text (receipt-space grouping)
+        - line_count: Number of lines
+        - word_count: Number of words
+
+        Use this first to see the full receipt.
+        """
+        receipt = state.get("receipt")
+        if not receipt or not isinstance(receipt, dict):
+            logger.info("LH3 tool get_receipt_text: no receipt in state")
+            return {"error": "No receipt data loaded"}
+
+        lines = receipt.get("lines", [])
+
+        if not lines:
+            logger.info("LH3 tool get_receipt_text: receipt has no lines")
+            return {"error": "No lines found"}
+
+        # Format receipt text; fall back to simple join if fields are missing
+        receipt_text = ""
+        try:
+            from receipt_dynamo.entities import ReceiptLine
+
+            receipt_lines = [
+                ReceiptLine(**line) if isinstance(line, dict) else line
+                for line in lines
+            ]
+
+            # Sort top-to-bottom (y desc) and merge visually contiguous lines.
+            sorted_lines = sorted(
+                receipt_lines,
+                key=lambda line: line.calculate_centroid()[1],
+                reverse=True,
+            )
+            merged_rows: list[dict] = []
+            for ln in sorted_lines:
+                centroid_y = ln.calculate_centroid()[1]
+                if merged_rows:
+                    prev_ln = merged_rows[-1]["last_line"]
+                    if (
+                        prev_ln.bottom_left["y"]
+                        < centroid_y
+                        < prev_ln.top_left["y"]
+                    ):
+                        merged_rows[-1]["lines"].append(ln)
+                        merged_rows[-1]["text_parts"].append(ln.text or "")
+                        merged_rows[-1]["last_line"] = ln
+                        continue
+                merged_rows.append(
+                    {
+                        "lines": [ln],
+                        "text_parts": [ln.text or ""],
+                        "last_line": ln,
+                    }
+                )
+
+            formatted_rows = []
+            for row in merged_rows:
+                ids = [l.line_id for l in row["lines"]]
+                id_label = (
+                    f"{min(ids)}-{max(ids)}"
+                    if len(set(ids)) > 1
+                    else str(ids[0])
+                )
+                row_text = " ".join(
+                    [t for t in row["text_parts"] if t]
+                ).strip()
+                formatted_rows.append(f"{id_label}: {row_text}")
+
+            receipt_text = "\n".join(formatted_rows)
+        except Exception as e:
+            logger.info(
+                "LH3 tool get_receipt_text: fallback formatting: %s", e
+            )
+            receipt_text = "\n".join(
+                f"{l.get('line_id', '')}: {l.get('text', '')}"
+                for l in lines
+                if l
+            )
+
+        if not (receipt_text or "").strip():
+            logger.info(
+                "LH3 tool get_receipt_text: empty receipt_text after formatting"
+            )
+            return {"error": "No receipt text available"}
+
+        return {
+            "receipt_text": receipt_text,
+            "line_count": len(lines),
+            "word_count": len(receipt.get("words", [])),
+        }
+
+    @tool
+    def get_receipt_words() -> dict:
+        """
+        Get all words on the receipt with their current labels.
+
+        Returns:
+        - words: List of words with text, line_id, word_id, and current label
+        """
+        receipt = state.get("receipt")
+        if not receipt or not isinstance(receipt, dict):
+            logger.info("LH3 tool get_receipt_words: no receipt in state")
+            return {"error": "No receipt data loaded"}
+
+        words = receipt.get("words", [])
+        if not words:
+            logger.info("LH3 tool get_receipt_words: receipt has no words")
+            return {"error": "No words found"}
+        labels = receipt.get("labels", [])
+
+        # If labels are empty but words exist, optionally try a one-time reload of labels
+        if not labels:
+            dynamo = state.get("dynamo_client")
+            image_id = receipt.get("image_id")
+            rec_id = receipt.get("receipt_id")
+            if (
+                dynamo
+                and image_id
+                and rec_id
+                and hasattr(dynamo, "list_receipt_word_labels_for_receipt")
+            ):
+                try:
+                    page, lek = dynamo.list_receipt_word_labels_for_receipt(
+                        image_id=image_id, receipt_id=rec_id
+                    )
+                    extra = page or []
+                    # If there are more pages, fetch them too
+                    while lek:
+                        page, lek = (
+                            dynamo.list_receipt_word_labels_for_receipt(
+                                image_id=image_id,
+                                receipt_id=rec_id,
+                                last_evaluated_key=lek,
+                            )
+                        )
+                        extra.extend(page or [])
+                    receipt_data = state.get("receipt")
+                    if isinstance(receipt_data, dict):
+                        receipt_data["labels"] = [
+                            label_to_dict(lb) for lb in extra
+                        ]
+                        labels = receipt_data.get("labels", [])
+                    else:
+                        labels = receipt.get("labels", [])
+                    logger.info(
+                        "LH3 tool get_receipt_words: reloaded labels count=%s",
+                        len(labels),
+                    )
+                except Exception as e:
+                    logger.info(
+                        "LH3 tool get_receipt_words: label reload failed: %s",
+                        e,
+                    )
+
+        # Create label lookup
+        label_lookup = {}
+        for label in labels:
+            key = (
+                label.get("line_id"),
+                label.get("word_id"),
+            )
+            label_lookup[key] = label
+
+        # Combine words with labels
+        word_data = []
+        for word in words:
+            key = (word.get("line_id"), word.get("word_id"))
+            label = label_lookup.get(key, {})
+            word_data.append(
+                {
+                    "line_id": word.get("line_id"),
+                    "word_id": word.get("word_id"),
+                    "text": word.get("text", ""),
+                    "label": label.get("label"),
+                    "validation_status": label.get("validation_status"),
+                }
+            )
+
+        return {"words": word_data, "total_words": len(word_data)}
+
+    @tool
+    def get_line_id_text_list() -> dict:
+        """
+        List lines top-to-bottom with ids and text only (no geometry).
+        """
+        receipt = state.get("receipt")
+        if not receipt or not isinstance(receipt, dict):
+            return {"error": "No receipt data loaded"}
+        lines = receipt.get("lines", [])
+        if not lines:
+            return {"error": "No lines found"}
+
+        def centroid_y(ln: dict) -> float:
+            tl = ln.get("top_left") or {}
+            tr = ln.get("top_right") or {}
+            bl = ln.get("bottom_left") or {}
+            br = ln.get("bottom_right") or {}
+            return (
+                tl.get("y", 0)
+                + tr.get("y", 0)
+                + bl.get("y", 0)
+                + br.get("y", 0)
+            ) / 4
+
+        summary = [
+            {"line_id": ln.get("line_id"), "text": ln.get("text", "")}
+            for ln in lines
+        ]
+        summary_sorted = sorted(
+            summary, key=lambda ln: centroid_y(ln), reverse=True
+        )
+        return {
+            "lines": summary_sorted,
+            "note": "y=0 is bottom; sorted top-to-bottom by decreasing y",
+        }
+
+    @tool
+    def get_labels_by_type(label_type: str) -> dict:
+        """
+        Get all labels of a specific type.
+
+        Args:
+            label_type: CORE_LABEL type (e.g., GRAND_TOTAL, TAX, SUBTOTAL)
+
+        Returns:
+        - labels: List of labels with word text and positions
+        """
+        receipt = state.get("receipt")
+        if not receipt or not isinstance(receipt, dict):
+            logger.info("LH3 tool get_labels_by_type: no receipt in state")
+            return {"error": "No receipt data loaded"}
+
+        labels = receipt.get("labels", [])
+        if not labels:
+            logger.info("LH3 tool get_labels_by_type: no labels in state")
+            return {"error": "No labels found"}
+        words = receipt.get("words", [])
+
+        # Create word lookup
+        word_lookup = {}
+        for word in words:
+            key = (word.get("line_id"), word.get("word_id"))
+            word_lookup[key] = word
+
+        # Filter labels by type
+        matching_labels = []
+        for label in labels:
+            if label.get("label") == label_type:
+                key = (label.get("line_id"), label.get("word_id"))
+                word = word_lookup.get(key, {})
+                matching_labels.append(
+                    {
+                        "line_id": label.get("line_id"),
+                        "word_id": label.get("word_id"),
+                        "text": word.get("text", ""),
+                        "validation_status": label.get("validation_status"),
+                    }
+                )
+
+        return {
+            "label_type": label_type,
+            "labels": matching_labels,
+            "count": len(matching_labels),
+        }
+
+    # ========== FINANCIAL VALIDATION SUB-AGENT TOOL ==========
+
+    @tool
+    def validate_financial_consistency() -> dict:
+        """
+        Validate financial consistency using a sub-agent.
+
+        This tool runs a financial validation sub-agent that:
+        - Detects currency
+        - Validates grand total = subtotal + tax
+        - Validates subtotal = sum of line totals
+        - Identifies which labels need correction
+
+        Returns:
+        - currency: Detected currency
+        - is_valid: Whether financial math checks out
+        - issues: List of issues found
+        - corrections: List of label corrections needed (each with line_id, word_id, current_label, correct_label, reasoning, confidence)
+        """
+        receipt = state.get("receipt")
+        if not receipt or not isinstance(receipt, dict):
+            logger.info(
+                "LH3 tool validate_financial_consistency: no receipt in state"
+            )
+            return {"error": "No receipt data loaded"}
+
+        receipt_text = receipt.get("receipt_text", "")
+        labels = receipt.get("labels", [])
+        words = receipt.get("words", [])
+        if not labels:
+            logger.info(
+                "LH3 tool validate_financial_consistency: no labels in state"
+            )
+        if not words:
+            logger.info(
+                "LH3 tool validate_financial_consistency: no words in state"
+            )
+
+        # Run financial validation sub-agent (sync wrapper for async function)
+        try:
+            from receipt_agent.subagents.financial_validation import (
+                create_financial_validation_graph,
+                run_financial_validation,
+            )
+
+            # Create sub-agent graph (reuse if exists, or create new)
+            if "financial_validation_graph" not in state:
+                graph, sub_state_holder = create_financial_validation_graph()
+                state["financial_validation_graph"] = graph
+                state["financial_validation_state"] = sub_state_holder
+            else:
+                graph = state["financial_validation_graph"]
+                sub_state_holder = state["financial_validation_state"]
+
+            # Run async sub-agent in sync context
+            result = asyncio.run(
+                run_financial_validation(
+                    graph=graph,
+                    state_holder=sub_state_holder,
+                    receipt_text=receipt_text,
+                    labels=labels,
+                    words=words,
+                )
+            )
+
+            # Store corrections in state for main agent to use
+            corrections = result.get("corrections", [])
+            if corrections:
+                state["financial_corrections"] = corrections
+
+            return result
+        except Exception as e:
+            logger.exception(f"Financial validation sub-agent failed: {e}")
+            return {
+                "currency": None,
+                "is_valid": False,
+                "issues": [{"type": "error", "message": str(e)}],
+                "corrections": [],
+            }
+
+    # ========== SIMILARITY SEARCH TOOL ==========
+
+    @tool
+    def search_similar_labels(
+        word_text: str, label_type: Optional[str] = None
+    ) -> dict:
+        """
+        Search ChromaDB for similar words with labels.
+
+        Args:
+            word_text: Word text to search for
+            label_type: Optional label type to filter results
+
+        Returns:
+        - similar_words: List of similar words with their labels
+        - count: Number of matches found
+        """
+        chroma = state.get("chroma_client")
+        embed_fn_val = state.get("embed_fn")
+        if not chroma or not embed_fn_val:
+            return {
+                "error": "ChromaDB not available",
+                "similar_words": [],
+                "count": 0,
+            }
+
+        try:
+            chroma = chroma
+            embed_fn = embed_fn_val
+
+            # Generate embedding
+            embedding = embed_fn([word_text])[0]
+
+            # Search ChromaDB
+            results = chroma.query(
+                query_embeddings=[embedding],
+                n_results=10,
+            )
+
+            similar_words = []
+            if results and results.get("documents"):
+                for i, doc in enumerate(results["documents"][0]):
+                    metadata = (
+                        results.get("metadatas", [[]])[0][i]
+                        if results.get("metadatas")
+                        else {}
+                    )
+                    distance = (
+                        results.get("distances", [[]])[0][i]
+                        if results.get("distances")
+                        else 1.0
+                    )
+                    similarity = (
+                        1.0 - distance
+                    )  # Convert distance to similarity
+
+                    word_label = metadata.get("label")
+                    if label_type and word_label != label_type:
+                        continue
+
+                    similar_words.append(
+                        {
+                            "word_text": doc,
+                            "label": word_label,
+                            "similarity": similarity,
+                            "merchant": metadata.get("merchant_name"),
+                        }
+                    )
+
+            return {
+                "similar_words": similar_words,
+                "count": len(similar_words),
+            }
+        except Exception as e:
+            logger.exception(f"ChromaDB search failed: {e}")
+            return {
+                "error": str(e),
+                "similar_words": [],
+                "count": 0,
+            }
+
+    # ========== DECISION TOOL ==========
+
+    @tool
+    def submit_harmonization(
+        updates: list[dict],
+        currency: Optional[str] = None,
+        totals_valid: bool = True,
+        confidence: float = 0.8,
+        reasoning: str = "",
+    ) -> dict:
+        """
+        Submit harmonization decisions.
+
+        Args:
+            updates: List of label updates, each with:
+                - line_id: Line ID
+                - word_id: Word ID
+                - label: New label type (CORE_LABEL)
+                - validation_status: Optional validation status (VALID, PENDING, etc.)
+                - reasoning: Optional reasoning for this specific update
+            currency: Detected currency (from financial validation sub-agent)
+            totals_valid: Whether financial totals are valid
+            confidence: Confidence score (0.0 to 1.0)
+            reasoning: General reasoning for all decisions
+
+        Note: You can also use corrections from `validate_financial_consistency`
+        by including them in the updates list. Each correction should have:
+        - line_id, word_id: Word position
+        - label: Correct label type
+        - reasoning: Why this correction is needed
+        - validation_status: Usually VALID if correction is confident
+
+        Returns:
+        - success: Whether submission was successful
+        - updates_applied: Number of updates
+        """
+        receipt = state.get("receipt")
+        if not receipt or not isinstance(receipt, dict):
+            return {"error": "No receipt data loaded", "success": False}
+
+        # Add receipt identifiers and reasoning to each update
+        image_id = receipt.get("image_id", "")
+        receipt_id = receipt.get("receipt_id", 0)
+
+        enriched_updates = []
+        for update in updates:
+            enriched_update = {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "line_id": update["line_id"],
+                "word_id": update["word_id"],
+                "label": update["label"],
+                "validation_status": update.get("validation_status", "VALID"),
+                "reasoning": update.get("reasoning", reasoning),
+            }
+            enriched_updates.append(enriched_update)
+
+        # Store result
+        state["result"] = {
+            "updates": enriched_updates,
+            "currency": currency,
+            "totals_valid": totals_valid,
+            "confidence": confidence,
+            "reasoning": reasoning,
+        }
+
+        return {
+            "success": True,
+            "updates_applied": len(enriched_updates),
+            "currency": currency,
+            "totals_valid": totals_valid,
+            "confidence": confidence,
+        }
+
+    # ========== PRICING TABLE EXTRACTION TOOL ==========
+
+    @tool
+    def extract_pricing_table() -> dict:
+        """
+        Extract a structured pricing table (rows/columns) from words/lines using geometry.
+
+        Heuristics:
+        - Group words into rows by y-center proximity.
+        - Infer columns by clustering x-centers.
+        - Keep only rows that look like line items (has a digit or a financial/line-item label).
+        - Return cells with text, line_id, word_id, bbox, row, col.
+        """
+        receipt = state.get("receipt")
+        if not receipt or not isinstance(receipt, dict):
+            return {"error": "No receipt data loaded"}
+
+        words = receipt.get("words", [])
+        return extract_pricing_table_from_words(words)
+
+    # ========== COLUMN ANALYZER (LINE-RANGE) ==========
+
+    def _analyze_line_block_columns_impl(
+        line_id_start: int, line_id_end: int
+    ) -> dict:
+        receipt = state.get("receipt")
+        if not receipt or not isinstance(receipt, dict):
+            return {"error": "No receipt data loaded"}
+        lines = receipt.get("lines", [])
+        if not lines:
+            return {"error": "No lines found"}
+
+        block = []
+        for ln in lines:
+            if not isinstance(ln, dict):
+                continue
+            line_id = ln.get("line_id")
+            if line_id is not None and line_id_start <= line_id <= line_id_end:
+                block.append(ln)
+        if not block:
+            return {"error": "No lines in range"}
+
+        # Get words for semantic analysis
+        words = receipt.get("words", [])
+        block_words = []
+        for w in words:
+            if not isinstance(w, dict):
+                continue
+            word_line_id = w.get("line_id")
+            if (
+                word_line_id is not None
+                and line_id_start <= word_line_id <= line_id_end
+            ):
+                block_words.append(w)
+
+        prepared = []
+        for ln in block:
+            tl = ln.get("top_left") or {}
+            tr = ln.get("top_right") or {}
+            bl = ln.get("bottom_left") or {}
+            br = ln.get("bottom_right") or {}
+            left_x = (tl.get("x", 0) + bl.get("x", 0)) / 2
+            right_x = (tr.get("x", 0) + br.get("x", 0)) / 2
+            cx = (left_x + right_x) / 2
+            cy = (
+                tl.get("y", 0)
+                + tr.get("y", 0)
+                + bl.get("y", 0)
+                + br.get("y", 0)
+            ) / 4
+            prepared.append(
+                {
+                    "line_id": ln.get("line_id"),
+                    "text": ln.get("text", ""),
+                    "left_x": left_x,
+                    "right_x": right_x,
+                    "cx": cx,
+                    "cy": cy,
+                }
+            )
+
+        # Infer columns via clustering on x-centers
+        x_centers = sorted(p["cx"] for p in prepared)
+        if not x_centers:
+            return {"error": "No geometry available"}
+        # tolerance ~ 1/4 of median span
+        spans = sorted(
+            (p["right_x"] - p["left_x"])
+            for p in prepared
+            if p["right_x"] >= p["left_x"]
+        )
+        median_span = spans[len(spans) // 2] if spans else 0.05
+        col_tol = max(0.02, median_span * 0.5)
+
+        bands = []
+        current = []
+        for xc in x_centers:
+            if not current or abs(xc - current[-1]) <= col_tol:
+                current.append(xc)
+            else:
+                bands.append(current)
+                current = [xc]
+        if current:
+            bands.append(current)
+        # Sort columns by x_center (left to right)
+        column_x_centers = sorted([sum(b) / len(b) for b in bands])
+        columns = [
+            {"col": i, "x_center": xc} for i, xc in enumerate(column_x_centers)
+        ]
+
+        def assign_col(xc: float) -> int:
+            best, dist = 0, float("inf")
+            for c in columns:
+                d = abs(xc - c["x_center"])
+                if d < dist:
+                    best, dist = c["col"], d
+            return best
+
+        lines_with_cols = []
+        for p in sorted(
+            prepared, key=lambda v: v["cy"], reverse=True
+        ):  # higher y = higher on page
+            assigned_col = assign_col(p["cx"])
+            lines_with_cols.append(
+                {
+                    "line_id": p["line_id"],
+                    "col": assigned_col,
+                    "text": p["text"],
+                    "left_x": p["left_x"],
+                    "right_x": p["right_x"],
+                    "centroid": {"x": p["cx"], "y": p["cy"]},
+                }
+            )
+
+        # Calculate column spans (left/right bounds)
+        col_bounds = {}
+        for line_data in lines_with_cols:
+            col = line_data["col"]
+            if col not in col_bounds:
+                col_bounds[col] = {
+                    "left": line_data["left_x"],
+                    "right": line_data["right_x"],
+                }
+            else:
+                col_bounds[col]["left"] = min(
+                    col_bounds[col]["left"], line_data["left_x"]
+                )
+                col_bounds[col]["right"] = max(
+                    col_bounds[col]["right"], line_data["right_x"]
+                )
+
+        # Add spans to columns
+        for col_info in columns:
+            col_num = col_info["col"]
+            if col_num in col_bounds:
+                col_info["left_bound"] = col_bounds[col_num]["left"]
+                col_info["right_bound"] = col_bounds[col_num]["right"]
+            else:
+                col_info["left_bound"] = col_info["x_center"]
+                col_info["right_bound"] = col_info["x_center"]
+
+        # Analyze column content for semantic hints
+        def analyze_column_content(col_num: int) -> dict:
+            """Analyze text content in a column to infer its purpose."""
+            col_lines = [l for l in lines_with_cols if l["col"] == col_num]
+            col_texts = [l["text"].strip() for l in col_lines if l["text"]]
+
+            # Get words in this column
+            col_words = []
+            for word in block_words:
+                word_bb = word.get("bounding_box") or {}
+                word_cx = (
+                    word_bb.get("x", 0) + word_bb.get("width", 0) / 2
+                    if word_bb.get("x") is not None
+                    else None
+                )
+                if word_cx is not None:
+                    word_col = assign_col(word_cx)
+                    if word_col == col_num:
+                        col_words.append(word.get("text", ""))
+
+            all_text = " ".join(col_texts + col_words).lower()
+
+            # Detect numeric content
+            numeric_pattern = re.compile(r"[\d.,$€£¥]")
+            has_numbers = bool(numeric_pattern.search(all_text))
+
+            # Detect totals keywords
+            totals_keywords = [
+                "total",
+                "subtotal",
+                "tax",
+                "amount",
+                "due",
+                "balance",
+                "sum",
+            ]
+            has_totals_keywords = any(kw in all_text for kw in totals_keywords)
+
+            # Detect quantity keywords
+            quantity_keywords = ["qty", "quantity", "count", "x", "#"]
+            has_quantity_keywords = any(
+                kw in all_text for kw in quantity_keywords
+            )
+
+            # Detect price keywords
+            price_keywords = ["price", "cost", "each", "unit"]
+            has_price_keywords = any(kw in all_text for kw in price_keywords)
+
+            # Detect product/description keywords
+            product_keywords = ["item", "product", "description", "name"]
+            has_product_keywords = any(
+                kw in all_text for kw in product_keywords
+            )
+
+            hints = []
+            if has_totals_keywords:
+                hints.append("totals")
+            if has_quantity_keywords:
+                hints.append("quantity")
+            if has_price_keywords:
+                hints.append("price")
+            if has_product_keywords:
+                hints.append("product")
+            if has_numbers and not hints:
+                hints.append("numeric")
+
+            return {
+                "content_type": "numeric" if has_numbers else "text",
+                "hints": hints,
+                "sample_text": col_texts[0] if col_texts else "",
+            }
+
+        # Add semantic hints to columns
+        for col_info in columns:
+            semantic = analyze_column_content(col_info["col"])
+            col_info["content_type"] = semantic["content_type"]
+            col_info["hints"] = semantic["hints"]
+            col_info["sample_text"] = semantic["sample_text"]
+
+        result = {
+            "columns": columns,
+            "lines": lines_with_cols,
+            "line_range": {"start": line_id_start, "end": line_id_end},
+            "note": "y=0 is bottom; lines sorted top-to-bottom by decreasing y",
+        }
+
+        return result
+
+    @tool
+    def analyze_line_block_columns(
+        line_id_start: int, line_id_end: int
+    ) -> dict:
+        """
+        Given an inclusive line_id range, infer column positions and assign lines.
+
+        Assumptions:
+        - Coordinates are in receipt space with y=0 at the bottom (higher y = visually higher).
+        - Uses line geometry (top_left/top_right/bottom_left/bottom_right) from preloaded state.
+        """
+        return _analyze_line_block_columns_impl(
+            line_id_start=line_id_start, line_id_end=line_id_end
+        )
+
+    # ========== COLUMN SUB-AGENT WRAPPER ==========
+
+    @tool
+    def run_table_subagent(line_id_start: int, line_id_end: int) -> dict:
+        """
+        Run the pre-built table sub-agent graph to infer columns for a line-id range.
+        Stores result in state['column_analysis'] and returns it.
+        """
+        subgraph = state.get("table_subagent_graph")
+        if subgraph is None:
+            return {"error": "table sub-agent graph not available"}
+
+        receipt_ref = state.get("receipt")
+        if not receipt_ref or not isinstance(receipt_ref, dict):
+            receipt_ref = {}
+        image_id = str(receipt_ref.get("image_id", ""))
+        receipt_id = receipt_ref.get("receipt_id", 0)
+        try:
+            receipt_id = int(receipt_id)
+        except Exception:
+            receipt_id = 0
+
+        # Carry prior summaries so the sub-agent can refine/append descriptions
+        prior_summary = state.get("column_analysis_summary")
+
+        # Follow the GH example: invoke the sub-agent with messages-only state
+        result_msg = subgraph.invoke(
+            {
+                "messages": [
+                    HumanMessage(
+                        content=(
+                            "Analyze the financial section structure for lines "
+                            f"{line_id_start} to {line_id_end}. "
+                            "Call analyze_block exactly once with these parameters. "
+                            "Return ONLY valid JSON of the form: "
+                            "{"
+                            '"summary": "<1-2 sentences about the table>", '
+                            '"line_range": {"start": <int>, "end": <int>}, '
+                            '"price_column": <int|null>, '
+                            '"rows": ['
+                            '  {"line_id": <int>, "price": "<text>", "price_col": <int>, '
+                            '   "left": "<text to left or empty>", "right": "<text to right or empty>"}'
+                            "], "
+                            '"columns": ['
+                            '  {"col": <int>, "role_hint": "text|price|qty|total|numeric|other", '
+                            '   "x_center": <float>, "sample": "<optional short sample>"}'
+                            "]"
+                            "}. "
+                            "Summary and rows are REQUIRED; do NOT return empty or placeholder text. "
+                            "Keep it concise; no tool logs or extra prose."
+                            + (
+                                " Prior summaries so far: "
+                                f"{prior_summary}. Update or append with any new "
+                                "information for this line range."
+                                if prior_summary
+                                else ""
+                            )
+                        )
+                    )
+                ]
+            }
+        )
+        col_result = None
+        if result_msg and result_msg.get("messages"):
+            # Prefer the final AI message (LLM-produced structured JSON)
+            for m in reversed(result_msg["messages"]):
+                if isinstance(m, AIMessage) and isinstance(m.content, dict):
+                    col_result = m.content
+                    break
+            # Fall back to tool messages only if no AI JSON was found
+            if not col_result:
+                for m in result_msg["messages"]:
+                    if isinstance(m, ToolMessage):
+                        try:
+                            if isinstance(m.content, dict):
+                                col_result = m.content
+                                break
+                            if isinstance(m.content, str):
+                                import json
+
+                                col_result = json.loads(m.content)
+                                break
+                        except Exception:
+                            continue
+        if not col_result:
+            # Final fallback: call analyze_block directly
+            col_result = _analyze_line_block_columns_impl(
+                line_id_start=line_id_start, line_id_end=line_id_end
+            )
+            if "error" in col_result:
+                col_result = {"error": "table sub-agent returned no result"}
+
+        # Normalize to dict for downstream use
+        if not isinstance(col_result, dict):
+            col_result = {"error": "table sub-agent returned invalid result"}
+        col_dict: dict[str, Any] = cast(dict[str, Any], col_result)
+
+        # Ensure line_range is present
+        if "line_range" not in col_dict:
+            col_dict["line_range"] = {
+                "start": line_id_start,
+                "end": line_id_end,
+            }
+
+        # Ensure summary exists
+        summary = col_dict.get("summary")
+        if not summary:
+            summary = "Summary missing from sub-agent."
+            col_dict["summary"] = summary
+        line_range = col_dict.get("line_range", {})
+
+        # Maintain history of summaries in state
+        history_raw = state.get("column_analysis_history")
+        history: list[dict] = (
+            history_raw if isinstance(history_raw, list) else []
+        )
+
+        def _same_range(entry: dict) -> bool:
+            lr = entry.get("line_range", {}) if isinstance(entry, dict) else {}
+            return (
+                lr.get("start") == line_id_start
+                and lr.get("end") == line_id_end
+            )
+
+        # Replace any existing entry for the same line range
+        history = [h for h in history if not _same_range(h)]
+        history.append({"summary": summary, "line_range": line_range})
+
+        aggregate_summary = "\n".join(
+            f"Lines {h.get('line_range', {}).get('start', '?')}"
+            f"-{h.get('line_range', {}).get('end', '?')}: "
+            f"{h.get('summary', '')}"
+            for h in history
+            if isinstance(h, dict)
+        )
+
+        state["table_line_range"] = {
+            "line_id_start": line_id_start,
+            "line_id_end": line_id_end,
+        }
+        state["column_analysis"] = col_dict
+        state["column_analysis_history"] = history
+        state["column_analysis_summary"] = aggregate_summary
+
+        # Return payload plus rollups
+        col_dict["history"] = history
+        col_dict["aggregate_summary"] = aggregate_summary
+
+        return col_dict
+
+    @tool
+    def run_label_subagent(
+        label_type: str,
+        line_id_start: int | None = None,
+        line_id_end: int | None = None,
+        use_column_analysis: bool = True,
+    ) -> dict:
+        """
+        Focused pass for a single CORE_LABEL.
+
+        Returns a scoped view: words, labels, and optional column info for the specified line range.
+        """
+        receipt = state.get("receipt")
+        if not receipt or not isinstance(receipt, dict):
+            return {"error": "No receipt data loaded"}
+
+        words = receipt.get("words", [])
+        labels = receipt.get("labels", [])
+        col_analysis = (
+            state.get("column_analysis") if use_column_analysis else None
+        )
+
+        def in_range(line_id: int) -> bool:
+            if line_id_start is None or line_id_end is None:
+                return True
+            return line_id_start <= line_id <= line_id_end
+
+        scoped_words = [w for w in words if in_range(w.get("line_id", -1))]
+        scoped_labels = [
+            lb
+            for lb in labels
+            if lb.get("label") == label_type
+            and in_range(lb.get("line_id", -1))
+        ]
+
+        return {
+            "label_type": label_type,
+            "line_range": {
+                "start": line_id_start,
+                "end": line_id_end,
+            },
+            "words": scoped_words,
+            "labels": scoped_labels,
+            "column_analysis": col_analysis,
+        }
+
+    # Collect all tools
+    tools = [
+        get_line_id_text_list,
+        run_table_subagent,
+        run_label_subagent,
+        submit_harmonization,
+    ]
+
+    return tools, state
+
+
