@@ -57,6 +57,11 @@ logger.setLevel(logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
+# Constants
+_MISSING_TABLE_NAME_ERROR = (
+    "DYNAMODB_TABLE_NAME or RECEIPT_AGENT_DYNAMO_TABLE_NAME not set"
+)
+
 
 def flush_langsmith_traces():
     """
@@ -403,7 +408,7 @@ async def process_place_id_batch(
 
         except Exception as e:
             error_str = str(e)
-            logger.error(f"Error processing place_id {group.place_id}: {e}")
+            logger.exception(f"Error processing place_id {group.place_id}: {e}")
 
             # Track failed LLM call
             llm_calls_failed += 1
@@ -741,9 +746,7 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
         "RECEIPT_AGENT_DYNAMO_TABLE_NAME"
     ) or os.environ.get("DYNAMODB_TABLE_NAME")
     if not table_name:
-        raise ValueError(
-            "DYNAMODB_TABLE_NAME or RECEIPT_AGENT_DYNAMO_TABLE_NAME not set"
-        )
+        raise ValueError(_MISSING_TABLE_NAME_ERROR)
 
     from receipt_dynamo import DynamoClient
 
