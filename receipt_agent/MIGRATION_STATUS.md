@@ -69,29 +69,9 @@
 - ✅ `subagents/financial_validation/` - Implementation moved from `graph/financial_validation_workflow.py`
 - ✅ `subagents/cove_text_consistency/` - Implementation moved from `graph/cove_text_consistency_workflow.py`
 - ✅ `subagents/metadata_finder/` - Implementation moved from `graph/receipt_metadata_finder_workflow.py`
-- ✅ Deprecated shims remain in `graph/*` for backward compatibility
+- ✅ All deprecated shim files have been removed from `graph/*`
 
-### Backward Compatibility Analysis 🔍
-
-#### Deprecated Shim Files (Can Be Removed)
-Three backward compatibility shim files remain in `graph/`:
-
-1. **`graph/cove_text_consistency_workflow.py`**
-   - **Purpose**: Re-exports `CoveTextConsistencyState`, `create_cove_text_consistency_graph`, `run_cove_text_consistency`
-   - **New Location**: `receipt_agent.subagents.cove_text_consistency`
-   - **Used By**: No current imports found
-
-2. **`graph/financial_validation_workflow.py`**
-   - **Purpose**: Re-exports `FinancialValidationState`, `create_financial_validation_graph`, `run_financial_validation`
-   - **New Location**: `receipt_agent.subagents.financial_validation`
-   - **Used By**: No current imports found
-
-3. **`graph/receipt_metadata_finder_workflow.py`**
-   - **Purpose**: Re-exports `ReceiptMetadataFinderState`, `create_receipt_metadata_finder_graph`, `run_receipt_metadata_finder`
-   - **New Location**: `receipt_agent.subagents.metadata_finder`
-   - **Used By**: No current imports found
-
-**Removal Criteria**: Safe to remove when confident no external code (lambdas, scripts, etc.) imports from these paths.
+### Remaining Issues 🔍
 
 #### MetadataValidatorAgent Location Issue 📍
 
@@ -167,7 +147,7 @@ This design maximizes speed while maintaining accuracy, using LLMs only when sim
 ## Cleanup Completed ✅
 
 ### Deprecated Code Removal
-- ✅ All deprecated `graph/*_workflow.py` shim files have been removed
+- ✅ All deprecated `graph/*_workflow.py` shim files have been removed (including `cove_text_consistency_workflow.py`, `financial_validation_workflow.py`, `receipt_metadata_finder_workflow.py`, and all agent workflow shims)
 - ✅ `graph/__init__.py` updated to reflect cleanup
 - ✅ No remaining imports of deprecated modules found in codebase
 - ✅ Only `graph/nodes.py` remains (used by validation workflow)
