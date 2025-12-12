@@ -570,15 +570,53 @@ class CombineReceiptsStepFunction(ComponentResource):
             "Comment": "Combine Receipts - Process images with multiple receipts",
             "StartAt": "Initialize",
             "States": {
+                # Initialize state: Handle optional input fields safely
+                # Problem: Direct JSONPath access to optional fields ($.dry_run, $.llm_analysis_s3_key, $.limit)
+                #          throws States.Runtime error if fields are missing from input
+                # Solution: Use States.JsonMerge to merge input with defaults, ensuring all fields exist
                 "Initialize": {
                     "Type": "Pass",
                     "Parameters": {
+                        # Default values for optional fields
+                        "defaults": {
+                            "dry_run": False,
+                            "llm_analysis_s3_key": None,
+                            "limit": None,
+                        },
+                        # Capture input (may be missing optional fields)
+                        "input.$": "$",
+                        # Execution context (always present)
                         "execution_id.$": "$$.Execution.Name",
                         "start_time.$": "$$.Execution.StartTime",
-                        "dry_run.$": "$.dry_run",
                         "batch_bucket": batch_bucket,
-                        "llm_analysis_s3_key.$": "$.llm_analysis_s3_key",  # Optional: S3 key to LLM analysis JSON
-                        "limit.$": "$.limit",  # Optional: limit number of images
+                    },
+                    "ResultSelector": {
+                        # Merge defaults with input to handle optional fields
+                        # Input values override defaults if present
+                        # This prevents States.Runtime errors when optional fields are missing
+                        "merged.$": "States.JsonMerge($.defaults, $.input, false)",
+                        # Always include execution context
+                        "execution_id.$": "$.execution_id",
+                        "start_time.$": "$.start_time",
+                        "batch_bucket.$": "$.batch_bucket",
+                    },
+                    "ResultPath": "$.temp",
+                    "Next": "NormalizeInit",
+                },
+                # NormalizeInit state: Flatten merged structure for downstream states
+                # Extracts optional fields from merged object and combines with execution context
+                "NormalizeInit": {
+                    "Type": "Pass",
+                    "Parameters": {
+                        # Flatten merged optional fields with execution context
+                        # Accessing nested fields from merged object is safe because
+                        # States.JsonMerge ensures all default fields are present
+                        "execution_id.$": "$.temp.execution_id",
+                        "start_time.$": "$.temp.start_time",
+                        "batch_bucket.$": "$.temp.batch_bucket",
+                        "dry_run.$": "$.temp.merged.dry_run",
+                        "llm_analysis_s3_key.$": "$.temp.merged.llm_analysis_s3_key",
+                        "limit.$": "$.temp.merged.limit",
                     },
                     "ResultPath": "$.init",
                     "Next": "ListImages",
