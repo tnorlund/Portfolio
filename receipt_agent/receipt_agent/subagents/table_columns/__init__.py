@@ -11,3 +11,4 @@ TODO: Extract from receipt_agent.agents.label_harmonizer.tools.factory
 # TODO: Extract to standalone sub-agent module
 
 __all__ = []
+

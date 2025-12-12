@@ -1159,3 +1159,4 @@ async def run_cove_text_consistency(
             "place_id": place_id,
             "receipt_count": len(receipts),
         }
+

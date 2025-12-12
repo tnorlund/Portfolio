@@ -79,3 +79,4 @@ The container Lambda requires:
 - EMF Metrics: PlaceIdsProcessed, GroupsProcessed, ReceiptsUpdated, ProcessingTimeSeconds
 
 
+

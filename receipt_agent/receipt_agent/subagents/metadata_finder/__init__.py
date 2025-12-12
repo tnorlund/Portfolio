@@ -21,3 +21,4 @@ __all__ = [
     "create_receipt_metadata_finder_graph",
     "run_receipt_metadata_finder",
 ]
+

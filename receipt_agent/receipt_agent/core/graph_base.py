@@ -67,3 +67,4 @@ def create_graph_with_middleware(
     # Note: LangGraph middleware is typically applied at compile time
     # This is a placeholder for future middleware patterns
     return graph
+

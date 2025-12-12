@@ -162,3 +162,4 @@ def extract_pricing_table_from_words(words: list[dict]) -> dict:
         "total_rows": len(structured_rows),
         "total_columns": len(columns),
     }
+

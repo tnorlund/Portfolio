@@ -35,3 +35,4 @@ COPY infra/metadata_harmonizer_step_functions/lambdas/utils/ ${LAMBDA_TASK_ROOT}
 CMD ["handler.handler"]
 
 
+
