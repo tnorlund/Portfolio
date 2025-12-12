@@ -232,9 +232,9 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
         f"{total_updated} updated, {len(errors)} errors"
     )
 
-    # Upload full report to S3
+    # Upload full report to S3 (unless dry run)
     report_key = f"reports/{execution_id}/summary.json"
-    if batch_bucket:
+    if batch_bucket and not dry_run:
         try:
             s3.put_object(
                 Bucket=batch_bucket,
@@ -243,8 +243,8 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
                 ContentType="application/json",
             )
             logger.info(f"Report uploaded to s3://{batch_bucket}/{report_key}")
-        except Exception as e:
-            logger.exception(f"Failed to upload report to s3://{batch_bucket}/{report_key}: {e}")
+        except Exception:
+            logger.exception("Failed to upload report to s3://%s/%s", batch_bucket, report_key)
 
     return {
         "execution_id": execution_id,

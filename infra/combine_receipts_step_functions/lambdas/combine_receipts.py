@@ -55,6 +55,7 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
         "execution_id": "abc123",
         "batch_bucket": "bucket-name",
         "dry_run": true,
+        "llm_select": true  // Optional: if false, use all receipt_ids directly
     }
 
     Output:
@@ -72,6 +73,7 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     execution_id = event.get("execution_id", "unknown")
     dry_run = event.get("dry_run", True)
     batch_bucket = event.get("batch_bucket") or BATCH_BUCKET_ENV
+    llm_select = event.get("llm_select", True)
 
     # Set execution_id and batch_bucket in environment for records JSON saving
     os.environ["EXECUTION_ID"] = execution_id
@@ -98,20 +100,30 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
                 "candidates": [],
             }
 
-        # Have the LLM pick which receipts to combine.
-        selector = ReceiptCombinationSelector(client)
-        target_id = receipt_ids[0]
-        selection = selector.choose(
-            image_id=image_id, target_receipt_id=target_id
-        )
-        chosen_receipts = selection.get("choice") or []
-        if not chosen_receipts:
-            return {
-                "image_id": image_id,
-                "original_receipt_ids": receipt_ids,
-                "status": "no_combination",
-                "raw_answer": selection.get("raw_answer"),
-                "candidates": selection.get("candidates"),
+        # Determine which receipts to combine
+        if llm_select:
+            # Have the LLM pick which receipts to combine.
+            selector = ReceiptCombinationSelector(client)
+            target_id = receipt_ids[0]
+            selection = selector.choose(
+                image_id=image_id, target_receipt_id=target_id
+            )
+            chosen_receipts = selection.get("choice") or []
+            if not chosen_receipts:
+                return {
+                    "image_id": image_id,
+                    "original_receipt_ids": receipt_ids,
+                    "status": "no_combination",
+                    "raw_answer": selection.get("raw_answer"),
+                    "candidates": selection.get("candidates"),
+                }
+        else:
+            # Use all provided receipt_ids directly (deterministic mode)
+            chosen_receipts = receipt_ids
+            selection = {
+                "choice": chosen_receipts,
+                "raw_answer": "Deterministic combination without LLM selection",
+                "candidates": receipt_ids,
             }
 
             # Fail if LLM selected more than 2 receipts (should only be pairs)

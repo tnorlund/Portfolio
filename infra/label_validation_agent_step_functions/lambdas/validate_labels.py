@@ -91,7 +91,7 @@ def download_chromadb_snapshot(
         timestamp = response["Body"].read().decode().strip()
         logger.info(f"Latest snapshot timestamp: {timestamp}")
     except Exception as e:
-        logger.exception(f"Failed to get pointer: {e}")
+        logger.exception("Failed to get pointer")
         raise
 
     # Download snapshot files
@@ -152,7 +152,7 @@ def _save_state_to_s3(
         logger.info(f"State saved to s3://{batch_bucket}/{state_key}")
         return state_key
     except Exception as e:
-        logger.exception(f"Failed to save state to S3: {e}")
+        logger.exception("Failed to save state to S3")
         raise
 
 
@@ -340,7 +340,7 @@ async def process_batch(
                 llm_calls_total += estimated_llm_calls
                 llm_calls_successful += estimated_llm_calls
 
-            except Exception as e:
+            except Exception:
                 # Track failed LLM call (at least 1 call was attempted)
                 llm_calls_total += 1
 
@@ -398,7 +398,7 @@ async def process_batch(
                         )
                     else:
                         logger.warning(
-                            f"Label not found in DynamoDB, skipping update"
+                            "Label not found in DynamoDB, skipping update"
                         )
                         skipped_count += 1
                 except Exception as e:
@@ -782,7 +782,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # For simplicity, use the most common label type as dimension
         # If all labels are same type, use that; otherwise use "MIXED"
         if len(label_type_counts) == 1:
-            primary_label_type = list(label_type_counts.keys())[0]
+            primary_label_type = next(iter(label_type_counts.keys()))
         else:
             # Use most common label type as primary dimension
             primary_label_type = (

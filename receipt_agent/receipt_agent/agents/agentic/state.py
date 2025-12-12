@@ -5,6 +5,7 @@ State definition for the Agentic workflow agent.
 from typing import Annotated, Any, Optional
 
 from langgraph.graph.message import add_messages
+from langchain_core.messages import BaseMessage
 from pydantic import BaseModel, Field
 
 
@@ -16,10 +17,10 @@ class AgentState(BaseModel):
     receipt_id: int = Field(description="Receipt ID being validated")
 
     # Conversation messages - use add_messages reducer to accumulate messages
-    messages: Annotated[list[Any], add_messages] = Field(default_factory=list)
+    messages: Annotated[list[BaseMessage], add_messages] = Field(default_factory=list)
 
     # Terminal state
-    decision: Optional[dict] = Field(
+    decision: Optional[dict[str, Any]] = Field(
         default=None, description="Final decision when complete"
     )
 

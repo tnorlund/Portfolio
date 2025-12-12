@@ -19,13 +19,13 @@ class LabelHarmonizerAgentState(BaseModel):
     receipt_text: Optional[str] = Field(
         default=None, description="Full receipt text"
     )
-    words: list[dict] = Field(
+    words: list[dict[str, Any]] = Field(
         default_factory=list, description="Receipt words"
     )
-    lines: list[dict] = Field(
+    lines: list[dict[str, Any]] = Field(
         default_factory=list, description="Receipt lines"
     )
-    labels: list[dict] = Field(
+    labels: list[dict[str, Any]] = Field(
         default_factory=list, description="Current labels"
     )
 
@@ -33,10 +33,10 @@ class LabelHarmonizerAgentState(BaseModel):
     currency: Optional[str] = Field(
         default=None, description="Detected currency"
     )
-    totals_validation: Optional[dict] = Field(
+    totals_validation: Optional[dict[str, Any]] = Field(
         default=None, description="Totals validation results"
     )
-    line_items: list[dict] = Field(
+    line_items: list[dict[str, Any]] = Field(
         default_factory=list, description="Parsed line items"
     )
 
@@ -44,7 +44,7 @@ class LabelHarmonizerAgentState(BaseModel):
     messages: Annotated[list[Any], add_messages] = Field(default_factory=list)
 
     # Final result
-    harmonization_result: Optional[dict] = Field(
+    harmonization_result: Optional[dict[str, Any]] = Field(
         default=None, description="Final harmonization result"
     )
 

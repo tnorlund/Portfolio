@@ -52,7 +52,7 @@ def download_chromadb_snapshot(
         timestamp = response["Body"].read().decode().strip()
         logger.info(f"Latest snapshot timestamp: {timestamp}")
     except Exception as e:
-        logger.exception(f"Failed to get pointer: {e}")
+        logger.exception("Failed to get pointer")
         raise
 
     # Download snapshot files
@@ -168,7 +168,7 @@ async def process_batch(
 
         except Exception as e:
             logger.exception(
-                f"Error processing receipt {receipt_data.get('image_id')}#{receipt_data.get('receipt_id')}: {e}"
+                f"Error processing receipt {receipt_data.get('image_id')}#{receipt_data.get('receipt_id')}"
             )
             errors.append(
                 {
