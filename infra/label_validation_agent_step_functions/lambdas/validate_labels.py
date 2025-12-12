@@ -308,10 +308,12 @@ async def process_batch(
                 f"{label_data.get('label', '')}"
             )
 
-            # Add small delay between labels to avoid rate limits
+            # Add configurable delay between labels to avoid rate limits
             # Each label makes multiple LLM calls (agent + tools), so spacing helps
             if i > 1:
-                await asyncio.sleep(0.5)  # 500ms delay between labels
+                # Get delay from environment or use default
+                delay_seconds = float(os.environ.get("LABEL_DELAY_SECONDS", "0.5"))
+                await asyncio.sleep(delay_seconds)
 
             # Run validation agent
             # Track LLM calls: Each agent run makes at least 1 LLM call (agent_node)
@@ -341,21 +343,6 @@ async def process_batch(
             except Exception as e:
                 # Track failed LLM call (at least 1 call was attempted)
                 llm_calls_total += 1
-                error_str = str(e)
-
-                # Track error types
-                if (
-                    "500" in error_str
-                    or "502" in error_str
-                    or "503" in error_str
-                    or "504" in error_str
-                ):
-                    server_errors += 1
-                elif (
-                    "timeout" in error_str.lower()
-                    or "timed out" in error_str.lower()
-                ):
-                    timeout_errors += 1
 
                 # Re-raise to be handled by outer exception handler
                 raise

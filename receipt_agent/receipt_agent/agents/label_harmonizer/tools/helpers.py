@@ -163,3 +163,4 @@ def extract_pricing_table_from_words(words: list[dict]) -> dict:
         "total_columns": len(columns),
     }
 
+

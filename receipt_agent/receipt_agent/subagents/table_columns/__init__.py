@@ -12,3 +12,4 @@ TODO: Extract from receipt_agent.agents.label_harmonizer.tools.factory
 
 __all__ = []
 
+

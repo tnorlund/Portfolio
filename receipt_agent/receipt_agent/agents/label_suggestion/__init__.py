@@ -11,3 +11,4 @@ from receipt_agent.agents.label_suggestion.graph import (
 
 __all__ = ["suggest_labels_for_receipt"]
 
+

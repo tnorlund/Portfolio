@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 
 import boto3
 
+from receipt_agent.utils.combination_generator import generate_receipt_combinations
 from receipt_dynamo import DynamoClient
 
 logger = logging.getLogger()
@@ -55,7 +56,7 @@ def get_image_ids_from_llm_analysis(
 
                 # Skip if LLM said "NONE"
                 if option_line and "NONE" in option_line.upper():
-                    logger.info(f"Skipping {image_id}: LLM said NONE")
+                    logger.info("Skipping %s: LLM said NONE", image_id)
                     continue
 
                 # Check if there's a recommended combination
@@ -87,25 +88,8 @@ def get_image_ids_from_llm_analysis(
                     receipt_ids = analysis.get("receipt_ids", [])
                     # Determine which receipts to combine based on option
                     if len(receipt_ids) >= 2:
-                        # Generate combinations (same logic as in dev.list_receipts_without_merchants.py)
-                        combinations = []
-                        if len(receipt_ids) == 2:
-                            combinations = [(receipt_ids[0], receipt_ids[1])]
-                        elif len(receipt_ids) == 3:
-                            combinations = [
-                                (
-                                    receipt_ids[0],
-                                    receipt_ids[1],
-                                ),  # Option 1: A+B
-                                (
-                                    receipt_ids[0],
-                                    receipt_ids[2],
-                                ),  # Option 2: A+C
-                                (
-                                    receipt_ids[1],
-                                    receipt_ids[2],
-                                ),  # Option 3: B+C
-                            ]
+                        # Generate combinations using shared utility
+                        combinations = generate_receipt_combinations(receipt_ids)
 
                         # Extract option number from response
                         option_num = None
@@ -131,7 +115,7 @@ def get_image_ids_from_llm_analysis(
                             )
 
     except Exception as e:
-        logger.error(f"Error loading LLM analysis from S3: {e}")
+        logger.exception("Error loading LLM analysis from S3")
         raise
 
     return images
@@ -157,13 +141,13 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     llm_analysis_s3_key = event.get("llm_analysis_s3_key")
     table_name = os.environ.get("DYNAMODB_TABLE_NAME")
 
-    logger.info(f"Listing images for combination, execution_id={execution_id}")
+    logger.info("Listing images for combination, execution_id=%s", execution_id)
 
     images = []
 
     # If LLM analysis S3 key is provided, use pre-computed analysis
     if llm_analysis_s3_key:
-        logger.info(f"Loading images from LLM analysis: s3://{batch_bucket}/{llm_analysis_s3_key}")
+        logger.info("Loading images from LLM analysis: s3://%s/%s", batch_bucket, llm_analysis_s3_key)
         images = get_image_ids_from_llm_analysis(batch_bucket, llm_analysis_s3_key)
     else:
         logger.info("Listing receipts and metadatas to find missing merchants")
@@ -231,7 +215,7 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     if limit and len(images) > limit:
         images = images[:limit]
 
-    logger.info(f"Found {len(images)} images to process")
+    logger.info("Found %d images to process", len(images))
 
     # Save to S3 for reference
     manifest_key = f"manifests/{execution_id}/images.json"

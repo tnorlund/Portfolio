@@ -71,8 +71,6 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     receipt_ids = event.get("receipt_ids") or []
     execution_id = event.get("execution_id", "unknown")
     dry_run = event.get("dry_run", True)
-    # Always use LLM selection for choosing receipt pairs
-    llm_select = True
     batch_bucket = event.get("batch_bucket") or BATCH_BUCKET_ENV
 
     # Set execution_id and batch_bucket in environment for records JSON saving
@@ -100,30 +98,21 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
                 "candidates": [],
             }
 
-        # Optionally have the LLM pick which receipts to combine.
-        chosen_receipts = receipt_ids
-        if llm_select:
-            if not receipt_ids:
-                return {
-                    "image_id": image_id,
-                    "receipt_ids": receipt_ids,
-                    "status": "failed",
-                    "error": "llm_select enabled but no receipt_ids provided",
-                }
-            selector = ReceiptCombinationSelector(client)
-            target_id = receipt_ids[0]
-            selection = selector.choose(
-                image_id=image_id, target_receipt_id=target_id
-            )
-            chosen_receipts = selection.get("choice") or []
-            if not chosen_receipts:
-                return {
-                    "image_id": image_id,
-                    "original_receipt_ids": receipt_ids,
-                    "status": "no_combination",
-                    "raw_answer": selection.get("raw_answer"),
-                    "candidates": selection.get("candidates"),
-                }
+        # Have the LLM pick which receipts to combine.
+        selector = ReceiptCombinationSelector(client)
+        target_id = receipt_ids[0]
+        selection = selector.choose(
+            image_id=image_id, target_receipt_id=target_id
+        )
+        chosen_receipts = selection.get("choice") or []
+        if not chosen_receipts:
+            return {
+                "image_id": image_id,
+                "original_receipt_ids": receipt_ids,
+                "status": "no_combination",
+                "raw_answer": selection.get("raw_answer"),
+                "candidates": selection.get("candidates"),
+            }
 
             # Fail if LLM selected more than 2 receipts (should only be pairs)
             if len(chosen_receipts) > 2:
@@ -153,7 +142,7 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
         response = {
             "image_id": image_id,
             "new_receipt_id": result.get("new_receipt_id"),
-            "original_receipt_ids": receipt_ids,
+            "original_receipt_ids": chosen_receipts,
             "status": result.get("status", "success"),
         }
 
