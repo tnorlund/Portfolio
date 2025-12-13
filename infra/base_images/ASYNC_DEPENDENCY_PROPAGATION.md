@@ -201,8 +201,8 @@ Time: 08:00 - ✅ All Lambdas complete (parallel!)
 ```
 Time    You             Pulumi          AWS CodeBuild
 ────    ──────────────  ──────────────  ─────────────────────────────────────
-00:00   pulumi up       Calculating...  
-00:05   ✅ DONE!        Triggering...   
+00:00   pulumi up       Calculating...
+00:05   ✅ DONE!        Triggering...
 00:05   Close laptop!   ✅ DONE!        base-dynamo building...
                                         base-label waiting for base-dynamo...
                                         base-agent waiting for base-label...
@@ -346,12 +346,12 @@ Run 2 (at 01:00, while Run 1 still building):
 
 ## Benefits
 
-✅ **Fast pulumi up** - Returns in ~5 seconds  
-✅ **No local builds** - Everything on AWS  
-✅ **Correct ordering** - Dependency chain preserved  
-✅ **Parallel builds** - Lambdas build simultaneously  
-✅ **Cost efficient** - Only rebuilds what changed  
-✅ **Laptop friendly** - Close laptop, builds continue  
+✅ **Fast pulumi up** - Returns in ~5 seconds
+✅ **No local builds** - Everything on AWS
+✅ **Correct ordering** - Dependency chain preserved
+✅ **Parallel builds** - Lambdas build simultaneously
+✅ **Cost efficient** - Only rebuilds what changed
+✅ **Laptop friendly** - Close laptop, builds continue
 
 ## Monitoring
 

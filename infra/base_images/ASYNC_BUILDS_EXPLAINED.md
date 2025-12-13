@@ -18,7 +18,7 @@ FROM public.ecr.aws/lambda/python:3.12
 COPY receipt_dynamo /tmp/receipt_dynamo
 RUN pip install /tmp/receipt_dynamo
 
-# Dockerfile.receipt_label  
+# Dockerfile.receipt_label
 FROM public.ecr.aws/lambda/python:3.12  ← Not FROM base-dynamo!
 COPY receipt_dynamo /tmp/receipt_dynamo
 COPY receipt_label /tmp/receipt_label
@@ -68,7 +68,7 @@ base_agent.image_uri:  ....:git-ff823670d → ....:git-abc1234-dirty ✅
 ```
 Level 0 (parallel):
   - base-receipt-dynamo
-  - base-receipt-label  
+  - base-receipt-label
   - base-receipt-agent
 
 Level 1 (parallel):
@@ -209,17 +209,17 @@ Your Experience (Local):
 AWS Background (Parallel):
 ──────────────────────────
 00:00 ─┬─ Base images start (3 parallel CodeBuilds)
-       │  
+       │
 03:30 ─┼─ base-dynamo ✅
-       │  
+       │
 05:00 ─┼─ base-label ✅
-       │  
+       │
 06:30 ─┼─ base-agent ✅
-       │  
+       │
        ├─ Lambdas waiting... (Docker retrying pulls)
-       │  
+       │
 06:30 ─┼─ Lambdas start building (3 parallel CodeBuilds)
-       │  
+       │
 08:00 ─┴─ All Lambdas ✅
 
 
@@ -350,13 +350,13 @@ pulumi up
 
 ## Summary
 
-✅ **Async builds** - `pulumi up` returns in ~5-10 seconds  
-✅ **No local Docker** - Everything builds on AWS CodeBuild  
-✅ **Parallel base images** - All 3 build simultaneously  
-✅ **Automatic propagation** - Lambdas rebuild when base changes  
-✅ **Correct ordering** - Docker waits for base images to exist  
-✅ **Cost efficient** - 75% reduction in Lambda build costs  
-✅ **Developer friendly** - Close laptop, builds continue  
+✅ **Async builds** - `pulumi up` returns in ~5-10 seconds
+✅ **No local Docker** - Everything builds on AWS CodeBuild
+✅ **Parallel base images** - All 3 build simultaneously
+✅ **Automatic propagation** - Lambdas rebuild when base changes
+✅ **Correct ordering** - Docker waits for base images to exist
+✅ **Cost efficient** - 75% reduction in Lambda build costs
+✅ **Developer friendly** - Close laptop, builds continue
 
 The system handles the complex orchestration automatically through:
 1. Pulumi's dependency graph (triggers in order)

@@ -192,7 +192,7 @@ class CodeBuildDockerImage(ComponentResource):
 
     def _should_include_base_packages(self) -> bool:
         """Determine if base packages should be included in hash/upload.
-        
+
         Returns False when using a base image (packages already in base).
         Returns True when not using a base image (need to include packages).
         """
@@ -303,7 +303,7 @@ class CodeBuildDockerImage(ComponentResource):
         safe_project_root = shlex.quote(project_root_abs)
         safe_context = shlex.quote(self.build_context_path)
         safe_dockerfile = shlex.quote(self.dockerfile_path)
-        
+
         # Determine if we should skip base packages (when using base image)
         skip_base_packages = "true" if self.base_image_uri else "false"
 
@@ -340,7 +340,7 @@ echo "📦 Copying minimal context with include patterns..."
 
 if [ "$CONTEXT_PATH" = "." ]; then
   # Lambda images - need packages from monorepo root
-  
+
   if [ "$SKIP_BASE_PACKAGES" = "true" ]; then
     echo "  → Using base image - skipping receipt_dynamo, receipt_chroma, and receipt_label packages..."
   else

@@ -308,7 +308,7 @@ def docker_image_buildspec(
         [f"--build-arg {k}={v}" for k, v in build_args.items()]
     )
     platform_flag = f"--platform {platform}" if platform else ""
-    
+
     # Add BASE_IMAGE_URI as a build arg if provided
     if base_image_uri:
         # Note: base_image_uri will be resolved by Pulumi before creating the buildspec

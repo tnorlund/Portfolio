@@ -200,7 +200,7 @@ class BaseImagesCodeBuild(ComponentResource):
         # All base images are SELF-CONTAINED (don't depend on each other)
         # They can all build IN PARALLEL! 🚀
         # ============================================================
-        
+
         # base-receipt-dynamo (self-contained)
         self.dynamo_base_image = CodeBuildDockerImage(
             f"base-receipt-dynamo-{stack}",
