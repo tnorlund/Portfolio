@@ -241,6 +241,24 @@ def create_label_harmonizer_tools(
             if not candidate_assignments:
                 return {"error": "No candidate assignments provided"}
 
+            # Check for duplicate word assignments
+            seen_words = set()
+            duplicates = []
+            for assignment in candidate_assignments:
+                word_key = (assignment.get("line_id"), assignment.get("word_id"))
+                if word_key in seen_words:
+                    duplicates.append(word_key)
+                seen_words.add(word_key)
+
+            if duplicates:
+                dup_str = ", ".join([f"line {lid} word {wid}" for lid, wid in duplicates])
+                logger.warning("⚠️  Duplicate word assignments detected: %s", dup_str)
+                return {
+                    "error": f"DUPLICATE ASSIGNMENTS: Each word can only have one financial type. "
+                    f"The following words were assigned multiple times: {dup_str}. "
+                    f"Please revise your assignments to use each word only once."
+                }
+
             # Store the LLM's reasoning and proposed assignments in shared state
             state["financial_reasoning"] = reasoning
             state["proposed_assignments"] = candidate_assignments
@@ -392,7 +410,9 @@ def create_label_harmonizer_tools(
                 "BE CONCISE. Focus on identifying the 4 key financial types. "
                 "After finalize_financial_context, STOP immediately.\n\n"
                 "For step 3: candidate_assignments is a list of dicts with: "
-                "line_id, word_id, value, proposed_type, confidence (0.0-1.0)"
+                "line_id, word_id, value, proposed_type, confidence (0.0-1.0)\n\n"
+                "CRITICAL RULE: Each word (identified by line_id + word_id) can only have ONE financial type. "
+                "Do NOT assign the same word to multiple types (e.g., don't label word 5 on line 10 as both GRAND_TOTAL and SUBTOTAL)."
             ),
         )
 
