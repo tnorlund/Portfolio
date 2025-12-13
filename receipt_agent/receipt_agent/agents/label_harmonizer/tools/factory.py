@@ -18,6 +18,7 @@ from receipt_agent.agents.label_harmonizer.tools.helpers import (
     label_to_dict,
 )
 from receipt_agent.config.settings import Settings, get_settings
+from receipt_agent.subagents.financial_validation.utils import extract_number
 from receipt_agent.utils.agent_common import create_ollama_llm
 
 if TYPE_CHECKING:
@@ -106,28 +107,6 @@ def create_label_harmonizer_tools(
 
     # Pre-build a simple financial sub-agent graph (LLM + financial discovery tools)
     def _build_financial_subagent_graph() -> Any:
-        def extract_number(text: str) -> Optional[float]:
-            """Extract numeric value from text, handling currency symbols and formatting."""
-            if not text:
-                return None
-
-            import re
-
-            # Remove currency symbols and clean up
-            clean_text = re.sub(r"[$€£¥₹]", "", text)
-            clean_text = re.sub(r"[^\d.,-]", "", clean_text)
-            clean_text = clean_text.replace(",", "")
-
-            # Handle negative numbers (parentheses or minus signs)
-            is_negative = "-" in text or "(" in text
-            clean_text = clean_text.replace("-", "")
-
-            try:
-                value = float(clean_text)
-                return -value if is_negative else value
-            except ValueError:
-                return None
-
         @tool
         def analyze_receipt_structure() -> dict:
             """Get concise receipt structure overview for financial analysis."""
@@ -424,14 +403,11 @@ def create_label_harmonizer_tools(
         )
 
     try:
-        print("🔧 DEBUG: Building financial subagent graph...")
+        logger.debug("Building financial subagent graph...")
         state["financial_subagent_graph"] = _build_financial_subagent_graph()
-        print("🔧 DEBUG: Financial subagent graph created successfully")
+        logger.debug("Financial subagent graph created successfully")
     except Exception as e:
-        print(f"🔧 DEBUG: Failed to create financial subagent graph: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.exception("Failed to create financial subagent graph: %s", e)
 
     # ========== RECEIPT DATA TOOLS ==========
 
@@ -734,8 +710,15 @@ def create_label_harmonizer_tools(
             return {"error": "No receipt data loaded"}
 
         # Retry logic for financial sub-agent with exponential backoff
-        max_retries = 3
-        base_delay = 2.0
+        # Get retry configuration from environment or use defaults
+        import os
+
+        max_retries = int(
+            os.environ.get("FINANCIAL_SUBAGENT_MAX_RETRIES", "3")
+        )
+        base_delay = float(
+            os.environ.get("FINANCIAL_SUBAGENT_BASE_DELAY", "2.0")
+        )
 
         for attempt in range(max_retries):
             try:
@@ -764,16 +747,14 @@ def create_label_harmonizer_tools(
                     )
 
                     # Log detailed financial discoveries
-                    import json
-
                     logger.info(
-                        f"Financial context summary: {json.dumps({
-                        'types_found': list(candidates.keys()),
-                        'currency': financial_context.get('currency'),
-                        'confidence': financial_context.get('confidence'),
-                        'math_valid': financial_context.get('mathematical_validation', {}).get('all_valid'),
-                        'summary': financial_context.get('summary', '')[:100]
-                    }, indent=2)}"
+                        "Financial context summary: types_found=%s, currency=%s, confidence=%s, math_valid=%s",
+                        list(candidates.keys()),
+                        financial_context.get("currency"),
+                        financial_context.get("confidence"),
+                        financial_context.get(
+                            "mathematical_validation", {}
+                        ).get("all_valid"),
                     )
 
                     # Log each financial type with values

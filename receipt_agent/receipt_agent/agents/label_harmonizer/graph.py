@@ -320,7 +320,7 @@ async def run_label_harmonizer_agent(
             image_id, receipt_id
         )
     except Exception as e:
-        logger.debug(f"Could not load receipt metadata: {e}")
+        logger.debug("Could not load receipt metadata: %s", e)
 
     # Update state holder with receipt data (mutate existing dict to preserve reference used by tools)
     receipt_state = state_holder.get("receipt")

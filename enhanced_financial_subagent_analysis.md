@@ -11,7 +11,7 @@ The Enhanced Financial Validation Sub-Agent is a specialized component that vali
    ```python
    {
        "receipt_text": str,        # Full OCR text
-       "labels": [                 # Existing labels 
+       "labels": [                 # Existing labels
            {
                "line_id": int,
                "word_id": int,
@@ -22,7 +22,7 @@ The Enhanced Financial Validation Sub-Agent is a specialized component that vali
        "words": [                  # OCR word-level data
            {
                "line_id": int,
-               "word_id": int, 
+               "word_id": int,
                "text": str,           # Raw word text
                "bbox": {...}          # Optional geometry
            }
@@ -64,16 +64,16 @@ The Enhanced Financial Validation Sub-Agent is a specialized component that vali
 ## Tools/Capabilities
 
 ### 1. `get_table_structure()`
-**Purpose**: Access table structure analysis from table sub-agent  
-**Returns**: 
+**Purpose**: Access table structure analysis from table sub-agent
+**Returns**:
 - `has_structure`: bool - Whether table data is available
 - `table_analysis`: dict - Full table structure if available
 - `financial_rows`: list - Table rows containing financial data
 - `columns`: list - Column layout information
 
 ### 2. `detect_currency()`
-**Purpose**: Auto-detect currency from receipt text  
-**Logic**: 
+**Purpose**: Auto-detect currency from receipt text
+**Logic**:
 - Searches for currency symbols: $, €, £, ¥, ₹
 - Searches for currency keywords: USD, Euro, etc.
 - Defaults to USD if no clear indicators
@@ -83,31 +83,31 @@ The Enhanced Financial Validation Sub-Agent is a specialized component that vali
 - `evidence`: list - Detection evidence
 
 ### 3. `get_financial_labels()`
-**Purpose**: Extract and organize all financial labels by type  
-**Processes**: GRAND_TOTAL, SUBTOTAL, TAX, LINE_TOTAL, UNIT_PRICE, QUANTITY, DISCOUNT, COUPON  
+**Purpose**: Extract and organize all financial labels by type
+**Processes**: GRAND_TOTAL, SUBTOTAL, TAX, LINE_TOTAL, UNIT_PRICE, QUANTITY, DISCOUNT, COUPON
 **Returns**:
 - `financial_labels`: dict - Labels grouped by type with numeric values
 - `label_counts`: dict - Count of each label type
 
 ### 4. `validate_grand_total_math()`
-**Purpose**: Prove GRAND_TOTAL = SUBTOTAL + TAX + fees - discounts  
-**Tolerance**: ±0.01 for rounding errors  
+**Purpose**: Prove GRAND_TOTAL = SUBTOTAL + TAX + fees - discounts
+**Tolerance**: ±0.01 for rounding errors
 **Returns**:
 - `is_valid`: bool - Whether math checks out
 - `issues`: list - Specific math errors found
 - `values`: dict - All values used in calculation
 
 ### 5. `validate_subtotal_math()`
-**Purpose**: Prove SUBTOTAL = sum of all LINE_TOTAL values  
-**Tolerance**: ±0.01 for rounding errors  
+**Purpose**: Prove SUBTOTAL = sum of all LINE_TOTAL values
+**Tolerance**: ±0.01 for rounding errors
 **Returns**:
 - `is_valid`: bool - Whether math checks out
-- `issues`: list - Specific math errors found  
+- `issues`: list - Specific math errors found
 - `values`: dict - Subtotal vs sum of line totals
 
 ### 6. `validate_line_item_math()`
-**Purpose**: Prove QUANTITY × UNIT_PRICE = LINE_TOTAL for each line item  
-**Process**: 
+**Purpose**: Prove QUANTITY × UNIT_PRICE = LINE_TOTAL for each line item
+**Process**:
 - Groups labels by line_id to find complete line items
 - Validates math for each line where all components exist
 - Reports which lines have valid/invalid math
@@ -117,16 +117,16 @@ The Enhanced Financial Validation Sub-Agent is a specialized component that vali
 - `validated_lines`: list - Details for each line item
 
 ### 7. `find_missing_line_item_fields()`
-**Purpose**: Find LINE_TOTALs missing required supporting fields  
-**Requirements**: Each LINE_TOTAL should have PRODUCT_NAME, QUANTITY, UNIT_PRICE  
+**Purpose**: Find LINE_TOTALs missing required supporting fields
+**Requirements**: Each LINE_TOTAL should have PRODUCT_NAME, QUANTITY, UNIT_PRICE
 **Returns**:
 - `missing_fields`: list - Details of missing fields per line
 - `lines_with_issues`: int - Count of problematic lines
 - `total_line_items`: int - Total line items found
 
 ### 8. `propose_corrections()`
-**Purpose**: Submit specific label corrections  
-**Input**: List of corrections with line_id, word_id, reasoning, confidence  
+**Purpose**: Submit specific label corrections
+**Input**: List of corrections with line_id, word_id, reasoning, confidence
 **Returns**: Success status and correction count
 
 ## Output Structure
@@ -162,7 +162,7 @@ The sub-agent produces a comprehensive validation result:
 
 ### How Table Structure Helps
 
-1. **Better Line Item Grouping**: 
+1. **Better Line Item Grouping**:
    - Uses geometric layout to identify which fields belong together
    - Groups PRODUCT_NAME, QUANTITY, UNIT_PRICE, LINE_TOTAL by row position
    - More accurate than relying solely on line_id
@@ -210,7 +210,6 @@ The sub-agent reports whether table structure was used via:
 2. Run table sub-agent (`run_table_subagent`) → produces `column_analysis`
 3. **Run enhanced financial validation** (`validate_financial_consistency`) ← Uses table structure
 4. Apply validation results to harmonization decisions
-5. Submit final harmonization (`submit_harmonization`)
 
 ## Key Advantages Over Basic Validation
 

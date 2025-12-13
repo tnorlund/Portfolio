@@ -14,14 +14,14 @@ The LLM-Driven Financial Discovery Sub-Agent represents a fundamental shift from
 ### Core Components
 
 1. **Structure Analyzer**: Examines receipt text, words, and table structure
-2. **Numeric Discovery Engine**: Finds all numeric values with positional context  
+2. **Numeric Discovery Engine**: Finds all numeric values with positional context
 3. **LLM Reasoning Engine**: Applies sophisticated reasoning to assign financial types
 4. **Mathematical Validator**: Verifies that assignments follow receipt mathematics
 5. **Context Generator**: Produces rich context for downstream label assignment
 
 ### Workflow
 
-```
+```text
 Receipt Data → Structure Analysis → Numeric Discovery → LLM Reasoning → Math Validation → Financial Context
 ```
 
@@ -60,7 +60,7 @@ Receipt Data → Structure Analysis → Numeric Discovery → LLM Reasoning → 
 - **Words**: Word-level data with line_id, word_id, text, and positions
 - **Labels**: Existing labels (can be empty or sparse)
 
-### Optional Inputs  
+### Optional Inputs
 - **Table Structure**: Column/row analysis from table sub-agent (enhances accuracy)
 
 ## Output Format
@@ -71,7 +71,7 @@ Receipt Data → Structure Analysis → Numeric Discovery → LLM Reasoning → 
         "GRAND_TOTAL": [
             {
                 "line_id": 25,
-                "word_id": 3, 
+                "word_id": 3,
                 "value": 45.67,
                 "confidence": 0.95,
                 "reasoning": "This is the largest value at the bottom of the receipt, appearing after 'TOTAL'"
@@ -81,7 +81,7 @@ Receipt Data → Structure Analysis → Numeric Discovery → LLM Reasoning → 
             {
                 "line_id": 23,
                 "word_id": 2,
-                "value": 42.18, 
+                "value": 42.18,
                 "confidence": 0.90,
                 "reasoning": "This appears before tax with 'SUBTOTAL' text, and is close to sum of line items"
             }
@@ -174,7 +174,7 @@ Receipt Data → Structure Analysis → Numeric Discovery → LLM Reasoning → 
 The financial discovery sub-agent fits into the label harmonizer workflow as follows:
 
 1. **Structure Analysis**: `get_line_id_text_list()` - understand receipt layout
-2. **Table Analysis**: `run_table_subagent()` - identify column/row structure  
+2. **Table Analysis**: `run_table_subagent()` - identify column/row structure
 3. **🆕 Financial Discovery**: `validate_financial_consistency()` - **LLM-driven discovery of financial values**
 4. **Label Assignment**: `run_label_subagent()` - **use financial context for informed labeling**
 

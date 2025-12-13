@@ -47,7 +47,6 @@ results = await harmonizer.harmonize_receipts(receipt_keys)
 
 import asyncio
 import logging
-import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 

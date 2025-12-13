@@ -28,43 +28,43 @@ from receipt_agent.subagents.financial_validation.llm_driven_graph import (
 
 async def test_llm_driven_financial_discovery():
     """Test LLM-driven financial discovery with sample receipt data."""
-    
+
     print("🧠 Testing LLM-Driven Financial Discovery Sub-Agent")
     print("=" * 60)
-    
+
     # Sample receipt data - realistic grocery receipt
     sample_receipt_text = """
     WHOLE FOODS MARKET
     123 Organic Ave, Austin TX 78701
     Phone: (512) 555-0199
-    
+
     Transaction #: 12345-67890
     Date: 12/13/2024  Time: 2:30 PM
     Cashier: Sarah M.
-    
+
     365 Organic Bananas     2.5 lbs @ $1.99/lb     $4.98
     Avocados Large          3 ea @ $1.29 ea        $3.87
     Organic Spinach         1 bag                  $3.49
     Almond Milk Unsweetened 1 @ $4.99             $4.99
     Free Range Eggs         1 dz @ $6.49          $6.49
-    
+
     SUBTOTAL                                      $23.82
     TX SALES TAX 8.25%                             $1.97
     TOTAL                                         $25.79
-    
+
     VISA CARD ****1234                           $25.79
-    
+
     Thank you for shopping with us!
     Visit us at wholefoodsmarket.com
     """
-    
+
     # Sample word data (simulating OCR output)
     sample_words = [
         # Header
         {"line_id": 1, "word_id": 1, "text": "WHOLE", "confidence": 0.99},
         {"line_id": 1, "word_id": 2, "text": "FOODS", "confidence": 0.99},
         {"line_id": 1, "word_id": 3, "text": "MARKET", "confidence": 0.99},
-        
+
         # Line item 1: Bananas
         {"line_id": 8, "word_id": 1, "text": "365", "confidence": 0.95},
         {"line_id": 8, "word_id": 2, "text": "Organic", "confidence": 0.98},
@@ -74,7 +74,7 @@ async def test_llm_driven_financial_discovery():
         {"line_id": 8, "word_id": 6, "text": "@", "confidence": 0.90},
         {"line_id": 8, "word_id": 7, "text": "$1.99/lb", "confidence": 0.93},
         {"line_id": 8, "word_id": 8, "text": "$4.98", "confidence": 0.98},
-        
+
         # Line item 2: Avocados
         {"line_id": 9, "word_id": 1, "text": "Avocados", "confidence": 0.97},
         {"line_id": 9, "word_id": 2, "text": "Large", "confidence": 0.95},
@@ -84,14 +84,14 @@ async def test_llm_driven_financial_discovery():
         {"line_id": 9, "word_id": 6, "text": "$1.29", "confidence": 0.96},
         {"line_id": 9, "word_id": 7, "text": "ea", "confidence": 0.90},
         {"line_id": 9, "word_id": 8, "text": "$3.87", "confidence": 0.97},
-        
+
         # Line item 3: Spinach
         {"line_id": 10, "word_id": 1, "text": "Organic", "confidence": 0.98},
         {"line_id": 10, "word_id": 2, "text": "Spinach", "confidence": 0.99},
         {"line_id": 10, "word_id": 3, "text": "1", "confidence": 0.97},
         {"line_id": 10, "word_id": 4, "text": "bag", "confidence": 0.94},
         {"line_id": 10, "word_id": 5, "text": "$3.49", "confidence": 0.98},
-        
+
         # Line item 4: Almond Milk
         {"line_id": 11, "word_id": 1, "text": "Almond", "confidence": 0.97},
         {"line_id": 11, "word_id": 2, "text": "Milk", "confidence": 0.98},
@@ -100,7 +100,7 @@ async def test_llm_driven_financial_discovery():
         {"line_id": 11, "word_id": 5, "text": "@", "confidence": 0.89},
         {"line_id": 11, "word_id": 6, "text": "$4.99", "confidence": 0.97},
         {"line_id": 11, "word_id": 7, "text": "$4.99", "confidence": 0.98},
-        
+
         # Line item 5: Eggs
         {"line_id": 12, "word_id": 1, "text": "Free", "confidence": 0.96},
         {"line_id": 12, "word_id": 2, "text": "Range", "confidence": 0.97},
@@ -110,27 +110,27 @@ async def test_llm_driven_financial_discovery():
         {"line_id": 12, "word_id": 6, "text": "@", "confidence": 0.87},
         {"line_id": 12, "word_id": 7, "text": "$6.49", "confidence": 0.97},
         {"line_id": 12, "word_id": 8, "text": "$6.49", "confidence": 0.98},
-        
+
         # Totals section
         {"line_id": 14, "word_id": 1, "text": "SUBTOTAL", "confidence": 0.99},
         {"line_id": 14, "word_id": 2, "text": "$23.82", "confidence": 0.98},
-        
+
         {"line_id": 15, "word_id": 1, "text": "TX", "confidence": 0.96},
         {"line_id": 15, "word_id": 2, "text": "SALES", "confidence": 0.97},
         {"line_id": 15, "word_id": 3, "text": "TAX", "confidence": 0.98},
         {"line_id": 15, "word_id": 4, "text": "8.25%", "confidence": 0.95},
         {"line_id": 15, "word_id": 5, "text": "$1.97", "confidence": 0.98},
-        
+
         {"line_id": 16, "word_id": 1, "text": "TOTAL", "confidence": 0.99},
         {"line_id": 16, "word_id": 2, "text": "$25.79", "confidence": 0.99},
-        
+
         # Payment
         {"line_id": 18, "word_id": 1, "text": "VISA", "confidence": 0.97},
         {"line_id": 18, "word_id": 2, "text": "CARD", "confidence": 0.96},
         {"line_id": 18, "word_id": 3, "text": "****1234", "confidence": 0.94},
         {"line_id": 18, "word_id": 4, "text": "$25.79", "confidence": 0.98},
     ]
-    
+
     # Start with minimal labels (simulating sparse labeling scenario)
     sample_labels = [
         # Only a few labels exist - agent should discover the rest
@@ -138,7 +138,7 @@ async def test_llm_driven_financial_discovery():
         {"line_id": 14, "word_id": 1, "label": "SUBTOTAL", "validation_status": "VALID"},
         {"line_id": 16, "word_id": 1, "label": "GRAND_TOTAL", "validation_status": "VALID"},
     ]
-    
+
     # Optional table structure (simulating table sub-agent output)
     sample_table_structure = {
         "summary": "Receipt has structured line items with product names, quantities, unit prices, and line totals in columns",
@@ -159,17 +159,17 @@ async def test_llm_driven_financial_discovery():
             {"row_id": 16, "type": "total", "line_id": 16},
         ]
     }
-    
+
     print("📄 Sample Receipt Summary:")
     print(f"   - Total words: {len(sample_words)}")
     print(f"   - Existing labels: {len(sample_labels)}")
     print(f"   - Has table structure: {sample_table_structure is not None}")
-    print(f"   - Expected SUBTOTAL: $23.82")
-    print(f"   - Expected TAX: $1.97") 
-    print(f"   - Expected GRAND_TOTAL: $25.79")
-    print(f"   - Expected LINE_TOTALs: $4.98, $3.87, $3.49, $4.99, $6.49")
+        print("   - Expected SUBTOTAL: $23.82")
+        print("   - Expected TAX: $1.97")
+        print("   - Expected GRAND_TOTAL: $25.79")
+        print("   - Expected LINE_TOTALs: $4.98, $3.87, $3.49, $4.99, $6.49")
     print()
-    
+
     # Create and run the LLM-driven financial discovery sub-agent
     print("🔧 Creating LLM-driven financial discovery graph...")
     try:
@@ -178,7 +178,7 @@ async def test_llm_driven_financial_discovery():
     except Exception as e:
         print(f"❌ Failed to create graph: {e}")
         return
-    
+
     print("\n🧠 Running LLM-driven financial discovery...")
     try:
         result = await run_llm_driven_financial_discovery(
@@ -195,12 +195,12 @@ async def test_llm_driven_financial_discovery():
         import traceback
         traceback.print_exc()
         return
-    
+
     # Display results
     print("\n" + "="*60)
     print("📊 FINANCIAL DISCOVERY RESULTS")
     print("="*60)
-    
+
     # Financial candidates
     financial_candidates = result.get("financial_candidates", {})
     if financial_candidates:
@@ -214,13 +214,13 @@ async def test_llm_driven_financial_discovery():
                 print(f"         Reasoning: {candidate.get('reasoning', 'N/A')}")
     else:
         print("\n❌ No financial candidates identified")
-    
+
     # Mathematical validation
     math_validation = result.get("mathematical_validation", {})
     print(f"\n🧮 Mathematical Validation:")
     print(f"   - Tests passed: {math_validation.get('verified', 0)}/{math_validation.get('total_tests', 0)}")
     print(f"   - All valid: {'✅ Yes' if math_validation.get('all_valid', False) else '❌ No'}")
-    
+
     if math_validation.get("test_details"):
         print("\n   Test Details:")
         for test in math_validation["test_details"]:
@@ -228,38 +228,38 @@ async def test_llm_driven_financial_discovery():
             passes = test.get("passes", False)
             status = "✅ PASS" if passes else "❌ FAIL"
             print(f"      {status} {test_name}")
-            
+
             if "grand_total" in test:
                 print(f"         Grand Total: ${test.get('grand_total', 0):.2f}")
                 print(f"         Subtotal: ${test.get('subtotal', 0):.2f}")
                 print(f"         Tax: ${test.get('tax', 0):.2f}")
                 print(f"         Calculated: ${test.get('calculated_total', 0):.2f}")
                 print(f"         Difference: ${test.get('difference', 0):.2f}")
-            
+
             if "line_totals" in test:
                 print(f"         Subtotal: ${test.get('subtotal', 0):.2f}")
                 print(f"         Line Totals: {[f'${lt:.2f}' for lt in test.get('line_totals', [])]}")
                 print(f"         Calculated: ${test.get('calculated_subtotal', 0):.2f}")
                 print(f"         Difference: ${test.get('difference', 0):.2f}")
-    
+
     # LLM reasoning
     llm_reasoning = result.get("llm_reasoning", {})
     print(f"\n🤖 LLM Reasoning:")
     print(f"   - Currency: {result.get('currency', 'Unknown')}")
     print(f"   - Confidence: {llm_reasoning.get('confidence', 'Unknown')}")
-    
+
     if llm_reasoning.get("structure_analysis"):
         print(f"\n   Structure Analysis:")
         print(f"   {llm_reasoning['structure_analysis'][:200]}...")
-    
+
     if llm_reasoning.get("final_assessment"):
         print(f"\n   Final Assessment:")
         print(f"   {llm_reasoning['final_assessment'][:200]}...")
-    
+
     # Error handling
     if result.get("error"):
         print(f"\n❌ Error: {result['error']}")
-    
+
     # Summary
     summary = result.get("summary", {})
     if summary:
@@ -268,13 +268,13 @@ async def test_llm_driven_financial_discovery():
         print(f"   - Financial types identified: {', '.join(summary.get('financial_types_identified', []))}")
         print(f"   - Average confidence: {summary.get('avg_confidence', 0.0):.2f}")
         print(f"   - Mathematical validity: {summary.get('mathematical_validity', 'unknown')}")
-    
+
     print(f"\n🎯 Context for Label Assignment:")
     print(f"   This rich financial context can now be used by label sub-agents")
     print(f"   to make informed decisions about assigning financial labels to words.")
     print(f"   The LLM has identified candidates and validated mathematical relationships")
     print(f"   without relying on hard-coded rules or existing labels.")
-    
+
     print("\n" + "="*60)
     print("✅ LLM-Driven Financial Discovery Test Complete")
     print("="*60)

@@ -18,7 +18,7 @@ Successfully implemented and documented a new LLM-driven approach to financial v
   - 5 specialized tools for structure analysis, reasoning, and validation
   - Mathematical verification and rich context generation
 
-### 2. **Integration Updates**  
+### 2. **Integration Updates**
 - ✅ `receipt_agent/receipt_agent/agents/label_harmonizer/tools/factory.py` (updated)
   - Modified `validate_financial_consistency` tool to use new LLM-driven approach
   - Updated tool description and integration logic
@@ -44,7 +44,7 @@ Successfully implemented and documented a new LLM-driven approach to financial v
 
 ### **LLM-Driven Tools**
 1. **`analyze_receipt_structure`**: Comprehensive receipt structure analysis
-2. **`identify_numeric_candidates`**: Find numeric values with rich context  
+2. **`identify_numeric_candidates`**: Find numeric values with rich context
 3. **`reason_about_financial_layout`**: Apply LLM reasoning to assign financial types
 4. **`test_mathematical_relationships`**: Verify mathematical correctness
 5. **`finalize_financial_context`**: Generate structured output for label assignment
@@ -60,7 +60,7 @@ Successfully implemented and documented a new LLM-driven approach to financial v
 {
     "financial_candidates": {
         "GRAND_TOTAL": [...],
-        "SUBTOTAL": [...], 
+        "SUBTOTAL": [...],
         "TAX": [...],
         "LINE_TOTAL": [...]
     },
@@ -77,7 +77,7 @@ Successfully implemented and documented a new LLM-driven approach to financial v
 - ❌ **Before**: Required labels to exist before validation
 - ✅ **After**: Discovers financial values from raw text and provides context for labeling
 
-### **2. Reasoning Over Rules**  
+### **2. Reasoning Over Rules**
 - ❌ **Before**: Hard-coded patterns like "find 'TOTAL' at bottom right"
 - ✅ **After**: LLM reasoning: "analyze structure and determine which numbers represent totals based on context"
 
@@ -92,12 +92,12 @@ Successfully implemented and documented a new LLM-driven approach to financial v
 ## 🔄 Updated Workflow
 
 ### **Label Harmonizer Integration**
-```
+```text
 1. get_line_id_text_list() → Structure understanding
-2. run_table_subagent() → Column/row analysis  
+2. run_table_subagent() → Column/row analysis
 3. validate_financial_consistency() → 🆕 LLM-driven financial discovery
 4. run_label_subagent() → Label assignment with financial context
-```
+ ```
 
 ### **Key Change**
 The financial sub-agent now **provides context TO** the label sub-agent instead of **requiring labels FROM** the label sub-agent.
@@ -111,7 +111,7 @@ The financial sub-agent now **provides context TO** the label sub-agent instead 
 
 ### **Core Functionality**
 - ✅ 5 specialized tools implemented with proper error handling
-- ✅ Mathematical validation logic with tolerance handling  
+- ✅ Mathematical validation logic with tolerance handling
 - ✅ Rich context generation with detailed reasoning
 - ✅ Async/sync compatibility for LangGraph integration
 
