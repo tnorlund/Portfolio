@@ -91,6 +91,7 @@ class MetadataHarmonizerStepFunction(ComponentResource):
         max_concurrency: Optional[int] = None,
         batch_size: Optional[int] = None,
         max_receipts_per_batch: Optional[int] = None,
+        base_image_uri: Optional[pulumi.Input[str]] = None,  # Optional base image for faster builds
         opts: Optional[ResourceOptions] = None,
     ):
         super().__init__(f"{__name__}-{name}", name, None, opts)
@@ -378,18 +379,34 @@ class MetadataHarmonizerStepFunction(ComponentResource):
             },
         }
 
+        # Use base image if provided for faster builds and smaller S3 uploads
+        dockerfile_to_use = (
+            "infra/metadata_harmonizer_step_functions/lambdas/Dockerfile.with_base"
+            if base_image_uri
+            else "infra/metadata_harmonizer_step_functions/lambdas/Dockerfile"
+        )
+
+        # When using base image, only include receipt_agent (base has everything else)
+        # When not using base image, include all dependencies
+        source_paths_to_use = (
+            ["receipt_agent"]  # Only receipt_agent when using base image
+            if base_image_uri
+            else [
+                "receipt_agent",
+                "receipt_places",
+                "receipt_upload",
+            ]
+        )
+
         harmonize_docker_image = CodeBuildDockerImage(
             f"{name}-harmonize-img",
-            dockerfile_path="infra/metadata_harmonizer_step_functions/lambdas/Dockerfile",
+            dockerfile_path=dockerfile_to_use,
             build_context_path=".",
-            source_paths=[
-                "receipt_agent",  # Include receipt_agent package (not in default rsync)
-                "receipt_places",  # receipt_agent depends on receipt_places
-                "receipt_upload",  # receipt_agent depends on receipt_upload (geometry transformations)
-            ],
+            source_paths=source_paths_to_use,
             lambda_function_name=f"{name}-harmonize-metadata",
             lambda_config=harmonize_lambda_config,
             platform="linux/arm64",
+            base_image_uri=base_image_uri,  # Pass base image URI for optimization
             opts=ResourceOptions(
                 parent=self, depends_on=[lambda_role, dynamodb_policy]
             ),

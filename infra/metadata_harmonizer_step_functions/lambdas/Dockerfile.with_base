@@ -1,0 +1,26 @@
+# Optimized build using base-receipt-agent image
+# Base image contains: receipt_dynamo, receipt_chroma, receipt_upload, receipt_places, receipt_label
+
+# Accept base image URI as build arg
+ARG BASE_IMAGE_URI
+FROM ${BASE_IMAGE_URI:-public.ecr.aws/lambda/python:3.12}
+
+# Set environment variable to avoid compilation issues with hnswlib
+ENV HNSWLIB_NO_NATIVE=1
+
+# Copy and install only receipt_agent (all other packages are in base image)
+COPY receipt_agent/ /tmp/receipt_agent/
+
+# Install receipt_agent (depends on packages already in base)
+RUN pip install --no-cache-dir /tmp/receipt_agent && \
+    rm -rf /tmp/receipt_agent
+
+# Copy the harmonize metadata handler
+COPY infra/metadata_harmonizer_step_functions/lambdas/harmonize_metadata.py ${LAMBDA_TASK_ROOT}/handler.py
+
+# Copy utils module (EMF metrics, etc.)
+COPY infra/metadata_harmonizer_step_functions/lambdas/utils/ ${LAMBDA_TASK_ROOT}/utils/
+
+# Set the handler
+CMD ["handler.handler"]
+

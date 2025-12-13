@@ -237,6 +237,19 @@ class BaseImages(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
+        # Create ECR repository for receipt_agent base image
+        self.agent_base_repo = Repository(
+            f"base-receipt-agent-ecr-{stack}",
+            name=f"base-receipt-agent-{stack}",
+            image_scanning_configuration=(
+                RepositoryImageScanningConfigurationArgs(
+                    scan_on_push=True,
+                )
+            ),
+            force_delete=True,
+            opts=ResourceOptions(parent=self),
+        )
+
         # Lifecycle policy configuration (retain N, expire untagged older than X)
         portfolio_config = pulumi.Config("portfolio")
         max_images = portfolio_config.get_int("ecr-max-images") or int(
@@ -307,6 +320,15 @@ class BaseImages(ComponentResource):
             ),
         )
 
+        self.agent_lifecycle = LifecyclePolicy(
+            f"base-receipt-agent-lifecycle-{stack}",
+            repository=self.agent_base_repo.name,
+            policy=lifecycle_policy_doc,
+            opts=ResourceOptions(
+                parent=self, depends_on=[self.agent_base_repo]
+            ),
+        )
+
         # Get ECR authorization token (using output version for docker-build)
         ecr_auth_token = get_authorization_token_output()
 
@@ -315,10 +337,20 @@ class BaseImages(ComponentResource):
         # Get tags for each package
         dynamo_package_dir = build_context_path / "receipt_dynamo"
         label_package_dir = build_context_path / "receipt_label"
+        chroma_package_dir = build_context_path / "receipt_chroma"
+        upload_package_dir = build_context_path / "receipt_upload"
+        places_package_dir = build_context_path / "receipt_places"
+
         dynamo_tag = self.get_image_tag("receipt_dynamo", dynamo_package_dir)
         # For label image, use combined hash since it includes both packages
         label_tag = self.get_combined_image_tag(
             "receipt_label", [dynamo_package_dir, label_package_dir]
+        )
+        # For agent image, use combined hash of all packages it includes
+        agent_tag = self.get_combined_image_tag(
+            "receipt_agent",
+            [dynamo_package_dir, chroma_package_dir, upload_package_dir,
+             places_package_dir, label_package_dir]
         )
 
         # Store Dockerfile paths once to ensure consistency
@@ -327,6 +359,9 @@ class BaseImages(ComponentResource):
         )
         label_dockerfile = str(
             Path(__file__).parent / "dockerfiles" / "Dockerfile.receipt_label"
+        )
+        agent_dockerfile = str(
+            Path(__file__).parent / "dockerfiles" / "Dockerfile.receipt_agent"
         )
 
         # Build receipt_dynamo base image with content-based tag
@@ -454,6 +489,66 @@ class BaseImages(ComponentResource):
             ),
         )
 
+        # Build receipt_agent base image (includes all common packages)
+        # This is the most comprehensive base image for agent-based Lambdas
+        # .dockerignore at project root ensures only needed packages are included
+        self.agent_base_image = docker_build.Image(
+            f"base-receipt-agent-img-{stack}",
+            context={
+                "location": str(build_context_path),
+            },
+            dockerfile={
+                "location": agent_dockerfile,
+            },
+            platforms=["linux/arm64"],
+            build_args={
+                "PYTHON_VERSION": "3.12",
+                "BUILDKIT_INLINE_CACHE": "1",
+            },
+            # ECR caching configuration
+            cache_from=[
+                {
+                    "registry": {
+                        "ref": self.agent_base_repo.repository_url.apply(
+                            lambda url: f"{url}:cache"
+                        ),
+                    },
+                },
+            ],
+            cache_to=[
+                {
+                    "registry": {
+                        "imageManifest": True,
+                        "ociMediaTypes": True,
+                        "ref": self.agent_base_repo.repository_url.apply(
+                            lambda url: f"{url}:cache"
+                        ),
+                    },
+                },
+            ],
+            # Registry configuration for pushing
+            push=True,
+            registries=[
+                {
+                    "address": self.agent_base_repo.repository_url.apply(
+                        lambda url: url.split("/")[0]  # Extract registry address
+                    ),
+                    "password": ecr_auth_token.password,
+                    "username": ecr_auth_token.user_name,
+                },
+            ],
+            # Tags for the image
+            tags=[
+                self.agent_base_repo.repository_url.apply(
+                    lambda url: f"{url}:{agent_tag}"
+                ),
+            ],
+            opts=ResourceOptions(
+                parent=self,
+                depends_on=[self.agent_base_repo],  # Only depends on ECR repo
+            ),
+        )
+
         # Build dependency graph for base image resolution
         from infra.shared.package_dependencies import DependencyGraph
 
@@ -466,8 +561,10 @@ class BaseImages(ComponentResource):
             {
                 "dynamo_base_image_name": self.dynamo_base_image.tags[0],
                 "label_base_image_name": self.label_base_image.tags[0],
+                "agent_base_image_name": self.agent_base_image.tags[0],
                 "dynamo_base_repo_url": self.dynamo_base_repo.repository_url,
                 "label_base_repo_url": self.label_base_repo.repository_url,
+                "agent_base_repo_url": self.agent_base_repo.repository_url,
             }
         )
 
@@ -480,7 +577,7 @@ class BaseImages(ComponentResource):
         contains the package and its dependencies.
 
         Args:
-            package_name: Name of the package (e.g., "receipt-dynamo", "receipt_label")
+            package_name: Name of the package (e.g., "receipt-dynamo", "receipt_label", "receipt-agent")
 
         Returns:
             Base image URI (Pulumi Output) or None if no suitable base image exists
@@ -493,6 +590,13 @@ class BaseImages(ComponentResource):
             return self.dynamo_base_image.tags[0]
         if normalized == "receipt-label":
             return self.label_base_image.tags[0]
+        if normalized == "receipt-agent":
+            return self.agent_base_image.tags[0]
+
+        # Check if package is included in agent base image (most comprehensive)
+        # Agent base includes: receipt_dynamo, receipt_chroma, receipt_upload, receipt_places, receipt_label
+        if normalized in ["receipt-chroma", "receipt-upload", "receipt-places"]:
+            return self.agent_base_image.tags[0]
 
         # Check if package is included in label base image
         label_packages = self.dependency_graph.get_base_image_packages(

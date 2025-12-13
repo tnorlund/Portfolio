@@ -106,6 +106,9 @@ pulumi.export(
 pulumi.export(
     "label_base_image_url", base_images.label_base_repo.repository_url
 )
+pulumi.export(
+    "agent_base_image_url", base_images.agent_base_repo.repository_url
+)
 
 # Export dependency graph information for debugging
 dependency_graph_dict = base_images.dependency_graph.to_dict()
@@ -1259,12 +1262,16 @@ pulumi.export(
 # Metadata Harmonizer Step Function (place_id-based harmonization)
 # Uses shared_chromadb_buckets (same as embedding_infrastructure.chromadb_buckets)
 # This is where ChromaDB snapshots are stored by the compaction process
+# Uses agent base image for maximum optimization (70-90% reduction in build time)
 metadata_harmonizer_sf = MetadataHarmonizerStepFunction(
     f"metadata-harmonizer-{stack}",
     dynamodb_table_name=dynamodb_table.name,
     dynamodb_table_arn=dynamodb_table.arn,
     chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
     chromadb_bucket_arn=shared_chromadb_buckets.bucket_arn,
+    base_image_uri=base_images.agent_base_image.tags[
+        0
+    ],  # Use agent base image with all common packages (dynamo, chroma, upload, places, label)
 )
 
 pulumi.export(
