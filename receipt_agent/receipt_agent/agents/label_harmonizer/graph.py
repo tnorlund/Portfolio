@@ -57,7 +57,7 @@ LABEL_HARMONIZER_PROMPT = """You are a receipt label harmonizer. Focus on unders
 ## Financial Validation Focus
 The enhanced financial validation sub-agent will:
 - **Prove GRAND_TOTAL = SUBTOTAL + TAX** (±0.01 tolerance)
-- **Prove SUBTOTAL = sum of LINE_TOTAL values** (±0.01 tolerance)  
+- **Prove SUBTOTAL = sum of LINE_TOTAL values** (±0.01 tolerance)
 - **Prove each QUANTITY × UNIT_PRICE = LINE_TOTAL** (±0.01 tolerance)
 - **Find LINE_TOTALs missing required fields** (PRODUCT_NAME, QUANTITY, UNIT_PRICE)
 - **Detect currency** and ensure consistency
@@ -314,7 +314,9 @@ async def run_label_harmonizer_agent(
     # Load receipt metadata for context and tools
     receipt_metadata = None
     try:
-        receipt_metadata = dynamo_client.get_receipt_metadata(image_id, receipt_id)
+        receipt_metadata = dynamo_client.get_receipt_metadata(
+            image_id, receipt_id
+        )
     except Exception as e:
         logger.debug(f"Could not load receipt metadata: {e}")
 
@@ -335,7 +337,7 @@ async def run_label_harmonizer_agent(
             "receipt_text": receipt_text,
         }
     )
-    
+
     # Add receipt metadata to state if available
     if receipt_metadata:
         receipt_state["metadata"] = {
@@ -386,8 +388,14 @@ async def run_label_harmonizer_agent(
                 "word_count": len(words_data),
                 "line_count": len(lines_data),
                 "workflow": "label_harmonizer_v3",
-                "merchant_name": receipt_metadata.merchant_name if receipt_metadata else None,
-                "place_id": receipt_metadata.place_id if receipt_metadata else None,
+                "merchant_name": (
+                    receipt_metadata.merchant_name
+                    if receipt_metadata
+                    else None
+                ),
+                "place_id": (
+                    receipt_metadata.place_id if receipt_metadata else None
+                ),
             }
 
         await graph.ainvoke(initial_state, config=config)
