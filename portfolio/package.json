@@ -55,7 +55,7 @@
     "@babel/plugin-syntax-flow": "^7.26.0",
     "@jest/types": "^30.0.0",
     "@lhci/cli": "^0.15.1",
-    "@modelcontextprotocol/sdk": "^1.21.1",
+    "@modelcontextprotocol/sdk": "^1.24.3",
     "@next/bundle-analyzer": "^15.3.3",
     "@playwright/test": "^1.57.0",
     "@testing-library/dom": "^10.4.1",
