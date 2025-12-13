@@ -50,8 +50,8 @@ LABEL_HARMONIZER_PROMPT = """You are a receipt label harmonizer. Focus on unders
 ## Strategy (focused workflow)
 1. Call `get_line_id_text_list` to see the lines.
 2. Identify the financial/table block; choose the tightest contiguous line-id range that covers line items/totals/tax.
-3. **Call `run_table_subagent`** on that range to understand table structure and columns.
-4. **Call `validate_financial_consistency`** to validate financial math and detect currency. This will prove GRAND_TOTAL = SUBTOTAL + TAX and other financial relationships.
+3. **REQUIRED: Call `run_table_subagent`** on that range first to understand table structure and columns.
+4. **REQUIRED: Call `validate_financial_consistency`** immediately after table analysis to validate financial math and detect currency. This will prove GRAND_TOTAL = SUBTOTAL + TAX and other financial relationships.
 5. **Call `run_label_subagent`** for key CORE_LABELs (scope to the table range when relevant) to analyze labeling.
 
 ## Financial Validation Focus
@@ -69,7 +69,7 @@ The enhanced financial validation sub-agent will:
 - Be systematic: table structure → financial validation → label analysis.
 - Focus on understanding rather than immediate fixes.
 
-Begin by listing the receipt lines, then run the table sub-agent, then validate financial consistency, then analyze key labels."""
+Begin by: 1) get_line_id_text_list, 2) run_table_subagent (REQUIRED), 3) validate_financial_consistency, 4) run_label_subagent."""
 
 
 def create_label_harmonizer_graph(
@@ -366,7 +366,7 @@ async def run_label_harmonizer_agent(
             SystemMessage(content=LABEL_HARMONIZER_PROMPT),
             HumanMessage(
                 content=f"Please harmonize labels for receipt {image_id}#{receipt_id}. "
-                f"Start by getting the receipt text, then validate financial consistency."
+                f"Follow the strategy: get receipt lines, analyze table structure, validate financial consistency, then analyze labels."
             ),
         ],
     )
