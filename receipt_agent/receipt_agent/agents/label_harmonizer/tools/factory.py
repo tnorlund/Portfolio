@@ -110,17 +110,18 @@ def create_label_harmonizer_tools(
             """Extract numeric value from text, handling currency symbols and formatting."""
             if not text:
                 return None
-            
+
             import re
+
             # Remove currency symbols and clean up
-            clean_text = re.sub(r'[$€£¥₹]', '', text)
-            clean_text = re.sub(r'[^\d.,-]', '', clean_text)
-            clean_text = clean_text.replace(',', '')
-            
+            clean_text = re.sub(r"[$€£¥₹]", "", text)
+            clean_text = re.sub(r"[^\d.,-]", "", clean_text)
+            clean_text = clean_text.replace(",", "")
+
             # Handle negative numbers (parentheses or minus signs)
-            is_negative = '-' in text or '(' in text
-            clean_text = clean_text.replace('-', '')
-            
+            is_negative = "-" in text or "(" in text
+            clean_text = clean_text.replace("-", "")
+
             try:
                 value = float(clean_text)
                 return -value if is_negative else value
@@ -129,12 +130,12 @@ def create_label_harmonizer_tools(
 
         @tool
         def analyze_receipt_structure() -> dict:
-            """Get comprehensive view of receipt structure for financial analysis."""
+            """Get concise receipt structure overview for financial analysis."""
             receipt = state.get("receipt", {})
             receipt_text = receipt.get("receipt_text", "")
             words = receipt.get("words", [])
             table_structure = state.get("column_analysis")
-            
+
             # Extract basic structure info
             lines_by_id = {}
             for word in words:
@@ -142,28 +143,37 @@ def create_label_harmonizer_tools(
                 if line_id not in lines_by_id:
                     lines_by_id[line_id] = []
                 lines_by_id[line_id].append(word.get("text", ""))
-            
-            # Build line text for context
+
+            # Build CONCISE line preview (last 10 lines where financial data usually is)
             line_texts = {}
             for line_id, word_texts in lines_by_id.items():
                 line_texts[line_id] = " ".join(word_texts)
-            
+
+            # Get last 10 lines (usually contain totals)
+            sorted_line_ids = sorted(line_texts.keys())
+            preview_line_ids = (
+                sorted_line_ids[-10:]
+                if len(sorted_line_ids) > 10
+                else sorted_line_ids
+            )
+
             return {
-                "receipt_text": receipt_text,
                 "total_words": len(words),
                 "total_lines": len(lines_by_id),
                 "has_table_structure": table_structure is not None,
-                "line_preview": {
-                    str(line_id): text for line_id, text in sorted(line_texts.items())
+                "line_preview_last_10": {
+                    str(line_id): line_texts[line_id]
+                    for line_id in preview_line_ids
                 },
+                "note": "Showing last 10 lines (where financial totals typically appear)",
             }
 
-        @tool  
+        @tool
         def identify_numeric_candidates() -> dict:
-            """Find all numeric values in the receipt with their positions and surrounding context."""
+            """Find numeric values in the receipt, limiting to top candidates to avoid context overflow."""
             receipt = state.get("receipt", {})
             words = receipt.get("words", [])
-            
+
             # Group words by line for context
             lines_by_id = {}
             for word in words:
@@ -171,53 +181,74 @@ def create_label_harmonizer_tools(
                 if line_id not in lines_by_id:
                     lines_by_id[line_id] = []
                 lines_by_id[line_id].append(word)
-            
+
             numeric_candidates = []
-            
+
             for word in words:
                 text = word.get("text", "")
                 numeric_value = extract_number(text)
-                
+
                 if numeric_value is not None:
                     line_id = word.get("line_id")
-                    
-                    # Get full line context
+
+                    # Get abbreviated line context (first 3 words before + this word + first 3 words after)
                     line_words = lines_by_id.get(line_id, [])
-                    line_context = " ".join([w.get("text", "") for w in line_words])
-                    
-                    numeric_candidates.append({
-                        "line_id": line_id,
-                        "word_id": word.get("word_id"),
-                        "text": text,
-                        "numeric_value": numeric_value,
-                        "line_context": line_context,
-                    })
-            
-            # Sort by value for easier analysis
-            numeric_candidates.sort(key=lambda x: x["numeric_value"], reverse=True)
-            
+                    word_idx = next(
+                        (
+                            i
+                            for i, w in enumerate(line_words)
+                            if w.get("word_id") == word.get("word_id")
+                        ),
+                        0,
+                    )
+                    context_words = line_words[
+                        max(0, word_idx - 3) : min(
+                            len(line_words), word_idx + 4
+                        )
+                    ]
+                    line_context = " ".join(
+                        [w.get("text", "") for w in context_words]
+                    )
+
+                    numeric_candidates.append(
+                        {
+                            "line_id": line_id,
+                            "word_id": word.get("word_id"),
+                            "text": text,
+                            "numeric_value": numeric_value,
+                            "line_context": line_context,
+                        }
+                    )
+
+            # Sort by value and limit to top 20 candidates to prevent context overflow
+            numeric_candidates.sort(
+                key=lambda x: x["numeric_value"], reverse=True
+            )
+            top_candidates = numeric_candidates[:20]
+
             return {
-                "numeric_candidates": numeric_candidates,
+                "numeric_candidates": top_candidates,
                 "total_numeric_values": len(numeric_candidates),
+                "showing_top": len(top_candidates),
+                "note": "Limited to top 20 candidates by value to prevent context overflow",
             }
 
         @tool
         def reason_about_financial_layout(
-            reasoning: str,
-            candidate_assignments: list[dict]
+            reasoning: str, candidate_assignments: list[dict]
         ) -> dict:
             """Apply reasoning to identify which numeric values represent which financial types."""
             if not candidate_assignments:
                 return {"error": "No candidate assignments provided"}
-            
+
             # Store the LLM's reasoning and proposed assignments in shared state
             state["financial_reasoning"] = reasoning
             state["proposed_assignments"] = candidate_assignments
-            
+
             return {
                 "reasoning_recorded": True,
                 "total_assignments": len(candidate_assignments),
-                "ready_for_verification": True
+                "ready_for_verification": True,
             }
 
         @tool
@@ -226,7 +257,7 @@ def create_label_harmonizer_tools(
             proposed = state.get("proposed_assignments", [])
             if not proposed:
                 return {"error": "No proposed assignments to test."}
-            
+
             # Extract values by type
             values_by_type = {}
             for assignment in proposed:
@@ -235,32 +266,41 @@ def create_label_harmonizer_tools(
                 if financial_type not in values_by_type:
                     values_by_type[financial_type] = []
                 values_by_type[financial_type].append(value)
-            
+
             verification_results = []
             tolerance = 0.01
-            
+
             # Test 1: GRAND_TOTAL = SUBTOTAL + TAX
-            if "GRAND_TOTAL" in values_by_type and "SUBTOTAL" in values_by_type:
+            if (
+                "GRAND_TOTAL" in values_by_type
+                and "SUBTOTAL" in values_by_type
+            ):
                 grand_total = values_by_type["GRAND_TOTAL"][0]
                 subtotal = values_by_type["SUBTOTAL"][0]
                 tax = values_by_type.get("TAX", [0])[0]
-                
+
                 calculated_total = subtotal + tax
                 difference = grand_total - calculated_total
                 math_correct = abs(difference) <= tolerance
-                
-                verification_results.append({
-                    "test_name": "GRAND_TOTAL = SUBTOTAL + TAX",
-                    "passes": math_correct,
-                    "difference": difference,
-                })
-            
+
+                verification_results.append(
+                    {
+                        "test_name": "GRAND_TOTAL = SUBTOTAL + TAX",
+                        "passes": math_correct,
+                        "difference": difference,
+                    }
+                )
+
             # Store results in shared state
             state["verification_results"] = verification_results
-            
-            tests_passed = sum(1 for result in verification_results if result.get("passes", False))
+
+            tests_passed = sum(
+                1
+                for result in verification_results
+                if result.get("passes", False)
+            )
             total_tests = len(verification_results)
-            
+
             return {
                 "total_tests": total_tests,
                 "tests_passed": tests_passed,
@@ -271,35 +311,39 @@ def create_label_harmonizer_tools(
         def finalize_financial_context(
             final_reasoning: str,
             confidence_assessment: str,
-            currency: str = "USD"
+            currency: str = "USD",
         ) -> dict:
-            """Submit your final financial analysis as context for downstream label assignment."""
+            """Submit your final financial analysis as CONCISE context for downstream label assignment."""
             proposed = state.get("proposed_assignments", [])
             verification_results = state.get("verification_results", [])
-            
+
             if not proposed:
                 return {"error": "No proposed assignments available."}
-            
-            # Build the financial context output
+
+            # Build CONCISE financial context (only essential info)
             financial_candidates = {}
             for assignment in proposed:
                 financial_type = assignment.get("proposed_type")
                 if financial_type not in financial_candidates:
                     financial_candidates[financial_type] = []
-                
-                financial_candidates[financial_type].append({
-                    "line_id": assignment.get("line_id"),
-                    "word_id": assignment.get("word_id"),
-                    "value": assignment.get("value"),
-                    "confidence": assignment.get("confidence", 0.8),
-                    "reasoning": assignment.get("reasoning", "")
-                })
-            
+
+                # Store only essential info to reduce context size
+                financial_candidates[financial_type].append(
+                    {
+                        "line_id": assignment.get("line_id"),
+                        "word_id": assignment.get("word_id"),
+                        "value": assignment.get("value"),
+                        "confidence": assignment.get("confidence", 0.8),
+                    }
+                )
+
             # Calculate mathematical validation summary
             total_tests = len(verification_results)
-            passed_tests = len([r for r in verification_results if r.get("passes", False)])
-            
-            # Store final result in shared state for retrieval
+            passed_tests = len(
+                [r for r in verification_results if r.get("passes", False)]
+            )
+
+            # Store CONCISE result optimized for main agent (no verbose reasoning)
             final_result = {
                 "financial_candidates": financial_candidates,
                 "mathematical_validation": {
@@ -308,15 +352,16 @@ def create_label_harmonizer_tools(
                     "all_valid": passed_tests == total_tests,
                 },
                 "currency": currency,
-                "llm_reasoning": {
-                    "structure_analysis": state.get("financial_reasoning", ""),
-                    "final_assessment": final_reasoning,
-                    "confidence": confidence_assessment
-                },
+                "confidence": confidence_assessment,
+                "summary": (
+                    final_reasoning[:200] + "..."
+                    if len(final_reasoning) > 200
+                    else final_reasoning
+                ),
             }
-            
+
             state["financial_context"] = final_result
-            
+
             return {
                 "success": True,
                 "context_generated": True,
@@ -337,17 +382,17 @@ def create_label_harmonizer_tools(
             sub_llm,
             tools=financial_tools,
             prompt=(
-                "You are a financial discovery agent. Your task is to analyze a receipt "
-                "and identify financial values through a 5-step process.\n\n"
-                "Execute in this EXACT order:\n"
-                "1. Call analyze_receipt_structure()\n"
-                "2. Call identify_numeric_candidates()\n"
-                "3. Call reason_about_financial_layout(reasoning='your analysis', candidate_assignments=[assignments])\n"
-                "4. Call test_mathematical_relationships()\n"
-                "5. Call finalize_financial_context(final_reasoning='summary', confidence_assessment='high/medium/low')\n\n"
-                "Call each tool EXACTLY ONCE in order. After finalize_financial_context, you are DONE.\n\n"
-                "For step 3, provide candidate_assignments as a list of dicts with keys: "
-                "line_id, word_id, value, proposed_type, confidence, reasoning"
+                "You are a financial discovery agent. Identify key financial values efficiently.\n\n"
+                "Execute these steps IN ORDER (call each tool ONCE):\n"
+                "1. analyze_receipt_structure() - Get receipt overview\n"
+                "2. identify_numeric_candidates() - Find numeric values (limited to top 20)\n"
+                "3. reason_about_financial_layout() - Assign financial types (GRAND_TOTAL, SUBTOTAL, TAX, LINE_TOTAL)\n"
+                "4. test_mathematical_relationships() - Verify math\n"
+                "5. finalize_financial_context() - Submit concise results\n\n"
+                "BE CONCISE. Focus on identifying the 4 key financial types. "
+                "After finalize_financial_context, STOP immediately.\n\n"
+                "For step 3: candidate_assignments is a list of dicts with: "
+                "line_id, word_id, value, proposed_type, confidence (0.0-1.0)"
             ),
         )
 
@@ -358,6 +403,7 @@ def create_label_harmonizer_tools(
     except Exception as e:
         print(f"🔧 DEBUG: Failed to create financial subagent graph: {e}")
         import traceback
+
         traceback.print_exc()
 
     # ========== RECEIPT DATA TOOLS ==========
@@ -638,49 +684,123 @@ def create_label_harmonizer_tools(
     @tool
     def validate_financial_consistency() -> dict:
         """
-        Discover and validate financial consistency using LLM reasoning.
+        Discover and validate financial consistency using LLM reasoning with retry and fallback.
 
         This tool runs an LLM-driven financial discovery sub-agent that:
         - Analyzes receipt structure to understand financial layout
         - Uses reasoning (not hard-coded rules) to identify financial values
         - Detects LINE_TOTAL, SUBTOTAL, TAX, and GRAND_TOTAL candidates
         - Validates mathematical relationships between identified values
-        - Provides rich context for downstream label assignment
+        - Provides concise context for downstream label assignment
+
+        Returns a concise summary to avoid overwhelming the main agent with context.
         """
         financial_subagent = state.get("financial_subagent_graph")
         if financial_subagent is None:
-            return {"error": "financial sub-agent graph not available"}
+            logger.warning(
+                "Financial sub-agent graph not available, using fallback"
+            )
+            return _simple_financial_fallback()
 
         receipt = state.get("receipt")
         if not receipt or not isinstance(receipt, dict):
             return {"error": "No receipt data loaded"}
 
-        # Follow the same pattern as table subagent: invoke with a simple message
-        result_msg = financial_subagent.invoke({
-            "messages": [
-                HumanMessage(
-                    content="Please analyze this receipt to identify financial values "
-                    "(LINE_TOTAL, SUBTOTAL, TAX, GRAND_TOTAL). Follow the 5-step process exactly."
+        # Retry logic for financial sub-agent with exponential backoff
+        max_retries = 3
+        base_delay = 2.0
+
+        for attempt in range(max_retries):
+            try:
+                # Invoke sub-agent with simplified message to reduce context
+                result_msg = financial_subagent.invoke(
+                    {
+                        "messages": [
+                            HumanMessage(
+                                content="Analyze this receipt to identify key financial values "
+                                "(GRAND_TOTAL, SUBTOTAL, TAX, LINE_TOTAL). Execute the 5-step process."
+                            )
+                        ]
+                    }
                 )
-            ]
-        })
-        
-        # Extract result from the financial context stored in state
-        financial_context = state.get("financial_context", {})
-        if financial_context:
-            return financial_context
-        else:
-            return {
-                "financial_candidates": {},
-                "mathematical_validation": {"verified": 0, "total_tests": 0, "all_valid": False},
-                "currency": None,
-                "llm_reasoning": {
-                    "structure_analysis": "",
-                    "final_assessment": "Agent completed but did not store financial context",
-                    "confidence": "unknown"
-                },
-                "error": "No financial context found after agent execution"
-            }
+
+                # Extract result from the financial context stored in state
+                financial_context = state.get("financial_context", {})
+                if financial_context and financial_context.get(
+                    "financial_candidates"
+                ):
+                    logger.info(
+                        f"Financial sub-agent succeeded: found {len(financial_context.get('financial_candidates', {}))} types"
+                    )
+                    return financial_context
+                else:
+                    logger.warning(
+                        "Financial sub-agent returned no candidates, trying fallback"
+                    )
+                    return _simple_financial_fallback()
+
+            except Exception as e:
+                error_str = str(e)
+                is_retryable = (
+                    "500" in error_str
+                    or "502" in error_str
+                    or "503" in error_str
+                    or "Internal Server Error" in error_str
+                    or "timeout" in error_str.lower()
+                )
+
+                if is_retryable and attempt < max_retries - 1:
+                    import time
+
+                    wait_time = base_delay * (2**attempt)
+                    logger.warning(
+                        f"Financial sub-agent failed (attempt {attempt + 1}/{max_retries}): {error_str[:150]}. "
+                        f"Retrying in {wait_time:.1f}s..."
+                    )
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    logger.error(
+                        f"Financial sub-agent failed after {attempt + 1} attempts: {error_str[:200]}. "
+                        "Using simple fallback."
+                    )
+                    return _simple_financial_fallback()
+
+        # Should not reach here, but just in case
+        return _simple_financial_fallback()
+
+    def _simple_financial_fallback() -> dict:
+        """Simple rule-based fallback when LLM-driven approach fails."""
+        receipt = state.get("receipt", {})
+        labels = receipt.get("labels", [])
+
+        # Extract existing financial labels as candidates
+        financial_candidates = {}
+        for label in labels:
+            label_type = label.get("label", "")
+            if label_type in ["GRAND_TOTAL", "SUBTOTAL", "TAX", "LINE_TOTAL"]:
+                if label_type not in financial_candidates:
+                    financial_candidates[label_type] = []
+                financial_candidates[label_type].append(
+                    {
+                        "line_id": label.get("line_id"),
+                        "word_id": label.get("word_id"),
+                        "confidence": 0.6,  # Lower confidence for fallback
+                    }
+                )
+
+        return {
+            "financial_candidates": financial_candidates,
+            "mathematical_validation": {
+                "verified": 0,
+                "total_tests": 0,
+                "all_valid": False,
+            },
+            "currency": "USD",
+            "confidence": "low",
+            "summary": "Used simple fallback - LLM reasoning unavailable",
+            "fallback_used": True,
+        }
 
     # ========== SIMILARITY SEARCH TOOL ==========
 
@@ -697,7 +817,7 @@ def create_label_harmonizer_tools(
 
         Returns:
         - similar_words: List of similar words with labels, merchant info, and same_merchant flag
-        - count: Number of matches found  
+        - count: Number of matches found
         - current_merchant: Current receipt's merchant name
         - current_place_id: Current receipt's place_id
         """
@@ -758,14 +878,21 @@ def create_label_harmonizer_tools(
             current_metadata = receipt.get("metadata", {})
             current_merchant = current_metadata.get("merchant_name")
             current_place_id = current_metadata.get("place_id")
-            
+
             # Enhance results with same-merchant indicator
             if current_merchant or current_place_id:
                 for result in similar_words:
-                    result_metadata = result.get("metadata", {}) if isinstance(result.get("metadata"), dict) else {}
+                    result_metadata = (
+                        result.get("metadata", {})
+                        if isinstance(result.get("metadata"), dict)
+                        else {}
+                    )
                     result["same_merchant"] = (
-                        (current_merchant and result.get("merchant") == current_merchant) or
-                        (current_place_id and result_metadata.get("place_id") == current_place_id)
+                        current_merchant
+                        and result.get("merchant") == current_merchant
+                    ) or (
+                        current_place_id
+                        and result_metadata.get("place_id") == current_place_id
                     )
 
             return {
@@ -1325,5 +1452,3 @@ def create_label_harmonizer_tools(
     ]
 
     return tools, state
-
-
