@@ -729,27 +729,34 @@ def create_label_harmonizer_tools(
                 if financial_context and financial_context.get(
                     "financial_candidates"
                 ):
-                    candidates = financial_context.get('financial_candidates', {})
+                    candidates = financial_context.get(
+                        "financial_candidates", {}
+                    )
                     logger.info(
                         f"Financial sub-agent succeeded: found {len(candidates)} types"
                     )
-                    
+
                     # Log detailed financial discoveries
                     import json
-                    logger.info(f"Financial context summary: {json.dumps({
+
+                    logger.info(
+                        f"Financial context summary: {json.dumps({
                         'types_found': list(candidates.keys()),
                         'currency': financial_context.get('currency'),
                         'confidence': financial_context.get('confidence'),
                         'math_valid': financial_context.get('mathematical_validation', {}).get('all_valid'),
                         'summary': financial_context.get('summary', '')[:100]
-                    }, indent=2)}")
-                    
+                    }, indent=2)}"
+                    )
+
                     # Log each financial type with values
                     for fin_type, entries in candidates.items():
-                        values = [f"{e.get('value')} (line {e.get('line_id')}, conf={e.get('confidence', 0):.2f})" 
-                                 for e in entries[:3]]  # First 3 entries
+                        values = [
+                            f"{e.get('value')} (line {e.get('line_id')}, conf={e.get('confidence', 0):.2f})"
+                            for e in entries[:3]
+                        ]  # First 3 entries
                         logger.info(f"  {fin_type}: {', '.join(values)}")
-                    
+
                     return financial_context
                 else:
                     logger.warning(
@@ -806,7 +813,7 @@ def create_label_harmonizer_tools(
                         "confidence": 0.6,  # Lower confidence for fallback
                     }
                 )
-        
+
         logger.warning(
             f"Using financial fallback: extracted {len(financial_candidates)} types "
             f"from {len(labels)} existing labels"
