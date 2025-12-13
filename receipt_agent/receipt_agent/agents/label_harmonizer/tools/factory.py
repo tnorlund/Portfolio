@@ -475,15 +475,17 @@ def create_label_harmonizer_tools(
         word_text: str, label_type: Optional[str] = None
     ) -> dict:
         """
-        Search ChromaDB for similar words with labels.
+        Search ChromaDB for similar words with labels, with merchant context.
 
         Args:
             word_text: Word text to search for
             label_type: Optional label type to filter results
 
         Returns:
-        - similar_words: List of similar words with their labels
-        - count: Number of matches found
+        - similar_words: List of similar words with labels, merchant info, and same_merchant flag
+        - count: Number of matches found  
+        - current_merchant: Current receipt's merchant name
+        - current_place_id: Current receipt's place_id
         """
         chroma = state.get("chroma_client")
         embed_fn_val = state.get("embed_fn")
@@ -537,9 +539,26 @@ def create_label_harmonizer_tools(
                         }
                     )
 
+            # Add context about current receipt's merchant
+            receipt = state.get("receipt", {})
+            current_metadata = receipt.get("metadata", {})
+            current_merchant = current_metadata.get("merchant_name")
+            current_place_id = current_metadata.get("place_id")
+            
+            # Enhance results with same-merchant indicator
+            if current_merchant or current_place_id:
+                for result in similar_words:
+                    result_metadata = result.get("metadata", {}) if isinstance(result.get("metadata"), dict) else {}
+                    result["same_merchant"] = (
+                        (current_merchant and result.get("merchant") == current_merchant) or
+                        (current_place_id and result_metadata.get("place_id") == current_place_id)
+                    )
+
             return {
                 "similar_words": similar_words,
                 "count": len(similar_words),
+                "current_merchant": current_merchant,
+                "current_place_id": current_place_id,
             }
         except Exception as e:
             logger.exception(f"ChromaDB search failed: {e}")

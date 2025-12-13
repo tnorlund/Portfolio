@@ -3,6 +3,7 @@ Graph construction and execution for the Label Harmonizer agent.
 """
 
 import logging
+import os
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -315,6 +316,13 @@ async def run_label_harmonizer_agent(
             errors=["Receipt has no text after formatting"],
         )
 
+    # Load receipt metadata for context and tools
+    receipt_metadata = None
+    try:
+        receipt_metadata = dynamo_client.get_receipt_metadata(image_id, receipt_id)
+    except Exception as e:
+        logger.debug(f"Could not load receipt metadata: {e}")
+
     # Update state holder with receipt data (mutate existing dict to preserve reference used by tools)
     receipt_state = state_holder.get("receipt")
     if receipt_state is None:
@@ -332,6 +340,16 @@ async def run_label_harmonizer_agent(
             "receipt_text": receipt_text,
         }
     )
+    
+    # Add receipt metadata to state if available
+    if receipt_metadata:
+        receipt_state["metadata"] = {
+            "merchant_name": receipt_metadata.merchant_name,
+            "place_id": receipt_metadata.place_id,
+            "address": receipt_metadata.address,
+            "phone_number": receipt_metadata.phone_number,
+            "website": receipt_metadata.website,
+        }
 
     logger.info(
         "LH3 state ready: words=%s lines=%s labels=%s text_len=%s",
@@ -360,9 +378,25 @@ async def run_label_harmonizer_agent(
 
     # Run agent
     try:
-        final_state = await graph.ainvoke(
-            initial_state.dict(), config={"recursion_limit": 50}
-        )
+        config = {
+            "recursion_limit": 50,
+            "configurable": {"thread_id": f"{image_id}#{receipt_id}"},
+        }
+
+        # Add LangSmith metadata if tracing is enabled
+        if os.environ.get("LANGCHAIN_TRACING_V2") == "true":
+            config["metadata"] = {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "label_count": len(labels_data),
+                "word_count": len(words_data),
+                "line_count": len(lines_data),
+                "workflow": "label_harmonizer_v3",
+                "merchant_name": receipt_metadata.merchant_name if receipt_metadata else None,
+                "place_id": receipt_metadata.place_id if receipt_metadata else None,
+            }
+
+        await graph.ainvoke(initial_state, config=config)
     except Exception as e:
         logger.exception(f"Agent execution failed: {e}")
         return ReceiptLabelResult(
