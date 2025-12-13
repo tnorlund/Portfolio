@@ -79,23 +79,32 @@ FINANCIAL_LABELS = {
     "UNIT_PRICE", "QUANTITY", "DISCOUNT", "COUPON"
 }
 
-LLM_DRIVEN_FINANCIAL_DISCOVERY_PROMPT = """You are a financial discovery agent for receipts. Your job is to identify financial values (LINE_TOTAL, SUBTOTAL, TAX, GRAND_TOTAL) using reasoning rather than rigid rules.
+LLM_DRIVEN_FINANCIAL_DISCOVERY_PROMPT = """You are a financial discovery agent. Your task is to analyze a receipt and identify financial values through a 5-step process.
 
-## Your Task
+## MANDATORY WORKFLOW - Execute in this EXACT order:
 
-1. **Analyze the receipt structure** to understand the financial layout and flow
-2. **Identify financial values** using your understanding of receipt patterns and business logic
-3. **Establish mathematical relationships** between the values you find
-4. **Verify your conclusions** by testing the mathematical relationships
-5. **Provide context** for downstream label assignment with detailed reasoning
+**STEP 1**: Call `analyze_receipt_structure()` 
+**STEP 2**: Call `identify_numeric_candidates()`
+**STEP 3**: Call `reason_about_financial_layout(reasoning="your analysis", candidate_assignments=[your assignments])`
+**STEP 4**: Call `test_mathematical_relationships()`  
+**STEP 5**: Call `finalize_financial_context(final_reasoning="summary", confidence_assessment="high/medium/low")`
 
-## Available Tools
+## Rules:
+- Call each tool EXACTLY ONCE in the specified order
+- Do NOT repeat tools or skip steps
+- After calling finalize_financial_context, you are DONE - do not continue
 
-- `analyze_receipt_structure`: Get receipt text, words, and table structure for analysis
-- `identify_numeric_candidates`: Find all numeric values with their positions and surrounding context
-- `reason_about_financial_layout`: Apply your reasoning to identify which numbers represent which financial types
-- `test_mathematical_relationships`: Verify that your identified values follow correct receipt mathematics
-- `finalize_financial_context`: Submit your final analysis as context for label assignment
+## Step 3 Format Example:
+```
+reason_about_financial_layout(
+    reasoning="This receipt shows a simple transaction with a balance due of $8.59...", 
+    candidate_assignments=[
+        {"line_id": 24, "word_id": 1, "value": 8.59, "proposed_type": "GRAND_TOTAL", "confidence": 0.95, "reasoning": "This is the balance due amount"}
+    ]
+)
+```
+
+Start with Step 1 now.
 
 ## Financial Types to Identify
 
@@ -599,6 +608,7 @@ def create_llm_driven_financial_graph(
     if settings is None:
         settings = get_settings()
 
+    # Use the same LLM creation as main harmonizer (inherits proper auth)
     llm = create_ollama_llm(settings)
     state_holder = {"receipt": {}, "table_structure": None}
 
@@ -701,14 +711,24 @@ async def run_llm_driven_financial_discovery(
     )
 
     try:
+        logger.info(f"LLM Financial Discovery: Starting graph execution with {len(words)} words")
+        logger.info(f"LLM Financial Discovery: Initial state has {len(initial_state.messages)} messages")
+        
         # Run the agent
         final_state = await graph.ainvoke(initial_state.dict())
+        
+        logger.info(f"LLM Financial Discovery: Graph execution completed")
+        logger.info(f"LLM Financial Discovery: Tool state keys: {list(tool_state.keys())}")
         
         # Extract final result from tool state
         final_result = tool_state.get("final_result")
         if final_result:
+            logger.info(f"LLM Financial Discovery: SUCCESS - final_result found with keys: {list(final_result.keys())}")
             return final_result
         else:
+            logger.warning(f"LLM Financial Discovery: FAILED - no final_result in tool_state")
+            logger.warning(f"LLM Financial Discovery: Available tool_state: {tool_state}")
+            
             # Fallback - extract what we can from tool state
             return {
                 "financial_candidates": {},
