@@ -343,7 +343,6 @@ async def run_label_harmonizer_agent(
             "place_id": receipt_metadata.place_id,
             "address": receipt_metadata.address,
             "phone_number": receipt_metadata.phone_number,
-            "website": receipt_metadata.website,
         }
 
     logger.info(
