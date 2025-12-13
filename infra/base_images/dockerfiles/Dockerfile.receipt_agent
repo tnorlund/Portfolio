@@ -1,0 +1,33 @@
+# Base image for receipt_agent and agent-based Lambdas
+# Contains all common dependencies: receipt_dynamo, receipt_chroma, receipt_upload, receipt_places, receipt_label
+ARG PYTHON_VERSION=3.12
+FROM public.ecr.aws/lambda/python:${PYTHON_VERSION}
+
+# Set environment variable to avoid compilation issues with hnswlib
+ENV HNSWLIB_NO_NATIVE=1
+
+# Install system dependencies required for all packages
+RUN dnf install -y gcc gcc-c++ python3-devel && \
+    dnf clean all && \
+    rm -rf /var/cache/dnf
+
+# Copy all packages into the build for self-contained installation
+COPY receipt_dynamo /tmp/receipt_dynamo
+COPY receipt_chroma /tmp/receipt_chroma
+COPY receipt_upload /tmp/receipt_upload
+COPY receipt_places /tmp/receipt_places
+COPY receipt_label /tmp/receipt_label
+
+# Install packages in correct dependency order
+# receipt_dynamo is the base (no deps)
+# receipt_chroma, receipt_upload, receipt_places all depend on receipt_dynamo
+# receipt_label depends on receipt_dynamo and includes LangChain/OpenAI
+RUN pip install --no-cache-dir /tmp/receipt_dynamo && \
+    pip install --no-cache-dir /tmp/receipt_chroma && \
+    pip install --no-cache-dir /tmp/receipt_upload && \
+    pip install --no-cache-dir /tmp/receipt_places && \
+    pip install --no-cache-dir "/tmp/receipt_label[full]" && \
+    rm -rf /tmp/receipt_dynamo /tmp/receipt_chroma /tmp/receipt_upload /tmp/receipt_places /tmp/receipt_label
+
+# This is a base image, no CMD needed
+

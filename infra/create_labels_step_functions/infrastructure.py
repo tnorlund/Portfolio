@@ -51,6 +51,7 @@ class CreateLabelsStepFunction(ComponentResource):
         dynamodb_table_name: pulumi.Input[str],
         dynamodb_table_arn: pulumi.Input[str],
         max_concurrency: int = 3,  # Reduced from 10 to avoid Ollama rate limiting
+        base_image_uri: Optional[pulumi.Input[str]] = None,  # Optional base image for faster builds
         opts: Optional[ResourceOptions] = None,
     ):
         super().__init__(f"{__name__}-{name}", name, None, opts)
@@ -247,14 +248,22 @@ class CreateLabelsStepFunction(ComponentResource):
 
         # Create container Lambda using CodeBuildDockerImage
         # Use shorter name to avoid AWS limits (64 chars for IAM roles, 63 for S3 buckets)
+        # Use base image if provided for faster builds and smaller S3 uploads
+        dockerfile_to_use = (
+            "infra/create_labels_step_functions/lambdas/Dockerfile.with_base"
+            if base_image_uri
+            else "infra/create_labels_step_functions/lambdas/Dockerfile"
+        )
+        
         create_labels_docker_image = CodeBuildDockerImage(
             f"{name}-create-labels-img",
-            dockerfile_path="infra/create_labels_step_functions/lambdas/Dockerfile",
+            dockerfile_path=dockerfile_to_use,
             build_context_path=".",  # Project root
             source_paths=None,  # Use default rsync with exclusions
             lambda_function_name=f"{name}-create-labels",
             lambda_config=create_labels_lambda_config,
             platform="linux/arm64",
+            base_image_uri=base_image_uri,  # Pass base image URI for optimization
             opts=ResourceOptions(parent=self, depends_on=[lambda_exec_role]),
         )
 

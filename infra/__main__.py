@@ -28,6 +28,9 @@ from typing import Optional
 
 # Import our infrastructure components
 import s3_website  # noqa: F401
+
+# Using the optimized CodeBuild-based base images (async, no local Docker)
+from base_images.base_images_codebuild import BaseImagesCodeBuild
 from billing_alerts import BillingAlerts
 from chromadb_compaction import create_chromadb_compaction_infrastructure
 from combine_receipts_step_functions import CombineReceiptsStepFunction
@@ -45,8 +48,6 @@ from label_validation_agent_step_functions import (
     LabelValidationAgentStepFunction,
 )
 from metadata_harmonizer_step_functions import MetadataHarmonizerStepFunction
-
-# Using the optimized docker-build based base images with scoped contexts
 from networking import PublicVpc
 from notifications import NotificationSystem
 from pulumi import ResourceOptions
@@ -96,6 +97,25 @@ pulumi.export("foundation_vpc_id", public_vpc.vpc_id)
 pulumi.export("foundation_public_subnet_ids", public_vpc.public_subnet_ids)
 # (moved S3 gateway endpoint below after NAT creation to reference its route table)
 
+# Create base images for faster Lambda builds (async on AWS CodeBuild, no local Docker)
+# These contain pre-installed packages and use content-based tags for dependency tracking
+base_images = BaseImagesCodeBuild("base", pulumi.get_stack())
+pulumi.export(
+    "dynamo_base_image_uri", base_images.dynamo_base_image.image_uri
+)
+pulumi.export(
+    "label_base_image_uri", base_images.label_base_image.image_uri
+)
+pulumi.export(
+    "agent_base_image_uri", base_images.agent_base_image.image_uri
+)
+
+# Export dependency graph information for debugging
+dependency_graph_dict = base_images.dependency_graph.to_dict()
+pulumi.export(
+    "dependency_graph", pulumi.Output.from_input(dependency_graph_dict)
+)
+
 # Task 2: Security (depends on VPC)
 security = ChromaSecurity("chroma", vpc_id=public_vpc.vpc_id)
 pulumi.export("sg_lambda_id", security.sg_lambda_id)
@@ -144,11 +164,13 @@ currency_validation_state_machine = create_currency_validation_state_machine(
 
 # Create labels state machine (creates/updates labels with PENDING status)
 # No VPC needed - downloads from DynamoDB, needs internet for Ollama API
+# Uses base image for faster builds and smaller S3 uploads
 create_labels_sf = CreateLabelsStepFunction(
     f"create-labels-{pulumi.get_stack()}",
     dynamodb_table_name=dynamodb_table.name,
     dynamodb_table_arn=dynamodb_table.arn,
     max_concurrency=3,  # Reduced to avoid Ollama rate limiting (matches validate_pending_labels)
+    base_image_uri=base_images.label_base_image.image_uri,  # Use label base image with receipt_dynamo + receipt_label
 )
 
 validation_by_merchant_step_functions = ValidationByMerchantStepFunction(
@@ -1238,12 +1260,14 @@ pulumi.export(
 # Metadata Harmonizer Step Function (place_id-based harmonization)
 # Uses shared_chromadb_buckets (same as embedding_infrastructure.chromadb_buckets)
 # This is where ChromaDB snapshots are stored by the compaction process
+# Uses agent base image for maximum optimization (70-90% reduction in build time)
 metadata_harmonizer_sf = MetadataHarmonizerStepFunction(
     f"metadata-harmonizer-{stack}",
     dynamodb_table_name=dynamodb_table.name,
     dynamodb_table_arn=dynamodb_table.arn,
     chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
     chromadb_bucket_arn=shared_chromadb_buckets.bucket_arn,
+    base_image_uri=base_images.agent_base_image.image_uri,  # Use agent base image with all common packages (dynamo, chroma, upload, places, label)
 )
 
 pulumi.export(

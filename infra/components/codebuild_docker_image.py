@@ -93,6 +93,8 @@ class CodeBuildDockerImage(ComponentResource):
         lambda_aliases: Optional[
             list[str]
         ] = None,  # Pulumi aliases for Lambda rename
+        base_image_uri: Optional[pulumi.Input[str]] = None,  # Optional base image to use (from BaseImages)
+        image_tag: Optional[str] = None,  # Optional custom tag (for base images with content-based tags)
         opts: Optional[ResourceOptions] = None,
     ) -> None:
         super().__init__(f"codebuild-docker:{name}", name, {}, opts)
@@ -113,6 +115,8 @@ class CodeBuildDockerImage(ComponentResource):
         self.lambda_aliases = (
             lambda_aliases or []
         )  # Pulumi aliases for Lambda rename
+        self.base_image_uri = base_image_uri  # Store base image URI if provided
+        self.image_tag = image_tag or "latest"  # Custom tag for base images, default to "latest"
 
         # Configure build mode and flags
         (
@@ -169,7 +173,7 @@ class CodeBuildDockerImage(ComponentResource):
         # Export outputs
         self.repository_url = self.ecr_repo.repository_url
         self.image_uri = self.ecr_repo.repository_url.apply(
-            lambda url: f"{url}:latest"
+            lambda url: f"{url}:{self.image_tag}"
         )
         # Digest is managed by CodeBuild, provide a placeholder
         # The actual digest is used during Lambda updates in post_build phase
@@ -185,6 +189,14 @@ class CodeBuildDockerImage(ComponentResource):
                 "digest": self.digest,
             }
         )
+
+    def _should_include_base_packages(self) -> bool:
+        """Determine if base packages should be included in hash/upload.
+
+        Returns False when using a base image (packages already in base).
+        Returns True when not using a base image (need to include packages).
+        """
+        return not self.base_image_uri
 
     def _calculate_content_hash(self) -> str:
         """Calculate hash of Dockerfile and relevant context files."""
@@ -202,7 +214,8 @@ class CodeBuildDockerImage(ComponentResource):
                 if full_path.exists():
                     paths.append(full_path)
 
-            if self.build_context_path == ".":
+            # If using a base image, skip hashing base packages (they're already in the base)
+            if self._should_include_base_packages() and self.build_context_path == ".":
                 # Also hash the default monorepo packages that are always copied
                 packages_to_hash = [
                     "receipt_dynamo/receipt_dynamo",
@@ -230,20 +243,22 @@ class CodeBuildDockerImage(ComponentResource):
             # Hash only the files that will be included in the build context
             if self.build_context_path == ".":
                 # Lambda images - hash Python packages and handler directory
-                # Default packages that all Lambda images need
-                packages_to_hash = [
-                    "receipt_dynamo/receipt_dynamo",
-                    "receipt_dynamo/pyproject.toml",
-                    "receipt_chroma/receipt_chroma",
-                    "receipt_chroma/pyproject.toml",
-                    "receipt_label/receipt_label",
-                    "receipt_label/pyproject.toml",
-                ]
+                # If using a base image, skip hashing base packages
+                if self._should_include_base_packages():
+                    # Default packages that all Lambda images need
+                    packages_to_hash = [
+                        "receipt_dynamo/receipt_dynamo",
+                        "receipt_dynamo/pyproject.toml",
+                        "receipt_chroma/receipt_chroma",
+                        "receipt_chroma/pyproject.toml",
+                        "receipt_label/receipt_label",
+                        "receipt_label/pyproject.toml",
+                    ]
 
-                for package_path in packages_to_hash:
-                    full_path = Path(PROJECT_DIR) / package_path
-                    if full_path.exists():
-                        paths.append(full_path)
+                    for package_path in packages_to_hash:
+                        full_path = Path(PROJECT_DIR) / package_path
+                        if full_path.exists():
+                            paths.append(full_path)
 
                 # Also hash the handler directory
                 handler_dir = (
@@ -289,6 +304,9 @@ class CodeBuildDockerImage(ComponentResource):
         safe_context = shlex.quote(self.build_context_path)
         safe_dockerfile = shlex.quote(self.dockerfile_path)
 
+        # Determine if we should skip base packages (when using base image)
+        skip_base_packages = "true" if self.base_image_uri else "false"
+
         return f"""#!/usr/bin/env bash
 set -e
 
@@ -302,6 +320,7 @@ HASH="{content_hash}"
 NAME="{self.name}"
 FORCE_REBUILD="{self.force_rebuild}"
 SOURCE_PATHS="{source_paths_str}"
+SKIP_BASE_PACKAGES="{skip_base_packages}"
 
 echo "📦 Checking if context upload needed for image '$NAME'..."
 STORED_HASH=$(aws s3 cp "s3://$BUCKET/$NAME/hash.txt" - 2>/dev/null || echo '')
@@ -321,39 +340,44 @@ echo "📦 Copying minimal context with include patterns..."
 
 if [ "$CONTEXT_PATH" = "." ]; then
   # Lambda images - need packages from monorepo root
-  # Default packages that all Lambda images need
-  echo "  → Including receipt_dynamo, receipt_chroma, and receipt_label packages..."
-  rsync -a \
-    --include='receipt_dynamo/' \
-    --include='receipt_dynamo/pyproject.toml' \
-    --include='receipt_dynamo/receipt_dynamo/' \
-    --include='receipt_dynamo/receipt_dynamo/**' \
-    --include='receipt_dynamo/docs/' \
-    --include='receipt_dynamo/docs/README.md' \
-    --include='receipt_chroma/' \
-    --include='receipt_chroma/pyproject.toml' \
-    --include='receipt_chroma/README.md' \
-    --include='receipt_chroma/receipt_chroma/' \
-    --include='receipt_chroma/receipt_chroma/**' \
-    --exclude='receipt_chroma/__pycache__/' \
-    --exclude='receipt_chroma/**/__pycache__/' \
-    --exclude='receipt_chroma/tests/' \
-    --exclude='receipt_chroma/tests/**' \
-    --exclude='receipt_chroma/venv/' \
-    --exclude='receipt_chroma/venv/**' \
-    --exclude='receipt_chroma/htmlcov/' \
-    --exclude='receipt_chroma/htmlcov/**' \
-    --exclude='receipt_chroma/*.md' \
-    --exclude='receipt_chroma/conftest.py' \
-    --exclude='receipt_chroma/coverage.json' \
-    --include='receipt_label/' \
-    --include='receipt_label/pyproject.toml' \
-    --include='receipt_label/receipt_label/' \
-    --include='receipt_label/receipt_label/**' \
-    --include='receipt_label/README.md' \
-    --include='receipt_label/LICENSE' \
-    --exclude='*' \
-    "$CONTEXT_PATH/" "$TMP/context/"
+
+  if [ "$SKIP_BASE_PACKAGES" = "true" ]; then
+    echo "  → Using base image - skipping receipt_dynamo, receipt_chroma, and receipt_label packages..."
+  else
+    # Default packages that all Lambda images need (only when not using base image)
+    echo "  → Including receipt_dynamo, receipt_chroma, and receipt_label packages..."
+    rsync -a \
+      --include='receipt_dynamo/' \
+      --include='receipt_dynamo/pyproject.toml' \
+      --include='receipt_dynamo/receipt_dynamo/' \
+      --include='receipt_dynamo/receipt_dynamo/**' \
+      --include='receipt_dynamo/docs/' \
+      --include='receipt_dynamo/docs/README.md' \
+      --include='receipt_chroma/' \
+      --include='receipt_chroma/pyproject.toml' \
+      --include='receipt_chroma/README.md' \
+      --include='receipt_chroma/receipt_chroma/' \
+      --include='receipt_chroma/receipt_chroma/**' \
+      --exclude='receipt_chroma/__pycache__/' \
+      --exclude='receipt_chroma/**/__pycache__/' \
+      --exclude='receipt_chroma/tests/' \
+      --exclude='receipt_chroma/tests/**' \
+      --exclude='receipt_chroma/venv/' \
+      --exclude='receipt_chroma/venv/**' \
+      --exclude='receipt_chroma/htmlcov/' \
+      --exclude='receipt_chroma/htmlcov/**' \
+      --exclude='receipt_chroma/*.md' \
+      --exclude='receipt_chroma/conftest.py' \
+      --exclude='receipt_chroma/coverage.json' \
+      --include='receipt_label/' \
+      --include='receipt_label/pyproject.toml' \
+      --include='receipt_label/receipt_label/' \
+      --include='receipt_label/receipt_label/**' \
+      --include='receipt_label/README.md' \
+      --include='receipt_label/LICENSE' \
+      --exclude='*' \
+      "$CONTEXT_PATH/" "$TMP/context/"
+  fi
 
   # Copy additional source paths if specified (e.g., receipt_upload)
   if [ -n "$SOURCE_PATHS" ]; then
@@ -433,6 +457,8 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
                 self.lambda_function_name if self.lambda_config else None
             ),
             debug_mode=self.debug_mode,
+            base_image_uri="placeholder" if self.base_image_uri else None,  # Just indicate presence
+            image_tag=self.image_tag,  # Pass custom tag for base images
         )
 
     def _setup_pipeline(self, content_hash: str):
@@ -606,7 +632,7 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
                     ),
                     ProjectEnvironmentEnvironmentVariableArgs(
                         name="IMAGE_TAG",
-                        value=content_hash[:12],
+                        value=self.image_tag,  # Use custom tag if provided, otherwise "latest"
                     ),
                     ProjectEnvironmentEnvironmentVariableArgs(
                         name="LAMBDA_FUNCTION_NAME",
@@ -620,7 +646,16 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
                         name="DEBUG_MODE",
                         value=str(self.debug_mode),
                     ),
-                ],
+                ] + (
+                    [
+                        ProjectEnvironmentEnvironmentVariableArgs(
+                            name="BASE_IMAGE_URI",
+                            value=self.base_image_uri,
+                        ),
+                    ]
+                    if self.base_image_uri
+                    else []
+                ),
             ),
             build_timeout=60,  # Docker builds can take time
             cache=ProjectCacheArgs(
