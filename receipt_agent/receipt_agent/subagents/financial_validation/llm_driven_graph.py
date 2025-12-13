@@ -144,16 +144,22 @@ Start by analyzing the receipt structure to understand the layout and financial 
 def create_llm_driven_financial_tools(
     receipt_data: dict,
     table_structure: Optional[dict] = None,
+    shared_state: Optional[dict] = None,
 ) -> tuple[list[Any], dict]:
     """Create tools for LLM-driven financial discovery sub-agent."""
-    state = {
-        "receipt": receipt_data,
-        "table_structure": table_structure,
-        "currency": None,
-        "financial_reasoning": "",
-        "proposed_assignments": [],
-        "verification_results": [],
-    }
+    if shared_state is not None:
+        # Use the shared state dict so tools can access updated data
+        state = shared_state
+    else:
+        # Create local state for standalone usage
+        state = {
+            "receipt": receipt_data,
+            "table_structure": table_structure,
+            "currency": None,
+            "financial_reasoning": "",
+            "proposed_assignments": [],
+            "verification_results": [],
+        }
 
     def extract_number(text: str) -> Optional[float]:
         """Extract numeric value from text, handling currency symbols and formatting."""
@@ -178,39 +184,60 @@ def create_llm_driven_financial_tools(
     @tool
     def analyze_receipt_structure() -> dict:
         """Get comprehensive view of receipt structure for financial analysis."""
-        receipt = state["receipt"]
-        receipt_text = receipt.get("receipt_text", "")
-        words = receipt.get("words", [])
-        table_structure = state.get("table_structure")
-        
-        # Extract basic structure info
-        lines_by_id = {}
-        for word in words:
-            line_id = word.get("line_id")
-            if line_id not in lines_by_id:
-                lines_by_id[line_id] = []
-            lines_by_id[line_id].append(word.get("text", ""))
-        
-        # Build line text for context
-        line_texts = {}
-        for line_id, word_texts in lines_by_id.items():
-            line_texts[line_id] = " ".join(word_texts)
-        
-        return {
-            "receipt_text": receipt_text,
-            "total_words": len(words),
-            "total_lines": len(lines_by_id),
-            "has_table_structure": table_structure is not None,
-            "table_summary": table_structure.get("summary", "") if table_structure else "No table structure available",
-            "line_preview": {
-                str(line_id): text for line_id, text in sorted(line_texts.items())
-            },
-            "structure_notes": {
-                "words_per_line_avg": len(words) / max(len(lines_by_id), 1),
-                "table_columns": len(table_structure.get("columns", [])) if table_structure else 0,
-                "table_rows": len(table_structure.get("rows", [])) if table_structure else 0,
+        try:
+            print(f"🔧 TOOL DEBUG: analyze_receipt_structure called")
+            print(f"🔧 TOOL DEBUG: state keys = {list(state.keys())}")
+            receipt = state["receipt"]
+            print(f"🔧 TOOL DEBUG: receipt type = {type(receipt)}")
+            if isinstance(receipt, dict):
+                print(f"🔧 TOOL DEBUG: receipt keys = {list(receipt.keys())}")
+            
+            receipt_text = receipt.get("receipt_text", "")
+            words = receipt.get("words", [])
+            table_structure = state.get("table_structure")
+            
+            print(f"🔧 TOOL DEBUG: receipt_text length = {len(receipt_text)}")
+            print(f"🔧 TOOL DEBUG: words count = {len(words)}")
+            if words:
+                print(f"🔧 TOOL DEBUG: first word = {words[0]}")
+            else:
+                print(f"🔧 TOOL DEBUG: words list is empty")
+            
+            # Extract basic structure info
+            lines_by_id = {}
+            for word in words:
+                line_id = word.get("line_id")
+                if line_id not in lines_by_id:
+                    lines_by_id[line_id] = []
+                lines_by_id[line_id].append(word.get("text", ""))
+            
+            # Build line text for context
+            line_texts = {}
+            for line_id, word_texts in lines_by_id.items():
+                line_texts[line_id] = " ".join(word_texts)
+            
+            print(f"🔧 TOOL DEBUG: Returning result with {len(words)} words, {len(lines_by_id)} lines")
+            
+            return {
+                "receipt_text": receipt_text,
+                "total_words": len(words),
+                "total_lines": len(lines_by_id),
+                "has_table_structure": table_structure is not None,
+                "table_summary": table_structure.get("summary", "") if table_structure else "No table structure available",
+                "line_preview": {
+                    str(line_id): text for line_id, text in sorted(line_texts.items())
+                },
+                "structure_notes": {
+                    "words_per_line_avg": len(words) / max(len(lines_by_id), 1),
+                    "table_columns": len(table_structure.get("columns", [])) if table_structure else 0,
+                    "table_rows": len(table_structure.get("rows", [])) if table_structure else 0,
+                }
             }
-        }
+        except Exception as e:
+            print(f"🔧 TOOL DEBUG: Exception in analyze_receipt_structure: {e}")
+            import traceback
+            traceback.print_exc()
+            return {"error": f"Tool failed: {e}"}
 
     @tool  
     def identify_numeric_candidates() -> dict:
@@ -601,6 +628,305 @@ def create_llm_driven_financial_tools(
     return tools, state
 
 
+def create_llm_driven_financial_tools_for_shared_state(shared_state: dict) -> list[Any]:
+    """Create financial discovery tools that access shared state directly (like table subagent)."""
+    
+    def extract_number(text: str) -> Optional[float]:
+        """Extract numeric value from text, handling currency symbols and formatting."""
+        if not text:
+            return None
+        
+        # Remove currency symbols and clean up
+        clean_text = re.sub(r'[$€£¥₹]', '', text)
+        clean_text = re.sub(r'[^\d.,-]', '', clean_text)
+        clean_text = clean_text.replace(',', '')
+        
+        # Handle negative numbers (parentheses or minus signs)
+        is_negative = '-' in text or '(' in text
+        clean_text = clean_text.replace('-', '')
+        
+        try:
+            value = float(clean_text)
+            return -value if is_negative else value
+        except ValueError:
+            return None
+
+    @tool
+    def analyze_receipt_structure() -> dict:
+        """Get comprehensive view of receipt structure for financial analysis."""
+        print(f"🔧 SHARED STATE TOOL: analyze_receipt_structure called")
+        receipt = shared_state.get("receipt", {})
+        print(f"🔧 SHARED STATE TOOL: receipt keys = {list(receipt.keys()) if isinstance(receipt, dict) else 'not dict'}")
+        
+        receipt_text = receipt.get("receipt_text", "")
+        words = receipt.get("words", [])
+        table_structure = shared_state.get("table_structure")
+        
+        print(f"🔧 SHARED STATE TOOL: receipt_text length = {len(receipt_text)}, words count = {len(words)}")
+        
+        # Extract basic structure info
+        lines_by_id = {}
+        for word in words:
+            line_id = word.get("line_id")
+            if line_id not in lines_by_id:
+                lines_by_id[line_id] = []
+            lines_by_id[line_id].append(word.get("text", ""))
+        
+        # Build line text for context
+        line_texts = {}
+        for line_id, word_texts in lines_by_id.items():
+            line_texts[line_id] = " ".join(word_texts)
+        
+        return {
+            "receipt_text": receipt_text,
+            "total_words": len(words),
+            "total_lines": len(lines_by_id),
+            "has_table_structure": table_structure is not None,
+            "table_summary": table_structure.get("summary", "") if table_structure else "No table structure available",
+            "line_preview": {
+                str(line_id): text for line_id, text in sorted(line_texts.items())
+            },
+            "structure_notes": {
+                "words_per_line_avg": len(words) / max(len(lines_by_id), 1),
+                "table_columns": len(table_structure.get("columns", [])) if table_structure else 0,
+                "table_rows": len(table_structure.get("rows", [])) if table_structure else 0,
+            }
+        }
+
+    @tool  
+    def identify_numeric_candidates() -> dict:
+        """Find all numeric values in the receipt with their positions and surrounding context."""
+        receipt = shared_state.get("receipt", {})
+        words = receipt.get("words", [])
+        
+        # Group words by line for context
+        lines_by_id = {}
+        for word in words:
+            line_id = word.get("line_id")
+            if line_id not in lines_by_id:
+                lines_by_id[line_id] = []
+            lines_by_id[line_id].append(word)
+        
+        numeric_candidates = []
+        
+        for word in words:
+            text = word.get("text", "")
+            numeric_value = extract_number(text)
+            
+            if numeric_value is not None:
+                line_id = word.get("line_id")
+                
+                # Get full line context
+                line_words = lines_by_id.get(line_id, [])
+                line_context = " ".join([w.get("text", "") for w in line_words])
+                
+                # Find position within line
+                word_position = next(
+                    (i for i, w in enumerate(line_words) if w.get("word_id") == word.get("word_id")), 
+                    -1
+                )
+                
+                numeric_candidates.append({
+                    "line_id": line_id,
+                    "word_id": word.get("word_id"),
+                    "text": text,
+                    "numeric_value": numeric_value,
+                    "line_context": line_context,
+                    "position_in_line": word_position,
+                    "is_rightmost": word_position == len(line_words) - 1,
+                    "confidence": word.get("confidence", 1.0),
+                })
+        
+        # Sort by value for easier analysis
+        numeric_candidates.sort(key=lambda x: x["numeric_value"], reverse=True)
+        
+        return {
+            "numeric_candidates": numeric_candidates,
+            "total_numeric_values": len(numeric_candidates),
+            "value_statistics": {
+                "min_value": min([c["numeric_value"] for c in numeric_candidates]) if numeric_candidates else 0,
+                "max_value": max([c["numeric_value"] for c in numeric_candidates]) if numeric_candidates else 0,
+                "value_count_by_range": {
+                    "over_100": len([c for c in numeric_candidates if c["numeric_value"] > 100]),
+                    "10_to_100": len([c for c in numeric_candidates if 10 <= c["numeric_value"] <= 100]),
+                    "under_10": len([c for c in numeric_candidates if c["numeric_value"] < 10]),
+                }
+            },
+            "context_patterns": [
+                {
+                    "value": c["numeric_value"],
+                    "context": c["line_context"],
+                    "position": "rightmost" if c["is_rightmost"] else f"position_{c['position_in_line']}"
+                }
+                for c in numeric_candidates[:10]  # First 10 for pattern analysis
+            ]
+        }
+
+    @tool
+    def reason_about_financial_layout(
+        reasoning: str,
+        candidate_assignments: list[dict]
+    ) -> dict:
+        """Apply reasoning to identify which numeric values represent which financial types."""
+        if not candidate_assignments:
+            return {"error": "No candidate assignments provided"}
+        
+        # Validate assignment format
+        for assignment in candidate_assignments:
+            required_fields = ["line_id", "word_id", "value", "proposed_type", "confidence", "reasoning"]
+            missing_fields = [field for field in required_fields if field not in assignment]
+            if missing_fields:
+                return {"error": f"Assignment missing required fields: {missing_fields}"}
+        
+        # Store the LLM's reasoning and proposed assignments in shared state
+        shared_state["financial_reasoning"] = reasoning
+        shared_state["proposed_assignments"] = candidate_assignments
+        
+        # Group by type for easier analysis
+        assignments_by_type = {}
+        for assignment in candidate_assignments:
+            financial_type = assignment.get("proposed_type")
+            if financial_type not in assignments_by_type:
+                assignments_by_type[financial_type] = []
+            assignments_by_type[financial_type].append(assignment)
+        
+        return {
+            "reasoning_recorded": True,
+            "total_assignments": len(candidate_assignments),
+            "assignments_by_type": assignments_by_type,
+            "ready_for_verification": True
+        }
+
+    @tool
+    def test_mathematical_relationships() -> dict:
+        """Test whether your proposed financial assignments follow correct receipt mathematics."""
+        proposed = shared_state.get("proposed_assignments", [])
+        if not proposed:
+            return {"error": "No proposed assignments to test. Call reason_about_financial_layout first."}
+        
+        # Extract values by type
+        values_by_type = {}
+        for assignment in proposed:
+            financial_type = assignment.get("proposed_type")
+            value = assignment.get("value")
+            if financial_type not in values_by_type:
+                values_by_type[financial_type] = []
+            values_by_type[financial_type].append({
+                "value": value,
+                "line_id": assignment.get("line_id"),
+                "word_id": assignment.get("word_id"),
+                "confidence": assignment.get("confidence", 0.5)
+            })
+        
+        verification_results = []
+        tolerance = 0.01
+        
+        # Test 1: GRAND_TOTAL = SUBTOTAL + TAX
+        if "GRAND_TOTAL" in values_by_type and "SUBTOTAL" in values_by_type:
+            grand_total_info = values_by_type["GRAND_TOTAL"][0]
+            subtotal_info = values_by_type["SUBTOTAL"][0]
+            
+            grand_total = grand_total_info["value"]
+            subtotal = subtotal_info["value"]
+            
+            # Handle optional TAX
+            tax = 0
+            tax_info = None
+            if "TAX" in values_by_type:
+                tax_info = values_by_type["TAX"][0]
+                tax = tax_info["value"]
+            
+            calculated_total = subtotal + tax
+            difference = grand_total - calculated_total
+            math_correct = abs(difference) <= tolerance
+            
+            verification_results.append({
+                "test_name": "GRAND_TOTAL = SUBTOTAL + TAX",
+                "passes": math_correct,
+                "difference": difference,
+            })
+        
+        # Store results in shared state
+        shared_state["verification_results"] = verification_results
+        
+        tests_passed = sum(1 for result in verification_results if result.get("passes", False))
+        total_tests = len(verification_results)
+        
+        return {
+            "verification_summary": {
+                "total_tests": total_tests,
+                "tests_passed": tests_passed,
+                "all_tests_pass": tests_passed == total_tests,
+            },
+            "verification_results": verification_results,
+        }
+
+    @tool
+    def finalize_financial_context(
+        final_reasoning: str,
+        confidence_assessment: str,
+        currency: str = "USD"
+    ) -> dict:
+        """Submit your final financial analysis as context for downstream label assignment."""
+        proposed = shared_state.get("proposed_assignments", [])
+        verification_results = shared_state.get("verification_results", [])
+        
+        if not proposed:
+            return {"error": "No proposed assignments available. Call reason_about_financial_layout first."}
+        
+        # Build the financial context output
+        financial_candidates = {}
+        for assignment in proposed:
+            financial_type = assignment.get("proposed_type")
+            if financial_type not in financial_candidates:
+                financial_candidates[financial_type] = []
+            
+            financial_candidates[financial_type].append({
+                "line_id": assignment.get("line_id"),
+                "word_id": assignment.get("word_id"),
+                "value": assignment.get("value"),
+                "confidence": assignment.get("confidence", 0.5),
+                "reasoning": assignment.get("reasoning", "")
+            })
+        
+        # Calculate mathematical validation summary
+        total_tests = len(verification_results)
+        passed_tests = len([r for r in verification_results if r.get("passes", False)])
+        
+        # Store final result in shared state for retrieval
+        final_result = {
+            "financial_candidates": financial_candidates,
+            "mathematical_validation": {
+                "verified": passed_tests,
+                "total_tests": total_tests,
+                "all_valid": passed_tests == total_tests,
+            },
+            "currency": currency,
+            "llm_reasoning": {
+                "structure_analysis": shared_state.get("financial_reasoning", ""),
+                "final_assessment": final_reasoning,
+                "confidence": confidence_assessment
+            },
+        }
+        
+        shared_state["financial_context"] = final_result
+        
+        return {
+            "success": True,
+            "context_generated": True,
+            "financial_types_count": len(financial_candidates),
+            "mathematical_tests_passed": f"{passed_tests}/{total_tests}",
+        }
+
+    return [
+        analyze_receipt_structure,
+        identify_numeric_candidates,
+        reason_about_financial_layout,
+        test_mathematical_relationships,
+        finalize_financial_context,
+    ]
+
+
 def create_llm_driven_financial_graph(
     settings: Optional[Settings] = None,
 ) -> tuple[Any, dict]:
@@ -610,12 +936,29 @@ def create_llm_driven_financial_graph(
 
     # Use the same LLM creation as main harmonizer (inherits proper auth)
     llm = create_ollama_llm(settings)
-    state_holder = {"receipt": {}, "table_structure": None}
+    
+    # Create shared tool state that can be updated between runs
+    shared_tool_state = {
+        "receipt": {},
+        "table_structure": None,
+        "currency": None,
+        "financial_reasoning": "",
+        "proposed_assignments": [],
+        "verification_results": [],
+    }
+    
+    # Create state holder for external interface
+    state_holder = {
+        "receipt": {},
+        "table_structure": None,
+        "tool_state": shared_tool_state
+    }
 
-    # Create tools with initial empty state
-    tools, tool_state = create_llm_driven_financial_tools(
+    # Create tools with shared state reference
+    tools, _ = create_llm_driven_financial_tools(
         state_holder["receipt"], 
-        state_holder["table_structure"]
+        state_holder["table_structure"],
+        shared_state=shared_tool_state
     )
 
     # Bind tools to LLM
@@ -682,18 +1025,25 @@ async def run_llm_driven_financial_discovery(
         Financial context dict with candidates, validation, and reasoning
     """
     # Update state holder with current data
-    state_holder["receipt"] = {
+    receipt_data = {
         "receipt_text": receipt_text,
         "labels": labels,
         "words": words,
     }
+    state_holder["receipt"] = receipt_data
     state_holder["table_structure"] = table_structure
 
-    # Recreate tools with updated state
-    tools, tool_state = create_llm_driven_financial_tools(
-        state_holder["receipt"], 
-        table_structure
-    )
+    # Update the existing tool state instead of recreating tools
+    tool_state = state_holder.get("tool_state")
+    if tool_state is not None:
+        # Update the tool state with new receipt data
+        tool_state["receipt"] = receipt_data
+        tool_state["table_structure"] = table_structure
+        # Reset other state for fresh analysis
+        tool_state["currency"] = None
+        tool_state["financial_reasoning"] = ""
+        tool_state["proposed_assignments"] = []
+        tool_state["verification_results"] = []
 
     # Create initial state
     initial_state = FinancialValidationState(
@@ -721,21 +1071,24 @@ async def run_llm_driven_financial_discovery(
         logger.info(f"LLM Financial Discovery: Tool state keys: {list(tool_state.keys())}")
         
         # Extract final result from tool state
-        final_result = tool_state.get("final_result")
+        tool_state = state_holder.get("tool_state")
+        final_result = tool_state.get("final_result") if tool_state else None
+        
         if final_result:
             logger.info(f"LLM Financial Discovery: SUCCESS - final_result found with keys: {list(final_result.keys())}")
             return final_result
         else:
             logger.warning(f"LLM Financial Discovery: FAILED - no final_result in tool_state")
-            logger.warning(f"LLM Financial Discovery: Available tool_state: {tool_state}")
+            if tool_state:
+                logger.warning(f"LLM Financial Discovery: Available tool_state keys: {list(tool_state.keys())}")
             
             # Fallback - extract what we can from tool state
             return {
                 "financial_candidates": {},
                 "mathematical_validation": {"verified": 0, "total_tests": 0, "all_valid": False},
-                "currency": tool_state.get("currency", "USD"),
+                "currency": tool_state.get("currency", "USD") if tool_state else "USD",
                 "llm_reasoning": {
-                    "structure_analysis": tool_state.get("financial_reasoning", ""),
+                    "structure_analysis": tool_state.get("financial_reasoning", "") if tool_state else "",
                     "final_assessment": "Agent completed but did not finalize results",
                     "confidence": "unknown"
                 },
