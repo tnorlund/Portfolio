@@ -301,6 +301,7 @@ def docker_image_buildspec(
     lambda_function_name: Optional[str],
     debug_mode: bool,
     base_image_uri: Optional[str] = None,  # Resolved string value (not pulumi.Output)
+    image_tag: Optional[str] = None,  # Custom tag for the image (defaults to "latest")
 ) -> Dict[str, Any]:
     """Buildspec for CodeBuild Docker image builds."""
     build_args_str = " ".join(

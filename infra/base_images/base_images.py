@@ -50,7 +50,7 @@ class BaseImages(ComponentResource):
                 .decode()
                 .strip()
             )
-            
+
             # If no commit found for this directory, it might be new or untracked
             if not commit:
                 # Fall back to current HEAD
@@ -63,7 +63,7 @@ class BaseImages(ComponentResource):
                     .decode()
                     .strip()
                 )
-            
+
             # Check if there are uncommitted changes in this specific directory
             status = (
                 subprocess.check_output(
@@ -116,7 +116,7 @@ class BaseImages(ComponentResource):
                 .decode()
                 .strip()
             )
-            
+
             # If no commit found for these directories, fall back to HEAD
             if not commit:
                 commit = (
@@ -128,7 +128,7 @@ class BaseImages(ComponentResource):
                     .decode()
                     .strip()
                 )
-            
+
             # Check for uncommitted changes in any of these specific directories
             has_changes = False
             for package_dir in package_dirs:

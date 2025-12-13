@@ -125,8 +125,8 @@ The agent base image uses a **per-directory combined content hash** of all inclu
 
 ```python
 agent_tag = self.get_combined_image_tag(
-    "receipt_agent", 
-    [dynamo_package_dir, chroma_package_dir, upload_package_dir, 
+    "receipt_agent",
+    [dynamo_package_dir, chroma_package_dir, upload_package_dir,
      places_package_dir, label_package_dir]
 )
 ```

@@ -74,7 +74,7 @@ class DependencyGraph:
                 .decode()
                 .strip()
             )
-            
+
             # If no commit found for this directory, fall back to HEAD
             if not commit:
                 commit = (
@@ -86,7 +86,7 @@ class DependencyGraph:
                     .decode()
                     .strip()
                 )
-            
+
             # Check for uncommitted changes in this specific directory
             status = (
                 subprocess.check_output(

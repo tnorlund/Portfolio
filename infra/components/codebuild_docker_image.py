@@ -94,6 +94,7 @@ class CodeBuildDockerImage(ComponentResource):
             list[str]
         ] = None,  # Pulumi aliases for Lambda rename
         base_image_uri: Optional[pulumi.Input[str]] = None,  # Optional base image to use (from BaseImages)
+        image_tag: Optional[str] = None,  # Optional custom tag (for base images with content-based tags)
         opts: Optional[ResourceOptions] = None,
     ) -> None:
         super().__init__(f"codebuild-docker:{name}", name, {}, opts)
@@ -115,6 +116,7 @@ class CodeBuildDockerImage(ComponentResource):
             lambda_aliases or []
         )  # Pulumi aliases for Lambda rename
         self.base_image_uri = base_image_uri  # Store base image URI if provided
+        self.image_tag = image_tag or "latest"  # Custom tag for base images, default to "latest"
 
         # Configure build mode and flags
         (
@@ -171,7 +173,7 @@ class CodeBuildDockerImage(ComponentResource):
         # Export outputs
         self.repository_url = self.ecr_repo.repository_url
         self.image_uri = self.ecr_repo.repository_url.apply(
-            lambda url: f"{url}:latest"
+            lambda url: f"{url}:{self.image_tag}"
         )
         # Digest is managed by CodeBuild, provide a placeholder
         # The actual digest is used during Lambda updates in post_build phase
@@ -456,6 +458,7 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
             ),
             debug_mode=self.debug_mode,
             base_image_uri="placeholder" if self.base_image_uri else None,  # Just indicate presence
+            image_tag=self.image_tag,  # Pass custom tag for base images
         )
 
     def _setup_pipeline(self, content_hash: str):
@@ -629,7 +632,7 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
                     ),
                     ProjectEnvironmentEnvironmentVariableArgs(
                         name="IMAGE_TAG",
-                        value=content_hash[:12],
+                        value=self.image_tag,  # Use custom tag if provided, otherwise "latest"
                     ),
                     ProjectEnvironmentEnvironmentVariableArgs(
                         name="LAMBDA_FUNCTION_NAME",

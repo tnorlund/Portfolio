@@ -29,8 +29,8 @@ from typing import Optional
 # Import our infrastructure components
 import s3_website  # noqa: F401
 
-# Using the optimized docker-build based base images with scoped contexts
-from base_images.base_images import BaseImages
+# Using the optimized CodeBuild-based base images (async, no local Docker)
+from base_images.base_images_codebuild import BaseImagesCodeBuild
 from billing_alerts import BillingAlerts
 from chromadb_compaction import create_chromadb_compaction_infrastructure
 from combine_receipts_step_functions import CombineReceiptsStepFunction
@@ -97,17 +97,17 @@ pulumi.export("foundation_vpc_id", public_vpc.vpc_id)
 pulumi.export("foundation_public_subnet_ids", public_vpc.public_subnet_ids)
 # (moved S3 gateway endpoint below after NAT creation to reference its route table)
 
-# Create base images for faster Lambda builds (built in parallel, early in infrastructure)
-# These contain pre-installed receipt_dynamo and receipt_label packages
-base_images = BaseImages("base", pulumi.get_stack())
+# Create base images for faster Lambda builds (async on AWS CodeBuild, no local Docker)
+# These contain pre-installed packages and use content-based tags for dependency tracking
+base_images = BaseImagesCodeBuild("base", pulumi.get_stack())
 pulumi.export(
-    "dynamo_base_image_url", base_images.dynamo_base_repo.repository_url
+    "dynamo_base_image_uri", base_images.dynamo_base_image.image_uri
 )
 pulumi.export(
-    "label_base_image_url", base_images.label_base_repo.repository_url
+    "label_base_image_uri", base_images.label_base_image.image_uri
 )
 pulumi.export(
-    "agent_base_image_url", base_images.agent_base_repo.repository_url
+    "agent_base_image_uri", base_images.agent_base_image.image_uri
 )
 
 # Export dependency graph information for debugging
@@ -170,9 +170,7 @@ create_labels_sf = CreateLabelsStepFunction(
     dynamodb_table_name=dynamodb_table.name,
     dynamodb_table_arn=dynamodb_table.arn,
     max_concurrency=3,  # Reduced to avoid Ollama rate limiting (matches validate_pending_labels)
-    base_image_uri=base_images.label_base_image.tags[
-        0
-    ],  # Use label base image with receipt_dynamo + receipt_label
+    base_image_uri=base_images.label_base_image.image_uri,  # Use label base image with receipt_dynamo + receipt_label
 )
 
 validation_by_merchant_step_functions = ValidationByMerchantStepFunction(
@@ -1269,9 +1267,7 @@ metadata_harmonizer_sf = MetadataHarmonizerStepFunction(
     dynamodb_table_arn=dynamodb_table.arn,
     chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
     chromadb_bucket_arn=shared_chromadb_buckets.bucket_arn,
-    base_image_uri=base_images.agent_base_image.tags[
-        0
-    ],  # Use agent base image with all common packages (dynamo, chroma, upload, places, label)
+    base_image_uri=base_images.agent_base_image.image_uri,  # Use agent base image with all common packages (dynamo, chroma, upload, places, label)
 )
 
 pulumi.export(
