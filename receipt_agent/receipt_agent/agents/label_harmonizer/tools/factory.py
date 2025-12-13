@@ -1106,8 +1106,8 @@ def create_label_harmonizer_tools(
     tools = [
         get_line_id_text_list,
         run_table_subagent,
+        validate_financial_consistency,
         run_label_subagent,
-        submit_harmonization,
     ]
 
     return tools, state
