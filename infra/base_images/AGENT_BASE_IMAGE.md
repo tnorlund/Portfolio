@@ -121,26 +121,46 @@ Lambdas that could benefit from the agent base image:
 
 ## Content Hash System
 
-The agent base image uses a **combined content hash** of all included packages:
+The agent base image uses a **per-directory combined content hash** of all included packages:
 
 ```python
 agent_tag = self.get_combined_image_tag(
-    "receipt_agent",
-    [dynamo_package_dir, chroma_package_dir, upload_package_dir,
+    "receipt_agent", 
+    [dynamo_package_dir, chroma_package_dir, upload_package_dir, 
      places_package_dir, label_package_dir]
 )
 ```
 
 ### Hash Calculation Priority
 
-1. **Git-based** (preferred): `git-abc1234` or `git-abc1234-dirty`
+1. **Per-Directory Git Hash** (preferred): `git-abc1234` or `git-abc1234-dirty`
+   - Uses `git log -1 --format=%h -- <directories>` to get last commit that touched these packages
+   - **Only changes when these specific packages change**
+   - Handler-only changes don't affect this hash!
    - Fast and reliable
-   - Detects uncommitted changes
+   - Detects uncommitted changes in these directories
    - Used in development and CI/CD
 
 2. **File-based** (fallback): `sha-a1b2c3d4e5f6`
    - Hashes all `.py` files in packages
    - Used when git is unavailable
+
+### Example
+
+```bash
+# Current HEAD
+$ git rev-parse --short HEAD
+78550b5a2
+
+# Last commit that touched base packages
+$ git log -1 --format=%h -- receipt_dynamo/ receipt_chroma/ receipt_upload/ receipt_places/ receipt_label/
+ff823670d
+
+# Base image tag will be: git-ff823670d
+# Even though HEAD is: git-78550b5a2
+```
+
+This means modifying handler code or other files won't trigger base image rebuilds!
 
 ### When Base Image Rebuilds
 

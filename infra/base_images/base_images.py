@@ -30,7 +30,7 @@ class BaseImages(ComponentResource):
     """Component for creating base ECR images for packages."""
 
     def get_content_hash(self, package_dir: Path) -> str:
-        """Generate a hash based on package content.
+        """Generate a hash based on package content using per-directory git tracking.
 
         Args:
             package_dir: Path to the package directory
@@ -38,18 +38,33 @@ class BaseImages(ComponentResource):
         Returns:
             A deterministic hash string based on package content
         """
-        # Option 1: Try to use git commit SHA (fast and reliable)
+        # Option 1: Try to use git commit SHA for this specific directory (fast and reliable)
         try:
+            # Get the last commit that touched this specific directory
             commit = (
                 subprocess.check_output(
-                    ["git", "rev-parse", "--short", "HEAD"],
+                    ["git", "log", "-1", "--format=%h", "--", str(package_dir)],
                     cwd=str(package_dir.parent),
                     stderr=subprocess.DEVNULL,
                 )
                 .decode()
                 .strip()
             )
-            # Also get the status to see if there are uncommitted changes
+            
+            # If no commit found for this directory, it might be new or untracked
+            if not commit:
+                # Fall back to current HEAD
+                commit = (
+                    subprocess.check_output(
+                        ["git", "rev-parse", "--short", "HEAD"],
+                        cwd=str(package_dir.parent),
+                        stderr=subprocess.DEVNULL,
+                    )
+                    .decode()
+                    .strip()
+                )
+            
+            # Check if there are uncommitted changes in this specific directory
             status = (
                 subprocess.check_output(
                     ["git", "status", "--porcelain", str(package_dir)],
@@ -78,7 +93,7 @@ class BaseImages(ComponentResource):
         return f"sha-{content_hash.hexdigest()[:12]}"
 
     def get_combined_content_hash(self, package_dirs: list[Path]) -> str:
-        """Generate a hash based on multiple package contents.
+        """Generate a hash based on multiple package contents using per-directory git tracking.
 
         Args:
             package_dirs: List of paths to package directories
@@ -86,18 +101,35 @@ class BaseImages(ComponentResource):
         Returns:
             A deterministic hash string based on all package contents
         """
-        # Option 1: Try to use git commit SHA (fast and reliable)
+        # Option 1: Try to use git commit SHA for these specific directories (fast and reliable)
         try:
+            # Get the last commit that touched ANY of these directories
+            # Build the path arguments for git log
+            dir_paths = " ".join([str(d) for d in package_dirs])
             commit = (
                 subprocess.check_output(
-                    ["git", "rev-parse", "--short", "HEAD"],
+                    f'git log -1 --format=%h -- {dir_paths}',
                     cwd=str(package_dirs[0].parent),
                     stderr=subprocess.DEVNULL,
+                    shell=True,
                 )
                 .decode()
                 .strip()
             )
-            # Check for uncommitted changes in any package
+            
+            # If no commit found for these directories, fall back to HEAD
+            if not commit:
+                commit = (
+                    subprocess.check_output(
+                        ["git", "rev-parse", "--short", "HEAD"],
+                        cwd=str(package_dirs[0].parent),
+                        stderr=subprocess.DEVNULL,
+                    )
+                    .decode()
+                    .strip()
+                )
+            
+            # Check for uncommitted changes in any of these specific directories
             has_changes = False
             for package_dir in package_dirs:
                 status = (

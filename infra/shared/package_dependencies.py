@@ -51,7 +51,7 @@ class DependencyGraph:
         self._build_graph()
 
     def get_content_hash(self, package_dir: Path) -> str:
-        """Get content hash for a package directory (compatibility method).
+        """Get content hash for a package directory using per-directory git tracking.
 
         Args:
             package_dir: Path to package directory
@@ -62,17 +62,32 @@ class DependencyGraph:
         import hashlib
         import subprocess
 
-        # Try git commit SHA first
+        # Try git commit SHA for this specific directory first
         try:
+            # Get the last commit that touched this specific directory
             commit = (
                 subprocess.check_output(
-                    ["git", "rev-parse", "--short", "HEAD"],
+                    ["git", "log", "-1", "--format=%h", "--", str(package_dir)],
                     cwd=str(package_dir.parent),
                     stderr=subprocess.DEVNULL,
                 )
                 .decode()
                 .strip()
             )
+            
+            # If no commit found for this directory, fall back to HEAD
+            if not commit:
+                commit = (
+                    subprocess.check_output(
+                        ["git", "rev-parse", "--short", "HEAD"],
+                        cwd=str(package_dir.parent),
+                        stderr=subprocess.DEVNULL,
+                    )
+                    .decode()
+                    .strip()
+                )
+            
+            # Check for uncommitted changes in this specific directory
             status = (
                 subprocess.check_output(
                     ["git", "status", "--porcelain", str(package_dir)],
