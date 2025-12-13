@@ -382,22 +382,28 @@ def create_label_harmonizer_tools(
     @tool
     def validate_financial_consistency() -> dict:
         """
-        Validate financial consistency using an enhanced sub-agent.
+        Discover and validate financial consistency using LLM reasoning.
 
-        This tool runs an enhanced financial validation sub-agent that:
-        - Uses table structure information (if available) to understand layout
-        - Validates line-item math: QUANTITY × UNIT_PRICE = LINE_TOTAL  
-        - Validates grand total math: GRAND_TOTAL = SUBTOTAL + TAX + fees - discounts
-        - Validates subtotal math: SUBTOTAL = sum of all LINE_TOTAL values
-        - Finds missing line-item fields (PRODUCT_NAME, QUANTITY, UNIT_PRICE for each LINE_TOTAL)
-        - Detects currency and ensures consistency
-        - Proposes specific label corrections with detailed reasoning
+        This tool runs an LLM-driven financial discovery sub-agent that:
+        - Analyzes receipt structure to understand financial layout
+        - Uses reasoning (not hard-coded rules) to identify financial values
+        - Detects LINE_TOTAL, SUBTOTAL, TAX, and GRAND_TOTAL candidates
+        - Validates mathematical relationships between identified values
+        - Provides rich context for downstream label assignment
+        - Works with or without existing labels
+
+        The agent uses LLM reasoning to:
+        1. Analyze receipt structure and numeric patterns
+        2. Reason about which values represent which financial types
+        3. Test mathematical relationships (GRAND_TOTAL = SUBTOTAL + TAX, etc.)
+        4. Provide detailed explanations for each assignment
 
         Returns:
+        - financial_candidates: Identified financial values with positions and confidence
+        - mathematical_validation: Results of math verification tests
         - currency: Detected currency
-        - is_valid: Whether all financial math checks out
-        - corrections: List of label corrections needed (each with line_id, word_id, current_label, correct_label, reasoning, confidence)
-        - table_structure_used: Whether table structure information was available
+        - llm_reasoning: Detailed reasoning from the LLM agent
+        - Context suitable for label sub-agent to use for assignment
         """
         receipt = state.get("receipt")
         if not receipt or not isinstance(receipt, dict):
@@ -422,25 +428,25 @@ def create_label_harmonizer_tools(
                 "LH3 tool validate_financial_consistency: no words in state"
             )
 
-        # Run enhanced financial validation sub-agent (sync wrapper for async function)
+        # Run LLM-driven financial discovery sub-agent (sync wrapper for async function)
         try:
-            from receipt_agent.subagents.financial_validation.enhanced_graph import (
-                create_enhanced_financial_validation_graph,
-                run_enhanced_financial_validation,
+            from receipt_agent.subagents.financial_validation.llm_driven_graph import (
+                create_llm_driven_financial_graph,
+                run_llm_driven_financial_discovery,
             )
 
             # Create sub-agent graph (reuse if exists, or create new)
-            if "enhanced_financial_validation_graph" not in state:
-                graph, sub_state_holder = create_enhanced_financial_validation_graph()
-                state["enhanced_financial_validation_graph"] = graph
-                state["enhanced_financial_validation_state"] = sub_state_holder
+            if "llm_financial_discovery_graph" not in state:
+                graph, sub_state_holder = create_llm_driven_financial_graph()
+                state["llm_financial_discovery_graph"] = graph
+                state["llm_financial_discovery_state"] = sub_state_holder
             else:
-                graph = state["enhanced_financial_validation_graph"]
-                sub_state_holder = state["enhanced_financial_validation_state"]
+                graph = state["llm_financial_discovery_graph"]
+                sub_state_holder = state["llm_financial_discovery_state"]
 
             # Run async sub-agent in sync context
             result = asyncio.run(
-                run_enhanced_financial_validation(
+                run_llm_driven_financial_discovery(
                     graph=graph,
                     state_holder=sub_state_holder,
                     receipt_text=receipt_text,
@@ -450,22 +456,28 @@ def create_label_harmonizer_tools(
                 )
             )
 
-            # Store corrections in state for main agent to use
-            corrections = result.get("corrections", [])
-            if corrections:
-                state["financial_corrections"] = corrections
+            # Store financial context in state for main agent and label sub-agent to use
+            financial_candidates = result.get("financial_candidates", {})
+            if financial_candidates:
+                state["financial_candidates"] = financial_candidates
+                state["financial_context"] = result
                 logger.info(
-                    f"LH3 enhanced financial validation found {len(corrections)} corrections"
+                    f"LH3 financial discovery identified {len(financial_candidates)} financial types: {list(financial_candidates.keys())}"
                 )
 
             return result
         except Exception as e:
-            logger.exception(f"Financial validation sub-agent failed: {e}")
+            logger.exception(f"LLM-driven financial discovery sub-agent failed: {e}")
             return {
+                "financial_candidates": {},
+                "mathematical_validation": {"verified": 0, "total_tests": 0, "all_valid": False},
                 "currency": None,
-                "is_valid": False,
-                "issues": [{"type": "error", "message": str(e)}],
-                "corrections": [],
+                "llm_reasoning": {
+                    "structure_analysis": "",
+                    "final_assessment": f"Agent failed with error: {str(e)}",
+                    "confidence": "none"
+                },
+                "error": str(e)
             }
 
     # ========== SIMILARITY SEARCH TOOL ==========

@@ -33,43 +33,45 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-LABEL_HARMONIZER_PROMPT = """You are a receipt label harmonizer. Focus on understanding table structure, validating financial consistency, and analyzing labels.
+LABEL_HARMONIZER_PROMPT = """You are a receipt label harmonizer. Focus on understanding table structure, discovering financial context, and analyzing labels.
 
 ## Task
 1) Read the receipt text (source of truth).
 2) Find and analyze table structure in the receipt.
-3) Validate financial information using the sub-agent.
-4) Analyze labels using the label sub-agent.
+3) Discover financial context using LLM reasoning (works with or without existing labels).
+4) Analyze labels using the label sub-agent with rich financial context.
 
 ## Tools (use sparingly and purposefully)
 - `get_line_id_text_list`: Lines with IDs, top-to-bottom (no geometry).
-- `run_table_subagent`: For a chosen financial/table block (line items/totals/tax), infer columns. Use its summary/columns for downstream financial labels.
-- `validate_financial_consistency`: **Enhanced financial validation** - proves GRAND_TOTAL math, validates line-item completeness (each LINE_TOTAL needs PRODUCT_NAME/QUANTITY/UNIT_PRICE), checks QUANTITY × UNIT_PRICE = LINE_TOTAL.
+- `run_table_subagent`: For a chosen financial/table block (line items/totals/tax), infer columns. Use its summary/columns for downstream financial analysis.
+- `validate_financial_consistency`: **LLM-driven financial discovery** - uses reasoning to identify LINE_TOTAL, SUBTOTAL, TAX, and GRAND_TOTAL candidates, validates mathematical relationships, provides rich context for label assignment. Works with or without existing labels.
 - `run_label_subagent`: Focused pass for a single CORE_LABEL (optionally scoped to the table range).
 
 ## Strategy (focused workflow)
 1. Call `get_line_id_text_list` to see the lines.
 2. Identify the financial/table block; choose the tightest contiguous line-id range that covers line items/totals/tax.
 3. **REQUIRED: Call `run_table_subagent`** on that range first to understand table structure and columns.
-4. **REQUIRED: Call `validate_financial_consistency`** immediately after table analysis to validate financial math and detect currency. This will prove GRAND_TOTAL = SUBTOTAL + TAX and other financial relationships.
-5. **Call `run_label_subagent`** for key CORE_LABELs (scope to the table range when relevant) to analyze labeling.
+4. **REQUIRED: Call `validate_financial_consistency`** immediately after table analysis to discover financial values and validate mathematical relationships. This uses LLM reasoning to identify financial candidates and provides context for downstream labeling.
+5. **Call `run_label_subagent`** for key CORE_LABELs using the financial context from step 4 to make informed labeling decisions.
 
-## Financial Validation Focus
-The enhanced financial validation sub-agent will:
-- **Prove GRAND_TOTAL = SUBTOTAL + TAX** (±0.01 tolerance)
-- **Prove SUBTOTAL = sum of LINE_TOTAL values** (±0.01 tolerance)
-- **Prove each QUANTITY × UNIT_PRICE = LINE_TOTAL** (±0.01 tolerance)
-- **Find LINE_TOTALs missing required fields** (PRODUCT_NAME, QUANTITY, UNIT_PRICE)
+## Financial Discovery Focus
+The LLM-driven financial discovery sub-agent will:
+- **Analyze receipt structure** using reasoning rather than hard-coded rules
+- **Identify financial value candidates** (GRAND_TOTAL, SUBTOTAL, TAX, LINE_TOTAL) with positions and confidence
+- **Validate mathematical relationships** (GRAND_TOTAL = SUBTOTAL + TAX, SUBTOTAL = sum of LINE_TOTAL, etc.)
+- **Provide rich context** for label sub-agents to use for accurate assignment
+- **Work with sparse or missing labels** by discovering financial values from text and structure
 - **Detect currency** and ensure consistency
-- **Propose specific corrections** with detailed reasoning
+- **Explain reasoning** for each financial assignment with detailed justification
 
 ## Rules
 - Use receipt text as source of truth; avoid external info.
-- **Financial math must be proven correct** - trust the enhanced validation sub-agent's corrections.
-- Be systematic: table structure → financial validation → label analysis.
-- Focus on understanding rather than immediate fixes.
+- **Trust the LLM reasoning** - the financial discovery sub-agent uses sophisticated reasoning to identify values.
+- **Use financial context** - leverage the discovered financial candidates for informed label assignment.
+- Be systematic: table structure → financial discovery → label analysis with context.
+- Focus on understanding and providing rich context for accurate labeling.
 
-Begin by: 1) get_line_id_text_list, 2) run_table_subagent (REQUIRED), 3) validate_financial_consistency, 4) run_label_subagent."""
+Begin by: 1) get_line_id_text_list, 2) run_table_subagent (REQUIRED), 3) validate_financial_consistency (financial discovery), 4) run_label_subagent with financial context."""
 
 
 def create_label_harmonizer_graph(
