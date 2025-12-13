@@ -377,24 +377,27 @@ def create_label_harmonizer_tools(
             "count": len(matching_labels),
         }
 
-    # ========== FINANCIAL VALIDATION SUB-AGENT TOOL ==========
+    # ========== ENHANCED FINANCIAL VALIDATION SUB-AGENT TOOL ==========
 
     @tool
     def validate_financial_consistency() -> dict:
         """
-        Validate financial consistency using a sub-agent.
+        Validate financial consistency using an enhanced sub-agent.
 
-        This tool runs a financial validation sub-agent that:
-        - Detects currency
-        - Validates grand total = subtotal + tax
-        - Validates subtotal = sum of line totals
-        - Identifies which labels need correction
+        This tool runs an enhanced financial validation sub-agent that:
+        - Uses table structure information (if available) to understand layout
+        - Validates line-item math: QUANTITY × UNIT_PRICE = LINE_TOTAL  
+        - Validates grand total math: GRAND_TOTAL = SUBTOTAL + TAX + fees - discounts
+        - Validates subtotal math: SUBTOTAL = sum of all LINE_TOTAL values
+        - Finds missing line-item fields (PRODUCT_NAME, QUANTITY, UNIT_PRICE for each LINE_TOTAL)
+        - Detects currency and ensures consistency
+        - Proposes specific label corrections with detailed reasoning
 
         Returns:
         - currency: Detected currency
-        - is_valid: Whether financial math checks out
-        - issues: List of issues found
+        - is_valid: Whether all financial math checks out
         - corrections: List of label corrections needed (each with line_id, word_id, current_label, correct_label, reasoning, confidence)
+        - table_structure_used: Whether table structure information was available
         """
         receipt = state.get("receipt")
         if not receipt or not isinstance(receipt, dict):
@@ -406,6 +409,10 @@ def create_label_harmonizer_tools(
         receipt_text = receipt.get("receipt_text", "")
         labels = receipt.get("labels", [])
         words = receipt.get("words", [])
+        
+        # Get table structure from column analysis (if available)
+        table_structure = state.get("column_analysis")
+        
         if not labels:
             logger.info(
                 "LH3 tool validate_financial_consistency: no labels in state"
@@ -415,30 +422,31 @@ def create_label_harmonizer_tools(
                 "LH3 tool validate_financial_consistency: no words in state"
             )
 
-        # Run financial validation sub-agent (sync wrapper for async function)
+        # Run enhanced financial validation sub-agent (sync wrapper for async function)
         try:
-            from receipt_agent.subagents.financial_validation import (
-                create_financial_validation_graph,
-                run_financial_validation,
+            from receipt_agent.subagents.financial_validation.enhanced_graph import (
+                create_enhanced_financial_validation_graph,
+                run_enhanced_financial_validation,
             )
 
             # Create sub-agent graph (reuse if exists, or create new)
-            if "financial_validation_graph" not in state:
-                graph, sub_state_holder = create_financial_validation_graph()
-                state["financial_validation_graph"] = graph
-                state["financial_validation_state"] = sub_state_holder
+            if "enhanced_financial_validation_graph" not in state:
+                graph, sub_state_holder = create_enhanced_financial_validation_graph()
+                state["enhanced_financial_validation_graph"] = graph
+                state["enhanced_financial_validation_state"] = sub_state_holder
             else:
-                graph = state["financial_validation_graph"]
-                sub_state_holder = state["financial_validation_state"]
+                graph = state["enhanced_financial_validation_graph"]
+                sub_state_holder = state["enhanced_financial_validation_state"]
 
             # Run async sub-agent in sync context
             result = asyncio.run(
-                run_financial_validation(
+                run_enhanced_financial_validation(
                     graph=graph,
                     state_holder=sub_state_holder,
                     receipt_text=receipt_text,
                     labels=labels,
                     words=words,
+                    table_structure=table_structure,
                 )
             )
 
@@ -446,6 +454,9 @@ def create_label_harmonizer_tools(
             corrections = result.get("corrections", [])
             if corrections:
                 state["financial_corrections"] = corrections
+                logger.info(
+                    f"LH3 enhanced financial validation found {len(corrections)} corrections"
+                )
 
             return result
         except Exception as e:
