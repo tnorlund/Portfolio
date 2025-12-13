@@ -245,14 +245,21 @@ def create_label_harmonizer_tools(
             seen_words = set()
             duplicates = []
             for assignment in candidate_assignments:
-                word_key = (assignment.get("line_id"), assignment.get("word_id"))
+                word_key = (
+                    assignment.get("line_id"),
+                    assignment.get("word_id"),
+                )
                 if word_key in seen_words:
                     duplicates.append(word_key)
                 seen_words.add(word_key)
 
             if duplicates:
-                dup_str = ", ".join([f"line {lid} word {wid}" for lid, wid in duplicates])
-                logger.warning("⚠️  Duplicate word assignments detected: %s", dup_str)
+                dup_str = ", ".join(
+                    [f"line {lid} word {wid}" for lid, wid in duplicates]
+                )
+                logger.warning(
+                    "⚠️  Duplicate word assignments detected: %s", dup_str
+                )
                 return {
                     "error": f"DUPLICATE ASSIGNMENTS: Each word can only have one financial type. "
                     f"The following words were assigned multiple times: {dup_str}. "
