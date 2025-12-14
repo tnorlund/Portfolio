@@ -806,6 +806,13 @@ def create_label_harmonizer_tools(
         """Simple rule-based fallback when LLM-driven approach fails."""
         receipt = state.get("receipt", {})
         labels = receipt.get("labels", [])
+        words = receipt.get("words", [])
+
+        # Create a lookup dict for fast word access by (line_id, word_id)
+        word_lookup = {}
+        for word in words:
+            key = (word.get("line_id"), word.get("word_id"))
+            word_lookup[key] = word.get("text", "")
 
         # Extract existing financial labels as candidates
         financial_candidates = {}
@@ -814,10 +821,16 @@ def create_label_harmonizer_tools(
             if label_type in ["GRAND_TOTAL", "SUBTOTAL", "TAX", "LINE_TOTAL"]:
                 if label_type not in financial_candidates:
                     financial_candidates[label_type] = []
+
+                # Look up the word text
+                word_key = (label.get("line_id"), label.get("word_id"))
+                word_text = word_lookup.get(word_key, "")
+
                 financial_candidates[label_type].append(
                     {
                         "line_id": label.get("line_id"),
                         "word_id": label.get("word_id"),
+                        "text": word_text,
                         "confidence": 0.6,  # Lower confidence for fallback
                     }
                 )

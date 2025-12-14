@@ -660,6 +660,16 @@ def create_llm_driven_financial_tools(
                 "error": "No proposed assignments available. Call reason_about_financial_layout first."
             }
 
+        # Get receipt data to look up word text
+        receipt = state.get("receipt", {})
+        words = receipt.get("words", [])
+
+        # Create a lookup dict for fast word access by (line_id, word_id)
+        word_lookup = {}
+        for word in words:
+            key = (word.get("line_id"), word.get("word_id"))
+            word_lookup[key] = word.get("text", "")
+
         # Build the financial context output
         financial_candidates = {}
         for assignment in proposed:
@@ -667,10 +677,15 @@ def create_llm_driven_financial_tools(
             if financial_type not in financial_candidates:
                 financial_candidates[financial_type] = []
 
+            # Look up the word text
+            word_key = (assignment.get("line_id"), assignment.get("word_id"))
+            word_text = word_lookup.get(word_key, "")
+
             financial_candidates[financial_type].append(
                 {
                     "line_id": assignment.get("line_id"),
                     "word_id": assignment.get("word_id"),
+                    "text": word_text,
                     "value": assignment.get("value"),
                     "confidence": assignment.get("confidence", 0.5),
                     "reasoning": assignment.get("reasoning", ""),
