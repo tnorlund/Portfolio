@@ -26,8 +26,12 @@ class DualChromaClient:
         raise ValueError(f"Unknown collection: {collection_name}")
 
     def query(self, collection_name: str, **kwargs):
-        """Query collection by name."""
-        return self.get_collection(collection_name).query(**kwargs)
+        """Query collection by name using appropriate client wrapper."""
+        if collection_name == "lines":
+            return self.lines.query(collection_name=collection_name, **kwargs)
+        if collection_name == "words":
+            return self.words.query(collection_name=collection_name, **kwargs)
+        raise ValueError(f"Unknown collection: {collection_name}")
 
     def close(self) -> None:
         """Close both clients safely."""
