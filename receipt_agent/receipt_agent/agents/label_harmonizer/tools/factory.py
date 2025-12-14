@@ -111,7 +111,6 @@ def create_label_harmonizer_tools(
         def analyze_receipt_structure() -> dict:
             """Get concise receipt structure overview for financial analysis."""
             receipt = state.get("receipt", {})
-            receipt_text = receipt.get("receipt_text", "")
             words = receipt.get("words", [])
             table_structure = state.get("column_analysis")
 
@@ -723,7 +722,7 @@ def create_label_harmonizer_tools(
         for attempt in range(max_retries):
             try:
                 # Invoke sub-agent with simplified message to reduce context
-                result_msg = financial_subagent.invoke(
+                financial_subagent.invoke(
                     {
                         "messages": [
                             HumanMessage(

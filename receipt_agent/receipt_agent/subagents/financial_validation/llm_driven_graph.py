@@ -904,7 +904,7 @@ async def run_llm_driven_financial_discovery(
         )
 
         # Run the agent
-        final_state = await graph.ainvoke(initial_state.dict())
+        await graph.ainvoke(initial_state.dict())
 
         logger.info("LLM Financial Discovery: Graph execution completed")
         logger.info(

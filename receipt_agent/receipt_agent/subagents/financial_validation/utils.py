@@ -37,11 +37,17 @@ def extract_number(text: str) -> Optional[float]:
 
     # Remove currency symbols and clean up
     clean_text = re.sub(r"[$€£¥₹]", "", text)
+
+    # Detect accounting-style negatives: (123.45) or -123.45
+    # Check for parentheses wrapping the entire text before cleaning
+    is_negative = text.strip().startswith("(") and text.strip().endswith(")")
+
     clean_text = re.sub(r"[^\d.,-]", "", clean_text)
     clean_text = clean_text.replace(",", "")
 
-    # Handle negative numbers (parentheses or minus signs)
-    is_negative = "-" in text or "(" in text
+    # Also check for minus sign in cleaned text
+    if "-" in clean_text:
+        is_negative = True
     clean_text = clean_text.replace("-", "")
 
     try:

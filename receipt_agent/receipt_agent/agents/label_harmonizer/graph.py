@@ -343,10 +343,10 @@ async def run_label_harmonizer_agent(
     # Add receipt metadata to state if available
     if receipt_metadata:
         receipt_state["metadata"] = {
-            "merchant_name": receipt_metadata.merchant_name,
-            "place_id": receipt_metadata.place_id,
-            "address": receipt_metadata.address,
-            "phone_number": receipt_metadata.phone_number,
+            "merchant_name": getattr(receipt_metadata, "merchant_name", None),
+            "place_id": getattr(receipt_metadata, "place_id", None),
+            "address": getattr(receipt_metadata, "address", None),
+            "phone_number": getattr(receipt_metadata, "phone_number", None),
         }
 
     logger.info(

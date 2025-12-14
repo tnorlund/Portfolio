@@ -89,7 +89,7 @@ def simulate_harmonizer_workflow():
     for i, step in enumerate(workflow_steps, 1):
         print(f"   Step {i}: {step}")
 
-    print("\n✅ NEW WORKFLOW: 3 steps, no premature submission")
+    print("\n✅ NEW WORKFLOW: 4 steps, no premature submission")
     print("✅ Financial validation now properly integrated")
 
     # Step 4: Show what changed
