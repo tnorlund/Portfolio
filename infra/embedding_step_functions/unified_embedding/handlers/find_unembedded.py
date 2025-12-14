@@ -43,14 +43,10 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         table_name = os.environ.get("DYNAMODB_TABLE_NAME")
         if not table_name:
-            raise ValueError(
-                "DYNAMODB_TABLE_NAME environment variable not set"
-            )
+            raise ValueError("DYNAMODB_TABLE_NAME environment variable not set")
         dynamo_client = DynamoClient(table_name)
 
-        lines_without_embeddings = _list_lines_without_embeddings(
-            dynamo_client
-        )
+        lines_without_embeddings = _list_lines_without_embeddings(dynamo_client)
         logger.info(
             "Found lines without embeddings",
             count=len(lines_without_embeddings),
@@ -61,9 +57,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         logger.info("Chunked into batches", count=len(batches))
 
         # Serialize and upload to S3
-        uploaded = _upload_serialized_lines(
-            _serialize_receipt_lines(batches), bucket
-        )
+        uploaded = _upload_serialized_lines(_serialize_receipt_lines(batches), bucket)
         logger.info("Uploaded files", count=len(uploaded))
 
         # Format response
@@ -88,9 +82,7 @@ def _list_lines_without_embeddings(
     dynamo_client: DynamoClient,
 ) -> list[ReceiptLine]:
     """Fetch lines with EmbeddingStatus.NONE."""
-    return dynamo_client.list_receipt_lines_by_embedding_status(
-        EmbeddingStatus.NONE
-    )
+    return dynamo_client.list_receipt_lines_by_embedding_status(EmbeddingStatus.NONE)
 
 
 def _chunk_into_line_embedding_batches(
@@ -126,9 +118,7 @@ def _serialize_receipt_lines(
             continue
         image_id = batch[0].image_id
         receipt_id = batch[0].receipt_id
-        ndjson_path = (
-            f"/tmp/lines-{image_id}-{receipt_id}-{batch_index}.ndjson"
-        )
+        ndjson_path = f"/tmp/lines-{image_id}-{receipt_id}-{batch_index}.ndjson"
         rows = [line.to_dict() for line in batch]
         write_ndjson(Path(ndjson_path), rows)
         serialized.append(
