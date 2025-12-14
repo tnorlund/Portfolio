@@ -22,10 +22,12 @@ from receipt_chroma.embedding.openai import (
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import ReceiptWord
-from receipt_label.embedding.word import (
+from embedding_ingest import (
     deserialize_receipt_words,
-    download_serialized_words,
+    download_serialized_file,
     query_receipt_words,
+    set_pending_and_update_words,
+    write_ndjson,
 )
 
 import utils.logging
@@ -72,13 +74,8 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         logger.info("Generated batch ID", batch_id=batch_id)
 
         # Download the NDJSON from S3 back to local via serialized helper
-        local_path = download_serialized_words(
-            {
-                "s3_bucket": s3_bucket,
-                "s3_key": s3_key,
-                # Include the original ndjson path so the helper can write to it
-                "ndjson_path": f"/tmp/{Path(s3_key).name}",
-            }
+        local_path = download_serialized_file(
+            s3_bucket=s3_bucket, s3_key=s3_key
         )
         logger.info("Downloaded file", local_path=local_path)
 
@@ -129,9 +126,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Write formatted data to NDJSON file
         input_file = Path(f"/tmp/{batch_id}.ndjson")
-        with input_file.open("w", encoding="utf-8") as f:
-            for row in formatted_words:
-                f.write(json.dumps(row) + "\n")
+        write_ndjson(input_file, formatted_words)
         logger.info("Wrote input file", filepath=str(input_file))
 
         # Initialize clients
@@ -156,10 +151,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         logger.info("Created batch summary", batch_id=batch_summary.batch_id)
 
         # Update word embedding status in DynamoDB
-        # Set to PENDING using string format
-        for word in deserialized_words:
-            word.embedding_status = EmbeddingStatus.PENDING.value
-        dynamo_client.update_receipt_words(deserialized_words)
+        set_pending_and_update_words(dynamo_client, deserialized_words)
         logger.info(
             "Updated embedding status for words", count=len(deserialized_words)
         )

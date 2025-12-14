@@ -21,10 +21,12 @@ from receipt_chroma.embedding.openai import (
 )
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_label.embedding.line import (
+from embedding_ingest import (
     deserialize_receipt_lines,
-    download_serialized_lines,
+    download_serialized_file,
     query_receipt_lines,
+    set_pending_and_update_lines,
+    write_ndjson,
 )
 
 import utils.logging
@@ -58,7 +60,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         batch_id = str(uuid4())
 
         # Download the serialized lines from S3
-        filepath = download_serialized_lines(
+        filepath = download_serialized_file(
             s3_bucket=s3_bucket, s3_key=s3_key
         )
         logger.info("Downloaded file", filepath=filepath)
@@ -114,9 +116,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Write formatted data to NDJSON file
         input_file = Path(f"/tmp/{batch_id}.ndjson")
-        with input_file.open("w", encoding="utf-8") as f:
-            for row in formatted_lines:
-                f.write(json.dumps(row) + "\n")
+        write_ndjson(input_file, formatted_lines)
         logger.info("Wrote input file", filepath=str(input_file))
 
         # Initialize clients
@@ -141,10 +141,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         logger.info("Created batch summary", batch_id=batch_summary.batch_id)
 
         # Update line embedding status in DynamoDB
-        # Set to PENDING using string format
-        for line in lines_to_embed:
-            line.embedding_status = EmbeddingStatus.PENDING.value
-        dynamo_client.update_receipt_lines(lines_to_embed)
+        set_pending_and_update_lines(dynamo_client, lines_to_embed)
         logger.info(
             "Updated embedding status for lines", count=len(lines_to_embed)
         )

@@ -5,12 +5,11 @@ Pure business logic - no Lambda-specific code.
 
 import os
 from typing import Any, Dict
-from receipt_label.embedding.line import (
-    chunk_into_line_embedding_batches,
-    list_receipt_lines_with_no_embeddings,
-    serialize_receipt_lines,
-    upload_serialized_lines,
-)
+
+from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.entities import ReceiptLine
+
+from embedding_ingest import write_ndjson
 import utils.logging
 
 get_operation_logger = utils.logging.get_operation_logger
@@ -40,20 +39,28 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         if not bucket:
             raise ValueError("S3_BUCKET environment variable not set")
 
+        dynamo_client = DynamoClient(os.environ.get("DYNAMODB_TABLE_NAME"))
+
         # Find lines without embeddings
-        lines_without_embeddings = list_receipt_lines_with_no_embeddings()
+        if not hasattr(dynamo_client, "list_receipt_lines_with_no_embeddings"):
+            logger.warning(
+                "Dynamo client missing list_receipt_lines_with_no_embeddings; skipping"
+            )
+            return {"batches": []}
+
+        lines_without_embeddings = dynamo_client.list_receipt_lines_with_no_embeddings()  # type: ignore[attr-defined]
         logger.info(
             "Found lines without embeddings",
             count=len(lines_without_embeddings),
         )
 
         # Chunk into batches
-        batches = chunk_into_line_embedding_batches(lines_without_embeddings)
+        batches = _chunk_into_line_embedding_batches(lines_without_embeddings)
         logger.info("Chunked into batches", count=len(batches))
 
         # Serialize and upload to S3
-        uploaded = upload_serialized_lines(
-            serialize_receipt_lines(batches), bucket
+        uploaded = _upload_serialized_lines(
+            _serialize_receipt_lines(batches), bucket
         )
         logger.info("Uploaded files", count=len(uploaded))
 
@@ -73,3 +80,76 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     except Exception as e:
         logger.error("Error finding unembedded lines", error=str(e))
         raise RuntimeError(f"Error finding unembedded lines: {str(e)}") from e
+
+
+def _chunk_into_line_embedding_batches(
+    lines: list[ReceiptLine], batch_size: int = 50
+) -> list[list[ReceiptLine]]:
+    """
+    Chunk ReceiptLines into batches. This mirrors the lightweight logic from
+    receipt_label without pulling that dependency.
+    """
+    batches: list[list[ReceiptLine]] = []
+    current: list[ReceiptLine] = []
+    for line in lines:
+        current.append(line)
+        if len(current) >= batch_size:
+            batches.append(current)
+            current = []
+    if current:
+        batches.append(current)
+    return batches
+
+
+def _serialize_receipt_lines(
+    batches: list[list[ReceiptLine]],
+) -> list[dict]:
+    """Serialize batches of ReceiptLine entities to NDJSON-ready dicts."""
+    serialized: list[dict] = []
+    for batch in batches:
+        if not batch:
+            continue
+        image_id = batch[0].image_id
+        receipt_id = batch[0].receipt_id
+        ndjson_path = f"/tmp/lines-{image_id}-{receipt_id}.ndjson"
+        rows = []
+        for line in batch:
+            rows.append(
+                {
+                    "receipt_id": line.receipt_id,
+                    "image_id": line.image_id,
+                    "line_id": line.line_id,
+                    "text": line.text,
+                    "bounding_box": line.bounding_box,
+                    "top_right": line.top_right,
+                    "top_left": line.top_left,
+                    "bottom_right": line.bottom_right,
+                    "bottom_left": line.bottom_left,
+                    "angle_degrees": line.angle_degrees,
+                    "angle_radians": line.angle_radians,
+                    "confidence": line.confidence,
+                    "embedding_status": line.embedding_status,
+                }
+            )
+        write_ndjson(Path(ndjson_path), rows)
+        serialized.append(
+            {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "ndjson_path": ndjson_path,
+            }
+        )
+    return serialized
+
+
+def _upload_serialized_lines(
+    serialized_lines: list[dict], s3_bucket: str, prefix: str = "line_embeddings"
+) -> list[dict]:
+    """Upload serialized line NDJSON files to S3."""
+    s3 = boto3.client("s3")
+    for entry in serialized_lines:
+        key = f"{prefix}/{Path(entry['ndjson_path']).name}"
+        s3.upload_file(entry["ndjson_path"], s3_bucket, key)
+        entry["s3_key"] = key
+        entry["s3_bucket"] = s3_bucket
+    return serialized_lines

@@ -10,14 +10,11 @@ ENV HNSWLIB_NO_NATIVE=1
 # Copy only the dependency packages (triggers rebuild only when these change)
 COPY receipt_dynamo/ /tmp/receipt_dynamo/
 COPY receipt_chroma/ /tmp/receipt_chroma/
-COPY receipt_label/ /tmp/receipt_label/
 
-# Install dependencies
-# receipt_label still needed for DynamoDB orchestration functions (not ChromaDB-related)
+# Install dependencies (receipt_label no longer required for ingest handlers)
 RUN pip install --no-cache-dir /tmp/receipt_dynamo && \
     pip install --no-cache-dir /tmp/receipt_chroma && \
-    pip install --no-cache-dir "/tmp/receipt_label[full]" && \
-    rm -rf /tmp/receipt_dynamo /tmp/receipt_chroma /tmp/receipt_label
+    rm -rf /tmp/receipt_dynamo /tmp/receipt_chroma
 
 # Stage 2: Copy Lambda-specific code (changes frequently, but doesn't invalidate deps cache)
 FROM dependencies
@@ -26,6 +23,7 @@ FROM dependencies
 COPY infra/embedding_step_functions/unified_embedding/handler.py ${LAMBDA_TASK_ROOT}/handler.py
 COPY infra/embedding_step_functions/unified_embedding/router.py ${LAMBDA_TASK_ROOT}/router.py
 COPY infra/embedding_step_functions/unified_embedding/config.py ${LAMBDA_TASK_ROOT}/config.py
+COPY infra/embedding_step_functions/unified_embedding/embedding_ingest.py ${LAMBDA_TASK_ROOT}/embedding_ingest.py
 COPY infra/embedding_step_functions/unified_embedding/__init__.py ${LAMBDA_TASK_ROOT}/__init__.py
 # Copy handlers directory
 COPY infra/embedding_step_functions/unified_embedding/handlers/ ${LAMBDA_TASK_ROOT}/handlers/
