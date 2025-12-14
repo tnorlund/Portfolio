@@ -219,40 +219,111 @@ def create_label_harmonizer_tools(
             if not candidate_assignments:
                 return {"error": "No candidate assignments provided"}
 
-            # Check for duplicate word assignments
-            seen_words = set()
-            duplicates = []
+            # Prevent duplicate (line_id, word_id) assignments
+            # Keep highest confidence assignment when duplicates exist
+            seen_words = {}
+            duplicates_removed = []
             for assignment in candidate_assignments:
                 word_key = (
                     assignment.get("line_id"),
                     assignment.get("word_id"),
                 )
-                if word_key in seen_words:
-                    duplicates.append(word_key)
-                seen_words.add(word_key)
+                existing = seen_words.get(word_key)
 
-            if duplicates:
-                dup_str = ", ".join(
-                    [f"line {lid} word {wid}" for lid, wid in duplicates]
-                )
+                if existing is None:
+                    # First assignment for this word - keep it
+                    seen_words[word_key] = assignment
+                else:
+                    # Duplicate detected - keep the one with higher confidence
+                    existing_confidence = existing.get("confidence", 0)
+                    new_confidence = assignment.get("confidence", 0)
+
+                    if new_confidence > existing_confidence:
+                        # New assignment has higher confidence - replace
+                        duplicates_removed.append(
+                            {
+                                "removed": existing,
+                                "kept": assignment,
+                                "reason": "higher_confidence",
+                            }
+                        )
+                        seen_words[word_key] = assignment
+                    else:
+                        # Existing assignment has higher or equal confidence - keep it
+                        duplicates_removed.append(
+                            {
+                                "removed": assignment,
+                                "kept": existing,
+                                "reason": "lower_confidence",
+                            }
+                        )
+
+            # Log warnings about removed duplicates
+            if duplicates_removed:
+                dup_details = []
+                for dup_info in duplicates_removed:
+                    removed = dup_info["removed"]
+                    kept = dup_info["kept"]
+                    dup_details.append(
+                        f"line {removed.get('line_id')} word {removed.get('word_id')} "
+                        f"(removed: {removed.get('proposed_type')} conf={removed.get('confidence', 0):.2f}, "
+                        f"kept: {kept.get('proposed_type')} conf={kept.get('confidence', 0):.2f})"
+                    )
                 logger.warning(
-                    "⚠️  Duplicate word assignments detected: %s", dup_str
+                    f"⚠️  Removed {len(duplicates_removed)} duplicate assignments, "
+                    f"kept highest confidence: {', '.join(dup_details[:5])}"
+                    + (
+                        f" (and {len(duplicates_removed) - 5} more)"
+                        if len(duplicates_removed) > 5
+                        else ""
+                    )
                 )
-                return {
-                    "error": f"DUPLICATE ASSIGNMENTS: Each word can only have one financial type. "
-                    f"The following words were assigned multiple times: {dup_str}. "
-                    f"Please revise your assignments to use each word only once."
-                }
 
-            # Store the LLM's reasoning and proposed assignments in shared state
+            # Store the deduplicated assignments
+            deduplicated_assignments = list(seen_words.values())
             state["financial_reasoning"] = reasoning
-            state["proposed_assignments"] = candidate_assignments
+            state["proposed_assignments"] = deduplicated_assignments
 
             return {
                 "reasoning_recorded": True,
-                "total_assignments": len(candidate_assignments),
+                "total_assignments": len(deduplicated_assignments),
+                "duplicates_removed": len(duplicates_removed),
                 "ready_for_verification": True,
             }
+
+        def _coerce_numeric_value(value: Any) -> Optional[float]:
+            """Coerce a value to float, handling strings and various numeric types.
+
+            Args:
+                value: Value that may be int, float, string, or other type
+
+            Returns:
+                float value if conversion succeeds, None otherwise
+            """
+            if value is None:
+                return None
+
+            # If already a numeric type, convert to float
+            if isinstance(value, (int, float)):
+                return float(value)
+
+            # If string, try direct float conversion first
+            if isinstance(value, str):
+                # Try direct conversion (handles "25.79", "123", etc.)
+                try:
+                    return float(value.strip())
+                except (ValueError, AttributeError):
+                    # If that fails, try extract_number (handles "$25.79", "(25.79)", etc.)
+                    return extract_number(value)
+
+            # For other types, try to convert via string
+            try:
+                return float(str(value))
+            except (ValueError, TypeError):
+                logger.warning(
+                    f"Could not coerce value to float: {value} (type: {type(value)})"
+                )
+                return None
 
         @tool
         def test_mathematical_relationships() -> dict:
@@ -261,14 +332,38 @@ def create_label_harmonizer_tools(
             if not proposed:
                 return {"error": "No proposed assignments to test."}
 
-            # Extract values by type
+            # Extract values by type, coercing to numeric
             values_by_type = {}
+            invalid_values = []
             for assignment in proposed:
                 financial_type = assignment.get("proposed_type")
-                value = assignment.get("value")
+                raw_value = assignment.get("value")
+                coerced_value = _coerce_numeric_value(raw_value)
+
+                if coerced_value is None:
+                    invalid_values.append(
+                        {
+                            "line_id": assignment.get("line_id"),
+                            "word_id": assignment.get("word_id"),
+                            "financial_type": financial_type,
+                            "raw_value": raw_value,
+                        }
+                    )
+                    logger.warning(
+                        f"Invalid numeric value for {financial_type} at line {assignment.get('line_id')} "
+                        f"word {assignment.get('word_id')}: {raw_value} (type: {type(raw_value)})"
+                    )
+                    continue  # Skip invalid values
+
                 if financial_type not in values_by_type:
                     values_by_type[financial_type] = []
-                values_by_type[financial_type].append(value)
+                values_by_type[financial_type].append(coerced_value)
+
+            # Log warnings about invalid values
+            if invalid_values:
+                logger.warning(
+                    f"Skipped {len(invalid_values)} assignments with invalid numeric values"
+                )
 
             verification_results = []
             tolerance = 0.01
@@ -278,9 +373,10 @@ def create_label_harmonizer_tools(
                 "GRAND_TOTAL" in values_by_type
                 and "SUBTOTAL" in values_by_type
             ):
+                # Values are already coerced to float when stored
                 grand_total = values_by_type["GRAND_TOTAL"][0]
                 subtotal = values_by_type["SUBTOTAL"][0]
-                tax = values_by_type.get("TAX", [0])[0]
+                tax = values_by_type.get("TAX", [0.0])[0]
 
                 calculated_total = subtotal + tax
                 difference = grand_total - calculated_total
@@ -291,6 +387,10 @@ def create_label_harmonizer_tools(
                         "test_name": "GRAND_TOTAL = SUBTOTAL + TAX",
                         "passes": math_correct,
                         "difference": difference,
+                        "grand_total": grand_total,
+                        "subtotal": subtotal,
+                        "tax": tax,
+                        "calculated_total": calculated_total,
                     }
                 )
 
@@ -308,6 +408,8 @@ def create_label_harmonizer_tools(
                 "total_tests": total_tests,
                 "tests_passed": tests_passed,
                 "all_tests_pass": tests_passed == total_tests,
+                "invalid_values_count": len(invalid_values),
+                "invalid_values": invalid_values if invalid_values else None,
             }
 
         @tool
