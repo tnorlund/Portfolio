@@ -1,11 +1,11 @@
-"""Handler for finding items that need embeddings.
-
-Pure business logic - no Lambda-specific code.
-"""
+"""Handler for finding line embeddings still missing."""
 
 import os
-from typing import Any, Dict
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
 
+import boto3
+from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import ReceiptLine
 
@@ -41,14 +41,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         dynamo_client = DynamoClient(os.environ.get("DYNAMODB_TABLE_NAME"))
 
-        # Find lines without embeddings
-        if not hasattr(dynamo_client, "list_receipt_lines_with_no_embeddings"):
-            logger.warning(
-                "Dynamo client missing list_receipt_lines_with_no_embeddings; skipping"
-            )
-            return {"batches": []}
-
-        lines_without_embeddings = dynamo_client.list_receipt_lines_with_no_embeddings()  # type: ignore[attr-defined]
+        lines_without_embeddings = _list_lines_without_embeddings(dynamo_client)
         logger.info(
             "Found lines without embeddings",
             count=len(lines_without_embeddings),
@@ -80,6 +73,22 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     except Exception as e:
         logger.error("Error finding unembedded lines", error=str(e))
         raise RuntimeError(f"Error finding unembedded lines: {str(e)}") from e
+
+
+def _list_lines_without_embeddings(
+    dynamo_client: DynamoClient, page_limit: int = 500
+) -> List[ReceiptLine]:
+    """Paginate Dynamo to find lines with EmbeddingStatus.NONE."""
+    lines: List[ReceiptLine] = []
+    last_key: Dict[str, Any] | None = None
+    while True:
+        batch, last_key = dynamo_client.list_receipt_lines_by_embedding_status(
+            EmbeddingStatus.NONE, limit=page_limit, last_evaluated_key=last_key
+        )
+        lines.extend(batch)
+        if not last_key:
+            break
+    return lines
 
 
 def _chunk_into_line_embedding_batches(
@@ -143,7 +152,9 @@ def _serialize_receipt_lines(
 
 
 def _upload_serialized_lines(
-    serialized_lines: list[dict], s3_bucket: str, prefix: str = "line_embeddings"
+    serialized_lines: list[dict],
+    s3_bucket: str,
+    prefix: str = "line_embeddings",
 ) -> list[dict]:
     """Upload serialized line NDJSON files to S3."""
     s3 = boto3.client("s3")

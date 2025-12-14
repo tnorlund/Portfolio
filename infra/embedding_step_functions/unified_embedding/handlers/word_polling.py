@@ -11,6 +11,7 @@ import tempfile
 import time
 from datetime import datetime
 from functools import wraps
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar
 
 import boto3
@@ -36,6 +37,7 @@ from receipt_chroma.embedding.records import (
     WordEmbeddingRecord,
     build_word_payload,
 )
+from receipt_chroma.s3 import download_snapshot_atomic
 from receipt_dynamo.constants import BatchStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
@@ -272,13 +274,78 @@ async def _ensure_receipt_metadata_async(
                 )
             )
 
-    word_embeddings_map = {
-        record.chroma_id: record.embedding for record in word_records
-    } or None
+    word_embeddings_map = (
+        {record.chroma_id: record.embedding for record in word_records} or None
+    )
 
-    chroma_client = ChromaClient(mode="write", metadata_only=True)
+    chroma_root = Path("/tmp/chroma/metadata_finder")
+    lines_dir = chroma_root / "lines"
+    words_dir = chroma_root / "words"
+    lines_dir.mkdir(parents=True, exist_ok=True)
+    words_dir.mkdir(parents=True, exist_ok=True)
+
+    chromadb_bucket = os.environ.get("CHROMADB_BUCKET")
+    if chromadb_bucket:
+        try:
+            download_snapshot_atomic(
+                bucket=chromadb_bucket,
+                collection="lines",
+                local_path=str(lines_dir),
+                verify_integrity=False,
+            )
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.warning(
+                "Failed to download lines snapshot for metadata finder",
+                error=str(e),
+            )
+        try:
+            download_snapshot_atomic(
+                bucket=chromadb_bucket,
+                collection="words",
+                local_path=str(words_dir),
+                verify_integrity=False,
+            )
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.warning(
+                "Failed to download words snapshot for metadata finder",
+                error=str(e),
+            )
+
+    lines_client = ChromaClient(
+        persist_directory=str(lines_dir), mode="write", metadata_only=True
+    )
+    words_client = ChromaClient(
+        persist_directory=str(words_dir), mode="write", metadata_only=True
+    )
+
+    class DualChromaClient:
+        """Minimal dual client wrapper for lines/words collections."""
+
+        def __init__(self, lines, words):
+            self.lines = lines
+            self.words = words
+
+        def get_collection(self, collection_name, **kwargs):
+            if collection_name == "lines":
+                return self.lines.get_collection("lines", **kwargs)
+            if collection_name == "words":
+                return self.words.get_collection("words", **kwargs)
+            raise ValueError(f"Unknown collection: {collection_name}")
+
+        def query(self, collection_name, **kwargs):
+            return self.get_collection(collection_name).query(**kwargs)
+
+        def close(self):
+            try:
+                self.lines.close()
+            finally:
+                try:
+                    self.words.close()
+                except Exception:
+                    pass
+
+    chroma_client = DualChromaClient(lines_client, words_client)
     try:
-        # TODO: Replace ad-hoc local collection with merged snapshot once ingest publishes fresh Chroma snapshots.
         payload = build_word_payload(
             records=word_records,
             all_words=receipt_details.words,
@@ -287,9 +354,7 @@ async def _ensure_receipt_metadata_async(
         )
 
         if payload["ids"]:
-            collection = chroma_client.get_collection(
-                "words", create_if_missing=True
-            )
+            collection = chroma_client.get_collection("words", create_if_missing=True)
             collection.upsert(
                 ids=payload["ids"],
                 embeddings=payload["embeddings"],
