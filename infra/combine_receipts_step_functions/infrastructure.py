@@ -434,7 +434,6 @@ class CombineReceiptsStepFunction(ComponentResource):
                 "receipt_chroma",
                 "receipt_agent",
                 "receipt_places",
-                "receipt_label",
                 "receipt_upload",  # For image processing utilities
             ],
             lambda_function_name=f"{name}-combine-receipts",

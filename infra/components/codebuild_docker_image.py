@@ -781,6 +781,7 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
                             configuration={
                                 "S3Bucket": build_bucket.bucket,
                                 "S3ObjectKey": f"{self.name}/context.zip",
+                                "PollForSourceChanges": "false",
                             },
                             run_order=1,
                         )

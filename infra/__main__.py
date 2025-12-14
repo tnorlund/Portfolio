@@ -3,10 +3,11 @@
 import base64
 import os
 
-import api_gateway  # noqa: F401
 import pulumi
 import pulumi_aws as aws
 from pulumi import Output
+
+import api_gateway  # noqa: F401
 
 # Auto-enable Docker BuildKit based on Pulumi config
 config = pulumi.Config("portfolio")
@@ -26,10 +27,13 @@ if config.get_bool("docker-buildkit") != False:  # Default to True if not set
 
 from typing import Optional
 
+from pulumi import ResourceOptions
+
 # Import our infrastructure components
 import s3_website  # noqa: F401
 from billing_alerts import BillingAlerts
 from chromadb_compaction import create_chromadb_compaction_infrastructure
+from combine_receipts_step_functions import CombineReceiptsStepFunction
 from dynamo_db import (
     dynamodb_table,  # Import DynamoDB table from original code
 )
@@ -44,7 +48,6 @@ from metadata_harmonizer_step_functions import MetadataHarmonizerStepFunction
 # Using the optimized docker-build based base images with scoped contexts
 from networking import PublicVpc
 from notifications import NotificationSystem
-from pulumi import ResourceOptions
 from raw_bucket import raw_bucket  # Import the actual bucket instance
 from s3_website import site_bucket  # Import the site bucket instance
 from security import ChromaSecurity
@@ -61,12 +64,11 @@ from validation_pipeline import ValidationPipeline
 # Import other necessary components
 try:
     # from infra.components import lambda_layer  # noqa: F401
+    from infra.components import lambda_layer  # noqa: F401
     from lambda_functions.label_count_cache_updater.infra import (  # noqa: F401
         label_count_cache_updater_lambda,
     )
     from routes.health_check.infra import health_check_lambda  # noqa: F401
-
-    from infra.components import lambda_layer  # noqa: F401
 
     print("✓ Successfully imported label_count_cache_updater_lambda")
 except ImportError as e:
@@ -1094,10 +1096,25 @@ except ImportError:
     # Cache updater not available in this environment
     pass
 
-# validate_pending_labels_sf, combine_receipts_sf, create_labels_sf, and
-# validate_metadata_sf are intentionally disabled until we refactor off the
-# receipt_label package. CombineReceipts agent specifically needs a replacement
-# that does not depend on receipt_label before re-enabling.
+# validate_pending_labels_sf, create_labels_sf, and validate_metadata_sf remain
+# disabled until we refactor those flows off receipt_label.
+
+# Combine Receipts Step Function (now receipt_label-free)
+combine_receipts_sf = CombineReceiptsStepFunction(
+    f"combine-receipts-{stack}",
+    dynamodb_table_name=dynamodb_table.name,
+    dynamodb_table_arn=dynamodb_table.arn,
+    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
+    chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
+    raw_bucket_name=raw_bucket.bucket,
+    site_bucket_name=site_bucket.bucket,
+)
+
+pulumi.export("combine_receipts_sf_arn", combine_receipts_sf.state_machine_arn)
+pulumi.export(
+    "combine_receipts_batch_bucket_name",
+    combine_receipts_sf.batch_bucket_name,
+)
 
 # Label Harmonizer V3 Step Function (whole receipt processing)
 label_harmonizer_v3_sf = LabelHarmonizerV3StepFunction(
