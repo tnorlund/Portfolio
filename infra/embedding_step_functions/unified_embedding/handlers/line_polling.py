@@ -106,13 +106,20 @@ async def _ensure_receipt_metadata_async(
             receipt_id=receipt_id,
         )
         return
+    except EntityNotFoundError:
+        logger.info(
+            "Receipt metadata missing; will attempt creation",
+            image_id=image_id,
+            receipt_id=receipt_id,
+        )
     except Exception as error:
-        logger.warning(
-            "Failed to fetch existing receipt_metadata, will attempt to create",
+        logger.error(
+            "Failed to fetch existing receipt_metadata",
             image_id=image_id,
             receipt_id=receipt_id,
             error=str(error),
         )
+        raise
 
     _propagate_agent_env()
     settings = get_settings()
