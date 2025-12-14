@@ -1,15 +1,22 @@
 """Handler for finding line embeddings still missing."""
 
 import os
+import typing
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
 import boto3
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import ReceiptLine
 
-from embedding_ingest import write_ndjson
+if typing.TYPE_CHECKING:
+    from infra.embedding_step_functions.unified_embedding.embedding_ingest import (
+        write_ndjson,
+    )
+else:
+    from embedding_ingest import write_ndjson
+
 import utils.logging
 
 get_operation_logger = utils.logging.get_operation_logger
@@ -39,9 +46,12 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         if not bucket:
             raise ValueError("S3_BUCKET environment variable not set")
 
-        dynamo_client = DynamoClient(os.environ.get("DYNAMODB_TABLE_NAME"))
+        table_name = os.environ["DYNAMODB_TABLE_NAME"]
+        dynamo_client = DynamoClient(table_name)
 
-        lines_without_embeddings = _list_lines_without_embeddings(dynamo_client)
+        lines_without_embeddings = _list_lines_without_embeddings(
+            dynamo_client
+        )
         logger.info(
             "Found lines without embeddings",
             count=len(lines_without_embeddings),
@@ -76,19 +86,12 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
 
 def _list_lines_without_embeddings(
-    dynamo_client: DynamoClient, page_limit: int = 500
+    dynamo_client: DynamoClient,
 ) -> List[ReceiptLine]:
-    """Paginate Dynamo to find lines with EmbeddingStatus.NONE."""
-    lines: List[ReceiptLine] = []
-    last_key: Dict[str, Any] | None = None
-    while True:
-        batch, last_key = dynamo_client.list_receipt_lines_by_embedding_status(
-            EmbeddingStatus.NONE, limit=page_limit, last_evaluated_key=last_key
-        )
-        lines.extend(batch)
-        if not last_key:
-            break
-    return lines
+    """Fetch lines with EmbeddingStatus.NONE."""
+    return dynamo_client.list_receipt_lines_by_embedding_status(
+        EmbeddingStatus.NONE
+    )
 
 
 def _chunk_into_line_embedding_batches(

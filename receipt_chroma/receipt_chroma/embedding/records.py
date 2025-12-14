@@ -5,9 +5,7 @@ metadata) aligned with the same schema used for persisted snapshots/deltas.
 """
 
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Optional
-
-from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
+from typing import Any, Dict, Iterable, List, Optional, cast
 
 from receipt_chroma.embedding.formatting.line_format import (
     format_line_context_embedding_input,
@@ -19,10 +17,12 @@ from receipt_chroma.embedding.metadata.line_metadata import (
     enrich_line_metadata_with_anchors,
 )
 from receipt_chroma.embedding.metadata.word_metadata import (
+    WordMetadata,
     create_word_metadata,
     enrich_word_metadata_with_anchors,
     enrich_word_metadata_with_labels,
 )
+from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
 
 
 @dataclass(frozen=True)
@@ -86,7 +86,7 @@ def build_line_payload(
     ids: List[str] = []
     embeddings: List[List[float]] = []
     documents: List[str] = []
-    metadatas: List[dict] = []
+    metadatas: List[Dict[str, Any]] = []
 
     for record in records:
         line = record.line
@@ -117,7 +117,7 @@ def build_line_payload(
         ids.append(record.chroma_id)
         embeddings.append(record.embedding)
         documents.append(record.document)
-        metadatas.append(line_metadata)
+        metadatas.append(dict(line_metadata))
 
     return {
         "ids": ids,
@@ -138,7 +138,7 @@ def build_word_payload(
     ids: List[str] = []
     embeddings: List[List[float]] = []
     documents: List[str] = []
-    metadatas: List[dict] = []
+    metadatas: List[Dict[str, Any]] = []
 
     labels_by_key: Dict[tuple[str, int, int, int], List[ReceiptWordLabel]] = {}
     for label in word_labels:
@@ -161,17 +161,20 @@ def build_word_payload(
             label_status="unvalidated",
             source="openai_embedding_batch",
         )
+        metadata_dict: Dict[str, Any] = dict(metadata)
 
         word_key = (word.image_id, word.receipt_id, word.line_id, word.word_id)
-        metadata = enrich_word_metadata_with_labels(
-            metadata, labels_by_key.get(word_key, [])
+        metadata_with_labels = enrich_word_metadata_with_labels(
+            cast(WordMetadata, metadata_dict), labels_by_key.get(word_key, [])
         )
-        metadata = enrich_word_metadata_with_anchors(metadata, word)
+        metadata_dict = enrich_word_metadata_with_anchors(
+            cast(Dict[str, Any], metadata_with_labels), word
+        )
 
         ids.append(record.chroma_id)
         embeddings.append(record.embedding)
         documents.append(record.document)
-        metadatas.append(metadata)
+        metadatas.append(dict(metadata_dict))
 
     return {
         "ids": ids,

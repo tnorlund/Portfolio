@@ -1,6 +1,7 @@
 """Handler for finding words that need embeddings."""
 
 import os
+import typing
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -10,6 +11,13 @@ from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import ReceiptWord
 
 import utils.logging
+
+if typing.TYPE_CHECKING:
+    from infra.embedding_step_functions.unified_embedding.embedding_ingest import (
+        write_ndjson,
+    )
+else:
+    from embedding_ingest import write_ndjson
 
 get_logger = utils.logging.get_logger
 get_operation_logger = utils.logging.get_operation_logger
@@ -39,7 +47,8 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         if not bucket:
             raise ValueError("S3_BUCKET environment variable not set")
 
-        dynamo_client = DynamoClient(os.environ.get("DYNAMODB_TABLE_NAME"))
+        table_name = os.environ["DYNAMODB_TABLE_NAME"]
+        dynamo_client = DynamoClient(table_name)
 
         words = _list_words_without_embeddings(dynamo_client)
         logger.info(
@@ -86,19 +95,12 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
 
 def _list_words_without_embeddings(
-    dynamo_client: DynamoClient, page_limit: int = 500
+    dynamo_client: DynamoClient,
 ) -> List[ReceiptWord]:
-    """Paginate Dynamo to find words with EmbeddingStatus.NONE."""
-    words: List[ReceiptWord] = []
-    last_key: Dict[str, Any] | None = None
-    while True:
-        batch, last_key = dynamo_client.list_receipt_words_by_embedding_status(
-            EmbeddingStatus.NONE, limit=page_limit, last_evaluated_key=last_key
-        )
-        words.extend(batch)
-        if not last_key:
-            break
-    return words
+    """Fetch words with EmbeddingStatus.NONE."""
+    return dynamo_client.list_receipt_words_by_embedding_status(
+        EmbeddingStatus.NONE
+    )
 
 
 def _chunk_into_word_embedding_batches(
@@ -143,8 +145,6 @@ def _serialize_receipt_words(
                     "label": getattr(word, "label", None),
                 }
             )
-        from embedding_ingest import write_ndjson
-
         write_ndjson(Path(ndjson_path), rows)
         serialized.append(
             {
