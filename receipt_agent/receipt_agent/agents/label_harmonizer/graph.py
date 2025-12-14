@@ -3,6 +3,7 @@ Graph construction and execution for the Label Harmonizer agent.
 """
 
 import logging
+import os
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -32,33 +33,45 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-LABEL_HARMONIZER_PROMPT = """You are a receipt label harmonizer. Keep the context focused and concise while ensuring financial consistency.
+LABEL_HARMONIZER_PROMPT = """You are a receipt label harmonizer. Focus on understanding table structure, discovering financial context, and analyzing labels.
 
 ## Task
 1) Read the receipt text (source of truth).
-2) Detect currency and validate totals (grand total, subtotal, tax, line items).
-3) Fix incorrect or missing labels.
-4) Submit your harmonization once.
+2) Find and analyze table structure in the receipt.
+3) Discover financial context using LLM reasoning (works with or without existing labels).
+4) Analyze labels using the label sub-agent with rich financial context.
 
 ## Tools (use sparingly and purposefully)
 - `get_line_id_text_list`: Lines with IDs, top-to-bottom (no geometry).
-- `run_table_subagent`: For a chosen financial/table block (line items/totals/tax), infer columns. Use its summary/columns for downstream financial labels.
+- `run_table_subagent`: For a chosen financial/table block (line items/totals/tax), infer columns. Use its summary/columns for downstream financial analysis.
+- `validate_financial_consistency`: **LLM-driven financial discovery** - uses reasoning to identify LINE_TOTAL, SUBTOTAL, TAX, and GRAND_TOTAL candidates, validates mathematical relationships, provides rich context for label assignment. Works with or without existing labels.
 - `run_label_subagent`: Focused pass for a single CORE_LABEL (optionally scoped to the table range).
-- `submit_harmonization` (REQUIRED): Submit decisions once.
 
-## Strategy (tight)
+## Strategy (focused workflow)
 1. Call `get_line_id_text_list` to see the lines.
 2. Identify the financial/table block; choose the tightest contiguous line-id range that covers line items/totals/tax.
-3. **Immediately call `run_table_subagent`** on that range (before any per-label calls). Read its summary/columns and use them for all financial labels (TOTAL, SUBTOTAL, TAX, LINE_TOTAL, UNIT_PRICE, QUANTITY, PRODUCT_NAME, PAYMENT_METHOD, etc.).
-4. For each CORE_LABEL, call `run_label_subagent` (scope to the same table range when relevant) to stay focused.
-5. End with a single `submit_harmonization`, aggregating all updates.
+3. **REQUIRED: Call `run_table_subagent`** on that range first to understand table structure and columns.
+4. **REQUIRED: Call `validate_financial_consistency`** immediately after table analysis to discover financial values and validate mathematical relationships. This uses LLM reasoning to identify financial candidates and provides context for downstream labeling.
+5. **Call `run_label_subagent`** for key CORE_LABELs using the financial context from step 4 to make informed labeling decisions.
+
+## Financial Discovery Focus
+The LLM-driven financial discovery sub-agent will:
+- **Analyze receipt structure** using reasoning rather than hard-coded rules
+- **Identify financial value candidates** (GRAND_TOTAL, SUBTOTAL, TAX, LINE_TOTAL) with positions and confidence
+- **Validate mathematical relationships** (GRAND_TOTAL = SUBTOTAL + TAX, SUBTOTAL = sum of LINE_TOTAL, etc.)
+- **Provide rich context** for label sub-agents to use for accurate assignment
+- **Work with sparse or missing labels** by discovering financial values from text and structure
+- **Detect currency** and ensure consistency
+- **Explain reasoning** for each financial assignment with detailed justification
 
 ## Rules
 - Use receipt text as source of truth; avoid external info.
-- Be concise; avoid redundant tool calls.
-- If unsure, prefer not to change labels; confidence < 0.5 means hold back.
+- **Trust the LLM reasoning** - the financial discovery sub-agent uses sophisticated reasoning to identify values.
+- **Use financial context** - leverage the discovered financial candidates for informed label assignment.
+- Be systematic: table structure → financial discovery → label analysis with context.
+- Focus on understanding and providing rich context for accurate labeling.
 
-Begin by listing the receipt lines, then run the table sub-agent on the financial block, then perform per-label checks, then submit once."""
+Begin by: 1) get_line_id_text_list, 2) run_table_subagent (REQUIRED), 3) validate_financial_consistency (financial discovery), 4) run_label_subagent with financial context."""
 
 
 def create_label_harmonizer_graph(
@@ -300,6 +313,15 @@ async def run_label_harmonizer_agent(
             errors=["Receipt has no text after formatting"],
         )
 
+    # Load receipt metadata for context and tools
+    receipt_metadata = None
+    try:
+        receipt_metadata = dynamo_client.get_receipt_metadata(
+            image_id, receipt_id
+        )
+    except Exception as e:
+        logger.debug("Could not load receipt metadata: %s", e)
+
     # Update state holder with receipt data (mutate existing dict to preserve reference used by tools)
     receipt_state = state_holder.get("receipt")
     if receipt_state is None:
@@ -317,6 +339,15 @@ async def run_label_harmonizer_agent(
             "receipt_text": receipt_text,
         }
     )
+
+    # Add receipt metadata to state if available
+    if receipt_metadata:
+        receipt_state["metadata"] = {
+            "merchant_name": getattr(receipt_metadata, "merchant_name", None),
+            "place_id": getattr(receipt_metadata, "place_id", None),
+            "address": getattr(receipt_metadata, "address", None),
+            "phone_number": getattr(receipt_metadata, "phone_number", None),
+        }
 
     logger.info(
         "LH3 state ready: words=%s lines=%s labels=%s text_len=%s",
@@ -338,16 +369,38 @@ async def run_label_harmonizer_agent(
             SystemMessage(content=LABEL_HARMONIZER_PROMPT),
             HumanMessage(
                 content=f"Please harmonize labels for receipt {image_id}#{receipt_id}. "
-                f"Start by getting the receipt text, then validate financial consistency."
+                f"Follow the strategy: get receipt lines, analyze table structure, validate financial consistency, then analyze labels."
             ),
         ],
     )
 
     # Run agent
     try:
-        final_state = await graph.ainvoke(
-            initial_state.dict(), config={"recursion_limit": 50}
-        )
+        config = {
+            "recursion_limit": 50,
+            "configurable": {"thread_id": f"{image_id}#{receipt_id}"},
+        }
+
+        # Add LangSmith metadata if tracing is enabled
+        if os.environ.get("LANGCHAIN_TRACING_V2") == "true":
+            config["metadata"] = {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "label_count": len(labels_data),
+                "word_count": len(words_data),
+                "line_count": len(lines_data),
+                "workflow": "label_harmonizer_v3",
+                "merchant_name": (
+                    receipt_metadata.merchant_name
+                    if receipt_metadata
+                    else None
+                ),
+                "place_id": (
+                    receipt_metadata.place_id if receipt_metadata else None
+                ),
+            }
+
+        await graph.ainvoke(initial_state, config=config)
     except Exception as e:
         logger.exception(f"Agent execution failed: {e}")
         return ReceiptLabelResult(

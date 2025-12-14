@@ -414,7 +414,7 @@ async def run_financial_validation(
 
     # Run agent
     try:
-        final_state = await graph.ainvoke(initial_state.dict())
+        await graph.ainvoke(initial_state)
     except Exception as e:
         logger.exception(f"Financial validation failed: {e}")
         return {
@@ -432,5 +432,3 @@ async def run_financial_validation(
         "issues": [],
         "corrections": result_data.get("corrections", []),
     }
-
-
