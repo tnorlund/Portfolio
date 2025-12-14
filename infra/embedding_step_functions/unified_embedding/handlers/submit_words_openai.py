@@ -59,7 +59,13 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         RuntimeError: If there's an error processing
     """
     logger.info("Starting submit_words_openai handler")
-    logger.info("Event", event=event)
+    logger.info(
+        "Event",
+        s3_bucket=event.get("s3_bucket"),
+        s3_key=event.get("s3_key"),
+        image_id=event.get("image_id"),
+        receipt_id=event.get("receipt_id"),
+    )
 
     try:
         # Extract parameters from event

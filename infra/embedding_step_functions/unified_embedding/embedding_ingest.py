@@ -33,18 +33,33 @@ def download_serialized_file(*, s3_bucket: str, s3_key: str) -> Path:
 
     Returns the local path to the downloaded file.
     """
-    local_path = Path("/tmp") / Path(s3_key).name
-    boto3.client("s3").download_file(s3_bucket, s3_key, str(local_path))
-    return local_path
+    import tempfile
+
+    suffix = Path(s3_key).suffix or ".ndjson"
+    fd, tmp_path = tempfile.mkstemp(
+        prefix="embedding-ingest-", suffix=suffix, dir="/tmp"
+    )
+    import os
+    os.close(fd)  # Close file descriptor, let boto3 create the file
+    boto3.client("s3").download_file(s3_bucket, s3_key, tmp_path)
+    return Path(tmp_path)
 
 
 def _deserialize_entities(filepath: Path, cls) -> List:
     """Deserialize NDJSON rows into the given entity class."""
     items: List = []
     with filepath.open("r", encoding="utf-8") as f:
-        for line in f:
-            data = json.loads(line)
-            items.append(cls(**data))
+        for lineno, line in enumerate(f, start=1):
+            if not line.strip():
+                continue
+            try:
+                data = json.loads(line)
+                items.append(cls(**data))
+            except Exception as e:
+                raise ValueError(
+                    f"Failed to deserialize {cls.__name__} from {filepath} "
+                    f"at line {lineno}"
+                ) from e
     return items
 
 

@@ -110,7 +110,7 @@ def _chunk_into_line_embedding_batches(
         grouped[key].append(line)
 
     for key in sorted(grouped.keys()):
-        receipt_lines = grouped[key]
+        receipt_lines = sorted(grouped[key], key=lambda l: l.line_id)
         for start in range(0, len(receipt_lines), batch_size):
             batches.append(receipt_lines[start : start + batch_size])
     return batches
@@ -151,7 +151,13 @@ def _upload_serialized_lines(
     s3 = boto3.client("s3")
     for entry in serialized_lines:
         key = f"{prefix}/{Path(entry['ndjson_path']).name}"
-        s3.upload_file(entry["ndjson_path"], s3_bucket, key)
+        try:
+            s3.upload_file(entry["ndjson_path"], s3_bucket, key)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to upload {entry['ndjson_path']} "
+                f"to s3://{s3_bucket}/{key}"
+            ) from e
         entry["s3_key"] = key
         entry["s3_bucket"] = s3_bucket
     return serialized_lines

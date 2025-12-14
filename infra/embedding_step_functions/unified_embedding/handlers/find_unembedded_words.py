@@ -57,7 +57,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         if not words:
             logger.info("No words need embeddings")
-            return {"batches": []}
+            return {"batches": [], "total_words": 0, "batch_count": 0}
 
         batches = _chunk_into_word_embedding_batches(words)
         logger.info("Chunked into batches", count=len(batches))
@@ -115,7 +115,8 @@ def _chunk_into_word_embedding_batches(
             grouped[key] = []
         grouped[key].append(word)
 
-    for words_in_receipt in grouped.values():
+    for key in sorted(grouped.keys()):
+        words_in_receipt = grouped[key]
         for start in range(0, len(words_in_receipt), batch_size):
             batches.append(words_in_receipt[start : start + batch_size])
 

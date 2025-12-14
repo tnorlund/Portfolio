@@ -42,7 +42,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """Submit a line embedding batch to OpenAI's Batch API.
 
     Args:
-        event: Contains s3_key, s3_bucket, image_id, receipt_id
+        event: Contains s3_key, s3_bucket
         context: Lambda context (unused)
 
     Returns:

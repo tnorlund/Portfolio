@@ -419,8 +419,10 @@ async def _ensure_receipt_metadata_async(
     finally:
         try:
             chroma_client.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(
+                "Failed to close chroma_client during cleanup", error=str(e)
+            )
 
 
 def _ensure_receipt_metadata(
@@ -597,7 +599,7 @@ def _handle_internal_core(
         skip_sqs_notification=event.get("skip_sqs_notification", False),
     )
 
-    batch_id, openai_batch_id, batch_index = resolve_batch_info(
+    batch_id, openai_batch_id, _batch_index = resolve_batch_info(
         event,
         logger,
         s3_client,

@@ -288,8 +288,10 @@ async def _ensure_receipt_metadata_async(
     finally:
         try:
             chroma_client.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(
+                "Failed to close chroma_client during cleanup", error=str(e)
+            )
 
 
 def _ensure_receipt_metadata(
@@ -467,7 +469,7 @@ def _handle_internal_core(
         skip_sqs_notification=event.get("skip_sqs_notification", False),
     )
 
-    batch_id, openai_batch_id, batch_index = resolve_batch_info(
+    batch_id, openai_batch_id, _batch_index = resolve_batch_info(
         event,
         logger,
         s3_client,
@@ -987,8 +989,12 @@ def _handle_internal_core(
         finally:
             try:
                 os.unlink(tmp_file_path)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(
+                    "Failed to clean up temp file during cleanup",
+                    tmp_file_path=tmp_file_path,
+                    error=str(e),
+                )
 
         # Return only a small S3 reference instead of full result
         # This keeps the Map state output small (~100 bytes per batch vs ~408 bytes)
