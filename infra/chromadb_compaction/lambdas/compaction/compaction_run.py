@@ -143,11 +143,7 @@ def process_compaction_runs(
                         logger=logger,
                     )
                 except Exception as e:  # noqa: BLE001
-                    logger.error(
-                        "Failed to download delta",
-                        error=str(e),
-                        delta_prefix=delta_prefix,
-                    )
+                    logger.exception("Failed to download delta", delta_prefix=delta_prefix)
                     if OBSERVABILITY_AVAILABLE and metrics:
                         metrics.count(
                             "CompactionDeltaDownloadError",
@@ -196,9 +192,7 @@ def process_compaction_runs(
                         )
 
                 except Exception as e:  # noqa: BLE001
-                    logger.error(
-                        "Failed merging delta into snapshot", error=str(e)
-                    )
+                    logger.exception("Failed merging delta into snapshot")
                     raise
 
                 # 4) Upload updated snapshot atomically
@@ -236,9 +230,7 @@ def process_compaction_runs(
                             merged_vectors=merged_vectors,
                         )
                     except Exception as e:  # noqa: BLE001
-                        logger.warning(
-                            "Failed to mark run completed", error=str(e)
-                        )
+                        logger.exception("Failed to mark run completed")
 
                 if OBSERVABILITY_AVAILABLE and metrics:
                     metrics.count(
@@ -295,12 +287,6 @@ def merge_compaction_deltas(
         Tuple of (total_vectors_merged, list of per-run merge results).
         Each result dict has: run_id, image_id, receipt_id, merged_count
     """
-    import os
-    import tarfile
-    import tempfile
-
-    import boto3
-
     if not compaction_runs:
         return 0, []
 
@@ -336,11 +322,7 @@ def merge_compaction_deltas(
                         logger=logger,
                     )
                 except Exception as e:  # noqa: BLE001
-                    logger.error(
-                        "Failed to download or extract delta",
-                        error=str(e),
-                        delta_prefix=delta_prefix,
-                    )
+                    logger.exception("Failed to download or extract delta", delta_prefix=delta_prefix)
                     continue
 
                 merged_count = 0
@@ -444,7 +426,7 @@ def merge_compaction_deltas(
                         }
                     )
             except Exception as e:  # noqa: BLE001
-                logger.error("Failed processing compaction run", error=str(e))
+                logger.exception("Failed processing compaction run")
                 continue
 
     return total_merged, per_run_results
@@ -478,15 +460,18 @@ def _download_delta_to_dir(
     # Try legacy tarball first
     try:
         s3_client.head_object(Bucket=bucket, Key=tar_key)
+        logger.info("Downloading legacy tarball delta", tar_key=tar_key)
         s3_client.download_file(bucket, tar_key, tar_path)
         with tarfile.open(tar_path, "r:gz") as tar:
             tar.extractall(dest_dir)
+        logger.info("Successfully extracted tarball delta")
         return
     except ClientError as err:
         error_code = err.response.get("Error", {}).get("Code")
         if error_code not in ("404", "NoSuchKey", "NotFound"):
             raise
         # Tarball not found; fall back to directory layout
+        logger.info("Tarball not found, falling back to directory layout", prefix=prefix)
     except Exception:
         # If tarball exists but extraction fails, propagate
         raise
