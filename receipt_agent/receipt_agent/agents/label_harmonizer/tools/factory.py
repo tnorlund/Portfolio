@@ -18,6 +18,7 @@ from receipt_agent.agents.label_harmonizer.tools.helpers import (
     label_to_dict,
 )
 from receipt_agent.config.settings import Settings, get_settings
+from receipt_agent.subagents.financial_validation.utils import extract_number
 from receipt_agent.utils.agent_common import create_ollama_llm
 
 if TYPE_CHECKING:
@@ -103,6 +104,411 @@ def create_label_harmonizer_tools(
         )
 
     state["table_subagent_graph"] = _build_table_subagent_graph()
+
+    # Pre-build a simple financial sub-agent graph (LLM + financial discovery tools)
+    def _build_financial_subagent_graph() -> Any:
+        @tool
+        def analyze_receipt_structure() -> dict:
+            """Get concise receipt structure overview for financial analysis."""
+            receipt = state.get("receipt", {})
+            words = receipt.get("words", [])
+            table_structure = state.get("column_analysis")
+
+            # Extract basic structure info
+            lines_by_id = {}
+            for word in words:
+                line_id = word.get("line_id")
+                if line_id not in lines_by_id:
+                    lines_by_id[line_id] = []
+                lines_by_id[line_id].append(word.get("text", ""))
+
+            # Build CONCISE line preview (last 10 lines where financial data usually is)
+            line_texts = {}
+            for line_id, word_texts in lines_by_id.items():
+                line_texts[line_id] = " ".join(word_texts)
+
+            # Get last 10 lines (usually contain totals)
+            sorted_line_ids = sorted(line_texts.keys())
+            preview_line_ids = (
+                sorted_line_ids[-10:]
+                if len(sorted_line_ids) > 10
+                else sorted_line_ids
+            )
+
+            return {
+                "total_words": len(words),
+                "total_lines": len(lines_by_id),
+                "has_table_structure": table_structure is not None,
+                "line_preview_last_10": {
+                    str(line_id): line_texts[line_id]
+                    for line_id in preview_line_ids
+                },
+                "note": "Showing last 10 lines (where financial totals typically appear)",
+            }
+
+        @tool
+        def identify_numeric_candidates() -> dict:
+            """Find numeric values in the receipt, limiting to top candidates to avoid context overflow."""
+            receipt = state.get("receipt", {})
+            words = receipt.get("words", [])
+
+            # Group words by line for context
+            lines_by_id = {}
+            for word in words:
+                line_id = word.get("line_id")
+                if line_id not in lines_by_id:
+                    lines_by_id[line_id] = []
+                lines_by_id[line_id].append(word)
+
+            numeric_candidates = []
+
+            for word in words:
+                text = word.get("text", "")
+                numeric_value = extract_number(text)
+
+                if numeric_value is not None:
+                    line_id = word.get("line_id")
+
+                    # Get abbreviated line context (first 3 words before + this word + first 3 words after)
+                    line_words = lines_by_id.get(line_id, [])
+                    word_idx = next(
+                        (
+                            i
+                            for i, w in enumerate(line_words)
+                            if w.get("word_id") == word.get("word_id")
+                        ),
+                        0,
+                    )
+                    context_words = line_words[
+                        max(0, word_idx - 3) : min(
+                            len(line_words), word_idx + 4
+                        )
+                    ]
+                    line_context = " ".join(
+                        [w.get("text", "") for w in context_words]
+                    )
+
+                    numeric_candidates.append(
+                        {
+                            "line_id": line_id,
+                            "word_id": word.get("word_id"),
+                            "text": text,
+                            "numeric_value": numeric_value,
+                            "line_context": line_context,
+                        }
+                    )
+
+            # Sort by value and limit to top 20 candidates to prevent context overflow
+            numeric_candidates.sort(
+                key=lambda x: x["numeric_value"], reverse=True
+            )
+            top_candidates = numeric_candidates[:20]
+
+            return {
+                "numeric_candidates": top_candidates,
+                "total_numeric_values": len(numeric_candidates),
+                "showing_top": len(top_candidates),
+                "note": "Limited to top 20 candidates by value to prevent context overflow",
+            }
+
+        @tool
+        def reason_about_financial_layout(
+            reasoning: str, candidate_assignments: list[dict]
+        ) -> dict:
+            """Apply reasoning to identify which numeric values represent which financial types."""
+            if not candidate_assignments:
+                return {"error": "No candidate assignments provided"}
+
+            # Prevent duplicate (line_id, word_id) assignments
+            # Keep highest confidence assignment when duplicates exist
+            seen_words = {}
+            duplicates_removed = []
+            for assignment in candidate_assignments:
+                word_key = (
+                    assignment.get("line_id"),
+                    assignment.get("word_id"),
+                )
+                existing = seen_words.get(word_key)
+
+                if existing is None:
+                    # First assignment for this word - keep it
+                    seen_words[word_key] = assignment
+                else:
+                    # Duplicate detected - keep the one with higher confidence
+                    existing_confidence = existing.get("confidence", 0)
+                    new_confidence = assignment.get("confidence", 0)
+
+                    if new_confidence > existing_confidence:
+                        # New assignment has higher confidence - replace
+                        duplicates_removed.append(
+                            {
+                                "removed": existing,
+                                "kept": assignment,
+                                "reason": "higher_confidence",
+                            }
+                        )
+                        seen_words[word_key] = assignment
+                    else:
+                        # Existing assignment has higher or equal confidence - keep it
+                        duplicates_removed.append(
+                            {
+                                "removed": assignment,
+                                "kept": existing,
+                                "reason": "lower_confidence",
+                            }
+                        )
+
+            # Log warnings about removed duplicates
+            if duplicates_removed:
+                dup_details = []
+                for dup_info in duplicates_removed:
+                    removed = dup_info["removed"]
+                    kept = dup_info["kept"]
+                    dup_details.append(
+                        f"line {removed.get('line_id')} word {removed.get('word_id')} "
+                        f"(removed: {removed.get('proposed_type')} conf={removed.get('confidence', 0):.2f}, "
+                        f"kept: {kept.get('proposed_type')} conf={kept.get('confidence', 0):.2f})"
+                    )
+                logger.warning(
+                    f"⚠️  Removed {len(duplicates_removed)} duplicate assignments, "
+                    f"kept highest confidence: {', '.join(dup_details[:5])}"
+                    + (
+                        f" (and {len(duplicates_removed) - 5} more)"
+                        if len(duplicates_removed) > 5
+                        else ""
+                    )
+                )
+
+            # Store the deduplicated assignments
+            deduplicated_assignments = list(seen_words.values())
+            state["financial_reasoning"] = reasoning
+            state["proposed_assignments"] = deduplicated_assignments
+
+            return {
+                "reasoning_recorded": True,
+                "total_assignments": len(deduplicated_assignments),
+                "duplicates_removed": len(duplicates_removed),
+                "ready_for_verification": True,
+            }
+
+        def _coerce_numeric_value(value: Any) -> Optional[float]:
+            """Coerce a value to float, handling strings and various numeric types.
+
+            Args:
+                value: Value that may be int, float, string, or other type
+
+            Returns:
+                float value if conversion succeeds, None otherwise
+            """
+            if value is None:
+                return None
+
+            # If already a numeric type, convert to float
+            if isinstance(value, (int, float)):
+                return float(value)
+
+            # If string, try direct float conversion first
+            if isinstance(value, str):
+                # Try direct conversion (handles "25.79", "123", etc.)
+                try:
+                    return float(value.strip())
+                except (ValueError, AttributeError):
+                    # If that fails, try extract_number (handles "$25.79", "(25.79)", etc.)
+                    return extract_number(value)
+
+            # For other types, try to convert via string
+            try:
+                return float(str(value))
+            except (ValueError, TypeError):
+                logger.warning(
+                    f"Could not coerce value to float: {value} (type: {type(value)})"
+                )
+                return None
+
+        @tool
+        def test_mathematical_relationships() -> dict:
+            """Test whether your proposed financial assignments follow correct receipt mathematics."""
+            proposed = state.get("proposed_assignments", [])
+            if not proposed:
+                return {"error": "No proposed assignments to test."}
+
+            # Extract values by type, coercing to numeric
+            values_by_type = {}
+            invalid_values = []
+            for assignment in proposed:
+                financial_type = assignment.get("proposed_type")
+                raw_value = assignment.get("value")
+                coerced_value = _coerce_numeric_value(raw_value)
+
+                if coerced_value is None:
+                    invalid_values.append(
+                        {
+                            "line_id": assignment.get("line_id"),
+                            "word_id": assignment.get("word_id"),
+                            "financial_type": financial_type,
+                            "raw_value": raw_value,
+                        }
+                    )
+                    logger.warning(
+                        f"Invalid numeric value for {financial_type} at line {assignment.get('line_id')} "
+                        f"word {assignment.get('word_id')}: {raw_value} (type: {type(raw_value)})"
+                    )
+                    continue  # Skip invalid values
+
+                if financial_type not in values_by_type:
+                    values_by_type[financial_type] = []
+                values_by_type[financial_type].append(coerced_value)
+
+            # Log warnings about invalid values
+            if invalid_values:
+                logger.warning(
+                    f"Skipped {len(invalid_values)} assignments with invalid numeric values"
+                )
+
+            verification_results = []
+            tolerance = 0.01
+
+            # Test 1: GRAND_TOTAL = SUBTOTAL + TAX
+            if (
+                "GRAND_TOTAL" in values_by_type
+                and "SUBTOTAL" in values_by_type
+            ):
+                # Values are already coerced to float when stored
+                grand_total = values_by_type["GRAND_TOTAL"][0]
+                subtotal = values_by_type["SUBTOTAL"][0]
+                tax = values_by_type.get("TAX", [0.0])[0]
+
+                calculated_total = subtotal + tax
+                difference = grand_total - calculated_total
+                math_correct = abs(difference) <= tolerance
+
+                verification_results.append(
+                    {
+                        "test_name": "GRAND_TOTAL = SUBTOTAL + TAX",
+                        "passes": math_correct,
+                        "difference": difference,
+                        "grand_total": grand_total,
+                        "subtotal": subtotal,
+                        "tax": tax,
+                        "calculated_total": calculated_total,
+                    }
+                )
+
+            # Store results in shared state
+            state["verification_results"] = verification_results
+
+            tests_passed = sum(
+                1
+                for result in verification_results
+                if result.get("passes", False)
+            )
+            total_tests = len(verification_results)
+
+            return {
+                "total_tests": total_tests,
+                "tests_passed": tests_passed,
+                "all_tests_pass": tests_passed == total_tests,
+                "invalid_values_count": len(invalid_values),
+                "invalid_values": invalid_values if invalid_values else None,
+            }
+
+        @tool
+        def finalize_financial_context(
+            final_reasoning: str,
+            confidence_assessment: str,
+            currency: str = "USD",
+        ) -> dict:
+            """Submit your final financial analysis as CONCISE context for downstream label assignment."""
+            proposed = state.get("proposed_assignments", [])
+            verification_results = state.get("verification_results", [])
+
+            if not proposed:
+                return {"error": "No proposed assignments available."}
+
+            # Build CONCISE financial context (only essential info)
+            financial_candidates = {}
+            for assignment in proposed:
+                financial_type = assignment.get("proposed_type")
+                if financial_type not in financial_candidates:
+                    financial_candidates[financial_type] = []
+
+                # Store only essential info to reduce context size
+                financial_candidates[financial_type].append(
+                    {
+                        "line_id": assignment.get("line_id"),
+                        "word_id": assignment.get("word_id"),
+                        "value": assignment.get("value"),
+                        "confidence": assignment.get("confidence", 0.8),
+                    }
+                )
+
+            # Calculate mathematical validation summary
+            total_tests = len(verification_results)
+            passed_tests = len(
+                [r for r in verification_results if r.get("passes", False)]
+            )
+
+            # Store CONCISE result optimized for main agent (no verbose reasoning)
+            final_result = {
+                "financial_candidates": financial_candidates,
+                "mathematical_validation": {
+                    "verified": passed_tests,
+                    "total_tests": total_tests,
+                    "all_valid": passed_tests == total_tests,
+                },
+                "currency": currency,
+                "confidence": confidence_assessment,
+                "summary": (
+                    final_reasoning[:200] + "..."
+                    if len(final_reasoning) > 200
+                    else final_reasoning
+                ),
+            }
+
+            state["financial_context"] = final_result
+
+            return {
+                "success": True,
+                "context_generated": True,
+                "financial_types_count": len(financial_candidates),
+                "mathematical_tests_passed": f"{passed_tests}/{total_tests}",
+            }
+
+        financial_tools = [
+            analyze_receipt_structure,
+            identify_numeric_candidates,
+            reason_about_financial_layout,
+            test_mathematical_relationships,
+            finalize_financial_context,
+        ]
+
+        sub_llm = create_ollama_llm(settings)
+        return create_react_agent(
+            sub_llm,
+            tools=financial_tools,
+            prompt=(
+                "You are a financial discovery agent. Identify key financial values efficiently.\n\n"
+                "Execute these steps IN ORDER (call each tool ONCE):\n"
+                "1. analyze_receipt_structure() - Get receipt overview\n"
+                "2. identify_numeric_candidates() - Find numeric values (limited to top 20)\n"
+                "3. reason_about_financial_layout() - Assign financial types (GRAND_TOTAL, SUBTOTAL, TAX, LINE_TOTAL)\n"
+                "4. test_mathematical_relationships() - Verify math\n"
+                "5. finalize_financial_context() - Submit concise results\n\n"
+                "BE CONCISE. Focus on identifying the 4 key financial types. "
+                "After finalize_financial_context, STOP immediately.\n\n"
+                "For step 3: candidate_assignments is a list of dicts with: "
+                "line_id, word_id, value, proposed_type, confidence (0.0-1.0)\n\n"
+                "CRITICAL RULE: Each word (identified by line_id + word_id) can only have ONE financial type. "
+                "Do NOT assign the same word to multiple types (e.g., don't label word 5 on line 10 as both GRAND_TOTAL and SUBTOTAL)."
+            ),
+        )
+
+    try:
+        logger.debug("Building financial subagent graph...")
+        state["financial_subagent_graph"] = _build_financial_subagent_graph()
+        logger.debug("Financial subagent graph created successfully")
+    except Exception as e:
+        logger.exception("Failed to create financial subagent graph: %s", e)
 
     # ========== RECEIPT DATA TOOLS ==========
 
@@ -377,85 +783,197 @@ def create_label_harmonizer_tools(
             "count": len(matching_labels),
         }
 
-    # ========== FINANCIAL VALIDATION SUB-AGENT TOOL ==========
+    # ========== ENHANCED FINANCIAL VALIDATION SUB-AGENT TOOL ==========
 
     @tool
     def validate_financial_consistency() -> dict:
         """
-        Validate financial consistency using a sub-agent.
+        Discover and validate financial consistency using LLM reasoning with retry and fallback.
 
-        This tool runs a financial validation sub-agent that:
-        - Detects currency
-        - Validates grand total = subtotal + tax
-        - Validates subtotal = sum of line totals
-        - Identifies which labels need correction
+        This tool runs an LLM-driven financial discovery sub-agent that:
+        - Analyzes receipt structure to understand financial layout
+        - Uses reasoning (not hard-coded rules) to identify financial values
+        - Detects LINE_TOTAL, SUBTOTAL, TAX, and GRAND_TOTAL candidates
+        - Validates mathematical relationships between identified values
+        - Provides concise context for downstream label assignment
 
-        Returns:
-        - currency: Detected currency
-        - is_valid: Whether financial math checks out
-        - issues: List of issues found
-        - corrections: List of label corrections needed (each with line_id, word_id, current_label, correct_label, reasoning, confidence)
+        Returns a concise summary to avoid overwhelming the main agent with context.
         """
+        financial_subagent = state.get("financial_subagent_graph")
+        if financial_subagent is None:
+            logger.warning(
+                "Financial sub-agent graph not available, using fallback"
+            )
+            return _simple_financial_fallback()
+
         receipt = state.get("receipt")
         if not receipt or not isinstance(receipt, dict):
-            logger.info(
-                "LH3 tool validate_financial_consistency: no receipt in state"
-            )
             return {"error": "No receipt data loaded"}
 
-        receipt_text = receipt.get("receipt_text", "")
+        # Retry logic for financial sub-agent with exponential backoff
+        # Get retry configuration from environment or use defaults
+        import os
+
+        max_retries = int(
+            os.environ.get("FINANCIAL_SUBAGENT_MAX_RETRIES", "3")
+        )
+        base_delay = float(
+            os.environ.get("FINANCIAL_SUBAGENT_BASE_DELAY", "2.0")
+        )
+
+        for attempt in range(max_retries):
+            try:
+                # Reset financial sub-agent state before each retry attempt
+                # to avoid stale results causing false "success"
+                state["financial_context"] = {}
+                state["proposed_assignments"] = []
+                state["verification_results"] = []
+                state["financial_reasoning"] = ""
+                state["final_result"] = None
+
+                # Invoke sub-agent with simplified message to reduce context
+                financial_subagent.invoke(
+                    {
+                        "messages": [
+                            HumanMessage(
+                                content="Analyze this receipt to identify key financial values "
+                                "(GRAND_TOTAL, SUBTOTAL, TAX, LINE_TOTAL). Execute the 5-step process."
+                            )
+                        ]
+                    }
+                )
+
+                # Extract result from the financial context stored in state
+                financial_context = state.get("financial_context", {})
+                if financial_context and financial_context.get(
+                    "financial_candidates"
+                ):
+                    candidates = financial_context.get(
+                        "financial_candidates", {}
+                    )
+                    logger.info(
+                        f"Financial sub-agent succeeded: found {len(candidates)} types"
+                    )
+
+                    # Log detailed financial discoveries
+                    logger.info(
+                        "Financial context summary: types_found=%s, currency=%s, confidence=%s, math_valid=%s",
+                        list(candidates.keys()),
+                        financial_context.get("currency"),
+                        financial_context.get("confidence"),
+                        financial_context.get(
+                            "mathematical_validation", {}
+                        ).get("all_valid"),
+                    )
+
+                    # Log each financial type with values
+                    for fin_type, entries in candidates.items():
+                        values = [
+                            f"{e.get('value')} (line {e.get('line_id')}, conf={e.get('confidence', 0):.2f})"
+                            for e in entries[:3]
+                        ]  # First 3 entries
+                        logger.info(f"  {fin_type}: {', '.join(values)}")
+
+                    return financial_context
+                else:
+                    logger.warning(
+                        "Financial sub-agent returned no candidates, trying fallback"
+                    )
+                    return _simple_financial_fallback()
+
+            except Exception as e:
+                error_str = str(e)
+                is_retryable = (
+                    "500" in error_str
+                    or "502" in error_str
+                    or "503" in error_str
+                    or "Internal Server Error" in error_str
+                    or "timeout" in error_str.lower()
+                )
+
+                if is_retryable and attempt < max_retries - 1:
+                    import time
+
+                    wait_time = base_delay * (2**attempt)
+                    logger.warning(
+                        f"Financial sub-agent failed (attempt {attempt + 1}/{max_retries}): {error_str[:150]}. "
+                        f"Retrying in {wait_time:.1f}s..."
+                    )
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    logger.error(
+                        f"Financial sub-agent failed after {attempt + 1} attempts: {error_str[:200]}. "
+                        "Using simple fallback."
+                    )
+                    return _simple_financial_fallback()
+
+        # Should not reach here, but just in case
+        return _simple_financial_fallback()
+
+    def _simple_financial_fallback() -> dict:
+        """Simple rule-based fallback when LLM-driven approach fails."""
+        receipt = state.get("receipt", {})
         labels = receipt.get("labels", [])
         words = receipt.get("words", [])
-        if not labels:
-            logger.info(
-                "LH3 tool validate_financial_consistency: no labels in state"
-            )
-        if not words:
-            logger.info(
-                "LH3 tool validate_financial_consistency: no words in state"
-            )
 
-        # Run financial validation sub-agent (sync wrapper for async function)
-        try:
-            from receipt_agent.subagents.financial_validation import (
-                create_financial_validation_graph,
-                run_financial_validation,
-            )
+        # Create a lookup dict for fast word access by (line_id, word_id)
+        word_lookup = {}
+        for word in words:
+            key = (word.get("line_id"), word.get("word_id"))
+            word_lookup[key] = word.get("text", "")
 
-            # Create sub-agent graph (reuse if exists, or create new)
-            if "financial_validation_graph" not in state:
-                graph, sub_state_holder = create_financial_validation_graph()
-                state["financial_validation_graph"] = graph
-                state["financial_validation_state"] = sub_state_holder
-            else:
-                graph = state["financial_validation_graph"]
-                sub_state_holder = state["financial_validation_state"]
+        # Extract existing financial labels as candidates
+        financial_candidates = {}
+        for label in labels:
+            label_type = label.get("label", "")
+            if label_type in ["GRAND_TOTAL", "SUBTOTAL", "TAX", "LINE_TOTAL"]:
+                if label_type not in financial_candidates:
+                    financial_candidates[label_type] = []
 
-            # Run async sub-agent in sync context
-            result = asyncio.run(
-                run_financial_validation(
-                    graph=graph,
-                    state_holder=sub_state_holder,
-                    receipt_text=receipt_text,
-                    labels=labels,
-                    words=words,
+                # Look up the word text
+                word_key = (label.get("line_id"), label.get("word_id"))
+                word_text = word_lookup.get(word_key, "")
+
+                # Parse numeric value from text (strip currency symbols, commas, handle negatives)
+                # Skip percentages (TAX might be a percentage, but we want the dollar amount)
+                parsed_value = None
+                if word_text:
+                    # For TAX labels, check if it's a percentage - if so, skip parsing
+                    # (we want the dollar amount, not the percentage)
+                    if label_type == "TAX" and "%" in word_text:
+                        # Try to find a dollar amount nearby, but for fallback, set to None
+                        parsed_value = None
+                    else:
+                        parsed_value = extract_number(word_text)
+
+                financial_candidates[label_type].append(
+                    {
+                        "line_id": label.get("line_id"),
+                        "word_id": label.get("word_id"),
+                        "text": word_text,
+                        "value": parsed_value,  # float or None when parsing fails
+                        "confidence": 0.6,  # Lower confidence for fallback
+                    }
                 )
-            )
 
-            # Store corrections in state for main agent to use
-            corrections = result.get("corrections", [])
-            if corrections:
-                state["financial_corrections"] = corrections
+        logger.warning(
+            f"Using financial fallback: extracted {len(financial_candidates)} types "
+            f"from {len(labels)} existing labels"
+        )
 
-            return result
-        except Exception as e:
-            logger.exception(f"Financial validation sub-agent failed: {e}")
-            return {
-                "currency": None,
-                "is_valid": False,
-                "issues": [{"type": "error", "message": str(e)}],
-                "corrections": [],
-            }
+        return {
+            "financial_candidates": financial_candidates,
+            "mathematical_validation": {
+                "verified": 0,
+                "total_tests": 0,
+                "all_valid": False,
+            },
+            "currency": "USD",
+            "confidence": "low",
+            "summary": "Used simple fallback - LLM reasoning unavailable",
+            "fallback_used": True,
+        }
 
     # ========== SIMILARITY SEARCH TOOL ==========
 
@@ -464,15 +982,17 @@ def create_label_harmonizer_tools(
         word_text: str, label_type: Optional[str] = None
     ) -> dict:
         """
-        Search ChromaDB for similar words with labels.
+        Search ChromaDB for similar words with labels, with merchant context.
 
         Args:
             word_text: Word text to search for
             label_type: Optional label type to filter results
 
         Returns:
-        - similar_words: List of similar words with their labels
+        - similar_words: List of similar words with labels, merchant info, and same_merchant flag
         - count: Number of matches found
+        - current_merchant: Current receipt's merchant name
+        - current_place_id: Current receipt's place_id
         """
         chroma = state.get("chroma_client")
         embed_fn_val = state.get("embed_fn")
@@ -523,12 +1043,32 @@ def create_label_harmonizer_tools(
                             "label": word_label,
                             "similarity": similarity,
                             "merchant": metadata.get("merchant_name"),
+                            "place_id": metadata.get("place_id"),
                         }
+                    )
+
+            # Add context about current receipt's merchant
+            receipt = state.get("receipt", {})
+            current_metadata = receipt.get("metadata", {})
+            current_merchant = current_metadata.get("merchant_name")
+            current_place_id = current_metadata.get("place_id")
+
+            # Enhance results with same-merchant indicator
+            if current_merchant or current_place_id:
+                for result in similar_words:
+                    result["same_merchant"] = (
+                        current_merchant
+                        and result.get("merchant") == current_merchant
+                    ) or (
+                        current_place_id
+                        and result.get("place_id") == current_place_id
                     )
 
             return {
                 "similar_words": similar_words,
                 "count": len(similar_words),
+                "current_merchant": current_merchant,
+                "current_place_id": current_place_id,
             }
         except Exception as e:
             logger.exception(f"ChromaDB search failed: {e}")
@@ -1076,10 +1616,8 @@ def create_label_harmonizer_tools(
     tools = [
         get_line_id_text_list,
         run_table_subagent,
+        validate_financial_consistency,
         run_label_subagent,
-        submit_harmonization,
     ]
 
     return tools, state
-
-
