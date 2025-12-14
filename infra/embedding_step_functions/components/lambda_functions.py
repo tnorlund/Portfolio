@@ -623,6 +623,23 @@ class LambdaFunctionsComponent(ComponentResource):
                     "LANGCHAIN_API_KEY"
                 )
                 or "",
+                # receipt_agent expects RECEIPT_AGENT_* but we mirror base vars too
+                "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
+                "RECEIPT_AGENT_GOOGLE_PLACES_API_KEY": portfolio_config.get_secret(
+                    "GOOGLE_PLACES_API_KEY"
+                )
+                or "",
+                "RECEIPT_AGENT_OLLAMA_API_KEY": portfolio_config.get_secret(
+                    "OLLAMA_API_KEY"
+                )
+                or "",
+                "RECEIPT_AGENT_LANGCHAIN_API_KEY": portfolio_config.get_secret(
+                    "LANGCHAIN_API_KEY"
+                )
+                or "",
+                "RECEIPT_AGENT_LANGCHAIN_PROJECT": portfolio_config.get(
+                    "LANGCHAIN_PROJECT", "receipt-agent"
+                ),
                 "ENABLE_XRAY": "true",
                 "ENABLE_METRICS": "true",
                 "LOG_LEVEL": "INFO",

@@ -9,10 +9,21 @@ import os
 import random
 import tempfile
 import time
+from datetime import datetime
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar
 
 import boto3
+from receipt_agent.clients.factory import (
+    create_embed_fn,
+    create_places_client,
+)
+from receipt_agent.config.settings import get_settings
+from receipt_agent.subagents.metadata_finder import (
+    create_receipt_metadata_finder_graph,
+    run_receipt_metadata_finder,
+)
+from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_chroma.embedding.delta import save_word_embeddings_as_delta
 from receipt_chroma.embedding.openai import (
     download_openai_batch_result,
@@ -21,8 +32,13 @@ from receipt_chroma.embedding.openai import (
     handle_batch_status,
     mark_items_for_retry,
 )
+from receipt_chroma.embedding.records import (
+    WordEmbeddingRecord,
+    build_word_payload,
+)
 from receipt_dynamo.constants import BatchStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
 
 import utils.logging
 from utils.circuit_breaker import (
@@ -176,195 +192,200 @@ def retry_openai_api_call(
     return decorator
 
 
+def _propagate_agent_env() -> None:
+    """Ensure receipt_agent settings pick up the base env vars."""
+    env_aliases = [
+        ("OPENAI_API_KEY", "RECEIPT_AGENT_OPENAI_API_KEY"),
+        ("GOOGLE_PLACES_API_KEY", "RECEIPT_AGENT_GOOGLE_PLACES_API_KEY"),
+        ("OLLAMA_API_KEY", "RECEIPT_AGENT_OLLAMA_API_KEY"),
+        ("LANGCHAIN_API_KEY", "RECEIPT_AGENT_LANGCHAIN_API_KEY"),
+        ("LANGCHAIN_PROJECT", "RECEIPT_AGENT_LANGCHAIN_PROJECT"),
+    ]
+    for src, dest in env_aliases:
+        if dest not in os.environ and src in os.environ:
+            os.environ[dest] = os.environ[src]
+
+
 async def _ensure_receipt_metadata_async(
     image_id: str,
     receipt_id: int,
     dynamo_client: DynamoClient,
+    *,
+    word_results: Optional[List[dict]] = None,
+    batch_id: Optional[str] = None,
 ) -> None:
-    """Create receipt_metadata if missing, using LangChain workflow with Ollama Cloud.
-
-    This is used in the word polling handler to ensure receipt_metadata exists
-    before processing embeddings, since we're writing to ChromaDB through the
-    step function and don't have access to it here.
-    """
+    """Create receipt_metadata if missing using receipt_agent + local Chroma."""
     try:
-        # Check if metadata already exists
-        try:
-            existing_metadata = dynamo_client.get_receipt_metadata(
-                image_id, receipt_id
-            )
-            logger.debug(
-                "Receipt metadata already exists",
-                image_id=image_id,
-                receipt_id=receipt_id,
-            )
-            return
-        except Exception as check_error:
-            # Check if this is a validation error (corrupted metadata) vs missing metadata
-            error_str = str(check_error).lower()
-            if (
-                "place id must be a string" in error_str
-                or "place_id must be a string" in error_str
-            ):
-                # Metadata exists but is corrupted - delete it and recreate
+        dynamo_client.get_receipt_metadata(image_id, receipt_id)
+        logger.debug(
+            "Receipt metadata already exists",
+            image_id=image_id,
+            receipt_id=receipt_id,
+        )
+        return
+    except Exception:
+        pass
+
+    _propagate_agent_env()
+    settings = get_settings()
+
+    receipt_details = dynamo_client.get_receipt_details(
+        image_id=image_id,
+        receipt_id=receipt_id,
+    )
+
+    word_records: List[WordEmbeddingRecord] = []
+    if word_results:
+        words_by_key = {
+            (w.line_id, w.word_id): w for w in receipt_details.words
+        }
+        for result in word_results:
+            try:
+                meta = _parse_metadata_from_word_id(result["custom_id"])
+            except Exception as parse_error:  # pylint: disable=broad-except
                 logger.warning(
-                    "Found corrupted receipt_metadata, will delete and recreate",
+                    "Skipping word embedding result with invalid custom_id",
+                    custom_id=result.get("custom_id"),
+                    error=str(parse_error),
+                )
+                continue
+
+            if meta["image_id"] != image_id or meta["receipt_id"] != receipt_id:
+                continue
+
+            target_word = words_by_key.get((meta["line_id"], meta["word_id"]))
+            if not target_word:
+                logger.warning(
+                    "Word not found for embedding result",
                     image_id=image_id,
                     receipt_id=receipt_id,
-                    error=str(check_error),
+                    line_id=meta["line_id"],
+                    word_id=meta["word_id"],
                 )
-                try:
-                    # Try to delete the corrupted metadata
-                    # We need to construct the key manually since we can't read it
-                    pk = f"IMAGE#{image_id}"
-                    sk = f"RECEIPT#{receipt_id:05d}#METADATA"
-                    dynamo_client._client.delete_item(
-                        TableName=dynamo_client.table_name,
-                        Key={
-                            "PK": {"S": pk},
-                            "SK": {"S": sk},
-                        },
-                    )
-                    logger.info(
-                        "Deleted corrupted receipt_metadata",
-                        image_id=image_id,
-                        receipt_id=receipt_id,
-                    )
-                except Exception as delete_error:
-                    logger.warning(
-                        "Failed to delete corrupted metadata, will try to overwrite",
-                        image_id=image_id,
-                        receipt_id=receipt_id,
-                        error=str(delete_error),
-                    )
-            # Metadata doesn't exist or was corrupted, create it
-            pass
+                continue
 
-        # Get API keys from environment
-        google_places_key = os.environ.get("GOOGLE_PLACES_API_KEY")
-        ollama_key = os.environ.get("OLLAMA_API_KEY")
-        langchain_key = os.environ.get("LANGCHAIN_API_KEY")
+            word_records.append(
+                WordEmbeddingRecord(
+                    word=target_word,
+                    embedding=result.get("embedding") or [],
+                    batch_id=batch_id,
+                )
+            )
 
-        if not google_places_key:
-            error_msg = f"GOOGLE_PLACES_API_KEY not set, cannot create receipt_metadata for receipt {receipt_id} (image {image_id})"
-            logger.error(error_msg)
-            raise ValueError(error_msg)
-        if not ollama_key:
-            error_msg = f"OLLAMA_API_KEY not set, cannot create receipt_metadata for receipt {receipt_id} (image {image_id})"
-            logger.error(error_msg)
-            raise ValueError(error_msg)
-        if not langchain_key:
-            error_msg = f"LANGCHAIN_API_KEY not set, cannot create receipt_metadata for receipt {receipt_id} (image {image_id})"
-            logger.error(error_msg)
-            raise ValueError(error_msg)
+    word_embeddings_map = {
+        record.chroma_id: record.embedding for record in word_records
+    } or None
+
+    chroma_client = ChromaClient(mode="write", metadata_only=True)
+    try:
+        # TODO: Replace ad-hoc local collection with merged snapshot once ingest publishes fresh Chroma snapshots.
+        payload = build_word_payload(
+            records=word_records,
+            all_words=receipt_details.words,
+            word_labels=getattr(receipt_details, "labels", []),
+            merchant_name=None,
+        )
+
+        if payload["ids"]:
+            collection = chroma_client.get_collection(
+                "words", create_if_missing=True
+            )
+            collection.upsert(
+                ids=payload["ids"],
+                embeddings=payload["embeddings"],
+                documents=payload["documents"],
+                metadatas=payload["metadatas"],
+            )
+
+        embed_fn = create_embed_fn(settings=settings)
+        places_client = create_places_client(settings=settings)
+
+        graph, state_holder = create_receipt_metadata_finder_graph(
+            dynamo_client=dynamo_client,
+            chroma_client=chroma_client,
+            embed_fn=embed_fn,
+            places_api=places_client,
+            settings=settings,
+        )
+
+        result = await run_receipt_metadata_finder(
+            graph=graph,
+            state_holder=state_holder,
+            image_id=image_id,
+            receipt_id=receipt_id,
+            line_embeddings=None,
+            word_embeddings=word_embeddings_map,
+            receipt_lines=receipt_details.lines,
+            receipt_words=receipt_details.words,
+        )
+
+        if not result.get("found"):
+            raise ValueError(
+                f"Metadata finder could not create metadata for {image_id}#{receipt_id}"
+            )
+
+        matched_fields = []
+        if result.get("merchant_name"):
+            matched_fields.append("name")
+        if result.get("address"):
+            matched_fields.append("address")
+        if result.get("phone_number"):
+            matched_fields.append("phone")
+        if result.get("place_id"):
+            matched_fields.append("place_id")
+
+        metadata_entity = ReceiptMetadata(
+            image_id=image_id,
+            receipt_id=receipt_id,
+            place_id=result.get("place_id") or "",
+            merchant_name=result.get("merchant_name") or "",
+            matched_fields=matched_fields,
+            timestamp=datetime.utcnow(),
+            merchant_category="",
+            address=result.get("address") or "",
+            phone_number=result.get("phone_number") or "",
+            validated_by="metadata_finder_agent",
+            reasoning=result.get("reasoning") or "",
+            canonical_place_id=result.get("place_id") or "",
+            canonical_merchant_name=result.get("merchant_name") or "",
+            canonical_address=result.get("address") or "",
+            canonical_phone_number=result.get("phone_number") or "",
+        )
+        dynamo_client.add_receipt_metadatas([metadata_entity])
 
         logger.info(
-            "Creating receipt_metadata using LangChain workflow with Ollama Cloud",
+            "Created receipt_metadata via metadata finder",
             image_id=image_id,
             receipt_id=receipt_id,
+            place_id=metadata_entity.place_id,
         )
-
-        # Import the LangChain workflow (with error handling for missing dependencies)
+    finally:
         try:
-            from receipt_label.langchain.metadata_creation import (
-                create_receipt_metadata_simple,
-            )
-        except ImportError as import_error:
-            error_msg = f"Failed to import LangChain workflow: {import_error}. Make sure langchain dependencies are installed."
-            logger.error(error_msg, exc_info=True)
-            raise ValueError(error_msg) from import_error
-
-        # Get receipt data (lines and words) for the LangChain workflow
-        try:
-            receipt_details = dynamo_client.get_receipt_details(
-                image_id, receipt_id
-            )
-            receipt_lines = receipt_details.lines
-            receipt_words = receipt_details.words
-        except Exception as receipt_error:
-            error_msg = f"Failed to get receipt details: {receipt_error}"
-            logger.error(error_msg, exc_info=True)
-            raise ValueError(error_msg) from receipt_error
-
-        # Create metadata using LangChain workflow
-        try:
-            metadata = await create_receipt_metadata_simple(
-                client=dynamo_client,
-                image_id=image_id,
-                receipt_id=receipt_id,
-                google_places_api_key=google_places_key,
-                ollama_api_key=ollama_key,
-                langsmith_api_key=langchain_key,
-                thinking_strength="medium",  # Use medium thinking strength for balance of speed/quality
-                receipt_lines=receipt_lines,
-                receipt_words=receipt_words,
-            )
-        except Exception as workflow_error:
-            error_msg = f"LangChain workflow failed: {workflow_error}"
-            logger.error(
-                error_msg,
-                image_id=image_id,
-                receipt_id=receipt_id,
-                error_type=type(workflow_error).__name__,
-                exc_info=True,
-            )
-            raise ValueError(error_msg) from workflow_error
-
-        if metadata:
-            logger.info(
-                "Successfully created receipt_metadata using LangChain workflow",
-                image_id=image_id,
-                receipt_id=receipt_id,
-                place_id=metadata.place_id,
-                merchant_name=metadata.merchant_name,
-            )
-        else:
-            error_msg = f"Failed to create receipt_metadata for receipt {receipt_id} (image {image_id})"
-            logger.error(error_msg)
-            raise ValueError(error_msg)
-
-    except Exception as e:
-        logger.error(
-            "Error creating receipt_metadata",
-            image_id=image_id,
-            receipt_id=receipt_id,
-            error=str(e),
-            error_type=type(e).__name__,
-            exc_info=True,
-        )
-        # Re-raise - metadata is required for embeddings to work
-        raise
+            chroma_client.close()
+        except Exception:
+            pass
 
 
 def _ensure_receipt_metadata(
     image_id: str,
     receipt_id: int,
     dynamo_client: DynamoClient,
+    *,
+    word_results: Optional[List[dict]] = None,
+    batch_id: Optional[str] = None,
 ) -> None:
-    """Synchronous wrapper for async metadata creation.
-
-    Lambda functions don't have a running event loop by default,
-    so we can use asyncio.run() directly.
-    """
+    """Synchronous wrapper for async metadata creation."""
     import asyncio
 
-    try:
-        # Lambda functions don't have a running event loop, so asyncio.run() should work
-        asyncio.run(
-            _ensure_receipt_metadata_async(image_id, receipt_id, dynamo_client)
-        )
-    except Exception as e:
-        # Log the full error with traceback for debugging
-        logger.error(
-            "Error in async metadata creation wrapper",
+    asyncio.run(
+        _ensure_receipt_metadata_async(
             image_id=image_id,
             receipt_id=receipt_id,
-            error=str(e),
-            error_type=type(e).__name__,
-            exc_info=True,
+            dynamo_client=dynamo_client,
+            word_results=word_results,
+            batch_id=batch_id,
         )
-        # Re-raise to preserve the original error
-        raise
+    )
 
 
 @with_timeout_protection(
@@ -387,13 +408,11 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     Returns:
         Dictionary with status, action taken, and next steps
     """
-    # CRITICAL: Configure receipt_label loggers to output to CloudWatch
-    # This ensures validation messages from legacy_helpers.py and chromadb_client.py appear in logs
-    receipt_label_logger = logging.getLogger("receipt_label")
     log_level = os.environ.get("LOG_LEVEL", "INFO")
-    receipt_label_logger.setLevel(log_level)
+    receipt_agent_logger = logging.getLogger("receipt_agent")
+    receipt_agent_logger.setLevel(log_level)
 
-    if not receipt_label_logger.handlers:
+    if not receipt_agent_logger.handlers:
         # Create a handler that outputs to stdout (CloudWatch captures this)
         handler = logging.StreamHandler()
 
@@ -410,10 +429,10 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             )
 
         handler.setFormatter(formatter)
-        receipt_label_logger.addHandler(handler)
+        receipt_agent_logger.addHandler(handler)
 
         # Prevent propagation to avoid duplicate logs
-        receipt_label_logger.propagate = False
+        receipt_agent_logger.propagate = False
 
     # Start monitoring and timeout protection
     start_lambda_monitoring(context)
@@ -898,7 +917,11 @@ def _handle_internal_core(
             for receipt_id, image_id in unique_receipts:
                 try:
                     _ensure_receipt_metadata(
-                        image_id, receipt_id, dynamo_client
+                        image_id,
+                        receipt_id,
+                        dynamo_client,
+                        word_results=results,
+                        batch_id=batch_id,
                     )
                     # Verify metadata was created (or already existed)
                     try:
