@@ -149,7 +149,9 @@ def retry_openai_api_call(
             for attempt in range(max_retries + 1):
                 try:
                     return func(*args, **kwargs)
-                except Exception as e:  # pylint: disable=broad-exception-caught
+                except (
+                    Exception
+                ) as e:  # pylint: disable=broad-exception-caught
                     last_exception = e
                     error_str = str(e).lower()
                     error_type = type(e).__name__
@@ -270,7 +272,9 @@ async def _ensure_receipt_metadata_async(
 
     word_records: List[WordEmbeddingRecord] = []
     if word_results:
-        words_by_key = {(w.line_id, w.word_id): w for w in receipt_details.words}
+        words_by_key = {
+            (w.line_id, w.word_id): w for w in receipt_details.words
+        }
         for result in word_results:
             try:
                 meta = _parse_metadata_from_word_id(result["custom_id"])
@@ -282,7 +286,10 @@ async def _ensure_receipt_metadata_async(
                 )
                 continue
 
-            if meta["image_id"] != image_id or meta["receipt_id"] != receipt_id:
+            if (
+                meta["image_id"] != image_id
+                or meta["receipt_id"] != receipt_id
+            ):
                 continue
 
             target_word = words_by_key.get((meta["line_id"], meta["word_id"]))
@@ -358,7 +365,9 @@ async def _ensure_receipt_metadata_async(
         )
 
         if payload["ids"]:
-            collection = chroma_client.get_collection("words", create_if_missing=True)
+            collection = chroma_client.get_collection(
+                "words", create_if_missing=True
+            )
             collection.upsert(
                 ids=payload["ids"],
                 embeddings=payload["embeddings"],
@@ -577,7 +586,9 @@ def _handle_internal(
             collected_metrics.get("WordPollingErrors", 0) + 1
         )
         metric_dimensions["error_type"] = type(e).__name__
-        error_types[type(e).__name__] = error_types.get(type(e).__name__, 0) + 1
+        error_types[type(e).__name__] = (
+            error_types.get(type(e).__name__, 0) + 1
+        )
         tracer.add_annotation("error", type(e).__name__)
         tracer.add_metadata(
             "error_details", {"message": str(e), "type": type(e).__name__}
@@ -615,7 +626,11 @@ def _handle_internal_core(
     batch_index = event.get("batch_index")
     pending_batches = event.get("pending_batches")
 
-    if manifest_s3_key and manifest_s3_bucket is not None and batch_index is not None:
+    if (
+        manifest_s3_key
+        and manifest_s3_bucket is not None
+        and batch_index is not None
+    ):
         # Download manifest from S3 and look up batch info
         logger.info(
             "Loading batch info from S3 manifest",
@@ -630,7 +645,9 @@ def _handle_internal_core(
             tmp_file_path = tmp_file.name
 
         try:
-            s3_client.download_file(manifest_s3_bucket, manifest_s3_key, tmp_file_path)
+            s3_client.download_file(
+                manifest_s3_bucket, manifest_s3_key, tmp_file_path
+            )
             with open(tmp_file_path, "r", encoding="utf-8") as f:
                 manifest = json.load(f)
 
@@ -642,7 +659,9 @@ def _handle_internal_core(
 
             batches = manifest.get("batches", [])
             if not isinstance(batches, list):
-                raise ValueError("Invalid manifest format: 'batches' must be a list")
+                raise ValueError(
+                    "Invalid manifest format: 'batches' must be a list"
+                )
 
             if batch_index < 0 or batch_index >= len(batches):
                 raise ValueError(
@@ -786,7 +805,9 @@ def _handle_internal_core(
     def _get_batch_status_with_retry() -> str:
         """Get batch status with retry logic."""
         with trace_openai_batch_poll(batch_id, openai_batch_id):
-            with operation_with_timeout("get_openai_batch_status", max_duration=60):
+            with operation_with_timeout(
+                "get_openai_batch_status", max_duration=60
+            ):
                 with openai_circuit_breaker().call():
                     return get_openai_batch_status(  # type: ignore[no-any-return]
                         openai_batch_id, openai_client
@@ -882,7 +903,10 @@ def _handle_internal_core(
             raise
 
     # Process based on the action determined by status handler
-    if status_result["action"] == "process_results" and batch_status == "completed":
+    if (
+        status_result["action"] == "process_results"
+        and batch_status == "completed"
+    ):
         logger.info("Processing completed batch results")
 
         # Check timeout before processing
@@ -892,7 +916,9 @@ def _handle_internal_core(
                 collected_metrics.get("WordPollingTimeouts", 0) + 1
             )
             metric_dimensions["timeout_stage"] = "pre_results"
-            error_types["TimeoutError"] = error_types.get("TimeoutError", 0) + 1
+            error_types["TimeoutError"] = (
+                error_types.get("TimeoutError", 0) + 1
+            )
 
             # Log metrics via EMF before raising
             emf_metrics.log_metrics(
@@ -900,13 +926,19 @@ def _handle_internal_core(
                 dimensions=metric_dimensions if metric_dimensions else None,
                 properties={"error_types": error_types},
             )
-            raise TimeoutError("Lambda timeout detected before result processing")
+            raise TimeoutError(
+                "Lambda timeout detected before result processing"
+            )
 
         # Download the batch results with monitoring, circuit breaker, and retry protection
-        @retry_openai_api_call(max_retries=3, initial_delay=2.0, max_delay=60.0)
+        @retry_openai_api_call(
+            max_retries=3, initial_delay=2.0, max_delay=60.0
+        )
         def _download_results_with_retry() -> List[dict]:
             """Download batch results with retry logic."""
-            with tracer.subsegment("OpenAI.DownloadResults", namespace="remote"):
+            with tracer.subsegment(
+                "OpenAI.DownloadResults", namespace="remote"
+            ):
                 with operation_with_timeout(
                     "download_openai_batch_result", max_duration=180
                 ):
@@ -955,7 +987,9 @@ def _handle_internal_core(
         # Ensure receipt_metadata exists for all receipts (create if missing using Places API)
         # This is required because get_receipt_descriptions requires receipt_metadata
         # and embeddings need metadata to work properly
-        with operation_with_timeout("ensure_receipt_metadata", max_duration=120):
+        with operation_with_timeout(
+            "ensure_receipt_metadata", max_duration=120
+        ):
             unique_receipts = get_unique_receipt_and_image_ids(results)
             missing_metadata = []
             for receipt_id, image_id in unique_receipts:
@@ -969,7 +1003,9 @@ def _handle_internal_core(
                     )
                     # Verify metadata was created (or already existed)
                     try:
-                        dynamo_client.get_receipt_metadata(image_id, receipt_id)
+                        dynamo_client.get_receipt_metadata(
+                            image_id, receipt_id
+                        )
                         logger.debug(
                             "Verified receipt_metadata exists",
                             image_id=image_id,
@@ -1005,7 +1041,9 @@ def _handle_internal_core(
                 raise ValueError(error_msg)
 
         # Get receipt details with timeout protection
-        with operation_with_timeout("get_receipt_descriptions", max_duration=60):
+        with operation_with_timeout(
+            "get_receipt_descriptions", max_duration=60
+        ):
             descriptions = _get_receipt_descriptions(results)
 
         description_count = len(descriptions)
@@ -1035,7 +1073,9 @@ def _handle_internal_core(
                 collected_metrics.get("WordPollingTimeouts", 0) + 1
             )
             metric_dimensions["timeout_stage"] = "pre_save"
-            error_types["TimeoutError"] = error_types.get("TimeoutError", 0) + 1
+            error_types["TimeoutError"] = (
+                error_types.get("TimeoutError", 0) + 1
+            )
 
             # Log metrics via EMF before raising
             emf_metrics.log_metrics(
@@ -1061,7 +1101,9 @@ def _handle_internal_core(
                     with chromadb_circuit_breaker().call():
                         # Check for graceful shutdown during long operation
                         if should_stop():
-                            logger.warning("Save operation cancelled due to shutdown")
+                            logger.warning(
+                                "Save operation cancelled due to shutdown"
+                            )
                             raise RuntimeError(
                                 "Operation cancelled during graceful shutdown"
                             )
@@ -1087,7 +1129,9 @@ def _handle_internal_core(
                                 # Validation failed after retries
                                 validation_success = False
                                 validation_attempts = 3  # max_retries default
-                                validation_retries = 2  # retries = attempts - 1
+                                validation_retries = (
+                                    2  # retries = attempts - 1
+                                )
                             raise
 
         delta_save_duration = time.time() - delta_save_start_time
@@ -1104,11 +1148,15 @@ def _handle_internal_core(
 
         # Collect metrics (aggregated, not per-call)
         collected_metrics["SavedEmbeddings"] = embedding_count
-        collected_metrics["DeltasSaved"] = collected_metrics.get("DeltasSaved", 0) + 1
+        collected_metrics["DeltasSaved"] = (
+            collected_metrics.get("DeltasSaved", 0) + 1
+        )
         collected_metrics["DeltaValidationAttempts"] = validation_attempts
         if validation_retries > 0:
             collected_metrics["DeltaValidationRetries"] = validation_retries
-        collected_metrics["DeltaValidationSuccess"] = 1 if validation_success else 0
+        collected_metrics["DeltaValidationSuccess"] = (
+            1 if validation_success else 0
+        )
         collected_metrics["DeltaSaveDuration"] = (
             delta_save_duration  # Includes upload + validation
         )
@@ -1121,7 +1169,9 @@ def _handle_internal_core(
         # Mark batch complete only if NOT in step function mode (skip_sqs=False means standalone mode)
         # In step function mode, batches will be marked complete after successful compaction
         if not skip_sqs:
-            with operation_with_timeout("mark_batch_complete", max_duration=30):
+            with operation_with_timeout(
+                "mark_batch_complete", max_duration=30
+            ):
                 _mark_batch_complete(batch_id)
             logger.info("Marked batch as complete", batch_id=batch_id)
         else:
@@ -1200,13 +1250,18 @@ def _handle_internal_core(
             "result_s3_bucket": bucket,
         }
 
-    elif status_result["action"] == "process_partial" and batch_status == "expired":
+    elif (
+        status_result["action"] == "process_partial"
+        and batch_status == "expired"
+    ):
         # Handle expired batch with partial results
         partial_results = status_result.get("partial_results", [])
         failed_ids = status_result.get("failed_ids", [])
 
         if partial_results:
-            logger.info("Processing partial results", count=len(partial_results))
+            logger.info(
+                "Processing partial results", count=len(partial_results)
+            )
 
             # Get receipt details for successful results
             descriptions = _get_receipt_descriptions(partial_results)
@@ -1214,10 +1269,14 @@ def _handle_internal_core(
             # Get bucket name for delta save
             bucket_name = os.environ.get("CHROMADB_BUCKET")
             if not bucket_name:
-                raise ValueError("CHROMADB_BUCKET environment variable not set")
+                raise ValueError(
+                    "CHROMADB_BUCKET environment variable not set"
+                )
 
             # Determine SQS queue URL based on skip_sqs flag
-            sqs_queue_url = None if skip_sqs else os.environ.get("COMPACTION_QUEUE_URL")
+            sqs_queue_url = (
+                None if skip_sqs else os.environ.get("COMPACTION_QUEUE_URL")
+            )
 
             # Save partial results
             delta_result = save_word_embeddings_as_delta(
@@ -1304,7 +1363,9 @@ def _handle_internal_core(
     elif status_result["action"] in ["wait", "handle_cancellation"]:
         # Batch is still processing or was cancelled
         collected_metrics[f"WordPolling{status_result['action'].title()}"] = (
-            collected_metrics.get(f"WordPolling{status_result['action'].title()}", 0)
+            collected_metrics.get(
+                f"WordPolling{status_result['action'].title()}", 0
+            )
             + 1
         )
 
@@ -1339,7 +1400,9 @@ def _handle_internal_core(
             collected_metrics.get("WordPollingErrors", 0) + 1
         )
         metric_dimensions["error_type"] = "unknown_action"
-        error_types["unknown_action"] = error_types.get("unknown_action", 0) + 1
+        error_types["unknown_action"] = (
+            error_types.get("unknown_action", 0) + 1
+        )
         tracer.add_annotation("error", "unknown_action")
 
         # Log metrics via EMF

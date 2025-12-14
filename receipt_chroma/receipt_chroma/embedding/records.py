@@ -110,7 +110,9 @@ def build_line_payload(
             section_label=section_label,
             source="openai_embedding_batch",
         )
-        line_metadata = enrich_line_metadata_with_anchors(line_metadata, line_words)
+        line_metadata = enrich_line_metadata_with_anchors(
+            line_metadata, line_words
+        )
 
         ids.append(record.chroma_id)
         embeddings.append(record.embedding)

@@ -44,7 +44,9 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         table_name = os.environ.get("DYNAMODB_TABLE_NAME")
         if not table_name:
-            raise ValueError("DYNAMODB_TABLE_NAME environment variable not set")
+            raise ValueError(
+                "DYNAMODB_TABLE_NAME environment variable not set"
+            )
         dynamo_client = DynamoClient(table_name)
 
         words = _list_words_without_embeddings(dynamo_client)
@@ -60,7 +62,9 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         batches = _chunk_into_word_embedding_batches(words)
         logger.info("Chunked into batches", count=len(batches))
 
-        uploaded = _upload_serialized_words(_serialize_receipt_words(batches), bucket)
+        uploaded = _upload_serialized_words(
+            _serialize_receipt_words(batches), bucket
+        )
         logger.info("Uploaded files", count=len(uploaded))
 
         # Clean the output to match expected format
@@ -74,7 +78,9 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             for e in uploaded
         ]
 
-        logger.info("Successfully prepared batches for processing", count=len(cleaned))
+        logger.info(
+            "Successfully prepared batches for processing", count=len(cleaned)
+        )
 
         return {
             "batches": cleaned,
@@ -91,7 +97,9 @@ def _list_words_without_embeddings(
     dynamo_client: DynamoClient,
 ) -> List[ReceiptWord]:
     """Fetch words with EmbeddingStatus.NONE."""
-    return dynamo_client.list_receipt_words_by_embedding_status(EmbeddingStatus.NONE)
+    return dynamo_client.list_receipt_words_by_embedding_status(
+        EmbeddingStatus.NONE
+    )
 
 
 def _chunk_into_word_embedding_batches(
@@ -124,7 +132,9 @@ def _serialize_receipt_words(
             continue
         image_id = batch[0].image_id
         receipt_id = batch[0].receipt_id
-        ndjson_path = f"/tmp/words-{image_id}-{receipt_id}-{batch_index}.ndjson"
+        ndjson_path = (
+            f"/tmp/words-{image_id}-{receipt_id}-{batch_index}.ndjson"
+        )
         rows = []
         for word in batch:
             rows.append(

@@ -75,7 +75,9 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         logger.info("Generated batch ID", batch_id=batch_id)
 
         # Download the NDJSON from S3 back to local via serialized helper
-        local_path = download_serialized_file(s3_bucket=s3_bucket, s3_key=s3_key)
+        local_path = download_serialized_file(
+            s3_bucket=s3_bucket, s3_key=s3_key
+        )
         logger.info("Downloaded file", local_path=local_path)
 
         # Deserialize the words from the downloaded file
@@ -84,11 +86,15 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         table_name = os.environ.get("DYNAMODB_TABLE_NAME")
         if not table_name:
-            raise ValueError("DYNAMODB_TABLE_NAME environment variable not set")
+            raise ValueError(
+                "DYNAMODB_TABLE_NAME environment variable not set"
+            )
         dynamo_client = DynamoClient(table_name)
 
         # Query all words in the receipt for context
-        all_words_in_receipt = query_receipt_words(dynamo_client, image_id, receipt_id)
+        all_words_in_receipt = query_receipt_words(
+            dynamo_client, image_id, receipt_id
+        )
         logger.info(
             "Found words in receipt",
             count=len(all_words_in_receipt),
@@ -155,7 +161,9 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Update word embedding status in DynamoDB
         set_pending_and_update_words(dynamo_client, deserialized_words)
-        logger.info("Updated embedding status for words", count=len(deserialized_words))
+        logger.info(
+            "Updated embedding status for words", count=len(deserialized_words)
+        )
 
         # Store batch summary in DynamoDB
         add_batch_summary(batch_summary, dynamo_client)
