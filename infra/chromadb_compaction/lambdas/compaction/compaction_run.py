@@ -463,6 +463,11 @@ def _download_delta_to_dir(
         logger.info("Downloading legacy tarball delta", tar_key=tar_key)
         s3_client.download_file(bucket, tar_key, tar_path)
         with tarfile.open(tar_path, "r:gz") as tar:
+            # Validate all members are safe before extraction
+            for member in tar.getmembers():
+                member_path = os.path.normpath(os.path.join(dest_dir, member.name))
+                if not member_path.startswith(os.path.abspath(dest_dir)):
+                    raise ValueError(f"Unsafe path in tarball: {member.name}")
             tar.extractall(dest_dir)
         logger.info("Successfully extracted tarball delta")
         return
