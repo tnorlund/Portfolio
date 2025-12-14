@@ -586,7 +586,8 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
                     if "arm" in self.platform
                     else "LINUX_CONTAINER"
                 ),
-                compute_type="BUILD_GENERAL1_LARGE",  # Need large for Docker
+                # Medium keeps Docker support while reducing CodeBuild cost
+                compute_type="BUILD_GENERAL1_MEDIUM",
                 image=(
                     "aws/codebuild/amazonlinux-aarch64-standard:3.0"
                     if "arm" in self.platform
