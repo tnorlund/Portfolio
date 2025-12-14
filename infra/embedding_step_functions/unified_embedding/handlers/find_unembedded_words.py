@@ -1,19 +1,18 @@
-"""Handler for finding words that need embeddings.
-
-This handler reads from DynamoDB to find words without embeddings,
-chunks them into batches, and uploads to S3 for processing.
-"""
+"""Handler for finding words that need embeddings."""
 
 import os
-from typing import Any, Dict
-from receipt_label.embedding.word import (
-    chunk_into_embedding_batches,
-    list_receipt_words_with_no_embeddings,
-    serialize_receipt_words,
-    upload_serialized_words,
-)
+import typing
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
 
-import utils.logging
+import boto3
+from receipt_dynamo.constants import EmbeddingStatus
+from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.entities import ReceiptWord
+
+import utils.logging  # pylint: disable=import-error
+
+from ..embedding_ingest import write_ndjson
 
 get_logger = utils.logging.get_logger
 get_operation_logger = utils.logging.get_operation_logger
@@ -43,10 +42,14 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         if not bucket:
             raise ValueError("S3_BUCKET environment variable not set")
 
-        logger.info("Using S3 bucket", bucket=bucket)
+        table_name = os.environ.get("DYNAMODB_TABLE_NAME")
+        if not table_name:
+            raise ValueError(
+                "DYNAMODB_TABLE_NAME environment variable not set"
+            )
+        dynamo_client = DynamoClient(table_name)
 
-        # Get words without embeddings (noise words are already filtered)
-        words = list_receipt_words_with_no_embeddings()
+        words = _list_words_without_embeddings(dynamo_client)
         logger.info(
             "Found words without embeddings (noise words filtered)",
             count=len(words),
@@ -54,36 +57,13 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         if not words:
             logger.info("No words need embeddings")
-            return {"batches": []}
+            return {"batches": [], "total_words": 0, "batch_count": 0}
 
-        # Chunk words into batches (returns nested dict structure)
-        batches = chunk_into_embedding_batches(words)
+        batches = _chunk_into_word_embedding_batches(words)
         logger.info("Chunked into batches", count=len(batches))
 
-        # Log batch details for debugging
-        for image_id, receipts in batches.items():
-            for receipt_id, words_list in receipts.items():
-                total = len(words_list)
-                unique = len({(w.line_id, w.word_id) for w in words_list})
-                if total != unique:
-                    logger.warning(
-                        "Duplicate words in image receipt",
-                        image_id=image_id,
-                        receipt_id=receipt_id,
-                        total=total,
-                        unique=unique,
-                    )
-                else:
-                    logger.info(
-                        "Words count OK for image receipt",
-                        image_id=image_id,
-                        receipt_id=receipt_id,
-                        word_count=total,
-                    )
-
-        # Serialize and upload in one step
-        uploaded = upload_serialized_words(
-            serialize_receipt_words(batches), bucket
+        uploaded = _upload_serialized_words(
+            _serialize_receipt_words(batches), bucket
         )
         logger.info("Uploaded files", count=len(uploaded))
 
@@ -108,14 +88,96 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "batch_count": len(cleaned),
         }
 
-    except AttributeError as e:
-        logger.error("Client manager configuration error", error=str(e))
-        raise RuntimeError(f"Configuration error: {str(e)}") from e
-
-    except KeyError as e:
-        logger.error("Missing expected field in data", error=str(e))
-        raise RuntimeError(f"Data format error: {str(e)}") from e
-
     except Exception as e:
         logger.error("Unexpected error finding unembedded words", error=str(e))
         raise RuntimeError(f"Internal error: {str(e)}") from e
+
+
+def _list_words_without_embeddings(
+    dynamo_client: DynamoClient,
+) -> List[ReceiptWord]:
+    """Fetch words with EmbeddingStatus.NONE."""
+    return dynamo_client.list_receipt_words_by_embedding_status(
+        EmbeddingStatus.NONE
+    )
+
+
+def _chunk_into_word_embedding_batches(
+    words: List[ReceiptWord], batch_size: int = 100
+) -> List[List[ReceiptWord]]:
+    """Chunk ReceiptWords into batches, grouped by receipt to keep filenames/metadata correct."""
+    batches: List[List[ReceiptWord]] = []
+    grouped: Dict[Tuple[str, int], List[ReceiptWord]] = {}
+
+    for word in words:
+        key = (word.image_id, word.receipt_id)
+        if key not in grouped:
+            grouped[key] = []
+        grouped[key].append(word)
+
+    for key in sorted(grouped.keys()):
+        words_in_receipt = grouped[key]
+        for start in range(0, len(words_in_receipt), batch_size):
+            batches.append(words_in_receipt[start : start + batch_size])
+
+    return batches
+
+
+def _serialize_receipt_words(
+    batches: List[List[ReceiptWord]],
+) -> List[dict]:
+    """Serialize batches of ReceiptWord entities to NDJSON-ready dicts."""
+    serialized: List[dict] = []
+    for batch_index, batch in enumerate(batches):
+        if not batch:
+            continue
+        image_id = batch[0].image_id
+        receipt_id = batch[0].receipt_id
+        ndjson_path = (
+            f"/tmp/words-{image_id}-{receipt_id}-{batch_index}.ndjson"
+        )
+        rows = []
+        for word in batch:
+            rows.append(
+                {
+                    "receipt_id": word.receipt_id,
+                    "image_id": word.image_id,
+                    "line_id": word.line_id,
+                    "word_id": word.word_id,
+                    "text": word.text,
+                    "bounding_box": word.bounding_box,
+                    "confidence": word.confidence,
+                    "embedding_status": word.embedding_status,
+                    "label": getattr(word, "label", None),
+                }
+            )
+        write_ndjson(Path(ndjson_path), rows)
+        serialized.append(
+            {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "ndjson_path": ndjson_path,
+            }
+        )
+    return serialized
+
+
+def _upload_serialized_words(
+    serialized_words: List[dict],
+    s3_bucket: str,
+    prefix: str = "word_embeddings",
+) -> List[dict]:
+    """Upload serialized word NDJSON files to S3."""
+    s3 = boto3.client("s3")
+    uploaded: List[dict] = []
+    for entry in serialized_words:
+        key = f"{prefix}/{Path(entry['ndjson_path']).name}"
+        s3.upload_file(entry["ndjson_path"], s3_bucket, key)
+        uploaded.append(
+            {
+                **entry,
+                "s3_key": key,
+                "s3_bucket": s3_bucket,
+            }
+        )
+    return uploaded

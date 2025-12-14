@@ -1,15 +1,17 @@
 """Handler for submitting word embedding batches to OpenAI.
 
-This handler reads from S3, formats the data using receipt_chroma, and submits to OpenAI's Batch API.
+This handler reads from S3, formats the data using receipt_chroma,
+and submits to OpenAI's Batch API.
 """
 
-import json
 import os
 from pathlib import Path
 from typing import Any, Dict
 from uuid import uuid4
 
+import utils.logging  # pylint: disable=import-error
 from openai import OpenAI
+
 from receipt_chroma.embedding.formatting.word_format import (
     format_word_context_embedding_input,
 )
@@ -19,16 +21,15 @@ from receipt_chroma.embedding.openai import (
     submit_openai_batch,
     upload_to_openai,
 )
-from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.entities import ReceiptWord
-from receipt_label.embedding.word import (
-    deserialize_receipt_words,
-    download_serialized_words,
-    query_receipt_words,
-)
 
-import utils.logging
+from ..embedding_ingest import (
+    deserialize_receipt_words,
+    download_serialized_file,
+    query_receipt_words,
+    set_pending_and_update_words,
+    write_ndjson,
+)
 
 get_logger = utils.logging.get_logger
 get_operation_logger = utils.logging.get_operation_logger
@@ -58,7 +59,13 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         RuntimeError: If there's an error processing
     """
     logger.info("Starting submit_words_openai handler")
-    logger.info("Event", event=event)
+    logger.info(
+        "Event",
+        s3_bucket=event.get("s3_bucket"),
+        s3_key=event.get("s3_key"),
+        image_id=event.get("image_id"),
+        receipt_id=event.get("receipt_id"),
+    )
 
     try:
         # Extract parameters from event
@@ -72,13 +79,8 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         logger.info("Generated batch ID", batch_id=batch_id)
 
         # Download the NDJSON from S3 back to local via serialized helper
-        local_path = download_serialized_words(
-            {
-                "s3_bucket": s3_bucket,
-                "s3_key": s3_key,
-                # Include the original ndjson path so the helper can write to it
-                "ndjson_path": f"/tmp/{Path(s3_key).name}",
-            }
+        local_path = download_serialized_file(
+            s3_bucket=s3_bucket, s3_key=s3_key
         )
         logger.info("Downloaded file", local_path=local_path)
 
@@ -86,8 +88,17 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         deserialized_words = deserialize_receipt_words(local_path)
         logger.info("Deserialized words", count=len(deserialized_words))
 
+        table_name = os.environ.get("DYNAMODB_TABLE_NAME")
+        if not table_name:
+            raise ValueError(
+                "DYNAMODB_TABLE_NAME environment variable not set"
+            )
+        dynamo_client = DynamoClient(table_name)
+
         # Query all words in the receipt for context
-        all_words_in_receipt = query_receipt_words(image_id, receipt_id)
+        all_words_in_receipt = query_receipt_words(
+            dynamo_client, image_id, receipt_id
+        )
         logger.info(
             "Found words in receipt",
             count=len(all_words_in_receipt),
@@ -129,13 +140,10 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Write formatted data to NDJSON file
         input_file = Path(f"/tmp/{batch_id}.ndjson")
-        with input_file.open("w", encoding="utf-8") as f:
-            for row in formatted_words:
-                f.write(json.dumps(row) + "\n")
+        write_ndjson(input_file, formatted_words)
         logger.info("Wrote input file", filepath=str(input_file))
 
         # Initialize clients
-        dynamo_client = DynamoClient(os.environ.get("DYNAMODB_TABLE_NAME"))
         openai_client = OpenAI()
 
         # Upload NDJSON file to OpenAI
@@ -156,10 +164,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         logger.info("Created batch summary", batch_id=batch_summary.batch_id)
 
         # Update word embedding status in DynamoDB
-        # Set to PENDING using string format
-        for word in deserialized_words:
-            word.embedding_status = EmbeddingStatus.PENDING.value
-        dynamo_client.update_receipt_words(deserialized_words)
+        set_pending_and_update_words(dynamo_client, deserialized_words)
         logger.info(
             "Updated embedding status for words", count=len(deserialized_words)
         )
