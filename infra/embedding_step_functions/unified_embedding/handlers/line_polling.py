@@ -64,6 +64,7 @@ from receipt_chroma.embedding.records import (
 from receipt_chroma.s3 import download_snapshot_atomic
 from receipt_dynamo.constants import BatchStatus, EmbeddingStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
 
 get_logger = utils.logging.get_logger
