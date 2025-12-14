@@ -12,12 +12,7 @@ from receipt_dynamo.entities import ReceiptWord
 
 import utils.logging
 
-if typing.TYPE_CHECKING:
-    from infra.embedding_step_functions.unified_embedding.embedding_ingest import (
-        write_ndjson,
-    )
-else:
-    from embedding_ingest import write_ndjson
+from ..embedding_ingest import write_ndjson
 
 get_logger = utils.logging.get_logger
 get_operation_logger = utils.logging.get_operation_logger
@@ -47,7 +42,11 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         if not bucket:
             raise ValueError("S3_BUCKET environment variable not set")
 
-        table_name = os.environ["DYNAMODB_TABLE_NAME"]
+        table_name = os.environ.get("DYNAMODB_TABLE_NAME")
+        if not table_name:
+            raise ValueError(
+                "DYNAMODB_TABLE_NAME environment variable not set"
+            )
         dynamo_client = DynamoClient(table_name)
 
         words = _list_words_without_embeddings(dynamo_client)
@@ -106,16 +105,20 @@ def _list_words_without_embeddings(
 def _chunk_into_word_embedding_batches(
     words: List[ReceiptWord], batch_size: int = 100
 ) -> List[List[ReceiptWord]]:
-    """Chunk ReceiptWords into batches."""
+    """Chunk ReceiptWords into batches, grouped by receipt to keep filenames/metadata correct."""
     batches: List[List[ReceiptWord]] = []
-    current: List[ReceiptWord] = []
+    grouped: Dict[Tuple[str, int], List[ReceiptWord]] = {}
+
     for word in words:
-        current.append(word)
-        if len(current) >= batch_size:
-            batches.append(current)
-            current = []
-    if current:
-        batches.append(current)
+        key = (word.image_id, word.receipt_id)
+        if key not in grouped:
+            grouped[key] = []
+        grouped[key].append(word)
+
+    for words_in_receipt in grouped.values():
+        for start in range(0, len(words_in_receipt), batch_size):
+            batches.append(words_in_receipt[start : start + batch_size])
+
     return batches
 
 
@@ -124,12 +127,14 @@ def _serialize_receipt_words(
 ) -> List[dict]:
     """Serialize batches of ReceiptWord entities to NDJSON-ready dicts."""
     serialized: List[dict] = []
-    for batch in batches:
+    for batch_index, batch in enumerate(batches):
         if not batch:
             continue
         image_id = batch[0].image_id
         receipt_id = batch[0].receipt_id
-        ndjson_path = f"/tmp/words-{image_id}-{receipt_id}.ndjson"
+        ndjson_path = (
+            f"/tmp/words-{image_id}-{receipt_id}-{batch_index}.ndjson"
+        )
         rows = []
         for word in batch:
             rows.append(
@@ -163,9 +168,15 @@ def _upload_serialized_words(
 ) -> List[dict]:
     """Upload serialized word NDJSON files to S3."""
     s3 = boto3.client("s3")
+    uploaded: List[dict] = []
     for entry in serialized_words:
         key = f"{prefix}/{Path(entry['ndjson_path']).name}"
         s3.upload_file(entry["ndjson_path"], s3_bucket, key)
-        entry["s3_key"] = key
-        entry["s3_bucket"] = s3_bucket
-    return serialized_words
+        uploaded.append(
+            {
+                **entry,
+                "s3_key": key,
+                "s3_bucket": s3_bucket,
+            }
+        )
+    return uploaded

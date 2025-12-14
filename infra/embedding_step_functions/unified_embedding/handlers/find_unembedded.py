@@ -3,21 +3,16 @@
 import os
 import typing
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 import boto3
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import ReceiptLine
 
-if typing.TYPE_CHECKING:
-    from infra.embedding_step_functions.unified_embedding.embedding_ingest import (
-        write_ndjson,
-    )
-else:
-    from embedding_ingest import write_ndjson
-
 import utils.logging
+
+from ..embedding_ingest import write_ndjson
 
 get_operation_logger = utils.logging.get_operation_logger
 
@@ -46,7 +41,11 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         if not bucket:
             raise ValueError("S3_BUCKET environment variable not set")
 
-        table_name = os.environ["DYNAMODB_TABLE_NAME"]
+        table_name = os.environ.get("DYNAMODB_TABLE_NAME")
+        if not table_name:
+            raise ValueError(
+                "DYNAMODB_TABLE_NAME environment variable not set"
+            )
         dynamo_client = DynamoClient(table_name)
 
         lines_without_embeddings = _list_lines_without_embeddings(
@@ -87,7 +86,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
 def _list_lines_without_embeddings(
     dynamo_client: DynamoClient,
-) -> List[ReceiptLine]:
+) -> list[ReceiptLine]:
     """Fetch lines with EmbeddingStatus.NONE."""
     return dynamo_client.list_receipt_lines_by_embedding_status(
         EmbeddingStatus.NONE
@@ -102,14 +101,18 @@ def _chunk_into_line_embedding_batches(
     receipt_label without pulling that dependency.
     """
     batches: list[list[ReceiptLine]] = []
-    current: list[ReceiptLine] = []
+    grouped: dict[tuple[str, int], list[ReceiptLine]] = {}
+
     for line in lines:
-        current.append(line)
-        if len(current) >= batch_size:
-            batches.append(current)
-            current = []
-    if current:
-        batches.append(current)
+        key = (line.image_id, line.receipt_id)
+        if key not in grouped:
+            grouped[key] = []
+        grouped[key].append(line)
+
+    for key in sorted(grouped.keys()):
+        receipt_lines = grouped[key]
+        for start in range(0, len(receipt_lines), batch_size):
+            batches.append(receipt_lines[start : start + batch_size])
     return batches
 
 
@@ -118,37 +121,22 @@ def _serialize_receipt_lines(
 ) -> list[dict]:
     """Serialize batches of ReceiptLine entities to NDJSON-ready dicts."""
     serialized: list[dict] = []
-    for batch in batches:
+    for batch_index, batch in enumerate(batches):
         if not batch:
             continue
         image_id = batch[0].image_id
         receipt_id = batch[0].receipt_id
-        ndjson_path = f"/tmp/lines-{image_id}-{receipt_id}.ndjson"
-        rows = []
-        for line in batch:
-            rows.append(
-                {
-                    "receipt_id": line.receipt_id,
-                    "image_id": line.image_id,
-                    "line_id": line.line_id,
-                    "text": line.text,
-                    "bounding_box": line.bounding_box,
-                    "top_right": line.top_right,
-                    "top_left": line.top_left,
-                    "bottom_right": line.bottom_right,
-                    "bottom_left": line.bottom_left,
-                    "angle_degrees": line.angle_degrees,
-                    "angle_radians": line.angle_radians,
-                    "confidence": line.confidence,
-                    "embedding_status": line.embedding_status,
-                }
-            )
+        ndjson_path = (
+            f"/tmp/lines-{image_id}-{receipt_id}-{batch_index}.ndjson"
+        )
+        rows = [line.to_dict() for line in batch]
         write_ndjson(Path(ndjson_path), rows)
         serialized.append(
             {
                 "image_id": image_id,
                 "receipt_id": receipt_id,
                 "ndjson_path": ndjson_path,
+                "batch_index": batch_index,
             }
         )
     return serialized

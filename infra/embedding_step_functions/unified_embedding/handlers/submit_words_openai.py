@@ -22,15 +22,16 @@ from receipt_chroma.embedding.openai import (
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import ReceiptWord
-from embedding_ingest import (
+
+import utils.logging
+
+from ..embedding_ingest import (
     deserialize_receipt_words,
     download_serialized_file,
     query_receipt_words,
     set_pending_and_update_words,
     write_ndjson,
 )
-
-import utils.logging
 
 get_logger = utils.logging.get_logger
 get_operation_logger = utils.logging.get_operation_logger
@@ -83,8 +84,17 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         deserialized_words = deserialize_receipt_words(local_path)
         logger.info("Deserialized words", count=len(deserialized_words))
 
+        table_name = os.environ.get("DYNAMODB_TABLE_NAME")
+        if not table_name:
+            raise ValueError(
+                "DYNAMODB_TABLE_NAME environment variable not set"
+            )
+        dynamo_client = DynamoClient(table_name)
+
         # Query all words in the receipt for context
-        all_words_in_receipt = query_receipt_words(image_id, receipt_id)
+        all_words_in_receipt = query_receipt_words(
+            dynamo_client, image_id, receipt_id
+        )
         logger.info(
             "Found words in receipt",
             count=len(all_words_in_receipt),
@@ -130,7 +140,6 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         logger.info("Wrote input file", filepath=str(input_file))
 
         # Initialize clients
-        dynamo_client = DynamoClient(os.environ.get("DYNAMODB_TABLE_NAME"))
         openai_client = OpenAI()
 
         # Upload NDJSON file to OpenAI

@@ -76,18 +76,20 @@ def set_pending_and_update_lines(
     dynamo_client: DynamoClient, lines: Iterable[ReceiptLine]
 ) -> None:
     """Set lines to PENDING and persist to Dynamo."""
-    for line in lines:
+    lines_list = list(lines)
+    for line in lines_list:
         line.embedding_status = EmbeddingStatus.PENDING.value
-    dynamo_client.update_receipt_lines(list(lines))
+    dynamo_client.update_receipt_lines(lines_list)
 
 
 def set_pending_and_update_words(
     dynamo_client: DynamoClient, words: Iterable[ReceiptWord]
 ) -> None:
     """Set words to PENDING and persist to Dynamo."""
-    for word in words:
+    words_list = list(words)
+    for word in words_list:
         word.embedding_status = EmbeddingStatus.PENDING.value
-    dynamo_client.update_receipt_words(list(words))
+    dynamo_client.update_receipt_words(words_list)
 
 
 def write_ndjson(filepath: Path, rows: Iterable[dict]) -> None:

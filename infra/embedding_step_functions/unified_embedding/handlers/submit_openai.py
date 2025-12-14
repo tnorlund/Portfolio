@@ -21,15 +21,16 @@ from receipt_chroma.embedding.openai import (
 )
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from embedding_ingest import (
+
+import utils.logging
+
+from ..embedding_ingest import (
     deserialize_receipt_lines,
     download_serialized_file,
     query_receipt_lines,
     set_pending_and_update_lines,
     write_ndjson,
 )
-
-import utils.logging
 
 get_logger = utils.logging.get_logger
 get_operation_logger = utils.logging.get_operation_logger
@@ -60,9 +61,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         batch_id = str(uuid4())
 
         # Download the serialized lines from S3
-        filepath = download_serialized_file(
-            s3_bucket=s3_bucket, s3_key=s3_key
-        )
+        filepath = download_serialized_file(s3_bucket=s3_bucket, s3_key=s3_key)
         logger.info("Downloaded file", filepath=filepath)
 
         # Deserialize the lines
@@ -75,8 +74,17 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         image_id = lines_to_embed[0].image_id
         receipt_id = lines_to_embed[0].receipt_id
 
+        table_name = os.environ.get("DYNAMODB_TABLE_NAME")
+        if not table_name:
+            raise ValueError(
+                "DYNAMODB_TABLE_NAME environment variable not set"
+            )
+        dynamo_client = DynamoClient(table_name)
+
         # Query all lines in the receipt for context
-        all_lines_in_receipt = query_receipt_lines(image_id, receipt_id)
+        all_lines_in_receipt = query_receipt_lines(
+            dynamo_client, image_id, receipt_id
+        )
         logger.info(
             "Found lines in receipt",
             count=len(all_lines_in_receipt),
@@ -120,7 +128,6 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         logger.info("Wrote input file", filepath=str(input_file))
 
         # Initialize clients
-        dynamo_client = DynamoClient(os.environ.get("DYNAMODB_TABLE_NAME"))
         openai_client = OpenAI()
 
         # Upload to OpenAI
