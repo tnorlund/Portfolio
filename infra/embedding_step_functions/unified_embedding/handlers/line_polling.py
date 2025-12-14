@@ -4,7 +4,6 @@ Pure business logic - no Lambda-specific code.
 """
 
 import json
-import logging
 import os
 import tempfile
 import time
@@ -13,6 +12,33 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import boto3
+import utils.logging
+from utils.circuit_breaker import (
+    CircuitBreakerOpenError,
+    chromadb_circuit_breaker,
+    openai_circuit_breaker,
+)
+from utils.dual_chroma_client import DualChromaClient
+from utils.graceful_shutdown import (
+    final_cleanup,
+    register_shutdown_callback,
+    timeout_aware_operation,
+)
+from utils.metrics import emf_metrics
+from utils.polling_common import parse_line_custom_id, resolve_batch_info
+from utils.timeout_handler import (
+    check_timeout,
+    operation_with_timeout,
+    start_lambda_monitoring,
+    stop_lambda_monitoring,
+    with_timeout_protection,
+)
+from utils.tracing import (
+    trace_chromadb_delta_save,
+    trace_openai_batch_poll,
+    tracer,
+)
+
 from receipt_agent.clients.factory import (
     create_embed_fn,
     create_places_client,
@@ -39,41 +65,6 @@ from receipt_chroma.s3 import download_snapshot_atomic
 from receipt_dynamo.constants import BatchStatus, EmbeddingStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
-
-import utils.logging
-from utils.circuit_breaker import (
-    CircuitBreakerOpenError,
-    chromadb_circuit_breaker,
-    openai_circuit_breaker,
-    s3_circuit_breaker,
-)
-from utils.dual_chroma_client import DualChromaClient
-from utils.graceful_shutdown import (
-    final_cleanup,
-    register_shutdown_callback,
-    timeout_aware_operation,
-)
-from utils.metrics import (
-    emf_metrics,
-    metrics,
-    track_chromadb_operation,
-    track_openai_api_call,
-    track_s3_operation,
-)
-from utils.polling_common import parse_line_custom_id, resolve_batch_info
-from utils.timeout_handler import (
-    check_timeout,
-    operation_with_timeout,
-    start_lambda_monitoring,
-    stop_lambda_monitoring,
-    with_timeout_protection,
-)
-from utils.tracing import (
-    trace_chromadb_delta_save,
-    trace_openai_batch_poll,
-    trace_s3_snapshot_operation,
-    tracer,
-)
 
 get_logger = utils.logging.get_logger
 get_operation_logger = utils.logging.get_operation_logger

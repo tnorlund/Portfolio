@@ -12,9 +12,36 @@ import time
 from datetime import datetime, timezone
 from functools import wraps
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar
+from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 import boto3
+import utils.logging
+from utils.circuit_breaker import (
+    CircuitBreakerOpenError,
+    chromadb_circuit_breaker,
+    openai_circuit_breaker,
+)
+from utils.dual_chroma_client import DualChromaClient
+from utils.graceful_shutdown import (
+    final_cleanup,
+    register_shutdown_callback,
+    timeout_aware_operation,
+)
+from utils.metrics import emf_metrics
+from utils.polling_common import parse_word_custom_id, resolve_batch_info
+from utils.timeout_handler import (
+    check_timeout,
+    operation_with_timeout,
+    start_lambda_monitoring,
+    stop_lambda_monitoring,
+    with_timeout_protection,
+)
+from utils.tracing import (
+    trace_chromadb_delta_save,
+    trace_openai_batch_poll,
+    tracer,
+)
+
 from receipt_agent.clients.factory import (
     create_embed_fn,
     create_places_client,
@@ -42,41 +69,6 @@ from receipt_dynamo.constants import BatchStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
-
-import utils.logging
-from utils.circuit_breaker import (
-    CircuitBreakerOpenError,
-    chromadb_circuit_breaker,
-    openai_circuit_breaker,
-    s3_circuit_breaker,
-)
-from utils.dual_chroma_client import DualChromaClient
-from utils.graceful_shutdown import (
-    final_cleanup,
-    register_shutdown_callback,
-    timeout_aware_operation,
-)
-from utils.metrics import (
-    emf_metrics,
-    metrics,
-    track_chromadb_operation,
-    track_openai_api_call,
-    track_s3_operation,
-)
-from utils.polling_common import parse_word_custom_id, resolve_batch_info
-from utils.timeout_handler import (
-    check_timeout,
-    operation_with_timeout,
-    start_lambda_monitoring,
-    stop_lambda_monitoring,
-    with_timeout_protection,
-)
-from utils.tracing import (
-    trace_chromadb_delta_save,
-    trace_openai_batch_poll,
-    trace_s3_snapshot_operation,
-    tracer,
-)
 
 get_logger = utils.logging.get_logger
 get_operation_logger = utils.logging.get_operation_logger
@@ -726,18 +718,18 @@ def _handle_internal_core(
                 f"OpenAI API authentication failed (401): {str(e)}. "
                 f"Check OPENAI_API_KEY environment variable."
             ) from e
-        else:
-            # Re-raise with context (403, 429, etc. were already retried)
-            logger.error(
-                "OpenAI API error while checking batch status (after retries)",
-                openai_batch_id=openai_batch_id,
-                batch_id=batch_id,
-                error_type=error_type,
-                error=str(e),
-            )
-            raise RuntimeError(
-                f"OpenAI API error while checking batch status for {openai_batch_id}: {str(e)}"
-            ) from e
+
+        # Re-raise with context (403, 429, etc. were already retried)
+        logger.error(
+            "OpenAI API error while checking batch status (after retries)",
+            openai_batch_id=openai_batch_id,
+            batch_id=batch_id,
+            error_type=error_type,
+            error=str(e),
+        )
+        raise RuntimeError(
+            f"OpenAI API error while checking batch status for {openai_batch_id}: {str(e)}"
+        ) from e
 
     logger.info(
         "Retrieved batch status from OpenAI",
@@ -785,16 +777,16 @@ def _handle_internal_core(
                 f"OpenAI API authentication failed (401) in handle_batch_status: {str(e)}. "
                 f"Check OPENAI_API_KEY environment variable."
             ) from e
-        else:
-            # Re-raise with context
-            logger.error(
-                "Error in handle_batch_status (after retries)",
-                openai_batch_id=openai_batch_id,
-                batch_id=batch_id,
-                error_type=error_type,
-                error=str(e),
-            )
-            raise
+
+        # Re-raise with context
+        logger.error(
+            "Error in handle_batch_status (after retries)",
+            openai_batch_id=openai_batch_id,
+            batch_id=batch_id,
+            error_type=error_type,
+            error=str(e),
+        )
+        raise
 
     # Process based on the action determined by status handler
     if (
@@ -860,18 +852,18 @@ def _handle_internal_core(
                     f"OpenAI API authentication failed (401) while downloading results: {str(e)}. "
                     f"Check OPENAI_API_KEY environment variable."
                 ) from e
-            else:
-                # Re-raise with context (403, 429, etc. were already retried)
-                logger.error(
-                    "OpenAI API error while downloading batch results (after retries)",
-                    openai_batch_id=openai_batch_id,
-                    batch_id=batch_id,
-                    error_type=error_type,
-                    error=str(e),
-                )
-                raise RuntimeError(
-                    f"OpenAI API error while downloading results for {openai_batch_id}: {str(e)}"
-                ) from e
+
+            # Re-raise with context (403, 429, etc. were already retried)
+            logger.error(
+                "OpenAI API error while downloading batch results (after retries)",
+                openai_batch_id=openai_batch_id,
+                batch_id=batch_id,
+                error_type=error_type,
+                error=str(e),
+            )
+            raise RuntimeError(
+                f"OpenAI API error while downloading results for {openai_batch_id}: {str(e)}"
+            ) from e
 
         result_count = len(results)
         logger.info("Downloaded embedding results", result_count=result_count)
@@ -1254,7 +1246,7 @@ def _handle_internal_core(
             "next_step": error_info.get("next_step"),
         }
 
-    elif status_result["action"] in ["wait", "handle_cancellation"]:
+    if status_result["action"] in ["wait", "handle_cancellation"]:
         # Batch is still processing or was cancelled
         collected_metrics[f"WordPolling{status_result['action'].title()}"] = (
             collected_metrics.get(
@@ -1283,8 +1275,7 @@ def _handle_internal_core(
             "next_step": status_result.get("next_step"),
         }
 
-    else:
-        # Unknown action
+    # Unknown action
         logger.error(
             "Unknown action from status handler",
             action=status_result.get("action"),
