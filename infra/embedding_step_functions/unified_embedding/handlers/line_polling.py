@@ -12,28 +12,28 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import boto3
-import utils.logging
-from utils.circuit_breaker import (
+import utils.logging  # pylint: disable=import-error
+from utils.circuit_breaker import (  # pylint: disable=import-error
     CircuitBreakerOpenError,
     chromadb_circuit_breaker,
     openai_circuit_breaker,
 )
-from utils.dual_chroma_client import DualChromaClient
-from utils.graceful_shutdown import (
+from utils.dual_chroma_client import DualChromaClient  # pylint: disable=import-error
+from utils.graceful_shutdown import (  # pylint: disable=import-error
     final_cleanup,
     register_shutdown_callback,
     timeout_aware_operation,
 )
-from utils.metrics import emf_metrics
-from utils.polling_common import parse_line_custom_id, resolve_batch_info
-from utils.timeout_handler import (
+from utils.metrics import emf_metrics  # pylint: disable=import-error
+from utils.polling_common import parse_line_custom_id, resolve_batch_info  # pylint: disable=import-error
+from utils.timeout_handler import (  # pylint: disable=import-error
     check_timeout,
     operation_with_timeout,
     start_lambda_monitoring,
     stop_lambda_monitoring,
     with_timeout_protection,
 )
-from utils.tracing import (
+from utils.tracing import (  # pylint: disable=import-error
     trace_chromadb_delta_save,
     trace_openai_batch_poll,
     tracer,

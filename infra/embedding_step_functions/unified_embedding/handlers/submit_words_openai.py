@@ -1,15 +1,17 @@
 """Handler for submitting word embedding batches to OpenAI.
 
-This handler reads from S3, formats the data using receipt_chroma, and submits to OpenAI's Batch API.
+This handler reads from S3, formats the data using receipt_chroma,
+and submits to OpenAI's Batch API.
 """
 
-import json
 import os
 from pathlib import Path
 from typing import Any, Dict
 from uuid import uuid4
 
+import utils.logging  # pylint: disable=import-error
 from openai import OpenAI
+
 from receipt_chroma.embedding.formatting.word_format import (
     format_word_context_embedding_input,
 )
@@ -19,11 +21,7 @@ from receipt_chroma.embedding.openai import (
     submit_openai_batch,
     upload_to_openai,
 )
-from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.entities import ReceiptWord
-
-import utils.logging
 
 from ..embedding_ingest import (
     deserialize_receipt_words,

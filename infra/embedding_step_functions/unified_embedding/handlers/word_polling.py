@@ -3,6 +3,7 @@
 Pure business logic - no Lambda-specific code.
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -15,28 +16,32 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 import boto3
-import utils.logging
-from utils.circuit_breaker import (
+import utils.logging  # pylint: disable=import-error
+from openai import OpenAI
+from utils.circuit_breaker import (  # pylint: disable=import-error
     CircuitBreakerOpenError,
     chromadb_circuit_breaker,
     openai_circuit_breaker,
 )
-from utils.dual_chroma_client import DualChromaClient
-from utils.graceful_shutdown import (
+from utils.dual_chroma_client import DualChromaClient  # pylint: disable=import-error
+from utils.graceful_shutdown import (  # pylint: disable=import-error
     final_cleanup,
     register_shutdown_callback,
     timeout_aware_operation,
 )
-from utils.metrics import emf_metrics
-from utils.polling_common import parse_word_custom_id, resolve_batch_info
-from utils.timeout_handler import (
+from utils.metrics import emf_metrics  # pylint: disable=import-error
+from utils.polling_common import (  # pylint: disable=import-error
+    parse_word_custom_id,
+    resolve_batch_info,
+)
+from utils.timeout_handler import (  # pylint: disable=import-error
     check_timeout,
     operation_with_timeout,
     start_lambda_monitoring,
     stop_lambda_monitoring,
     with_timeout_protection,
 )
-from utils.tracing import (
+from utils.tracing import (  # pylint: disable=import-error
     trace_chromadb_delta_save,
     trace_openai_batch_poll,
     tracer,
@@ -427,8 +432,6 @@ def _ensure_receipt_metadata(
     batch_id: Optional[str] = None,
 ) -> None:
     """Synchronous wrapper for async metadata creation."""
-    import asyncio
-
     asyncio.run(
         _ensure_receipt_metadata_async(
             image_id=image_id,
@@ -633,8 +636,6 @@ def _handle_internal_core(
         dynamo_client = DynamoClient(os.environ["DYNAMODB_TABLE_NAME"])
 
     # Create OpenAI client (needed for batch status check)
-    from openai import OpenAI
-
     openai_client = OpenAI()  # Uses OPENAI_API_KEY from environment
 
     # Inline helper functions to avoid receipt_label dependency
@@ -920,8 +921,9 @@ def _handle_internal_core(
             # Fail if any receipts are missing metadata - embeddings require it
             if missing_metadata:
                 error_msg = (
-                    f"Receipt metadata is required but missing for {len(missing_metadata)} receipt(s). "
-                    f"Failed to create metadata for: {missing_metadata[:5]}"  # Show first 5
+                    f"Receipt metadata is required but missing for "
+                    f"{len(missing_metadata)} receipt(s). "
+                    f"Failed to create metadata for: {missing_metadata[:5]}"
                 )
                 logger.error(error_msg)
                 raise ValueError(error_msg)
@@ -1052,7 +1054,8 @@ def _handle_internal_core(
         tracer.add_metadata("delta_result", delta_result)
         tracer.add_annotation("delta_id", delta_id)
 
-        # Mark batch complete only if NOT in step function mode (skip_sqs=False means standalone mode)
+        # Mark batch complete only if NOT in step function mode
+        # (skip_sqs=False means standalone mode)
         # In step function mode, batches will be marked complete after successful compaction
         if not skip_sqs:
             with operation_with_timeout(
@@ -1062,7 +1065,8 @@ def _handle_internal_core(
             logger.info("Marked batch as complete", batch_id=batch_id)
         else:
             logger.info(
-                "Skipping batch completion marking (step function mode - will mark after compaction)",
+                "Skipping batch completion marking "
+                "(step function mode - will mark after compaction)",
                 batch_id=batch_id,
             )
 
@@ -1208,7 +1212,7 @@ def _handle_internal_core(
             "next_step": status_result.get("next_step"),
         }
 
-    elif status_result["action"] == "handle_failure":
+    if status_result["action"] == "handle_failure":
         # Handle completely failed batch
         error_info = status_result
         logger.error(
@@ -1276,31 +1280,31 @@ def _handle_internal_core(
         }
 
     # Unknown action
-        logger.error(
-            "Unknown action from status handler",
-            action=status_result.get("action"),
-            status_result=status_result,
-        )
-        collected_metrics["WordPollingErrors"] = (
-            collected_metrics.get("WordPollingErrors", 0) + 1
-        )
-        metric_dimensions["error_type"] = "unknown_action"
-        error_types["unknown_action"] = (
-            error_types.get("unknown_action", 0) + 1
-        )
-        tracer.add_annotation("error", "unknown_action")
+    logger.error(
+        "Unknown action from status handler",
+        action=status_result.get("action"),
+        status_result=status_result,
+    )
+    collected_metrics["WordPollingErrors"] = (
+        collected_metrics.get("WordPollingErrors", 0) + 1
+    )
+    metric_dimensions["error_type"] = "unknown_action"
+    error_types["unknown_action"] = (
+        error_types.get("unknown_action", 0) + 1
+    )
+    tracer.add_annotation("error", "unknown_action")
 
-        # Log metrics via EMF
-        emf_metrics.log_metrics(
-            collected_metrics,
-            dimensions=metric_dimensions if metric_dimensions else None,
-            properties={"error_types": error_types},
-        )
+    # Log metrics via EMF
+    emf_metrics.log_metrics(
+        collected_metrics,
+        dimensions=metric_dimensions if metric_dimensions else None,
+        properties={"error_types": error_types},
+    )
 
-        return {
-            "batch_id": batch_id,
-            "openai_batch_id": openai_batch_id,
-            "batch_status": batch_status,
-            "action": "error",
-            "error": f"Unknown action: {status_result.get('action')}",
-        }
+    return {
+        "batch_id": batch_id,
+        "openai_batch_id": openai_batch_id,
+        "batch_status": batch_status,
+        "action": "error",
+        "error": f"Unknown action: {status_result.get('action')}",
+    }

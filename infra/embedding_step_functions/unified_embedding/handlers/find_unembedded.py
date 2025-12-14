@@ -10,7 +10,7 @@ from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import ReceiptLine
 
-import utils.logging
+import utils.logging  # pylint: disable=import-error
 
 from ..embedding_ingest import write_ndjson
 
