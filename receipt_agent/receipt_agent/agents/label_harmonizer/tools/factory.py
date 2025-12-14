@@ -721,6 +721,14 @@ def create_label_harmonizer_tools(
 
         for attempt in range(max_retries):
             try:
+                # Reset financial sub-agent state before each retry attempt
+                # to avoid stale results causing false "success"
+                state["financial_context"] = {}
+                state["proposed_assignments"] = []
+                state["verification_results"] = []
+                state["financial_reasoning"] = ""
+                state["final_result"] = None
+
                 # Invoke sub-agent with simplified message to reduce context
                 financial_subagent.invoke(
                     {
@@ -825,11 +833,24 @@ def create_label_harmonizer_tools(
                 word_key = (label.get("line_id"), label.get("word_id"))
                 word_text = word_lookup.get(word_key, "")
 
+                # Parse numeric value from text (strip currency symbols, commas, handle negatives)
+                # Skip percentages (TAX might be a percentage, but we want the dollar amount)
+                parsed_value = None
+                if word_text:
+                    # For TAX labels, check if it's a percentage - if so, skip parsing
+                    # (we want the dollar amount, not the percentage)
+                    if label_type == "TAX" and "%" in word_text:
+                        # Try to find a dollar amount nearby, but for fallback, set to None
+                        parsed_value = None
+                    else:
+                        parsed_value = extract_number(word_text)
+
                 financial_candidates[label_type].append(
                     {
                         "line_id": label.get("line_id"),
                         "word_id": label.get("word_id"),
                         "text": word_text,
+                        "value": parsed_value,  # float or None when parsing fails
                         "confidence": 0.6,  # Lower confidence for fallback
                     }
                 )
@@ -920,6 +941,7 @@ def create_label_harmonizer_tools(
                             "label": word_label,
                             "similarity": similarity,
                             "merchant": metadata.get("merchant_name"),
+                            "place_id": metadata.get("place_id"),
                         }
                     )
 
@@ -932,17 +954,12 @@ def create_label_harmonizer_tools(
             # Enhance results with same-merchant indicator
             if current_merchant or current_place_id:
                 for result in similar_words:
-                    result_metadata = (
-                        result.get("metadata", {})
-                        if isinstance(result.get("metadata"), dict)
-                        else {}
-                    )
                     result["same_merchant"] = (
                         current_merchant
                         and result.get("merchant") == current_merchant
                     ) or (
                         current_place_id
-                        and result_metadata.get("place_id") == current_place_id
+                        and result.get("place_id") == current_place_id
                     )
 
             return {

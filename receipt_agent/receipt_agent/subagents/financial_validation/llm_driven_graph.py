@@ -154,6 +154,10 @@ def create_llm_driven_financial_tools(
     shared_state: Optional[dict] = None,
 ) -> tuple[list[Any], dict]:
     """Create tools for LLM-driven financial discovery sub-agent."""
+    # Constants for output limits to prevent context overflow
+    MAX_LINE_PREVIEW_LINES = 20
+    MAX_NUMERIC_CANDIDATES = 50
+
     if shared_state is not None:
         # Use the shared state dict so tools can access updated data
         state = shared_state
@@ -208,16 +212,24 @@ def create_llm_driven_financial_tools(
             for line_id, word_texts in lines_by_id.items():
                 line_texts[line_id] = " ".join(word_texts)
 
+            # Sort lines deterministically and truncate to prevent context overflow
+            sorted_line_items = sorted(line_texts.items())
+            total_lines = len(sorted_line_items)
+            lines_truncated = total_lines > MAX_LINE_PREVIEW_LINES
+            preview_lines = sorted_line_items[:MAX_LINE_PREVIEW_LINES]
+
             logger.debug(
-                "TOOL: Returning result with %d words, %d lines",
+                "TOOL: Returning result with %d words, %d lines (showing %d)",
                 len(words),
-                len(lines_by_id),
+                total_lines,
+                len(preview_lines),
             )
 
             return {
                 "receipt_text": receipt_text,
                 "total_words": len(words),
-                "total_lines": len(lines_by_id),
+                "total_lines": total_lines,
+                "lines_truncated": lines_truncated,
                 "has_table_structure": table_structure is not None,
                 "table_summary": (
                     table_structure.get("summary", "")
@@ -225,12 +237,10 @@ def create_llm_driven_financial_tools(
                     else "No table structure available"
                 ),
                 "line_preview": {
-                    str(line_id): text
-                    for line_id, text in sorted(line_texts.items())
+                    str(line_id): text for line_id, text in preview_lines
                 },
                 "structure_notes": {
-                    "words_per_line_avg": len(words)
-                    / max(len(lines_by_id), 1),
+                    "words_per_line_avg": len(words) / max(total_lines, 1),
                     "table_columns": (
                         len(table_structure.get("columns", []))
                         if table_structure
@@ -301,23 +311,29 @@ def create_llm_driven_financial_tools(
                     }
                 )
 
-        # Sort by value for easier analysis
+        # Sort by value for easier analysis (deterministic: highest values first)
         numeric_candidates.sort(key=lambda x: x["numeric_value"], reverse=True)
 
+        # Compute statistics from full list before truncation
+        total_candidates = len(numeric_candidates)
+        candidates_truncated = total_candidates > MAX_NUMERIC_CANDIDATES
+        truncated_candidates = numeric_candidates[:MAX_NUMERIC_CANDIDATES]
+
+        # Calculate statistics from full list
+        values = [c["numeric_value"] for c in numeric_candidates]
+        sorted_values = sorted(values) if values else []
+        median_value = (
+            sorted_values[len(sorted_values) // 2] if sorted_values else 0
+        )
+
         return {
-            "numeric_candidates": numeric_candidates,
-            "total_numeric_values": len(numeric_candidates),
+            "numeric_candidates": truncated_candidates,
+            "total_numeric_values": total_candidates,
+            "candidates_truncated": candidates_truncated,
             "value_statistics": {
-                "min_value": (
-                    min([c["numeric_value"] for c in numeric_candidates])
-                    if numeric_candidates
-                    else 0
-                ),
-                "max_value": (
-                    max([c["numeric_value"] for c in numeric_candidates])
-                    if numeric_candidates
-                    else 0
-                ),
+                "min_value": (min(values) if values else 0),
+                "max_value": (max(values) if values else 0),
+                "median_value": median_value,
                 "value_count_by_range": {
                     "over_100": len(
                         [
@@ -352,7 +368,7 @@ def create_llm_driven_financial_tools(
                         else f"position_{c['position_in_line']}"
                     ),
                 }
-                for c in numeric_candidates[
+                for c in truncated_candidates[
                     :10
                 ]  # First 10 for pattern analysis
             ],
@@ -392,7 +408,15 @@ def create_llm_driven_financial_tools(
         if not candidate_assignments:
             return {"error": "No candidate assignments provided"}
 
-        # Validate assignment format
+        # Allowed financial types
+        ALLOWED_FINANCIAL_TYPES = {
+            "GRAND_TOTAL",
+            "SUBTOTAL",
+            "TAX",
+            "LINE_TOTAL",
+        }
+
+        # Validate assignment format and proposed_type
         for assignment in candidate_assignments:
             required_fields = [
                 "line_id",
@@ -410,21 +434,87 @@ def create_llm_driven_financial_tools(
                     "error": f"Assignment missing required fields: {missing_fields}"
                 }
 
-        # Store the LLM's reasoning and proposed assignments
-        state["financial_reasoning"] = reasoning
-        state["proposed_assignments"] = candidate_assignments
+            # Validate proposed_type is one of the allowed types
+            proposed_type = assignment.get("proposed_type")
+            if proposed_type not in ALLOWED_FINANCIAL_TYPES:
+                return {
+                    "error": f"Invalid proposed_type '{proposed_type}'. "
+                    f"Must be one of: {', '.join(sorted(ALLOWED_FINANCIAL_TYPES))}"
+                }
 
-        # Group by type for easier analysis
-        assignments_by_type = {}
+        # Prevent duplicate (line_id, word_id) assignments
+        # Keep highest confidence assignment when duplicates exist
+        seen_words = {}
+        duplicates_removed = []
         for assignment in candidate_assignments:
+            word_key = (assignment.get("line_id"), assignment.get("word_id"))
+            existing = seen_words.get(word_key)
+
+            if existing is None:
+                # First assignment for this word - keep it
+                seen_words[word_key] = assignment
+            else:
+                # Duplicate detected - keep the one with higher confidence
+                existing_confidence = existing.get("confidence", 0)
+                new_confidence = assignment.get("confidence", 0)
+
+                if new_confidence > existing_confidence:
+                    # New assignment has higher confidence - replace
+                    duplicates_removed.append(
+                        {
+                            "removed": existing,
+                            "kept": assignment,
+                            "reason": "higher_confidence",
+                        }
+                    )
+                    seen_words[word_key] = assignment
+                else:
+                    # Existing assignment has higher or equal confidence - keep it
+                    duplicates_removed.append(
+                        {
+                            "removed": assignment,
+                            "kept": existing,
+                            "reason": "lower_confidence",
+                        }
+                    )
+
+        # Log warnings about removed duplicates
+        if duplicates_removed:
+            dup_details = []
+            for dup_info in duplicates_removed:
+                removed = dup_info["removed"]
+                kept = dup_info["kept"]
+                dup_details.append(
+                    f"line {removed.get('line_id')} word {removed.get('word_id')} "
+                    f"(removed: {removed.get('proposed_type')} conf={removed.get('confidence', 0):.2f}, "
+                    f"kept: {kept.get('proposed_type')} conf={kept.get('confidence', 0):.2f})"
+                )
+            logger.warning(
+                f"⚠️  Removed {len(duplicates_removed)} duplicate assignments, "
+                f"kept highest confidence: {', '.join(dup_details[:5])}"
+                + (
+                    f" (and {len(duplicates_removed) - 5} more)"
+                    if len(duplicates_removed) > 5
+                    else ""
+                )
+            )
+
+        # Store the deduplicated assignments
+        deduplicated_assignments = list(seen_words.values())
+        state["financial_reasoning"] = reasoning
+        state["proposed_assignments"] = deduplicated_assignments
+
+        # Group by type for easier analysis (using deduplicated assignments)
+        assignments_by_type = {}
+        for assignment in deduplicated_assignments:
             financial_type = assignment.get("proposed_type")
             if financial_type not in assignments_by_type:
                 assignments_by_type[financial_type] = []
             assignments_by_type[financial_type].append(assignment)
 
-        # Calculate summary statistics
+        # Calculate summary statistics (using deduplicated assignments)
         confidence_scores = [
-            a.get("confidence", 0) for a in candidate_assignments
+            a.get("confidence", 0) for a in deduplicated_assignments
         ]
         avg_confidence = (
             sum(confidence_scores) / len(confidence_scores)
@@ -434,7 +524,8 @@ def create_llm_driven_financial_tools(
 
         return {
             "reasoning_recorded": True,
-            "total_assignments": len(candidate_assignments),
+            "total_assignments": len(deduplicated_assignments),
+            "duplicates_removed": len(duplicates_removed),
             "assignments_by_type": assignments_by_type,
             "assignment_summary": {
                 financial_type: {
@@ -451,6 +542,40 @@ def create_llm_driven_financial_tools(
             "ready_for_verification": True,
         }
 
+    def _coerce_numeric_value(value: Any) -> Optional[float]:
+        """Coerce a value to float, handling strings and various numeric types.
+
+        Args:
+            value: Value that may be int, float, string, or other type
+
+        Returns:
+            float value if conversion succeeds, None otherwise
+        """
+        if value is None:
+            return None
+
+        # If already a numeric type, convert to float
+        if isinstance(value, (int, float)):
+            return float(value)
+
+        # If string, try direct float conversion first
+        if isinstance(value, str):
+            # Try direct conversion (handles "25.79", "123", etc.)
+            try:
+                return float(value.strip())
+            except (ValueError, AttributeError):
+                # If that fails, try extract_number (handles "$25.79", "(25.79)", etc.)
+                return extract_number(value)
+
+        # For other types, try to convert via string
+        try:
+            return float(str(value))
+        except (ValueError, TypeError):
+            logger.warning(
+                f"Could not coerce value to float: {value} (type: {type(value)})"
+            )
+            return None
+
     @tool
     def test_mathematical_relationships() -> dict:
         """Test whether your proposed financial assignments follow correct receipt mathematics."""
@@ -460,20 +585,44 @@ def create_llm_driven_financial_tools(
                 "error": "No proposed assignments to test. Call reason_about_financial_layout first."
             }
 
-        # Extract values by type
+        # Extract values by type, coercing to numeric
         values_by_type = {}
+        invalid_values = []
         for assignment in proposed:
             financial_type = assignment.get("proposed_type")
-            value = assignment.get("value")
+            raw_value = assignment.get("value")
+            coerced_value = _coerce_numeric_value(raw_value)
+
+            if coerced_value is None:
+                invalid_values.append(
+                    {
+                        "line_id": assignment.get("line_id"),
+                        "word_id": assignment.get("word_id"),
+                        "financial_type": financial_type,
+                        "raw_value": raw_value,
+                    }
+                )
+                logger.warning(
+                    f"Invalid numeric value for {financial_type} at line {assignment.get('line_id')} "
+                    f"word {assignment.get('word_id')}: {raw_value} (type: {type(raw_value)})"
+                )
+                continue  # Skip invalid values
+
             if financial_type not in values_by_type:
                 values_by_type[financial_type] = []
             values_by_type[financial_type].append(
                 {
-                    "value": value,
+                    "value": coerced_value,  # Use coerced numeric value
                     "line_id": assignment.get("line_id"),
                     "word_id": assignment.get("word_id"),
                     "confidence": assignment.get("confidence", 0.5),
                 }
+            )
+
+        # If we have invalid values, include them in the response
+        if invalid_values:
+            logger.warning(
+                f"Skipped {len(invalid_values)} assignments with invalid numeric values"
             )
 
         verification_results = []
@@ -571,14 +720,25 @@ def create_llm_driven_financial_tools(
 
             for line_id, line_assignments in line_groups.items():
                 if "LINE_TOTAL" in line_assignments:
-                    line_total = line_assignments["LINE_TOTAL"]["value"]
+                    line_total_raw = line_assignments["LINE_TOTAL"]["value"]
+                    line_total = _coerce_numeric_value(line_total_raw)
+
+                    if line_total is None:
+                        continue  # Skip if can't coerce LINE_TOTAL
 
                     if (
                         "QUANTITY" in line_assignments
                         and "UNIT_PRICE" in line_assignments
                     ):
-                        quantity = line_assignments["QUANTITY"]["value"]
-                        unit_price = line_assignments["UNIT_PRICE"]["value"]
+                        quantity_raw = line_assignments["QUANTITY"]["value"]
+                        unit_price_raw = line_assignments["UNIT_PRICE"][
+                            "value"
+                        ]
+                        quantity = _coerce_numeric_value(quantity_raw)
+                        unit_price = _coerce_numeric_value(unit_price_raw)
+
+                        if quantity is None or unit_price is None:
+                            continue  # Skip if can't coerce QUANTITY or UNIT_PRICE
 
                         calculated_line_total = quantity * unit_price
                         difference = line_total - calculated_line_total
@@ -628,8 +788,10 @@ def create_llm_driven_financial_tools(
                 "success_rate": (
                     tests_passed / total_tests if total_tests > 0 else 0
                 ),
+                "invalid_values_count": len(invalid_values),
             },
             "verification_results": verification_results,
+            "invalid_values": invalid_values if invalid_values else None,
             "mathematical_validity": "valid" if all_tests_pass else "invalid",
             "recommendations": (
                 "All mathematical relationships verified successfully."
@@ -904,7 +1066,7 @@ async def run_llm_driven_financial_discovery(
         )
 
         # Run the agent
-        await graph.ainvoke(initial_state.dict())
+        await graph.ainvoke(initial_state)
 
         logger.info("LLM Financial Discovery: Graph execution completed")
         logger.info(

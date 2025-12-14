@@ -706,7 +706,7 @@ async def run_enhanced_financial_validation(
     )
 
     try:
-        await graph.ainvoke(initial_state.dict())
+        await graph.ainvoke(initial_state)
         corrections = tool_state.get("corrections", [])
         currency = tool_state.get("currency", "USD")
 
