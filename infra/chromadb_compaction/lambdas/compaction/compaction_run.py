@@ -5,20 +5,20 @@ atomic pointer promotion. It supports per-collection processing (lines/words)
 and updates COMPACTION_RUN states in DynamoDB.
 """
 
-from typing import Any, Dict, List, Optional, Tuple
 import os
-import tempfile
-import tarfile
 import shutil
+import tarfile
+import tempfile
+from typing import Any, Dict, List, Optional, Tuple
 
 import boto3
-
-from receipt_dynamo.constants import ChromaDBCollection
+from botocore.exceptions import ClientError
 from receipt_chroma import ChromaClient
 from receipt_chroma.s3 import (
     download_snapshot_atomic,
     upload_snapshot_atomic,
 )
+from receipt_dynamo.constants import ChromaDBCollection
 
 
 def process_compaction_runs(
@@ -50,7 +50,9 @@ def process_compaction_runs(
     s3 = boto3.client("s3")
 
     # Optional Dynamo client provider (to update run status / fetch prefixes)
-    dynamo_client = get_dynamo_client_func() if get_dynamo_client_func else None
+    dynamo_client = (
+        get_dynamo_client_func() if get_dynamo_client_func else None
+    )
 
     for msg in compaction_runs:
         try:
@@ -65,10 +67,12 @@ def process_compaction_runs(
 
             if not delta_prefix and dynamo_client:
                 # Fallback: fetch run entity from Dynamo to read prefixes
-                run = dynamo_client.get_compaction_run(image_id, receipt_id, run_id)
+                run = dynamo_client.get_compaction_run(
+                    image_id, receipt_id, run_id
+                )
                 if run is not None:
-                    delta_prefix = (
-                        getattr(run, f"{collection.value}_delta_prefix", None)
+                    delta_prefix = getattr(
+                        run, f"{collection.value}_delta_prefix", None
                     )
 
             if not delta_prefix:
@@ -79,7 +83,9 @@ def process_compaction_runs(
                 )
                 if OBSERVABILITY_AVAILABLE and metrics:
                     metrics.count(
-                        "CompactionMissingDeltaPrefix", 1, {"collection": collection.value}
+                        "CompactionMissingDeltaPrefix",
+                        1,
+                        {"collection": collection.value},
                     )
                 results.append(
                     {
@@ -127,26 +133,23 @@ def process_compaction_runs(
                         f"Snapshot download failed: {dl_result}"
                     )
 
-                # 2) Download delta tarball and extract
-                tar_key = f"{delta_prefix.rstrip('/')}/delta.tar.gz"
-                tar_path = os.path.join(workdir, "delta.tar.gz")
+                # 2) Download delta (supports tarball and receipt_chroma directory layout)
                 try:
-                    s3.download_file(bucket, tar_key, tar_path)
+                    _download_delta_to_dir(
+                        s3_client=s3,
+                        default_bucket=bucket,
+                        delta_prefix=delta_prefix,
+                        dest_dir=delta_dir,
+                        logger=logger,
+                    )
                 except Exception as e:  # noqa: BLE001
-                    logger.error("Failed to download delta tarball", error=str(e), key=tar_key)
+                    logger.exception("Failed to download delta", delta_prefix=delta_prefix)
                     if OBSERVABILITY_AVAILABLE and metrics:
                         metrics.count(
                             "CompactionDeltaDownloadError",
                             1,
                             {"collection": collection.value},
                         )
-                    raise
-
-                try:
-                    with tarfile.open(tar_path, "r:gz") as tar:
-                        tar.extractall(delta_dir)
-                except Exception as e:  # noqa: BLE001
-                    logger.error("Failed to extract delta tarball", error=str(e))
                     raise
 
                 # 3) Merge the target collection from delta into snapshot
@@ -163,7 +166,9 @@ def process_compaction_runs(
 
                     collection_name = collection.value
                     try:
-                        source_col = delta_client.get_collection(collection_name)
+                        source_col = delta_client.get_collection(
+                            collection_name
+                        )
                         data = source_col.get(
                             include=["documents", "embeddings", "metadatas"]
                         )
@@ -187,7 +192,7 @@ def process_compaction_runs(
                         )
 
                 except Exception as e:  # noqa: BLE001
-                    logger.error("Failed merging delta into snapshot", error=str(e))
+                    logger.exception("Failed merging delta into snapshot")
                     raise
 
                 # 4) Upload updated snapshot atomically
@@ -225,7 +230,7 @@ def process_compaction_runs(
                             merged_vectors=merged_vectors,
                         )
                     except Exception as e:  # noqa: BLE001
-                        logger.warning("Failed to mark run completed", error=str(e))
+                        logger.exception("Failed to mark run completed")
 
                 if OBSERVABILITY_AVAILABLE and metrics:
                     metrics.count(
@@ -282,11 +287,6 @@ def merge_compaction_deltas(
         Tuple of (total_vectors_merged, list of per-run merge results).
         Each result dict has: run_id, image_id, receipt_id, merged_count
     """
-    import tempfile
-    import os
-    import tarfile
-    import boto3
-
     if not compaction_runs:
         return 0, []
 
@@ -306,33 +306,36 @@ def merge_compaction_deltas(
                 delta_prefix = entity.get("delta_s3_prefix")
                 # If not provided on message, skip (Phase A shouldn't fetch Dynamo)
                 if not delta_prefix:
-                    logger.warning("Skipping compaction run without delta prefix")
-                    continue
-
-                tar_key = f"{delta_prefix.rstrip('/')}/delta.tar.gz"
-                tar_path = os.path.join(workdir, "delta.tar.gz")
-                try:
-                    s3.download_file(bucket, tar_key, tar_path)
-                except Exception as e:  # noqa: BLE001
-                    logger.error("Failed to download delta tarball", error=str(e), key=tar_key)
+                    logger.warning(
+                        "Skipping compaction run without delta prefix"
+                    )
                     continue
 
                 delta_dir = os.path.join(workdir, "delta")
                 os.makedirs(delta_dir, exist_ok=True)
                 try:
-                    with tarfile.open(tar_path, "r:gz") as tar:
-                        tar.extractall(delta_dir)
+                    _download_delta_to_dir(
+                        s3_client=s3,
+                        default_bucket=bucket,
+                        delta_prefix=delta_prefix,
+                        dest_dir=delta_dir,
+                        logger=logger,
+                    )
                 except Exception as e:  # noqa: BLE001
-                    logger.error("Failed to extract delta tarball", error=str(e))
+                    logger.exception("Failed to download or extract delta", delta_prefix=delta_prefix)
                     continue
 
                 merged_count = 0
                 try:
                     collection_name = collection.value
-                    delta_client = ChromaClient(persist_directory=delta_dir, mode="read")
+                    delta_client = ChromaClient(
+                        persist_directory=delta_dir, mode="read"
+                    )
                     try:
                         src = delta_client.get_collection(collection_name)
-                        data = src.get(include=["documents", "embeddings", "metadatas"])
+                        data = src.get(
+                            include=["documents", "embeddings", "metadatas"]
+                        )
                         ids = data.get("ids", []) or []
                         if ids:
                             logger.info(
@@ -355,8 +358,12 @@ def merge_compaction_deltas(
                             # The close() method will ensure proper flushing
 
                             # Verify upsert succeeded by querying back
-                            verify_collection = chroma_client.get_collection(collection_name)
-                            verify_result = verify_collection.get(ids=ids[:10], include=["metadatas"])  # Check first 10
+                            verify_collection = chroma_client.get_collection(
+                                collection_name
+                            )
+                            verify_result = verify_collection.get(
+                                ids=ids[:10], include=["metadatas"]
+                            )  # Check first 10
                             verified_count = len(verify_result.get("ids", []))
                             if verified_count < len(ids[:10]):
                                 logger.warning(
@@ -410,17 +417,90 @@ def merge_compaction_deltas(
 
                 # Track per-run result for DynamoDB updates
                 if run_id and image_id is not None and receipt_id is not None:
-                    per_run_results.append({
-                        "run_id": run_id,
-                        "image_id": image_id,
-                        "receipt_id": receipt_id,
-                        "merged_count": merged_count,
-                    })
+                    per_run_results.append(
+                        {
+                            "run_id": run_id,
+                            "image_id": image_id,
+                            "receipt_id": receipt_id,
+                            "merged_count": merged_count,
+                        }
+                    )
             except Exception as e:  # noqa: BLE001
-                logger.error("Failed processing compaction run", error=str(e))
+                logger.exception("Failed processing compaction run")
                 continue
 
     return total_merged, per_run_results
+
+
+def _download_delta_to_dir(
+    s3_client: Any,
+    default_bucket: str,
+    delta_prefix: str,
+    dest_dir: str,
+    logger: Any,
+) -> None:
+    """
+    Download a delta from S3 into dest_dir.
+
+    Supports legacy tarball format (delta.tar.gz) and the receipt_chroma
+    directory layout uploaded via persist_and_upload_delta.
+    """
+    bucket = default_bucket
+    prefix = delta_prefix
+
+    if delta_prefix.startswith("s3://"):
+        parts = delta_prefix.replace("s3://", "", 1).split("/", 1)
+        bucket = parts[0]
+        prefix = parts[1] if len(parts) > 1 else ""
+
+    prefix = prefix.lstrip("/")
+    tar_key = f"{prefix.rstrip('/')}/delta.tar.gz"
+    tar_path = os.path.join(dest_dir, "delta.tar.gz")
+
+    # Try legacy tarball first
+    try:
+        s3_client.head_object(Bucket=bucket, Key=tar_key)
+        logger.info("Downloading legacy tarball delta", tar_key=tar_key)
+        s3_client.download_file(bucket, tar_key, tar_path)
+        with tarfile.open(tar_path, "r:gz") as tar:
+            # Validate all members are safe before extraction
+            for member in tar.getmembers():
+                member_path = os.path.normpath(os.path.join(dest_dir, member.name))
+                if not member_path.startswith(os.path.abspath(dest_dir)):
+                    raise ValueError(f"Unsafe path in tarball: {member.name}")
+            tar.extractall(dest_dir)
+        logger.info("Successfully extracted tarball delta")
+        return
+    except ClientError as err:
+        error_code = err.response.get("Error", {}).get("Code")
+        if error_code not in ("404", "NoSuchKey", "NotFound"):
+            raise
+        # Tarball not found; fall back to directory layout
+        logger.info("Tarball not found, falling back to directory layout", prefix=prefix)
+    except Exception:
+        # If tarball exists but extraction fails, propagate
+        raise
+
+    # Fallback: download all objects under prefix into dest_dir
+    paginator = s3_client.get_paginator("list_objects_v2")
+    pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
+    found_any = False
+    for page in pages:
+        for obj in page.get("Contents", []):
+            key = obj["Key"]
+            if key.endswith("/"):
+                continue
+            found_any = True
+            relative_path = key[len(prefix) :].lstrip("/")
+            target_path = os.path.join(dest_dir, relative_path)
+            os.makedirs(os.path.dirname(target_path), exist_ok=True)
+            s3_client.download_file(bucket, key, target_path)
+
+    if not found_any:
+        raise FileNotFoundError(
+            f"No delta files found at s3://{bucket}/{prefix}"
+        )
+
 
 def process_compaction_run_messages(
     compaction_runs: List[Any],  # StreamMessage type
@@ -429,7 +509,7 @@ def process_compaction_run_messages(
     metrics: Any = None,
     OBSERVABILITY_AVAILABLE: bool = False,
     lock_manager: Optional[Any] = None,
-    get_dynamo_client_func: Any = None
+    get_dynamo_client_func: Any = None,
 ) -> int:
     """Process COMPACTION_RUN messages for delta merging.
 
@@ -451,7 +531,7 @@ def process_compaction_run_messages(
     logger.info(
         "Processing compaction runs",
         count=len(compaction_runs),
-        collection=collection.value
+        collection=collection.value,
     )
 
     results = process_compaction_runs(
@@ -461,7 +541,7 @@ def process_compaction_run_messages(
         metrics=metrics,
         OBSERVABILITY_AVAILABLE=OBSERVABILITY_AVAILABLE,
         get_dynamo_client_func=get_dynamo_client_func,
-        lock_manager=lock_manager
+        lock_manager=lock_manager,
     )
 
     # Sum the number of merged vectors across successful runs for this collection
