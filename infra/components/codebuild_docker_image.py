@@ -186,6 +186,62 @@ class CodeBuildDockerImage(ComponentResource):
             }
         )
 
+    def _generate_package_rsync_patterns(self, packages: list[str]) -> str:
+        """Generate rsync include/exclude patterns for Python packages.
+
+        Args:
+            packages: List of package names (e.g., ['receipt_dynamo', 'receipt_agent'])
+
+        Returns:
+            Bash script snippet with rsync command and patterns
+        """
+        includes = []
+        excludes = []
+
+        for pkg in packages:
+            # Include package directory and essential files
+            includes.extend(
+                [
+                    f"--include='{pkg}/'",
+                    f"--include='{pkg}/pyproject.toml'",
+                    f"--include='{pkg}/README.md'",
+                    f"--include='{pkg}/LICENSE'",
+                    f"--include='{pkg}/docs/'",
+                    f"--include='{pkg}/docs/**'",
+                    f"--include='{pkg}/{pkg}/'",
+                    f"--include='{pkg}/{pkg}/**'",
+                ]
+            )
+
+            # Exclude test/cache/build artifacts
+            excludes.extend(
+                [
+                    f"--exclude='{pkg}/__pycache__/'",
+                    f"--exclude='{pkg}/**/__pycache__/'",
+                    f"--exclude='{pkg}/tests/'",
+                    f"--exclude='{pkg}/tests/**'",
+                    f"--exclude='{pkg}/venv/'",
+                    f"--exclude='{pkg}/venv/**'",
+                    f"--exclude='{pkg}/.venv/'",
+                    f"--exclude='{pkg}/.venv/**'",
+                    f"--exclude='{pkg}/htmlcov/'",
+                    f"--exclude='{pkg}/htmlcov/**'",
+                    f"--exclude='{pkg}/*.egg-info/'",
+                    f"--exclude='{pkg}/*.egg-info/**'",
+                    f"--exclude='{pkg}/conftest.py'",
+                    f"--exclude='{pkg}/coverage.json'",
+                ]
+            )
+
+        # Build single rsync command
+        all_patterns = includes + excludes + ["--exclude='*'"]
+        patterns_str = " \\\n    ".join(all_patterns)
+
+        return f"""  rsync -a \\
+    {patterns_str} \\
+    "$CONTEXT_PATH/" "$TMP/context/"
+"""
+
     def _calculate_content_hash(self) -> str:
         """Calculate hash of Dockerfile and relevant context files."""
         paths: list[Path] = []
@@ -282,6 +338,26 @@ class CodeBuildDockerImage(ComponentResource):
             # Paths are repo-controlled; join directly for shell iteration
             source_paths_str = " ".join(self.source_paths)
 
+        # Generate rsync include patterns for packages
+        # Default minimal packages that all Lambdas need
+        packages_to_include = [
+            "receipt_dynamo",
+            "receipt_chroma",
+            "receipt_label",
+        ]
+
+        # Add source_paths packages if specified
+        if self.source_paths:
+            packages_to_include.extend(self.source_paths)
+
+        # Remove duplicates and sort for consistent hashing
+        packages_to_include = sorted(set(packages_to_include))
+
+        # Build rsync include patterns for each package
+        rsync_includes = self._generate_package_rsync_patterns(
+            packages_to_include
+        )
+
         # Paths are relative to project root
         # Get absolute project root path
         project_root_abs = str(Path(PROJECT_DIR).resolve())
@@ -302,6 +378,7 @@ HASH="{content_hash}"
 NAME="{self.name}"
 FORCE_REBUILD="{self.force_rebuild}"
 SOURCE_PATHS="{source_paths_str}"
+PACKAGES_TO_INCLUDE="{' '.join(packages_to_include)}"
 
 echo "📦 Checking if context upload needed for image '$NAME'..."
 STORED_HASH=$(aws s3 cp "s3://$BUCKET/$NAME/hash.txt" - 2>/dev/null || echo '')
@@ -321,67 +398,10 @@ echo "📦 Copying minimal context with include patterns..."
 
 if [ "$CONTEXT_PATH" = "." ]; then
   # Lambda images - need packages from monorepo root
-  # Default packages that all Lambda images need
-  echo "  → Including receipt_dynamo, receipt_chroma, and receipt_label packages..."
-  rsync -a \
-    --include='receipt_dynamo/' \
-    --include='receipt_dynamo/pyproject.toml' \
-    --include='receipt_dynamo/receipt_dynamo/' \
-    --include='receipt_dynamo/receipt_dynamo/**' \
-    --include='receipt_dynamo/docs/' \
-    --include='receipt_dynamo/docs/README.md' \
-    --include='receipt_chroma/' \
-    --include='receipt_chroma/pyproject.toml' \
-    --include='receipt_chroma/README.md' \
-    --include='receipt_chroma/receipt_chroma/' \
-    --include='receipt_chroma/receipt_chroma/**' \
-    --exclude='receipt_chroma/__pycache__/' \
-    --exclude='receipt_chroma/**/__pycache__/' \
-    --exclude='receipt_chroma/tests/' \
-    --exclude='receipt_chroma/tests/**' \
-    --exclude='receipt_chroma/venv/' \
-    --exclude='receipt_chroma/venv/**' \
-    --exclude='receipt_chroma/htmlcov/' \
-    --exclude='receipt_chroma/htmlcov/**' \
-    --exclude='receipt_chroma/*.md' \
-    --exclude='receipt_chroma/conftest.py' \
-    --exclude='receipt_chroma/coverage.json' \
-    --include='receipt_label/' \
-    --include='receipt_label/pyproject.toml' \
-    --include='receipt_label/receipt_label/' \
-    --include='receipt_label/receipt_label/**' \
-    --include='receipt_label/README.md' \
-    --include='receipt_label/LICENSE' \
-    --exclude='*' \
-    "$CONTEXT_PATH/" "$TMP/context/"
+  echo "  → Including packages: $PACKAGES_TO_INCLUDE"
 
-  # Copy additional source paths if specified (e.g., receipt_upload)
-  if [ -n "$SOURCE_PATHS" ]; then
-    echo "  → Including additional source paths: $SOURCE_PATHS"
-    for SOURCE_PATH in $SOURCE_PATHS; do
-      if [ -d "$SOURCE_PATH" ]; then
-        rsync -a \
-          --exclude='__pycache__' \
-          --exclude='*.pyc' \
-          --exclude='.git' \
-          --exclude='.mypy_cache' \
-          --exclude='.mypy_cache/' \
-          --exclude='**/.mypy_cache' \
-          --exclude='**/.mypy_cache/' \
-          --exclude='.pytest_cache' \
-          --exclude='.pytest_cache/' \
-          --exclude='**/.pytest_cache' \
-          --exclude='**/.pytest_cache/' \
-          --exclude='.venv' \
-          --exclude='.venv/' \
-          --exclude='venv' \
-          --exclude='venv/' \
-          --exclude='*.egg-info' \
-          --exclude='**/*.egg-info' \
-          "$SOURCE_PATH/" "$TMP/context/$SOURCE_PATH/"
-      fi
-    done
-  fi
+  # Dynamically generate rsync command with includes for each package
+{rsync_includes}
 
   # Also copy the specific infra directory for this image
   # Extract the infra path from DOCKERFILE variable
@@ -439,11 +459,15 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
         """Setup S3, CodeBuild, and CodePipeline for Docker builds."""
 
         # Artifact bucket
-        build_bucket, _bucket_versioning = make_artifact_bucket(
+        build_bucket, bucket_versioning = make_artifact_bucket(
             self.name, parent=self
         )
 
-        # Upload context command
+        # Upload context command - depends on versioning to ensure bucket is ready for CodePipeline
+        upload_cmd_deps = [build_bucket]
+        if bucket_versioning:
+            upload_cmd_deps.append(bucket_versioning)
+
         upload_cmd = command.local.Command(
             f"{self.name}-upload-context",
             create=build_bucket.bucket.apply(
@@ -453,7 +477,11 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
                 lambda b: self._generate_upload_script(b, content_hash)
             ),
             triggers=[content_hash],
-            opts=ResourceOptions(parent=self, delete_before_replace=True),
+            opts=ResourceOptions(
+                parent=self,
+                delete_before_replace=True,
+                depends_on=upload_cmd_deps,
+            ),
         )
 
         # IAM role for CodeBuild
@@ -809,7 +837,7 @@ echo "✅ Uploaded context.zip (hash: $HASH_SHORT..., size: $CONTEXT_SIZE)"
             opts=ResourceOptions(
                 parent=self,
                 depends_on=(
-                    [_bucket_versioning] if _bucket_versioning else None
+                    [bucket_versioning] if bucket_versioning else None
                 ),
             ),
         )
@@ -827,14 +855,17 @@ echo "✅ Pipeline triggered: $EXEC_ID"
 echo "   View logs: https://console.aws.amazon.com/codesuite/codepipeline/pipelines/{pn}/view"
 """
             )
+            # Async trigger also depends on versioning
+            trigger_deps = [upload_cmd, pipeline]
+            if bucket_versioning:
+                trigger_deps.append(bucket_versioning)
+
             pipeline_trigger_cmd = command.local.Command(
                 f"{self.name}-trigger-pipeline",
                 create=trigger_script,
                 update=trigger_script,
                 triggers=[content_hash],
-                opts=ResourceOptions(
-                    parent=self, depends_on=[upload_cmd, pipeline]
-                ),
+                opts=ResourceOptions(parent=self, depends_on=trigger_deps),
             )
         else:
             # Sync: wait for completion
@@ -862,14 +893,17 @@ while true; do
 done
 """
             )
+            # Sync pipeline command also depends on versioning
+            sync_deps = [upload_cmd, pipeline]
+            if bucket_versioning:
+                sync_deps.append(bucket_versioning)
+
             pipeline_trigger_cmd = command.local.Command(
                 f"{self.name}-sync-pipeline",
                 create=sync_script,
                 update=sync_script,
                 triggers=[content_hash],
-                opts=ResourceOptions(
-                    parent=self, depends_on=[upload_cmd, pipeline]
-                ),
+                opts=ResourceOptions(parent=self, depends_on=sync_deps),
             )
 
         return (

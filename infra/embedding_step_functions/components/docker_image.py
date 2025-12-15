@@ -100,7 +100,10 @@ class DockerImageComponent(ComponentResource):
             f"{name}-image",
             dockerfile_path="infra/embedding_step_functions/unified_embedding/Dockerfile",
             build_context_path=".",  # Project root for monorepo access
-            source_paths=None,  # Use default rsync with exclusions
+            source_paths=[
+                "receipt_agent",
+                "receipt_places",
+            ],  # Include receipt_agent and receipt_places for metadata finder
             lambda_function_name=None,  # Lambdas created separately
             lambda_config=None,
             platform="linux/arm64",
