@@ -484,7 +484,7 @@ def _download_delta_to_dir(
         return
     except ClientError as err:
         error_code = err.response.get("Error", {}).get("Code")
-        if error_code not in ("404", "NoSuchKey", "NotFound"):
+        if error_code != "NoSuchKey":
             raise
         # Tarball not found; fall back to directory layout
         logger.info(
