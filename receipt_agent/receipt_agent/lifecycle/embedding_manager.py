@@ -1,18 +1,31 @@
 """
 Embedding management orchestration for receipts.
 
-Handles realtime embedding generation with OpenAI, creation of ChromaDB deltas
-via receipt_chroma, upload to S3, and CompactionRun creation. Embedding
-cleanup remains the responsibility of the enhanced compactor.
+Uses receipt_chroma's realtime OpenAI embedding helpers to generate deltas and
+create CompactionRun records. Cleanup remains the responsibility of the
+enhanced compactor.
 """
 
 import logging
 import os
+import shutil
+import tarfile
 import tempfile
 import uuid
-from collections import defaultdict
-from typing import Dict, List, Optional, Sequence
+from datetime import datetime, timezone
+from typing import Dict, List, Optional
 
+import boto3
+import json
+
+from receipt_chroma.data.chroma_client import ChromaClient
+from receipt_chroma.embedding.openai import embed_texts
+from receipt_chroma.embedding.records import (
+    LineEmbeddingRecord,
+    WordEmbeddingRecord,
+    build_line_payload,
+    build_word_payload,
+)
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.entities import (
     CompactionRun,
@@ -27,188 +40,75 @@ logger = logging.getLogger(__name__)
 EMBEDDING_MODEL = "text-embedding-3-small"
 
 
-def _embed_texts(
-    openai_client, inputs: Sequence[str], model: str = EMBEDDING_MODEL
-) -> List[List[float]]:
-    response = openai_client.embeddings.create(model=model, input=list(inputs))
-    return [item.embedding for item in response.data]
-
-
-def _average_word_confidence(words: List[ReceiptWord]) -> Optional[float]:
-    if not words:
-        return None
-    return sum(word.confidence for word in words) / len(words)
-
-
-def _build_line_vectors(
-    receipt_lines: List[ReceiptLine],
-    receipt_words: List[ReceiptWord],
-    merchant_name: Optional[str],
-    openai_client,
-) -> Optional[Dict[str, List]]:
+def _upload_bundled_delta_to_s3(
+    local_delta_dir: str,
+    bucket: str,
+    delta_prefix: str,
+    collection_name: str,
+    database_name: str,
+    sqs_queue_url: Optional[str],
+    batch_id: str,
+    vector_count: int,
+) -> Dict[str, str]:
+    """Tar/gzip a delta directory, upload to S3, optionally notify SQS."""
+    logger.info(
+        "Bundling and uploading delta tarball: dir=%s bucket=%s prefix=%s",
+        local_delta_dir,
+        bucket,
+        delta_prefix,
+    )
+    tmp_dir = tempfile.mkdtemp()
     try:
-        from receipt_chroma.embedding.formatting.line_format import (
-            format_line_context_embedding_input,
-            get_line_neighbors,
-        )
-        from receipt_chroma.embedding.metadata.line_metadata import (
-            create_line_metadata,
-            enrich_line_metadata_with_anchors,
-        )
-    except ImportError as exc:  # pragma: no cover
-        logger.warning("Line embedding helpers unavailable: %s", exc)
-        return None
+        tar_path = os.path.join(tmp_dir, "delta.tar.gz")
+        with tarfile.open(tar_path, "w:gz") as tar:
+            tar.add(local_delta_dir, arcname=".")
 
-    meaningful_lines = [
-        line for line in receipt_lines if not getattr(line, "is_noise", False)
-    ]
-    if not meaningful_lines:
-        logger.info("No lines to embed")
-        return None
-
-    formatted_inputs = [
-        format_line_context_embedding_input(line, receipt_lines)
-        for line in meaningful_lines
-    ]
-    embeddings = _embed_texts(openai_client, formatted_inputs)
-
-    words_by_line: Dict[int, List[ReceiptWord]] = defaultdict(list)
-    for word in receipt_words:
-        words_by_line[int(word.line_id)].append(word)
-
-    ids: List[str] = []
-    metadatas: List[Dict] = []
-    documents: List[str] = []
-
-    for line, embedding in zip(meaningful_lines, embeddings):
-        prev_line, next_line = get_line_neighbors(line, receipt_lines)
-        avg_conf = _average_word_confidence(
-            words_by_line.get(int(line.line_id), [])
-        )
-        metadata = create_line_metadata(
-            line=line,
-            prev_line=prev_line,
-            next_line=next_line,
-            merchant_name=merchant_name,
-            avg_word_confidence=avg_conf,
-            source="openai_embedding_realtime",
-        )
-        metadata = enrich_line_metadata_with_anchors(
-            metadata, words_by_line.get(int(line.line_id), [])
+        s3_key = f"{delta_prefix.rstrip('/')}/delta.tar.gz"
+        s3 = boto3.client("s3")
+        s3.upload_file(
+            tar_path,
+            bucket,
+            s3_key,
+            ExtraArgs={
+                "Metadata": {"delta_key": delta_prefix},
+                "ContentType": "application/gzip",
+                "ContentEncoding": "gzip",
+            },
         )
 
-        vector_id = (
-            f"IMAGE#{line.image_id}"
-            f"#RECEIPT#{int(line.receipt_id):05d}"
-            f"#LINE#{int(line.line_id):05d}"
-        )
+        if sqs_queue_url:
+            sqs = boto3.client("sqs")
+            message_body = {
+                "delta_key": delta_prefix,
+                "collection": collection_name,
+                "database": database_name,
+                "vector_count": vector_count,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "batch_id": batch_id,
+            }
+            # Provide stable group/dedup for FIFO queues
+            message_group_id = f"{collection_name}:{batch_id or 'default'}"
+            message_dedup_id = f"{collection_name}:{batch_id}:{s3_key}"
+            sqs.send_message(
+                QueueUrl=sqs_queue_url,
+                MessageBody=json.dumps(message_body),
+                MessageGroupId=message_group_id,
+                MessageDeduplicationId=message_dedup_id,
+                MessageAttributes={
+                    "collection": {
+                        "StringValue": collection_name,
+                        "DataType": "String",
+                    },
+                    "batch_id": {
+                        "StringValue": batch_id or "none",
+                        "DataType": "String",
+                    },
+                },
+            )
 
-        ids.append(vector_id)
-        metadatas.append(metadata)
-        documents.append(line.text)
-
-    return {
-        "ids": ids,
-        "embeddings": embeddings,
-        "metadatas": metadatas,
-        "documents": documents,
-    }
-
-
-def _build_word_vectors(
-    receipt_words: List[ReceiptWord],
-    merchant_name: Optional[str],
-    openai_client,
-    receipt_word_labels: Optional[List[ReceiptWordLabel]] = None,
-) -> Optional[Dict[str, List]]:
-    try:
-        from receipt_chroma.embedding.formatting.word_format import (
-            format_word_context_embedding_input,
-            get_word_neighbors,
-        )
-        from receipt_chroma.embedding.metadata.word_metadata import (
-            create_word_metadata,
-            enrich_word_metadata_with_anchors,
-            enrich_word_metadata_with_labels,
-        )
-    except ImportError as exc:  # pragma: no cover
-        logger.warning("Word embedding helpers unavailable: %s", exc)
-        return None
-
-    meaningful_words = [
-        word for word in receipt_words if not getattr(word, "is_noise", False)
-    ]
-    if not meaningful_words:
-        logger.info("No words to embed")
-        return None
-
-    formatted_inputs = [
-        format_word_context_embedding_input(word, receipt_words)
-        for word in meaningful_words
-    ]
-    embeddings = _embed_texts(openai_client, formatted_inputs)
-
-    ids: List[str] = []
-    metadatas: List[Dict] = []
-    documents: List[str] = []
-
-    for word, embedding in zip(meaningful_words, embeddings):
-        left_words, right_words = get_word_neighbors(word, receipt_words)
-        left_word = (
-            left_words[0]
-            if isinstance(left_words, list) and len(left_words) > 0
-            else (left_words if not isinstance(left_words, list) else None)
-        )
-        right_word = (
-            right_words[0]
-            if isinstance(right_words, list) and len(right_words) > 0
-            else (right_words if not isinstance(right_words, list) else None)
-        )
-
-        metadata = create_word_metadata(
-            word=word,
-            left_word=left_word or "<EDGE>",
-            right_word=right_word or "<EDGE>",
-            merchant_name=merchant_name,
-            label_status="unvalidated",
-            source="openai_embedding_realtime",
-        )
-        metadata = enrich_word_metadata_with_anchors(metadata, word)
-
-        # Enrich with labels if provided
-        if receipt_word_labels:
-            word_labels = [
-                lbl
-                for lbl in receipt_word_labels
-                if (
-                    lbl.image_id == word.image_id
-                    and lbl.receipt_id == word.receipt_id
-                    and lbl.line_id == word.line_id
-                    and lbl.word_id == word.word_id
-                )
-            ]
-            if word_labels:
-                metadata = enrich_word_metadata_with_labels(
-                    metadata, word_labels
-                )
-
-        vector_id = (
-            f"IMAGE#{word.image_id}"
-            f"#RECEIPT#{int(word.receipt_id):05d}"
-            f"#LINE#{int(word.line_id):05d}"
-            f"#WORD#{int(word.word_id):05d}"
-        )
-
-        ids.append(vector_id)
-        metadatas.append(metadata)
-        documents.append(word.text)
-
-    return {
-        "ids": ids,
-        "embeddings": embeddings,
-        "metadatas": metadatas,
-        "documents": documents,
-    }
+        return {"status": "uploaded", "delta_key": delta_prefix, "s3_key": s3_key}
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 def create_embeddings_and_compaction_run(
@@ -240,8 +140,6 @@ def create_embeddings_and_compaction_run(
     """
     try:
         from openai import OpenAI
-
-        from receipt_chroma.data.chroma_client import ChromaClient
     except ImportError as exc:  # pragma: no cover
         logger.warning("Embedding dependencies unavailable: %s", exc)
         return None
@@ -274,82 +172,101 @@ def create_embeddings_and_compaction_run(
         receipt_metadata.merchant_name if receipt_metadata else None
     )
 
-    openai_client = OpenAI()
-    line_payload = _build_line_vectors(
-        receipt_lines=receipt_lines,
-        receipt_words=receipt_words,
-        merchant_name=merchant_name,
-        openai_client=openai_client,
-    )
-    word_payload = _build_word_vectors(
-        receipt_words=receipt_words,
-        merchant_name=merchant_name,
-        openai_client=openai_client,
-        receipt_word_labels=receipt_word_labels,
-    )
-
-    if not line_payload or not word_payload:
-        logger.info("Embedding payloads missing; skipping delta upload")
-        return None
-
     run_id = str(uuid.uuid4())
-    delta_lines_dir = os.path.join(tempfile.gettempdir(), f"lines_{run_id}")
-    delta_words_dir = os.path.join(tempfile.gettempdir(), f"words_{run_id}")
+    openai_client = OpenAI()
 
-    line_client = ChromaClient(
-        persist_directory=delta_lines_dir,
-        mode="delta",
-        metadata_only=True,
+    line_embeddings = embed_texts(
+        client=openai_client,
+        texts=[ln.text for ln in receipt_lines],
+        model=os.environ.get("OPENAI_EMBEDDING_MODEL", EMBEDDING_MODEL),
     )
-    word_client = ChromaClient(
-        persist_directory=delta_words_dir,
-        mode="delta",
-        metadata_only=True,
-    )
-
-    line_client.upsert_vectors(collection_name="lines", **line_payload)
-    word_client.upsert_vectors(collection_name="words", **word_payload)
-
-    # Close clients before uploading to ensure files are flushed
-    line_client.close()
-    word_client.close()
-
-    lines_prefix = f"lines/delta/{run_id}/"
-    words_prefix = f"words/delta/{run_id}/"
-
-    # Use upload_bundled_delta_to_s3 to create tar.gz files that the compaction handler expects
-    from receipt_label.utils.chroma_s3_helpers import (
-        upload_bundled_delta_to_s3,
+    line_records = [
+        LineEmbeddingRecord(line=ln, embedding=emb)
+        for ln, emb in zip(receipt_lines, line_embeddings)
+    ]
+    line_payload = build_line_payload(
+        line_records, receipt_lines, receipt_words, merchant_name=merchant_name
     )
 
-    lines_result = upload_bundled_delta_to_s3(
-        local_delta_dir=delta_lines_dir,
-        bucket=chromadb_bucket,
-        delta_prefix=lines_prefix,
+    word_embeddings = embed_texts(
+        client=openai_client,
+        texts=[w.text for w in receipt_words],
+        model=os.environ.get("OPENAI_EMBEDDING_MODEL", EMBEDDING_MODEL),
     )
-    if lines_result.get("status") != "uploaded":
-        logger.error("Failed to upload lines delta: %s", lines_result)
-        return None
-
-    words_result = upload_bundled_delta_to_s3(
-        local_delta_dir=delta_words_dir,
-        bucket=chromadb_bucket,
-        delta_prefix=words_prefix,
+    word_records = [
+        WordEmbeddingRecord(word=w, embedding=emb)
+        for w, emb in zip(receipt_words, word_embeddings)
+    ]
+    word_payload = build_word_payload(
+        word_records,
+        receipt_words,
+        receipt_word_labels or [],
+        merchant_name=merchant_name,
     )
-    if words_result.get("status") != "uploaded":
-        logger.error("Failed to upload words delta: %s", words_result)
-        return None
 
-    # Return the prefix (not the full key) as the delta_prefix
-    lines_delta_key = lines_prefix
-    words_delta_key = words_prefix
+    # Write deltas to local Chroma DBs
+    delta_lines_dir = tempfile.mkdtemp(prefix="lines_delta_")
+    delta_words_dir = tempfile.mkdtemp(prefix="words_delta_")
+
+    try:
+        line_client = ChromaClient(
+            persist_directory=delta_lines_dir,
+            mode="delta",
+            metadata_only=True,
+        )
+        word_client = ChromaClient(
+            persist_directory=delta_words_dir,
+            mode="delta",
+            metadata_only=True,
+        )
+
+        line_client.upsert_vectors(collection_name="lines", **line_payload)
+        word_client.upsert_vectors(collection_name="words", **word_payload)
+
+        # Ensure files are flushed
+        line_client.close()
+        word_client.close()
+
+        lines_prefix = f"lines/delta/{run_id}/"
+        words_prefix = f"words/delta/{run_id}/"
+
+        lines_result = _upload_bundled_delta_to_s3(
+            local_delta_dir=delta_lines_dir,
+            bucket=chromadb_bucket,
+            delta_prefix=lines_prefix,
+            collection_name="lines",
+            database_name="lines",
+            sqs_queue_url=os.environ.get("CHROMADB_LINES_QUEUE_URL"),
+            batch_id=run_id,
+            vector_count=len(line_payload["ids"]),
+        )
+        if lines_result.get("status") != "uploaded":
+            logger.error("Failed to upload lines delta: %s", lines_result)
+            return None
+
+        words_result = _upload_bundled_delta_to_s3(
+            local_delta_dir=delta_words_dir,
+            bucket=chromadb_bucket,
+            delta_prefix=words_prefix,
+            collection_name="words",
+            database_name="words",
+            sqs_queue_url=os.environ.get("CHROMADB_WORDS_QUEUE_URL"),
+            batch_id=run_id,
+            vector_count=len(word_payload["ids"]),
+        )
+        if words_result.get("status") != "uploaded":
+            logger.error("Failed to upload words delta: %s", words_result)
+            return None
+    finally:
+        shutil.rmtree(delta_lines_dir, ignore_errors=True)
+        shutil.rmtree(delta_words_dir, ignore_errors=True)
 
     compaction_run = CompactionRun(
         run_id=run_id,
         image_id=image_id,
         receipt_id=receipt_id,
-        lines_delta_prefix=lines_delta_key,
-        words_delta_prefix=words_delta_key,
+        lines_delta_prefix=lines_prefix,
+        words_delta_prefix=words_prefix,
     )
 
     if add_to_dynamo:

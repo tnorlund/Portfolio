@@ -1,10 +1,14 @@
 import json
 import os
+import shutil
+import tarfile
+import tempfile
 import uuid
-from typing import Any, Dict, Iterator, List
+from datetime import datetime, timezone
+from typing import Any, Dict, Iterator, List, Optional
 
 import boto3
-from receipt_chroma.embedding.delta.producer import produce_embedding_delta
+from receipt_chroma import ChromaClient
 from receipt_chroma.embedding.openai import embed_texts
 from receipt_chroma.embedding.records import (
     LineEmbeddingRecord,
@@ -15,6 +19,69 @@ from receipt_chroma.embedding.records import (
 from receipt_dynamo.data.dynamo_client import DynamoClient
 
 s3 = boto3.client("s3")
+
+
+def _upload_bundled_delta_to_s3(
+    local_delta_dir: str,
+    bucket: str,
+    delta_prefix: str,
+    collection_name: str,
+    database_name: str,
+    sqs_queue_url: Optional[str],
+    batch_id: str,
+    vector_count: int,
+) -> Dict[str, str]:
+    """Tar/gzip a delta directory, upload to S3, optionally notify SQS."""
+    tmp_dir = tempfile.mkdtemp()
+    try:
+        tar_path = os.path.join(tmp_dir, "delta.tar.gz")
+        with tarfile.open(tar_path, "w:gz") as tar:
+            tar.add(local_delta_dir, arcname=".")
+
+        s3_key = f"{delta_prefix.rstrip('/')}/delta.tar.gz"
+        s3.upload_file(
+            tar_path,
+            bucket,
+            s3_key,
+            ExtraArgs={
+                "Metadata": {"delta_key": delta_prefix},
+                "ContentType": "application/gzip",
+                "ContentEncoding": "gzip",
+            },
+        )
+
+        if sqs_queue_url:
+            sqs = boto3.client("sqs")
+            message_body = {
+                "delta_key": delta_prefix,
+                "collection": collection_name,
+                "database": database_name,
+                "vector_count": vector_count,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "batch_id": batch_id,
+            }
+            message_group_id = f"{collection_name}:{batch_id or 'default'}"
+            message_dedup_id = f"{collection_name}:{batch_id}:{s3_key}"
+            sqs.send_message(
+                QueueUrl=sqs_queue_url,
+                MessageBody=json.dumps(message_body),
+                MessageGroupId=message_group_id,
+                MessageDeduplicationId=message_dedup_id,
+                MessageAttributes={
+                    "collection": {
+                        "StringValue": collection_name,
+                        "DataType": "String",
+                    },
+                    "batch_id": {
+                        "StringValue": batch_id or "none",
+                        "DataType": "String",
+                    },
+                },
+            )
+
+        return {"status": "uploaded", "delta_key": delta_prefix, "s3_key": s3_key}
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 def _iter_ndjson(bucket: str, key: str) -> Iterator[Dict[str, Any]]:
@@ -98,29 +165,54 @@ def _process_single(payload: Dict[str, Any]):
 
     batch_id = str(uuid.uuid4())
 
-    lines_delta = produce_embedding_delta(
-        ids=line_payload["ids"],
-        embeddings=line_payload["embeddings"],
-        documents=line_payload["documents"],
-        metadatas=line_payload["metadatas"],
-        bucket_name=chroma_bucket,
-        collection_name="lines",
-        database_name="lines",
-        sqs_queue_url=lines_queue_url,
-        batch_id=batch_id,
-    )
+    delta_lines_dir = tempfile.mkdtemp(prefix="lines_delta_")
+    delta_words_dir = tempfile.mkdtemp(prefix="words_delta_")
 
-    words_delta = produce_embedding_delta(
-        ids=word_payload["ids"],
-        embeddings=word_payload["embeddings"],
-        documents=word_payload["documents"],
-        metadatas=word_payload["metadatas"],
-        bucket_name=chroma_bucket,
-        collection_name="words",
-        database_name="words",
-        sqs_queue_url=words_queue_url,
-        batch_id=batch_id,
-    )
+    try:
+        line_client = ChromaClient(
+            persist_directory=delta_lines_dir,
+            mode="delta",
+            metadata_only=True,
+        )
+        word_client = ChromaClient(
+            persist_directory=delta_words_dir,
+            mode="delta",
+            metadata_only=True,
+        )
+
+        line_client.upsert_vectors(collection_name="lines", **line_payload)
+        word_client.upsert_vectors(collection_name="words", **word_payload)
+
+        line_client.close()
+        word_client.close()
+
+        lines_prefix = f"lines/delta/{batch_id}/"
+        words_prefix = f"words/delta/{batch_id}/"
+
+        lines_delta = _upload_bundled_delta_to_s3(
+            local_delta_dir=delta_lines_dir,
+            bucket=chroma_bucket,
+            delta_prefix=lines_prefix,
+            collection_name="lines",
+            database_name="lines",
+            sqs_queue_url=lines_queue_url,
+            batch_id=batch_id,
+            vector_count=len(line_payload["ids"]),
+        )
+
+        words_delta = _upload_bundled_delta_to_s3(
+            local_delta_dir=delta_words_dir,
+            bucket=chroma_bucket,
+            delta_prefix=words_prefix,
+            collection_name="words",
+            database_name="words",
+            sqs_queue_url=words_queue_url,
+            batch_id=batch_id,
+            vector_count=len(word_payload["ids"]),
+        )
+    finally:
+        shutil.rmtree(delta_lines_dir, ignore_errors=True)
+        shutil.rmtree(delta_words_dir, ignore_errors=True)
 
     return {
         "run_id": batch_id,
