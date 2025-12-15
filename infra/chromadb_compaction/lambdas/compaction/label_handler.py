@@ -130,6 +130,7 @@ def process_label_updates(
                         "Processing %s for label: %s", event_name, chromadb_id
                     )
 
+                # Treat INSERT the same as MODIFY (upsert labels)
                 if event_name == "REMOVE":
                     updated_count = remove_word_labels(
                         collection_obj,
@@ -138,7 +139,7 @@ def process_label_updates(
                         metrics,
                         OBSERVABILITY_AVAILABLE
                     )
-                else:  # MODIFY
+                else:  # MODIFY or INSERT
                     updated_count = update_word_labels(
                         collection_obj,
                         chromadb_id,
