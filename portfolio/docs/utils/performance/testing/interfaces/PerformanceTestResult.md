@@ -6,7 +6,7 @@
 
 # Interface: PerformanceTestResult
 
-Defined in: [utils/performance/testing.ts:12](https://github.com/tnorlund/Portfolio/blob/554d048e6bb88469bc0837de8c3a75ef43b245ee/portfolio/utils/performance/testing.ts#L12)
+Defined in: [utils/performance/testing.ts:12](https://github.com/tnorlund/Portfolio/blob/8cc2835d26aea41f6117007daf2ea97ec1fb09a2/portfolio/utils/performance/testing.ts#L12)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [utils/performance/testing.ts:12](https://github.com/tnorlund/Portfo
 
 > **averageTime**: `number`
 
-Defined in: [utils/performance/testing.ts:16](https://github.com/tnorlund/Portfolio/blob/554d048e6bb88469bc0837de8c3a75ef43b245ee/portfolio/utils/performance/testing.ts#L16)
+Defined in: [utils/performance/testing.ts:16](https://github.com/tnorlund/Portfolio/blob/8cc2835d26aea41f6117007daf2ea97ec1fb09a2/portfolio/utils/performance/testing.ts#L16)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [utils/performance/testing.ts:16](https://github.com/tnorlund/Portfo
 
 > **iterations**: `number`
 
-Defined in: [utils/performance/testing.ts:14](https://github.com/tnorlund/Portfolio/blob/554d048e6bb88469bc0837de8c3a75ef43b245ee/portfolio/utils/performance/testing.ts#L14)
+Defined in: [utils/performance/testing.ts:14](https://github.com/tnorlund/Portfolio/blob/8cc2835d26aea41f6117007daf2ea97ec1fb09a2/portfolio/utils/performance/testing.ts#L14)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [utils/performance/testing.ts:14](https://github.com/tnorlund/Portfo
 
 > **maxTime**: `number`
 
-Defined in: [utils/performance/testing.ts:18](https://github.com/tnorlund/Portfolio/blob/554d048e6bb88469bc0837de8c3a75ef43b245ee/portfolio/utils/performance/testing.ts#L18)
+Defined in: [utils/performance/testing.ts:18](https://github.com/tnorlund/Portfolio/blob/8cc2835d26aea41f6117007daf2ea97ec1fb09a2/portfolio/utils/performance/testing.ts#L18)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [utils/performance/testing.ts:18](https://github.com/tnorlund/Portfo
 
 > **minTime**: `number`
 
-Defined in: [utils/performance/testing.ts:17](https://github.com/tnorlund/Portfolio/blob/554d048e6bb88469bc0837de8c3a75ef43b245ee/portfolio/utils/performance/testing.ts#L17)
+Defined in: [utils/performance/testing.ts:17](https://github.com/tnorlund/Portfolio/blob/8cc2835d26aea41f6117007daf2ea97ec1fb09a2/portfolio/utils/performance/testing.ts#L17)
 
 ***
 
@@ -46,7 +46,7 @@ Defined in: [utils/performance/testing.ts:17](https://github.com/tnorlund/Portfo
 
 > **name**: `string`
 
-Defined in: [utils/performance/testing.ts:13](https://github.com/tnorlund/Portfolio/blob/554d048e6bb88469bc0837de8c3a75ef43b245ee/portfolio/utils/performance/testing.ts#L13)
+Defined in: [utils/performance/testing.ts:13](https://github.com/tnorlund/Portfolio/blob/8cc2835d26aea41f6117007daf2ea97ec1fb09a2/portfolio/utils/performance/testing.ts#L13)
 
 ***
 
@@ -54,7 +54,7 @@ Defined in: [utils/performance/testing.ts:13](https://github.com/tnorlund/Portfo
 
 > **percentiles**: `object`
 
-Defined in: [utils/performance/testing.ts:19](https://github.com/tnorlund/Portfolio/blob/554d048e6bb88469bc0837de8c3a75ef43b245ee/portfolio/utils/performance/testing.ts#L19)
+Defined in: [utils/performance/testing.ts:19](https://github.com/tnorlund/Portfolio/blob/8cc2835d26aea41f6117007daf2ea97ec1fb09a2/portfolio/utils/performance/testing.ts#L19)
 
 #### p50
 
@@ -78,4 +78,4 @@ Defined in: [utils/performance/testing.ts:19](https://github.com/tnorlund/Portfo
 
 > **totalTime**: `number`
 
-Defined in: [utils/performance/testing.ts:15](https://github.com/tnorlund/Portfolio/blob/554d048e6bb88469bc0837de8c3a75ef43b245ee/portfolio/utils/performance/testing.ts#L15)
+Defined in: [utils/performance/testing.ts:15](https://github.com/tnorlund/Portfolio/blob/8cc2835d26aea41f6117007daf2ea97ec1fb09a2/portfolio/utils/performance/testing.ts#L15)
