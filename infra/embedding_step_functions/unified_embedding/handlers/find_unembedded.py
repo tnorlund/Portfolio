@@ -13,6 +13,7 @@ from receipt_dynamo.entities import ReceiptLine
 import utils.logging  # pylint: disable=import-error
 
 from ..embedding_ingest import write_ndjson
+from ..utils.env_vars import get_required_env
 
 get_operation_logger = utils.logging.get_operation_logger
 
@@ -41,12 +42,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         if not bucket:
             raise ValueError("S3_BUCKET environment variable not set")
 
-        table_name = os.environ.get("DYNAMODB_TABLE_NAME")
-        if not table_name:
-            raise ValueError(
-                "DYNAMODB_TABLE_NAME environment variable not set"
-            )
-        dynamo_client = DynamoClient(table_name)
+        dynamo_client = DynamoClient(get_required_env("DYNAMODB_TABLE_NAME"))
 
         lines_without_embeddings = _list_lines_without_embeddings(
             dynamo_client
@@ -110,7 +106,7 @@ def _chunk_into_line_embedding_batches(
         grouped[key].append(line)
 
     for key in sorted(grouped.keys()):
-        receipt_lines = sorted(grouped[key], key=lambda l: l.line_id)
+        receipt_lines = sorted(grouped[key], key=lambda line: line.line_id)
         for start in range(0, len(receipt_lines), batch_size):
             batches.append(receipt_lines[start : start + batch_size])
     return batches

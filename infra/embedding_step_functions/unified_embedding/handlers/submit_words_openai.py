@@ -9,9 +9,7 @@ from pathlib import Path
 from typing import Any, Dict
 from uuid import uuid4
 
-import utils.logging  # pylint: disable=import-error
 from openai import OpenAI
-
 from receipt_chroma.embedding.formatting.word_format import (
     format_word_context_embedding_input,
 )
@@ -23,6 +21,8 @@ from receipt_chroma.embedding.openai import (
 )
 from receipt_dynamo.data.dynamo_client import DynamoClient
 
+import utils.logging  # pylint: disable=import-error
+
 from ..embedding_ingest import (
     deserialize_receipt_words,
     download_serialized_file,
@@ -30,6 +30,7 @@ from ..embedding_ingest import (
     set_pending_and_update_words,
     write_ndjson,
 )
+from ..utils.env_vars import get_required_env
 
 get_logger = utils.logging.get_logger
 get_operation_logger = utils.logging.get_operation_logger
@@ -88,12 +89,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         deserialized_words = deserialize_receipt_words(local_path)
         logger.info("Deserialized words", count=len(deserialized_words))
 
-        table_name = os.environ.get("DYNAMODB_TABLE_NAME")
-        if not table_name:
-            raise ValueError(
-                "DYNAMODB_TABLE_NAME environment variable not set"
-            )
-        dynamo_client = DynamoClient(table_name)
+        dynamo_client = DynamoClient(get_required_env("DYNAMODB_TABLE_NAME"))
 
         # Query all words in the receipt for context
         all_words_in_receipt = query_receipt_words(

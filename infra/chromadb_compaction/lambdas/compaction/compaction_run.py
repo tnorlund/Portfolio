@@ -142,8 +142,10 @@ def process_compaction_runs(
                         dest_dir=delta_dir,
                         logger=logger,
                     )
-                except Exception as e:  # noqa: BLE001
-                    logger.exception("Failed to download delta", delta_prefix=delta_prefix)
+                except Exception:  # noqa: BLE001
+                    logger.exception(
+                        "Failed to download delta", delta_prefix=delta_prefix
+                    )
                     if OBSERVABILITY_AVAILABLE and metrics:
                         metrics.count(
                             "CompactionDeltaDownloadError",
@@ -191,7 +193,7 @@ def process_compaction_runs(
                             error=str(e),
                         )
 
-                except Exception as e:  # noqa: BLE001
+                except Exception:  # noqa: BLE001
                     logger.exception("Failed merging delta into snapshot")
                     raise
 
@@ -321,8 +323,11 @@ def merge_compaction_deltas(
                         dest_dir=delta_dir,
                         logger=logger,
                     )
-                except Exception as e:  # noqa: BLE001
-                    logger.exception("Failed to download or extract delta", delta_prefix=delta_prefix)
+                except Exception:  # noqa: BLE001
+                    logger.exception(
+                        "Failed to download or extract delta",
+                        delta_prefix=delta_prefix,
+                    )
                     continue
 
                 merged_count = 0
@@ -425,7 +430,7 @@ def merge_compaction_deltas(
                             "merged_count": merged_count,
                         }
                     )
-            except Exception as e:  # noqa: BLE001
+            except Exception:  # noqa: BLE001
                 logger.exception("Failed processing compaction run")
                 continue
 
@@ -465,7 +470,9 @@ def _download_delta_to_dir(
         with tarfile.open(tar_path, "r:gz") as tar:
             # Validate all members are safe before extraction
             for member in tar.getmembers():
-                member_path = os.path.normpath(os.path.join(dest_dir, member.name))
+                member_path = os.path.normpath(
+                    os.path.join(dest_dir, member.name)
+                )
                 if not member_path.startswith(os.path.abspath(dest_dir)):
                     raise ValueError(f"Unsafe path in tarball: {member.name}")
             tar.extractall(dest_dir)
@@ -476,7 +483,10 @@ def _download_delta_to_dir(
         if error_code not in ("404", "NoSuchKey", "NotFound"):
             raise
         # Tarball not found; fall back to directory layout
-        logger.info("Tarball not found, falling back to directory layout", prefix=prefix)
+        logger.info(
+            "Tarball not found, falling back to directory layout",
+            prefix=prefix,
+        )
     except Exception:
         # If tarball exists but extraction fails, propagate
         raise

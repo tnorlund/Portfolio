@@ -16,37 +16,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 import boto3
-import utils.logging  # pylint: disable=import-error
 from openai import OpenAI
-from utils.circuit_breaker import (  # pylint: disable=import-error
-    CircuitBreakerOpenError,
-    chromadb_circuit_breaker,
-    openai_circuit_breaker,
-)
-from utils.dual_chroma_client import DualChromaClient  # pylint: disable=import-error
-from utils.graceful_shutdown import (  # pylint: disable=import-error
-    final_cleanup,
-    register_shutdown_callback,
-    timeout_aware_operation,
-)
-from utils.metrics import emf_metrics  # pylint: disable=import-error
-from utils.polling_common import (  # pylint: disable=import-error
-    parse_word_custom_id,
-    resolve_batch_info,
-)
-from utils.timeout_handler import (  # pylint: disable=import-error
-    check_timeout,
-    operation_with_timeout,
-    start_lambda_monitoring,
-    stop_lambda_monitoring,
-    with_timeout_protection,
-)
-from utils.tracing import (  # pylint: disable=import-error
-    trace_chromadb_delta_save,
-    trace_openai_batch_poll,
-    tracer,
-)
-
 from receipt_agent.clients.factory import (
     create_embed_fn,
     create_places_client,
@@ -75,10 +45,47 @@ from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
 
+import utils.logging  # pylint: disable=import-error
+from utils.circuit_breaker import (  # pylint: disable=import-error
+    CircuitBreakerOpenError,
+    chromadb_circuit_breaker,
+    openai_circuit_breaker,
+)
+from utils.dual_chroma_client import (
+    DualChromaClient,  # pylint: disable=import-error
+)
+from utils.graceful_shutdown import (  # pylint: disable=import-error
+    final_cleanup,
+    register_shutdown_callback,
+    timeout_aware_operation,
+)
+from utils.metrics import emf_metrics  # pylint: disable=import-error
+from utils.polling_common import (  # pylint: disable=import-error
+    parse_word_custom_id,
+    resolve_batch_info,
+)
+from utils.timeout_handler import (  # pylint: disable=import-error
+    check_timeout,
+    operation_with_timeout,
+    start_lambda_monitoring,
+    stop_lambda_monitoring,
+    with_timeout_protection,
+)
+from utils.tracing import (  # pylint: disable=import-error
+    trace_chromadb_delta_save,
+    trace_openai_batch_poll,
+    tracer,
+)
+
 get_logger = utils.logging.get_logger
 get_operation_logger = utils.logging.get_operation_logger
 
 logger = get_operation_logger(__name__)
+
+
+class MetadataFinderError(ValueError):
+    """Raised when metadata finder fails to produce metadata."""
+
 
 s3_client = boto3.client("s3")
 
@@ -290,9 +297,11 @@ async def _ensure_receipt_metadata_async(
                 )
             )
 
-    word_embeddings_map = {
-        record.chroma_id: record.embedding for record in word_records
-    } or None
+    word_embeddings_map = (
+        {record.chroma_id: record.embedding for record in word_records}
+        if word_records
+        else None
+    )
 
     chroma_root = Path("/tmp/chroma/metadata_finder")
     lines_dir = chroma_root / "lines"
@@ -377,7 +386,7 @@ async def _ensure_receipt_metadata_async(
         )
 
         if not result.get("found"):
-            raise ValueError(
+            raise MetadataFinderError(
                 f"Metadata finder could not create metadata for {image_id}#{receipt_id}"
             )
 
@@ -723,12 +732,11 @@ def _handle_internal_core(
             ) from e
 
         # Re-raise with context (403, 429, etc. were already retried)
-        logger.error(
+        logger.exception(
             "OpenAI API error while checking batch status (after retries)",
             openai_batch_id=openai_batch_id,
             batch_id=batch_id,
             error_type=error_type,
-            error=str(e),
         )
         raise RuntimeError(
             f"OpenAI API error while checking batch status for {openai_batch_id}: {str(e)}"
@@ -1291,9 +1299,7 @@ def _handle_internal_core(
         collected_metrics.get("WordPollingErrors", 0) + 1
     )
     metric_dimensions["error_type"] = "unknown_action"
-    error_types["unknown_action"] = (
-        error_types.get("unknown_action", 0) + 1
-    )
+    error_types["unknown_action"] = error_types.get("unknown_action", 0) + 1
     tracer.add_annotation("error", "unknown_action")
 
     # Log metrics via EMF

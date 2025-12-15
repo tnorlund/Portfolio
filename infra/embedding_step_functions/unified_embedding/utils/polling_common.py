@@ -68,10 +68,8 @@ def resolve_batch_info(
             handler=handler_label,
         )
 
-        with tempfile.NamedTemporaryFile(
-            mode="r", suffix=".json", delete=False
-        ) as tmp_file:
-            tmp_file_path = tmp_file.name
+        fd, tmp_file_path = tempfile.mkstemp(suffix=".json")
+        os.close(fd)
 
         try:
             s3_client.download_file(
@@ -87,13 +85,14 @@ def resolve_batch_info(
 
             batches = manifest.get("batches", [])
             if not isinstance(batches, list):
-                raise ValueError(
+                raise TypeError(
                     "Invalid manifest format: 'batches' must be a list"
                 )
 
+            max_idx = len(batches) - 1 if batches else "N/A (empty list)"
             if batch_index < 0 or batch_index >= len(batches):
                 raise ValueError(
-                    f"batch_index {batch_index} out of range (0-{len(batches)-1})"
+                    f"batch_index {batch_index} out of range (0-{max_idx})"
                 )
 
             batch_info = batches[batch_index]

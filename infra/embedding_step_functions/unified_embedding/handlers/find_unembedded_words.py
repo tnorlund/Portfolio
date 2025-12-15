@@ -13,6 +13,7 @@ from receipt_dynamo.entities import ReceiptWord
 import utils.logging  # pylint: disable=import-error
 
 from ..embedding_ingest import write_ndjson
+from ..utils.env_vars import get_required_env
 
 get_logger = utils.logging.get_logger
 get_operation_logger = utils.logging.get_operation_logger
@@ -42,12 +43,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         if not bucket:
             raise ValueError("S3_BUCKET environment variable not set")
 
-        table_name = os.environ.get("DYNAMODB_TABLE_NAME")
-        if not table_name:
-            raise ValueError(
-                "DYNAMODB_TABLE_NAME environment variable not set"
-            )
-        dynamo_client = DynamoClient(table_name)
+        dynamo_client = DynamoClient(get_required_env("DYNAMODB_TABLE_NAME"))
 
         words = _list_words_without_embeddings(dynamo_client)
         logger.info(

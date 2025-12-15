@@ -7,7 +7,7 @@ import pulumi
 import pulumi_aws as aws
 from pulumi import Output
 
-import api_gateway  # noqa: F401
+import api_gateway
 
 # Auto-enable Docker BuildKit based on Pulumi config
 config = pulumi.Config("portfolio")
@@ -64,7 +64,7 @@ from validation_pipeline import ValidationPipeline
 # Import other necessary components
 try:
     # from infra.components import lambda_layer  # noqa: F401
-    from infra.components import lambda_layer  # noqa: F401
+    from infra.components import lambda_layer  # Imported for side effects
     from lambda_functions.label_count_cache_updater.infra import (  # noqa: F401
         label_count_cache_updater_lambda,
     )

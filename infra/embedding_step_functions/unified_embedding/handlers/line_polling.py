@@ -4,6 +4,7 @@ Pure business logic - no Lambda-specific code.
 """
 
 import json
+import logging
 import os
 import tempfile
 import time
@@ -12,33 +13,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import boto3
-import utils.logging  # pylint: disable=import-error
-from utils.circuit_breaker import (  # pylint: disable=import-error
-    CircuitBreakerOpenError,
-    chromadb_circuit_breaker,
-    openai_circuit_breaker,
-)
-from utils.dual_chroma_client import DualChromaClient  # pylint: disable=import-error
-from utils.graceful_shutdown import (  # pylint: disable=import-error
-    final_cleanup,
-    register_shutdown_callback,
-    timeout_aware_operation,
-)
-from utils.metrics import emf_metrics  # pylint: disable=import-error
-from utils.polling_common import parse_line_custom_id, resolve_batch_info  # pylint: disable=import-error
-from utils.timeout_handler import (  # pylint: disable=import-error
-    check_timeout,
-    operation_with_timeout,
-    start_lambda_monitoring,
-    stop_lambda_monitoring,
-    with_timeout_protection,
-)
-from utils.tracing import (  # pylint: disable=import-error
-    trace_chromadb_delta_save,
-    trace_openai_batch_poll,
-    tracer,
-)
-
 from receipt_agent.clients.factory import (
     create_embed_fn,
     create_places_client,
@@ -66,6 +40,38 @@ from receipt_dynamo.constants import BatchStatus, EmbeddingStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
+
+import utils.logging  # pylint: disable=import-error
+from utils.circuit_breaker import (  # pylint: disable=import-error
+    CircuitBreakerOpenError,
+    chromadb_circuit_breaker,
+    openai_circuit_breaker,
+)
+from utils.dual_chroma_client import (
+    DualChromaClient,  # pylint: disable=import-error
+)
+from utils.graceful_shutdown import (  # pylint: disable=import-error
+    final_cleanup,
+    register_shutdown_callback,
+    timeout_aware_operation,
+)
+from utils.metrics import emf_metrics  # pylint: disable=import-error
+from utils.polling_common import (  # pylint: disable=import-error
+    parse_line_custom_id,
+    resolve_batch_info,
+)
+from utils.timeout_handler import (  # pylint: disable=import-error
+    check_timeout,
+    operation_with_timeout,
+    start_lambda_monitoring,
+    stop_lambda_monitoring,
+    with_timeout_protection,
+)
+from utils.tracing import (  # pylint: disable=import-error
+    trace_chromadb_delta_save,
+    trace_openai_batch_poll,
+    tracer,
+)
 
 get_logger = utils.logging.get_logger
 get_operation_logger = utils.logging.get_operation_logger
@@ -578,7 +584,15 @@ def _handle_internal_core(
         lines_by_receipt: dict[str, dict[int, list]] = {}
 
         for result in results:
-            meta = parse_line_custom_id(result["custom_id"])
+            try:
+                meta = parse_line_custom_id(result["custom_id"])
+            except ValueError as err:
+                logger.warning(
+                    "Skipping result with invalid custom_id during status update",
+                    custom_id=result.get("custom_id"),
+                    error=str(err),
+                )
+                continue
             image_id = meta["image_id"]
             receipt_id = meta["receipt_id"]
             line_id = meta["line_id"]
