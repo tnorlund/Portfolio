@@ -161,6 +161,7 @@ def process_metadata_updates(
                     continue
 
                 # Update metadata for this receipt
+                # Treat INSERT the same as MODIFY (upsert metadata)
                 if event_name == "REMOVE":
                     updated_count = remove_receipt_metadata(
                         collection_obj,
@@ -171,7 +172,7 @@ def process_metadata_updates(
                         OBSERVABILITY_AVAILABLE,
                         get_dynamo_client_func
                     )
-                else:  # MODIFY
+                else:  # MODIFY or INSERT
                     updated_count = update_receipt_metadata(
                         collection_obj,
                         image_id,
