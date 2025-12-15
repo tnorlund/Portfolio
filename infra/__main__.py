@@ -52,7 +52,6 @@ from raw_bucket import raw_bucket  # Import the actual bucket instance
 from s3_website import site_bucket  # Import the site bucket instance
 from security import ChromaSecurity
 from upload_images import UploadImages
-from validation_pipeline import ValidationPipeline
 
 # from spot_interruption import SpotInterruptionHandler
 # from efs_storage import EFSStorage
@@ -121,11 +120,9 @@ notification_system = NotificationSystem(
     email_endpoints=notification_emails,
     tags={
         "Environment": pulumi.get_stack(),
-        "Purpose": "Infrastructure Monitoring",
+    "Purpose": "Infrastructure Monitoring",
     },
 )
-
-validation_pipeline = ValidationPipeline("validation-pipeline")
 
 # Import shared ChromaDB bucket (created in chromadb_buckets.py for route access)
 from chromadb_buckets import shared_chromadb_buckets

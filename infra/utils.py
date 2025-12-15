@@ -16,7 +16,6 @@ def _find_project_root() -> Path:
         if any((parent / marker).exists() for marker in root_markers):
             expected_dirs = [
                 "receipt_dynamo",
-                "receipt_label",
                 "receipt_upload",
                 "infra",
             ]
@@ -25,7 +24,7 @@ def _find_project_root() -> Path:
 
     if current_dir.name == "infra":
         parent = current_dir.parent
-        expected_dirs = ["receipt_dynamo", "receipt_label", "receipt_upload"]
+        expected_dirs = ["receipt_dynamo", "receipt_upload"]
         if all((parent / dir_name).is_dir() for dir_name in expected_dirs):
             return parent
 

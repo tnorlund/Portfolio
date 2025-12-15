@@ -1384,14 +1384,6 @@ layers_to_build = [
         "needs_pillow": False,
     },
     {
-        "package_dir": "receipt_label",
-        "name": "receipt-label",
-        "description": "Label layer for receipt-label",
-        "python_versions": ["3.12"],
-        "needs_pillow": True,  # Needed - transitive dependency via openai or other packages
-        "package_extras": "lambda",  # Minimal dependencies for Lambda
-    },
-    {
         "package_dir": "receipt_upload",
         "name": "receipt-upload",
         "description": "Upload layer for receipt-upload",
@@ -1437,12 +1429,10 @@ if _in_pulumi_context:
 
     # Access the built layers by name
     dynamo_layer = lambda_layers["receipt-dynamo"]
-    label_layer = lambda_layers["receipt-label"]
     upload_layer = lambda_layers["receipt-upload"]
 
     # Export the layer ARNs for reference
     pulumi.export("dynamo_layer_arn", dynamo_layer.arn)
-    pulumi.export("label_layer_arn", label_layer.arn)
     pulumi.export("upload_layer_arn", upload_layer.arn)
 else:
     # Create dummy objects when skipping or not in Pulumi context
@@ -1452,5 +1442,4 @@ else:
             self.arn = None
 
     dynamo_layer = DummyLayer("receipt-dynamo")  # type: ignore
-    label_layer = DummyLayer("receipt-label")  # type: ignore
     upload_layer = DummyLayer("receipt-upload")  # type: ignore
