@@ -145,14 +145,15 @@ def lambda_layer_buildspec(
             "rm -rf build/python/jmespath* || true",
             "rm -rf build/python/s3transfer* || true",
             "rm -rf build/python/six* || true",
-            'echo "Zipping layer"',
-            "cd build && zip -qr layer.zip python lib || true",
-            'echo "Layer zip contents:"',
-            "unzip -l build/layer.zip | head -n 20",
+            'echo "Build complete - directory structure ready for CodeBuild packaging"',
+            'echo "Contents of build/python:"',
+            "ls -la build/python/ | head -20",
             'echo "Done building layer for Python version ${PYTHON_VERSION}"',
         ]
 
-        artifacts = {"files": ["layer.zip"], "base-directory": "build"}
+        # CodeBuild will zip these files because packaging="ZIP" in ProjectArtifactsArgs
+        # Don't pre-zip them in the buildspec or we get double-zipping
+        artifacts = {"files": ["python/**/*", "lib/**/*"], "base-directory": "build"}
     else:
         build_commands = [
             'echo "Building in multi-version mode"',
