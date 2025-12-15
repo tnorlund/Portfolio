@@ -3,10 +3,11 @@
 import base64
 import os
 
-import api_gateway  # noqa: F401
 import pulumi
 import pulumi_aws as aws
 from pulumi import Output
+
+import api_gateway
 
 # Auto-enable Docker BuildKit based on Pulumi config
 config = pulumi.Config("portfolio")
@@ -26,15 +27,13 @@ if config.get_bool("docker-buildkit") != False:  # Default to True if not set
 
 from typing import Optional
 
+from pulumi import ResourceOptions
+
 # Import our infrastructure components
 import s3_website  # noqa: F401
 from billing_alerts import BillingAlerts
 from chromadb_compaction import create_chromadb_compaction_infrastructure
 from combine_receipts_step_functions import CombineReceiptsStepFunction
-from create_labels_step_functions import CreateLabelsStepFunction
-from currency_validation_step_functions import (
-    create_currency_validation_state_machine,
-)
 from dynamo_db import (
     dynamodb_table,  # Import DynamoDB table from original code
 )
@@ -49,14 +48,10 @@ from metadata_harmonizer_step_functions import MetadataHarmonizerStepFunction
 # Using the optimized docker-build based base images with scoped contexts
 from networking import PublicVpc
 from notifications import NotificationSystem
-from pulumi import ResourceOptions
 from raw_bucket import raw_bucket  # Import the actual bucket instance
 from s3_website import site_bucket  # Import the site bucket instance
 from security import ChromaSecurity
 from upload_images import UploadImages
-from validate_metadata import ValidateMetadataStepFunction
-from validate_pending_labels import ValidatePendingLabelsStepFunction
-from validation_by_merchant import ValidationByMerchantStepFunction
 from validation_pipeline import ValidationPipeline
 
 # from spot_interruption import SpotInterruptionHandler
@@ -69,12 +64,11 @@ from validation_pipeline import ValidationPipeline
 # Import other necessary components
 try:
     # from infra.components import lambda_layer  # noqa: F401
+    from infra.components import lambda_layer  # Imported for side effects
     from lambda_functions.label_count_cache_updater.infra import (  # noqa: F401
         label_count_cache_updater_lambda,
     )
     from routes.health_check.infra import health_check_lambda  # noqa: F401
-
-    from infra.components import lambda_layer  # noqa: F401
 
     print("✓ Successfully imported label_count_cache_updater_lambda")
 except ImportError as e:
@@ -137,23 +131,8 @@ validation_pipeline = ValidationPipeline("validation-pipeline")
 from chromadb_buckets import shared_chromadb_buckets
 
 # Create ChromaDB compaction infrastructure using shared bucket
-# Create currency validation state machine
-currency_validation_state_machine = create_currency_validation_state_machine(
-    notification_system
-)
-
-# Create labels state machine (creates/updates labels with PENDING status)
-# No VPC needed - downloads from DynamoDB, needs internet for Ollama API
-create_labels_sf = CreateLabelsStepFunction(
-    f"create-labels-{pulumi.get_stack()}",
-    dynamodb_table_name=dynamodb_table.name,
-    dynamodb_table_arn=dynamodb_table.arn,
-    max_concurrency=3,  # Reduced to avoid Ollama rate limiting (matches validate_pending_labels)
-)
-
-validation_by_merchant_step_functions = ValidationByMerchantStepFunction(
-    "validation-by-merchant"
-)
+# Note: currency validation, create labels, and validation-by-merchant workflows are
+# temporarily disabled to decouple from receipt_label.
 
 # Create the enhanced receipt processor with error handling
 enhanced_receipt_processor = create_enhanced_receipt_processor(
@@ -1117,38 +1096,10 @@ except ImportError:
     # Cache updater not available in this environment
     pass
 
-# Create validate pending labels Step Function
-# No VPC needed - downloads ChromaDB from S3, needs internet for Ollama API
-validate_pending_labels_sf = ValidatePendingLabelsStepFunction(
-    f"validate-pending-labels-{stack}",
-    dynamodb_table_name=dynamodb_table.name,
-    dynamodb_table_arn=dynamodb_table.arn,
-    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
-    chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
-    # No VPC - Lambda downloads ChromaDB from S3 and needs internet for Ollama API
-    # DynamoDB and S3 access via gateway endpoints work from anywhere
-)
+# validate_pending_labels_sf, create_labels_sf, and validate_metadata_sf remain
+# disabled until we refactor those flows off receipt_label.
 
-pulumi.export(
-    "validate_pending_labels_sf_arn",
-    validate_pending_labels_sf.state_machine_arn,
-)
-pulumi.export(
-    "validate_pending_labels_list_lambda_arn",
-    validate_pending_labels_sf.list_pending_labels_lambda_arn,
-)
-pulumi.export(
-    "validate_pending_labels_validate_lambda_arn",
-    validate_pending_labels_sf.validate_receipt_lambda_arn,
-)
-
-# Combine Receipts Step Function - deployed to all stacks (dev, prod, etc.)
-# This workflow combines multiple receipts into single receipts based on LLM analysis.
-# Note: NDJSON export to embedding queue is optional. When embed_ndjson_queue_url=None,
-# the NDJSON export step is silently skipped (see combine_receipts_logic.py:406).
-# The workflow still creates embeddings and ChromaDB deltas directly, but does not
-# queue NDJSON files for downstream embedding processing. If production requires
-# NDJSON export to the embedding queue, provide the queue URL here.
+# Combine Receipts Step Function (now receipt_label-free)
 combine_receipts_sf = CombineReceiptsStepFunction(
     f"combine-receipts-{stack}",
     dynamodb_table_name=dynamodb_table.name,
@@ -1157,17 +1108,12 @@ combine_receipts_sf = CombineReceiptsStepFunction(
     chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
     raw_bucket_name=raw_bucket.bucket,
     site_bucket_name=site_bucket.bucket,
-    # Reuse the embedding batch/artifacts bucket from embedding infrastructure
-    artifacts_bucket_name=embedding_infrastructure.batch_bucket.bucket,
-    artifacts_bucket_arn=embedding_infrastructure.batch_bucket.arn,
-    # NDJSON export is optional - workflow creates embeddings directly
-    # embed_ndjson_queue_url parameter was removed as it was unused
-    embed_ndjson_queue_arn=None,
 )
 
 pulumi.export("combine_receipts_sf_arn", combine_receipts_sf.state_machine_arn)
 pulumi.export(
-    "combine_receipts_batch_bucket_name", combine_receipts_sf.batch_bucket_name
+    "combine_receipts_batch_bucket_name",
+    combine_receipts_sf.batch_bucket_name,
 )
 
 # Label Harmonizer V3 Step Function (whole receipt processing)
@@ -1221,20 +1167,6 @@ pulumi.export(
     "label_suggestion_batch_bucket_name", label_suggestion_sf.batch_bucket_name
 )
 
-# Export create labels step function
-pulumi.export(
-    "create_labels_sf_arn",
-    create_labels_sf.state_machine_arn,
-)
-pulumi.export(
-    "create_labels_list_lambda_arn",
-    create_labels_sf.list_receipts_lambda_arn,
-)
-pulumi.export(
-    "create_labels_create_lambda_arn",
-    create_labels_sf.create_labels_lambda_arn,
-)
-
 # Metadata Harmonizer Step Function (place_id-based harmonization)
 # Uses shared_chromadb_buckets (same as embedding_infrastructure.chromadb_buckets)
 # This is where ChromaDB snapshots are stored by the compaction process
@@ -1252,29 +1184,4 @@ pulumi.export(
 pulumi.export(
     "metadata_harmonizer_batch_bucket_name",
     metadata_harmonizer_sf.batch_bucket_name,
-)
-
-# Create validate metadata Step Function
-# No VPC needed - downloads ChromaDB from S3, needs internet for Ollama API
-validate_metadata_sf = ValidateMetadataStepFunction(
-    f"validate-metadata-{stack}",
-    dynamodb_table_name=dynamodb_table.name,
-    dynamodb_table_arn=dynamodb_table.arn,
-    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
-    chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
-    # No VPC - Lambda downloads ChromaDB from S3 and needs internet for Ollama API
-    # DynamoDB and S3 access via gateway endpoints work from anywhere
-)
-
-pulumi.export(
-    "validate_metadata_sf_arn",
-    validate_metadata_sf.state_machine_arn,
-)
-pulumi.export(
-    "validate_metadata_list_lambda_arn",
-    validate_metadata_sf.list_metadata_lambda_arn,
-)
-pulumi.export(
-    "validate_metadata_validate_lambda_arn",
-    validate_metadata_sf.validate_metadata_lambda_arn,
 )
