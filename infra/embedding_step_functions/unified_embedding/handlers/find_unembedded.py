@@ -1,17 +1,19 @@
-"""Handler for finding items that need embeddings.
-
-Pure business logic - no Lambda-specific code.
-"""
+"""Handler for finding line embeddings still missing."""
 
 import os
+import typing
+from pathlib import Path
 from typing import Any, Dict
-from receipt_label.embedding.line import (
-    chunk_into_line_embedding_batches,
-    list_receipt_lines_with_no_embeddings,
-    serialize_receipt_lines,
-    upload_serialized_lines,
-)
-import utils.logging
+
+import boto3
+from receipt_dynamo.constants import EmbeddingStatus
+from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.entities import ReceiptLine
+
+import utils.logging  # pylint: disable=import-error
+
+from ..embedding_ingest import write_ndjson
+from ..utils.env_vars import get_required_env
 
 get_operation_logger = utils.logging.get_operation_logger
 
@@ -40,20 +42,23 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         if not bucket:
             raise ValueError("S3_BUCKET environment variable not set")
 
-        # Find lines without embeddings
-        lines_without_embeddings = list_receipt_lines_with_no_embeddings()
+        dynamo_client = DynamoClient(get_required_env("DYNAMODB_TABLE_NAME"))
+
+        lines_without_embeddings = _list_lines_without_embeddings(
+            dynamo_client
+        )
         logger.info(
             "Found lines without embeddings",
             count=len(lines_without_embeddings),
         )
 
         # Chunk into batches
-        batches = chunk_into_line_embedding_batches(lines_without_embeddings)
+        batches = _chunk_into_line_embedding_batches(lines_without_embeddings)
         logger.info("Chunked into batches", count=len(batches))
 
         # Serialize and upload to S3
-        uploaded = upload_serialized_lines(
-            serialize_receipt_lines(batches), bucket
+        uploaded = _upload_serialized_lines(
+            _serialize_receipt_lines(batches), bucket
         )
         logger.info("Uploaded files", count=len(uploaded))
 
@@ -73,3 +78,82 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     except Exception as e:
         logger.error("Error finding unembedded lines", error=str(e))
         raise RuntimeError(f"Error finding unembedded lines: {str(e)}") from e
+
+
+def _list_lines_without_embeddings(
+    dynamo_client: DynamoClient,
+) -> list[ReceiptLine]:
+    """Fetch lines with EmbeddingStatus.NONE."""
+    return dynamo_client.list_receipt_lines_by_embedding_status(
+        EmbeddingStatus.NONE
+    )
+
+
+def _chunk_into_line_embedding_batches(
+    lines: list[ReceiptLine], batch_size: int = 50
+) -> list[list[ReceiptLine]]:
+    """
+    Chunk ReceiptLines into batches. This mirrors the lightweight logic from
+    receipt_label without pulling that dependency.
+    """
+    batches: list[list[ReceiptLine]] = []
+    grouped: dict[tuple[str, int], list[ReceiptLine]] = {}
+
+    for line in lines:
+        key = (line.image_id, line.receipt_id)
+        if key not in grouped:
+            grouped[key] = []
+        grouped[key].append(line)
+
+    for key in sorted(grouped.keys()):
+        receipt_lines = sorted(grouped[key], key=lambda line: line.line_id)
+        for start in range(0, len(receipt_lines), batch_size):
+            batches.append(receipt_lines[start : start + batch_size])
+    return batches
+
+
+def _serialize_receipt_lines(
+    batches: list[list[ReceiptLine]],
+) -> list[dict]:
+    """Serialize batches of ReceiptLine entities to NDJSON-ready dicts."""
+    serialized: list[dict] = []
+    for batch_index, batch in enumerate(batches):
+        if not batch:
+            continue
+        image_id = batch[0].image_id
+        receipt_id = batch[0].receipt_id
+        ndjson_path = (
+            f"/tmp/lines-{image_id}-{receipt_id}-{batch_index}.ndjson"
+        )
+        rows = [line.to_dict() for line in batch]
+        write_ndjson(Path(ndjson_path), rows)
+        serialized.append(
+            {
+                "image_id": image_id,
+                "receipt_id": receipt_id,
+                "ndjson_path": ndjson_path,
+                "batch_index": batch_index,
+            }
+        )
+    return serialized
+
+
+def _upload_serialized_lines(
+    serialized_lines: list[dict],
+    s3_bucket: str,
+    prefix: str = "line_embeddings",
+) -> list[dict]:
+    """Upload serialized line NDJSON files to S3."""
+    s3 = boto3.client("s3")
+    for entry in serialized_lines:
+        key = f"{prefix}/{Path(entry['ndjson_path']).name}"
+        try:
+            s3.upload_file(entry["ndjson_path"], s3_bucket, key)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to upload {entry['ndjson_path']} "
+                f"to s3://{s3_bucket}/{key}"
+            ) from e
+        entry["s3_key"] = key
+        entry["s3_bucket"] = s3_bucket
+    return serialized_lines
