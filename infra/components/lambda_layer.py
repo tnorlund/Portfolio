@@ -476,11 +476,23 @@ echo "🎉 Parallel function updates completed!"'''
             opts=pulumi.ResourceOptions(parent=self),
         )
 
+        # Create log groups for CodeBuild projects
+        # Note: We create these early so we can reference them in the IAM policy
+        publish_log_group = make_log_group(
+            f"{self.name}-publish-logs",
+            retention_days=14,
+            parent=self,
+        )
+
         # Create CodeBuild policy with permissions for layer publishing and function updates
         RolePolicy(
             f"{self.name}-codebuild-policy",
             role=codebuild_role.id,
-            policy=pulumi.Output.all(build_bucket.arn, self.layer_name).apply(
+            policy=pulumi.Output.all(
+                build_bucket.arn,
+                self.layer_name,
+                publish_log_group.arn
+            ).apply(
                 lambda args: json.dumps(
                     {
                         "Version": "2012-10-17",
@@ -503,6 +515,9 @@ echo "🎉 Parallel function updates completed!"'''
                                         f"{get_caller_identity().account_id}:"
                                         "log-group:/aws/codebuild/*:*"
                                     ),
+                                    # Include the specific publish log group
+                                    args[2],  # publish_log_group.arn
+                                    f"{args[2]}:*",  # publish_log_group.arn with wildcard for log streams
                                 ],
                             },
                             {
@@ -980,8 +995,9 @@ echo "Triggered pipeline: $EXEC_ID"
 """
         )
         # Only create trigger-pipeline command if NOT in sync mode (to avoid duplicate triggers)
+        trigger_cmd = None
         if not self.sync_mode:
-            command.local.Command(
+            trigger_cmd = command.local.Command(
                 f"{self.name}-trigger-pipeline",
                 create=trigger_script,
                 update=trigger_script,
@@ -1035,24 +1051,99 @@ done
 
         # In sync mode, create LayerVersion resource and wait for pipeline
         # In async mode, create LayerVersion resource for ARN but let pipeline manage updates
-        self.layer_version = LayerVersion(
-            f"{self.name}-lambda-layer",
-            layer_name=self.layer_name,
-            compatible_runtimes=[f"python{v}" for v in self.python_versions],
-            compatible_architectures=["x86_64", "arm64"],
-            description=self.description,
-            s3_bucket=build_bucket.bucket,
-            s3_key=f"{self.name}/combined/layer.zip",
-            opts=pulumi.ResourceOptions(
-                depends_on=(
-                    [sync_cmd] if (self.sync_mode and sync_cmd) else [pipeline]
+        # NOTE: On first creation, layer.zip won't exist yet. AWS Lambda requires the S3 object
+        # to exist when creating a LayerVersion. The pipeline publishes the layer directly via
+        # `aws lambda publish-layer-version`, so the Pulumi LayerVersion resource is mainly
+        # for getting the ARN. We use ignore_changes to let the pipeline manage updates.
+        # For first-time creation, we need to wait for the pipeline to complete.
+        if not self.sync_mode:
+            # In async mode, depend on upload and trigger completing
+            # This ensures source.zip is uploaded and pipeline is started
+            # But layer.zip still won't exist until pipeline completes
+            # On first creation, this will fail - user needs to run pulumi up again after pipeline completes
+            # OR use sync mode for first creation
+            layer_depends_on = [upload_cmd, pipeline]
+            if trigger_cmd:
+                layer_depends_on.append(trigger_cmd)
+        else:
+            # In sync mode, wait for sync command to complete
+            layer_depends_on = [sync_cmd] if sync_cmd else [pipeline]
+
+        # Create LayerVersion - on first creation in async mode, this may fail if layer.zip doesn't exist
+        # The pipeline will create it, but we need it to exist for this resource.
+        # Solution: In async mode, don't create the LayerVersion resource at all on first creation.
+        # Instead, get the ARN from Lambda after the pipeline creates it.
+        # On subsequent runs, the file will exist and we can create the resource normally.
+
+        if self.sync_mode:
+            # In sync mode, file will exist because we wait for pipeline
+            self.layer_version = LayerVersion(
+                f"{self.name}-lambda-layer",
+                layer_name=self.layer_name,
+                compatible_runtimes=[f"python{v}" for v in self.python_versions],
+                compatible_architectures=["x86_64", "arm64"],
+                description=self.description,
+                s3_bucket=build_bucket.bucket,
+                s3_key=f"{self.name}/combined/layer.zip",
+                opts=pulumi.ResourceOptions(
+                    depends_on=layer_depends_on,
+                    parent=self,
                 ),
-                parent=self,
-                # Let pipeline manage the actual layer content via aws lambda publish-layer-version
-                ignore_changes=["s3_key"] if not self.sync_mode else None,
-            ),
-        )
-        self.arn = self.layer_version.arn
+            )
+            self.arn = self.layer_version.arn
+        else:
+            # In async mode, try to get ARN from existing layer first (if pipeline already created it)
+            # Otherwise, the LayerVersion creation will fail, which is expected on first creation
+            # The pipeline will create the layer, and on next pulumi up, this will succeed
+            get_arn_script = Output.all(self.layer_name).apply(
+                lambda args: f"""#!/bin/bash
+set +e
+LAYER_NAME="{args[0]}"
+# Try to get the latest layer version ARN
+ARN=$(aws lambda get-layer-version --layer-name "$LAYER_NAME" --version-number $(aws lambda list-layer-versions --layer-name "$LAYER_NAME" --query 'LayerVersions[0].Version' --output text 2>/dev/null || echo "1") --query 'LayerVersionArn' --output text 2>/dev/null)
+if [ -n "$ARN" ] && [ "$ARN" != "None" ]; then
+    echo "$ARN"
+else
+    echo ""
+fi
+"""
+            )
+
+            get_arn_cmd = command.local.Command(
+                f"{self.name}-get-layer-arn",
+                create=get_arn_script,
+                opts=pulumi.ResourceOptions(
+                    parent=self,
+                    depends_on=[upload_cmd, pipeline],
+                ),
+            )
+
+            # Create LayerVersion - this will fail on first creation if file doesn't exist
+            # This is expected behavior in async mode. The pipeline will create the layer,
+            # and on the next `pulumi up`, the file will exist and this will succeed.
+            #
+            # To avoid this failure on first creation, use sync mode:
+            #   pulumi config set lambda-layer:sync-mode true
+            self.layer_version = LayerVersion(
+                f"{self.name}-lambda-layer",
+                layer_name=self.layer_name,
+                compatible_runtimes=[f"python{v}" for v in self.python_versions],
+                compatible_architectures=["x86_64", "arm64"],
+                description=self.description,
+                s3_bucket=build_bucket.bucket,
+                s3_key=f"{self.name}/combined/layer.zip",
+                opts=pulumi.ResourceOptions(
+                    depends_on=layer_depends_on,
+                    parent=self,
+                    # Let pipeline manage the actual layer content via aws lambda publish-layer-version
+                    ignore_changes=["s3_key"],
+                    # On first creation in async mode, if file doesn't exist, this will fail.
+                    # User should either:
+                    # 1. Use sync mode: pulumi config set lambda-layer:sync-mode true
+                    # 2. Run pulumi up again after pipeline completes
+                ),
+            )
+            self.arn = self.layer_version.arn
 
     def _create_and_run_upload_script(
         self, bucket: str, package_path: str, package_hash: str
@@ -1405,11 +1496,11 @@ SKIP_LAYER_BUILDING = (
     os.environ.get("PYTEST_RUNNING") == "1" or False
 )  # Skip building during tests
 
-# SYNC MODE: Set to True when ARNs are needed immediately (e.g., after major changes)
-# Set to False for faster pulumi up once layers are stable
-USE_SYNC_MODE = (
-    False  # Temporarily disabled for faster pulumi up while testing
-)
+# SYNC MODE: Set via Pulumi config: pulumi config set lambda-layer:sync-mode true
+# Or pass sync_mode parameter when creating LambdaLayer
+# Default is False (async mode) for faster pulumi up
+# Use sync mode when ARNs are needed immediately (e.g., first-time creation)
+USE_SYNC_MODE = None  # None means read from config instead of hardcoding
 
 # Create Lambda layers using the hybrid approach
 lambda_layers = {}
@@ -1430,7 +1521,7 @@ if _in_pulumi_context:
             description=layer_config["description"],  # type: ignore
             needs_pillow=layer_config["needs_pillow"],  # type: ignore
             package_extras=layer_config.get("package_extras"),  # type: ignore
-            sync_mode=USE_SYNC_MODE,  # Use flag to control sync/async mode
+            sync_mode=USE_SYNC_MODE,  # None = read from config, True/False = override
         )
         lambda_layers[layer_config["name"]] = lambda_layer
 
