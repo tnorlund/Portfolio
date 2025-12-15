@@ -1,36 +1,34 @@
 # Documentation Index
 
-Welcome to the Portfolio & Receipt Processing System documentation.
+Active documentation now covers only the handful of Markdown files that are referenced by the current codebase. Every other doc has been purged or moved into the purposeful archive subfolders so the living docs are concise yet the historical context still exists where needed.
 
-## 📚 Documentation Structure
+## 🔍 Active sections
 
-### [Architecture](architecture/)
-- [System Overview](architecture/overview.md) - High-level system design
-- [Portfolio Website](architecture/portfolio-website.md) - Frontend architecture
-- [Receipt Processing](architecture/receipt-processing.md) - Backend pipeline design
+- **Architecture & ADRs**: `docs/architecture/overview.md`, `docs/architecture/LAMBDA_NETWORKING_ARCHITECTURE.md`, `docs/architecture/CANONICAL_FIELDS_DEPRECATION.md`, and the networking/performance callouts capture the up-to-date service map referenced by the infrastructure code.
+- **Metadata & agents**: `AGENT_REFACTORING_PLAN.md`, `METADATA_AGENTS_DIRECTORY.md`, `METADATA_AGENTS_EVOLUTION.md`, `METADATA_AGENTS_REVIEW.md`, `REFACTORING_SUMMARY.md`, and `PENDING_LABELS_BEST_PRACTICES.md` document the ongoing metadata & agent workflows the step functions and Lambdas still rely on.
+- **Chroma/delta guidance**: `CHROMADB_EMBEDDING_WRITE_PATHS.md`, `DELTA_VALIDATION_AND_RETRY_IMPLEMENTATION.md`, and `chromadb-efs-architecture.md` describe the Chroma/EFS behaviors referenced in multiple handlers.
+- **Development onboarding**: `development/setup.md`, `development/testing.md`, `development/ci-cd.md`, and `development/TESTING_STRATEGY.md` contain the scripts and workflow instructions the repo tooling still consults.
+- **Operations runbook**: `operations/deployment.md` remains the deployment playbook referenced in `infra/` automation.
 
-### [Development](development/)
-- [Setup Guide](development/setup.md) - Complete development environment setup
-- [Testing Guide](development/testing.md) - Testing strategies and tools
-- [CI/CD Pipeline](development/ci-cd.md) - Continuous integration workflows
+## 🔖 Archive
 
-### [Operations](operations/)
-- [Deployment Guide](operations/deployment.md) - Production deployment procedures
-- [Monitoring](operations/monitoring.md) - System monitoring and alerts
-- [Cost Optimization](operations/cost-optimization.md) - AWS cost management
+- `docs/archive/legacy-ai-usage/` preserves the retired AI usage workstreams (migrated from the old `receipt_label` tracker).
+- `docs/archive/issue-analyses/` keeps execution and chunk failure investigations that still serve as incident history.
+- Other `docs/archive/*` folders (e.g., `planning`, `analysis`, `status`) capture the remaining planning/status stories for those subsystems.
 
-### [Archive](archive/)
-Historical implementation documentation and decision records.
+This refactor deleted the “unreferenced” catch-all folder—you can find the audit history in this branch’s commits if you need the removed docs.
 
-## 🚀 Quick Links
+## 🚀 Quick links
 
-- **Getting Started**: See [Development Setup](development/setup.md)
-- **Architecture Diagrams**: See [System Overview](architecture/overview.md)
-- **API Documentation**: See [API Reference](api/README.md)
-- **Contributing**: See [Contributing Guide](CONTRIBUTING.md)
+- [System overview](architecture/overview.md)
+- [Deployment runbook](operations/deployment.md)
+- [Development setup](development/setup.md)
+- [Testing plan](development/testing.md)
+- [CI/CD notes](development/ci-cd.md)
+- [Legacy archive index](archive/)
 
-## 📖 Additional Resources
+## 📖 Supporting resources
 
-- [GitHub Repository](https://github.com/tnorlund/Portfolio)
-- [Live Portfolio](https://tylernorlund.com)
-- [AWS Console](https://console.aws.amazon.com)
+- [GitHub repository](https://github.com/tnorlund/Portfolio)
+- [Live portfolio](https://tylernorlund.com)
+- [AWS console](https://console.aws.amazon.com)
