@@ -342,6 +342,10 @@ class HybridLambdaDeployment(ComponentResource):
                     "LINES_QUEUE_URL": chromadb_queues.lines_queue_url,
                     "WORDS_QUEUE_URL": chromadb_queues.words_queue_url,
                     "LOG_LEVEL": "INFO",
+                    # Stream processing configuration (aligned with code and infrastructure)
+                    "MAX_RECORDS_PER_INVOCATION": "10",  # Matches DynamoDB Stream batch_size
+                    "LAMBDA_TIMEOUT_SECONDS": "120",     # Matches Lambda timeout setting
+                    "MAX_CONSECUTIVE_FAILURES": "10",    # Circuit breaker threshold
                 }
             },
             description=(
