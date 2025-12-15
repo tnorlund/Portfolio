@@ -146,40 +146,13 @@ def lambda_layer_buildspec(
             "rm -rf build/python/s3transfer* || true",
             "rm -rf build/python/six* || true",
             'echo "Zipping layer"',
-            # Only include lib directory if it exists and has content
-            # (lib is only created when NEEDS_PILLOW=True or native libs are copied)
-            # Create layer.zip in root directory (not in build/) so CodeBuild can find it as an artifact
-            # First verify build directory exists and show its contents for debugging
-            "if [ ! -d build ]; then echo 'ERROR: build directory does not exist'; pwd; ls -la; exit 1; fi",
-            (
-                "echo 'Current directory:' && pwd && "
-                "echo 'Contents of build directory:' && ls -la build/ && "
-                "if [ ! -d build/python ]; then "
-                "  echo 'ERROR: python directory does not exist in build/'; "
-                "  ls -la build/ || true; "
-                "  exit 1; "
-                "fi && "
-                "echo 'Python directory exists, checking contents:' && ls -la build/python/ | head -10 && "
-                "if [ -d build/lib ] && [ -n \"$(ls -A build/lib 2>/dev/null)\" ]; then "
-                "  echo 'Zipping python and lib directories'; "
-                "  zip -qr layer.zip build/python build/lib || { echo 'ERROR: Failed to zip python and lib'; exit 1; }; "
-                "else "
-                "  echo 'Zipping python directory only (lib not found or empty)'; "
-                "  zip -qr layer.zip build/python || { echo 'ERROR: Failed to zip python'; exit 1; }; "
-                "fi && "
-                "if [ ! -f layer.zip ]; then "
-                "  echo 'ERROR: layer.zip was not created'; "
-                "  exit 1; "
-                "fi && "
-                "echo 'Successfully created layer.zip' && "
-                "ls -lh layer.zip"
-            ),
+            "cd build && zip -qr layer.zip python lib || true",
             'echo "Layer zip contents:"',
-            "unzip -l layer.zip | head -n 20",
+            "unzip -l build/layer.zip | head -n 20",
             'echo "Done building layer for Python version ${PYTHON_VERSION}"',
         ]
 
-        artifacts = {"files": ["layer.zip"]}
+        artifacts = {"files": ["layer.zip"], "base-directory": "build"}
     else:
         build_commands = [
             'echo "Building in multi-version mode"',
