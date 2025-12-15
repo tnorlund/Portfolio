@@ -1,44 +1,37 @@
 # Documentation Index
 
-Welcome to the Portfolio & Receipt Processing System documentation. This directory collects the living architecture, operations, research, and historical runbooks we need to operate the system.
+Active documentation now centers on the handful of files that are referenced by the current codebase. Everything else has been moved into `docs/archive/unreferenced/` so the living doc tree stays minimal while still preserving history.
 
-## 🔍 Key Sections
+## 🔍 Active sections
 
-- **Architecture** (`architecture/`, `architecture-decisions/`, `design-decisions/`)
-  - `architecture/overview.md` provides the current service map, deployment layers, and cost/monitoring highlights.
-  - The ADR folders document major decisions and long-running projects where the team needs to capture intent.
+- **Architecture & ADRs**: `docs/architecture/overview.md`, `docs/architecture/LAMBDA_NETWORKING_ARCHITECTURE.md`, `docs/architecture/CANONICAL_FIELDS_DEPRECATION.md`, and related networking/performance notes capture the system’s current topology.
+- **Metadata/agents**: `AGENT_REFACTORING_PLAN.md`, `METADATA_AGENTS_DIRECTORY.md`, `METADATA_AGENTS_EVOLUTION.md`, `METADATA_AGENTS_REVIEW.md`, `REFACTORING_SUMMARY.md`, and `PENDING_LABELS_BEST_PRACTICES.md` explain the ongoing agent and metadata workflows that the Step Functions and Lambdas still rely on.
+- **Chroma/delta guidance**: `CHROMADB_EMBEDDING_WRITE_PATHS.md`, `DELTA_VALIDATION_AND_RETRY_IMPLEMENTATION.md`, and `chromadb-efs-architecture.md` document the Chroma & EFS behaviors referenced by Lambda handlers.
+- **Development onboarding**: `development/setup.md`, `development/testing.md`, `development/ci-cd.md`, and `development/TESTING_STRATEGY.md` contain the scripts and workflow instructions the repo machines and CD pipelines consult.
+- **Operations runbook**: `operations/deployment.md` remains the authoritative deployment playbook.
+- **Index**: This README is the entry point that ties all of the above together.
 
-- **Development** (`development/`)
-  - Onboarding, CI/CD notes, and the centralized `development/testing.md`.
+## 🔖 Archive
 
-- **Operations** (`operations/`)
-  - Deployment runbooks, monitoring playbooks, and cost/regulation guidance (e.g., `operations/deployment.md`).
+- **Primary archive**: Anything not in the list above now lives under `docs/archive/unreferenced/`. The structure mirrors the original layout when helpful, and the files remain available for historical reference but are no longer part of the active tree.
+- **Special archive folders**:
+  - `docs/archive/legacy-ai-usage/` retains the retired AI usage workstreams.
+  - `docs/archive/issue-analyses/` keeps execution and chunk failure investigations.
+  - Other `docs/archive/*` folders (e.g., `planning`, `analysis`, `status`) capture past planning docs, root-level reports, and status summaries.
 
-- **Research & Models** (`layoutlm/`)
-  - LayoutLM experiments, training notes, and inference insights.
+- **Audit reference**: The documentation audit plan now lives at `docs/archive/unreferenced/docs-refactor-plan.md`.
 
-- **Types & APIs** (`types/`)
-  - API contracts and shared type notes that back the frontend/portfolio docs.
+## 🚀 Quick links
 
-- **Archive** (`archive/`)
-  - Historical work is kept behind this space; see `docs/archive/legacy-ai-usage/` for the removed AI usage docs and the rest of the archive for older investigations.
-  - See `archive/issue-analyses/` for the retired execution incident reports that used to live at the repo root.
+- **System overview**: [architecture/overview.md](architecture/overview.md)
+- **Deployment runbook**: [operations/deployment.md](operations/deployment.md)
+- **Development setup**: [development/setup.md](development/setup.md)
+- **Testing playbook**: [development/testing.md](development/testing.md)
+- **CI/CD notes**: [development/ci-cd.md](development/ci-cd.md)
+- **Legacy archive index**: `docs/archive/unreferenced/`
 
-- **Special Reports**
-  - Everything starting with `CHROMADB_*`, `DELTA_*`, `INGESTION_*`, `PULUMI_*`, etc., lives in the root alongside the directories to highlight system reports from weekly/epic work.
+## 📖 Supporting resources
 
-## 🚀 Quick Links
-
-- **System Overview**: [architecture/overview.md](architecture/overview.md)
-- **Development Setup**: [development/setup.md](development/setup.md)
-- **Testing Playbook**: [development/testing.md](development/testing.md)
-- **Operations Runbook**: [operations/deployment.md](operations/deployment.md)
-- **LayoutLM Research**: [layoutlm/LAYOUTLM_GETTING_STARTED.md](layoutlm/LAYOUTLM_GETTING_STARTED.md)
-- **Archive Index**: Browse `docs/archive/` and the new `docs/archive/legacy-ai-usage/` folder for historical content
-
-## 📖 Supporting Resources
-
-- [Documentation audit plan](docs/docs-refactor-plan.md)
-- [GitHub Repository](https://github.com/tnorlund/Portfolio)
-- [Live Portfolio](https://tylernorlund.com)
-- [AWS Console](https://console.aws.amazon.com)
+- [GitHub repository](https://github.com/tnorlund/Portfolio)
+- [Live portfolio](https://tylernorlund.com)
+- [AWS console](https://console.aws.amazon.com)
