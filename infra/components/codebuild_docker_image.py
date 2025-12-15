@@ -186,6 +186,18 @@ class CodeBuildDockerImage(ComponentResource):
             }
         )
 
+    def _validate_source_path(self, path: str) -> bool:
+        """Validate source path contains only safe characters.
+        
+        Args:
+            path: Source path to validate
+            
+        Returns:
+            True if path is safe, False otherwise
+        """
+        import re
+        return bool(re.match(r'^[a-zA-Z0-9_/-]+$', path))
+
     def _generate_package_rsync_patterns(self, packages: list[str]) -> str:
         """Generate rsync include/exclude patterns for Python packages.
 
@@ -194,7 +206,18 @@ class CodeBuildDockerImage(ComponentResource):
 
         Returns:
             Bash script snippet with rsync command and patterns
+            
+        Raises:
+            ValueError: If any package name contains unsafe characters
         """
+        # Validate all packages for shell safety
+        for pkg in packages:
+            if not self._validate_source_path(pkg):
+                raise ValueError(
+                    f"Invalid source path '{pkg}': must contain only alphanumeric, "
+                    f"underscore, hyphen, and forward slash characters"
+                )
+        
         includes = []
         excludes = []
 
