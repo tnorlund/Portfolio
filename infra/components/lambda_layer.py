@@ -854,11 +854,8 @@ echo "🎉 Parallel function updates completed!"'''
                 },
             }
 
-        publish_log_group = make_log_group(
-            f"{self.name}-publish-logs",
-            retention_days=14,
-            parent=self,
-        )
+        # Note: publish_log_group was already created earlier (line 481)
+        # and is referenced in the IAM policy. Don't create it again here.
 
         # Create the publish CodeBuild project
         publish_project = Project(
