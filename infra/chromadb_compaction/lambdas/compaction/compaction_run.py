@@ -499,6 +499,7 @@ def _download_delta_to_dir(
     paginator = s3_client.get_paginator("list_objects_v2")
     pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
     found_any = False
+    dest_dir_abs = os.path.abspath(dest_dir)
     for page in pages:
         for obj in page.get("Contents", []):
             key = obj["Key"]
@@ -506,7 +507,17 @@ def _download_delta_to_dir(
                 continue
             found_any = True
             relative_path = key[len(prefix) :].lstrip("/")
-            target_path = os.path.join(dest_dir, relative_path)
+            target_path_abs = os.path.abspath(
+                os.path.join(dest_dir_abs, relative_path)
+            )
+            if os.path.commonpath([dest_dir_abs, target_path_abs]) != dest_dir_abs:
+                logger.warning(
+                    "Skipping unsafe delta object path",
+                    key=key,
+                    dest_dir=dest_dir,
+                )
+                continue
+            target_path = target_path_abs
             os.makedirs(os.path.dirname(target_path), exist_ok=True)
             s3_client.download_file(bucket, key, target_path)
 
