@@ -103,7 +103,7 @@ def process_compaction_runs(
                     dynamo_client.mark_compaction_run_started(
                         image_id, receipt_id, run_id, collection.value
                     )
-                except Exception as e:  # noqa: BLE001
+                except Exception as e:
                     logger.warning("Failed to mark run started", error=str(e))
 
             # Working directory per message
@@ -142,7 +142,7 @@ def process_compaction_runs(
                         dest_dir=delta_dir,
                         logger=logger,
                     )
-                except Exception:  # noqa: BLE001
+                except Exception:
                     logger.exception(
                         "Failed to download delta", delta_prefix=delta_prefix
                     )
@@ -185,7 +185,7 @@ def process_compaction_runs(
                                 metadatas=data.get("metadatas"),
                             )
                             merged_vectors = len(ids)
-                    except Exception as e:  # noqa: BLE001
+                    except Exception as e:
                         # If delta has no such collection, treat as no-op
                         logger.info(
                             "Delta has no collection or failed to read",
@@ -193,7 +193,7 @@ def process_compaction_runs(
                             error=str(e),
                         )
 
-                except Exception:  # noqa: BLE001
+                except Exception:
                     logger.exception("Failed merging delta into snapshot")
                     raise
 
@@ -231,7 +231,7 @@ def process_compaction_runs(
                             collection.value,
                             merged_vectors=merged_vectors,
                         )
-                    except Exception as e:  # noqa: BLE001
+                    except Exception as e:
                         logger.exception("Failed to mark run completed")
 
                 if OBSERVABILITY_AVAILABLE and metrics:
@@ -251,7 +251,7 @@ def process_compaction_runs(
                     }
                 )
 
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             # Mark failed if possible
             try:
                 if dynamo_client and entity:
@@ -323,7 +323,7 @@ def merge_compaction_deltas(
                         dest_dir=delta_dir,
                         logger=logger,
                     )
-                except Exception:  # noqa: BLE001
+                except Exception:
                     logger.exception(
                         "Failed to download or extract delta",
                         delta_prefix=delta_prefix,
@@ -399,7 +399,7 @@ def merge_compaction_deltas(
                                 receipt_id=receipt_id,
                                 collection=collection_name,
                             )
-                    except Exception as e:  # noqa: BLE001
+                    except Exception as e:
                         logger.info(
                             "Delta has no collection or failed to read",
                             collection=collection_name,
@@ -409,7 +409,7 @@ def merge_compaction_deltas(
                             error=str(e),
                             exc_info=True,
                         )
-                except Exception as e:  # noqa: BLE001
+                except Exception as e:
                     logger.error(
                         "Failed merging delta into snapshot",
                         run_id=run_id,
@@ -430,7 +430,7 @@ def merge_compaction_deltas(
                             "merged_count": merged_count,
                         }
                     )
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.exception("Failed processing compaction run")
                 continue
 
