@@ -22,6 +22,7 @@ Welcome to the Portfolio & Receipt Processing System documentation. This directo
 
 - **Archive** (`archive/`)
   - Historical work is kept behind this space; see `docs/archive/legacy-ai-usage/` for the removed AI usage docs and the rest of the archive for older investigations.
+  - See `archive/issue-analyses/` for the retired execution incident reports that used to live at the repo root.
 
 - **Special Reports**
   - Everything starting with `CHROMADB_*`, `DELTA_*`, `INGESTION_*`, `PULUMI_*`, etc., lives in the root alongside the directories to highlight system reports from weekly/epic work.

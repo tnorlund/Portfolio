@@ -18,6 +18,14 @@
 | `docs/design-decisions/performance-testing-strategy.md` | 2025-07-01 (PR #150) | The original `SKIP_PERFORMANCE_TESTS` ADR is now in the archive folder with a note that it was Phase-1 mitigation. |
 | `docs/types/api/interfaces/BoundingBox.md` | 2025-08-01 (PR #291) | Removed—only contained the word `temp` and duplicated real API docs elsewhere. |
 
+## Issue analysis archive
+
+Moved the following incident- and execution-specific write-ups from the root into `docs/archive/issue-analyses/` so they remain searchable without crowding the top-level namespace:
+
+- `CHUNK_*` investigations about chunk failures and fix attempts.
+- `EXECUTION_*` trace logs covering specific batch runs (including missing embeddings, failure analyses, ECR comparisons, etc.).
+- `FINAL_MERGE_*`, `FORCE_REBUILD_EXPLANATION.md`, and `GRAND_TOTAL_VALIDATION_PATTERNS.md`, which chronicle ad-hoc investigations or proofs-of-concept that are no longer part of the regular workflow.
+
 ## Next steps
 
 1. Keep the operational & deployment documentation (`docs/development`, `docs/operations`, etc.) under review so their referenced scripts still exist; update any broken references as part of future clean-up passes.
