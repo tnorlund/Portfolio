@@ -125,10 +125,8 @@ def make_artifact_bucket(
                 )
             )
         ),
-        # Enable versioning at bucket creation time to satisfy CodePipeline requirements
-        versioning=(
-            BucketVersioningArgs(enabled=True) if enable_versioning else None
-        ),
+        # Note: versioning is configured via separate BucketVersioning resource below
+        # to comply with AWS provider v4+ requirements
         tags=tags,
         opts=ResourceOptions(parent=parent),
     )
