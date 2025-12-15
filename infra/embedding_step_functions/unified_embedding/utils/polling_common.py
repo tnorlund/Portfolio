@@ -134,6 +134,14 @@ def resolve_batch_info(
             handler=handler_label,
         )
     else:
+        missing_keys = [
+            key for key in ("batch_id", "openai_batch_id") if key not in event
+        ]
+        if missing_keys:
+            raise ValueError(
+                "Missing batch identifiers in event for fallback path: "
+                f"{missing_keys}"
+            )
         batch_id = event["batch_id"]
         openai_batch_id = event["openai_batch_id"]
         logger.info(
@@ -141,6 +149,7 @@ def resolve_batch_info(
             batch_id=batch_id,
             openai_batch_id=openai_batch_id,
             handler=handler_label,
+            validated=True,
         )
 
     return batch_id, openai_batch_id, batch_index
