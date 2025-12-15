@@ -317,4 +317,4 @@ with ai_usage_context('op') as tracker:  # New way
 
 - Check the demo script: `demo_environment_config.py`
 - Review the tests: `test_ai_usage_context.py`
-- See the implementation spec: `spec/ai-usage-tracking/implementation.md`
+- The prior implementation spec (`spec/ai-usage-tracking/implementation.md`) has been retired along with the `spec/` directory; consult this branch’s history for the original notes if needed.
