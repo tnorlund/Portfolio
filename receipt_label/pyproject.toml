@@ -79,7 +79,7 @@ full = [
 # Note: Full ChromaDB package required for embedded database functionality
 #       OpenTelemetry issues are handled gracefully in the code
 lambda = [
-  "chromadb-client==1.3.5",  # Stable ChromaDB client version (testing if 1.3.x issues are version-specific)
+  "chromadb-client==1.3.6",  # Stable ChromaDB client version (testing if 1.3.x issues are version-specific)
 ]
 
 # LangChain-specific extras for advanced features
