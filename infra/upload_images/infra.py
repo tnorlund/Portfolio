@@ -63,6 +63,8 @@ class UploadImages(ComponentResource):
         raw_bucket: Bucket,
         site_bucket: Bucket,
         chromadb_bucket_name: pulumi.Input[str] | None = None,
+        chromadb_lines_queue_url: pulumi.Input[str] | None = None,
+        chromadb_words_queue_url: pulumi.Input[str] | None = None,
         embed_ndjson_queue_url: pulumi.Input[str] | None = None,
         vpc_subnet_ids: pulumi.Input[list[str]] | None = None,
         security_group_id: pulumi.Input[str] | None = None,
@@ -494,6 +496,8 @@ class UploadImages(ComponentResource):
                 "OCR_RESULTS_QUEUE_URL": self.ocr_results_queue.url,
                 "CHROMADB_BUCKET": chromadb_bucket_name,
                 "CHROMA_HTTP_ENDPOINT": chroma_http_endpoint,
+                "CHROMADB_LINES_QUEUE_URL": chromadb_lines_queue_url,
+                "CHROMADB_WORDS_QUEUE_URL": chromadb_words_queue_url,
                 "GOOGLE_PLACES_API_KEY": google_places_api_key,
                 "OPENAI_API_KEY": openai_api_key,
                 # LangGraph validation with Ollama
@@ -659,6 +663,8 @@ class UploadImages(ComponentResource):
                 "DYNAMO_TABLE_NAME": dynamodb_table.name,
                 "CHROMADB_BUCKET": chromadb_bucket_name,
                 "CHROMA_HTTP_ENDPOINT": chroma_http_endpoint,
+                "CHROMADB_LINES_QUEUE_URL": chromadb_lines_queue_url,
+                "CHROMADB_WORDS_QUEUE_URL": chromadb_words_queue_url,
                 "GOOGLE_PLACES_API_KEY": google_places_api_key,
                 "OPENAI_API_KEY": openai_api_key,
                 # LangGraph validation with Ollama

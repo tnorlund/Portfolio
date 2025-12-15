@@ -1,40 +1,37 @@
 """
-Embedding processor that combines merchant validation and embedding creation.
+Embedding processor for upload OCR pipeline.
 
-Extracted from embed_from_ndjson handler, this module:
-1. Validates merchant using ChromaDB and Google Places API
-2. Creates ReceiptMetadata in DynamoDB
-3. Generates embeddings for lines and words with merchant context
-4. Writes ChromaDB deltas to S3
-5. Creates/updates COMPACTION_RUN record
+Generates OpenAI embeddings for receipt lines/words and emits Chroma deltas
+for the enhanced compactor. Merchant and label enrichment are handled later
+via Dynamo stream processors.
 """
 
 import logging
 import os
-import sys
-import tempfile
 import uuid
-from typing import Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
-import boto3
+from receipt_chroma.embedding.delta.producer import produce_embedding_delta
+from receipt_chroma.embedding.openai import embed_texts
+from receipt_chroma.embedding.records import (
+    LineEmbeddingRecord,
+    WordEmbeddingRecord,
+    build_line_payload,
+    build_word_payload,
+)
 from receipt_dynamo import DynamoClient
-from receipt_dynamo.entities.compaction_run import CompactionRun
-from receipt_label.embedding.line.realtime import embed_lines_realtime
-from receipt_label.embedding.word.realtime import embed_words_realtime
-from receipt_label.merchant_resolution.embeddings import upsert_embeddings
-from receipt_chroma.data.chroma_client import ChromaClient
 
 logger = logging.getLogger(__name__)
 
-def _log(msg: str):
+
+def _log(msg: str) -> None:
     """Log message with immediate flush for CloudWatch visibility."""
     print(f"[EMBEDDING_PROCESSOR] {msg}", flush=True)
     logger.info(msg)
 
 
-
 class EmbeddingProcessor:
-    """Handles merchant validation and embedding creation."""
+    """Generate embeddings and emit Chroma deltas for a single receipt."""
 
     def __init__(
         self,
@@ -43,14 +40,14 @@ class EmbeddingProcessor:
         chroma_http_endpoint: Optional[str],
         google_places_api_key: Optional[str],
         openai_api_key: Optional[str],
+        lines_queue_url: Optional[str] = None,
+        words_queue_url: Optional[str] = None,
     ):
-        self.table_name = table_name
         self.dynamo = DynamoClient(table_name)
         self.chromadb_bucket = chromadb_bucket
-        self.chroma_http_endpoint = chroma_http_endpoint
-        self.google_places_api_key = google_places_api_key
+        self.lines_queue_url = lines_queue_url
+        self.words_queue_url = words_queue_url
         self.openai_api_key = openai_api_key
-
 
     def process_embeddings(
         self,
@@ -59,452 +56,86 @@ class EmbeddingProcessor:
         lines: Optional[list] = None,
         words: Optional[list] = None,
     ) -> Dict[str, Any]:
-        """
-        Process embeddings with merchant validation.
-
-        Steps:
-        1. Use provided lines/words or fetch from DynamoDB
-        2. Resolve merchant (ChromaDB + Google Places)
-        3. Create ReceiptMetadata
-        4. Generate embeddings with merchant context
-        5. Upload deltas to S3
-        6. Create COMPACTION_RUN record
-
-        Args:
-            image_id: Image identifier
-            receipt_id: Receipt identifier
-            lines: Optional list of receipt lines (if not provided, fetched from DynamoDB)
-            words: Optional list of receipt words (if not provided, fetched from DynamoDB)
-
-        Returns:
-            Dict with run_id, merchant_name, and success status
-        """
-        try:
-            # Step 1: Use provided lines/words or fetch from DynamoDB
-            if lines is not None and words is not None:
-                receipt_lines = lines
-                receipt_words = words
-                _log(
-                    f"Using provided {len(receipt_lines)} lines, {len(receipt_words)} words "
-                    f"for image_id={image_id} receipt_id={receipt_id}"
-                )
-            else:
-                receipt_lines = self.dynamo.list_receipt_lines_from_receipt(
-                    image_id, receipt_id
-                )
-                receipt_words = self.dynamo.list_receipt_words_from_receipt(
-                    image_id, receipt_id
-                )
-                _log(
-                    f"Fetched {len(receipt_lines)} lines, {len(receipt_words)} words "
-                    f"from DynamoDB for image_id={image_id} receipt_id={receipt_id}"
-                )
-
+        """Generate embeddings and emit deltas for lines and words."""
+        if lines is None or words is None:
+            lines = self.dynamo.list_receipt_lines_from_receipt(
+                image_id, receipt_id
+            )
+            words = self.dynamo.list_receipt_words_from_receipt(
+                image_id, receipt_id
+            )
             _log(
-                f"Loaded {len(receipt_lines)} lines, {len(receipt_words)} words "
-                f"for image_id={image_id} receipt_id={receipt_id}"
+                f"Fetched {len(lines)} lines and {len(words)} words from DynamoDB"
             )
+        else:
+            _log(f"Using provided {len(lines)} lines and {len(words)} words")
 
-            # Step 2: Resolve merchant (pass entities directly to avoid re-reading from DynamoDB)
-            merchant_resolution = self._resolve_merchant(
-                image_id, receipt_id, receipt_lines=receipt_lines, receipt_words=receipt_words
-            )
-            if merchant_resolution is None:
-                # Handle case where resolution returns None
-                merchant_name = None
-                receipt_metadata = None
-            else:
-                merchant_name, receipt_metadata = merchant_resolution
-
-            # Step 3: Generate embeddings and upload deltas
-            run_id = self._create_embeddings_and_deltas(
-                image_id=image_id,
-                receipt_id=receipt_id,
-                lines=receipt_lines,
-                words=receipt_words,
-                merchant_name=merchant_name,
-            )
-
-            _log(
-                f"Embeddings completed successfully: "
-                f"run_id={run_id}, merchant_name={merchant_name}"
-            )
-
-            return {
-                "success": True,
-                "run_id": run_id,
-                "merchant_name": merchant_name,
-                "receipt_metadata": receipt_metadata,  # Pass to validation
-                "lines_count": len(receipt_lines),
-                "words_count": len(receipt_words),
-            }
-
-        except Exception as e:
-            logger.error(f"Embedding processing failed: {e}", exc_info=True)
-            return {
-                "success": False,
-                "error": str(e),
-            }
-
-    def _resolve_merchant(
-        self, image_id: str, receipt_id: int, receipt_lines: Optional[list] = None, receipt_words: Optional[list] = None
-    ) -> tuple[Optional[str], Optional[Any]]:
-        """
-        Resolve merchant using LangGraph workflow with Ollama Cloud.
-
-        This creates a ReceiptMetadata record in DynamoDB with validated
-        merchant information using the LangGraph workflow.
-
-        Args:
-            image_id: Image identifier
-            receipt_id: Receipt identifier
-            receipt_lines: Optional pre-fetched receipt lines (to avoid re-reading from DynamoDB)
-            receipt_words: Optional pre-fetched receipt words (to avoid re-reading from DynamoDB)
-
-        Returns:
-            Tuple of (merchant_name, receipt_metadata) or (None, None) if resolution fails
-        """
-        try:
-            import asyncio
-            import tempfile
-            from pathlib import Path
-
-            # Import LangGraph workflow
-            from receipt_label.langchain.metadata_creation import create_receipt_metadata_simple
-
-            # Get API keys from environment
-            ollama_api_key = os.environ.get("OLLAMA_API_KEY")
-            langchain_api_key = os.environ.get("LANGCHAIN_API_KEY")
-
-            if not ollama_api_key:
-                raise ValueError("OLLAMA_API_KEY is required for LangGraph metadata creation")
-            if not langchain_api_key:
-                raise ValueError("LANGCHAIN_API_KEY is required for LangGraph metadata creation")
-
-            # Try EFS first, fallback to S3 download for ChromaDB (optional fast path)
-            chroma_line_client = None
-            embed_fn = None
-            storage_mode = os.environ.get("CHROMADB_STORAGE_MODE", "auto").lower()
-            efs_root = os.environ.get("CHROMA_ROOT")
-
-            # Determine storage mode
-            if storage_mode == "s3":
-                use_efs = False
-                mode_reason = "explicitly set to S3-only"
-            elif storage_mode == "efs":
-                use_efs = True
-                mode_reason = "explicitly set to EFS"
-            elif storage_mode == "auto":
-                # Auto-detect based on EFS availability
-                use_efs = efs_root and efs_root != "/tmp/chroma"
-                mode_reason = f"auto-detected (efs_root={'available' if use_efs else 'not available'})"
-            else:
-                # Default to S3-only for unknown modes
-                use_efs = False
-                mode_reason = f"unknown mode '{storage_mode}', defaulting to S3-only"
-
-            _log(f"Storage mode: {storage_mode}, use_efs: {use_efs}, reason: {mode_reason}")
-
-            # Setup ChromaDB client if available (optional fast path)
-            if use_efs:
-                try:
-                    from .efs_snapshot_manager import UploadEFSSnapshotManager
-
-                    _log("Using EFS for ChromaDB snapshot access")
-                    efs_manager = UploadEFSSnapshotManager("lines", logger)
-
-                    # Get snapshot ready for ChromaDB operations
-                    snapshot_info = efs_manager.get_snapshot_for_chromadb()
-                    if snapshot_info:
-                        # Create local ChromaDB client pointing to local copy
-                        chroma_line_client = ChromaClient(
-                            persist_directory=snapshot_info["local_path"],
-                            mode="read",
-                        )
-                        _log(
-                            f"Created ChromaDB client from EFS snapshot "
-                            f"(version: {snapshot_info['version']}, "
-                            f"source: {snapshot_info['source']}, "
-                            f"copy_time_ms: {snapshot_info.get('copy_time_ms', 0)})"
-                        )
-                    else:
-                        _log("Failed to get snapshot from EFS, falling back to S3")
-                        use_efs = False
-
-                except Exception as e:
-                    logger.warning(f"Failed to use EFS for ChromaDB access: {e}. Falling back to S3.")
-                    use_efs = False
-
-            # Fallback to S3 download if EFS failed or disabled
-            if not use_efs:
-                _log("Using S3 download for ChromaDB snapshot access (optional)")
-                try:
-                    # Download latest ChromaDB snapshot from S3
-                    s3 = boto3.client("s3")
-                    pointer_key = "lines/snapshot/latest-pointer.txt"
-
-                    response = s3.get_object(
-                        Bucket=self.chromadb_bucket, Key=pointer_key
-                    )
-                    timestamp = response["Body"].read().decode().strip()
-                    _log(f"Latest snapshot timestamp from pointer: {timestamp}")
-
-                    # Create temporary directory for snapshot
-                    snapshot_dir = tempfile.mkdtemp(prefix="chroma_snapshot_")
-
-                    # Download the timestamped snapshot files from S3
-                    prefix = f"lines/snapshot/timestamped/{timestamp}/"
-
-                    paginator = s3.get_paginator("list_objects_v2")
-                    pages = paginator.paginate(
-                        Bucket=self.chromadb_bucket, Prefix=prefix
-                    )
-
-                    downloaded_files = 0
-                    for page in pages:
-                        if "Contents" not in page:
-                            continue
-
-                        for obj in page["Contents"]:
-                            key = obj["Key"]
-                            # Skip the .snapshot_hash file
-                            if key.endswith(".snapshot_hash"):
-                                continue
-
-                            # Get the relative path within the snapshot
-                            relative_path = key[len(prefix):]
-                            if not relative_path:
-                                continue
-
-                            # Create local directory structure
-                            local_path = Path(snapshot_dir) / relative_path
-                            local_path.parent.mkdir(parents=True, exist_ok=True)
-
-                            # Download the file
-                            s3.download_file(
-                                self.chromadb_bucket, key, str(local_path)
-                            )
-                            downloaded_files += 1
-
-                    _log(
-                        f"Downloaded {downloaded_files} snapshot files to {snapshot_dir}"
-                    )
-
-                    if downloaded_files > 0:
-                        # Create local ChromaDB client pointing to snapshot
-                        chroma_line_client = ChromaClient(
-                            persist_directory=snapshot_dir,
-                            mode="read",
-                        )
-                        _log(
-                            "Created local ChromaDB client from snapshot for optional fast-path"
-                        )
-
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to download ChromaDB snapshot from S3: {e}. "
-                        f"Will proceed without ChromaDB fast-path."
-                    )
-                    # Fall back to HTTP if snapshot download fails
-                    if self.chroma_http_endpoint:
-                        try:
-                            chroma_line_client = ChromaClient(
-                                mode="read",
-                                http_url=self.chroma_http_endpoint
-                            )
-                            _log(
-                                f"Created HTTP ChromaDB client: {self.chroma_http_endpoint}"
-                            )
-                        except Exception as http_error:
-                            logger.warning(
-                                f"Failed to create HTTP ChromaDB client: {http_error}. "
-                                f"Proceeding without ChromaDB fast-path."
-                            )
-
-            # Create embedding function for ChromaDB (if available)
-            if chroma_line_client:
-                def _embed_texts(texts):
-                    if not texts:
-                        return []
-                    if not self.openai_api_key:
-                        raise RuntimeError("OPENAI_API_KEY is not set")
-
-                    from receipt_label.utils import get_client_manager
-                    openai_client = get_client_manager().openai
-                    resp = openai_client.embeddings.create(
-                        model="text-embedding-3-small",
-                        input=list(texts)
-                    )
-                    _log(
-                        f"OpenAI embeddings created for ChromaDB: "
-                        f"{len(resp.data)} embeddings"
-                    )
-                    return [d.embedding for d in resp.data]
-                embed_fn = _embed_texts
-
-            # Create metadata using LangGraph workflow
-            _log("Creating ReceiptMetadata using LangGraph workflow")
-            metadata = asyncio.run(
-                create_receipt_metadata_simple(
-                    client=self.dynamo,
-                    image_id=image_id,
-                    receipt_id=receipt_id,
-                    google_places_api_key=self.google_places_api_key,
-                    ollama_api_key=ollama_api_key,
-                    langsmith_api_key=langchain_api_key,
-                    thinking_strength="medium",
-                    receipt_lines=receipt_lines,  # Pass entities directly to avoid re-reading
-                    receipt_words=receipt_words,  # Pass entities directly to avoid re-reading
-                    chroma_line_client=chroma_line_client,  # Optional fast-path
-                    embed_fn=embed_fn,  # Optional embedding function
-                )
-            )
-
-            if metadata:
-                merchant_name = metadata.merchant_name
-                _log(
-                    f"✅ Successfully created ReceiptMetadata: {merchant_name} "
-                    f"(place_id: {metadata.place_id})"
-                )
-
-                # Step 3: Use metadata finder agent to find any missing fields
-                # This runs after initial creation to fill in place_id, address, phone_number
-                # if they weren't found by the initial workflow
-                try:
-                    from .metadata_finder_processor import MetadataFinderProcessor
-
-                    finder_processor = MetadataFinderProcessor(
-                        table_name=self.table_name,
-                        chromadb_bucket=self.chromadb_bucket,
-                        chroma_http_endpoint=self.chroma_http_endpoint,
-                        google_places_api_key=self.google_places_api_key,
-                        openai_api_key=self.openai_api_key,
-                        ollama_api_key=ollama_api_key,
-                        langsmith_api_key=langchain_api_key,
-                    )
-
-                    _log("Running metadata finder agent to find missing fields...")
-                    finder_result = asyncio.run(
-                        finder_processor.find_missing_metadata(
-                            image_id=image_id,
-                            receipt_id=receipt_id,
-                            receipt_lines=receipt_lines,
-                            receipt_words=receipt_words,
-                            existing_metadata=metadata,
-                        )
-                    )
-
-                    if finder_result.get("success") and finder_result.get("fields_updated"):
-                        updated_fields = finder_result.get("fields_updated", [])
-                        _log(
-                            f"✅ Metadata finder updated {len(updated_fields)} fields: "
-                            f"{', '.join(updated_fields)}"
-                        )
-                        # Reload metadata to get updated version
-                        metadata = self.dynamo.get_receipt_metadata(image_id, receipt_id)
-                    elif finder_result.get("success"):
-                        _log("Metadata finder ran but no fields were updated")
-                    else:
-                        reason = finder_result.get("reason", "unknown")
-                        _log(f"Metadata finder skipped or failed: {reason}")
-
-                except Exception as finder_error:
-                    # Don't fail the whole process if finder fails
-                    _log(f"⚠️ Metadata finder error (non-critical): {finder_error}")
-                    logger.warning(f"Metadata finder failed: {finder_error}", exc_info=True)
-
-                return merchant_name, metadata
-            else:
-                _log("⚠️ LangGraph workflow did not create ReceiptMetadata")
-                return None, None
-
-        except Exception as e:
-            logger.error(f"Merchant resolution failed: {e}", exc_info=True)
-            return None, None
-
-    def _create_embeddings_and_deltas(
-        self,
-        image_id: str,
-        receipt_id: int,
-        lines: list,
-        words: list,
-        merchant_name: Optional[str],
-    ) -> str:
-        """
-        Create embeddings and upload ChromaDB deltas to S3.
-
-        Returns:
-            run_id for the compaction run
-        """
-        # Generate run ID
-        run_id = str(uuid.uuid4())
-
-        # Create local ChromaDB deltas
-        delta_lines_dir = os.path.join(tempfile.gettempdir(), f"lines_{run_id}")
-        delta_words_dir = os.path.join(tempfile.gettempdir(), f"words_{run_id}")
-
-        line_client = ChromaClient(
-            persist_directory=delta_lines_dir,
-            mode="delta",
-            metadata_only=True
-        )
-        word_client = ChromaClient(
-            persist_directory=delta_words_dir,
-            mode="delta",
-            metadata_only=True
+        # Labels may not exist yet; stream processor will enrich later
+        word_labels, _ = self.dynamo.list_receipt_word_labels_for_receipt(
+            image_id, receipt_id
         )
 
-        # Upsert embeddings with merchant context
-        _log(
-            f"Creating embeddings with merchant_name={merchant_name}"
+        # Embed lines
+        line_embeddings = embed_texts(
+            client=None,  # client optional; model selected by env var
+            texts=[ln.text for ln in lines],
+            model=os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"),
+            api_key=self.openai_api_key,
         )
-        upsert_embeddings(
-            line_client=line_client,
-            word_client=word_client,
-            line_embed_fn=embed_lines_realtime,
-            word_embed_fn=embed_words_realtime,
-            ctx={"lines": lines, "words": words},
-            merchant_name=merchant_name,  # ← Included in metadata!
-        )
-
-        # Upload deltas to S3
-        lines_prefix = f"lines/delta/{run_id}/"
-        words_prefix = f"words/delta/{run_id}/"
-
-        _log(
-            f"Uploading line delta to s3://{self.chromadb_bucket}/{lines_prefix}"
-        )
-        # persist_and_upload_delta closes the client and uploads files
-        lines_delta_key = line_client.persist_and_upload_delta(
-            bucket=self.chromadb_bucket,
-            s3_prefix=lines_prefix,
+        line_records = [
+            LineEmbeddingRecord(line=ln, embedding=emb)
+            for ln, emb in zip(lines, line_embeddings)
+        ]
+        line_payload = build_line_payload(
+            line_records, lines, words, merchant_name=None
         )
 
-        _log(
-            f"Uploading word delta to s3://{self.chromadb_bucket}/{words_prefix}"
+        # Embed words
+        word_embeddings = embed_texts(
+            client=None,
+            texts=[w.text for w in words],
+            model=os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"),
+            api_key=self.openai_api_key,
         )
-        words_delta_key = word_client.persist_and_upload_delta(
-            bucket=self.chromadb_bucket,
-            s3_prefix=words_prefix,
+        word_records = [
+            WordEmbeddingRecord(word=w, embedding=emb)
+            for w, emb in zip(words, word_embeddings)
+        ]
+        word_payload = build_word_payload(
+            word_records, words, word_labels, merchant_name=None
         )
 
-        # Create COMPACTION_RUN record
-        try:
-            _log(f"About to create COMPACTION_RUN with run_id={run_id}")
-            self.dynamo.add_compaction_run(
-                CompactionRun(
-                    run_id=run_id,
-                    image_id=image_id,
-                    receipt_id=receipt_id,
-                    lines_delta_prefix=lines_delta_key,
-                    words_delta_prefix=words_delta_key,
-                )
-            )
-            _log(f"COMPACTION_RUN created: run_id={run_id}")
-        except Exception as e:
-            _log(f"ERROR creating COMPACTION_RUN: {e}")
-            logger.error(f"Failed to create COMPACTION_RUN: {e}", exc_info=True)
-            raise
+        delta_run_id = str(uuid.uuid4())
 
-        return run_id
+        line_result = produce_embedding_delta(
+            ids=line_payload["ids"],
+            embeddings=line_payload["embeddings"],
+            documents=line_payload["documents"],
+            metadatas=line_payload["metadatas"],
+            bucket_name=self.chromadb_bucket,
+            collection_name="lines",
+            database_name="lines",
+            sqs_queue_url=self.lines_queue_url,
+            batch_id=delta_run_id,
+        )
 
+        word_result = produce_embedding_delta(
+            ids=word_payload["ids"],
+            embeddings=word_payload["embeddings"],
+            documents=word_payload["documents"],
+            metadatas=word_payload["metadatas"],
+            bucket_name=self.chromadb_bucket,
+            collection_name="words",
+            database_name="words",
+            sqs_queue_url=self.words_queue_url,
+            batch_id=delta_run_id,
+        )
+
+        return {
+            "success": True,
+            "run_id": delta_run_id,
+            "lines_delta": line_result.get("delta_key"),
+            "words_delta": word_result.get("delta_key"),
+            "lines_count": len(lines),
+            "words_count": len(words),
+        }

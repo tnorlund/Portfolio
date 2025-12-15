@@ -27,6 +27,7 @@ from receipt_chroma.embedding.openai.submit import (
     submit_openai_batch,
     upload_to_openai,
 )
+from receipt_chroma.embedding.openai.realtime import embed_texts
 
 __all__ = [
     "handle_batch_status",
@@ -44,4 +45,5 @@ __all__ = [
     "create_batch_summary",
     "submit_openai_batch",
     "upload_to_openai",
+    "embed_texts",
 ]

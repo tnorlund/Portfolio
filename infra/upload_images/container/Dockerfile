@@ -10,14 +10,15 @@ ENV HNSWLIB_NO_NATIVE=1
 # Copy only the dependency packages (triggers rebuild only when these change)
 COPY receipt_dynamo/ /tmp/receipt_dynamo/
 COPY receipt_chroma/ /tmp/receipt_chroma/
-COPY receipt_label/ /tmp/receipt_label/
+COPY receipt_agent/ /tmp/receipt_agent/
+COPY receipt_places/ /tmp/receipt_places/
 
 # Install dependencies with full ChromaDB support
-# receipt_label still needed for DynamoDB orchestration functions (not ChromaDB-related)
 RUN pip install --no-cache-dir /tmp/receipt_dynamo && \
     pip install --no-cache-dir /tmp/receipt_chroma && \
-    pip install --no-cache-dir "/tmp/receipt_label[full]" && \
-    rm -rf /tmp/receipt_dynamo /tmp/receipt_chroma /tmp/receipt_label
+    pip install --no-cache-dir /tmp/receipt_agent && \
+    pip install --no-cache-dir /tmp/receipt_places && \
+    rm -rf /tmp/receipt_dynamo /tmp/receipt_chroma /tmp/receipt_agent /tmp/receipt_places
 
 # Stage 2: Copy Lambda-specific code (changes frequently, but doesn't invalidate deps cache)
 FROM dependencies
@@ -27,5 +28,3 @@ COPY infra/upload_images/container/ ${LAMBDA_TASK_ROOT}/
 
 # Set the handler
 CMD ["handler.lambda_handler"]
-
-
