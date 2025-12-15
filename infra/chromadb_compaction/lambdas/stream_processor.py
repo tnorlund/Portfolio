@@ -32,7 +32,7 @@ from utils import (
 )
 
 # Import modular components (same pattern as utils)
-from processor import (
+from receipt_dynamo_stream import (
     LambdaResponse,
     build_messages_from_records,
     publish_messages,

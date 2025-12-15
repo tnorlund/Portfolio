@@ -21,12 +21,16 @@ from .s3_buckets import ChromaDBBuckets
 from .sqs_queues import ChromaDBQueues
 
 try:
-    from lambda_layer import dynamo_layer  # type: ignore[import-not-found]
+    from lambda_layer import (  # type: ignore[import-not-found]
+        dynamo_layer,
+        dynamo_stream_layer,
+    )
 except ImportError:
     # For testing environments, create a mock
     from unittest.mock import MagicMock
 
     dynamo_layer = MagicMock()
+    dynamo_stream_layer = MagicMock()
 
 
 class HybridLambdaDeployment(ComponentResource):
@@ -323,63 +327,6 @@ class HybridLambdaDeployment(ComponentResource):
                             / "tracing.py"
                         )
                     ),
-                    # Add processor directory
-                    "processor/__init__.py": pulumi.FileAsset(
-                        str(
-                            Path(__file__).parent.parent
-                            / "lambdas"
-                            / "processor"
-                            / "__init__.py"
-                        )
-                    ),
-                    "processor/models.py": pulumi.FileAsset(
-                        str(
-                            Path(__file__).parent.parent
-                            / "lambdas"
-                            / "processor"
-                            / "models.py"
-                        )
-                    ),
-                    "processor/parsers.py": pulumi.FileAsset(
-                        str(
-                            Path(__file__).parent.parent
-                            / "lambdas"
-                            / "processor"
-                            / "parsers.py"
-                        )
-                    ),
-                    "processor/change_detector.py": pulumi.FileAsset(
-                        str(
-                            Path(__file__).parent.parent
-                            / "lambdas"
-                            / "processor"
-                            / "change_detector.py"
-                        )
-                    ),
-                    "processor/compaction_run.py": pulumi.FileAsset(
-                        str(
-                            Path(__file__).parent.parent
-                            / "lambdas"
-                            / "processor"
-                            / "compaction_run.py"
-                        )
-                    ),
-                    "processor/message_builder.py": pulumi.FileAsset(
-                        str(
-                            Path(__file__).parent.parent
-                            / "lambdas"
-                            / "processor"
-                            / "message_builder.py"
-                        )
-                    ),
-                    "processor/sqs_publisher.py": pulumi.FileAsset(
-                        str(
-                            Path(__file__).parent.parent
-                            / "lambdas"
-                            / "processor"
-                            / "sqs_publisher.py"
-                        )
-                    ),
                 }
             ),
             handler="stream_processor.lambda_handler",
@@ -409,7 +356,7 @@ class HybridLambdaDeployment(ComponentResource):
                 # Required for the layer updater to auto-attach new versions
                 "environment": stack,
             },
-            layers=[dynamo_layer.arn],
+            layers=[dynamo_layer.arn, dynamo_stream_layer.arn],
             opts=ResourceOptions(
                 parent=self,
                 depends_on=[
