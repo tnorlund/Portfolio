@@ -15,12 +15,10 @@ stack = pulumi.get_stack()
 try:
     # pylint: disable=import-error
     from infra.components.lambda_layer import dynamo_layer  # type: ignore[import-not-found]
-    from infra.components.lambda_layer import label_layer  # type: ignore[import-not-found]
 
     # pylint: enable=import-error
 except ImportError:
     dynamo_layer = None
-    label_layer = None
 
 # Import shared resources
 # pylint: disable=import-error
@@ -34,7 +32,6 @@ __all__ = [
     "ollama_api_key",
     "langsmith_api_key",
     "stack",
-    "label_layer",
     "dynamo_layer",
     "dynamodb_table",
 ]

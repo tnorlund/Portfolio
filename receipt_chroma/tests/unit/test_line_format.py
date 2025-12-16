@@ -90,10 +90,10 @@ class TestGetLineNeighbors:
 
     def test_get_neighbors(self):
         """Test getting previous and next lines."""
-        # Lines sorted by y-coordinate (higher y sorts first)
-        # So line with y=0.8 sorts to index 0, y=0.5 to index 1, y=0.2 to index 2
-        # But in receipt coordinates, higher y might be lower on page
-        # The function treats index-1 as prev and index+1 as next
+        # Lines sorted by y-coordinate (higher y sorts first).
+        # y=0.8 -> index 0, y=0.5 -> index 1, y=0.2 -> index 2.
+        # In receipt coords, higher y might be lower on page.
+        # Function treats index-1 as prev and index+1 as next.
         lines = [
             MockReceiptLine("img1", "rec1", "line1", "prev", y=0.8),
             MockReceiptLine("img1", "rec1", "line2", "target", y=0.5),
@@ -101,7 +101,7 @@ class TestGetLineNeighbors:
         ]
         target = lines[1]
         prev, next_line = get_line_neighbors(target, lines)
-        # Based on actual behavior: prev=next, next=prev (reversed due to coordinate system)
+        # Actual: prev=next, next=prev (reversed due to coordinate system)
         assert prev == "next"  # Line with lower y (index 2)
         assert next_line == "prev"  # Line with higher y (index 0)
 
@@ -115,7 +115,7 @@ class TestGetLineNeighbors:
         ]
         target = lines[0]
         prev, next_line = get_line_neighbors(target, lines)
-        # Actual behavior: prev=second, next=<EDGE> (reversed due to coordinate system)
+        # Actual: prev=second, next=<EDGE> (reversed due to coordinate system)
         assert prev == "second"
         assert next_line == "<EDGE>"
 
@@ -129,7 +129,7 @@ class TestGetLineNeighbors:
         ]
         target = lines[1]
         prev, next_line = get_line_neighbors(target, lines)
-        # Actual behavior: prev=<EDGE>, next=first (reversed due to coordinate system)
+        # Actual: prev=<EDGE>, next=first (reversed due to coordinate system)
         assert prev == "<EDGE>"
         assert next_line == "first"
 

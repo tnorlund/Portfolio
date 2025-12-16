@@ -289,8 +289,10 @@ class CodeBuildDockerImage(ComponentResource):
                     "receipt_dynamo/pyproject.toml",
                     "receipt_chroma/receipt_chroma",
                     "receipt_chroma/pyproject.toml",
-                    "receipt_label/receipt_label",
-                    "receipt_label/pyproject.toml",
+                    "receipt_places/receipt_places",
+                    "receipt_places/pyproject.toml",
+                    "receipt_agent/receipt_agent",
+                    "receipt_agent/pyproject.toml",
                 ]
                 for package_path in packages_to_hash:
                     full_path = Path(PROJECT_DIR) / package_path
@@ -316,8 +318,10 @@ class CodeBuildDockerImage(ComponentResource):
                     "receipt_dynamo/pyproject.toml",
                     "receipt_chroma/receipt_chroma",
                     "receipt_chroma/pyproject.toml",
-                    "receipt_label/receipt_label",
-                    "receipt_label/pyproject.toml",
+                    "receipt_places/receipt_places",
+                    "receipt_places/pyproject.toml",
+                    "receipt_agent/receipt_agent",
+                    "receipt_agent/pyproject.toml",
                 ]
 
                 for package_path in packages_to_hash:
@@ -367,7 +371,8 @@ class CodeBuildDockerImage(ComponentResource):
         packages_to_include = [
             "receipt_dynamo",
             "receipt_chroma",
-            "receipt_label",
+            "receipt_places",
+            "receipt_agent",
         ]
 
         # Add source_paths packages if specified

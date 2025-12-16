@@ -3,7 +3,6 @@
   "root": ".",
   "include": [
     "receipt_dynamo",
-    "receipt_label",
     "receipt_upload",
     "infra",
     "scripts"

@@ -17,12 +17,12 @@ def pytest_configure(config):
 
 # Configure coverage for parallel execution
 def pytest_sessionstart(session):
-    """Called after the Session object has been created and before performing collection."""
+    """Run after Session creation and before test collection."""
     # Ensure coverage is configured for parallel execution
     try:
         import coverage
+
         # This helps coverage work with xdist
         coverage.process_startup()
     except ImportError:
         pass
-

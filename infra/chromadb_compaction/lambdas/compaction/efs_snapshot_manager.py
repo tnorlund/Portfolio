@@ -28,12 +28,13 @@ from receipt_chroma.s3 import (
 class EFSSnapshotManager:
     """Manages ChromaDB snapshots using EFS + S3 hybrid approach."""
 
-    def __init__(self, collection: str, logger: Any, metrics: Any = None):
+    def __init__(self, collection: str, bucket: str, logger: Any, metrics: Any = None):
         """
         Initialize EFS snapshot manager.
 
         Args:
             collection: Collection name (lines/words)
+            bucket: S3 bucket name
             logger: Logger instance
             metrics: Optional metrics collector
         """
@@ -46,7 +47,7 @@ class EFSSnapshotManager:
         self.efs_snapshots_dir = os.path.join(self.efs_root, "snapshots", collection)
 
         # S3 configuration
-        self.bucket = os.environ["CHROMADB_BUCKET"]
+        self.bucket = bucket
         self.s3_client = boto3.client("s3")
 
         # Version tracking file
@@ -344,16 +345,17 @@ class EFSSnapshotManager:
             )
 
 
-def get_efs_snapshot_manager(collection: str, logger: Any, metrics: Any = None) -> EFSSnapshotManager:
+def get_efs_snapshot_manager(collection: str, bucket: str, logger: Any, metrics: Any = None) -> EFSSnapshotManager:
     """
     Factory function to create EFS snapshot manager.
 
     Args:
         collection: Collection name (lines/words)
+        bucket: S3 bucket name
         logger: Logger instance
         metrics: Optional metrics collector
 
     Returns:
         EFSSnapshotManager instance
     """
-    return EFSSnapshotManager(collection, logger, metrics)
+    return EFSSnapshotManager(collection, bucket, logger, metrics)
