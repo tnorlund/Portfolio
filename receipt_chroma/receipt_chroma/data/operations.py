@@ -520,7 +520,7 @@ def update_word_labels(
 
         # Prefer snapshot data if available to avoid DynamoDB race conditions
         if record_snapshot:
-            # Build the minimal fields needed for label metadata derivation from snapshot
+            # Build minimal fields for label metadata from snapshot
             reconstructed_metadata = {
                 "label_status": None,  # will be derived below if needed
             }
@@ -550,7 +550,7 @@ def update_word_labels(
                 # validation_status
                 if "validation_status" in changes:
                     change = changes["validation_status"]
-                    # Handle both FieldChange objects and plain dicts
+                        # Handle both FieldChange objects and plain dicts
                     if hasattr(change, "new"):
                         new_status = change.new
                     else:
@@ -590,7 +590,7 @@ def update_word_labels(
                     if val is not None:
                         updated_metadata["label_proposed_by"] = val
 
-            # Always add/update the current label in validated/invalid sets based on status when provided
+            # Add/update current label in validated/invalid sets when status given
             if changes and "validation_status" in changes:
                 change = changes["validation_status"]
                 # Handle both FieldChange objects and plain dicts
@@ -648,9 +648,7 @@ def update_word_labels(
                 label_status=reconstructed_metadata.get("label_status"),
                 validated_labels_count=(
                     len(
-                        reconstructed_metadata.get("valid_labels", "").split(
-                            ","
-                        )
+                        reconstructed_metadata.get("valid_labels", "").split(",")
                     )
                     - 2
                     if reconstructed_metadata.get("valid_labels")
@@ -964,7 +962,12 @@ def delete_receipt_embeddings(
 
             # Construct exact ChromaDB IDs for words
             chromadb_ids = [
-                f"IMAGE#{word.image_id}#RECEIPT#{word.receipt_id:05d}#LINE#{word.line_id:05d}#WORD#{word.word_id:05d}"
+                (
+                    f"IMAGE#{word.image_id}"
+                    f"#RECEIPT#{word.receipt_id:05d}"
+                    f"#LINE#{word.line_id:05d}"
+                    f"#WORD#{word.word_id:05d}"
+                )
                 for word in words
             ]
         except Exception as e:
@@ -991,7 +994,11 @@ def delete_receipt_embeddings(
 
             # Construct exact ChromaDB IDs for lines
             chromadb_ids = [
-                f"IMAGE#{line.image_id}#RECEIPT#{line.receipt_id:05d}#LINE#{line.line_id:05d}"
+                (
+                    f"IMAGE#{line.image_id}"
+                    f"#RECEIPT#{line.receipt_id:05d}"
+                    f"#LINE#{line.line_id:05d}"
+                )
                 for line in lines
             ]
         except Exception as e:
@@ -1077,11 +1084,13 @@ def delete_receipt_embeddings(
                 dynamodb_ids=len(chromadb_ids),
             )
 
-            # If no records found in ChromaDB but DynamoDB has entities, this might indicate
-            # that embeddings haven't been created yet or were already deleted
+            # DynamoDB has entities but embeddings may not exist or were deleted
             if chromadb_ids:
                 logger.info(
-                    "DynamoDB entities exist but no ChromaDB embeddings found - embeddings may not exist or were already deleted"
+                    (
+                        "DynamoDB entities exist but no ChromaDB embeddings found "
+                        "- embeddings may not exist or were already deleted"
+                    )
                 )
 
         elapsed_time = time.time() - start_time
