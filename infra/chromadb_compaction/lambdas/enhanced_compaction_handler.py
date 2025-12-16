@@ -101,7 +101,7 @@ class MetricsAccumulator:
         self,
         metric_name: str,
         value: Union[int, float],
-        unit: str = "None",
+        _unit: str = "None",
         dimensions: Optional[Dict[str, str]] = None,
     ):
         """Accumulate gauge metric (use latest value)."""
@@ -119,7 +119,7 @@ class MetricsAccumulator:
         value: Union[int, float],
         unit: str = "Count",
         dimensions: Optional[Dict[str, str]] = None,
-        timestamp: Optional[float] = None,
+        _timestamp: Optional[float] = None,
     ):
         """Accumulate metric (delegates to count or gauge)."""
         if unit == "Count":
@@ -371,11 +371,12 @@ def process_collection(
                 if meta_result.error:
                     # Find corresponding message
                     for msg in messages:
+                        entity_data = msg.entity_data
                         if (
-                            msg.entity_data.get("image_id")
-                            == meta_result.image_id
-                            and msg.entity_data.get("receipt_id")
-                            == meta_result.receipt_id
+                            entity_data.get("image_id") is not None
+                            and entity_data.get("receipt_id") is not None
+                            and entity_data["image_id"] == meta_result.image_id
+                            and entity_data["receipt_id"] == meta_result.receipt_id
                         ):
                             failed_message_ids.append(msg.stream_record_id)
 
@@ -385,8 +386,8 @@ def process_collection(
                     for msg in messages:
                         entity_data = msg.entity_data
                         if (
-                            entity_data.get("image_id")
-                            and entity_data.get("word_id")
+                            entity_data.get("image_id") is not None
+                            and entity_data.get("word_id") is not None
                             and label_result.chromadb_id.startswith(
                                 f"IMAGE#{entity_data['image_id']}"
                             )
@@ -505,12 +506,10 @@ def process_sqs_messages(
             # Collect failures
             if result.get("failed_message_ids"):
                 failed_message_ids.extend(result["failed_message_ids"])
-        except Exception as e:
-            logger.error(
+        except Exception:
+            logger.exception(
                 "Collection processing failed",
                 collection=collection.value,
-                error=str(e),
-                exc_info=True,
             )
             if metrics:
                 metrics.count("CompactionCollectionProcessingError", 1)
