@@ -106,6 +106,7 @@ def create_embeddings_and_compaction_run(
         )
         return compaction_run
 
-    except (ValueError, RuntimeError) as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        # Catch all exceptions including OpenAI API errors and boto3 exceptions
         logger.exception("Failed to create embeddings: %s", e)
         return None

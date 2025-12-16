@@ -79,6 +79,7 @@ from chroma.nat_egress import NatEgress
 from chroma.orchestrator import ChromaOrchestrator
 from chroma.service import ChromaEcsService
 from chroma.workers import ChromaWorkers
+
 # from step_function_enhanced import create_enhanced_receipt_processor  # Legacy - depends on receipt_processor which needs receipt_label
 
 # Foundation VPC (public subnets only, no NAT) per Task 350
@@ -120,7 +121,7 @@ notification_system = NotificationSystem(
     email_endpoints=notification_emails,
     tags={
         "Environment": pulumi.get_stack(),
-    "Purpose": "Infrastructure Monitoring",
+        "Purpose": "Infrastructure Monitoring",
     },
 )
 
@@ -373,8 +374,6 @@ upload_images = UploadImages(
     raw_bucket=raw_bucket,
     site_bucket=site_bucket,
     chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
-    chromadb_lines_queue_url=chromadb_infrastructure.chromadb_queues.lines_queue_url,
-    chromadb_words_queue_url=chromadb_infrastructure.chromadb_queues.words_queue_url,
     embed_ndjson_queue_url=None,  # Will use internal queue
     vpc_subnet_ids=upload_images_subnets,  # Single subnet when EFS is used
     security_group_id=security.sg_lambda_id,

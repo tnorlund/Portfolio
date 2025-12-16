@@ -65,8 +65,6 @@ class UploadImages(ComponentResource):
         raw_bucket: Bucket,
         site_bucket: Bucket,
         chromadb_bucket_name: pulumi.Input[str] | None = None,
-        chromadb_lines_queue_url: pulumi.Input[str] | None = None,
-        chromadb_words_queue_url: pulumi.Input[str] | None = None,
         embed_ndjson_queue_url: pulumi.Input[str] | None = None,
         vpc_subnet_ids: pulumi.Input[list[str]] | None = None,
         security_group_id: pulumi.Input[str] | None = None,

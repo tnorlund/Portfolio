@@ -10,9 +10,8 @@ import json
 import os
 import tempfile
 import uuid
-from typing import Any, Dict, Iterator
+from typing import Any, Dict
 
-import boto3
 from receipt_chroma import ChromaClient
 from receipt_chroma.embedding.openai import embed_texts
 from receipt_chroma.embedding.records import (
@@ -23,17 +22,6 @@ from receipt_chroma.embedding.records import (
 )
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import CompactionRun
-
-s3 = boto3.client("s3")
-
-
-def _iter_ndjson(bucket: str, key: str) -> Iterator[Dict[str, Any]]:
-    """Iterate over NDJSON records from S3."""
-    obj = s3.get_object(Bucket=bucket, Key=key)
-    for raw in obj["Body"].iter_lines():
-        if not raw:
-            continue
-        yield json.loads(raw.decode("utf-8"))
 
 
 def handler(event, _ctx):
@@ -54,19 +42,16 @@ def handler(event, _ctx):
 
 
 def _process_single(payload: Dict[str, Any]):
-    """Process a single embedding request."""
+    """Process a single embedding request.
+
+    Note: The payload includes artifacts_bucket, lines_key, and words_key
+    for NDJSON artifacts, but we read directly from DynamoDB instead.
+    """
     image_id = payload["image_id"]
     receipt_id = int(payload["receipt_id"])
-    artifacts_bucket = payload["artifacts_bucket"]
-    lines_key = payload["lines_key"]
-    words_key = payload["words_key"]
 
     chroma_bucket = os.environ["CHROMADB_BUCKET"]
     dynamo_table = os.environ["DYNAMO_TABLE_NAME"]
-
-    # Read NDJSON artifacts (may be used for debugging)
-    _ = list(_iter_ndjson(artifacts_bucket, lines_key))
-    _ = list(_iter_ndjson(artifacts_bucket, words_key))
 
     dynamo = DynamoClient(dynamo_table)
     lines = dynamo.list_receipt_lines_from_receipt(image_id, receipt_id)
@@ -75,13 +60,17 @@ def _process_single(payload: Dict[str, Any]):
         image_id, receipt_id
     )
 
+    # Common embedding configuration
+    embedding_model = os.environ.get(
+        "OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"
+    )
+    api_key = os.environ.get("OPENAI_API_KEY")
+
     line_embeddings = embed_texts(
         client=None,
         texts=[ln.text for ln in lines],
-        model=os.environ.get(
-            "OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"
-        ),
-        api_key=os.environ.get("OPENAI_API_KEY"),
+        model=embedding_model,
+        api_key=api_key,
     )
     line_records = [
         LineEmbeddingRecord(line=ln, embedding=emb)
@@ -94,10 +83,8 @@ def _process_single(payload: Dict[str, Any]):
     word_embeddings = embed_texts(
         client=None,
         texts=[w.text for w in words],
-        model=os.environ.get(
-            "OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"
-        ),
-        api_key=os.environ.get("OPENAI_API_KEY"),
+        model=embedding_model,
+        api_key=api_key,
     )
     word_records = [
         WordEmbeddingRecord(word=w, embedding=emb)
