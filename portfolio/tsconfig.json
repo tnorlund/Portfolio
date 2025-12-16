@@ -18,6 +18,8 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
+    // Using the new JSX transform ("react-jsx") for React 17+ and Next.js 16+ compatibility.
+    // This removes the need to import React in every file and changes JSX compilation behavior.
     "jsx": "react-jsx",
     "incremental": true,
     "baseUrl": ".",

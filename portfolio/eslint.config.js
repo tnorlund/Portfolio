@@ -1,6 +1,6 @@
 // Next.js 16 ESLint Flat Config
-// Workaround for circular reference in eslint-config-next@16.0.10
-// Manually configures plugins that eslint-config-next provides
+// Manually configures plugins that eslint-config-next provides, instead of extending eslint-config-next directly.
+// This approach avoids potential issues with plugin resolution and allows for explicit control.
 
 const js = require("@eslint/js");
 const typescriptParser = require("@typescript-eslint/parser");
