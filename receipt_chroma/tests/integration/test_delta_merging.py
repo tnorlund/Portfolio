@@ -41,7 +41,8 @@ class TestDeltaMerging:
         delta_client.close()
 
         # Create tarball from delta directory
-        tarball_path = tempfile.mktemp(suffix=".tar.gz")
+        with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tf:
+            tarball_path = tf.name
         with tarfile.open(tarball_path, "w:gz") as tar:
             tar.add(delta_dir, arcname=".")
 

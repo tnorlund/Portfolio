@@ -240,7 +240,7 @@ def mock_s3_bucket_compaction():
 
 
 @pytest.fixture(scope="function", autouse=False)
-def reset_s3_state(request):
+def reset_s3_state():
     """Reset S3 state between tests that use S3 mocks.
 
     This fixture helps prevent S3 checksum validation issues that can occur

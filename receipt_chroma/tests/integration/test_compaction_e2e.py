@@ -618,8 +618,6 @@ class TestCompactionEndToEnd:
             dynamo_client, image_id=test_image_id, receipt_id=1, num_lines=2
         )
 
-        from tests.helpers.factories import create_mock_metrics
-
         mock_metrics = create_mock_metrics()
 
         # Upload initial snapshot

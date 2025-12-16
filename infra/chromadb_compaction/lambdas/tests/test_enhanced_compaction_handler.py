@@ -585,7 +585,7 @@ class TestLambdaHandler:
         mock_context = MagicMock()
 
         # Call handler with invalid event (no Records)
-        result = lambda_handler({}, mock_context)
+        lambda_handler({}, mock_context)
 
         # Verify error handling
         mock_logger.error.assert_called()

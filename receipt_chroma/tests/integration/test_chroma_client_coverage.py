@@ -630,10 +630,8 @@ class TestPersistentClientDirectoryCreation:
         )
 
         # Directory should be created by Path.mkdir(parents=True) in
-        # _ensure_client. Note: ChromaDB may create it, but we test that our
-        # code calls mkdir. The directory will exist after client
-        # initialization.
-        assert persist_dir.exists() or persist_dir.parent.exists()
+        # _ensure_client or by ChromaDB during client initialization.
+        assert persist_dir.exists(), "Expected persist_dir to be created"
 
         # Can use the client
         client.upsert(

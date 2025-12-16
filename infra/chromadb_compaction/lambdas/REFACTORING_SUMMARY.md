@@ -209,7 +209,7 @@ To deploy this refactoring:
 
 1. **Package receipt_chroma**:
    ```bash
-   cd /Users/tnorlund/Portfolio_reduce_codebuilds/Portfolio/receipt_chroma
+   cd receipt_chroma
    python -m build
    ```
 
@@ -229,7 +229,7 @@ To deploy this refactoring:
 
 4. **Deploy Lambda function**:
    ```bash
-   cd /Users/tnorlund/Portfolio_reduce_codebuilds/Portfolio/infra/chromadb_compaction/lambdas
+   cd infra/chromadb_compaction/lambdas
    zip -r function.zip enhanced_compaction_handler.py compaction/ utils/
 
    aws lambda update-function-code \

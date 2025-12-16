@@ -126,7 +126,6 @@ def setup_s3_snapshot(s3_client, temp_chroma_dir):
 class TestEnhancedCompactionIntegration:
     """Integration tests for the enhanced compaction handler."""
 
-    @mock_aws
     @patch("enhanced_compaction_handler.process_collection_updates")
     @patch("enhanced_compaction_handler.ChromaClient")
     def test_full_workflow_with_s3(
@@ -197,7 +196,6 @@ class TestEnhancedCompactionIntegration:
         # Verify process_collection_updates was called
         mock_process_updates.assert_called_once()
 
-    @mock_aws
     def test_sqs_message_processing(
         self,
         mock_env,
@@ -253,7 +251,6 @@ class TestEnhancedCompactionIntegration:
             # Verify process_collection was called
             mock_process.assert_called_once()
 
-    @mock_aws
     @patch("enhanced_compaction_handler.download_chroma_snapshot")
     @patch("enhanced_compaction_handler.upload_chroma_snapshot")
     @patch("enhanced_compaction_handler.process_collection_updates")
@@ -338,7 +335,6 @@ class TestEnhancedCompactionIntegration:
         # Verify upload was called
         mock_upload.assert_called_once()
 
-    @mock_aws
     @patch("enhanced_compaction_handler.download_chroma_snapshot")
     def test_lambda_handler_download_failure(
         self,
@@ -390,7 +386,6 @@ class TestEnhancedCompactionIntegration:
         assert len(result["batchItemFailures"]) == 1
         assert result["batchItemFailures"][0]["itemIdentifier"] == "msg-1"
 
-    @mock_aws
     def test_multiple_collections(
         self,
         mock_env,

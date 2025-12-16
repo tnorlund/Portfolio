@@ -71,13 +71,22 @@ def process_collection_updates(
 
     # 1. Merge compaction deltas
     bucket = os.environ.get("CHROMADB_BUCKET", "")
-    delta_count, delta_results = merge_compaction_deltas(
-        chroma_client=chroma_client,
-        compaction_runs=delta_msgs,
-        collection=collection,
-        logger=logger,
-        bucket=bucket,
-    )
+    if delta_msgs and not bucket:
+        logger.warning(
+            "CHROMADB_BUCKET not set, skipping delta processing",
+            collection=collection.value,
+            delta_count=len(delta_msgs),
+        )
+        delta_count = 0
+        delta_results = []
+    else:
+        delta_count, delta_results = merge_compaction_deltas(
+            chroma_client=chroma_client,
+            compaction_runs=delta_msgs,
+            collection=collection,
+            logger=logger,
+            bucket=bucket,
+        )
 
     if delta_count > 0:
         logger.info(
