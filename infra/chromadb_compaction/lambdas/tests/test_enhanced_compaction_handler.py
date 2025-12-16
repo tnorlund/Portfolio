@@ -341,12 +341,12 @@ class TestProcessCollection:
 class TestProcessSQSMessages:
     """Test the process_sqs_messages function."""
 
-    @patch("enhanced_compaction_handler.build_messages_from_records")
+    @patch("enhanced_compaction_handler.parse_sqs_messages")
     @patch("enhanced_compaction_handler.process_collection")
     def test_process_sqs_messages_success(
         self,
         mock_process_collection,
-        mock_build_messages,
+        mock_parse_sqs_messages,
         mock_logger,
         mock_metrics,
         sample_stream_message,
@@ -355,7 +355,7 @@ class TestProcessSQSMessages:
         from enhanced_compaction_handler import process_sqs_messages
 
         # Setup mocks
-        mock_build_messages.return_value = [sample_stream_message]
+        mock_parse_sqs_messages.return_value = [sample_stream_message]
         mock_process_collection.return_value = {
             "status": "success",
             "failed_message_ids": [],
@@ -379,16 +379,16 @@ class TestProcessSQSMessages:
         # Verify result
         assert result["batchItemFailures"] == []
 
-        # Verify build_messages_from_records was called
-        mock_build_messages.assert_called_once_with(records)
+        # Verify parse_sqs_messages was called
+        mock_parse_sqs_messages.assert_called_once_with(records)
 
         # Verify process_collection was called
         mock_process_collection.assert_called_once()
 
-    @patch("enhanced_compaction_handler.build_messages_from_records")
+    @patch("enhanced_compaction_handler.parse_sqs_messages")
     def test_process_sqs_messages_parse_error(
         self,
-        mock_build_messages,
+        mock_parse_sqs_messages,
         mock_logger,
         mock_metrics,
     ):
@@ -396,7 +396,7 @@ class TestProcessSQSMessages:
         from enhanced_compaction_handler import process_sqs_messages
 
         # Setup mocks to raise exception
-        mock_build_messages.side_effect = Exception("Parse error")
+        mock_parse_sqs_messages.side_effect = Exception("Parse error")
 
         # Sample SQS records
         records = [
@@ -422,12 +422,12 @@ class TestProcessSQSMessages:
         # Verify metrics counter
         mock_metrics.count.assert_called_with("CompactionMessageParseError", 1)
 
-    @patch("enhanced_compaction_handler.build_messages_from_records")
+    @patch("enhanced_compaction_handler.parse_sqs_messages")
     @patch("enhanced_compaction_handler.process_collection")
     def test_process_sqs_messages_collection_error(
         self,
         mock_process_collection,
-        mock_build_messages,
+        mock_parse_sqs_messages,
         mock_logger,
         mock_metrics,
         sample_stream_message,
@@ -436,7 +436,7 @@ class TestProcessSQSMessages:
         from enhanced_compaction_handler import process_sqs_messages
 
         # Setup mocks
-        mock_build_messages.return_value = [sample_stream_message]
+        mock_parse_sqs_messages.return_value = [sample_stream_message]
         mock_process_collection.side_effect = Exception("Processing error")
 
         # Sample SQS records
@@ -455,12 +455,12 @@ class TestProcessSQSMessages:
         # Verify error logging
         mock_logger.error.assert_called()
 
-    @patch("enhanced_compaction_handler.build_messages_from_records")
+    @patch("enhanced_compaction_handler.parse_sqs_messages")
     @patch("enhanced_compaction_handler.process_collection")
     def test_process_sqs_messages_partial_failure(
         self,
         mock_process_collection,
-        mock_build_messages,
+        mock_parse_sqs_messages,
         mock_logger,
         mock_metrics,
     ):
@@ -492,7 +492,7 @@ class TestProcessSQSMessages:
         )
 
         # Setup mocks
-        mock_build_messages.return_value = [msg1, msg2]
+        mock_parse_sqs_messages.return_value = [msg1, msg2]
         mock_process_collection.return_value = {
             "status": "success",
             "failed_message_ids": ["msg-2"],  # Only msg-2 failed

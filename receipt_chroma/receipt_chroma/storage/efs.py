@@ -264,7 +264,6 @@ class EFSSnapshotManager:
                 bucket=self.bucket,
                 collection=self.collection,
                 local_path=snapshot_path,
-                version_id=version,
             )
 
             if upload_result.get("status") == "uploaded":
@@ -356,17 +355,18 @@ class EFSSnapshotManager:
 
 
 def get_efs_snapshot_manager(
-    collection: str, logger: Any, metrics: Any = None
+    collection: str, bucket: str, logger: Any, metrics: Any = None
 ) -> EFSSnapshotManager:
     """
     Factory function to create EFS snapshot manager.
 
     Args:
         collection: Collection name (lines/words)
+        bucket: S3 bucket name
         logger: Logger instance
         metrics: Optional metrics collector
 
     Returns:
         EFSSnapshotManager instance
     """
-    return EFSSnapshotManager(collection, logger, metrics)
+    return EFSSnapshotManager(collection, bucket, logger, metrics)

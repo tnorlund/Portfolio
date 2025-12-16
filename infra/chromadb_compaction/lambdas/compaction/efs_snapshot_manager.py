@@ -344,12 +344,13 @@ class EFSSnapshotManager:
             )
 
 
-def get_efs_snapshot_manager(collection: str, logger: Any, metrics: Any = None) -> EFSSnapshotManager:
+def get_efs_snapshot_manager(collection: str, bucket: str, logger: Any, metrics: Any = None) -> EFSSnapshotManager:
     """
     Factory function to create EFS snapshot manager.
 
     Args:
         collection: Collection name (lines/words)
+        bucket: S3 bucket name
         logger: Logger instance
         metrics: Optional metrics collector
 
