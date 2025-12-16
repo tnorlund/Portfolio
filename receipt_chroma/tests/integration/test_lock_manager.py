@@ -182,7 +182,8 @@ class TestLockManagerOperations:
         refreshed_remaining = lock_manager_lines.get_remaining_time()
         assert refreshed_remaining is not None
         # The refreshed time should be greater than or equal to initial
-        # (refresh extends the lock duration, so it should be >= initial minus small timing diff)
+        # (refresh extends the lock duration, so it should be >= initial minus
+        # small timing diff)
         # Allow for small timing differences due to test execution speed
         assert (
             refreshed_remaining.total_seconds()
