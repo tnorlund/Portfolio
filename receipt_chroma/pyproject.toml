@@ -26,6 +26,7 @@ dependencies = [
     "chromadb>=1.3.5",
     "openai>=2.8.1,<3.0.0",
     "receipt-dynamo",
+    "receipt-dynamo-stream",
     "typing-extensions>=4.0.0",  # Required for Required/NotRequired on Python <3.11
 ]
 keywords = ["chroma", "chromadb", "receipts", "vector", "embeddings", "database"]
@@ -184,4 +185,3 @@ warn_unused_ignores = true
 warn_no_return = true
 strict_equality = true
 strict_optional = true
-

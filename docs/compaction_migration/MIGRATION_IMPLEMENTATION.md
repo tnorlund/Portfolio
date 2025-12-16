@@ -1,8 +1,8 @@
 # ChromaDB Compaction Migration: Implementation Guide
 
-**Status**: Planning
+**Status**: Implementation - Phase 2 (receipt_chroma integration)
 **Created**: December 15, 2024
-**Last Updated**: December 15, 2024
+**Last Updated**: December 16, 2024
 
 ## Architecture Overview
 
@@ -87,6 +87,8 @@ cd /Users/tnorlund/Portfolio
 - Delta merging
 
 ## Step-by-Step Implementation
+
+> **Progress update (Dec 16, 2024):** Phase 1 is complete. The `receipt_dynamo_stream` package is scaffolded and installable, and stream parsing/change detection now live outside the Lambda. Continue with Phase 2 to lift the enhanced compactor business logic out of `infra/chromadb_compaction/lambdas/compaction/` into `receipt_chroma/compaction/` so the Lambda keeps only AWS wiring (env/config, boto3 clients, logging/metrics).
 
 ### Phase 1: Create receipt_dynamo_stream Package
 
@@ -517,6 +519,19 @@ pip install -e .
 python -c "from receipt_chroma.compaction import update_receipt_metadata; print('✓')"
 ```
 
+#### Step 2.7: Move Remaining Compactor Business Logic Out of Lambda
+
+Goal: keep `enhanced_compaction_handler.py` focused on AWS wiring and observability while `receipt_chroma` owns compaction logic.
+
+- Move the non-AWS helpers from `infra/chromadb_compaction/lambdas/compaction/` into `receipt_chroma/compaction/`:
+  - `metadata_handler.py`, `label_handler.py`, `message_builder.py`, `receipt_handler.py`
+  - Re-export any callable helpers needed by the handler (e.g., `process_metadata_updates`, `process_label_updates`, `process_compaction_run_messages`, `apply_*_in_memory`)
+- Update imports in `enhanced_compaction_handler.py` to pull these from `receipt_chroma.compaction` and only keep:
+  - AWS clients/env loading
+  - SQS batching/polling
+  - Observability wrappers (metrics, traces, logging setup)
+- Ensure `receipt_chroma` depends on `receipt_dynamo_stream` for the shared `StreamMessage` model to decode SQS payloads used in the compactor path.
+
 ### Phase 3: Update Lambda Handlers
 
 #### Step 3.1: Update Stream Processor Lambda
@@ -746,4 +761,3 @@ Before deploying:
 - [receipt_dynamo_stream Package](../../receipt_dynamo_stream/)
 - [receipt_chroma Package](../../receipt_chroma/)
 - [Lambda Handlers](../../infra/chromadb_compaction/lambdas/)
-

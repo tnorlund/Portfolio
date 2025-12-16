@@ -18,6 +18,12 @@ This directory contains comprehensive documentation for migrating ChromaDB compa
 >
 > Lambda handlers remain as orchestration code (not a package)
 
+## Current Status (Dec 16, 2024)
+
+- ✅ `receipt_dynamo_stream` package scaffolded and installable (stream parsing + change detection lifted out of Lambda)
+- 🚧 Next: move enhanced compactor business logic from `infra/chromadb_compaction/lambdas/compaction/` into `receipt_chroma/compaction/` so Lambda keeps only AWS wiring
+- 🔜 Add `receipt_dynamo_stream` as a `receipt_chroma` dependency for shared `StreamMessage` models and integration testing
+
 **Need to rollback?** See [MIGRATION_ROLLBACK.md](./MIGRATION_ROLLBACK.md)
 
 ## Documentation Structure
@@ -214,11 +220,10 @@ Use this checklist to track progress:
 - [ ] Plan testing approach
 
 ### Implementation Phase
-- [ ] Create package structure
-- [ ] Create model files
-- [ ] Copy business logic files
-- [ ] Update imports in moved files
-- [ ] Update imports in Lambda handlers
+- [x] Create `receipt_dynamo_stream` package structure and models
+- [x] Copy stream parsing/change detection business logic
+- [ ] Create `receipt_chroma/compaction` module and move compactor business logic out of Lambda
+- [ ] Update imports in Lambda handlers to use packages (keep AWS wiring local)
 - [ ] Update package exports
 
 ### Testing Phase
@@ -375,7 +380,6 @@ This documentation is part of the Portfolio project and follows the same license
 
 ---
 
-**Last Updated**: December 15, 2024
+**Last Updated**: December 16, 2024
 **Maintained By**: Engineering Team
-**Status**: Planning Phase
-
+**Status**: Implementation - Phase 2 (receipt_chroma integration)
