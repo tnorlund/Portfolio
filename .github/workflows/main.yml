@@ -235,8 +235,10 @@ jobs:
             echo "Installing receipt_chroma with local receipt_dynamo and receipt_dynamo_stream dependencies..."
             # First install receipt_dynamo without its test dependencies
             python3 -m pip install --force-reinstall -e "receipt_dynamo" --disable-pip-version-check
-            # Install receipt_dynamo_stream (new dependency for compaction refactoring)
-            python3 -m pip install --force-reinstall -e "receipt_dynamo_stream" --disable-pip-version-check
+            # Install receipt_dynamo_stream without dependencies to avoid pip trying to resolve receipt-dynamo from PyPI
+            python3 -m pip install --force-reinstall --no-deps -e "receipt_dynamo_stream" --disable-pip-version-check
+            # Install receipt_dynamo_stream's dependencies manually (excluding receipt-dynamo which is already installed)
+            python3 -m pip install "boto3>=1.34.0" --disable-pip-version-check
             # Then install receipt_chroma without dependencies to avoid pip trying to resolve receipt-dynamo from PyPI
             python3 -m pip install --force-reinstall --no-deps -e "receipt_chroma" --disable-pip-version-check
             # Install receipt_chroma's dependencies manually (excluding receipt-dynamo and receipt-dynamo-stream which are already installed)
