@@ -308,7 +308,7 @@ def test_upsert_duplicate_id_handling():
 def test_query_with_embeddings():
     """Test query using query_embeddings instead of query_texts."""
     with ChromaClient(mode="write", metadata_only=True) as client:
-        # Add some data with proper embedding dimensions (384 for DefaultEmbeddingFunction)
+        # Add data with correct embedding dims (384 for DefaultEmbeddingFunction)
         # First get the collection to know the embedding dimension
         collection = client.get_collection(
             "test_query_emb", create_if_missing=True
@@ -409,7 +409,7 @@ def test_http_client_creation_with_url():
 
 @pytest.mark.unit
 def test_collection_not_found_without_create():
-    """Test that get_collection raises error when collection doesn't exist and create_if_missing=False."""
+    """Error when collection missing and create_if_missing=False."""
     with ChromaClient(mode="write", metadata_only=True) as client:
         with pytest.raises(
             ValueError, match="Collection 'nonexistent' not found"
@@ -419,7 +419,7 @@ def test_collection_not_found_without_create():
 
 @pytest.mark.unit
 def test_closed_client_context_manager_raises_error():
-    """Test that entering a closed client via context manager raises RuntimeError."""
+    """Entering a closed client via context manager raises RuntimeError."""
     client = ChromaClient(mode="write", metadata_only=True)
     client.close()
 
@@ -431,7 +431,7 @@ def test_closed_client_context_manager_raises_error():
 
 @pytest.mark.unit
 def test_http_client_invalid_port():
-    """Test HTTP client creation with invalid port (should handle gracefully)."""
+    """HTTP client creation with invalid port is handled."""
     with patch("receipt_chroma.data.chroma_client.chromadb") as mock_chromadb:
         mock_http_client = MagicMock()
         mock_chromadb.HttpClient.return_value = mock_http_client

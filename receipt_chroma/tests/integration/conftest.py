@@ -108,12 +108,9 @@ def s3_bucket(request):
 
 @pytest.fixture
 def dynamodb_table():
-    """
-    Spins up a mock DynamoDB instance, creates a table (with GSIs: GSI1, GSI2,
-    GSI3, and GSITYPE), waits until both the table and the GSIs are active, then
-    yields the table name for tests.
+    """Spin up a moto DynamoDB table with GSIs and yield its name.
 
-    After the tests, everything is torn down automatically.
+    Tears down automatically after tests.
     """
     with mock_aws():
         dynamodb = boto3.resource("dynamodb", region_name="us-east-1")

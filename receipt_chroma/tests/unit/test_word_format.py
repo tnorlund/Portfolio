@@ -194,7 +194,7 @@ class TestGetWordNeighbors:
         assert len(right_words) == 0
 
     def test_get_neighbors_different_lines(self):
-        """Test neighbors when words are on different lines but horizontally positioned."""
+        """Neighbors across lines with horizontal alignment."""
         words = [
             MockReceiptWord(
                 "img1", "rec1", "line1", "word1", "left", x=0.1, y=0.8
@@ -210,14 +210,14 @@ class TestGetWordNeighbors:
         left_words, right_words = get_word_neighbors(
             target, words, context_size=2
         )
-        # Should find neighbors based on horizontal position, regardless of line
+        # Neighbors selected by horizontal position, regardless of line
         assert len(left_words) > 0
         assert len(right_words) > 0
         assert "left" in left_words
         assert "right" in right_words
 
     def test_get_neighbors_same_line_far_apart(self):
-        """Test neighbors when words are on same line but far apart horizontally."""
+        """Neighbors on same line that are far apart horizontally."""
         # Words on same line (same y-coordinate) but far apart horizontally
         words = [
             MockReceiptWord(
@@ -282,7 +282,7 @@ class TestGetWordNeighbors:
         assert "right" in right_words or "far_right" in right_words
 
     def test_get_neighbors_includes_different_lines(self):
-        """Test that words on different lines are included if horizontally positioned."""
+        """Include other lines when horizontally aligned."""
         # Words at different y (different lines) but different x positions
         words = [
             MockReceiptWord(
@@ -327,7 +327,7 @@ class TestGetWordNeighbors:
         assert "right_below" in right_words
 
     def test_get_neighbors_same_x_different_lines(self):
-        """Test words at same x but different lines - should be ordered by x then by order in list."""
+        """Same x across lines; order by x then input order."""
         # Words at same x but different y (different lines)
         # When x is the same, order depends on list order (stable sort)
         words = [
