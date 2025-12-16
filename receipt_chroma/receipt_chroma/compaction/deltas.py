@@ -54,6 +54,10 @@ def merge_compaction_deltas(
                 receipt_id = entity.get("receipt_id")
                 delta_prefix = entity.get("delta_s3_prefix")
 
+                logger.info(
+                    f"Processing compaction run: run_id={run_id}, image_id={image_id}, receipt_id={receipt_id}, delta_prefix={delta_prefix}"
+                )
+
                 # If delta prefix not provided on message, skip
                 if not delta_prefix:
                     logger.warning(
@@ -61,11 +65,15 @@ def merge_compaction_deltas(
                     )
                     continue
 
-                # Download delta to temporary directory
-                delta_dir = os.path.join(workdir, "delta")
+                # Download delta to temporary directory (unique per run)
+                delta_subdir = f"delta_{run_id}" if run_id else f"delta_{hash(msg)}"
+                delta_dir = os.path.join(workdir, delta_subdir)
                 os.makedirs(delta_dir, exist_ok=True)
 
                 try:
+                    logger.info(
+                        f"Downloading delta: delta_prefix={delta_prefix}, dest_dir={delta_dir}, bucket={bucket}"
+                    )
                     _download_delta_to_dir(
                         s3_client=s3,
                         default_bucket=bucket,
@@ -73,37 +81,42 @@ def merge_compaction_deltas(
                         dest_dir=delta_dir,
                         logger=logger,
                     )
-                except Exception:
-                    logger.exception(
-                        "Failed to download or extract delta",
-                        delta_prefix=delta_prefix,
+                    logger.info("Delta download completed successfully")
+                except Exception as e:
+                    logger.error(
+                        f"Failed to download or extract delta: {delta_prefix}, error={str(e)}"
                     )
+                    logger.exception("Delta download exception details")
                     continue
 
                 # Merge delta into snapshot
                 merged_count = 0
                 try:
                     collection_name = collection.value
+                    logger.info(
+                        f"Opening delta client: delta_dir={delta_dir}, collection_name={collection_name}"
+                    )
                     delta_client = ChromaClient(
                         persist_directory=delta_dir, mode="read"
                     )
 
                     try:
+                        logger.info(
+                            f"Getting collection from delta: collection_name={collection_name}"
+                        )
                         src = delta_client.get_collection(collection_name)
+                        logger.info("Successfully got collection, reading data")
                         data = src.get(
                             include=["documents", "embeddings", "metadatas"]
                         )
                         ids = data.get("ids", []) or []
+                        logger.info(
+                            f"Read data from delta collection: id_count={len(ids)}"
+                        )
 
                         if ids:
                             logger.info(
-                                "Upserting vectors from delta",
-                                run_id=run_id,
-                                image_id=image_id,
-                                receipt_id=receipt_id,
-                                collection=collection_name,
-                                vector_count=len(ids),
-                                sample_id=ids[0] if ids else None,
+                                f"Upserting vectors from delta: run_id={run_id}, image_id={image_id}, receipt_id={receipt_id}, collection={collection_name}, vector_count={len(ids)}, sample_id={ids[0] if ids else None}"
                             )
 
                             chroma_client.upsert(
@@ -125,55 +138,31 @@ def merge_compaction_deltas(
 
                             if verified_count < len(ids[:10]):
                                 logger.warning(
-                                    "Upsert verification failed",
-                                    run_id=run_id,
-                                    image_id=image_id,
-                                    receipt_id=receipt_id,
-                                    collection=collection_name,
-                                    expected=len(ids[:10]),
-                                    verified=verified_count,
+                                    f"Upsert verification failed: run_id={run_id}, image_id={image_id}, receipt_id={receipt_id}, collection={collection_name}, expected={len(ids[:10])}, verified={verified_count}"
                                 )
                             else:
                                 logger.info(
-                                    "Upsert verified successfully",
-                                    run_id=run_id,
-                                    image_id=image_id,
-                                    receipt_id=receipt_id,
-                                    collection=collection_name,
-                                    verified_count=verified_count,
+                                    f"Upsert verified successfully: run_id={run_id}, image_id={image_id}, receipt_id={receipt_id}, collection={collection_name}, verified_count={verified_count}"
                                 )
 
                             merged_count = len(ids)
                             total_merged += merged_count
                         else:
                             logger.warning(
-                                "Delta collection has no IDs",
-                                run_id=run_id,
-                                image_id=image_id,
-                                receipt_id=receipt_id,
-                                collection=collection_name,
+                                f"Delta collection has no IDs: run_id={run_id}, image_id={image_id}, receipt_id={receipt_id}, collection={collection_name}"
                             )
 
                     except Exception as e:
                         logger.info(
-                            "Delta has no collection or failed to read",
-                            collection=collection_name,
-                            run_id=run_id,
-                            image_id=image_id,
-                            receipt_id=receipt_id,
-                            error=str(e),
-                            exc_info=True,
+                            f"Delta has no collection or failed to read: collection={collection_name}, run_id={run_id}, image_id={image_id}, receipt_id={receipt_id}, error={str(e)}"
                         )
+                        logger.exception("Exception details for delta collection read")
 
                 except Exception as e:
                     logger.error(
-                        "Failed merging delta into snapshot",
-                        run_id=run_id,
-                        image_id=image_id,
-                        receipt_id=receipt_id,
-                        error=str(e),
-                        exc_info=True,
+                        f"Failed merging delta into snapshot: run_id={run_id}, image_id={image_id}, receipt_id={receipt_id}, error={str(e)}"
                     )
+                    logger.exception("Exception details for delta merge")
                     continue
 
                 # Track per-run result for DynamoDB updates
@@ -234,7 +223,7 @@ def _download_delta_to_dir(
     # Try legacy tarball first
     try:
         s3_client.head_object(Bucket=bucket, Key=tar_key)
-        logger.info("Downloading legacy tarball delta", tar_key=tar_key)
+        logger.info(f"Downloading legacy tarball delta: tar_key={tar_key}")
         s3_client.download_file(bucket, tar_key, tar_path)
 
         with tarfile.open(tar_path, "r:gz") as tar:
@@ -256,12 +245,11 @@ def _download_delta_to_dir(
 
     except ClientError as err:
         error_code = err.response.get("Error", {}).get("Code")
-        if error_code != "NoSuchKey":
+        if error_code not in ("NoSuchKey", "404"):
             raise
         # Tarball not found; fall back to directory layout
         logger.info(
-            "Tarball not found, falling back to directory layout",
-            prefix=prefix,
+            f"Tarball not found, falling back to directory layout: prefix={prefix}"
         )
     except Exception:
         # If tarball exists but extraction fails, propagate
@@ -290,9 +278,7 @@ def _download_delta_to_dir(
                 != dest_dir_abs
             ):
                 logger.warning(
-                    "Skipping unsafe delta object path",
-                    key=key,
-                    dest_dir=dest_dir,
+                    f"Skipping unsafe delta object path: key={key}, dest_dir={dest_dir}"
                 )
                 continue
 
