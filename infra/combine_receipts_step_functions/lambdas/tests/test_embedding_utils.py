@@ -36,6 +36,7 @@ class TestUploadBundledDeltaToS3(unittest.TestCase):
         self.assertEqual(result["status"], "uploaded")
         self.assertEqual(result["delta_key"], "lines/delta/abc-123")
         self.assertEqual(result["s3_key"], "lines/delta/abc-123/delta.tar.gz")
+        self.assertEqual(result["tar_size_bytes"], 1024)
 
         # Verify upload_delta_tarball was called correctly
         mock_upload.assert_called_once_with(

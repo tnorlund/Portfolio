@@ -12,7 +12,7 @@ import shutil
 import tempfile
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import boto3
 from openai import OpenAI
@@ -49,7 +49,7 @@ def _upload_bundled_delta_to_s3(
     sqs_queue_url: Optional[str],
     batch_id: str,
     vector_count: int,
-) -> Dict[str, str]:
+) -> Dict[str, Any]:
     """
     Upload delta directory as tarball to S3, optionally notify SQS.
 
