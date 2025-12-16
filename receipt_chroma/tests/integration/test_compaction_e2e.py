@@ -450,11 +450,11 @@ class TestCompactionEndToEnd:
             collection = verify_client.get_collection("words")
 
             # Verify metadata update
-            word_data = collection.get(
-                ids=[
-                    f"IMAGE#{test_image_id}#RECEIPT#00001#LINE#00001#WORD#00001"
-                ]
+            word_id = (
+                f"IMAGE#{test_image_id}"
+                "#RECEIPT#00001#LINE#00001#WORD#00001"
             )
+            word_data = collection.get(ids=[word_id])
             assert word_data["metadatas"][0]["merchant_name"] == "New Merchant"
 
             verify_client.close()
@@ -574,10 +574,13 @@ class TestCompactionEndToEnd:
 
             for idx, image_id in enumerate(image_ids):
                 receipt_id = idx + 1
+                line_base = (
+                    f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
+                )
                 data = collection.get(
                     ids=[
-                        f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#00001",
-                        f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#00002",
+                        f"{line_base}#LINE#00001",
+                        f"{line_base}#LINE#00002",
                     ]
                 )
 

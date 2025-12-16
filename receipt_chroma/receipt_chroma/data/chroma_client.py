@@ -598,7 +598,8 @@ class ChromaClient:
             raise RuntimeError("persist_directory required for delta uploads")
 
         if s3_client is None:
-            import boto3  # type: ignore[import-untyped]  # pylint: disable=import-outside-toplevel
+            # pylint: disable=import-outside-toplevel
+            import boto3  # type: ignore[import-untyped]
 
             s3_client = boto3.client("s3")
 

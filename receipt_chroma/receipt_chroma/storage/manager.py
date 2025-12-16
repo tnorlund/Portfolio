@@ -64,7 +64,7 @@ class StorageManager:
             )
 
     def _detect_mode(self) -> StorageMode:
-        """Detect the effective storage mode based on configuration and availability."""
+        """Detect effective storage mode based on config and availability."""
         if self.mode == StorageMode.S3_ONLY:
             if self.logger:
                 self.logger.info("Storage mode: S3-only (forced)")
@@ -78,7 +78,8 @@ class StorageManager:
                 return StorageMode.EFS
             if self.logger:
                 self.logger.warning(
-                    "EFS mode requested but EFS not available, falling back to S3"
+                    "EFS mode requested but EFS not available, falling back "
+                    "to S3"
                 )
             return StorageMode.S3_ONLY
 

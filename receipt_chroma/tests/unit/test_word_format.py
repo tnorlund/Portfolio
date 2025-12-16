@@ -366,8 +366,8 @@ class TestGetWordNeighbors:
         left_words, right_words = get_word_neighbors(
             target, words, context_size=2
         )
-        # When x is identical, Python's stable sort preserves original order
-        # So "above" (index 0) comes before "target" (index 1), and "below" (index 2) comes after
+        # When x is identical, stable sort preserves original order.
+        # "above" (idx 0) before "target" (idx 1); "below" (idx 2) after.
         assert len(left_words) > 0
         assert len(right_words) > 0
         assert "above" in left_words

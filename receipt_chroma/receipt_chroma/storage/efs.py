@@ -96,7 +96,8 @@ class EFSSnapshotManager:
                 return version_id
             except ClientError as e:
                 if e.response["Error"]["Code"] == "NoSuchKey":
-                    # Fallback to direct /latest/ path for backward compatibility
+                    # Fallback to direct /latest/ path for backward
+                    # compatibility
                     return "latest-direct"
                 raise
         except Exception as e:

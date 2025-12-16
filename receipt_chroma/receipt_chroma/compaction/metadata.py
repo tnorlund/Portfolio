@@ -21,7 +21,8 @@ def apply_metadata_updates(
     metrics: Any = None,
     dynamo_client: Optional[DynamoClient] = None,
 ) -> List[MetadataUpdateResult]:
-    """Apply metadata updates to an already-open ChromaDB client without S3 I/O.
+    """Apply metadata updates to an already-open ChromaDB client without
+    S3 I/O.
 
     This function processes RECEIPT_METADATA update messages and applies them
     to the given ChromaDB client. The caller is responsible for downloading

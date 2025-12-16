@@ -428,7 +428,8 @@ class TestProcessor:
         dynamo_client,
         monkeypatch,
     ):
-        """Test that updates are processed in correct order: deltas → metadata → labels."""
+        """Test that updates are processed in correct order:
+        deltas → metadata → labels."""
         s3_client, bucket_name = mock_s3_bucket_compaction
 
         # Generate valid UUID for testing

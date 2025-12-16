@@ -255,8 +255,8 @@ def update_receipt_metadata(
         if chromadb_ids:
             logger.info(
                 (
-                    "DynamoDB entities exist but no ChromaDB embeddings found - "
-                    "embeddings may not be created yet"
+                    "DynamoDB entities exist but no ChromaDB embeddings "
+                    "found - embeddings may not be created yet"
                 )
             )
 
@@ -287,7 +287,8 @@ def remove_receipt_metadata(
 ) -> int:
     """Remove merchant metadata fields for a receipt.
 
-    Uses DynamoDB to build exact ChromaDB IDs instead of scanning the collection.
+    Uses DynamoDB to build exact ChromaDB IDs instead of scanning the
+    collection.
     """
     start_time = time.time()
 
@@ -398,7 +399,8 @@ def remove_receipt_metadata(
         existing_metadata = results["metadatas"][i] or {}
         updated_metadata = existing_metadata.copy()
 
-        # Set fields to None to remove them (ChromaDB merges metadata, not replace)
+        # Set fields to None to remove them (ChromaDB merges metadata, not
+        # replace)
         for field in fields_to_remove:
             if field in updated_metadata:
                 updated_metadata[field] = None
@@ -476,7 +478,9 @@ def update_word_labels(
     """
     try:
         # Parse ChromaDB ID to extract word identifiers.
-        # Format: IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}
+        # Format:
+        # IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{
+        # word_id:05d}
         parts = chromadb_id.split("#")
         if len(parts) < 8 or "WORD" not in parts:
             if logger:
@@ -525,7 +529,8 @@ def update_word_labels(
                 "label_status": None,  # will be derived below if needed
             }
         else:
-            # Reconstruct complete label metadata using the same logic as step function
+            # Reconstruct complete label metadata using the same logic as step
+            # function
             if get_dynamo_client_func:
                 dynamo_client = get_dynamo_client_func()
             else:
@@ -545,12 +550,13 @@ def update_word_labels(
 
         # Update with reconstructed/snapshot-derived label fields
         if record_snapshot:
-            # Apply targeted changes directly based on the incoming change set for this word
+            # Apply targeted changes directly based on the incoming change set
+            # for this word
             if changes:
                 # validation_status
                 if "validation_status" in changes:
                     change = changes["validation_status"]
-                        # Handle both FieldChange objects and plain dicts
+                    # Handle both FieldChange objects and plain dicts
                     if hasattr(change, "new"):
                         new_status = change.new
                     else:
@@ -590,7 +596,8 @@ def update_word_labels(
                     if val is not None:
                         updated_metadata["label_proposed_by"] = val
 
-            # Add/update current label in validated/invalid sets when status given
+            # Add/update current label in validated/invalid sets when status
+            # given
             if changes and "validation_status" in changes:
                 change = changes["validation_status"]
                 # Handle both FieldChange objects and plain dicts
@@ -641,35 +648,24 @@ def update_word_labels(
         # Update the ChromaDB record
         collection.update(ids=[chromadb_id], metadatas=[updated_metadata])
 
+        valid_labels = reconstructed_metadata.get("valid_labels")
+        valid_count = (
+            len(valid_labels.split(",")) - 2 if valid_labels else 0
+        )
+
         if logger:
             logger.info(
                 "Updated labels for word with reconstructed metadata",
                 chromadb_id=chromadb_id,
                 label_status=reconstructed_metadata.get("label_status"),
-                validated_labels_count=(
-                    len(
-                        reconstructed_metadata.get("valid_labels", "").split(",")
-                    )
-                    - 2
-                    if reconstructed_metadata.get("valid_labels")
-                    else 0
-                ),
+                validated_labels_count=valid_count,
             )
 
         if OBSERVABILITY_AVAILABLE and metrics:
             metrics.count("CompactionWordLabelUpdated", 1)
             metrics.gauge(
                 "CompactionValidatedLabelsCount",
-                (
-                    len(
-                        reconstructed_metadata.get("valid_labels", "").split(
-                            ","
-                        )
-                    )
-                    - 2
-                    if reconstructed_metadata.get("valid_labels")
-                    else 0
-                ),
+                valid_count,
             )
 
         return 1
@@ -718,8 +714,8 @@ def remove_word_labels(
         updated_metadata = existing_metadata.copy()
 
         # Remove all label-related fields (matching step function structure)
-        # NOTE: ChromaDB merges metadata on update, so we must set fields to None
-        # instead of deleting them from the dict
+        # NOTE: ChromaDB merges metadata on update, so we must set fields to
+        # None instead of deleting them from the dict
         label_fields_to_remove = [
             "label_status",
             "label_confidence",
@@ -734,7 +730,8 @@ def remove_word_labels(
             if field in updated_metadata:
                 updated_metadata[field] = None
 
-        # Set any remaining fields that start with "label_" to None (legacy cleanup)
+        # Set any remaining fields that start with "label_" to None
+        # (legacy cleanup)
         legacy_label_fields = [
             key for key in updated_metadata.keys() if key.startswith("label_")
         ]
@@ -780,7 +777,8 @@ def reconstruct_label_metadata(
     dynamo_client: Any,
 ) -> Dict[str, Any]:
     """
-    Reconstruct all label-related metadata fields exactly as the step function does.
+    Reconstruct label-related metadata fields exactly as the step
+    function does.
 
     Args:
         image_id: Image ID
@@ -793,7 +791,8 @@ def reconstruct_label_metadata(
         Dictionary with reconstructed label metadata fields:
         - valid_labels: comma-delimited string of valid labels
         - invalid_labels: comma-delimited string of invalid labels
-        - label_status: overall status (validated/auto_suggested/unvalidated)
+        - label_status: overall status
+          (validated/auto_suggested/unvalidated)
         - label_confidence: confidence from latest pending label
         - label_proposed_by: proposer of latest pending label
         - label_validated_at: timestamp of most recent validation
@@ -905,8 +904,8 @@ def delete_receipt_embeddings(
 ) -> int:
     """Delete all embeddings for a specific receipt from ChromaDB.
 
-    Uses DynamoDB to construct exact ChromaDB IDs instead of scanning entire collection.
-    This is much more efficient for large collections.
+    Uses DynamoDB to construct exact ChromaDB IDs instead of scanning entire
+    collection. This is much more efficient for large collections.
 
     Args:
         collection: ChromaDB collection object
@@ -1084,12 +1083,14 @@ def delete_receipt_embeddings(
                 dynamodb_ids=len(chromadb_ids),
             )
 
-            # DynamoDB has entities but embeddings may not exist or were deleted
+            # DynamoDB has entities but embeddings may not exist or were
+            # deleted
             if chromadb_ids:
                 logger.info(
                     (
-                        "DynamoDB entities exist but no ChromaDB embeddings found "
-                        "- embeddings may not exist or were already deleted"
+                        "DynamoDB entities exist but no ChromaDB embeddings "
+                        "found - embeddings may not exist or were already "
+                        "deleted"
                     )
                 )
 

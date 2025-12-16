@@ -19,7 +19,7 @@ def merge_compaction_deltas(
     logger: Any,
     bucket: str,
 ) -> Tuple[int, List[Dict[str, Any]]]:
-    """Merge multiple delta tarballs into an already-open Chroma snapshot client.
+    """Merge multiple delta tarballs into an open Chroma snapshot client.
 
     This function processes COMPACTION_RUN messages, downloads the delta files
     from S3, and merges them into the given ChromaDB client. The caller is
@@ -28,7 +28,7 @@ def merge_compaction_deltas(
 
     Args:
         chroma_client: Open ChromaDB client with snapshot loaded
-        compaction_runs: List of StreamMessage objects for COMPACTION_RUN entities
+        compaction_runs: StreamMessage objects for COMPACTION_RUN entities
         collection: Target collection (LINES or WORDS)
         logger: Logger instance for observability
         bucket: S3 bucket containing delta files

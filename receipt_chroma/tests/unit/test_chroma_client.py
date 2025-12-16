@@ -308,7 +308,8 @@ def test_upsert_duplicate_id_handling():
 def test_query_with_embeddings():
     """Test query using query_embeddings instead of query_texts."""
     with ChromaClient(mode="write", metadata_only=True) as client:
-        # Add data with correct embedding dims (384 for DefaultEmbeddingFunction)
+        # Add data with correct embedding dims
+        # (384 for DefaultEmbeddingFunction)
         # First get the collection to know the embedding dimension
         collection = client.get_collection(
             "test_query_emb", create_if_missing=True

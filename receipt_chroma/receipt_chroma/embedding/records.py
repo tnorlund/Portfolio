@@ -135,7 +135,8 @@ def build_word_payload(
     merchant_name: Optional[str] = None,
     context_size: int = 2,
 ) -> Dict[str, List]:
-    """Create Chroma-ready payloads (ids/embeddings/docs/metadatas) for words."""
+    """Create Chroma-ready payloads (ids/embeddings/docs/metadatas) for
+    words."""
     ids: List[str] = []
     embeddings: List[List[float]] = []
     documents: List[str] = []

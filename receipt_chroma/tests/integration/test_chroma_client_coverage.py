@@ -279,7 +279,8 @@ class TestChromaClientErrorPaths:
             side_effect=Exception("Sleep error"),
         )
 
-        # Close should still mark as closed even if cleanup fails (lines 241-248)
+        # Close should still mark as closed even if cleanup fails
+        # (lines 241-248)
         client.close()
         assert client._closed
 
@@ -335,7 +336,7 @@ class TestPersistAndUploadDelta:
             validate_after_upload=False,
         )
 
-        # The method returns the actual delta key with UUID: "deltas/test/{uuid}/"
+        # Method returns actual delta key with UUID: "deltas/test/{uuid}/"
         assert s3_prefix.startswith("deltas/test/")
         assert s3_prefix.endswith("/")
         assert len(s3_prefix) > len("deltas/test/")  # Should include UUID
@@ -372,7 +373,8 @@ class TestPersistAndUploadDelta:
             validate_after_upload=True,
         )
 
-        # The method returns the actual delta key with UUID: "deltas/test/{uuid}/"
+        # The method returns the actual delta key with
+        # UUID: "deltas/test/{uuid}/"
         assert s3_prefix.startswith("deltas/test/")
         assert s3_prefix.endswith("/")
         assert len(s3_prefix) > len("deltas/test/")  # Should include UUID
@@ -462,7 +464,8 @@ class TestPersistAndUploadDelta:
             s3_client=custom_s3_client,
         )
 
-        # The method returns the actual delta key with UUID: "deltas/test/{uuid}/"
+        # The method returns the actual delta key with
+        # UUID: "deltas/test/{uuid}/"
         assert s3_prefix.startswith("deltas/test/")
         assert s3_prefix.endswith("/")
         assert len(s3_prefix) > len("deltas/test/")  # Should include UUID
@@ -488,11 +491,12 @@ class TestHTTPClientErrorHandling:
 
     def test_http_client_creation_error_handling(self, mocker):
         """Test error handling during HTTP client creation (lines 215-222)."""
-        # This is hard to test because HttpClient initialization happens in __init__
-        # and ChromaDB handles connection errors gracefully. Instead, we test that
-        # HTTP client creation path is covered by creating a valid HTTP client.
-        # The error handling paths (lines 215-222) are internal to ChromaDB.
-        # For coverage, we verify HTTP client can be created.
+        # This is hard to test because HttpClient initialization happens in
+        # __init__ and ChromaDB handles connection errors gracefully. Instead,
+        # we test that HTTP client creation path is covered by creating a
+        # valid HTTP client. The error handling paths (lines 215-222) are
+        # internal to ChromaDB. For coverage, we verify HTTP client can be
+        # created.
         try:
             # This may fail if no server is running, but that's okay
             # The important part is that the code path is executed
@@ -511,7 +515,8 @@ class TestCollectionCreationWithEmbeddingFunction:
     """Test collection creation with embedding function (lines 241-248)."""
 
     def test_get_collection_with_embedding_function(self, temp_chromadb_dir):
-        """Test creating collection with custom embedding function (lines 241-248)."""
+        """Test creating collection with custom embedding function
+        (lines 241-248)."""
         from chromadb.utils import embedding_functions
 
         # Use ChromaDB's default embedding function
@@ -544,7 +549,8 @@ class TestCollectionCreationWithEmbeddingFunction:
     def test_get_collection_create_with_embedding_function(
         self, temp_chromadb_dir
     ):
-        """Test creating collection with embedding function in get_collection (lines 241-248)."""
+        """Test creating collection with embedding function in get_collection
+        (lines 241-248)."""
         from chromadb.utils import embedding_functions
 
         default_ef = embedding_functions.DefaultEmbeddingFunction()
@@ -572,7 +578,8 @@ class TestCollectionCreationWithEmbeddingFunction:
     def test_get_collection_create_with_embedding_function(
         self, temp_chromadb_dir
     ):
-        """Test creating collection with embedding function in get_collection (lines 241-248)."""
+        """Test creating collection with embedding function in get_collection
+        (lines 241-248)."""
         from chromadb.utils import embedding_functions
 
         default_ef = embedding_functions.DefaultEmbeddingFunction()
@@ -603,7 +610,8 @@ class TestPersistentClientDirectoryCreation:
     """Test persistent client directory creation (lines 145-156)."""
 
     def test_persistent_client_creates_directory(self, temp_chromadb_dir):
-        """Test that persistent client creates directory if it doesn't exist (lines 145-156)."""
+        """Test that persistent client creates directory if it doesn't exist
+        (lines 145-156)."""
         # Use a non-existent subdirectory within the temp directory
         persist_dir = Path(temp_chromadb_dir) / "new_chromadb_dir"
 
@@ -621,9 +629,10 @@ class TestPersistentClientDirectoryCreation:
             metadata_only=True,
         )
 
-        # Directory should be created by Path.mkdir(parents=True) in _ensure_client
-        # Note: ChromaDB may create it, but we test that our code calls mkdir
-        # The directory will exist after client initialization
+        # Directory should be created by Path.mkdir(parents=True) in
+        # _ensure_client. Note: ChromaDB may create it, but we test that our
+        # code calls mkdir. The directory will exist after client
+        # initialization.
         assert persist_dir.exists() or persist_dir.parent.exists()
 
         # Can use the client
