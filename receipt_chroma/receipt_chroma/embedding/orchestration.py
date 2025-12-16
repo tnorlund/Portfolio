@@ -141,13 +141,12 @@ class EmbeddingResult:
                         self.compaction_run.run_id,
                     )
                     return True
-                else:
-                    logger.error(
-                        "Compaction failed: lines=%s, words=%s",
-                        run.lines_state,
-                        run.words_state,
-                    )
-                    return False
+                logger.error(
+                    "Compaction failed: lines=%s, words=%s",
+                    run.lines_state,
+                    run.words_state,
+                )
+                return False
 
             time.sleep(poll_interval_seconds)
 
@@ -169,25 +168,25 @@ class EmbeddingResult:
 
         try:
             self.lines_client.close()
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.warning("Error closing lines_client: %s", e)
 
         try:
             self.words_client.close()
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.warning("Error closing words_client: %s", e)
 
         # Clean up temp directories
         try:
             if self._lines_dir and os.path.exists(self._lines_dir):
                 shutil.rmtree(self._lines_dir, ignore_errors=True)
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.warning("Error cleaning up lines_dir: %s", e)
 
         try:
             if self._words_dir and os.path.exists(self._words_dir):
                 shutil.rmtree(self._words_dir, ignore_errors=True)
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.warning("Error cleaning up words_dir: %s", e)
 
         self._closed = True
@@ -224,7 +223,7 @@ def _send_sqs_notification(
         return
 
     try:
-        sqs = boto3.client("sqs")
+        sqs = boto3.client("sqs")  # pylint: disable=import-outside-toplevel
         message_body = {
             "delta_key": delta_prefix,
             "collection": collection,
@@ -255,7 +254,7 @@ def _send_sqs_notification(
             },
         )
         logger.info("Sent SQS notification for %s: %s", collection, run_id)
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         logger.warning("Failed to send SQS notification: %s", e)
 
 
@@ -313,7 +312,9 @@ def create_embeddings_and_compaction_run(
         raise RuntimeError("OPENAI_API_KEY environment variable not set")
 
     # Import OpenAI client lazily
-    from openai import OpenAI
+    from openai import (  # pylint: disable=import-outside-toplevel
+        OpenAI,
+    )
 
     openai_client = OpenAI()
 
@@ -326,7 +327,7 @@ def create_embeddings_and_compaction_run(
 
     # Create S3 client if not provided
     if s3_client is None:
-        import boto3
+        import boto3  # pylint: disable=import-outside-toplevel
 
         s3_client = boto3.client("s3")
 
@@ -527,7 +528,7 @@ def create_embeddings_and_compaction_run(
             _words_dir=local_words_dir,
         )
 
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         # Clean up on failure
         shutil.rmtree(local_lines_dir, ignore_errors=True)
         shutil.rmtree(local_words_dir, ignore_errors=True)

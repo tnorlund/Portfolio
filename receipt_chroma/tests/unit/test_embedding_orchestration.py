@@ -10,7 +10,6 @@ import tempfile
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from receipt_chroma.embedding.orchestration import (
     EmbeddingResult,
     create_embeddings_and_compaction_run,
@@ -281,7 +280,8 @@ class TestCreateEmbeddingsValidation:
             os.environ.pop("OPENAI_API_KEY", None)
 
             with pytest.raises(
-                RuntimeError, match="OPENAI_API_KEY environment variable not set"
+                RuntimeError,
+                match="OPENAI_API_KEY environment variable not set",
             ):
                 create_embeddings_and_compaction_run(
                     receipt_lines=[mock_line],

@@ -16,7 +16,6 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import boto3
-
 from receipt_chroma.s3.helpers import upload_delta_tarball
 from receipt_dynamo.entities import (
     CompactionRun,
@@ -37,7 +36,6 @@ class _NoOpDynamoClient:
 
     def add_compaction_run(self, run: CompactionRun) -> None:
         """No-op - don't persist."""
-        pass
 
 
 def _upload_bundled_delta_to_s3(

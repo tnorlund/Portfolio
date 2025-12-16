@@ -25,12 +25,11 @@ from receipt_dynamo.entities import (
 logger = logging.getLogger(__name__)
 
 
-class _NoOpDynamoClient:
+class _NoOpDynamoClient:  # pylint: disable=too-few-public-methods
     """No-op client for when add_to_dynamo=False."""
 
     def add_compaction_run(self, run: CompactionRun) -> None:
         """No-op - don't persist."""
-        pass
 
 
 def create_embeddings_and_compaction_run(
@@ -70,7 +69,9 @@ def create_embeddings_and_compaction_run(
         CompactionRun entity if successful, None if dependencies unavailable
     """
     try:
-        from openai import OpenAI  # noqa: F401
+        from openai import (  # noqa: F401, pylint: disable=import-outside-toplevel
+            OpenAI as _,
+        )
     except ImportError as exc:  # pragma: no cover
         logger.warning("Embedding dependencies unavailable: %s", exc)
         return None
