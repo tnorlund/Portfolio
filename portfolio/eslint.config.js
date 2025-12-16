@@ -1,16 +1,9 @@
-const { FlatCompat } = require("@eslint/eslintrc");
-const path = require("path");
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-  recommendedConfig: {},
-});
+// Next.js 16 ESLint configuration with Flat Config
+const reactPlugin = require("eslint-plugin-react");
+const typescriptPlugin = require("@typescript-eslint/eslint-plugin");
+const typescriptParser = require("@typescript-eslint/parser");
 
 module.exports = [
-  // Use the compatibility layer to extend Next.js config
-  ...compat.extends("next/core-web-vitals"),
-
-  // Ignore patterns
   {
     ignores: [
       ".next/**",
@@ -20,15 +13,39 @@ module.exports = [
       "dist/**",
       "*.config.js",
       "*.config.ts",
+      "next-env.d.ts",
     ],
   },
-
-  // You can add custom rules here
   {
+    files: ["**/*.ts", "**/*.tsx"],
+    languageOptions: {
+      parser: typescriptParser,
+      parserOptions: {
+        ecmaVersion: "latest",
+        sourceType: "module",
+        ecmaFeatures: {
+          jsx: true,
+        },
+      },
+    },
+    plugins: {
+      react: reactPlugin,
+      "@typescript-eslint": typescriptPlugin,
+    },
     rules: {
-      // Add any custom rules you want
-      // "no-console": "warn",
-      // "prefer-const": "error",
+      "react/react-in-jsx-scope": "off",
+      "react/prop-types": "warn",
+      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
+    },
+  },
+  {
+    files: ["**/*.js", "**/*.jsx"],
+    plugins: {
+      react: reactPlugin,
+    },
+    rules: {
+      "react/react-in-jsx-scope": "off",
+      "react/prop-types": "warn",
     },
   },
 ];
