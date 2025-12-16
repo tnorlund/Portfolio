@@ -239,6 +239,20 @@ def mock_s3_bucket_compaction():
         yield s3_client, bucket_name
 
 
+@pytest.fixture(scope="function", autouse=False)
+def reset_s3_state(request):
+    """Reset S3 state between tests that use S3 mocks.
+
+    This fixture helps prevent S3 checksum validation issues that can occur
+    when running multiple S3 tests together due to moto's internal state.
+    """
+    yield
+    # Cleanup happens after the test
+    # Force garbage collection to help clean up S3 connections
+    import gc
+    gc.collect()
+
+
 @pytest.fixture
 def chroma_snapshot_with_data(temp_chromadb_dir):
     """Create a ChromaDB snapshot with test data for compaction testing.
