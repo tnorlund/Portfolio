@@ -1409,6 +1409,13 @@ layers_to_build = [
         "python_versions": ["3.12"],
         "needs_pillow": False,  # Not needed - no image processing in upload lambdas
     },
+    {
+        "package_dir": "receipt_label",
+        "name": "receipt-label",
+        "description": "Label validation layer for receipt-label",
+        "python_versions": ["3.12"],
+        "needs_pillow": False,
+    },
 ]
 
 # Create Lambda layers using the fast approach
@@ -1450,11 +1457,13 @@ if _in_pulumi_context:
     dynamo_layer = lambda_layers["receipt-dynamo"]
     dynamo_stream_layer = lambda_layers["receipt-dynamo-stream"]
     upload_layer = lambda_layers["receipt-upload"]
+    label_layer = lambda_layers["receipt-label"]
 
     # Export the layer ARNs for reference
     pulumi.export("dynamo_layer_arn", dynamo_layer.arn)
     pulumi.export("dynamo_stream_layer_arn", dynamo_stream_layer.arn)
     pulumi.export("upload_layer_arn", upload_layer.arn)
+    pulumi.export("label_layer_arn", label_layer.arn)
 else:
     # Create dummy objects when skipping or not in Pulumi context
     class DummyLayer:
@@ -1465,3 +1474,4 @@ else:
     dynamo_layer = DummyLayer("receipt-dynamo")  # type: ignore
     dynamo_stream_layer = DummyLayer("receipt-dynamo-stream")  # type: ignore
     upload_layer = DummyLayer("receipt-upload")  # type: ignore
+    label_layer = DummyLayer("receipt-label")  # type: ignore

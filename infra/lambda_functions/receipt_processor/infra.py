@@ -8,7 +8,7 @@ import pulumi_aws as aws
 from dynamo_db import dynamodb_table
 
 # Import Lambda layers from the lambda_layer module
-from infra.components.lambda_layer import dynamo_layer
+from infra.components.lambda_layer import dynamo_layer, label_layer
 from pulumi import AssetArchive, FileArchive
 
 # Get the directory where this file is located
@@ -113,7 +113,7 @@ process_receipt_lambda = aws.lambda_.Function(
     role=lambda_role.arn,
     code=AssetArchive({".": FileArchive(HANDLER_DIR)}),
     handler="process_receipt.handler",
-    layers=[dynamo_layer.arn],
+    layers=[dynamo_layer.arn, label_layer.arn],
     memory_size=1024,
     timeout=300,  # 5 minutes
     environment={
