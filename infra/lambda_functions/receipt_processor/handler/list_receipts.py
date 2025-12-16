@@ -40,6 +40,6 @@ def handler(event: Dict[str, Any], _) -> Dict[str, Any]:
         ]
 
         return {"statusCode": 200, "receipts": receipt_ids}
-    except Exception as e:
-        logger.error(f"Error listing receipts: {str(e)}")
+    except (ValueError, KeyError, TypeError) as e:
+        logger.exception("Error listing receipts: %s", str(e))
         return {"statusCode": 500, "error": str(e)}
