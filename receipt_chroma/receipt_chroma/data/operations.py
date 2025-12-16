@@ -528,7 +528,13 @@ def update_word_labels(
             if changes:
                 # validation_status
                 if "validation_status" in changes:
-                    new_status = changes["validation_status"].get("new")
+                    change = changes["validation_status"]
+                    # Handle both FieldChange objects and plain dicts
+                    if hasattr(change, 'new'):
+                        new_status = change.new
+                    else:
+                        new_status = change.get("new") if isinstance(change, dict) else change
+
                     if new_status is not None:
                         updated_metadata["label_status"] = (
                             "validated"
@@ -545,16 +551,26 @@ def update_word_labels(
                         )
                 # label_proposed_by
                 if "label_proposed_by" in changes:
-                    val = changes["label_proposed_by"].get("new")
+                    change = changes["label_proposed_by"]
+                    # Handle both FieldChange objects and plain dicts
+                    if hasattr(change, 'new'):
+                        val = change.new
+                    else:
+                        val = change.get("new") if isinstance(change, dict) else change
+
                     if val is not None:
                         updated_metadata["label_proposed_by"] = val
 
             # Always add/update the current label in validated/invalid sets based on status when provided
-            status = (
-                changes.get("validation_status", {}).get("new")
-                if changes
-                else None
-            )
+            if changes and "validation_status" in changes:
+                change = changes["validation_status"]
+                # Handle both FieldChange objects and plain dicts
+                if hasattr(change, 'new'):
+                    status = change.new
+                else:
+                    status = change.get("new") if isinstance(change, dict) else change
+            else:
+                status = None
             current_label = None
             if entity_data and isinstance(entity_data, dict):
                 current_label = entity_data.get("label")
@@ -671,6 +687,8 @@ def remove_word_labels(
         updated_metadata = existing_metadata.copy()
 
         # Remove all label-related fields (matching step function structure)
+        # NOTE: ChromaDB merges metadata on update, so we must set fields to None
+        # instead of deleting them from the dict
         label_fields_to_remove = [
             "label_status",
             "label_confidence",
@@ -680,17 +698,17 @@ def remove_word_labels(
             "label_validated_at",
         ]
 
-        # Remove standard label fields
+        # Set standard label fields to None (ChromaDB will remove them)
         for field in label_fields_to_remove:
             if field in updated_metadata:
-                del updated_metadata[field]
+                updated_metadata[field] = None
 
-        # Remove any remaining fields that start with "label_" (legacy cleanup)
+        # Set any remaining fields that start with "label_" to None (legacy cleanup)
         legacy_label_fields = [
             key for key in updated_metadata.keys() if key.startswith("label_")
         ]
         for field in legacy_label_fields:
-            del updated_metadata[field]
+            updated_metadata[field] = None
 
         # Add removal timestamp
         updated_metadata["labels_removed_at"] = datetime.now(

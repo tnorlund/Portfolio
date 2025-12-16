@@ -133,10 +133,12 @@ class TestLabelUpdates:
             ids=["IMAGE#test-id#RECEIPT#00001#LINE#00001#WORD#00001"]
         )
 
-        # Should have label fields cleared
+        # Should have label fields cleared (removed from metadata)
         metadata = embeddings_data["metadatas"][0]
-        assert metadata.get("label_status") in ["auto_suggested", ""]
-        assert metadata.get("valid_labels") == ""
+        assert metadata.get("label_status") is None  # Field removed
+        assert metadata.get("valid_labels") is None  # Field removed
+        assert metadata.get("invalid_labels") is None  # Field removed
+        assert "labels_removed_at" in metadata  # Timestamp added
 
         client.close()
 

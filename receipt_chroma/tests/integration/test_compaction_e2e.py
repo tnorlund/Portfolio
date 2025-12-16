@@ -10,6 +10,7 @@ These tests simulate the full Lambda workflow:
 
 import os
 import tempfile
+from uuid import uuid4
 
 import pytest
 from receipt_dynamo.constants import ChromaDBCollection
@@ -23,6 +24,8 @@ from tests.helpers.factories import (
     create_compaction_run_message,
     create_mock_logger,
     create_mock_metrics,
+    create_receipt_lines_in_dynamodb,
+    create_receipt_words_in_dynamodb,
 )
 
 
@@ -31,12 +34,36 @@ class TestCompactionEndToEnd:
     """End-to-end tests for complete compaction workflow."""
 
     def test_full_compaction_workflow_metadata_only(
-        self, mock_s3_bucket_compaction, mock_logger, chroma_snapshot_with_data
+        self, mock_s3_bucket_compaction, mock_logger, dynamo_client
     ):
         """Test complete workflow with metadata updates only."""
         s3_client, bucket_name = mock_s3_bucket_compaction
 
-        # Step 1: Upload initial snapshot to S3
+        # Generate valid UUID for testing
+        test_image_id = str(uuid4())
+
+        # Create receipt lines in DynamoDB
+        create_receipt_lines_in_dynamodb(
+            dynamo_client, image_id=test_image_id, receipt_id=1, num_lines=2
+        )
+
+        # Step 1: Create and upload initial snapshot with matching UUIDs
+        snapshot_dir = tempfile.mkdtemp()
+        snapshot_client = ChromaClient(persist_directory=snapshot_dir, mode="write")
+        snapshot_client.upsert(
+            collection_name="lines",
+            ids=[
+                f"IMAGE#{test_image_id}#RECEIPT#00001#LINE#00001",
+                f"IMAGE#{test_image_id}#RECEIPT#00001#LINE#00002",
+            ],
+            embeddings=[[0.1] * 1536, [0.2] * 1536],
+            metadatas=[
+                {"text": "Line 1", "merchant_name": "Old Merchant"},
+                {"text": "Line 2", "merchant_name": "Old Merchant"},
+            ],
+        )
+        snapshot_client.close()
+
         storage_manager = StorageManager(
             collection="lines",
             bucket=bucket_name,
@@ -45,17 +72,21 @@ class TestCompactionEndToEnd:
         )
 
         upload_result = storage_manager.upload_snapshot(
-            local_path=chroma_snapshot_with_data,
+            local_path=snapshot_dir,
             metadata={"version": "1.0", "initial": "true"},
         )
 
         assert upload_result["status"] == "uploaded"
 
+        # Cleanup snapshot dir
+        import shutil
+        shutil.rmtree(snapshot_dir, ignore_errors=True)
+
         # Step 2: Simulate receiving stream messages
         from receipt_dynamo_stream.models import FieldChange
 
         metadata_msg = create_metadata_message(
-            image_id="test-id",
+            image_id=test_image_id,
             receipt_id=1,
             event_name="MODIFY",
             changes={
@@ -81,6 +112,7 @@ class TestCompactionEndToEnd:
                 collection=ChromaDBCollection.LINES,
                 chroma_client=client,
                 logger=mock_logger,
+                dynamo_client=dynamo_client,
             )
 
             # Verify processing
@@ -110,8 +142,8 @@ class TestCompactionEndToEnd:
             collection = verify_client.get_collection("lines")
             data = collection.get(
                 ids=[
-                    "IMAGE#test-id#RECEIPT#00001#LINE#00001",
-                    "IMAGE#test-id#RECEIPT#00001#LINE#00002",
+                    f"IMAGE#{test_image_id}#RECEIPT#00001#LINE#00001",
+                    f"IMAGE#{test_image_id}#RECEIPT#00001#LINE#00002",
                 ]
             )
 
@@ -124,16 +156,41 @@ class TestCompactionEndToEnd:
         self,
         mock_s3_bucket_compaction,
         mock_logger,
-        chroma_snapshot_with_data,
+        dynamo_client,
         monkeypatch,
     ):
         """Test complete workflow including delta merging."""
         s3_client, bucket_name = mock_s3_bucket_compaction
 
+        # Generate valid UUIDs for testing
+        test_image_id = str(uuid4())
+        delta_image_id = str(uuid4())
+
+        # Create receipt lines in DynamoDB
+        create_receipt_lines_in_dynamodb(
+            dynamo_client, image_id=test_image_id, receipt_id=1, num_lines=2
+        )
+
         # Set environment variable for delta merging
         monkeypatch.setenv("CHROMADB_BUCKET", bucket_name)
 
-        # Step 1: Upload initial snapshot to S3
+        # Step 1: Create and upload initial snapshot with matching UUIDs
+        snapshot_dir = tempfile.mkdtemp()
+        snapshot_client = ChromaClient(persist_directory=snapshot_dir, mode="write")
+        snapshot_client.upsert(
+            collection_name="lines",
+            ids=[
+                f"IMAGE#{test_image_id}#RECEIPT#00001#LINE#00001",
+                f"IMAGE#{test_image_id}#RECEIPT#00001#LINE#00002",
+            ],
+            embeddings=[[0.1] * 1536, [0.2] * 1536],
+            metadatas=[
+                {"text": "Line 1", "merchant_name": "Old Merchant"},
+                {"text": "Line 2", "merchant_name": "Old Merchant"},
+            ],
+        )
+        snapshot_client.close()
+
         storage_manager = StorageManager(
             collection="lines",
             bucket=bucket_name,
@@ -141,14 +198,18 @@ class TestCompactionEndToEnd:
             logger=mock_logger,
         )
 
-        storage_manager.upload_snapshot(chroma_snapshot_with_data)
+        storage_manager.upload_snapshot(snapshot_dir)
+
+        # Cleanup snapshot dir
+        import shutil
+        shutil.rmtree(snapshot_dir, ignore_errors=True)
 
         # Step 2: Create and upload delta
         delta_dir = tempfile.mkdtemp()
         delta_client = ChromaClient(persist_directory=delta_dir, mode="write")
         delta_client.upsert(
             collection_name="lines",
-            ids=["IMAGE#delta-id#RECEIPT#00002#LINE#00001"],
+            ids=[f"IMAGE#{delta_image_id}#RECEIPT#00002#LINE#00001"],
             embeddings=[[0.9] * 1536],
             metadatas=[{"text": "Delta line", "merchant_name": "Delta Merchant"}],
         )
@@ -167,7 +228,7 @@ class TestCompactionEndToEnd:
         from receipt_dynamo_stream.models import FieldChange
 
         metadata_msg = create_metadata_message(
-            image_id="test-id",
+            image_id=test_image_id,
             receipt_id=1,
             event_name="MODIFY",
             changes={
@@ -177,7 +238,7 @@ class TestCompactionEndToEnd:
         )
 
         delta_msg = create_compaction_run_message(
-            image_id="delta-id",
+            image_id=delta_image_id,
             receipt_id=2,
             run_id="run-e2e",
             delta_s3_prefix=f"s3://{bucket_name}/{delta_prefix}/",
@@ -196,6 +257,7 @@ class TestCompactionEndToEnd:
                 collection=ChromaDBCollection.LINES,
                 chroma_client=client,
                 logger=mock_logger,
+                dynamo_client=dynamo_client,
             )
 
             # Verify processing
@@ -221,15 +283,15 @@ class TestCompactionEndToEnd:
             # Verify metadata was updated on original lines
             original_lines = collection.get(
                 ids=[
-                    "IMAGE#test-id#RECEIPT#00001#LINE#00001",
-                    "IMAGE#test-id#RECEIPT#00001#LINE#00002",
+                    f"IMAGE#{test_image_id}#RECEIPT#00001#LINE#00001",
+                    f"IMAGE#{test_image_id}#RECEIPT#00001#LINE#00002",
                 ]
             )
             assert original_lines["metadatas"][0]["merchant_name"] == "New Merchant"
             assert original_lines["metadatas"][1]["merchant_name"] == "New Merchant"
 
             # Verify delta was merged
-            assert "IMAGE#delta-id#RECEIPT#00002#LINE#00001" in all_data["ids"]
+            assert f"IMAGE#{delta_image_id}#RECEIPT#00002#LINE#00001" in all_data["ids"]
 
             verify_client.close()
 
@@ -239,12 +301,36 @@ class TestCompactionEndToEnd:
         shutil.rmtree(delta_dir, ignore_errors=True)
 
     def test_full_compaction_workflow_words_collection(
-        self, mock_s3_bucket_compaction, mock_logger, chroma_snapshot_with_data
+        self, mock_s3_bucket_compaction, mock_logger, dynamo_client
     ):
         """Test complete workflow for words collection with labels."""
         s3_client, bucket_name = mock_s3_bucket_compaction
 
-        # Step 1: Upload initial snapshot
+        # Generate valid UUID for testing
+        test_image_id = str(uuid4())
+
+        # Create receipt words in DynamoDB
+        create_receipt_words_in_dynamodb(
+            dynamo_client, image_id=test_image_id, receipt_id=1, line_id=1, num_words=2
+        )
+
+        # Step 1: Create and upload initial snapshot with matching UUIDs
+        snapshot_dir = tempfile.mkdtemp()
+        snapshot_client = ChromaClient(persist_directory=snapshot_dir, mode="write")
+        snapshot_client.upsert(
+            collection_name="words",
+            ids=[
+                f"IMAGE#{test_image_id}#RECEIPT#00001#LINE#00001#WORD#00001",
+                f"IMAGE#{test_image_id}#RECEIPT#00001#LINE#00001#WORD#00002",
+            ],
+            embeddings=[[0.1] * 1536, [0.2] * 1536],
+            metadatas=[
+                {"text": "Word1", "merchant_name": "Old Merchant"},
+                {"text": "Word2", "merchant_name": "Old Merchant"},
+            ],
+        )
+        snapshot_client.close()
+
         storage_manager = StorageManager(
             collection="words",
             bucket=bucket_name,
@@ -252,13 +338,17 @@ class TestCompactionEndToEnd:
             logger=mock_logger,
         )
 
-        storage_manager.upload_snapshot(chroma_snapshot_with_data)
+        storage_manager.upload_snapshot(snapshot_dir)
+
+        # Cleanup snapshot dir
+        import shutil
+        shutil.rmtree(snapshot_dir, ignore_errors=True)
 
         # Step 2: Create stream messages (metadata + label updates)
         from receipt_dynamo_stream.models import FieldChange
 
         metadata_msg = create_metadata_message(
-            image_id="test-id",
+            image_id=test_image_id,
             receipt_id=1,
             event_name="MODIFY",
             changes={
@@ -268,7 +358,7 @@ class TestCompactionEndToEnd:
         )
 
         label_msg = create_label_message(
-            image_id="test-id",
+            image_id=test_image_id,
             receipt_id=1,
             line_id=1,
             word_id=1,
@@ -291,6 +381,7 @@ class TestCompactionEndToEnd:
                 collection=ChromaDBCollection.WORDS,
                 chroma_client=client,
                 logger=mock_logger,
+                dynamo_client=dynamo_client,
             )
 
             # Verify processing
@@ -311,7 +402,7 @@ class TestCompactionEndToEnd:
 
             # Verify metadata update
             word_data = collection.get(
-                ids=["IMAGE#test-id#RECEIPT#00001#LINE#00001#WORD#00001"]
+                ids=[f"IMAGE#{test_image_id}#RECEIPT#00001#LINE#00001#WORD#00001"]
             )
             assert word_data["metadatas"][0]["merchant_name"] == "New Merchant"
 
@@ -322,6 +413,7 @@ class TestCompactionEndToEnd:
         mock_s3_bucket_compaction,
         mock_logger,
         chroma_snapshot_with_data,
+        dynamo_client,
         monkeypatch,
     ):
         """Test processing multiple receipts in a single batch."""
@@ -329,17 +421,28 @@ class TestCompactionEndToEnd:
 
         monkeypatch.setenv("CHROMADB_BUCKET", bucket_name)
 
+        # Generate valid UUIDs for 3 receipts
+        image_ids = [str(uuid4()) for _ in range(3)]
+
+        # Create DynamoDB entities for all receipts
+        for idx, image_id in enumerate(image_ids):
+            receipt_id = idx + 1
+            create_receipt_lines_in_dynamodb(
+                dynamo_client, image_id=image_id, receipt_id=receipt_id, num_lines=2
+            )
+
         # Create snapshot with multiple receipts
         snapshot_dir = tempfile.mkdtemp()
         snapshot_client = ChromaClient(persist_directory=snapshot_dir, mode="write")
 
         # Add lines for 3 receipts
-        for receipt_id in range(1, 4):
+        for idx, image_id in enumerate(image_ids):
+            receipt_id = idx + 1
             snapshot_client.upsert(
                 collection_name="lines",
                 ids=[
-                    f"IMAGE#img-{receipt_id}#RECEIPT#{receipt_id:05d}#LINE#00001",
-                    f"IMAGE#img-{receipt_id}#RECEIPT#{receipt_id:05d}#LINE#00002",
+                    f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#00001",
+                    f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#00002",
                 ],
                 embeddings=[[0.1] * 1536, [0.2] * 1536],
                 metadatas=[
@@ -364,9 +467,10 @@ class TestCompactionEndToEnd:
         from receipt_dynamo_stream.models import FieldChange
 
         messages = []
-        for receipt_id in range(1, 4):
+        for idx, image_id in enumerate(image_ids):
+            receipt_id = idx + 1
             msg = create_metadata_message(
-                image_id=f"img-{receipt_id}",
+                image_id=image_id,
                 receipt_id=receipt_id,
                 event_name="MODIFY",
                 changes={
@@ -387,6 +491,7 @@ class TestCompactionEndToEnd:
                 collection=ChromaDBCollection.LINES,
                 chroma_client=client,
                 logger=mock_logger,
+                dynamo_client=dynamo_client,
             )
 
             # Should have updated all 6 lines (2 per receipt × 3 receipts)
@@ -405,11 +510,12 @@ class TestCompactionEndToEnd:
             verify_client = ChromaClient(persist_directory=verify_dir, mode="read")
             collection = verify_client.get_collection("lines")
 
-            for receipt_id in range(1, 4):
+            for idx, image_id in enumerate(image_ids):
+                receipt_id = idx + 1
                 data = collection.get(
                     ids=[
-                        f"IMAGE#img-{receipt_id}#RECEIPT#{receipt_id:05d}#LINE#00001",
-                        f"IMAGE#img-{receipt_id}#RECEIPT#{receipt_id:05d}#LINE#00002",
+                        f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#00001",
+                        f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#00002",
                     ]
                 )
 
@@ -424,10 +530,18 @@ class TestCompactionEndToEnd:
         shutil.rmtree(snapshot_dir, ignore_errors=True)
 
     def test_full_compaction_workflow_with_metrics(
-        self, mock_s3_bucket_compaction, mock_logger, chroma_snapshot_with_data
+        self, mock_s3_bucket_compaction, mock_logger, chroma_snapshot_with_data, dynamo_client
     ):
         """Test complete workflow with metrics collection."""
         s3_client, bucket_name = mock_s3_bucket_compaction
+
+        # Generate valid UUID for testing
+        test_image_id = str(uuid4())
+
+        # Create receipt lines in DynamoDB
+        create_receipt_lines_in_dynamodb(
+            dynamo_client, image_id=test_image_id, receipt_id=1, num_lines=2
+        )
 
         from tests.helpers.factories import create_mock_metrics
 
@@ -447,7 +561,7 @@ class TestCompactionEndToEnd:
         from receipt_dynamo_stream.models import FieldChange
 
         metadata_msg = create_metadata_message(
-            image_id="test-id",
+            image_id=test_image_id,
             receipt_id=1,
             event_name="MODIFY",
             changes={"merchant_name": FieldChange(old="Old", new="New")},
@@ -466,6 +580,7 @@ class TestCompactionEndToEnd:
                 chroma_client=client,
                 logger=mock_logger,
                 metrics=mock_metrics,
+                dynamo_client=dynamo_client,
             )
 
             assert not result.has_errors
