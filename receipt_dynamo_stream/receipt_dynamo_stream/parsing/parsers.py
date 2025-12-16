@@ -84,12 +84,11 @@ def parse_entity(  # pylint: disable=too-many-arguments,too-many-positional-argu
             return item_to_receipt_word_label(complete_item)
 
     except ValueError as exc:
-        logger.error(
+        logger.exception(
             "Failed to parse entity",
             extra={
                 "image_type": image_type,
                 "entity_type": entity_type,
-                "error": str(exc),
                 "available_fields": list(image.keys()) if image else None,
                 "pk": pk,
                 "sk": sk,
@@ -102,13 +101,11 @@ def parse_entity(  # pylint: disable=too-many-arguments,too-many-positional-argu
                 {"entity_type": entity_type, "image_type": image_type},
             )
     except (TypeError, KeyError) as exc:  # pragma: no cover
-        logger.error(
+        logger.exception(
             "Unexpected error parsing entity",
             extra={
                 "image_type": image_type,
                 "entity_type": entity_type,
-                "error": str(exc),
-                "error_type": type(exc).__name__,
                 "pk": pk,
                 "sk": sk,
             },

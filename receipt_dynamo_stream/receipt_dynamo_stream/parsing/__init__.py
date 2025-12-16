@@ -13,9 +13,9 @@ from receipt_dynamo_stream.parsing.parsers import (
 
 __all__ = [
     "detect_entity_type",
-    "parse_entity",
-    "parse_stream_record",
     "is_compaction_run",
     "is_embeddings_completed",
     "parse_compaction_run",
+    "parse_entity",
+    "parse_stream_record",
 ]

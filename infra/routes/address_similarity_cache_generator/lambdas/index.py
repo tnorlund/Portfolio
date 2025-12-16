@@ -173,6 +173,7 @@ def handler(_event, _context):
 
     # Create temporary directory for ChromaDB snapshot
     temp_dir = tempfile.mkdtemp()
+    chroma_client = None
 
     try:
         # Initialize clients
@@ -471,7 +472,7 @@ def handler(_event, _context):
         seen_receipts = set()  # Avoid duplicates
 
         for metadata, distance, _document in zip(
-            similar_lines_data, similar_distances, similar_documents
+            similar_lines_data, similar_distances, similar_documents, strict=True
         ):
             if not metadata:
                 continue
@@ -661,6 +662,14 @@ def handler(_event, _context):
             "body": json.dumps({"error": str(e)}),
         }
     finally:
+        # Close ChromaDB client if initialized
+        if chroma_client is not None:
+            try:
+                chroma_client.close()
+                logger.info("Closed ChromaDB client")
+            except Exception:  # pylint: disable=broad-exception-caught
+                logger.warning("Failed to close ChromaDB client")
+
         # Cleanup temporary directory
         try:
             shutil.rmtree(temp_dir)

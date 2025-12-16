@@ -5,4 +5,4 @@ from receipt_dynamo_stream.change_detection.detector import (
     get_chromadb_relevant_changes,
 )
 
-__all__ = ["get_chromadb_relevant_changes", "CHROMADB_RELEVANT_FIELDS"]
+__all__ = ["CHROMADB_RELEVANT_FIELDS", "get_chromadb_relevant_changes"]

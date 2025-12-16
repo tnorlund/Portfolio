@@ -18,7 +18,7 @@ Focuses on:
 import logging
 import os
 import time
-from typing import Any, Dict, Optional, Protocol
+from typing import Any, Dict, Optional
 
 # Configuration from environment variables with sensible defaults
 # These values are set by Pulumi infrastructure and should match Lambda configuration
@@ -56,16 +56,6 @@ from receipt_dynamo_stream import (
 
 # Configure logging with observability
 logger = get_operation_logger(__name__)
-
-
-class MetricsRecorder(Protocol):
-    """Protocol for metrics recording."""
-
-    def count(
-        self, name: str, value: int, dimensions: Optional[Dict[str, str]] = None
-    ) -> None:
-        """Record a count metric."""
-        ...
 
 
 @trace_function(operation_name="stream_processor")
@@ -172,13 +162,13 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         messages_to_send = build_messages_from_records(records_to_process, metrics)
 
         # Calculate processing statistics
-        processed_records = len(messages_to_send)
-        skipped_records = total_records - processed_records
+        messages_generated = len(messages_to_send)
+        skipped_records = max(total_records - messages_generated, 0)
 
         logger.info(
             "Batch processing completed",
             total_records=total_records,
-            messages_generated=processed_records,
+            messages_generated=messages_generated,
             skipped_records=skipped_records,
             event_breakdown=event_name_counts,
         )
@@ -196,15 +186,16 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Calculate success rate
         success_rate = (
-            (processed_records / total_records * 100) if total_records > 0 else 0
+            (messages_generated / total_records * 100) if total_records > 0 else 0
         )
 
         # Collect all metrics for batch EMF logging (cost-effective)
         collected_metrics.update(
             {
                 "StreamBatchSize": total_records,
-                "StreamRecordsProcessed": processed_records,
+                "StreamRecordsProcessed": total_records,
                 "StreamRecordsSkipped": skipped_records,
+                "MessagesGenerated": messages_generated,
                 "MessagesQueued": sent_count,
                 "ProcessingDurationMs": processing_duration,
                 "SuccessRate": success_rate,
@@ -222,7 +213,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         logger.info(
             "Stream processing completed successfully",
-            processed_records=processed_records,
+            processed_records=messages_generated,
             queued_messages=sent_count,
             duration_ms=processing_duration,
             success_rate=f"{success_rate:.1f}%",
@@ -231,7 +222,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Return response
         response = LambdaResponse(
             status_code=200,
-            processed_records=processed_records,
+            processed_records=messages_generated,
             queued_messages=sent_count,
         )
 
@@ -241,7 +232,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     except ValueError as e:
         # ValueError includes batch size validation errors
-        logger.error("Stream processor validation failed", error=str(e))
+        logger.exception("Stream processor validation failed")
         emf_metrics.log_metrics(
             {"StreamProcessorValidationError": 1},
             properties={"error": str(e), "correlation_id": correlation_id},

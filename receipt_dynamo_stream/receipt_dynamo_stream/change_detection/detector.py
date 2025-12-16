@@ -44,4 +44,4 @@ def get_chromadb_relevant_changes(
     return changes
 
 
-__all__ = ["get_chromadb_relevant_changes", "CHROMADB_RELEVANT_FIELDS"]
+__all__ = ["CHROMADB_RELEVANT_FIELDS", "get_chromadb_relevant_changes"]

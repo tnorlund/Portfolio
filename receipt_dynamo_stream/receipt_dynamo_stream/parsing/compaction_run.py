@@ -22,6 +22,9 @@ def parse_compaction_run(
     Raises:
         ValueError: If parsing fails
     """
+    if not pk or not sk:
+        raise ValueError("PK and SK are required to parse compaction run")
+
     run_id = new_image.get("run_id", {}).get("S") or sk.split("#")[-1]
     image_id = pk.split("#", 1)[-1]
 
@@ -32,6 +35,10 @@ def parse_compaction_run(
         )
     except (TypeError, ValueError):
         receipt_id = int(new_image.get("receipt_id", {}).get("N", 0))
+        if receipt_id == 0:
+            raise ValueError(
+                f"Could not parse receipt_id from SK: {sk} or new_image"
+            )
 
     lines_delta_prefix = new_image.get("lines_delta_prefix", {}).get("S")
     words_delta_prefix = new_image.get("words_delta_prefix", {}).get("S")
@@ -75,6 +82,6 @@ def is_embeddings_completed(new_image: Dict[str, Any]) -> bool:
 
 __all__ = [
     "is_compaction_run",
-    "parse_compaction_run",
     "is_embeddings_completed",
+    "parse_compaction_run",
 ]

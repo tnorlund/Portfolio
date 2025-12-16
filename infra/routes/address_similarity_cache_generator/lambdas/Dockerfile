@@ -13,7 +13,7 @@ COPY receipt_chroma/ /tmp/receipt_chroma/
 COPY receipt_label/ /tmp/receipt_label/
 
 # Install dependencies with full ChromaDB support
-# receipt_label still needed for DynamoDB orchestration functions (not ChromaDB-related)
+# receipt_chroma required for snapshot download/query; receipt_label remains for DynamoDB orchestration helpers
 RUN pip install --no-cache-dir /tmp/receipt_dynamo && \
     pip install --no-cache-dir /tmp/receipt_chroma && \
     pip install --no-cache-dir "/tmp/receipt_label[full]" && \
@@ -30,4 +30,3 @@ COPY infra/routes/address_similarity_cache_generator/lambdas/index.py ${LAMBDA_T
 
 # Set the handler
 CMD ["index.handler"]
-

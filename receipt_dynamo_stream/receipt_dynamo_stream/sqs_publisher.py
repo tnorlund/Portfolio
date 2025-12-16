@@ -188,11 +188,10 @@ def send_batch_to_queue(  # pylint: disable=too-many-locals
                     {"collection": collection.value},
                 )
 
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.error(
-                "Failed to send messages to %s queue: %s",
+        except Exception:  # pragma: no cover - defensive
+            logger.exception(
+                "Failed to send messages to %s queue",
                 collection.value,
-                exc,
             )
             if metrics:
                 metrics.count(

@@ -96,6 +96,13 @@ list_receipts_lambda = aws.lambda_.Function(
     memory_size=512,
     timeout=60,
     environment={"variables": {"DYNAMODB_TABLE_NAME": dynamodb_table.name}},
+    tags={
+        "Project": "Receipt",
+        "Component": "ListReceipts",
+        "Environment": pulumi.get_stack(),
+        "ManagedBy": "Pulumi",
+        "environment": pulumi.get_stack(),
+    },
 )
 
 # Create Lambda function for processing individual receipts
@@ -115,5 +122,12 @@ process_receipt_lambda = aws.lambda_.Function(
             "OPENAI_API_KEY": openai_api_key,
             "GOOGLE_PLACES_API_KEY": google_places_api_key,
         }
+    },
+    tags={
+        "Project": "Receipt",
+        "Component": "ProcessReceipt",
+        "Environment": pulumi.get_stack(),
+        "ManagedBy": "Pulumi",
+        "environment": pulumi.get_stack(),
     },
 )

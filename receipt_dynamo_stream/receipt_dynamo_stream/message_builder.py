@@ -129,7 +129,7 @@ def build_compaction_run_messages(
         )
 
     except Exception as exc:  # pragma: no cover - defensive
-        logger.error("Failed to build compaction run message: %s", exc)
+        logger.exception("Failed to build compaction run message: %s", exc)
         if metrics:
             metrics.count("CompactionRunMessageBuildError", 1)
 
@@ -193,7 +193,7 @@ def build_compaction_run_completion_messages(
         )
 
     except Exception as exc:  # pragma: no cover - defensive
-        logger.error(
+        logger.exception(
             "Failed to build compaction run completion message: %s", exc
         )
         if metrics:
@@ -261,7 +261,7 @@ def build_entity_change_message(
         )
 
     except Exception as exc:  # pragma: no cover - defensive
-        logger.error("Failed to build entity change message: %s", exc)
+        logger.exception("Failed to build entity change message: %s", exc)
         if metrics:
             metrics.count("EntityMessageBuildError", 1)
         return None
