@@ -238,31 +238,20 @@ ${results.join("\n")}`,
   }
 
   async getComponentErrors() {
-    try {
-      // Check browser console logs if available
-      // This is a simplified version - in practice you'd want to integrate with browser automation
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Component Error Check:
+    // Check browser console logs if available
+    // This is a simplified version - in practice you'd want to integrate with browser automation
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Component Error Check:
 - Check browser console for hydration errors
 - Look for "Text content does not match" errors
 - Verify client-side only components are properly mounted
 - Check for SSR/client rendering mismatches`,
-          },
-        ],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Could not check component errors: ${error.message}`,
-          },
-        ],
-      };
-    }
+        },
+      ],
+    };
   }
 
   async testApiEndpoint(endpoint) {
