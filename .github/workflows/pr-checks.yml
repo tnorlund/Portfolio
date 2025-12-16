@@ -146,12 +146,19 @@ jobs:
             echo "Verifying receipt_chroma installation..."
             python3 -c "import receipt_chroma; print(f'receipt_chroma imported from: {receipt_chroma.__file__}')"
           elif [[ "${{ matrix.package }}" == "receipt_chroma" ]]; then
-            echo "Installing receipt_dynamo dependency from PR source first"
+            echo "Installing receipt_dynamo and receipt_dynamo_stream dependencies from PR source first"
             # Install from the parent directory since we haven't cd'd yet
             python3 -m pip install -e "./receipt_dynamo" --disable-pip-version-check
             # Verify receipt_dynamo is importable
             echo "Verifying receipt_dynamo installation..."
             python3 -c "import receipt_dynamo; print(f'receipt_dynamo imported from: {receipt_dynamo.__file__}')"
+            # Install receipt_dynamo_stream (new dependency for compaction refactoring)
+            echo "Installing receipt_dynamo_stream dependency..."
+            python3 -m pip install -e "./receipt_dynamo_stream" --disable-pip-version-check
+            # Verify receipt_dynamo_stream is importable
+            echo "Verifying receipt_dynamo_stream installation..."
+            python3 -c "import receipt_dynamo_stream; print(f'receipt_dynamo_stream imported from: {receipt_dynamo_stream.__file__}')"
+            python3 -c "from receipt_dynamo_stream.models import StreamMessage, FieldChange; print('StreamMessage and FieldChange imported successfully')"
           elif [[ "${{ matrix.package }}" == "receipt_dynamo_stream" ]]; then
             echo "Installing receipt_dynamo dependency from PR source first"
             python3 -m pip install -e "./receipt_dynamo" --disable-pip-version-check

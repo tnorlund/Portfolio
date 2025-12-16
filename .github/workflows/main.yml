@@ -232,12 +232,14 @@ jobs:
               "chromadb>=0.5.0" "numpy>=1.24.0" "pinecone>=3.0" \
               --disable-pip-version-check
           elif [[ "${{ matrix.package }}" == "receipt_chroma" ]]; then
-            echo "Installing receipt_chroma with local receipt_dynamo dependency..."
+            echo "Installing receipt_chroma with local receipt_dynamo and receipt_dynamo_stream dependencies..."
             # First install receipt_dynamo without its test dependencies
             python3 -m pip install --force-reinstall -e "receipt_dynamo" --disable-pip-version-check
+            # Install receipt_dynamo_stream (new dependency for compaction refactoring)
+            python3 -m pip install --force-reinstall -e "receipt_dynamo_stream" --disable-pip-version-check
             # Then install receipt_chroma without dependencies to avoid pip trying to resolve receipt-dynamo from PyPI
             python3 -m pip install --force-reinstall --no-deps -e "receipt_chroma" --disable-pip-version-check
-            # Install receipt_chroma's dependencies manually (excluding receipt-dynamo which is already installed)
+            # Install receipt_chroma's dependencies manually (excluding receipt-dynamo and receipt-dynamo-stream which are already installed)
             python3 -m pip install "boto3" "chromadb>=1.3.5" "openai>=2.8.1,<3.0.0" --disable-pip-version-check
             # Install test dependencies
             python3 -m pip install "pytest>=8.3.0,<10.0.0" "pytest-mock>=3.14.0,<4.0.0" "pytest-cov>=6.1.0,<7.0.0" \
