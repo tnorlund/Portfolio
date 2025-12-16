@@ -157,9 +157,11 @@ jobs:
             # Verify receipt_dynamo is importable
             echo "Verifying receipt_dynamo installation..."
             python3 -c "import receipt_dynamo; print(f'receipt_dynamo imported from: {receipt_dynamo.__file__}')"
-            # Install receipt_dynamo_stream (new dependency for compaction refactoring)
+            # Install receipt_dynamo_stream without dependencies to avoid PyPI resolution for receipt-dynamo
             echo "Installing receipt_dynamo_stream dependency..."
-            python3 -m pip install -e "./receipt_dynamo_stream" --disable-pip-version-check
+            python3 -m pip install --no-deps -e "./receipt_dynamo_stream" --disable-pip-version-check
+            # Install receipt_dynamo_stream's dependencies manually (excluding receipt-dynamo which is already installed)
+            python3 -m pip install "boto3>=1.34.0" --disable-pip-version-check
             # Verify receipt_dynamo_stream is importable
             echo "Verifying receipt_dynamo_stream installation..."
             python3 -c "import receipt_dynamo_stream; print(f'receipt_dynamo_stream imported from: {receipt_dynamo_stream.__file__}')"

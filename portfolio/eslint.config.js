@@ -31,8 +31,6 @@ module.exports = [
       "out/**",
       "build/**",
       "dist/**",
-      "*.config.js",
-      "*.config.ts",
       "next-env.d.ts",
     ],
   },
