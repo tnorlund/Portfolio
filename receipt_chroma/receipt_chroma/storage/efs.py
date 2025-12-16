@@ -12,7 +12,6 @@ import os
 import shutil
 import tempfile
 import time
-from pathlib import Path
 from typing import Any, Dict, Optional
 
 import boto3
@@ -168,7 +167,7 @@ class EFSSnapshotManager:
                 "download_time_ms": download_time * 1000,
             }
 
-        except Exception:
+        except Exception as e:
             # Clean up temp directory on error
             shutil.rmtree(temp_dir, ignore_errors=True)
             self.logger.exception(
@@ -290,7 +289,7 @@ class EFSSnapshotManager:
                         "EFSS3SyncError", 1, {"collection": self.collection}
                     )
 
-        except Exception:
+        except Exception as e:
             self.logger.exception(
                 "S3 sync error",
                 collection=self.collection,

@@ -19,9 +19,6 @@ import time
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Union
 
-# AWS SDK
-import boto3
-
 # Enhanced observability imports
 from utils import (
     get_operation_logger,
