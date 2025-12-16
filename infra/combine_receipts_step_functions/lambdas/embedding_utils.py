@@ -203,5 +203,5 @@ def create_embeddings_and_compaction_run(
         return compaction_run
 
     except (ValueError, RuntimeError) as e:
-        logger.error("Failed to create embeddings: %s", e)
+        logger.exception("Failed to create embeddings: %s", e)
         return None

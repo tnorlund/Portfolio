@@ -259,7 +259,7 @@ def _send_sqs_notification(
         logger.warning("Failed to send SQS notification: %s", e)
 
 
-def create_embeddings_and_compaction_run(  # noqa: C901
+def create_embeddings_and_compaction_run(
     receipt_lines: List[ReceiptLine],
     receipt_words: List[ReceiptWord],
     image_id: str,
@@ -373,7 +373,7 @@ def create_embeddings_and_compaction_run(  # noqa: C901
         )
         line_records = [
             LineEmbeddingRecord(line=ln, embedding=emb)
-            for ln, emb in zip(receipt_lines, line_embeddings)
+            for ln, emb in zip(receipt_lines, line_embeddings, strict=True)
         ]
         line_payload = build_line_payload(
             line_records,
@@ -389,7 +389,7 @@ def create_embeddings_and_compaction_run(  # noqa: C901
         )
         word_records = [
             WordEmbeddingRecord(word=w, embedding=emb)
-            for w, emb in zip(receipt_words, word_embeddings)
+            for w, emb in zip(receipt_words, word_embeddings, strict=True)
         ]
         word_payload = build_word_payload(
             word_records,

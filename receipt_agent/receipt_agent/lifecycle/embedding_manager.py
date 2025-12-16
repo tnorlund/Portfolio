@@ -11,7 +11,7 @@ immediate querying.
 
 import logging
 import os
-from typing import List, Optional
+from typing import Optional
 
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.entities import (
@@ -38,10 +38,10 @@ def create_embeddings_and_compaction_run(
     chromadb_bucket: str,
     image_id: str,
     receipt_id: int,
-    receipt_lines: Optional[List[ReceiptLine]] = None,
-    receipt_words: Optional[List[ReceiptWord]] = None,
+    receipt_lines: Optional[list[ReceiptLine]] = None,
+    receipt_words: Optional[list[ReceiptWord]] = None,
     receipt_metadata: Optional[ReceiptMetadata] = None,
-    receipt_word_labels: Optional[List[ReceiptWordLabel]] = None,
+    receipt_word_labels: Optional[list[ReceiptWordLabel]] = None,
     merchant_name: Optional[str] = None,
     add_to_dynamo: bool = False,
 ) -> Optional[CompactionRun]:
@@ -145,8 +145,8 @@ def create_embeddings(
     chromadb_bucket: str,
     image_id: str,
     receipt_id: int,
-    receipt_lines: Optional[List[ReceiptLine]] = None,
-    receipt_words: Optional[List[ReceiptWord]] = None,
+    receipt_lines: Optional[list[ReceiptLine]] = None,
+    receipt_words: Optional[list[ReceiptWord]] = None,
     receipt_metadata: Optional[ReceiptMetadata] = None,
     merchant_name: Optional[str] = None,
 ) -> Optional[str]:
