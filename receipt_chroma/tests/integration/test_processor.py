@@ -2,6 +2,7 @@
 
 import os
 import tempfile
+from uuid import uuid4
 
 import pytest
 from receipt_dynamo.constants import ChromaDBCollection
@@ -14,6 +15,8 @@ from tests.helpers.factories import (
     create_compaction_run_message,
     create_mock_logger,
     create_mock_metrics,
+    create_receipt_lines_in_dynamodb,
+    create_receipt_words_in_dynamodb,
 )
 
 
@@ -22,17 +25,25 @@ class TestProcessor:
     """Test the main compaction processor."""
 
     def test_process_collection_updates_metadata_only(
-        self, temp_chromadb_dir, mock_logger, mock_metrics
+        self, temp_chromadb_dir, mock_logger, mock_metrics, dynamo_client
     ):
         """Test processing only metadata updates."""
+        # Generate valid UUID for testing
+        test_image_id = str(uuid4())
+
+        # Create receipt lines in DynamoDB
+        create_receipt_lines_in_dynamodb(
+            dynamo_client, image_id=test_image_id, receipt_id=1, num_lines=2
+        )
+
         # Create a ChromaDB snapshot with test data
         client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
 
         client.upsert(
             collection_name="lines",
             ids=[
-                "IMAGE#test-id#RECEIPT#00001#LINE#00001",
-                "IMAGE#test-id#RECEIPT#00001#LINE#00002",
+                f"IMAGE#{test_image_id}#RECEIPT#00001#LINE#00001",
+                f"IMAGE#{test_image_id}#RECEIPT#00001#LINE#00002",
             ],
             embeddings=[[0.1] * 1536, [0.2] * 1536],
             metadatas=[
@@ -45,7 +56,7 @@ class TestProcessor:
         from receipt_dynamo_stream.models import FieldChange
 
         metadata_msg = create_metadata_message(
-            image_id="test-id",
+            image_id=test_image_id,
             receipt_id=1,
             event_name="MODIFY",
             changes={
@@ -61,6 +72,7 @@ class TestProcessor:
             chroma_client=client,
             logger=mock_logger,
             metrics=mock_metrics,
+            dynamo_client=dynamo_client,
         )
 
         # Verify result
@@ -74,8 +86,8 @@ class TestProcessor:
         collection = client.get_collection("lines")
         data = collection.get(
             ids=[
-                "IMAGE#test-id#RECEIPT#00001#LINE#00001",
-                "IMAGE#test-id#RECEIPT#00001#LINE#00002",
+                f"IMAGE#{test_image_id}#RECEIPT#00001#LINE#00001",
+                f"IMAGE#{test_image_id}#RECEIPT#00001#LINE#00002",
             ]
         )
 
@@ -142,10 +154,19 @@ class TestProcessor:
         client.close()
 
     def test_process_collection_updates_mixed_messages(
-        self, temp_chromadb_dir, mock_logger, mock_s3_bucket_compaction, monkeypatch
+        self, temp_chromadb_dir, mock_logger, mock_s3_bucket_compaction, dynamo_client, monkeypatch
     ):
         """Test processing a mix of metadata, label, and delta messages."""
         s3_client, bucket_name = mock_s3_bucket_compaction
+
+        # Generate valid UUIDs for testing
+        test_image_id = str(uuid4())
+        delta_image_id = str(uuid4())
+
+        # Create receipt lines in DynamoDB
+        create_receipt_lines_in_dynamodb(
+            dynamo_client, image_id=test_image_id, receipt_id=1, num_lines=2
+        )
 
         # Set environment variable for S3 bucket
         monkeypatch.setenv("CHROMADB_BUCKET", bucket_name)
@@ -155,7 +176,7 @@ class TestProcessor:
         delta_client = ChromaClient(persist_directory=delta_dir, mode="write")
         delta_client.upsert(
             collection_name="lines",
-            ids=["IMAGE#delta-id#RECEIPT#00001#LINE#00001"],
+            ids=[f"IMAGE#{delta_image_id}#RECEIPT#00001#LINE#00001"],
             embeddings=[[0.9] * 1536],
             metadatas=[{"text": "Delta line"}],
         )
@@ -175,8 +196,8 @@ class TestProcessor:
         client.upsert(
             collection_name="lines",
             ids=[
-                "IMAGE#test-id#RECEIPT#00001#LINE#00001",
-                "IMAGE#test-id#RECEIPT#00001#LINE#00002",
+                f"IMAGE#{test_image_id}#RECEIPT#00001#LINE#00001",
+                f"IMAGE#{test_image_id}#RECEIPT#00001#LINE#00002",
             ],
             embeddings=[[0.1] * 1536, [0.2] * 1536],
             metadatas=[
@@ -189,7 +210,7 @@ class TestProcessor:
         from receipt_dynamo_stream.models import FieldChange
 
         metadata_msg = create_metadata_message(
-            image_id="test-id",
+            image_id=test_image_id,
             receipt_id=1,
             event_name="MODIFY",
             changes={
@@ -199,7 +220,7 @@ class TestProcessor:
         )
 
         delta_msg = create_compaction_run_message(
-            image_id="delta-id",
+            image_id=delta_image_id,
             receipt_id=1,
             run_id="run-123",
             delta_s3_prefix=f"s3://{bucket_name}/{delta_prefix}/",
@@ -213,6 +234,7 @@ class TestProcessor:
             collection=ChromaDBCollection.LINES,
             chroma_client=client,
             logger=mock_logger,
+            dynamo_client=dynamo_client,
         )
 
         # Verify result
@@ -377,10 +399,18 @@ class TestProcessor:
         client.close()
 
     def test_process_collection_updates_processing_order(
-        self, temp_chromadb_dir, mock_logger, mock_s3_bucket_compaction, monkeypatch
+        self, temp_chromadb_dir, mock_logger, mock_s3_bucket_compaction, dynamo_client, monkeypatch
     ):
         """Test that updates are processed in correct order: deltas → metadata → labels."""
         s3_client, bucket_name = mock_s3_bucket_compaction
+
+        # Generate valid UUID for testing
+        test_image_id = str(uuid4())
+
+        # Create receipt words in DynamoDB
+        create_receipt_words_in_dynamodb(
+            dynamo_client, image_id=test_image_id, receipt_id=1, line_id=1, num_words=1
+        )
 
         # Set environment variable for S3 bucket
         monkeypatch.setenv("CHROMADB_BUCKET", bucket_name)
@@ -390,7 +420,7 @@ class TestProcessor:
         delta_client = ChromaClient(persist_directory=delta_dir, mode="write")
         delta_client.upsert(
             collection_name="words",
-            ids=["IMAGE#test-id#RECEIPT#00001#LINE#00001#WORD#00001"],
+            ids=[f"IMAGE#{test_image_id}#RECEIPT#00001#LINE#00001#WORD#00001"],
             embeddings=[[0.9] * 1536],
             metadatas=[
                 {
@@ -426,7 +456,7 @@ class TestProcessor:
 
         # Label update for the word from delta
         label_msg = create_label_message(
-            image_id="test-id",
+            image_id=test_image_id,
             receipt_id=1,
             line_id=1,
             word_id=1,
@@ -440,7 +470,7 @@ class TestProcessor:
 
         # Metadata update for the receipt
         metadata_msg = create_metadata_message(
-            image_id="test-id",
+            image_id=test_image_id,
             receipt_id=1,
             event_name="MODIFY",
             changes={
@@ -451,7 +481,7 @@ class TestProcessor:
 
         # Delta message
         delta_msg = create_compaction_run_message(
-            image_id="test-id",
+            image_id=test_image_id,
             receipt_id=1,
             run_id="run-order",
             delta_s3_prefix=f"s3://{bucket_name}/{delta_prefix}/",
@@ -466,6 +496,7 @@ class TestProcessor:
             collection=ChromaDBCollection.WORDS,
             chroma_client=client,
             logger=mock_logger,
+            dynamo_client=dynamo_client,
         )
 
         # Verify all operations completed
@@ -476,7 +507,7 @@ class TestProcessor:
         # Verify the delta was merged first, then metadata and labels applied
         collection = client.get_collection("words")
         word_data = collection.get(
-            ids=["IMAGE#test-id#RECEIPT#00001#LINE#00001#WORD#00001"]
+            ids=[f"IMAGE#{test_image_id}#RECEIPT#00001#LINE#00001#WORD#00001"]
         )
 
         # Should have updated merchant name (from metadata)
