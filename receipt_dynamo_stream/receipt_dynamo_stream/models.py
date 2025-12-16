@@ -68,6 +68,7 @@ class StreamMessage:  # pylint: disable=too-many-instance-attributes
     timestamp: Optional[str] = None
     stream_record_id: Optional[str] = None
     aws_region: Optional[str] = None
+    record_snapshot: Optional[Mapping[str, object]] = None
 
 
 __all__ = [

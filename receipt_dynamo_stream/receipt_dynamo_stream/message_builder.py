@@ -9,6 +9,7 @@ Constructs StreamMessage objects that can be published to SQS queues.
 from __future__ import annotations
 
 import logging
+from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Iterable, Mapping, Optional, Protocol, cast
 
@@ -117,6 +118,7 @@ def build_compaction_run_messages(
                     timestamp=datetime.now(timezone.utc).isoformat(),
                     stream_record_id=str(record.get("eventID", "unknown")),
                     aws_region=str(record.get("awsRegion", "unknown")),
+                    record_snapshot=cast(Mapping[str, object], new_image),
                 )
             )
 
@@ -177,6 +179,7 @@ def build_compaction_run_completion_messages(
                     timestamp=datetime.now(timezone.utc).isoformat(),
                     stream_record_id=str(record.get("eventID", "unknown")),
                     aws_region=str(record.get("awsRegion", "unknown")),
+                    record_snapshot=cast(Mapping[str, object], new_image),
                 )
             )
 
@@ -248,6 +251,10 @@ def build_entity_change_message(
                     },
                 )
 
+        # Convert new_entity to dict for snapshot (current state after change)
+        # For MODIFY events, this is the updated entity; for REMOVE, it's the entity being removed
+        record_snapshot = asdict(new_entity) if new_entity else None
+
         return StreamMessage(
             entity_type=entity_type,
             entity_data=entity_data,
@@ -258,6 +265,7 @@ def build_entity_change_message(
             timestamp=datetime.now(timezone.utc).isoformat(),
             stream_record_id=str(record.get("eventID", "unknown")),
             aws_region=str(record.get("awsRegion", "unknown")),
+            record_snapshot=record_snapshot,
         )
 
     except Exception as exc:  # pragma: no cover - defensive

@@ -1,11 +1,13 @@
 """Factory functions for creating test data."""
 
+from dataclasses import asdict
 from datetime import datetime
 from typing import Any, Dict, Optional
 from unittest.mock import MagicMock
 from uuid import uuid4
 
 from receipt_dynamo.constants import ChromaDBCollection
+from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 from receipt_dynamo_stream.models import FieldChange, StreamMessage
 
 
@@ -58,6 +60,7 @@ def create_label_message(
     label: str = "TOTAL",
     event_name: str = "MODIFY",
     changes: Optional[Dict[str, FieldChange]] = None,
+    record_snapshot: Optional[Dict[str, Any]] = None,
 ) -> StreamMessage:
     """Create a RECEIPT_WORD_LABEL StreamMessage for testing.
 
@@ -69,6 +72,7 @@ def create_label_message(
         label: Label text
         event_name: Event type (INSERT, MODIFY, REMOVE)
         changes: Dictionary of field changes
+        record_snapshot: Optional snapshot of the entity state from DynamoDB
 
     Returns:
         StreamMessage for RECEIPT_WORD_LABEL entity
@@ -77,6 +81,22 @@ def create_label_message(
         changes = {
             "validation_status": FieldChange(old="PENDING", new="VALID"),
         }
+
+    # Create a record snapshot with the label entity if not provided
+    if record_snapshot is None:
+        # Use a valid UUID if the image_id is a test string
+        valid_image_id = image_id if image_id.count('-') == 4 else str(uuid4())
+        label_entity = ReceiptWordLabel(
+            image_id=valid_image_id,
+            receipt_id=receipt_id,
+            line_id=line_id,
+            word_id=word_id,
+            label=label,
+            reasoning=None,
+            timestamp_added=datetime.now().isoformat(),
+            validation_status="VALID" if event_name == "MODIFY" else None,
+        )
+        record_snapshot = asdict(label_entity)
 
     return StreamMessage(
         entity_type="RECEIPT_WORD_LABEL",
@@ -93,6 +113,7 @@ def create_label_message(
         timestamp=datetime.now().isoformat(),
         stream_record_id=f"record-{image_id}-{receipt_id}-{line_id}-{word_id}",
         aws_region="us-east-1",
+        record_snapshot=record_snapshot,
     )
 
 
