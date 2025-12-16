@@ -185,10 +185,12 @@ def update_receipt_metadata(
         # Apply field changes
         for field, change in changes.items():
             # Handle both FieldChange objects and plain dicts
-            if hasattr(change, 'new'):
+            if hasattr(change, "new"):
                 new_value = change.new
             else:
-                new_value = change.get("new") if isinstance(change, dict) else change
+                new_value = (
+                    change.get("new") if isinstance(change, dict) else change
+                )
 
             if new_value is not None:
                 updated_metadata[field] = new_value
@@ -530,10 +532,14 @@ def update_word_labels(
                 if "validation_status" in changes:
                     change = changes["validation_status"]
                     # Handle both FieldChange objects and plain dicts
-                    if hasattr(change, 'new'):
+                    if hasattr(change, "new"):
                         new_status = change.new
                     else:
-                        new_status = change.get("new") if isinstance(change, dict) else change
+                        new_status = (
+                            change.get("new")
+                            if isinstance(change, dict)
+                            else change
+                        )
 
                     if new_status is not None:
                         updated_metadata["label_status"] = (
@@ -553,10 +559,14 @@ def update_word_labels(
                 if "label_proposed_by" in changes:
                     change = changes["label_proposed_by"]
                     # Handle both FieldChange objects and plain dicts
-                    if hasattr(change, 'new'):
+                    if hasattr(change, "new"):
                         val = change.new
                     else:
-                        val = change.get("new") if isinstance(change, dict) else change
+                        val = (
+                            change.get("new")
+                            if isinstance(change, dict)
+                            else change
+                        )
 
                     if val is not None:
                         updated_metadata["label_proposed_by"] = val
@@ -565,10 +575,14 @@ def update_word_labels(
             if changes and "validation_status" in changes:
                 change = changes["validation_status"]
                 # Handle both FieldChange objects and plain dicts
-                if hasattr(change, 'new'):
+                if hasattr(change, "new"):
                     status = change.new
                 else:
-                    status = change.get("new") if isinstance(change, dict) else change
+                    status = (
+                        change.get("new")
+                        if isinstance(change, dict)
+                        else change
+                    )
             else:
                 status = None
             current_label = None

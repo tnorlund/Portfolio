@@ -9,7 +9,10 @@ from receipt_dynamo.constants import ChromaDBCollection
 
 from receipt_chroma import ChromaClient
 from receipt_chroma.compaction.deltas import merge_compaction_deltas
-from tests.helpers.factories import create_compaction_run_message, create_mock_logger
+from tests.helpers.factories import (
+    create_compaction_run_message,
+    create_mock_logger,
+)
 
 
 @pytest.mark.integration
@@ -31,7 +34,9 @@ class TestDeltaMerging:
             collection_name="lines",
             ids=["IMAGE#delta-id#RECEIPT#00001#LINE#00001"],
             embeddings=[[0.9] * 1536],
-            metadatas=[{"text": "Delta line", "merchant_name": "Delta Merchant"}],
+            metadatas=[
+                {"text": "Delta line", "merchant_name": "Delta Merchant"}
+            ],
         )
         delta_client.close()
 
@@ -47,7 +52,9 @@ class TestDeltaMerging:
         )
 
         # Create main snapshot
-        snapshot_client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
+        snapshot_client = ChromaClient(
+            persist_directory=temp_chromadb_dir, mode="write"
+        )
         snapshot_client.upsert(
             collection_name="lines",
             ids=["IMAGE#snapshot-id#RECEIPT#00001#LINE#00001"],
@@ -128,7 +135,9 @@ class TestDeltaMerging:
                 s3_client.upload_file(local_path, bucket_name, s3_key)
 
         # Create main snapshot
-        snapshot_client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
+        snapshot_client = ChromaClient(
+            persist_directory=temp_chromadb_dir, mode="write"
+        )
         snapshot_client.upsert(
             collection_name="words",
             ids=["IMAGE#snapshot-id#RECEIPT#00001#LINE#00001#WORD#00001"],
@@ -180,7 +189,9 @@ class TestDeltaMerging:
         s3_client, bucket_name = mock_s3_bucket_compaction
 
         # Create main snapshot
-        snapshot_client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
+        snapshot_client = ChromaClient(
+            persist_directory=temp_chromadb_dir, mode="write"
+        )
         snapshot_client.upsert(
             collection_name="lines",
             ids=["IMAGE#snapshot-id#RECEIPT#00001#LINE#00001"],
@@ -192,7 +203,9 @@ class TestDeltaMerging:
         compaction_messages = []
         for i, run_id in enumerate(["run-1", "run-2"]):
             delta_dir = tempfile.mkdtemp()
-            delta_client = ChromaClient(persist_directory=delta_dir, mode="write")
+            delta_client = ChromaClient(
+                persist_directory=delta_dir, mode="write"
+            )
 
             # Add unique delta data
             delta_client.upsert(
@@ -255,7 +268,9 @@ class TestDeltaMerging:
         """Test merging with no compaction run messages."""
         s3_client, bucket_name = mock_s3_bucket_compaction
 
-        snapshot_client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
+        snapshot_client = ChromaClient(
+            persist_directory=temp_chromadb_dir, mode="write"
+        )
 
         # Merge with empty message list
         total_merged, per_run_results = merge_compaction_deltas(
@@ -278,7 +293,9 @@ class TestDeltaMerging:
         """Test handling when delta files are missing from S3."""
         s3_client, bucket_name = mock_s3_bucket_compaction
 
-        snapshot_client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
+        snapshot_client = ChromaClient(
+            persist_directory=temp_chromadb_dir, mode="write"
+        )
         snapshot_client.upsert(
             collection_name="lines",
             ids=["IMAGE#snapshot-id#RECEIPT#00001#LINE#00001"],
@@ -317,11 +334,14 @@ class TestDeltaMerging:
         """Test handling when compaction message lacks delta_s3_prefix."""
         s3_client, bucket_name = mock_s3_bucket_compaction
 
-        snapshot_client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
+        snapshot_client = ChromaClient(
+            persist_directory=temp_chromadb_dir, mode="write"
+        )
 
         # Create compaction message without delta_s3_prefix
-        from receipt_dynamo_stream.models import StreamMessage
         from datetime import datetime
+
+        from receipt_dynamo_stream.models import StreamMessage
 
         compaction_msg = StreamMessage(
             entity_type="COMPACTION_RUN",
@@ -382,7 +402,9 @@ class TestDeltaMerging:
                 s3_client.upload_file(local_path, bucket_name, s3_key)
 
         # Create main snapshot
-        snapshot_client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
+        snapshot_client = ChromaClient(
+            persist_directory=temp_chromadb_dir, mode="write"
+        )
         snapshot_client.upsert(
             collection_name="lines",
             ids=["IMAGE#snapshot-id#RECEIPT#00001#LINE#00001"],

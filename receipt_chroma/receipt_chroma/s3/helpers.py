@@ -7,9 +7,8 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Literal, Optional, TypedDict
 
-from typing_extensions import NotRequired, Required
-
 import boto3
+from typing_extensions import NotRequired, Required
 
 if TYPE_CHECKING:
     from mypy_boto3_s3 import S3Client
@@ -23,7 +22,9 @@ class DownloadResult(TypedDict, total=False):
     """Result from downloading a snapshot from S3."""
 
     status: Required[Literal["downloaded", "failed"]]  # Always present
-    snapshot_key: NotRequired[str]  # Usually present, but not in exception cases
+    snapshot_key: NotRequired[
+        str
+    ]  # Usually present, but not in exception cases
     local_path: NotRequired[str]  # Only present on successful download
     file_count: NotRequired[int]  # Only present on successful download
     total_size_bytes: NotRequired[int]  # Only present on successful download
@@ -234,9 +235,7 @@ def upload_snapshot_with_hash(
                     if file_path.is_file():
                         stat = file_path.stat()
                         rel_path = file_path.relative_to(snapshot_path)
-                        hash_str = (
-                            f"{rel_path}:{stat.st_size}:{stat.st_mtime}"
-                        )
+                        hash_str = f"{rel_path}:{stat.st_size}:{stat.st_mtime}"
                         hash_obj.update(hash_str.encode())
                 hash_value = hash_obj.hexdigest()
                 logger.info(

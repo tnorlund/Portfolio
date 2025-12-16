@@ -2,6 +2,13 @@
 
 __version__ = "0.1.0"
 
+# Compaction operations
+from receipt_chroma.compaction import (
+    CollectionUpdateResult,
+    LabelUpdateResult,
+    MetadataUpdateResult,
+    process_collection_updates,
+)
 from receipt_chroma.data.chroma_client import ChromaClient
 
 # Embedding pipeline exports
@@ -18,14 +25,6 @@ from receipt_chroma.s3 import (
     download_snapshot_atomic,
     initialize_empty_snapshot,
     upload_snapshot_atomic,
-)
-
-# Compaction operations
-from receipt_chroma.compaction import (
-    process_collection_updates,
-    CollectionUpdateResult,
-    MetadataUpdateResult,
-    LabelUpdateResult,
 )
 
 # Storage abstraction

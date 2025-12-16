@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Tuple
 import boto3
 from botocore.exceptions import ClientError
 from receipt_dynamo.constants import ChromaDBCollection
+
 from receipt_chroma.data.chroma_client import ChromaClient
 
 
@@ -284,7 +285,10 @@ def _download_delta_to_dir(
                 os.path.join(dest_dir_abs, relative_path)
             )
 
-            if os.path.commonpath([dest_dir_abs, target_path_abs]) != dest_dir_abs:
+            if (
+                os.path.commonpath([dest_dir_abs, target_path_abs])
+                != dest_dir_abs
+            ):
                 logger.warning(
                     "Skipping unsafe delta object path",
                     key=key,

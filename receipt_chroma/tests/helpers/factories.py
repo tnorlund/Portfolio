@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 from receipt_dynamo.constants import ChromaDBCollection
-from receipt_dynamo_stream.models import StreamMessage, FieldChange
+from receipt_dynamo_stream.models import FieldChange, StreamMessage
 
 
 def create_metadata_message(
@@ -30,7 +30,9 @@ def create_metadata_message(
     """
     if changes is None:
         changes = {
-            "merchant_name": FieldChange(old="Old Merchant", new="New Merchant"),
+            "merchant_name": FieldChange(
+                old="Old Merchant", new="New Merchant"
+            ),
         }
 
     return StreamMessage(
@@ -162,7 +164,9 @@ def create_mock_metrics() -> MagicMock:
     return metrics
 
 
-def create_receipt_lines_in_dynamodb(dynamo_client: Any, image_id: str, receipt_id: int, num_lines: int = 2) -> None:
+def create_receipt_lines_in_dynamodb(
+    dynamo_client: Any, image_id: str, receipt_id: int, num_lines: int = 2
+) -> None:
     """Create receipt lines in DynamoDB for testing.
 
     Args:
@@ -191,7 +195,13 @@ def create_receipt_lines_in_dynamodb(dynamo_client: Any, image_id: str, receipt_
         dynamo_client.add_receipt_line(line)
 
 
-def create_receipt_words_in_dynamodb(dynamo_client: Any, image_id: str, receipt_id: int, line_id: int, num_words: int = 2) -> None:
+def create_receipt_words_in_dynamodb(
+    dynamo_client: Any,
+    image_id: str,
+    receipt_id: int,
+    line_id: int,
+    num_words: int = 2,
+) -> None:
     """Create receipt words in DynamoDB for testing.
 
     Args:

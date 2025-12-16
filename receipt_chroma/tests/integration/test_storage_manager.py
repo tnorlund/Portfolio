@@ -110,7 +110,9 @@ class TestStorageManagerS3Mode:
 class TestStorageManagerEFSMode:
     """Test StorageManager in EFS mode."""
 
-    def test_efs_mode_with_available_efs(self, mock_s3_bucket_compaction, mock_logger):
+    def test_efs_mode_with_available_efs(
+        self, mock_s3_bucket_compaction, mock_logger
+    ):
         """Test that EFS mode is detected when EFS is available."""
         s3_client, bucket_name = mock_s3_bucket_compaction
 

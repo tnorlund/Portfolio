@@ -84,7 +84,9 @@ class CollectionUpdateResult:
     @property
     def total_labels_updated(self) -> int:
         """Total number of label updates (excluding errors)."""
-        return sum(r.updated_count for r in self.label_updates if r.error is None)
+        return sum(
+            r.updated_count for r in self.label_updates if r.error is None
+        )
 
     @property
     def has_errors(self) -> bool:

@@ -60,7 +60,9 @@ class EFSSnapshotManager:
                 with open(self.version_file, "r", encoding="utf-8") as f:
                     return f.read().strip()
         except Exception as e:
-            self.logger.warning("Failed to read EFS version file", error=str(e))
+            self.logger.warning(
+                "Failed to read EFS version file", error=str(e)
+            )
         return None
 
     def set_efs_version(self, version: str) -> None:
@@ -290,7 +292,10 @@ class EFSSnapshotManager:
                 self.metrics.count(
                     "EFSS3SyncError",
                     1,
-                    {"collection": self.collection, "error_type": type(e).__name__},
+                    {
+                        "collection": self.collection,
+                        "error_type": type(e).__name__,
+                    },
                 )
 
     def cleanup_old_snapshots(self, keep_versions: int = 3) -> None:
@@ -328,7 +333,9 @@ class EFSSnapshotManager:
 
                 if self.metrics:
                     self.metrics.count(
-                        "EFSSnapshotCleanup", 1, {"collection": self.collection}
+                        "EFSSnapshotCleanup",
+                        1,
+                        {"collection": self.collection},
                     )
 
         except Exception as e:

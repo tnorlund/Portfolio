@@ -10,9 +10,9 @@ from receipt_dynamo.constants import ChromaDBCollection
 from receipt_chroma import ChromaClient
 from receipt_chroma.compaction import process_collection_updates
 from tests.helpers.factories import (
-    create_metadata_message,
-    create_label_message,
     create_compaction_run_message,
+    create_label_message,
+    create_metadata_message,
     create_mock_logger,
     create_mock_metrics,
     create_receipt_lines_in_dynamodb,
@@ -37,7 +37,9 @@ class TestProcessor:
         )
 
         # Create a ChromaDB snapshot with test data
-        client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
+        client = ChromaClient(
+            persist_directory=temp_chromadb_dir, mode="write"
+        )
 
         client.upsert(
             collection_name="lines",
@@ -60,7 +62,9 @@ class TestProcessor:
             receipt_id=1,
             event_name="MODIFY",
             changes={
-                "merchant_name": FieldChange(old="Old Merchant", new="New Merchant")
+                "merchant_name": FieldChange(
+                    old="Old Merchant", new="New Merchant"
+                )
             },
             collections=(ChromaDBCollection.LINES,),
         )
@@ -105,7 +109,9 @@ class TestProcessor:
     ):
         """Test processing only label updates."""
         # Create a ChromaDB snapshot with test data
-        client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
+        client = ChromaClient(
+            persist_directory=temp_chromadb_dir, mode="write"
+        )
 
         client.upsert(
             collection_name="words",
@@ -154,7 +160,12 @@ class TestProcessor:
         client.close()
 
     def test_process_collection_updates_mixed_messages(
-        self, temp_chromadb_dir, mock_logger, mock_s3_bucket_compaction, dynamo_client, monkeypatch
+        self,
+        temp_chromadb_dir,
+        mock_logger,
+        mock_s3_bucket_compaction,
+        dynamo_client,
+        monkeypatch,
     ):
         """Test processing a mix of metadata, label, and delta messages."""
         s3_client, bucket_name = mock_s3_bucket_compaction
@@ -192,7 +203,9 @@ class TestProcessor:
                 s3_client.upload_file(local_path, bucket_name, s3_key)
 
         # Create main snapshot
-        client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
+        client = ChromaClient(
+            persist_directory=temp_chromadb_dir, mode="write"
+        )
         client.upsert(
             collection_name="lines",
             ids=[
@@ -214,7 +227,9 @@ class TestProcessor:
             receipt_id=1,
             event_name="MODIFY",
             changes={
-                "merchant_name": FieldChange(old="Old Merchant", new="New Merchant")
+                "merchant_name": FieldChange(
+                    old="Old Merchant", new="New Merchant"
+                )
             },
             collections=(ChromaDBCollection.LINES,),
         )
@@ -265,7 +280,9 @@ class TestProcessor:
         self, temp_chromadb_dir, mock_logger
     ):
         """Test processing with errors in some messages."""
-        client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
+        client = ChromaClient(
+            persist_directory=temp_chromadb_dir, mode="write"
+        )
 
         client.upsert(
             collection_name="lines",
@@ -286,8 +303,9 @@ class TestProcessor:
         )
 
         # Create invalid message (missing required fields)
-        from receipt_dynamo_stream.models import StreamMessage
         from datetime import datetime
+
+        from receipt_dynamo_stream.models import StreamMessage
 
         invalid_msg = StreamMessage(
             entity_type="RECEIPT_METADATA",
@@ -325,7 +343,9 @@ class TestProcessor:
         self, temp_chromadb_dir, mock_logger
     ):
         """Test processing with no messages."""
-        client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
+        client = ChromaClient(
+            persist_directory=temp_chromadb_dir, mode="write"
+        )
 
         client.upsert(
             collection_name="lines",
@@ -354,7 +374,9 @@ class TestProcessor:
         self, temp_chromadb_dir, mock_logger
     ):
         """Test that CollectionUpdateResult can be serialized to dict."""
-        client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
+        client = ChromaClient(
+            persist_directory=temp_chromadb_dir, mode="write"
+        )
 
         client.upsert(
             collection_name="lines",
@@ -399,7 +421,12 @@ class TestProcessor:
         client.close()
 
     def test_process_collection_updates_processing_order(
-        self, temp_chromadb_dir, mock_logger, mock_s3_bucket_compaction, dynamo_client, monkeypatch
+        self,
+        temp_chromadb_dir,
+        mock_logger,
+        mock_s3_bucket_compaction,
+        dynamo_client,
+        monkeypatch,
     ):
         """Test that updates are processed in correct order: deltas → metadata → labels."""
         s3_client, bucket_name = mock_s3_bucket_compaction
@@ -409,7 +436,11 @@ class TestProcessor:
 
         # Create receipt words in DynamoDB
         create_receipt_words_in_dynamodb(
-            dynamo_client, image_id=test_image_id, receipt_id=1, line_id=1, num_words=1
+            dynamo_client,
+            image_id=test_image_id,
+            receipt_id=1,
+            line_id=1,
+            num_words=1,
         )
 
         # Set environment variable for S3 bucket
@@ -443,7 +474,9 @@ class TestProcessor:
                 s3_client.upload_file(local_path, bucket_name, s3_key)
 
         # Create empty snapshot
-        client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
+        client = ChromaClient(
+            persist_directory=temp_chromadb_dir, mode="write"
+        )
         client.upsert(
             collection_name="words",
             ids=["IMAGE#placeholder#RECEIPT#00001#LINE#00001#WORD#00001"],
@@ -474,7 +507,9 @@ class TestProcessor:
             receipt_id=1,
             event_name="MODIFY",
             changes={
-                "merchant_name": FieldChange(old="Initial", new="Updated Merchant")
+                "merchant_name": FieldChange(
+                    old="Initial", new="Updated Merchant"
+                )
             },
             collections=(ChromaDBCollection.WORDS,),
         )

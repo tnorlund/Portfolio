@@ -43,7 +43,9 @@ class StorageManager:
         self.collection = collection
         self.bucket = bucket
         self.mode = mode
-        self.efs_root = efs_root or os.environ.get("CHROMA_ROOT", "/tmp/chroma")
+        self.efs_root = efs_root or os.environ.get(
+            "CHROMA_ROOT", "/tmp/chroma"
+        )
         self.logger = logger
         self.metrics = metrics
 

@@ -4,9 +4,9 @@ import pytest
 from receipt_dynamo.constants import ChromaDBCollection
 
 from receipt_chroma.compaction.models import (
-    MetadataUpdateResult,
-    LabelUpdateResult,
     CollectionUpdateResult,
+    LabelUpdateResult,
+    MetadataUpdateResult,
 )
 
 
@@ -197,12 +197,8 @@ class TestCollectionUpdateResult:
     def test_collection_result_total_metadata_updated(self):
         """Test total_metadata_updated property."""
         metadata_results = [
-            MetadataUpdateResult(
-                "lines", "lines", 5, "id1", 1
-            ),
-            MetadataUpdateResult(
-                "lines", "lines", 3, "id2", 2
-            ),
+            MetadataUpdateResult("lines", "lines", 5, "id1", 1),
+            MetadataUpdateResult("lines", "lines", 3, "id2", 2),
             MetadataUpdateResult(
                 "lines", "lines", 0, "id3", 3, error="Failed"
             ),
