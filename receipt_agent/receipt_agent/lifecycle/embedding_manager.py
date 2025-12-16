@@ -1,31 +1,18 @@
 """
 Embedding management orchestration for receipts.
 
-Uses receipt_chroma's realtime OpenAI embedding helpers to generate deltas and
-create CompactionRun records. Cleanup remains the responsibility of the
-enhanced compactor.
+This module provides backward-compatible wrappers around the receipt_chroma
+embedding orchestration functions.
+
+For new code, prefer using receipt_chroma.create_embeddings_and_compaction_run
+directly to get access to EmbeddingResult with local ChromaClients for
+immediate querying.
 """
 
 import logging
 import os
-import shutil
-import tarfile
-import tempfile
-import uuid
-from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import List, Optional
 
-import boto3
-import json
-
-from receipt_chroma.data.chroma_client import ChromaClient
-from receipt_chroma.embedding.openai import embed_texts
-from receipt_chroma.embedding.records import (
-    LineEmbeddingRecord,
-    WordEmbeddingRecord,
-    build_line_payload,
-    build_word_payload,
-)
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.entities import (
     CompactionRun,
@@ -37,78 +24,13 @@ from receipt_dynamo.entities import (
 
 logger = logging.getLogger(__name__)
 
-EMBEDDING_MODEL = "text-embedding-3-small"
 
+class _NoOpDynamoClient:
+    """No-op client for when add_to_dynamo=False."""
 
-def _upload_bundled_delta_to_s3(
-    local_delta_dir: str,
-    bucket: str,
-    delta_prefix: str,
-    collection_name: str,
-    database_name: str,
-    sqs_queue_url: Optional[str],
-    batch_id: str,
-    vector_count: int,
-) -> Dict[str, str]:
-    """Tar/gzip a delta directory, upload to S3, optionally notify SQS."""
-    logger.info(
-        "Bundling and uploading delta tarball: dir=%s bucket=%s prefix=%s",
-        local_delta_dir,
-        bucket,
-        delta_prefix,
-    )
-    tmp_dir = tempfile.mkdtemp()
-    try:
-        tar_path = os.path.join(tmp_dir, "delta.tar.gz")
-        with tarfile.open(tar_path, "w:gz") as tar:
-            tar.add(local_delta_dir, arcname=".")
-
-        s3_key = f"{delta_prefix.rstrip('/')}/delta.tar.gz"
-        s3 = boto3.client("s3")
-        s3.upload_file(
-            tar_path,
-            bucket,
-            s3_key,
-            ExtraArgs={
-                "Metadata": {"delta_key": delta_prefix},
-                "ContentType": "application/gzip",
-                "ContentEncoding": "gzip",
-            },
-        )
-
-        if sqs_queue_url:
-            sqs = boto3.client("sqs")
-            message_body = {
-                "delta_key": delta_prefix,
-                "collection": collection_name,
-                "database": database_name,
-                "vector_count": vector_count,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "batch_id": batch_id,
-            }
-            # Provide stable group/dedup for FIFO queues
-            message_group_id = f"{collection_name}:{batch_id or 'default'}"
-            message_dedup_id = f"{collection_name}:{batch_id}:{s3_key}"
-            sqs.send_message(
-                QueueUrl=sqs_queue_url,
-                MessageBody=json.dumps(message_body),
-                MessageGroupId=message_group_id,
-                MessageDeduplicationId=message_dedup_id,
-                MessageAttributes={
-                    "collection": {
-                        "StringValue": collection_name,
-                        "DataType": "String",
-                    },
-                    "batch_id": {
-                        "StringValue": batch_id or "none",
-                        "DataType": "String",
-                    },
-                },
-            )
-
-        return {"status": "uploaded", "delta_key": delta_prefix, "s3_key": s3_key}
-    finally:
-        shutil.rmtree(tmp_dir, ignore_errors=True)
+    def add_compaction_run(self, run: CompactionRun) -> None:
+        """No-op - don't persist."""
+        pass
 
 
 def create_embeddings_and_compaction_run(
@@ -124,7 +46,13 @@ def create_embeddings_and_compaction_run(
     add_to_dynamo: bool = False,
 ) -> Optional[CompactionRun]:
     """
-    Create realtime embeddings, upload ChromaDB deltas, and build a CompactionRun.
+    Backward-compatible wrapper for embedding creation.
+
+    This function fetches data from DynamoDB if not provided, then delegates
+    to receipt_chroma.create_embeddings_and_compaction_run.
+
+    For new code, use receipt_chroma.create_embeddings_and_compaction_run
+    directly to get access to EmbeddingResult with local ChromaClients.
 
     Args:
         client: DynamoDB client (used for fetches and optional CompactionRun write)
@@ -137,9 +65,12 @@ def create_embeddings_and_compaction_run(
         receipt_word_labels: Optional word labels (fetched if None)
         merchant_name: Explicit merchant name override
         add_to_dynamo: If True, persist the CompactionRun via the client
+
+    Returns:
+        CompactionRun entity if successful, None if dependencies unavailable
     """
     try:
-        from openai import OpenAI
+        from openai import OpenAI  # noqa: F401
     except ImportError as exc:  # pragma: no cover
         logger.warning("Embedding dependencies unavailable: %s", exc)
         return None
@@ -148,6 +79,7 @@ def create_embeddings_and_compaction_run(
         logger.info("OPENAI_API_KEY not set; skipping embeddings")
         return None
 
+    # Fetch data from DynamoDB if not provided
     if receipt_lines is None:
         receipt_lines = client.list_receipt_lines_from_receipt(
             image_id, receipt_id
@@ -168,112 +100,44 @@ def create_embeddings_and_compaction_run(
         )
         return None
 
-    merchant_name = merchant_name or (
-        receipt_metadata.merchant_name if receipt_metadata else None
+    # Import and call receipt_chroma implementation
+    from receipt_chroma.embedding.orchestration import (
+        create_embeddings_and_compaction_run as chroma_create_embeddings,
     )
-
-    run_id = str(uuid.uuid4())
-    openai_client = OpenAI()
-
-    line_embeddings = embed_texts(
-        client=openai_client,
-        texts=[ln.text for ln in receipt_lines],
-        model=os.environ.get("OPENAI_EMBEDDING_MODEL", EMBEDDING_MODEL),
-    )
-    line_records = [
-        LineEmbeddingRecord(line=ln, embedding=emb)
-        for ln, emb in zip(receipt_lines, line_embeddings)
-    ]
-    line_payload = build_line_payload(
-        line_records, receipt_lines, receipt_words, merchant_name=merchant_name
-    )
-
-    word_embeddings = embed_texts(
-        client=openai_client,
-        texts=[w.text for w in receipt_words],
-        model=os.environ.get("OPENAI_EMBEDDING_MODEL", EMBEDDING_MODEL),
-    )
-    word_records = [
-        WordEmbeddingRecord(word=w, embedding=emb)
-        for w, emb in zip(receipt_words, word_embeddings)
-    ]
-    word_payload = build_word_payload(
-        word_records,
-        receipt_words,
-        receipt_word_labels or [],
-        merchant_name=merchant_name,
-    )
-
-    # Write deltas to local Chroma DBs
-    delta_lines_dir = tempfile.mkdtemp(prefix="lines_delta_")
-    delta_words_dir = tempfile.mkdtemp(prefix="words_delta_")
 
     try:
-        line_client = ChromaClient(
-            persist_directory=delta_lines_dir,
-            mode="delta",
-            metadata_only=True,
+        # Use real client if add_to_dynamo, otherwise no-op client
+        dynamo_for_chroma = client if add_to_dynamo else _NoOpDynamoClient()
+
+        result = chroma_create_embeddings(
+            receipt_lines=receipt_lines,
+            receipt_words=receipt_words,
+            image_id=image_id,
+            receipt_id=receipt_id,
+            chromadb_bucket=chromadb_bucket,
+            dynamo_client=dynamo_for_chroma,
+            receipt_metadata=receipt_metadata,
+            receipt_word_labels=receipt_word_labels,
+            merchant_name=merchant_name,
         )
-        word_client = ChromaClient(
-            persist_directory=delta_words_dir,
-            mode="delta",
-            metadata_only=True,
+
+        # Extract CompactionRun before closing
+        compaction_run = result.compaction_run
+
+        # Close the EmbeddingResult to release resources
+        # (backward-compatible callers don't need the local clients)
+        result.close()
+
+        logger.info(
+            "Created CompactionRun %s for receipt %s",
+            compaction_run.run_id,
+            receipt_id,
         )
+        return compaction_run
 
-        line_client.upsert_vectors(collection_name="lines", **line_payload)
-        word_client.upsert_vectors(collection_name="words", **word_payload)
-
-        # Ensure files are flushed
-        line_client.close()
-        word_client.close()
-
-        lines_prefix = f"lines/delta/{run_id}/"
-        words_prefix = f"words/delta/{run_id}/"
-
-        lines_result = _upload_bundled_delta_to_s3(
-            local_delta_dir=delta_lines_dir,
-            bucket=chromadb_bucket,
-            delta_prefix=lines_prefix,
-            collection_name="lines",
-            database_name="lines",
-            sqs_queue_url=os.environ.get("CHROMADB_LINES_QUEUE_URL"),
-            batch_id=run_id,
-            vector_count=len(line_payload["ids"]),
-        )
-        if lines_result.get("status") != "uploaded":
-            logger.error("Failed to upload lines delta: %s", lines_result)
-            return None
-
-        words_result = _upload_bundled_delta_to_s3(
-            local_delta_dir=delta_words_dir,
-            bucket=chromadb_bucket,
-            delta_prefix=words_prefix,
-            collection_name="words",
-            database_name="words",
-            sqs_queue_url=os.environ.get("CHROMADB_WORDS_QUEUE_URL"),
-            batch_id=run_id,
-            vector_count=len(word_payload["ids"]),
-        )
-        if words_result.get("status") != "uploaded":
-            logger.error("Failed to upload words delta: %s", words_result)
-            return None
-    finally:
-        shutil.rmtree(delta_lines_dir, ignore_errors=True)
-        shutil.rmtree(delta_words_dir, ignore_errors=True)
-
-    compaction_run = CompactionRun(
-        run_id=run_id,
-        image_id=image_id,
-        receipt_id=receipt_id,
-        lines_delta_prefix=lines_prefix,
-        words_delta_prefix=words_prefix,
-    )
-
-    if add_to_dynamo:
-        client.add_compaction_run(compaction_run)
-
-    logger.info("Created CompactionRun %s for receipt %s", run_id, receipt_id)
-    return compaction_run
+    except (ValueError, RuntimeError) as e:
+        logger.error("Failed to create embeddings: %s", e)
+        return None
 
 
 def create_embeddings(

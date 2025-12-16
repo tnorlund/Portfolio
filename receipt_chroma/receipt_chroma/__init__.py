@@ -17,6 +17,10 @@ from receipt_chroma.embedding.delta import (
     save_line_embeddings_as_delta,
     save_word_embeddings_as_delta,
 )
+from receipt_chroma.embedding.orchestration import (
+    EmbeddingResult,
+    create_embeddings_and_compaction_run,
+)
 from receipt_chroma.lock_manager import LockManager
 
 # S3 operations are available via receipt_chroma.s3 submodule
@@ -34,11 +38,13 @@ __all__ = [
     "__version__",
     "ChromaClient",
     "CollectionUpdateResult",
+    "EmbeddingResult",
     "LabelUpdateResult",
     "LockManager",
     "MetadataUpdateResult",
     "StorageManager",
     "StorageMode",
+    "create_embeddings_and_compaction_run",
     "download_snapshot_atomic",
     "initialize_empty_snapshot",
     "process_collection_updates",
