@@ -38,7 +38,8 @@ class TestLockManagerEdgeCases:
         self,
         dynamodb_table: Literal["MyMockedTable"],
     ):
-        """Test ownership validation with string expiration dates (lines 404-410)."""
+        """Test ownership validation with string expiration dates
+        (lines 404-410)."""
         client = DynamoClient(dynamodb_table)
         manager = LockManager(
             dynamo_client=client,
@@ -94,7 +95,8 @@ class TestLockManagerEdgeCases:
         dynamodb_table: Literal["MyMockedTable"],
         mocker,
     ):
-        """Test error handling in get_remaining_time (lines 449-455, 494-500)."""
+        """Test error handling in get_remaining_time
+        (lines 449-455, 494-500)."""
         client = DynamoClient(dynamodb_table)
         manager = LockManager(
             dynamo_client=client,
@@ -232,6 +234,7 @@ class TestLockManagerEdgeCases:
         manager.start_heartbeat()
 
         # Mock thread.join to not return (simulating stuck thread)
+        assert manager.heartbeat_thread is not None
         original_join = manager.heartbeat_thread.join
         call_count = {"count": 0}
 
@@ -283,7 +286,8 @@ class TestLockManagerEdgeCases:
         dynamodb_table: Literal["MyMockedTable"],
         mocker,
     ):
-        """Test exception handling in validate_ownership (lines 404-410)."""
+        """Test exception handling in validate_ownership
+        (lines 404-410)."""
         client = DynamoClient(dynamodb_table)
         manager = LockManager(
             dynamo_client=client,
@@ -307,7 +311,8 @@ class TestLockManagerEdgeCases:
         dynamodb_table: Literal["MyMockedTable"],
         mocker,
     ):
-        """Test exception handling in get_remaining_time (lines 432, 440, 494-500)."""
+        """Test exception handling in get_remaining_time
+        (lines 432, 440, 494-500)."""
         client = DynamoClient(dynamodb_table)
         manager = LockManager(
             dynamo_client=client,
@@ -367,6 +372,7 @@ class TestLockManagerEdgeCases:
         manager.start_heartbeat()
 
         # Mock thread.join to simulate timeout
+        assert manager.heartbeat_thread is not None
         original_join = manager.heartbeat_thread.join
         call_count = {"count": 0}
 

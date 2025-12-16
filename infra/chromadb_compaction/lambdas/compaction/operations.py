@@ -136,24 +136,36 @@ def update_receipt_metadata(
         results = collection.get(ids=chromadb_ids, include=["metadatas"])
         found_count = len(results.get("ids", []))
 
-        if OBSERVABILITY_AVAILABLE:
-            logger.info(
-                "Retrieved records from ChromaDB",
-                found_count=found_count,
-                expected_count=len(chromadb_ids),
+        logger.info(
+            "Retrieved records from ChromaDB",
+            found_count=found_count,
+            expected_count=len(chromadb_ids),
+        )
+        if metrics:
+            metrics.gauge("CompactionChromaDBRecordsFound", found_count)
+
+        if found_count == 0:
+            logger.error(
+                "No matching embeddings found in ChromaDB for metadata update",
+                receipt_id=receipt_id,
+                image_id=image_id,
+                expected=len(chromadb_ids),
             )
             if metrics:
-                metrics.gauge("CompactionChromaDBRecordsFound", found_count)
-        else:
-            logger.info(
-                "Retrieved records from ChromaDB",
-                found_count=found_count,
-                expected_count=len(chromadb_ids),
-            )
+                metrics.count(
+                    "CompactionMetadataEmbeddingNotFound",
+                    1,
+                    {
+                        "image_id": image_id,
+                        "receipt_id": str(receipt_id),
+                        "collection": collection_name,
+                    },
+                )
+            return 0
     except Exception as e:
         logger.error("Failed to query ChromaDB with exact IDs", error=str(e))
 
-        if OBSERVABILITY_AVAILABLE and metrics:
+        if metrics:
             metrics.count(
                 "CompactionChromaDBQueryError",
                 1,
@@ -459,11 +471,25 @@ def update_word_labels(
         result = collection.get(ids=[chromadb_id], include=["metadatas"])
         if not result["ids"]:
             if logger:
-                logger.warning(
-                    "Word embedding not found", chromadb_id=chromadb_id
+                logger.error(
+                    "Word embedding not found in snapshot",
+                    chromadb_id=chromadb_id,
+                    image_id=image_id,
+                    receipt_id=receipt_id,
+                    line_id=line_id,
+                    word_id=word_id,
                 )
-            if OBSERVABILITY_AVAILABLE and metrics:
-                metrics.count("CompactionWordEmbeddingNotFound", 1)
+            if metrics:
+                metrics.count(
+                    "CompactionWordEmbeddingNotFound",
+                    1,
+                    {
+                        "image_id": image_id,
+                        "receipt_id": str(receipt_id),
+                        "line_id": str(line_id),
+                        "word_id": str(word_id),
+                    },
+                )
             return 0
 
         # Prefer snapshot data if available to avoid DynamoDB race conditions

@@ -28,89 +28,6 @@ def _log(msg: str):
     logger.info(msg)
 
 
-def _run_validation_async(
-    image_id: str,
-    receipt_id: int,
-    receipt_lines: Optional[list],
-    receipt_words: Optional[list],
-    receipt_metadata: Optional[Any],
-    ollama_api_key: Optional[str],
-    langsmith_api_key: Optional[str],
-) -> None:
-    """Run LangGraph validation asynchronously (non-blocking).
-
-    This runs in a background thread and doesn't delay the lambda response.
-    It validates ReceiptMetadata and auto-corrects if merchant name doesn't match.
-
-    Args:
-        image_id: Receipt image identifier
-        receipt_id: Receipt identifier
-        receipt_lines: Pre-fetched receipt lines
-        receipt_words: Pre-fetched receipt words
-        receipt_metadata: Pre-fetched ReceiptMetadata (to avoid DynamoDB query)
-        ollama_api_key: Ollama API key
-        langsmith_api_key: LangSmith API key (optional)
-    """
-    if not ollama_api_key:
-        _log("⚠️ No OLLAMA_API_KEY - skipping validation")
-        return
-
-    async def run_validation():
-        try:
-            from receipt_dynamo import DynamoClient
-            from receipt_label.langchain.currency_validation import analyze_receipt_simple
-            from receipt_dynamo.constants import CompactionState
-
-            dynamo = DynamoClient(os.environ["DYNAMO_TABLE_NAME"])
-
-            # OPTIMIZATION: Run LangGraph and save labels immediately
-            # No need to wait for compaction:
-            # - Initial compaction merges S3 deltas (doesn't read ReceiptWordLabels)
-            # - ReceiptWordLabel changes are handled by stream processor separately
-            # - No race condition possible!
-            _log("Starting LangGraph analysis and saving labels...")
-
-            # Run LangGraph and save labels immediately
-            result = await analyze_receipt_simple(
-                client=dynamo,
-                image_id=image_id,
-                receipt_id=receipt_id,
-                ollama_api_key=ollama_api_key,
-                langsmith_api_key=langsmith_api_key,
-                save_labels=True,  # Save labels immediately
-                dry_run=False,  # Update ReceiptMetadata if mismatch found
-                save_dev_state=False,
-                # Pass pre-fetched data to skip DynamoDB queries!
-                receipt_lines=receipt_lines,
-                receipt_words=receipt_words,
-                receipt_metadata=receipt_metadata,
-            )
-
-            _log(f"✅ LangGraph completed, labels saved")
-            _log(f"✅ Validation completed for {image_id}/{receipt_id}")
-        except Exception as e:
-            _log(f"⚠️ Validation failed: {e}")
-
-    # Run in background thread (Lambda waits for completion before returning)
-    import threading
-
-    def run_in_executor():
-        # Create new event loop for this thread
-        import asyncio
-        try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(run_validation())
-        except Exception as e:
-            _log(f"⚠️ Validation task failed: {e}")
-
-    # Start in background thread (non-daemon so Lambda waits for it to complete)
-    validation_thread = threading.Thread(target=run_in_executor, daemon=False)
-    validation_thread.start()
-    validation_thread.join()  # Wait for validation to complete
-    _log("✅ Validation completed, lambda exiting")
-
-
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     Process OCR results with integrated merchant validation and embedding.
@@ -143,7 +60,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     embedding_success_count = 0
     embedding_failed_count = 0
     embedding_skipped_count = 0
-    merchant_resolved_count = 0
     total_ocr_duration = 0.0
     total_embedding_duration = 0.0
 
@@ -172,9 +88,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             elif result.get("embedding_skipped"):
                 embedding_skipped_count += 1
 
-            if result.get("merchant_resolved"):
-                merchant_resolved_count += 1
-
             if result.get("ocr_duration"):
                 total_ocr_duration += result["ocr_duration"]
             if result.get("embedding_duration"):
@@ -198,7 +111,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         "UploadLambdaEmbeddingSuccess": embedding_success_count,
         "UploadLambdaEmbeddingFailed": embedding_failed_count,
         "UploadLambdaEmbeddingSkipped": embedding_skipped_count,
-        "UploadLambdaMerchantResolved": merchant_resolved_count,
     })
 
     if ocr_success_count > 0:
@@ -292,6 +204,8 @@ def _process_single_record(
                 chroma_http_endpoint=os.environ.get("CHROMA_HTTP_ENDPOINT"),
                 google_places_api_key=os.environ.get("GOOGLE_PLACES_API_KEY"),
                 openai_api_key=os.environ.get("OPENAI_API_KEY"),
+                lines_queue_url=os.environ.get("CHROMADB_LINES_QUEUE_URL"),
+                words_queue_url=os.environ.get("CHROMADB_WORDS_QUEUE_URL"),
             )
 
             # Create embeddings with merchant context
@@ -309,28 +223,8 @@ def _process_single_record(
             _log(
                 f"SUCCESS: Embeddings created for {image_type} receipt: "
                 f"image_id={image_id}, receipt_id={receipt_id}, "
-                f"merchant={embedding_result.get('merchant_name')}, "
                 f"run_id={embedding_result.get('run_id')}"
             )
-
-            # Step 3: Run LangGraph validation
-            # OPTIMIZATION: Run LangGraph immediately and save labels
-            # No need to wait for compaction - initial compaction only merges S3 deltas
-            # ReceiptWordLabel changes trigger separate compaction via stream processor
-            try:
-                _log("Starting LangGraph validation...")
-                _run_validation_async(
-                    image_id=image_id,
-                    receipt_id=receipt_id,
-                    receipt_lines=ocr_result.get("receipt_lines"),
-                    receipt_words=ocr_result.get("receipt_words"),
-                    receipt_metadata=embedding_result.get("receipt_metadata"),  # Pre-fetched from merchant resolution
-                    ollama_api_key=os.environ.get("OLLAMA_API_KEY"),
-                    langsmith_api_key=os.environ.get("LANGCHAIN_API_KEY"),
-                )
-            except Exception as val_error:
-                _log(f"⚠️ Validation error (non-critical): {val_error}")
-                # Don't fail the lambda - validation is optional
 
             # Track metrics (aggregated, not per-call) - add to return dict
             return {
@@ -338,12 +232,12 @@ def _process_single_record(
                 "image_id": image_id,
                 "receipt_id": receipt_id,
                 "image_type": image_type,
-                "merchant_name": embedding_result.get("merchant_name"),
                 "run_id": embedding_result.get("run_id"),
                 "embeddings_created": True,
                 "embedding_success": True,
                 "embedding_duration": embedding_duration,
-                "merchant_resolved": bool(embedding_result.get("merchant_name")),
+                "lines_delta": embedding_result.get("lines_delta"),
+                "words_delta": embedding_result.get("words_delta"),
             }
 
         except Exception as e:
@@ -373,4 +267,3 @@ def _process_single_record(
         f"Will process embeddings during REFINEMENT jobs."
     )
     return ocr_result
-

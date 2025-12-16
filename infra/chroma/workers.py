@@ -16,7 +16,7 @@ from pulumi import (
     FileArchive,
 )
 
-from chroma.base import dynamo_layer, label_layer
+from chroma.base import dynamo_layer
 
 
 class ChromaWorkers(ComponentResource):
@@ -101,7 +101,7 @@ class ChromaWorkers(ComponentResource):
                 }
             ),
             handler="index.lambda_handler",
-            layers=[dynamo_layer.arn, label_layer.arn],
+            layers=[dynamo_layer.arn],
             timeout=60,
             memory_size=512,
             environment={

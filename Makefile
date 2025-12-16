@@ -39,29 +39,24 @@ lint-format:
 lint-types:
 	@echo "Running mypy type checking..."
 	cd receipt_dynamo && mypy . || true
-	cd receipt_label && mypy . || true
 
 lint-quality:
 	@echo "Running pylint..."
 	cd receipt_dynamo && pylint receipt_dynamo || true
-	cd receipt_label && pylint receipt_label || true
 
 lint: lint-format lint-types lint-quality
 
 test-fast:
 	@echo "Running fast unit tests..."
 	cd receipt_dynamo && pytest -m "not integration and not end_to_end" --fail-fast -x
-	cd receipt_label && pytest -m "not integration and not end_to_end" --fail-fast -x
 
 test:
 	@echo "Running all tests except e2e..."
 	cd receipt_dynamo && pytest -m "not end_to_end" --cov=receipt_dynamo
-	cd receipt_label && pytest -m "not end_to_end" --cov=receipt_label
 
 test-integration:
 	@echo "Running integration tests..."
 	cd receipt_dynamo && pytest -m integration
-	cd receipt_label && pytest -m integration
 
 test-e2e:
 	@echo "⚠️  Running end-to-end tests (requires AWS credentials)..."
@@ -101,34 +96,13 @@ export-sample-data:
 	@echo "✅ Sample data exported to ./receipt_data"
 
 test-local:
-	@echo "Running tests with local data and stubbed APIs..."
-	USE_STUB_APIS=true RECEIPT_LOCAL_DATA_DIR=./receipt_data pytest receipt_label/tests/integration/test_local_pipeline.py -v
-	@echo "✅ Local pipeline tests completed"
+	@echo "No local receipt_label pipeline tests remain."
 
 validate-pipeline:
-	@echo "Running end-to-end pipeline validation..."
-	@if [ ! -d "./receipt_data" ]; then \
-		echo "❌ Error: No local data found. Run 'make export-sample-data' first"; \
-		exit 1; \
-	fi
-	@echo "Testing pattern detection enhancements..."
-	USE_STUB_APIS=true python receipt_label/scripts/test_pattern_detection_local.py --data-dir ./receipt_data --verbose
-	@echo "Testing local data loader..."
-	USE_STUB_APIS=true pytest receipt_label/tests/integration/test_local_pipeline.py::TestLocalPipeline::test_pipeline_with_stubbed_apis -v
-	@echo "✅ Pipeline validation completed"
+	@echo "Legacy receipt_label pipeline validation removed."
 
 test-pattern-detection:
-	@echo "Testing pattern detection with local data..."
-	@if [ ! -d "./receipt_data" ]; then \
-		echo "❌ Error: No local data found. Run 'make export-sample-data' first"; \
-		exit 1; \
-	fi
-	USE_STUB_APIS=true python receipt_label/scripts/test_pattern_detection_local.py --data-dir ./receipt_data --optimization-level advanced
+	@echo "Legacy receipt_label pattern detection removed."
 
 compare-pattern-optimizations:
-	@echo "Comparing pattern detection optimization levels..."
-	@if [ ! -d "./receipt_data" ]; then \
-		echo "❌ Error: No local data found. Run 'make export-sample-data' first"; \
-		exit 1; \
-	fi
-	USE_STUB_APIS=true python receipt_label/scripts/test_pattern_detection_local.py --data-dir ./receipt_data --compare-all --limit 5
+	@echo "Legacy receipt_label optimization comparison removed."

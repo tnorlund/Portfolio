@@ -22,13 +22,7 @@ from pulumi_aws.lambda_ import (
 from pulumi_aws.s3 import Bucket
 
 from .base import config as portfolio_config
-from .base import (
-    dynamo_layer,
-    dynamodb_table,
-    label_layer,
-    openai_api_key,
-    stack,
-)
+from .base import dynamo_layer, dynamodb_table, openai_api_key, stack
 
 # Add infra directory to path for imports
 infra_path = Path(__file__).parent.parent.parent
@@ -372,17 +366,8 @@ class LambdaFunctionsComponent(ComponentResource):
 
         # Create the Lambda function
         # Determine which layers are needed based on imports
-        # - label_layer: Includes receipt_label[lambda] + receipt_dynamo (as dependency)
-        # - dynamo_layer: Only receipt_dynamo (for Lambdas that don't need receipt_label)
+        # - dynamo_layer: Only receipt_dynamo
         layers = []
-
-        # Source directories that use receipt_label (need label_layer, which includes receipt_dynamo)
-        uses_receipt_label = config["source_dir"] in [
-            "submit_openai",
-            "submit_words_openai",
-            "find_unembedded",
-            "find_unembedded_words",
-        ]
 
         # Source directories that only use receipt_dynamo (need dynamo_layer only)
         uses_only_receipt_dynamo = config["source_dir"] in [
@@ -391,11 +376,8 @@ class LambdaFunctionsComponent(ComponentResource):
         ]
 
         # Add appropriate layers
-        if uses_receipt_label and label_layer:
-            # label_layer includes receipt_dynamo as a dependency, so this is sufficient
-            layers.append(label_layer.arn)
-        elif uses_only_receipt_dynamo and dynamo_layer:
-            # Only need dynamo_layer for Lambdas that don't use receipt_label
+        if uses_only_receipt_dynamo and dynamo_layer:
+            # Only need dynamo_layer for Lambdas that don't use extra deps
             layers.append(dynamo_layer.arn)
         # Lambdas that don't use either (like split_into_chunks, create_chunk_groups) get no layers
 

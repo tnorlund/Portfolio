@@ -16,8 +16,24 @@ Focuses on:
 # Some duplication with enhanced_compaction_handler is expected
 
 import logging
+import os
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Optional
+
+# Configuration from environment variables with sensible defaults
+# These values are set by Pulumi infrastructure and should match Lambda configuration
+
+# Max records to process in a single invocation (should match DynamoDB Stream batch_size)
+MAX_RECORDS_PER_INVOCATION = int(os.getenv("MAX_RECORDS_PER_INVOCATION", "10"))
+
+# Lambda timeout in seconds (set by Pulumi infrastructure)
+LAMBDA_TIMEOUT_SECONDS = int(os.getenv("LAMBDA_TIMEOUT_SECONDS", "120"))
+
+# Timeout threshold for graceful shutdown (80% of timeout to leave buffer for cleanup)
+LAMBDA_TIMEOUT_THRESHOLD_SECONDS = int(LAMBDA_TIMEOUT_SECONDS * 0.8)
+
+# Circuit breaker: stop processing after this many consecutive failures
+MAX_CONSECUTIVE_FAILURES = int(os.getenv("MAX_CONSECUTIVE_FAILURES", "10"))
 
 # Enhanced observability imports
 from utils import (
@@ -32,7 +48,7 @@ from utils import (
 )
 
 # Import modular components (same pattern as utils)
-from processor import (
+from receipt_dynamo_stream import (
     LambdaResponse,
     build_messages_from_records,
     publish_messages,
@@ -44,8 +60,8 @@ logger = get_operation_logger(__name__)
 
 @trace_function(operation_name="stream_processor")
 @with_compaction_timeout_protection(
-    max_duration=60
-)  # Stream processing should be fast
+    max_duration=LAMBDA_TIMEOUT_THRESHOLD_SECONDS
+)
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     Process DynamoDB stream events for ChromaDB metadata synchronization.
@@ -69,229 +85,170 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     # Start monitoring
     start_compaction_lambda_monitoring(context)
     correlation_id = getattr(logger, "correlation_id", None)
+
+    # Log configuration on first invocation (helps with debugging)
     logger.info(
-        "Starting stream processing",
-        event_records=len(event.get("Records", [])),
+        "Stream processor configuration",
+        max_records=MAX_RECORDS_PER_INVOCATION,
+        timeout_seconds=LAMBDA_TIMEOUT_SECONDS,
+        timeout_threshold_seconds=LAMBDA_TIMEOUT_THRESHOLD_SECONDS,
+        max_consecutive_failures=MAX_CONSECUTIVE_FAILURES,
         correlation_id=correlation_id,
     )
 
     # Collect metrics during processing to batch them via EMF (cost-effective)
     # This avoids expensive per-metric CloudWatch API calls
     collected_metrics: Dict[str, float] = {}
-    metric_dimensions: Dict[str, str] = {}
 
     try:
-        # Handle different event types (test events vs real stream events)
+        # Validate event structure
         if "Records" not in event:
-            logger.info(
-                "Received non-stream event (likely test)",
+            logger.warning(
+                "Received event without Records field",
                 event_keys=list(event.keys()),
             )
-            response = {
-                "statusCode": 200,
-                "processed_records": 0,
-                "queued_messages": 0,
-            }
-
-            # Use EMF for test events (no API call cost)
             emf_metrics.log_metrics(
-                {"StreamProcessorTestEvents": 1},
-                dimensions=None,
-                properties={"event_type": "test"},
+                {"StreamProcessorInvalidEvent": 1},
+                properties={"event_keys": list(event.keys())},
             )
             return format_response(
-                response, event, correlation_id=correlation_id
+                {
+                    "statusCode": 400,
+                    "processed_records": 0,
+                    "queued_messages": 0,
+                    "error": "Invalid event structure: missing Records",
+                },
+                event,
+                correlation_id=correlation_id,
             )
 
         # Track processing time for timeout protection
         start_time = time.time()
 
-        # Limit processing to prevent timeouts on large batches
-        MAX_RECORDS_PER_INVOCATION = 25
-        records_to_process = event["Records"][:MAX_RECORDS_PER_INVOCATION]
         total_records = len(event["Records"])
 
         # Collect batch-level metrics
         collected_metrics["StreamRecordsReceived"] = total_records
 
+        # Validate batch size - fail fast if batch is too large to prevent data loss
+        # DynamoDB Streams will retry with a smaller batch on failure
         if total_records > MAX_RECORDS_PER_INVOCATION:
-            logger.warning(
-                "Truncating batch to prevent timeout",
-                total_records=total_records,
-                processing=MAX_RECORDS_PER_INVOCATION,
+            error_msg = (
+                f"Batch size ({total_records}) exceeds maximum "
+                f"({MAX_RECORDS_PER_INVOCATION}). Rejecting to trigger retry with smaller batch."
             )
-            collected_metrics["StreamBatchTruncated"] = 1
+            logger.error(error_msg, total_records=total_records)
+            emf_metrics.log_metrics(
+                {"StreamBatchTooLarge": 1},
+                properties={"total_records": total_records},
+            )
+            raise ValueError(error_msg)
+
+        records_to_process = event["Records"]
 
         logger.info(
-            "About to process records",
-            record_count=len(records_to_process),
-            first_record_keys=(
-                event["Records"][0].get("dynamodb", {}).get("Keys")
-                if event["Records"]
-                else None
-            ),
+            "Processing DynamoDB stream batch",
+            record_count=total_records,
+            correlation_id=correlation_id,
         )
+
+        # Track event types for observability
+        event_name_counts: Dict[str, int] = {}
+        for record in records_to_process:
+            event_name = record.get("eventName", "unknown")
+            event_name_counts[event_name] = event_name_counts.get(event_name, 0) + 1
+
+        # Build messages from all stream records in batch
+        messages_to_send = build_messages_from_records(records_to_process, metrics)
+
+        # Calculate processing statistics
+        messages_generated = len(messages_to_send)
+        skipped_records = max(total_records - messages_generated, 0)
 
         logger.info(
-            "Processing DynamoDB stream records",
-            record_count=len(records_to_process),
+            "Batch processing completed",
+            total_records=total_records,
+            messages_generated=messages_generated,
+            skipped_records=skipped_records,
+            event_breakdown=event_name_counts,
         )
-
-        # Build messages from stream records
-        messages_to_send = []
-        processed_records = 0
-        skipped_records = 0
-        error_records = 0
-        consecutive_failures = 0
-        MAX_CONSECUTIVE_FAILURES = 10
-        event_name_counts: Dict[str, int] = {}  # Track event types
-        error_types: Dict[str, int] = {}  # Track error types
-
-        for idx, record in enumerate(records_to_process):
-            try:
-                # Check if approaching Lambda timeout
-                elapsed = time.time() - start_time
-                if elapsed > 240:  # 4 minutes (leave 1 minute buffer)
-                    logger.warning(
-                        "Approaching Lambda timeout, stopping processing",
-                        processed_so_far=processed_records,
-                        elapsed_seconds=elapsed,
-                    )
-                    collected_metrics["StreamProcessingTimeoutExit"] = 1
-                    break
-
-                logger.info(
-                    "Starting record loop iteration",
-                    index=idx,
-                    total=len(records_to_process),
-                )
-
-                event_id = record.get("eventID", "unknown")
-                event_name = record.get("eventName", "unknown")
-
-                logger.debug(
-                    "Processing stream record",
-                    record_id=event_id,
-                    event_name=event_name,
-                )
-
-                # Track event types (aggregated, not per-record to reduce costs)
-                event_name_counts[event_name] = event_name_counts.get(event_name, 0) + 1
-
-                # Build message(s) for this record
-                record_messages = build_messages_from_records(
-                    [record], metrics
-                )
-
-                if record_messages:
-                    messages_to_send.extend(record_messages)
-                    processed_records += 1
-                    consecutive_failures = 0  # Reset on success
-
-                    # Log only when we actually process relevant entities
-                    logger.info(
-                        "Processed relevant stream record",
-                        record_id=event_id,
-                        event_name=event_name,
-                        message_count=len(record_messages),
-                    )
-                else:
-                    skipped_records += 1
-                    # Remove the debug log for skipped records to reduce noise
-
-            except (ValueError, KeyError, TypeError) as e:
-                event_id = record.get("eventID", "unknown")
-                error_type = type(e).__name__
-                logger.error(
-                    "Error processing stream record",
-                    record_id=event_id,
-                    error=str(e),
-                )
-
-                # Track error types (aggregated)
-                error_types[error_type] = error_types.get(error_type, 0) + 1
-                error_records += 1
-
-                # Circuit breaker: stop if too many consecutive failures
-                consecutive_failures += 1
-                if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
-                    logger.error(
-                        "Too many consecutive failures, stopping processing",
-                        failure_count=consecutive_failures,
-                    )
-                    collected_metrics["StreamProcessingCircuitBreaker"] = 1
-                    break
-                # Continue processing other records
 
         # Send all messages to appropriate SQS queues
+        sent_count = 0
         if messages_to_send:
-            sent_count = publish_messages(
-                messages_to_send, metrics
-            )
+            sent_count = publish_messages(messages_to_send, metrics)
             logger.info(
-                "Sent messages to compaction queues", message_count=sent_count
+                "Messages sent to compaction queues", message_count=sent_count
             )
-        else:
-            sent_count = 0
-
-        response = LambdaResponse(
-            status_code=200,
-            processed_records=processed_records,
-            queued_messages=sent_count,
-        )
 
         # Record processing duration
-        processing_duration = int(time.time() - start_time)
+        processing_duration = int((time.time() - start_time) * 1000)  # milliseconds
+
+        # Calculate success rate
+        success_rate = (
+            (messages_generated / total_records * 100) if total_records > 0 else 0
+        )
 
         # Collect all metrics for batch EMF logging (cost-effective)
-        collected_metrics.update({
-            "StreamRecordProcessed": processed_records,
-            "StreamRecordSkipped": skipped_records,
-            "StreamRecordProcessingError": error_records,
-            "MessagesQueuedForCompaction": sent_count,
-            "StreamProcessingDuration": processing_duration,
-            "StreamBatchSize": total_records,
-            "StreamProcessorProcessedRecords": processed_records,
-            "StreamProcessorQueuedMessages": sent_count,
-        })
-
-        # Add event type breakdown to properties
-        properties = {
-            "event_name_counts": event_name_counts,
-            "error_types": error_types,
-            "correlation_id": correlation_id,
-        }
+        collected_metrics.update(
+            {
+                "StreamBatchSize": total_records,
+                "StreamRecordsProcessed": total_records,
+                "StreamRecordsSkipped": skipped_records,
+                "MessagesGenerated": messages_generated,
+                "MessagesQueued": sent_count,
+                "ProcessingDurationMs": processing_duration,
+                "SuccessRate": success_rate,
+            }
+        )
 
         # Log all metrics via EMF in a single log line (no API call cost)
         emf_metrics.log_metrics(
             collected_metrics,
-            dimensions=metric_dimensions if metric_dimensions else None,
-            properties=properties,
+            properties={
+                "event_name_counts": event_name_counts,
+                "correlation_id": correlation_id,
+            },
         )
 
         logger.info(
-            "Stream processing completed",
-            processed_records=processed_records,
+            "Stream processing completed successfully",
+            processed_records=messages_generated,
             queued_messages=sent_count,
-            duration_seconds=processing_duration,
+            duration_ms=processing_duration,
+            success_rate=f"{success_rate:.1f}%",
         )
 
-        # Convert dataclass to dict for AWS Lambda JSON serialization
-        result = response.to_dict()
+        # Return response
+        response = LambdaResponse(
+            status_code=200,
+            processed_records=messages_generated,
+            queued_messages=sent_count,
+        )
 
-        return format_response(result, event, correlation_id=correlation_id)
+        return format_response(
+            response.to_dict(), event, correlation_id=correlation_id
+        )
+
+    except ValueError as e:
+        # ValueError includes batch size validation errors
+        logger.exception("Stream processor validation failed")
+        emf_metrics.log_metrics(
+            {"StreamProcessorValidationError": 1},
+            properties={"error": str(e), "correlation_id": correlation_id},
+        )
+        # Return error to trigger DynamoDB Stream retry
+        raise
 
     except Exception as e:
-        logger.exception(
-            "Stream processor failed",
-        )
+        logger.exception("Stream processor encountered unexpected error")
 
         # Log error via EMF (no API call cost)
         error_type = type(e).__name__
         emf_metrics.log_metrics(
             {"StreamProcessorError": 1},
-            dimensions={"error_type": error_type},
             properties={
+                "error_type": error_type,
                 "error": str(e),
                 "correlation_id": correlation_id,
             },

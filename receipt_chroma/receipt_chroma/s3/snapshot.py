@@ -418,9 +418,7 @@ def download_snapshot_atomic(
                 )
                 # Set versioned_key to trigger initialization in download
                 # failure path
-                versioned_key = (
-                    f"{collection}/snapshot/timestamped/not_found/"
-                )
+                versioned_key = f"{collection}/snapshot/timestamped/not_found/"
                 version_id = None
             else:
                 raise

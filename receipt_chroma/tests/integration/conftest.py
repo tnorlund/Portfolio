@@ -108,12 +108,9 @@ def s3_bucket(request):
 
 @pytest.fixture
 def dynamodb_table():
-    """
-    Spins up a mock DynamoDB instance, creates a table (with GSIs: GSI1, GSI2,
-    GSI3, and GSITYPE), waits until both the table and the GSIs are active, then
-    yields the table name for tests.
+    """Spin up a moto DynamoDB table with GSIs and yield its name.
 
-    After the tests, everything is torn down automatically.
+    Tears down automatically after tests.
     """
     with mock_aws():
         dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
@@ -230,3 +227,93 @@ def lock_manager_words(dynamo_client):
         heartbeat_interval=1,  # Short interval for testing
         lock_duration_minutes=5,
     )
+
+
+@pytest.fixture
+def mock_s3_bucket_compaction():
+    """Create a mock S3 bucket for compaction testing."""
+    with mock_aws():
+        s3_client = boto3.client("s3", region_name="us-east-1")
+        bucket_name = "test-chromadb-bucket"
+        s3_client.create_bucket(Bucket=bucket_name)
+        yield s3_client, bucket_name
+
+
+@pytest.fixture(scope="function", autouse=False)
+def reset_s3_state():
+    """Reset S3 state between tests that use S3 mocks.
+
+    This fixture helps prevent S3 checksum validation issues that can occur
+    when running multiple S3 tests together due to moto's internal state.
+    """
+    yield
+    # Cleanup happens after the test
+    # Force garbage collection to help clean up S3 connections
+    import gc
+    gc.collect()
+
+
+@pytest.fixture
+def chroma_snapshot_with_data(temp_chromadb_dir):
+    """Create a ChromaDB snapshot with test data for compaction testing.
+
+    Creates both lines and words collections with sample embeddings.
+    """
+    client = ChromaClient(persist_directory=temp_chromadb_dir, mode="write")
+
+    # Add test data to lines collection
+    client.upsert(
+        collection_name="lines",
+        ids=[
+            "IMAGE#test-id#RECEIPT#00001#LINE#00001",
+            "IMAGE#test-id#RECEIPT#00001#LINE#00002",
+        ],
+        embeddings=[[0.1] * 1536, [0.2] * 1536],
+        metadatas=[
+            {"text": "Test line 1", "merchant_name": "Old Merchant"},
+            {"text": "Test line 2", "merchant_name": "Old Merchant"},
+        ],
+    )
+
+    # Add test data to words collection
+    client.upsert(
+        collection_name="words",
+        ids=[
+            "IMAGE#test-id#RECEIPT#00001#LINE#00001#WORD#00001",
+            "IMAGE#test-id#RECEIPT#00001#LINE#00001#WORD#00002",
+        ],
+        embeddings=[[0.3] * 1536, [0.4] * 1536],
+        metadatas=[
+            {
+                "text": "Test",
+                "label_status": "auto_suggested",
+                "valid_labels": "",
+                "invalid_labels": "",
+            },
+            {
+                "text": "Word",
+                "label_status": "auto_suggested",
+                "valid_labels": "",
+                "invalid_labels": "",
+            },
+        ],
+    )
+
+    client.close()
+    yield temp_chromadb_dir
+
+
+@pytest.fixture
+def mock_logger():
+    """Create a mock logger for testing."""
+    from tests.helpers.factories import create_mock_logger
+
+    return create_mock_logger()
+
+
+@pytest.fixture
+def mock_metrics():
+    """Create a mock metrics collector for testing."""
+    from tests.helpers.factories import create_mock_metrics
+
+    return create_mock_metrics()

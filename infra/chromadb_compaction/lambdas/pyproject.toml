@@ -16,7 +16,9 @@ py-modules = ["enhanced_compaction_handler"]
 [project.optional-dependencies]
 # Use full dependencies for container-based Lambda
 full = [
-  "receipt-label[full]",
+  "receipt-chroma",           # New compaction functionality
+  "receipt-dynamo-stream",    # For StreamMessage parsing
   "receipt-dynamo",
+  "receipt-label[full]",
 ]
 
