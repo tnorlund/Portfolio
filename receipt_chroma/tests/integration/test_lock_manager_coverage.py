@@ -234,6 +234,7 @@ class TestLockManagerEdgeCases:
         manager.start_heartbeat()
 
         # Mock thread.join to not return (simulating stuck thread)
+        assert manager.heartbeat_thread is not None
         original_join = manager.heartbeat_thread.join
         call_count = {"count": 0}
 
@@ -371,6 +372,7 @@ class TestLockManagerEdgeCases:
         manager.start_heartbeat()
 
         # Mock thread.join to simulate timeout
+        assert manager.heartbeat_thread is not None
         original_join = manager.heartbeat_thread.join
         call_count = {"count": 0}
 

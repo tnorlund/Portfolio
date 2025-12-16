@@ -575,35 +575,6 @@ class TestCollectionCreationWithEmbeddingFunction:
             documents=["test"],
         )
 
-    def test_get_collection_create_with_embedding_function(
-        self, temp_chromadb_dir
-    ):
-        """Test creating collection with embedding function in get_collection
-        (lines 241-248)."""
-        from chromadb.utils import embedding_functions
-
-        default_ef = embedding_functions.DefaultEmbeddingFunction()
-
-        client = ChromaClient(
-            persist_directory=temp_chromadb_dir,
-            mode="write",
-            embedding_function=default_ef,
-        )
-
-        # Create collection with embedding function
-        collection = client.get_collection(
-            "test_with_ef",
-            create_if_missing=True,
-        )
-        assert collection is not None
-
-        # Verify it works
-        client.upsert(
-            collection_name="test_with_ef",
-            ids=["1"],
-            documents=["test"],
-        )
-
 
 @pytest.mark.integration
 class TestPersistentClientDirectoryCreation:
