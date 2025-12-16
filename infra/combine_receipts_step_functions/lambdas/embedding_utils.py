@@ -9,11 +9,10 @@ import json
 import logging
 import os
 import shutil
-import tarfile
 import tempfile
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import boto3
 from openai import OpenAI
@@ -26,6 +25,7 @@ from receipt_chroma.embedding.records import (
     build_line_payload,
     build_word_payload,
 )
+from receipt_chroma.s3.helpers import upload_delta_tarball
 from receipt_dynamo.entities import (
     CompactionRun,
     ReceiptLine,
@@ -49,34 +49,45 @@ def _upload_bundled_delta_to_s3(
     sqs_queue_url: Optional[str],
     batch_id: str,
     vector_count: int,
-) -> Dict[str, str]:
-    """Tar/gzip a delta directory, upload to S3, optionally notify SQS."""
+) -> Dict[str, Any]:
+    """
+    Upload delta directory as tarball to S3, optionally notify SQS.
+
+    Uses receipt_chroma.s3.helpers.upload_delta_tarball() for standardized
+    tarball creation and upload.
+    """
     logger.info(
         "Bundling and uploading delta tarball: dir=%s bucket=%s prefix=%s",
         local_delta_dir,
         bucket,
         delta_prefix,
     )
-    tmp_dir = tempfile.mkdtemp()
-    try:
-        tar_path = os.path.join(tmp_dir, "delta.tar.gz")
-        with tarfile.open(tar_path, "w:gz") as tar:
-            tar.add(local_delta_dir, arcname=".")
 
-        s3_key = f"{delta_prefix.rstrip('/')}/delta.tar.gz"
-        s3 = boto3.client("s3")
-        s3.upload_file(
-            tar_path,
-            bucket,
-            s3_key,
-            ExtraArgs={
-                "Metadata": {"delta_key": delta_prefix},
-                "ContentType": "application/gzip",
-                "ContentEncoding": "gzip",
-            },
-        )
+    # Use standardized upload function
+    upload_result = upload_delta_tarball(
+        local_delta_dir=local_delta_dir,
+        bucket=bucket,
+        delta_prefix=delta_prefix,
+        metadata={"delta_key": delta_prefix},  # Match old metadata format
+        region=None,  # Use default boto3 region
+        s3_client=None,  # Create new S3 client
+    )
 
-        if sqs_queue_url:
+    # Check upload status
+    if upload_result.get("status") != "uploaded":
+        error_msg = upload_result.get("error", "Unknown error")
+        logger.error("Failed to upload delta tarball: %s", error_msg)
+        return {
+            "status": "failed",
+            "error": error_msg,
+            "delta_key": delta_prefix,
+        }
+
+    s3_key = upload_result["object_key"]
+
+    # Publish SQS message if queue URL provided (maintain existing behavior)
+    if sqs_queue_url:
+        try:
             sqs = boto3.client("sqs")
             message_body = {
                 "delta_key": delta_prefix,
@@ -88,6 +99,7 @@ def _upload_bundled_delta_to_s3(
             }
             message_group_id = f"{collection_name}:{batch_id or 'default'}"
             message_dedup_id = f"{collection_name}:{batch_id}:{s3_key}"
+
             sqs.send_message(
                 QueueUrl=sqs_queue_url,
                 MessageBody=json.dumps(message_body),
@@ -104,10 +116,17 @@ def _upload_bundled_delta_to_s3(
                     },
                 },
             )
+            logger.info("Published SQS message for delta: %s", delta_prefix)
+        except Exception as e:
+            logger.error("Failed to publish SQS message: %s", e, exc_info=True)
+            # Don't fail the whole operation if SQS publish fails
 
-        return {"status": "uploaded", "delta_key": delta_prefix, "s3_key": s3_key}
-    finally:
-        shutil.rmtree(tmp_dir, ignore_errors=True)
+    return {
+        "status": "uploaded",
+        "delta_key": delta_prefix,
+        "s3_key": s3_key,
+        "tar_size_bytes": upload_result.get("tar_size_bytes", 0),
+    }
 
 
 def create_embeddings_and_compaction_run(
