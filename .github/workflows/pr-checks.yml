@@ -175,6 +175,14 @@ jobs:
               python3 -m pip install "pytest>=8.3.0,<10.0.0" "pytest-mock>=3.14.0,<4.0.0" "pytest-cov>=6.1.0,<7.0.0" \
                 "pytest-xdist>=3.6.0,<4.0.0" "pytest-timeout>=2.1.0,<3.0.0" "moto>=5.1.0,<6.0.0" \
                 --disable-pip-version-check
+            elif [[ "${{ matrix.package }}" == "receipt_dynamo_stream" ]]; then
+              # Install without dependencies to avoid PyPI resolution for receipt-dynamo
+              python3 -m pip install --no-deps -e "." --disable-pip-version-check
+              # Install test dependencies manually
+              python3 -m pip install "boto3" \
+                "pytest>=8.3.0,<10.0.0" "pytest-mock>=3.14.0,<4.0.0" "pytest-cov>=6.1.0,<7.0.0" \
+                "pytest-xdist>=3.6.0,<4.0.0" "pytest-timeout>=2.1.0,<3.0.0" "moto>=5.1.0,<6.0.0" \
+                --disable-pip-version-check
             else
               python3 -m pip install --force-reinstall -e ".[test]" --disable-pip-version-check
             fi
