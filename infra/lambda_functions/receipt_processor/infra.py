@@ -101,7 +101,6 @@ list_receipts_lambda = aws.lambda_.Function(
         "Component": "ListReceipts",
         "Environment": pulumi.get_stack(),
         "ManagedBy": "Pulumi",
-        "environment": pulumi.get_stack(),
     },
 )
 
@@ -128,6 +127,5 @@ process_receipt_lambda = aws.lambda_.Function(
         "Component": "ProcessReceipt",
         "Environment": pulumi.get_stack(),
         "ManagedBy": "Pulumi",
-        "environment": pulumi.get_stack(),
     },
 )

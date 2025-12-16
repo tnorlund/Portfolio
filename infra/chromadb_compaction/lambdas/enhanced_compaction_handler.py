@@ -235,11 +235,10 @@ def parse_sqs_messages(records: List[Dict[str, Any]]) -> List[StreamMessage]:
             )
             messages.append(stream_msg)
 
-        except Exception as e:
-            logger.error(
+        except Exception:
+            logger.exception(
                 "Failed to parse SQS message",
-                error=str(e),
-                message_id=record.get("messageId"),
+                extra={"message_id": record.get("messageId")},
             )
             # Skip invalid messages
             continue
@@ -438,9 +437,9 @@ def process_collection(
         # Release lock if acquired
         try:
             lock_manager.release()
-        except Exception:
+        except Exception as e:
             # Log but don't fail - lock will expire naturally
-            pass
+            logger.debug("Failed to release lock during cleanup", error=str(e))
 
         # Cleanup temp directory
         shutil.rmtree(temp_dir, ignore_errors=True)
@@ -462,8 +461,8 @@ def process_sqs_messages(
     # Parse StreamMessage objects from SQS records
     try:
         stream_messages = parse_sqs_messages(records)
-    except Exception as e:
-        logger.error("Failed to parse SQS messages", error=str(e))
+    except Exception:
+        logger.exception("Failed to parse SQS messages")
         if metrics:
             metrics.count("CompactionMessageParseError", 1)
         # Return all as failures for retry
