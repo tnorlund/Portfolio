@@ -284,9 +284,8 @@ def process_collection(
 
     # Initialize lock manager
     lock_manager = LockManager(
-        bucket=bucket,
-        collection=collection.value,
-        logger=logger,
+        dynamo_client=dynamo_client,
+        collection=collection,
     )
 
     # Acquire lock for atomic snapshot upload

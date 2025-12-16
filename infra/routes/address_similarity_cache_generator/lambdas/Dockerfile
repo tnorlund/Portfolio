@@ -10,14 +10,13 @@ ENV HNSWLIB_NO_NATIVE=1
 # Copy only the dependency packages (triggers rebuild only when these change)
 COPY receipt_dynamo/ /tmp/receipt_dynamo/
 COPY receipt_chroma/ /tmp/receipt_chroma/
-COPY receipt_label/ /tmp/receipt_label/
 
 # Install dependencies with full ChromaDB support
-# receipt_chroma required for snapshot download/query; receipt_label remains for DynamoDB orchestration helpers
+# receipt_dynamo: DynamoDB client and constants
+# receipt_chroma: ChromaDB snapshot management and compaction logic
 RUN pip install --no-cache-dir /tmp/receipt_dynamo && \
     pip install --no-cache-dir /tmp/receipt_chroma && \
-    pip install --no-cache-dir "/tmp/receipt_label[full]" && \
-    rm -rf /tmp/receipt_dynamo /tmp/receipt_chroma /tmp/receipt_label
+    rm -rf /tmp/receipt_dynamo /tmp/receipt_chroma
 
 # Stage 2: Copy Lambda-specific code (changes frequently, but doesn't invalidate deps cache)
 FROM dependencies
