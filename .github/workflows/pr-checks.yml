@@ -50,7 +50,7 @@ jobs:
           python3 -m pip install isort black
 
           # Check if code is formatted with standardized parameters
-          if isort --check-only --profile=black --line-length=79 --multi-line-output=3 --include-trailing-comma --force-grid-wrap=0 --use-parentheses --ensure-newline-before-comments receipt_dynamo receipt_label receipt_chroma receipt_upload infra scripts && black --check --line-length=79 receipt_dynamo receipt_label receipt_chroma receipt_upload infra scripts; then
+          if isort --check-only --profile=black --line-length=79 --multi-line-output=3 --include-trailing-comma --force-grid-wrap=0 --use-parentheses --ensure-newline-before-comments receipt_dynamo receipt_dynamo_stream receipt_label receipt_chroma receipt_upload infra scripts && black --check --line-length=79 receipt_dynamo receipt_dynamo_stream receipt_label receipt_chroma receipt_upload infra scripts; then
             echo "formatted=true" >> $GITHUB_OUTPUT
           else
             echo "formatted=false" >> $GITHUB_OUTPUT
@@ -64,7 +64,7 @@ jobs:
     runs-on: [self-hosted, macOS, ARM64]
     strategy:
       matrix:
-        package: [receipt_dynamo, receipt_label, receipt_chroma]
+        package: [receipt_dynamo, receipt_dynamo_stream, receipt_label, receipt_chroma]
     steps:
       - uses: actions/checkout@v6
         with:
@@ -150,6 +150,11 @@ jobs:
             # Install from the parent directory since we haven't cd'd yet
             python3 -m pip install -e "./receipt_dynamo" --disable-pip-version-check
             # Verify receipt_dynamo is importable
+            echo "Verifying receipt_dynamo installation..."
+            python3 -c "import receipt_dynamo; print(f'receipt_dynamo imported from: {receipt_dynamo.__file__}')"
+          elif [[ "${{ matrix.package }}" == "receipt_dynamo_stream" ]]; then
+            echo "Installing receipt_dynamo dependency from PR source first"
+            python3 -m pip install -e "./receipt_dynamo" --disable-pip-version-check
             echo "Verifying receipt_dynamo installation..."
             python3 -c "import receipt_dynamo; print(f'receipt_dynamo imported from: {receipt_dynamo.__file__}')"
           fi

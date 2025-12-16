@@ -27,6 +27,7 @@ jobs:
       pull-requests: read
     outputs:
       receipt_dynamo_changed: ${{ steps.changes.outputs.receipt_dynamo }}
+      receipt_dynamo_stream_changed: ${{ steps.changes.outputs.receipt_dynamo_stream }}
       receipt_label_changed: ${{ steps.changes.outputs.receipt_label }}
       receipt_chroma_changed: ${{ steps.changes.outputs.receipt_chroma }}
       portfolio_changed: ${{ steps.changes.outputs.portfolio }}
@@ -46,6 +47,10 @@ jobs:
           filters: |
             receipt_dynamo:
               - 'receipt_dynamo/**'
+              - 'conftest.py'
+              - 'pytest*.ini'
+            receipt_dynamo_stream:
+              - 'receipt_dynamo_stream/**'
               - 'conftest.py'
               - 'pytest*.ini'
             receipt_label:
@@ -105,8 +110,8 @@ jobs:
         run: |
           # Check formatting but don't block (we have auto-format on PRs)
           echo "Checking Python formatting..."
-          black --check --line-length=79 receipt_dynamo receipt_label receipt_chroma receipt_upload infra || echo "::warning::Some files need black formatting"
-          isort --check-only --profile=black --line-length=79 receipt_dynamo receipt_label receipt_chroma receipt_upload infra || echo "::warning::Some imports need isort formatting"
+          black --check --line-length=79 receipt_dynamo receipt_dynamo_stream receipt_label receipt_chroma receipt_upload infra || echo "::warning::Some files need black formatting"
+          isort --check-only --profile=black --line-length=79 receipt_dynamo receipt_dynamo_stream receipt_label receipt_chroma receipt_upload infra || echo "::warning::Some imports need isort formatting"
 
       - name: Set up Node.js
         if: steps.changes.outputs.portfolio == 'true'
@@ -132,13 +137,14 @@ jobs:
     runs-on: [self-hosted, macOS, ARM64]
     if: |
       needs.fast-checks.outputs.receipt_dynamo_changed == 'true' ||
+      needs.fast-checks.outputs.receipt_dynamo_stream_changed == 'true' ||
       needs.fast-checks.outputs.receipt_label_changed == 'true' ||
       needs.fast-checks.outputs.receipt_chroma_changed == 'true' ||
       needs.fast-checks.outputs.workflows_changed == 'true' ||
       github.event_name == 'schedule'
     strategy:
       matrix:
-        package: [receipt_dynamo, receipt_label, receipt_chroma]
+        package: [receipt_dynamo, receipt_dynamo_stream, receipt_label, receipt_chroma]
     steps:
       - uses: actions/checkout@v6
 
@@ -265,6 +271,7 @@ jobs:
       - name: Run tests (all types unified)
         if: |
           (matrix.package == 'receipt_dynamo' && needs.fast-checks.outputs.receipt_dynamo_changed == 'true') ||
+          (matrix.package == 'receipt_dynamo_stream' && needs.fast-checks.outputs.receipt_dynamo_stream_changed == 'true') ||
           (matrix.package == 'receipt_label' && needs.fast-checks.outputs.receipt_label_changed == 'true') ||
           (matrix.package == 'receipt_chroma' && needs.fast-checks.outputs.receipt_chroma_changed == 'true') ||
           needs.fast-checks.outputs.workflows_changed == 'true' ||
@@ -331,6 +338,32 @@ jobs:
               --cov \
               --cov-report=term-missing \
               --cov-report=xml
+          elif [[ "${{ matrix.package }}" == "receipt_dynamo_stream" ]]; then
+            # receipt_dynamo_stream: Run unit and integration suites
+            echo "🚀 Running receipt_dynamo_stream unit tests with optimized timeout..."
+            python -m pytest tests/unit \
+              -n auto \
+              --timeout=30 \
+              --tb=short \
+              --maxfail=5 \
+              --durations=10 \
+              --dist=loadfile \
+              --cov \
+              --cov-report=term-missing \
+              --cov-report=xml
+
+            echo "🚀 Running receipt_dynamo_stream integration tests with extended timeout..."
+            python -m pytest tests/integration \
+              -n auto \
+              --timeout=300 \
+              --tb=short \
+              --maxfail=3 \
+              --durations=10 \
+              --dist=loadfile \
+              --cov-append \
+              --cov \
+              --cov-report=term-missing \
+              --cov-report=xml
           else
             # receipt_dynamo: Run unit tests first (fast feedback), then integration tests
             echo "🚀 Running receipt_dynamo unit tests with optimized timeout..."
@@ -360,6 +393,7 @@ jobs:
               --cov-report=term-missing \
               --cov-report=xml
           fi
+
 
       - name: Upload coverage
         uses: actions/upload-artifact@v5
