@@ -4,8 +4,6 @@ from pathlib import Path
 
 import pulumi
 import pulumi_aws as aws
-from dynamo_db import dynamodb_table
-from infra.components.lambda_layer import dynamo_layer, upload_layer
 from pulumi import (
     AssetArchive,
     ComponentResource,
@@ -14,18 +12,22 @@ from pulumi import (
     Output,
     ResourceOptions,
 )
+
+# StateMachine import removed - no longer using Step Functions
+from pulumi_aws.ecr import Repository as EcrRepository
+from pulumi_aws.ecr import (
+    RepositoryImageScanningConfigurationArgs as EcrRepoScanArgs,
+)
 from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
 from pulumi_aws.lambda_ import Function, FunctionEnvironmentArgs
 from pulumi_aws.s3 import Bucket
-# StateMachine import removed - no longer using Step Functions
-from pulumi_aws.ecr import (
-    Repository as EcrRepository,
-    RepositoryImageScanningConfigurationArgs as EcrRepoScanArgs,
-)
 from pulumi_aws.sqs import Queue
+
+from dynamo_db import dynamodb_table
 
 # Import the CodeBuildDockerImage component
 from infra.components.codebuild_docker_image import CodeBuildDockerImage
+from infra.components.lambda_layer import dynamo_layer, upload_layer
 
 config = Config("portfolio")
 openai_api_key = config.require_secret("OPENAI_API_KEY")
@@ -305,8 +307,8 @@ class UploadImages(ComponentResource):
                 f"{name}-process-ocr-vpc-exec",
                 role=process_ocr_role.name,
                 policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole",
-            opts=ResourceOptions(parent=self),
-        )
+                opts=ResourceOptions(parent=self),
+            )
 
         # Add DynamoDB access for the process OCR Lambda
         RolePolicy(
@@ -321,98 +323,110 @@ class UploadImages(ComponentResource):
                 artifacts_bucket.arn,
                 pulumi.Output.from_input(chromadb_bucket_name),
             ).apply(
-                lambda args: json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "dynamodb:DescribeTable",
-                                    "dynamodb:GetItem",
-                                    "dynamodb:BatchGetItem",
-                                    "dynamodb:Query",
-                                    "dynamodb:PutItem",
-                                    "dynamodb:UpdateItem",
-                                    "dynamodb:BatchWriteItem",
-                                ],
-                                "Resource": f"arn:aws:dynamodb:*:*:table/{args[0]}*",
-                            },
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "s3:GetObject",
-                                    "s3:PutObject",
-                                    "s3:HeadObject",
-                                ],
-                                "Resource": [
-                                    args[1] + "/*",  # raw_bucket
-                                    args[2] + "/*",  # site_bucket
-                                    args[3] + "/*",  # image_bucket
-                                    args[5] + "/*",  # artifacts_bucket
-                                    f"arn:aws:s3:::{args[6]}/*" if args[6] else None,  # chromadb_bucket
-                                ],
-                            },
-                            {
-                                "Effect": "Allow",
-                                "Action": "s3:ListBucket",
-                                "Resource": f"arn:aws:s3:::{args[6]}" if args[6] else None,
-                            },
-                            {
-                                "Effect": "Allow",
-                                "Action": "sqs:SendMessage",
-                                "Resource": args[4],  # ocr_queue.arn
-                            },
-                            {
-                                "Effect": "Allow",
-                                "Action": "cloudwatch:PutMetricData",
-                                "Resource": "*",
-                            },
-                        ],
-                    }
-                ) if args[6] else json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "dynamodb:DescribeTable",
-                                    "dynamodb:GetItem",
-                                    "dynamodb:BatchGetItem",
-                                    "dynamodb:Query",
-                                    "dynamodb:PutItem",
-                                    "dynamodb:UpdateItem",
-                                    "dynamodb:BatchWriteItem",
-                                ],
-                                "Resource": f"arn:aws:dynamodb:*:*:table/{args[0]}*",
-                            },
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "s3:GetObject",
-                                    "s3:PutObject",
-                                    "s3:HeadObject",
-                                ],
-                                "Resource": [
-                                    args[1] + "/*",  # raw_bucket
-                                    args[2] + "/*",  # site_bucket
-                                    args[3] + "/*",  # image_bucket
-                                    args[5] + "/*",  # artifacts_bucket
-                                ],
-                            },
-                            {
-                                "Effect": "Allow",
-                                "Action": "sqs:SendMessage",
-                                "Resource": args[4],  # ocr_queue.arn
-                            },
-                            {
-                                "Effect": "Allow",
-                                "Action": "cloudwatch:PutMetricData",
-                                "Resource": "*",
-                            },
-                        ],
-                    }
+                lambda args: (
+                    json.dumps(
+                        {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "dynamodb:DescribeTable",
+                                        "dynamodb:GetItem",
+                                        "dynamodb:BatchGetItem",
+                                        "dynamodb:Query",
+                                        "dynamodb:PutItem",
+                                        "dynamodb:UpdateItem",
+                                        "dynamodb:BatchWriteItem",
+                                    ],
+                                    "Resource": f"arn:aws:dynamodb:*:*:table/{args[0]}*",
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "s3:GetObject",
+                                        "s3:PutObject",
+                                        "s3:HeadObject",
+                                    ],
+                                    "Resource": [
+                                        args[1] + "/*",  # raw_bucket
+                                        args[2] + "/*",  # site_bucket
+                                        args[3] + "/*",  # image_bucket
+                                        args[5] + "/*",  # artifacts_bucket
+                                        (
+                                            f"arn:aws:s3:::{args[6]}/*"
+                                            if args[6]
+                                            else None
+                                        ),  # chromadb_bucket
+                                    ],
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": "s3:ListBucket",
+                                    "Resource": (
+                                        f"arn:aws:s3:::{args[6]}"
+                                        if args[6]
+                                        else None
+                                    ),
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": "sqs:SendMessage",
+                                    "Resource": args[4],  # ocr_queue.arn
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": "cloudwatch:PutMetricData",
+                                    "Resource": "*",
+                                },
+                            ],
+                        }
+                    )
+                    if args[6]
+                    else json.dumps(
+                        {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "dynamodb:DescribeTable",
+                                        "dynamodb:GetItem",
+                                        "dynamodb:BatchGetItem",
+                                        "dynamodb:Query",
+                                        "dynamodb:PutItem",
+                                        "dynamodb:UpdateItem",
+                                        "dynamodb:BatchWriteItem",
+                                    ],
+                                    "Resource": f"arn:aws:dynamodb:*:*:table/{args[0]}*",
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "s3:GetObject",
+                                        "s3:PutObject",
+                                        "s3:HeadObject",
+                                    ],
+                                    "Resource": [
+                                        args[1] + "/*",  # raw_bucket
+                                        args[2] + "/*",  # site_bucket
+                                        args[3] + "/*",  # image_bucket
+                                        args[5] + "/*",  # artifacts_bucket
+                                    ],
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": "sqs:SendMessage",
+                                    "Resource": args[4],  # ocr_queue.arn
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": "cloudwatch:PutMetricData",
+                                    "Resource": "*",
+                                },
+                            ],
+                        }
+                    )
                 )
             ),
             opts=ResourceOptions(parent=self),
@@ -496,34 +510,45 @@ class UploadImages(ComponentResource):
                 "OCR_RESULTS_QUEUE_URL": self.ocr_results_queue.url,
                 "CHROMADB_BUCKET": chromadb_bucket_name,
                 "CHROMA_HTTP_ENDPOINT": chroma_http_endpoint,
-                "CHROMADB_LINES_QUEUE_URL": chromadb_lines_queue_url,
-                "CHROMADB_WORDS_QUEUE_URL": chromadb_words_queue_url,
+                # Note: SQS queue URLs removed - DynamoDB streams handle routing
                 "GOOGLE_PLACES_API_KEY": google_places_api_key,
                 "OPENAI_API_KEY": openai_api_key,
                 # LangGraph validation with Ollama
                 "OLLAMA_API_KEY": ollama_api_key,
                 "LANGCHAIN_API_KEY": langchain_api_key,
                 # EFS configuration for ChromaDB read-only access
-                "CHROMA_ROOT": "/mnt/chroma" if efs_access_point_arn else "/tmp/chroma",
+                "CHROMA_ROOT": (
+                    "/mnt/chroma" if efs_access_point_arn else "/tmp/chroma"
+                ),
                 "CHROMADB_STORAGE_MODE": "auto",  # Use EFS if available, fallback to S3 (debugging EFS access)
             },
-            "vpc_config": {
-                "subnet_ids": vpc_subnet_ids,
-                "security_group_ids": [security_group_id],
-            } if vpc_subnet_ids and security_group_id else None,
+            "vpc_config": (
+                {
+                    "subnet_ids": vpc_subnet_ids,
+                    "security_group_ids": [security_group_id],
+                }
+                if vpc_subnet_ids and security_group_id
+                else None
+            ),
             # EFS mount enabled for networking
-            "file_system_config": {
-                "arn": efs_access_point_arn,
-                "local_mount_path": "/mnt/chroma",
-            } if efs_access_point_arn else None,
-            }
+            "file_system_config": (
+                {
+                    "arn": efs_access_point_arn,
+                    "local_mount_path": "/mnt/chroma",
+                }
+                if efs_access_point_arn
+                else None
+            ),
+        }
 
         # Use CodeBuildDockerImage for AWS-based builds
         process_ocr_docker_image = CodeBuildDockerImage(
             f"{name}-process-ocr-image",
             dockerfile_path="infra/upload_images/container_ocr/Dockerfile",
             build_context_path=".",  # Project root for monorepo access
-            source_paths=["receipt_upload"],  # Include receipt_upload package (only needed for this Lambda)
+            source_paths=[
+                "receipt_upload"
+            ],  # Include receipt_upload package (only needed for this Lambda)
             # lambda_function_name=f"{name}-{stack}-process-ocr-results",  # Let Pulumi manage Lambda config
             lambda_config=process_ocr_lambda_config,
             platform="linux/arm64",
@@ -630,13 +655,21 @@ class UploadImages(ComponentResource):
                                 ],
                                 "Resource": [
                                     args[1] + "/*",  # artifacts_bucket
-                                    f"arn:aws:s3:::{args[2]}/*" if args[2] else None,  # chromadb_bucket
+                                    (
+                                        f"arn:aws:s3:::{args[2]}/*"
+                                        if args[2]
+                                        else None
+                                    ),  # chromadb_bucket
                                 ],
                             },
                             {
                                 "Effect": "Allow",
                                 "Action": "s3:ListBucket",
-                                "Resource": f"arn:aws:s3:::{args[2]}" if args[2] else None,
+                                "Resource": (
+                                    f"arn:aws:s3:::{args[2]}"
+                                    if args[2]
+                                    else None
+                                ),
                             },
                             {
                                 "Effect": "Allow",
@@ -663,26 +696,35 @@ class UploadImages(ComponentResource):
                 "DYNAMO_TABLE_NAME": dynamodb_table.name,
                 "CHROMADB_BUCKET": chromadb_bucket_name,
                 "CHROMA_HTTP_ENDPOINT": chroma_http_endpoint,
-                "CHROMADB_LINES_QUEUE_URL": chromadb_lines_queue_url,
-                "CHROMADB_WORDS_QUEUE_URL": chromadb_words_queue_url,
+                # Note: SQS queue URLs removed - DynamoDB streams handle routing
                 "GOOGLE_PLACES_API_KEY": google_places_api_key,
                 "OPENAI_API_KEY": openai_api_key,
                 # LangGraph validation with Ollama
                 "OLLAMA_API_KEY": ollama_api_key,
                 "LANGCHAIN_API_KEY": langchain_api_key,
                 # EFS configuration for ChromaDB (optional, can use S3 for non-time-sensitive)
-                "CHROMA_ROOT": "/mnt/chroma" if efs_access_point_arn else "/tmp/chroma",
+                "CHROMA_ROOT": (
+                    "/mnt/chroma" if efs_access_point_arn else "/tmp/chroma"
+                ),
                 "CHROMADB_STORAGE_MODE": "auto",  # Use EFS if available, fallback to S3
             },
-            "vpc_config": {
-                "subnet_ids": vpc_subnet_ids,
-                "security_group_ids": [security_group_id],
-            } if vpc_subnet_ids and security_group_id else None,
+            "vpc_config": (
+                {
+                    "subnet_ids": vpc_subnet_ids,
+                    "security_group_ids": [security_group_id],
+                }
+                if vpc_subnet_ids and security_group_id
+                else None
+            ),
             # EFS mount enabled (optional, can use S3 for non-time-sensitive processing)
-            "file_system_config": {
-                "arn": efs_access_point_arn,
-                "local_mount_path": "/mnt/chroma",
-            } if efs_access_point_arn else None,
+            "file_system_config": (
+                {
+                    "arn": efs_access_point_arn,
+                    "local_mount_path": "/mnt/chroma",
+                }
+                if efs_access_point_arn
+                else None
+            ),
         }
 
         # Use CodeBuildDockerImage for AWS-based builds
