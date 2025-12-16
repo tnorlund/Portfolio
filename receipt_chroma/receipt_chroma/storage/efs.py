@@ -79,8 +79,8 @@ class EFSSnapshotManager:
         try:
             with open(self.version_file, "w", encoding="utf-8") as f:
                 f.write(version)
-        except Exception as e:
-            self.logger.error("Failed to write EFS version file", error=str(e))
+        except Exception:
+            self.logger.exception("Failed to write EFS version file")
 
     def get_latest_s3_version(self) -> Optional[str]:
         """Get the latest snapshot version from S3."""
@@ -99,8 +99,8 @@ class EFSSnapshotManager:
                     # compatibility
                     return "latest-direct"
                 raise
-        except Exception as e:
-            self.logger.error("Failed to get S3 version", error=str(e))
+        except Exception:
+            self.logger.exception("Failed to get S3 version")
             return None
 
     def download_snapshot_to_efs(self, version: str) -> Dict[str, Any]:
@@ -168,14 +168,13 @@ class EFSSnapshotManager:
                 "download_time_ms": download_time * 1000,
             }
 
-        except Exception as e:
+        except Exception:
             # Clean up temp directory on error
             shutil.rmtree(temp_dir, ignore_errors=True)
-            self.logger.error(
+            self.logger.exception(
                 "Failed to download snapshot to EFS",
                 collection=self.collection,
                 version=version,
-                error=str(e),
             )
 
             if self.metrics:
@@ -292,12 +291,11 @@ class EFSSnapshotManager:
                         "EFSS3SyncError", 1, {"collection": self.collection}
                     )
 
-        except Exception as e:
-            self.logger.error(
+        except Exception:
+            self.logger.exception(
                 "S3 sync error",
                 collection=self.collection,
                 version=version,
-                error=str(e),
             )
 
             if self.metrics:
@@ -350,11 +348,10 @@ class EFSSnapshotManager:
                         {"collection": self.collection},
                     )
 
-        except Exception as e:
-            self.logger.error(
+        except Exception:
+            self.logger.exception(
                 "Failed to cleanup old snapshots",
                 collection=self.collection,
-                error=str(e),
             )
 
 

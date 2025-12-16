@@ -101,7 +101,7 @@ def apply_label_updates(
             )
 
         except Exception as e:
-            logger.error("Error processing label update", error=str(e))
+            logger.exception("Error processing label update")
             results.append(
                 LabelUpdateResult(
                     chromadb_id="unknown",

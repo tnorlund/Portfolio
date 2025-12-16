@@ -81,8 +81,8 @@ class TestFormatWordContextEmbeddingInput:
         )
         # Format should be: "<EDGE> left target right <EDGE>" or similar
         assert "target" in result
-        assert "left" in result or "<EDGE>" in result
-        assert "right" in result or "<EDGE>" in result
+        assert "left" in result
+        assert "right" in result
 
     def test_format_edge_word(self):
         """Test formatting word at edge (no neighbors)."""
@@ -123,8 +123,10 @@ class TestFormatWordContextEmbeddingInput:
         )
         # Should have 2 words on each side: "item1 item2 target item4 item5"
         assert "target" in result
-        assert "item1" in result or "item2" in result
-        assert "item4" in result or "item5" in result
+        assert "item1" in result
+        assert "item2" in result
+        assert "item4" in result
+        assert "item5" in result
 
 
 @pytest.mark.unit
@@ -150,8 +152,8 @@ class TestGetWordNeighbors:
         )
         assert len(left_words) == 1
         assert len(right_words) == 1
-        assert left_words[0] in ["left", "<EDGE>"]
-        assert right_words[0] in ["right", "<EDGE>"]
+        assert left_words[0] == "left"
+        assert right_words[0] == "right"
 
     def test_get_neighbors_multiple(self):
         """Test getting multiple neighbors with context_size=2."""
@@ -178,8 +180,10 @@ class TestGetWordNeighbors:
         )
         assert len(left_words) == 2
         assert len(right_words) == 2
-        assert "left1" in left_words or "left2" in left_words
-        assert "right1" in right_words or "right2" in right_words
+        assert "left1" in left_words
+        assert "left2" in left_words
+        assert "right1" in right_words
+        assert "right2" in right_words
 
     def test_get_neighbors_edge(self):
         """Test getting neighbors for word at edge."""
@@ -276,10 +280,12 @@ class TestGetWordNeighbors:
             target, words, context_size=2
         )
         # Should find neighbors on same line even if far apart
-        assert len(left_words) > 0
-        assert len(right_words) > 0
-        assert "left" in left_words or "far_left" in left_words
-        assert "right" in right_words or "far_right" in right_words
+        assert len(left_words) == 2
+        assert len(right_words) == 2
+        assert "left" in left_words
+        assert "far_left" in left_words
+        assert "right" in right_words
+        assert "far_right" in right_words
 
     def test_get_neighbors_includes_different_lines(self):
         """Include other lines when horizontally aligned."""
@@ -321,8 +327,8 @@ class TestGetWordNeighbors:
             target, words, context_size=2
         )
         # Should find words from other lines based on horizontal position
-        assert len(left_words) > 0
-        assert len(right_words) > 0
+        assert len(left_words) == 1
+        assert len(right_words) == 1
         assert "left_above" in left_words
         assert "right_below" in right_words
 
@@ -386,8 +392,10 @@ class TestParseLeftRightFromFormatted:
         )
         assert len(left_words) == 2
         assert len(right_words) == 2
-        assert "left1" in left_words or "left2" in left_words
-        assert "right1" in right_words or "right2" in right_words
+        assert "left1" in left_words
+        assert "left2" in left_words
+        assert "right1" in right_words
+        assert "right2" in right_words
 
     def test_parse_with_edge(self):
         """Test parsing with edge markers."""

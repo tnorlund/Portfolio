@@ -97,7 +97,7 @@ def apply_metadata_updates(
             )
 
         except Exception as e:
-            logger.error("Error processing metadata update", error=str(e))
+            logger.exception("Error processing metadata update")
             results.append(
                 MetadataUpdateResult(
                     database=database,

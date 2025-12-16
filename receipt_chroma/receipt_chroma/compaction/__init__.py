@@ -11,11 +11,11 @@ from receipt_chroma.compaction.models import (
 from receipt_chroma.compaction.processor import process_collection_updates
 
 __all__ = [
-    "process_collection_updates",
-    "CollectionUpdateResult",
-    "MetadataUpdateResult",
-    "LabelUpdateResult",
-    "apply_metadata_updates",
     "apply_label_updates",
+    "apply_metadata_updates",
+    "CollectionUpdateResult",
+    "LabelUpdateResult",
     "merge_compaction_deltas",
+    "MetadataUpdateResult",
+    "process_collection_updates",
 ]

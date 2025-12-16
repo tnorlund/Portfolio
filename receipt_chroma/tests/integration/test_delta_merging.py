@@ -128,7 +128,7 @@ class TestDeltaMerging:
 
         # Upload delta directory to S3 (without creating tarball)
         delta_prefix = "deltas/run-456"
-        for root, dirs, files in os.walk(delta_dir):
+        for root, _, files in os.walk(delta_dir):
             for file in files:
                 local_path = os.path.join(root, file)
                 relative_path = os.path.relpath(local_path, delta_dir)
@@ -219,7 +219,7 @@ class TestDeltaMerging:
 
             # Upload to S3 (directory layout)
             delta_prefix = f"deltas/{run_id}"
-            for root, dirs, files in os.walk(delta_dir):
+            for root, _, files in os.walk(delta_dir):
                 for file in files:
                     local_path = os.path.join(root, file)
                     relative_path = os.path.relpath(local_path, delta_dir)
@@ -395,7 +395,7 @@ class TestDeltaMerging:
 
         # Upload to S3
         delta_prefix = "deltas/run-wrong-collection"
-        for root, dirs, files in os.walk(delta_dir):
+        for root, _, files in os.walk(delta_dir):
             for file in files:
                 local_path = os.path.join(root, file)
                 relative_path = os.path.relpath(local_path, delta_dir)

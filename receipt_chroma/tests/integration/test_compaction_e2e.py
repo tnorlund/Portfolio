@@ -229,7 +229,7 @@ class TestCompactionEndToEnd:
 
         # Upload delta to S3
         delta_prefix = "deltas/run-e2e"
-        for root, dirs, files in os.walk(delta_dir):
+        for root, _, files in os.walk(delta_dir):
             for file in files:
                 local_path = os.path.join(root, file)
                 relative_path = os.path.relpath(local_path, delta_dir)

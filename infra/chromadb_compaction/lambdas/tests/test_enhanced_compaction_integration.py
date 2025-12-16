@@ -9,11 +9,8 @@ from uuid import uuid4
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
-# Skip if moto not available
+# Skip if moto not available - imports moved to functions
 pytest.importorskip("moto")
-
-from moto import mock_aws
-import boto3
 
 
 @pytest.fixture
@@ -42,6 +39,9 @@ def mock_env(aws_credentials):
 @pytest.fixture
 def s3_client(aws_credentials):
     """Create a mocked S3 client."""
+    from moto import mock_aws
+    import boto3
+
     with mock_aws():
         s3 = boto3.client("s3", region_name="us-east-1")
         # Create bucket
@@ -52,6 +52,9 @@ def s3_client(aws_credentials):
 @pytest.fixture
 def dynamodb_client(aws_credentials):
     """Create a mocked DynamoDB client."""
+    from moto import mock_aws
+    import boto3
+
     with mock_aws():
         dynamodb = boto3.client("dynamodb", region_name="us-east-1")
 

@@ -82,11 +82,10 @@ def merge_compaction_deltas(
                         logger=logger,
                     )
                     logger.info("Delta download completed successfully")
-                except Exception as e:
-                    logger.error(
-                        f"Failed to download or extract delta: {delta_prefix}, error={str(e)}"
+                except Exception:
+                    logger.exception(
+                        f"Failed to download or extract delta: {delta_prefix}"
                     )
-                    logger.exception("Delta download exception details")
                     continue
 
                 # Merge delta into snapshot
@@ -161,11 +160,10 @@ def merge_compaction_deltas(
                         # Ensure delta_client is closed to prevent file handle leaks
                         delta_client.close()
 
-                except Exception as e:
-                    logger.error(
-                        f"Failed merging delta into snapshot: run_id={run_id}, image_id={image_id}, receipt_id={receipt_id}, error={str(e)}"
+                except Exception:
+                    logger.exception(
+                        f"Failed merging delta into snapshot: run_id={run_id}, image_id={image_id}, receipt_id={receipt_id}"
                     )
-                    logger.exception("Exception details for delta merge")
                     continue
 
                 # Track per-run result for DynamoDB updates
