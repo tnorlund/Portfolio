@@ -50,10 +50,6 @@ class TestLabelUpdates:
                 "validation_status": FieldChange(old="PENDING", new="VALID"),
                 "label_confidence": FieldChange(old="0.5", new="0.95"),
             },
-            record_snapshot={
-                "validation_status": "VALID",
-                "label_confidence": 0.95,
-            },
         )
 
         # Apply label updates
@@ -202,7 +198,6 @@ class TestLabelUpdates:
             changes={
                 "validation_status": FieldChange(old="PENDING", new="VALID")
             },
-            record_snapshot={"validation_status": "VALID"},
         )
 
         update_msg_2 = create_label_message(
@@ -215,7 +210,6 @@ class TestLabelUpdates:
             changes={
                 "validation_status": FieldChange(old="PENDING", new="VALID")
             },
-            record_snapshot={"validation_status": "VALID"},
         )
 
         # Apply label updates
@@ -273,12 +267,6 @@ class TestLabelUpdates:
             label="TOTAL",
             event_name="MODIFY",
             changes={},
-            record_snapshot={
-                "validation_status": "VALID",
-                "label_confidence": 0.95,
-                "validated_by": "user@example.com",
-                "valid_labels": "TOTAL",
-            },
         )
 
         # Apply label updates

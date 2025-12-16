@@ -58,7 +58,6 @@ def create_label_message(
     label: str = "TOTAL",
     event_name: str = "MODIFY",
     changes: Optional[Dict[str, FieldChange]] = None,
-    record_snapshot: Optional[Dict[str, Any]] = None,
 ) -> StreamMessage:
     """Create a RECEIPT_WORD_LABEL StreamMessage for testing.
 
@@ -70,7 +69,6 @@ def create_label_message(
         label: Label text
         event_name: Event type (INSERT, MODIFY, REMOVE)
         changes: Dictionary of field changes
-        record_snapshot: Snapshot data from DynamoDB stream
 
     Returns:
         StreamMessage for RECEIPT_WORD_LABEL entity
@@ -95,7 +93,6 @@ def create_label_message(
         timestamp=datetime.now().isoformat(),
         stream_record_id=f"record-{image_id}-{receipt_id}-{line_id}-{word_id}",
         aws_region="us-east-1",
-        record_snapshot=record_snapshot,
     )
 
 

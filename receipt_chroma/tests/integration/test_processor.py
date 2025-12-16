@@ -139,7 +139,6 @@ class TestProcessor:
             changes={
                 "validation_status": FieldChange(old="PENDING", new="VALID")
             },
-            record_snapshot={"validation_status": "VALID"},
         )
 
         # Process updates
@@ -499,7 +498,6 @@ class TestProcessor:
             changes={
                 "validation_status": FieldChange(old="PENDING", new="VALID")
             },
-            record_snapshot={"validation_status": "VALID"},
         )
 
         # Metadata update for the receipt

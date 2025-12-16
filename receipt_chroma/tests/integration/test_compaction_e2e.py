@@ -412,7 +412,6 @@ class TestCompactionEndToEnd:
             changes={
                 "validation_status": FieldChange(old="PENDING", new="VALID")
             },
-            record_snapshot={"validation_status": "VALID"},
         )
 
         # Step 3: Download, process, upload
