@@ -56,7 +56,11 @@ class StorageManager:
         self._efs_manager: Optional[EFSSnapshotManager] = None
         if self._effective_mode == StorageMode.EFS:
             self._efs_manager = EFSSnapshotManager(
-                collection=collection, logger=logger, metrics=metrics
+                collection=collection,
+                bucket=bucket,
+                logger=logger,
+                metrics=metrics,
+                efs_root=self.efs_root,
             )
 
     def _detect_mode(self) -> StorageMode:

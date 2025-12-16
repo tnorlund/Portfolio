@@ -44,8 +44,9 @@ class TestStorageManagerS3Mode:
         with tempfile.TemporaryDirectory() as tmpdir:
             result = manager.download_snapshot(tmpdir, verify_integrity=False)
 
-            # Should return not found status
-            assert result["status"] in ["not_found", "error"]
+            # Should auto-initialize empty snapshot when none exists
+            assert result["status"] == "downloaded"
+            assert result.get("initialized") is True
 
     def test_upload_and_download_snapshot_s3_mode(
         self, mock_s3_bucket_compaction, mock_logger, chroma_snapshot_with_data
@@ -83,7 +84,7 @@ class TestStorageManagerS3Mode:
             collections = client.list_collections()
             client.close()
 
-            assert "lines" in [c.name for c in collections]
+            assert "lines" in collections
 
     def test_get_latest_version_s3_mode(
         self, mock_s3_bucket_compaction, mock_logger, chroma_snapshot_with_data

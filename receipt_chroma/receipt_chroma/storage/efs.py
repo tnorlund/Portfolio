@@ -24,27 +24,36 @@ from receipt_chroma.s3 import download_snapshot_atomic, upload_snapshot_atomic
 class EFSSnapshotManager:
     """Manages ChromaDB snapshots using EFS + S3 hybrid approach."""
 
-    def __init__(self, collection: str, logger: Any, metrics: Any = None):
+    def __init__(
+        self,
+        collection: str,
+        bucket: str,
+        logger: Any,
+        metrics: Any = None,
+        efs_root: Optional[str] = None,
+    ):
         """
         Initialize EFS snapshot manager.
 
         Args:
             collection: Collection name (lines/words)
+            bucket: S3 bucket name
             logger: Logger instance
             metrics: Optional metrics collector
+            efs_root: Optional EFS root path (defaults to /tmp/chroma)
         """
         self.collection = collection
         self.logger = logger
         self.metrics = metrics
 
-        # EFS mount path (from Lambda environment)
-        self.efs_root = os.environ.get("CHROMA_ROOT", "/tmp/chroma")
+        # EFS mount path
+        self.efs_root = efs_root or os.environ.get("CHROMA_ROOT", "/tmp/chroma")
         self.efs_snapshots_dir = os.path.join(
             self.efs_root, "snapshots", collection
         )
 
         # S3 configuration
-        self.bucket = os.environ["CHROMADB_BUCKET"]
+        self.bucket = bucket
         self.s3_client = boto3.client("s3")
 
         # Version tracking file
