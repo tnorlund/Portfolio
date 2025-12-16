@@ -872,17 +872,16 @@ def process_stream_messages(
             else:
                 # S3-only case: Standard lock acquisition
                 backoff_attempts = [0.15, 0.3]  # seconds
+                lock_id = f"chroma-{collection.value}-update"
+                lm = LockManager(
+                    get_dynamo_client(),
+                    collection=collection,
+                    heartbeat_interval=heartbeat_interval,
+                    lock_duration_minutes=lock_duration_minutes,
+                    max_heartbeat_failures=max_heartbeat_failures,
+                )
 
                 for attempt_idx, delay in enumerate(backoff_attempts, start=1):
-                    lock_id = f"chroma-{collection.value}-update"
-                    lm = LockManager(
-                        get_dynamo_client(),
-                        collection=collection,
-                        heartbeat_interval=heartbeat_interval,
-                        lock_duration_minutes=lock_duration_minutes,
-                        max_heartbeat_failures=max_heartbeat_failures,
-                    )
-
                     phase3_s3_lock_start = time.time()
                     if not lm.acquire(lock_id):
                         phase3_s3_lock_duration = time.time() - phase3_s3_lock_start

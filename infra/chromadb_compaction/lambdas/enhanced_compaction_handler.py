@@ -292,6 +292,14 @@ def process_collection(
         logger=logger,
     )
 
+    # Acquire lock for atomic snapshot upload
+    lock_id = f"chroma-{collection.value}-compaction"
+    if not lock_manager.acquire(lock_id):
+        logger.error("Failed to acquire lock for snapshot upload")
+        if metrics:
+            metrics.count("CompactionLockAcquisitionFailed", 1)
+        return {"failed_message_ids": [m.stream_record_id for m in messages]}
+
     # Create temp directory for snapshot
     temp_dir = tempfile.mkdtemp(prefix=f"chroma-{collection.value}-")
 
@@ -431,6 +439,13 @@ def process_collection(
         }
 
     finally:
+        # Release lock if acquired
+        try:
+            lock_manager.release()
+        except Exception:
+            # Log but don't fail - lock will expire naturally
+            pass
+
         # Cleanup temp directory
         shutil.rmtree(temp_dir, ignore_errors=True)
 
