@@ -60,8 +60,17 @@ def handler(event: Dict[str, Any], _) -> Dict[str, Any]:
 
     # Extract receipt information from the event
     try:
-        receipt_id = event["receipt_id"]
-        image_id = event["image_id"]
+        receipt_id = event.get("receipt_id")
+        image_id = event.get("image_id")
+
+        if not receipt_id or not image_id:
+            return {
+                "statusCode": 400,
+                "receipt_id": receipt_id or "unknown",
+                "image_id": image_id or "unknown",
+                "success": False,
+                "message": "Missing required fields: receipt_id and image_id",
+            }
 
         # Initialize client
         client = DynamoClient(DYNAMODB_TABLE_NAME)
@@ -224,12 +233,12 @@ def handler(event: Dict[str, Any], _) -> Dict[str, Any]:
             }
 
     except Exception as e:
-        logger.error(f"Error processing receipt: {str(e)}")
+        logger.exception("Error processing receipt: %s", e)
         return {
             "statusCode": 500,
             "receipt_id": event.get("receipt_id", "unknown"),
             "image_id": event.get("image_id", "unknown"),
             "error": str(e),
             "success": False,
-            "message": f"Failed to process receipt: {str(e)}",
+            "message": f"Failed to process receipt: {e}",
         }

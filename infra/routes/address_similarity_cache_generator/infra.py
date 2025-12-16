@@ -25,6 +25,7 @@ DYNAMODB_TABLE_NAME = dynamodb_table.name
 
 # Get stack configuration
 stack = pulumi.get_stack()
+is_production = stack == "prod"
 
 
 class AddressSimilarityCacheGenerator(ComponentResource):
@@ -47,7 +48,7 @@ class AddressSimilarityCacheGenerator(ComponentResource):
         # Create dedicated S3 bucket for API cache (separate from ChromaDB bucket)
         self.cache_bucket = aws.s3.Bucket(
             f"{name}-cache-bucket",
-            force_destroy=True,  # Allow bucket deletion for dev environments
+            force_destroy=not is_production,  # Prevent accidental data loss in prod
             tags={
                 "Name": f"{name}-cache-bucket",
                 "Purpose": "AddressSimilarityAPICache",

@@ -2121,7 +2121,7 @@ def perform_final_merge(
                 "Using EFS + S3 hybrid approach", collection=collection_name
             )
             efs_manager = get_efs_snapshot_manager(
-                collection_name, logger, metrics=None
+                collection_name, bucket, logger, metrics=None
             )
 
             # Get latest version from S3 pointer

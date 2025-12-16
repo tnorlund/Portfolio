@@ -32,7 +32,8 @@ def test_client_persistence(temp_chromadb_dir):
         )
 
     # Create a new client and verify data persists
-    # For read mode, we need to use query_embeddings or get the collection directly
+    # For read mode, we need to use query_embeddings or get the collection
+    # directly
     with ChromaClient(
         persist_directory=temp_chromadb_dir, mode="read"
     ) as client:
@@ -272,7 +273,8 @@ def test_read_only_mode_prevents_writes(temp_chromadb_dir):
                 collection_name="readonly_test", ids=["2"], documents=["test2"]
             )
 
-        # But should be able to read - use get() instead of query() for read mode
+        # But should be able to read - use get() instead of query() for read
+        # mode
         collection = client.get_collection("readonly_test")
         assert collection.count() > 0
         results = client.get(collection_name="readonly_test", ids=["1"])
@@ -283,7 +285,8 @@ def test_read_only_mode_prevents_writes(temp_chromadb_dir):
 @pytest.mark.parametrize("s3_bucket", ["test-chromadb-bucket"], indirect=True)
 def test_close_before_s3_upload(temp_chromadb_dir, s3_bucket):
     """
-    Test the critical scenario from issue #5868: closing before uploading to S3.
+    Test the critical scenario from issue #5868: closing before uploading
+    to S3.
 
     This test uses moto to mock S3, verifying that files can be uploaded
     after closing the ChromaDB client.
@@ -331,8 +334,9 @@ def test_close_before_s3_upload(temp_chromadb_dir, s3_bucket):
                 s3_client.download_file(s3_bucket, obj["Key"], str(local_file))
 
             # Try to open the downloaded database
-            # Note: This is simplified - in reality we'd need to preserve directory structure
-            # But this demonstrates the key point: files are unlocked after close()
+            # Note: This is simplified - in reality we'd need to preserve
+            # directory structure. But this demonstrates the key point:
+            # files are unlocked after close().
         finally:
             shutil.rmtree(download_dir, ignore_errors=True)
     finally:

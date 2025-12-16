@@ -94,7 +94,7 @@ class TestCreateLineMetadata:
         assert metadata["confidence"] == 0.8  # Line confidence unchanged
 
     def test_metadata_without_avg_confidence(self):
-        """Test metadata without average word confidence uses line confidence."""
+        """Fallback to line confidence when avg not provided."""
         line = MockReceiptLine(
             "img1", "rec1", "line1", "hello world", confidence=0.85
         )

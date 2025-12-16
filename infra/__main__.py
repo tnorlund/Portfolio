@@ -52,7 +52,6 @@ from raw_bucket import raw_bucket  # Import the actual bucket instance
 from s3_website import site_bucket  # Import the site bucket instance
 from security import ChromaSecurity
 from upload_images import UploadImages
-from validation_pipeline import ValidationPipeline
 
 # from spot_interruption import SpotInterruptionHandler
 # from efs_storage import EFSStorage
@@ -75,12 +74,13 @@ except ImportError as e:
     # These may not be available in all environments
     print(f"⚠️  Failed to import label cache updater: {e}")
     pass
-import step_function
+# import step_function  # Legacy - receipt_processor depends on removed receipt_label
 from chroma.nat_egress import NatEgress
 from chroma.orchestrator import ChromaOrchestrator
 from chroma.service import ChromaEcsService
 from chroma.workers import ChromaWorkers
-from step_function_enhanced import create_enhanced_receipt_processor
+
+# from step_function_enhanced import create_enhanced_receipt_processor  # Legacy - depends on receipt_processor which needs receipt_label
 
 # Foundation VPC (public subnets only, no NAT) per Task 350
 public_vpc = PublicVpc("foundation")
@@ -125,8 +125,6 @@ notification_system = NotificationSystem(
     },
 )
 
-validation_pipeline = ValidationPipeline("validation-pipeline")
-
 # Import shared ChromaDB bucket (created in chromadb_buckets.py for route access)
 from chromadb_buckets import shared_chromadb_buckets
 
@@ -135,9 +133,11 @@ from chromadb_buckets import shared_chromadb_buckets
 # temporarily disabled to decouple from receipt_label.
 
 # Create the enhanced receipt processor with error handling
-enhanced_receipt_processor = create_enhanced_receipt_processor(
-    notification_system
-)
+# TODO: Receipt processor is legacy and depends on receipt_label which was removed
+# This needs to be replaced with the new agent-based pipelines
+# enhanced_receipt_processor = create_enhanced_receipt_processor(
+#     notification_system
+# )
 
 # Export notification topics
 pulumi.export(
@@ -164,7 +164,7 @@ billing_alerts = BillingAlerts(
 )
 
 # Export enhanced step function ARN
-pulumi.export("enhanced_receipt_processor_arn", enhanced_receipt_processor.arn)
+# pulumi.export("enhanced_receipt_processor_arn", enhanced_receipt_processor.arn)  # Commented out - legacy code
 
 # Task 6: ECS Service (scale-to-zero) using our Chroma container
 chroma_service = ChromaEcsService(

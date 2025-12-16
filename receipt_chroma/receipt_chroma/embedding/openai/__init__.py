@@ -21,6 +21,7 @@ from receipt_chroma.embedding.openai.poll import (
     list_pending_line_embedding_batches,
     list_pending_word_embedding_batches,
 )
+from receipt_chroma.embedding.openai.realtime import embed_texts
 from receipt_chroma.embedding.openai.submit import (
     add_batch_summary,
     create_batch_summary,
@@ -44,4 +45,5 @@ __all__ = [
     "create_batch_summary",
     "submit_openai_batch",
     "upload_to_openai",
+    "embed_texts",
 ]
