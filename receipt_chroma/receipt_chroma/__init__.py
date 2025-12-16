@@ -20,6 +20,17 @@ from receipt_chroma.s3 import (
     upload_snapshot_atomic,
 )
 
+# Compaction operations
+from receipt_chroma.compaction import (
+    process_collection_updates,
+    CollectionUpdateResult,
+    MetadataUpdateResult,
+    LabelUpdateResult,
+)
+
+# Storage abstraction
+from receipt_chroma.storage import StorageManager, StorageMode
+
 __all__ = [
     "__version__",
     "ChromaClient",
@@ -30,4 +41,10 @@ __all__ = [
     "produce_embedding_delta",
     "save_line_embeddings_as_delta",
     "save_word_embeddings_as_delta",
+    "process_collection_updates",
+    "CollectionUpdateResult",
+    "MetadataUpdateResult",
+    "LabelUpdateResult",
+    "StorageManager",
+    "StorageMode",
 ]
