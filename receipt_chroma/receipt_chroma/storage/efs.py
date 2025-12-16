@@ -85,11 +85,10 @@ class EFSSnapshotManager:
     def get_latest_s3_version(self) -> Optional[str]:
         """Get the latest snapshot version from S3."""
         try:
-            s3_client = boto3.client("s3")
             pointer_key = f"{self.collection}/snapshot/latest-pointer.txt"
 
             try:
-                response = s3_client.get_object(
+                response = self.s3_client.get_object(
                     Bucket=self.bucket, Key=pointer_key
                 )
                 version_id = response["Body"].read().decode("utf-8").strip()
@@ -116,59 +115,62 @@ class EFSSnapshotManager:
         """
         start_time = time.time()
 
+        # Create temporary directory for download
+        temp_dir = tempfile.mkdtemp()
         try:
-            # Create temporary directory for download
-            with tempfile.TemporaryDirectory() as temp_dir:
-                # Download to temp directory first
-                download_result = download_snapshot_atomic(
-                    bucket=self.bucket,
-                    collection=self.collection,
-                    local_path=temp_dir,
-                    verify_integrity=True,
-                )
+            # Download to temp directory first
+            download_result = download_snapshot_atomic(
+                bucket=self.bucket,
+                collection=self.collection,
+                local_path=temp_dir,
+                verify_integrity=True,
+            )
 
-                if download_result.get("status") != "downloaded":
-                    return {
-                        "status": "failed",
-                        "error": f"Download failed: {download_result}",
-                        "download_time_ms": (time.time() - start_time) * 1000,
-                    }
-
-                # Move to EFS
-                snapshot_path = os.path.join(self.efs_snapshots_dir, version)
-                if os.path.exists(snapshot_path):
-                    shutil.rmtree(snapshot_path)
-
-                shutil.move(temp_dir, snapshot_path)
-
-                # Update version file
-                self.set_efs_version(version)
-
-                download_time = time.time() - start_time
-
-                self.logger.info(
-                    "Snapshot downloaded to EFS",
-                    collection=self.collection,
-                    version=version,
-                    download_time_ms=download_time * 1000,
-                    efs_path=snapshot_path,
-                )
-
-                if self.metrics:
-                    self.metrics.timer(
-                        "EFSSnapshotDownloadTime",
-                        download_time,
-                        {"collection": self.collection},
-                    )
-
+            if download_result.get("status") != "downloaded":
+                shutil.rmtree(temp_dir, ignore_errors=True)
                 return {
-                    "status": "downloaded",
-                    "version": version,
-                    "efs_path": snapshot_path,
-                    "download_time_ms": download_time * 1000,
+                    "status": "failed",
+                    "error": f"Download failed: {download_result}",
+                    "download_time_ms": (time.time() - start_time) * 1000,
                 }
 
+            # Move to EFS
+            snapshot_path = os.path.join(self.efs_snapshots_dir, version)
+            if os.path.exists(snapshot_path):
+                shutil.rmtree(snapshot_path)
+
+            shutil.move(temp_dir, snapshot_path)
+
+            # Update version file
+            self.set_efs_version(version)
+
+            download_time = time.time() - start_time
+
+            self.logger.info(
+                "Snapshot downloaded to EFS",
+                collection=self.collection,
+                version=version,
+                download_time_ms=download_time * 1000,
+                efs_path=snapshot_path,
+            )
+
+            if self.metrics:
+                self.metrics.timer(
+                    "EFSSnapshotDownloadTime",
+                    download_time,
+                    {"collection": self.collection},
+                )
+
+            return {
+                "status": "downloaded",
+                "version": version,
+                "efs_path": snapshot_path,
+                "download_time_ms": download_time * 1000,
+            }
+
         except Exception as e:
+            # Clean up temp directory on error
+            shutil.rmtree(temp_dir, ignore_errors=True)
             self.logger.error(
                 "Failed to download snapshot to EFS",
                 collection=self.collection,

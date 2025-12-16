@@ -157,6 +157,9 @@ def merge_compaction_deltas(
                             f"Delta has no collection or failed to read: collection={collection_name}, run_id={run_id}, image_id={image_id}, receipt_id={receipt_id}, error={str(e)}"
                         )
                         logger.exception("Exception details for delta collection read")
+                    finally:
+                        # Ensure delta_client is closed to prevent file handle leaks
+                        delta_client.close()
 
                 except Exception as e:
                     logger.error(
