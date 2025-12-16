@@ -7,149 +7,136 @@ This handler extends the existing compaction functionality to handle both:
 Maintains compatibility with existing SQS queue and mutex lock infrastructure.
 """
 
-# pylint: disable=duplicate-code,too-many-instance-attributes,too-many-locals,too-many-nested-blocks
+# pylint: disable=duplicate-code,too-many-instance-attributes,too-many-locals
 # Some duplication with stream_processor is expected for shared data structures
 # Complex compaction logic requires many variables and nested operations
 
 import json
 import os
 import shutil
-import tempfile
 import time
-from dataclasses import dataclass
-from datetime import datetime, timezone
 from logging import INFO, Formatter, StreamHandler, getLogger
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import boto3
 
-# Import receipt_dynamo for proper DynamoDB operations
-from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.constants import ChromaDBCollection
-from receipt_label.utils.lock_manager import LockManager
-from receipt_label.utils.chroma_client import ChromaDBClient
-from receipt_label.utils.chroma_s3_helpers import (
-    download_snapshot_from_s3,
-    upload_delta_to_s3,
-    upload_snapshot_with_hash,
+# Enhanced observability imports
+from utils import (
+    get_operation_logger,
+    metrics,
+    emf_metrics,
+    trace_function,
+    trace_compaction_operation,
+    start_compaction_lambda_monitoring,
+    stop_compaction_lambda_monitoring,
+    with_compaction_timeout_protection,
+    format_response,
 )
 
+# Import receipt_dynamo for proper DynamoDB operations
+from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_chroma import LockManager
 
-@dataclass(frozen=True)
-class LambdaResponse:
-    """Response from the Lambda handler with processing statistics."""
-
-    status_code: int
-    message: str
-    processed_messages: Optional[int] = None
-    stream_messages: Optional[int] = None
-    delta_messages: Optional[int] = None
-    metadata_updates: Optional[int] = None
-    label_updates: Optional[int] = None
-    metadata_results: Optional[List[Dict[str, Any]]] = None
-    label_results: Optional[List[Dict[str, Any]]] = None
-    processed_deltas: Optional[int] = None
-    skipped_deltas: Optional[int] = None
-    error: Optional[str] = None
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to AWS Lambda-compatible dictionary."""
-        result = {"statusCode": self.status_code, "message": self.message}
-
-        # Add optional fields if they have values
-        optional_fields = [
-            "processed_messages",
-            "stream_messages",
-            "delta_messages",
-            "metadata_updates",
-            "label_updates",
-            "metadata_results",
-            "label_results",
-            "processed_deltas",
-            "skipped_deltas",
-            "error",
-        ]
-
-        for field in optional_fields:
-            value = getattr(self, field)
-            if value is not None:
-                result[field] = value
-
-        return result
-
-
-@dataclass(frozen=True)
-class StreamMessage:
-    """Parsed stream message from SQS."""
-
-    entity_type: str
-    entity_data: Dict[str, Any]
-    changes: Dict[str, Any]
-    event_name: str
-    collection: ChromaDBCollection
-    source: str = "dynamodb_stream"
-
-
-@dataclass(frozen=True)
-class MetadataUpdateResult:
-    """Result from processing a metadata update."""
-
-    database: str
-    collection: str
-    updated_count: int
-    image_id: str
-    receipt_id: int
-    error: Optional[str] = None
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary format."""
-        result = {
-            "database": self.database,
-            "collection": self.collection,
-            "updated_count": self.updated_count,
-            "image_id": self.image_id,
-            "receipt_id": self.receipt_id,
-        }
-        if self.error:
-            result["error"] = self.error
-        return result
-
-
-@dataclass(frozen=True)
-class LabelUpdateResult:
-    """Result from processing a label update."""
-
-    chromadb_id: str
-    updated_count: int
-    event_name: str
-    changes: List[str]
-    error: Optional[str] = None
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary format."""
-        result = {
-            "chromadb_id": self.chromadb_id,
-            "updated_count": self.updated_count,
-            "event_name": self.event_name,
-            "changes": self.changes,
-        }
-        if self.error:
-            result["error"] = self.error
-        return result
-
-
-logger = getLogger()
-logger.setLevel(INFO)
-
-if len(logger.handlers) == 0:
-    handler = StreamHandler()
-    handler.setFormatter(
-        Formatter(
-            "[%(levelname)s] %(asctime)s.%(msecs)dZ %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
+# Import modular components - flexible for both Lambda and test environments
+try:
+    # Try absolute import first (Lambda environment)
+    from compaction import (
+        process_sqs_messages,
+        categorize_stream_messages,
+        group_messages_by_collection,
+        process_metadata_updates,
+        process_label_updates,
+        process_compaction_run_messages,
+        merge_compaction_deltas,
+        apply_metadata_updates_in_memory,
+        apply_label_updates_in_memory,
+        LambdaResponse,
+        StreamMessage,
+        MetadataUpdateResult,
+        LabelUpdateResult,
+        get_efs_snapshot_manager,
     )
-    logger.addHandler(handler)
+    MODULAR_MODE = True
+except ImportError:
+    try:
+        # Try relative import (test environment)
+        from .compaction import (
+            process_sqs_messages,
+            categorize_stream_messages,
+            group_messages_by_collection,
+            process_metadata_updates,
+            process_label_updates,
+            process_compaction_run_messages,
+            merge_compaction_deltas,
+            apply_metadata_updates_in_memory,
+            apply_label_updates_in_memory,
+            LambdaResponse,
+            StreamMessage,
+            MetadataUpdateResult,
+            LabelUpdateResult,
+            get_efs_snapshot_manager,
+        )
+        MODULAR_MODE = True
+    except ImportError:
+        MODULAR_MODE = False
+
+    # Fallback implementations
+    class LambdaResponse:
+        def __init__(self, status_code: int, message: str, **kwargs):
+            self.status_code = status_code
+            self.message = message
+            for key, value in kwargs.items():
+                setattr(self, key, value)
+
+        def to_dict(self):
+            result = {"statusCode": self.status_code, "message": self.message}
+            for key, value in self.__dict__.items():
+                if key not in ["status_code", "message"] and value is not None:
+                    result[key] = value
+            return result
+
+    class StreamMessage:
+        def __init__(self, **kwargs):
+            for key, value in kwargs.items():
+                setattr(self, key, value)
+
+    class MetadataUpdateResult:
+        def __init__(self, **kwargs):
+            for key, value in kwargs.items():
+                setattr(self, key, value)
+
+        def to_dict(self):
+            return {k: v for k, v in self.__dict__.items() if v is not None}
+
+    class LabelUpdateResult:
+        def __init__(self, **kwargs):
+            for key, value in kwargs.items():
+                setattr(self, key, value)
+
+        def to_dict(self):
+            return {k: v for k, v in self.__dict__.items() if v is not None}
+
+    def process_sqs_messages(records, logger, metrics=None, **kwargs):
+        """Fallback implementation that logs messages instead of processing."""
+        logger.info(f"Fallback mode: Would process {len(records)} SQS messages")
+        return LambdaResponse(
+            status_code=200,
+            message=f"Fallback mode: {len(records)} messages logged",
+            processed_messages=len(records)
+        ).to_dict()
+
+    def process_stream_messages(stream_messages, logger, metrics=None, **kwargs):
+        """Fallback implementation that logs messages instead of processing."""
+        logger.info(f"Fallback mode: Would process {len(stream_messages)} stream messages")
+        return LambdaResponse(
+            status_code=200,
+            message=f"Fallback mode: {len(stream_messages)} stream messages logged",
+            stream_messages=len(stream_messages)
+        ).to_dict()
+
+
+# Configure logging with observability
+logger = get_operation_logger(__name__)
 
 # Initialize clients
 sqs_client = boto3.client("sqs")
@@ -167,886 +154,264 @@ def get_dynamo_client():
 
 
 # Get configuration from environment
-heartbeat_interval = int(os.environ.get("HEARTBEAT_INTERVAL_SECONDS", "60"))
-lock_duration_minutes = int(os.environ.get("LOCK_DURATION_MINUTES", "15"))
+# Optimized lock parameters for performance
+# Note: heartbeat_interval should be < lock_duration_minutes * 60 to ensure lock is extended before expiration
+heartbeat_interval = int(os.environ.get("HEARTBEAT_INTERVAL_SECONDS", "30"))  # 30 seconds (must be < lock_duration)
+lock_duration_minutes = int(os.environ.get("LOCK_DURATION_MINUTES", "1"))      # 1 minute (reduced duration)
+max_heartbeat_failures = int(os.environ.get("MAX_HEARTBEAT_FAILURES", "2"))     # 2 failures (faster recovery)
 compaction_queue_url = os.environ.get("COMPACTION_QUEUE_URL", "")
 
 
-def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
+@trace_function(operation_name="enhanced_compaction_handler")
+@with_compaction_timeout_protection(
+    max_duration=840
+)  # 14 minutes for long compaction operations
+def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """Enhanced entry point for Lambda handler.
 
     Routes to appropriate handler based on trigger type:
     - SQS messages: Process stream events and traditional deltas
     - Direct invocation: Traditional compaction operations
     """
-    logger.info("Enhanced compaction handler started")
-    logger.info("Event: %s", json.dumps(event, default=str))
+    # Configure receipt_chroma loggers to respect Lambda's LOG_LEVEL for debugging
+    import logging
 
-    # Check if this is an SQS trigger
-    if "Records" in event:
-        return process_sqs_messages(event["Records"])
-
-    # Direct invocation not supported - Lambda is for SQS triggers only
-    logger.warning(
-        "Direct invocation not supported. "
-        "This Lambda processes SQS messages only."
+    log_level = getattr(
+        logging, os.environ.get("LOG_LEVEL", "INFO"), logging.INFO
     )
-    response = LambdaResponse(
-        status_code=400,
-        error="Direct invocation not supported",
-        message=(
-            "This Lambda is designed to process SQS messages "
-            "from DynamoDB streams"
-        ),
-    )
-    return response.to_dict()
 
+    # Configure the main receipt_chroma logger and its child loggers
+    receipt_chroma_logger = logging.getLogger("receipt_chroma")
+    receipt_chroma_logger.setLevel(log_level)
 
-def process_sqs_messages(records: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Process SQS messages from the compaction queue.
+    # CRITICAL FIX: Add handler to receipt_chroma loggers so they can output to CloudWatch
+    if not receipt_chroma_logger.handlers:
+        # Create a handler that outputs to stdout (CloudWatch captures this)
+        handler = logging.StreamHandler()
 
-    Handles both:
-    1. Stream messages (from DynamoDB stream processor)
-    2. Traditional delta notifications (existing functionality)
-    """
-    logger.info("Processing %d SQS messages", len(records))
-
-    stream_messages = []
-    delta_messages = []
-    processed_count = 0
-
-    # Categorize messages by type
-    for record in records:
+        # Use the same JSON formatter as ChromaDB if available, otherwise simple format
         try:
-            # Parse message body
-            message_body = json.loads(record["body"])
+            from utils.logging import StructuredFormatter
+            formatter = StructuredFormatter()
+        except ImportError:
+            # Fallback to simple format
+            formatter = logging.Formatter(
+                "[%(levelname)s] %(asctime)s.%(msecs)03dZ %(name)s - %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
 
-            # Check message attributes for source
-            attributes = record.get("messageAttributes", {})
-            source = attributes.get("source", {}).get("stringValue", "unknown")
+        handler.setFormatter(formatter)
+        receipt_chroma_logger.addHandler(handler)
 
-            if source == "dynamodb_stream":
-                # Get collection from message attributes
-                collection_value = attributes.get("collection", {}).get(
-                    "stringValue"
-                )
-                if not collection_value:
-                    logger.warning(
-                        "Stream message missing collection attribute"
-                    )
-                    continue
-                try:
-                    collection = ChromaDBCollection(collection_value)
-                except ValueError:
-                    logger.warning(
-                        "Invalid collection value: %s", collection_value
-                    )
-                    continue
+        # Prevent propagation to avoid duplicate logs
+        receipt_chroma_logger.propagate = False
 
-                # Parse stream message with collection info
-                stream_msg = StreamMessage(
-                    entity_type=message_body.get("entity_type", ""),
-                    entity_data=message_body.get("entity_data", {}),
-                    changes=message_body.get("changes", {}),
-                    event_name=message_body.get("event_name", ""),
-                    collection=collection,
-                    source=source,
-                )
-                stream_messages.append(stream_msg)
-            else:
-                # Traditional delta message or unknown - treat as delta
-                delta_messages.append(message_body)
+    # Specifically configure the lock_manager logger that we need for debugging
+    lock_manager_logger = logging.getLogger("receipt_chroma.lock_manager")
+    lock_manager_logger.setLevel(log_level)
 
-            processed_count += 1
-
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.error("Error parsing SQS message: %s", e)
-            continue
-
-    # Process stream messages if any
-    if stream_messages:
-        process_stream_messages(stream_messages)
-        logger.info("Processed %d stream messages", len(stream_messages))
-
-    # Process delta messages if any
-    if delta_messages:
-        process_delta_messages(delta_messages)
-        logger.info("Processed %d delta messages", len(delta_messages))
-
-    response = LambdaResponse(
-        status_code=200,
-        processed_messages=processed_count,
-        stream_messages=len(stream_messages),
-        delta_messages=len(delta_messages),
-        message="SQS messages processed successfully",
+    # Test messages to verify logger configuration is working
+    receipt_chroma_logger.info(
+        "INFO: receipt_chroma logger configured for level %s with handler",
+        os.environ.get("LOG_LEVEL", "INFO"),
     )
-    return response.to_dict()
+    lock_manager_logger.debug(
+        "DEBUG: lock_manager logger configured successfully"
+    )
+    lock_manager_logger.info(
+        "INFO: lock_manager logger test - this should be visible"
+    )
 
+    correlation_id = None
 
-def process_stream_messages(
-    stream_messages: List[StreamMessage],
-) -> Dict[str, Any]:
-    """Process DynamoDB stream messages for metadata updates.
-
-    Groups messages by collection and processes each collection separately
-    with collection-specific locks to enable parallel processing.
-    """
-    logger.info("Processing %d stream messages", len(stream_messages))
-
-    # Group messages by collection
-    messages_by_collection = {}
-    for msg in stream_messages:
-        collection = msg.collection
-        if collection not in messages_by_collection:
-            messages_by_collection[collection] = []
-        messages_by_collection[collection].append(msg)
-
+    # Start monitoring
+    start_compaction_lambda_monitoring(context)
+    correlation_id = getattr(logger, "correlation_id", None)
     logger.info(
-        "Messages grouped by collection: %s",
-        {col.value: len(msgs) for col, msgs in messages_by_collection.items()},
+        "Enhanced compaction handler started",
+        event_keys=list(event.keys()),
+        correlation_id=correlation_id,
     )
 
-    # Process each collection separately
-    all_metadata_results = []
-    all_label_results = []
-    total_metadata_updates = 0
-    total_label_updates = 0
-
-    for collection, messages in messages_by_collection.items():
-        logger.info(
-            "Processing %d messages for %s collection",
-            len(messages),
-            collection.value,
-        )
-
-        result = _process_collection_messages(collection, messages)
-        # Aggregate results
-        all_metadata_results.extend(result.get("metadata_results", []))
-        all_label_results.extend(result.get("label_results", []))
-        total_metadata_updates += result.get("metadata_updates", 0)
-        total_label_updates += result.get("label_updates", 0)
-
-    # Return aggregated results
-    response = LambdaResponse(
-        status_code=200,
-        message=(
-            f"Successfully processed {len(stream_messages)} stream messages"
-        ),
-        stream_messages=len(stream_messages),
-        metadata_updates=total_metadata_updates,
-        label_updates=total_label_updates,
-        metadata_results=all_metadata_results,
-        label_results=all_label_results,
+    start_time = time.time()
+    function_name = (
+        context.function_name
+        if context and hasattr(context, "function_name")
+        else "enhanced_compaction_handler"
     )
-    return response.to_dict()
 
+    # Collect metrics during processing for batch EMF logging (cost-effective)
+    collected_metrics: Dict[str, Any] = {}
+    error_types: Dict[str, int] = {}
 
-def _process_collection_messages(
-    collection: ChromaDBCollection, messages: List[StreamMessage]
-) -> Dict[str, Any]:
-    """Process messages for a specific collection with collection-specific
-    lock.
-    Args:
-        collection: ChromaDBCollection to process
-        messages: List of StreamMessage objects for this collection
+    # Create a metrics collector wrapper that accumulates metrics instead of making API calls
+    class MetricsAccumulator:
+        """Wrapper that collects metrics in a dict instead of making API calls."""
+        def __init__(self, collected_metrics: Dict[str, Any]):
+            self.collected_metrics = collected_metrics
 
-    Returns:
-        Dictionary with processing results
-    """
-    # Parse and group messages by entity type for efficient processing
-    metadata_updates = []
-    label_updates = []
+        def count(self, metric_name: str, value: int = 1, dimensions: Optional[Dict[str, str]] = None):
+            """Accumulate count metric."""
+            key = metric_name
+            if dimensions:
+                # Include dimensions in key for uniqueness
+                dim_str = "_".join(f"{k}={v}" for k, v in sorted(dimensions.items()))
+                key = f"{metric_name}_{dim_str}"
+            self.collected_metrics[key] = self.collected_metrics.get(key, 0) + value
 
-    for message in messages:
-        if message.entity_type == "RECEIPT_METADATA":
-            metadata_updates.append(message)
-        elif message.entity_type == "RECEIPT_WORD_LABEL":
-            label_updates.append(message)
-        else:
-            logger.warning("Unknown entity type: %s", message.entity_type)
+        def gauge(self, metric_name: str, value: Union[int, float], unit: str = "None", dimensions: Optional[Dict[str, str]] = None):
+            """Accumulate gauge metric (use latest value)."""
+            key = metric_name
+            if dimensions:
+                dim_str = "_".join(f"{k}={v}" for k, v in sorted(dimensions.items()))
+                key = f"{metric_name}_{dim_str}"
+            # For gauges, we want the latest value, but for counts we sum
+            # Store as-is for now, can be processed later
+            self.collected_metrics[key] = value
 
-    # Acquire collection-specific lock for metadata updates
-    lock_manager = LockManager(
-        get_dynamo_client(),
-        collection=collection,
-        heartbeat_interval=heartbeat_interval,
-        lock_duration_minutes=lock_duration_minutes,
-    )
+        def put_metric(self, metric_name: str, value: Union[int, float], unit: str = "Count", dimensions: Optional[Dict[str, str]] = None, timestamp: Optional[float] = None):
+            """Accumulate metric (same as gauge for our purposes)."""
+            self.gauge(metric_name, value, unit, dimensions)
+
+        def timer(self, metric_name: str, dimensions: Optional[Dict[str, str]] = None, unit: str = "Seconds"):
+            """Context manager for timing (not used in nested functions, but needed for interface)."""
+            from contextlib import contextmanager
+            @contextmanager
+            def _timer():
+                start = time.time()
+                try:
+                    yield start
+                finally:
+                    duration = time.time() - start
+                    self.put_metric(metric_name, duration, unit, dimensions)
+            return _timer()
+
+    metrics_accumulator = MetricsAccumulator(collected_metrics)
 
     try:
-        # Create collection-specific lock ID
-        lock_id = f"chroma-{collection.value}-update-{int(time.time())}"
-        lock_acquired = lock_manager.acquire(lock_id)
+        # Check if this is an SQS trigger
+        if "Records" in event:
+            # Collect metrics instead of immediate API calls
+            collected_metrics["CompactionRecordsReceived"] = len(event["Records"])
 
-        if not lock_acquired:
-            logger.warning(
-                "Could not acquire lock for %s collection updates",
-                collection.value,
-            )
-            return {
-                "error": (
-                    f"Could not acquire lock for {collection.value} collection"
-                ),
-                "metadata_updates": 0,
-                "label_updates": 0,
-                "metadata_results": [],
-                "label_results": [],
-            }
-
-        logger.info(
-            "Acquired lock for %s collection: %s", collection.value, lock_id
-        )
-
-        # Start heartbeat
-        lock_manager.start_heartbeat()
-
-        # Process metadata updates
-        metadata_results = []
-        if metadata_updates:
-            metadata_results = process_metadata_updates(
-                metadata_updates, collection
+            result = process_sqs_messages(
+                records=event["Records"],
+                logger=logger,
+                metrics=metrics_accumulator,  # Use accumulator instead of direct API calls
+                OBSERVABILITY_AVAILABLE=True,
+                process_stream_messages_func=process_stream_messages,
+                process_delta_messages_func=process_delta_messages,
             )
 
-        # Process label updates
-        label_results = []
-        if label_updates:
-            label_results = process_label_updates(label_updates, collection)
+            # IMPORTANT: For SQS partial-batch failure, return the raw shape
+            # {"batchItemFailures": [...]} without any wrapping so the
+            # Lambda service honors per-record retries.
+            if isinstance(result, dict) and "batchItemFailures" in result:
+                # Still emit metrics before returning partial batch failure
+                execution_time = time.time() - start_time
+                collected_metrics["CompactionLambdaExecutionTime"] = execution_time
+                collected_metrics["CompactionPartialBatchFailure"] = 1
+                collected_metrics["CompactionFailedMessages"] = len(result.get("batchItemFailures", []))
 
-        total_metadata_updates = sum(
-            result.updated_count
-            for result in metadata_results
-            if result.error is None
-        )
-        total_label_updates = sum(
-            result.updated_count
-            for result in label_results
-            if result.error is None
-        )
+                # Emit metrics via EMF (no API call cost)
+                emf_metrics.log_metrics(
+                    collected_metrics,
+                    properties={
+                        "error_types": error_types,
+                        "correlation_id": correlation_id,
+                    }
+                )
+                return result
 
-        logger.info(
-            "Completed %s collection: %d metadata, %d label updates",
-            collection.value,
-            total_metadata_updates,
-            total_label_updates,
-        )
-
-        return {
-            "metadata_updates": total_metadata_updates,
-            "label_updates": total_label_updates,
-            "metadata_results": [
-                result.to_dict() for result in metadata_results
-            ],
-            "label_results": [result.to_dict() for result in label_results],
-        }
-
-    except Exception as e:  # pylint: disable=broad-exception-caught
-        logger.error(
-            "Error processing %s collection messages: %s", collection.value, e
-        )
-        return {
-            "error": str(e),
-            "metadata_updates": 0,
-            "label_updates": 0,
-            "metadata_results": [],
-            "label_results": [],
-        }
-    finally:
-        # Stop heartbeat and release lock
-        lock_manager.stop_heartbeat()
-        lock_manager.release()
-        logger.info(
-            "Released lock for %s collection: %s", collection.value, lock_id
-        )
-
-
-def process_metadata_updates(
-    metadata_updates: List[StreamMessage],
-    collection: ChromaDBCollection,
-) -> List[MetadataUpdateResult]:
-    """Process RECEIPT_METADATA updates for a specific collection.
-
-    Updates merchant information for embeddings in the specified collection.
-    """
-    logger.info("Processing %d metadata updates", len(metadata_updates))
-    results = []
-
-    bucket = os.environ["CHROMADB_BUCKET"]
-
-    for update_msg in metadata_updates:
-        try:
-            entity_data = update_msg.entity_data
-            changes = update_msg.changes
-            event_name = update_msg.event_name
-
-            image_id = entity_data["image_id"]
-            receipt_id = entity_data["receipt_id"]
+            # Track successful execution with metrics
+            execution_time = time.time() - start_time
+            collected_metrics["CompactionLambdaExecutionTime"] = execution_time
+            collected_metrics["CompactionLambdaSuccess"] = 1
 
             logger.info(
-                "Processing %s for metadata: image_id=%s, receipt_id=%s",
-                event_name,
-                image_id,
-                receipt_id,
+                "Enhanced compaction handler completed successfully",
+                execution_time_seconds=execution_time,
             )
 
-            # Update metadata for the specified collection
-            database = collection.value
-            snapshot_key = f"{database}/snapshot/latest/"
-
-            try:
-                # Download current snapshot using helper
-                temp_dir = tempfile.mkdtemp()
-                download_result = download_snapshot_from_s3(
-                    bucket=bucket,
-                    snapshot_key=snapshot_key,
-                    local_snapshot_path=temp_dir,
-                    verify_integrity=True,
-                )
-
-                if download_result["status"] != "downloaded":
-                    logger.error(
-                        "Failed to download snapshot: %s", download_result
-                    )
-                    continue
-
-                # Load ChromaDB using helper in metadata-only mode
-                chroma_client = ChromaDBClient(
-                    persist_directory=temp_dir,
-                    mode="read",
-                    metadata_only=True,  # No embeddings needed for metadata updates
-                )
-
-                # Get appropriate collection
-                try:
-                    logger.info("Attempting to get collection: %s", database)
-                    collection_obj = chroma_client.get_collection(database)
-                    logger.info("Successfully got collection: %s", database)
-                except Exception as e:  # pylint: disable=broad-exception-caught
-                    logger.warning("Collection %s not found: %s", database, e)
-                    continue
-
-                # Update metadata for this receipt
-                if event_name == "REMOVE":
-                    updated_count = remove_receipt_metadata(
-                        collection_obj, image_id, receipt_id
-                    )
-                else:  # MODIFY
-                    updated_count = update_receipt_metadata(
-                        collection_obj, image_id, receipt_id, changes
-                    )
-
-                    if updated_count > 0:
-                        # Upload updated snapshot with hash using enhanced helper
-                        upload_result = upload_snapshot_with_hash(
-                            local_snapshot_path=temp_dir,
-                            bucket=bucket,
-                            snapshot_key=snapshot_key.rstrip("/") + "/",
-                            calculate_hash=True,  # Enable hash calculation
-                            metadata={
-                                "update_type": "metadata_update",
-                                "image_id": image_id,
-                                "receipt_id": str(receipt_id),
-                                "updated_count": str(updated_count),
-                            },
-                        )
-
-                        if upload_result["status"] == "uploaded":
-                            logger.info(
-                                "Updated %d records in receipt_%s, hash: %s",
-                                updated_count,
-                                database,
-                                upload_result.get("hash", "not_calculated")
-                            )
-                        else:
-                            logger.error(
-                                "Failed to upload snapshot: %s", upload_result
-                            )
-
-                result = MetadataUpdateResult(
-                    database=database,
-                    collection=f"receipt_{database}",
-                    updated_count=updated_count,
-                    image_id=image_id,
-                    receipt_id=receipt_id,
-                )
-                results.append(result)
-
-            except Exception as e:  # pylint: disable=broad-exception-caught
-                logger.error("Error updating %s metadata: %s", database, e)
-                result = MetadataUpdateResult(
-                    database=database,
-                    collection=f"receipt_{database}",
-                    updated_count=0,
-                    image_id=image_id,
-                    receipt_id=receipt_id,
-                    error=str(e),
-                )
-                results.append(result)
-            finally:
-                if "temp_dir" in locals():
-                    shutil.rmtree(temp_dir, ignore_errors=True)
-
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.error("Error processing metadata update: %s", e)
-            # Create error result with minimal info available
-            result = MetadataUpdateResult(
-                database="unknown",
-                collection="unknown",
-                updated_count=0,
-                image_id="unknown",
-                receipt_id=0,
-                error=f"{str(e)} - message: {update_msg}",
-            )
-            results.append(result)
-
-    return results
-
-
-def process_label_updates(
-    label_updates: List[StreamMessage],
-    collection: ChromaDBCollection,
-) -> List[LabelUpdateResult]:
-    """Process RECEIPT_WORD_LABEL updates for a specific collection.
-
-    Updates label metadata for specific word embeddings in the collection.
-    """
-    logger.info("Processing %d label updates", len(label_updates))
-    results = []
-
-    bucket = os.environ["CHROMADB_BUCKET"]
-    # Use the specific collection instead of hardcoded "words"
-    database = collection.value
-    snapshot_key = f"{database}/snapshot/latest/"
-
-    try:
-        # Download current snapshot using helper
-        temp_dir = tempfile.mkdtemp()
-        download_result = download_snapshot_from_s3(
-            bucket=bucket,
-            snapshot_key=snapshot_key,
-            local_snapshot_path=temp_dir,
-            verify_integrity=True,
-        )
-
-        if download_result["status"] != "downloaded":
-            logger.error("Failed to download snapshot: %s", download_result)
-            return results
-
-        # Load ChromaDB using helper in metadata-only mode
-        chroma_client = ChromaDBClient(
-            persist_directory=temp_dir,
-            mode="read",
-            metadata_only=True,  # No embeddings needed for metadata updates
-        )
-
-        # Get words collection
-        try:
-            logger.info("Attempting to get collection: %s", database)
-            collection_obj = chroma_client.get_collection(database)
-        except Exception:  # pylint: disable=broad-exception-caught
-            logger.warning("Collection %s not found", database)
-            return results
-
-        # Process each label update
-        for update_msg in label_updates:
-            try:
-                entity_data = update_msg.entity_data
-                changes = update_msg.changes
-                event_name = update_msg.event_name
-
-                image_id = entity_data["image_id"]
-                receipt_id = entity_data["receipt_id"]
-                line_id = entity_data["line_id"]
-                word_id = entity_data["word_id"]
-
-                # Create ChromaDB ID for this specific word
-                chromadb_id = (
-                    f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#"
-                    f"LINE#{line_id:05d}#WORD#{word_id:05d}"
-                )
-
-                logger.info(
-                    "Processing %s for label: %s", event_name, chromadb_id
-                )
-
-                if event_name == "REMOVE":
-                    updated_count = remove_word_labels(
-                        collection_obj, chromadb_id
-                    )
-                else:  # MODIFY
-                    updated_count = update_word_labels(
-                        collection_obj, chromadb_id, changes
-                    )
-
-                result = LabelUpdateResult(
-                    chromadb_id=chromadb_id,
-                    updated_count=updated_count,
-                    event_name=event_name,
-                    changes=list(changes.keys()) if changes else [],
-                )
-                results.append(result)
-
-            except Exception as e:  # pylint: disable=broad-exception-caught
-                logger.error("Error processing label update: %s", e)
-                result = LabelUpdateResult(
-                    chromadb_id="unknown",
-                    updated_count=0,
-                    event_name="unknown",
-                    changes=[],
-                    error=f"{str(e)} - message: {update_msg}",
-                )
-                results.append(result)
-
-        # Upload updated snapshot with hash if any updates occurred
-        total_updates = sum(
-            r.updated_count for r in results if r.error is None
-        )
-        if total_updates > 0:
-            upload_result = upload_snapshot_with_hash(
-                local_snapshot_path=temp_dir,
-                bucket=bucket,
-                snapshot_key=snapshot_key.rstrip("/") + "/",
-                calculate_hash=True,  # Enable hash calculation
-                metadata={
-                    "update_type": "label_update",
-                    "total_updates": str(total_updates),
-                },
+            # Emit all metrics via EMF at once (no API call cost)
+            emf_metrics.log_metrics(
+                collected_metrics,
+                properties={
+                    "error_types": error_types,
+                    "correlation_id": correlation_id,
+                }
             )
 
-            if upload_result["status"] == "uploaded":
-                logger.info(
-                    "Updated %d word labels in ChromaDB, hash: %s",
-                    total_updates,
-                    upload_result.get("hash", "not_calculated")
-                )
-            else:
-                logger.error("Failed to upload snapshot: %s", upload_result)
+            # Format response with observability
+            return format_response(result, event)
 
-    except Exception as e:  # pylint: disable=broad-exception-caught
-        logger.error("Error processing label updates: %s", e)
-        result = LabelUpdateResult(
-            chromadb_id="unknown",
-            updated_count=0,
-            event_name="unknown",
-            changes=[],
+        # Direct invocation not supported - Lambda is for SQS triggers only
+        logger.warning(
+            "Direct invocation not supported", invocation_type="direct"
+        )
+        collected_metrics["CompactionDirectInvocationAttempt"] = 1
+
+        response = LambdaResponse(
+            status_code=400,
+            error="Direct invocation not supported",
+            message=(
+                "This Lambda is designed to process SQS messages "
+                "from DynamoDB streams"
+            ),
+        )
+
+        # Emit metrics before returning
+        execution_time = time.time() - start_time
+        collected_metrics["CompactionLambdaExecutionTime"] = execution_time
+        emf_metrics.log_metrics(collected_metrics)
+
+        return format_response(response.to_dict(), event, is_error=True)
+
+    except Exception as e:
+        execution_time = time.time() - start_time
+        error_type = type(e).__name__
+        error_types[error_type] = error_types.get(error_type, 0) + 1
+
+        # Enhanced error logging
+        logger.error(
+            "Enhanced compaction handler failed",
+            error=str(e),
+            error_type=error_type,
+            execution_time_seconds=execution_time,
+            exc_info=True,
+        )
+        collected_metrics["CompactionLambdaError"] = 1
+        collected_metrics["CompactionLambdaExecutionTime"] = execution_time
+
+        # Emit error metrics via EMF
+        emf_metrics.log_metrics(
+            collected_metrics,
+            dimensions={"error_type": error_type} if error_type else None,
+            properties={
+                "error_types": error_types,
+                "correlation_id": correlation_id,
+                "error": str(e),
+            }
+        )
+
+        error_response = LambdaResponse(
+            status_code=500,
+            message=f"Compaction handler failed: {str(e)}",
             error=str(e),
         )
-        results.append(result)
+
+        return format_response(
+            error_response.to_dict(), event, is_error=True
+        )
+
     finally:
-        if "temp_dir" in locals():
-            shutil.rmtree(temp_dir, ignore_errors=True)
-
-    return results
-
-
-def update_receipt_metadata(
-    collection, image_id: str, receipt_id: int, changes: Dict[str, Any]
-) -> int:
-    """Update metadata for all embeddings of a specific receipt.
-    
-    Uses DynamoDB to construct exact ChromaDB IDs instead of scanning entire collection.
-    This is much more efficient for large collections.
-    """
-    start_time = time.time()
-    logger.info("Starting metadata update for image_id=%s, receipt_id=%s", image_id, receipt_id)
-    logger.info("Changes to apply: %s", changes)
-    
-    # Get DynamoDB client to query for words/lines
-    dynamo_client = get_dynamo_client()
-    
-    # Determine collection type from collection name
-    collection_name = collection.name
-    logger.info("Processing collection: %s", collection_name)
-    
-    # Construct ChromaDB IDs by querying DynamoDB for exact entities
-    chromadb_ids = []
-    
-    if "words" in collection_name:
-        # Get all words for this receipt from DynamoDB
-        logger.info("Querying DynamoDB for words: image_id=%s, receipt_id=%s", image_id, receipt_id)
-        try:
-            words = dynamo_client.list_receipt_words_from_receipt(image_id, receipt_id)
-            logger.info("Found %d words in DynamoDB for receipt", len(words))
-            
-            # Construct exact ChromaDB IDs for words
-            chromadb_ids = [
-                f"IMAGE#{word.image_id}#RECEIPT#{word.receipt_id:05d}#LINE#{word.line_id:05d}#WORD#{word.word_id:05d}"
-                for word in words
-            ]
-        except Exception as e:
-            logger.error("Failed to query words from DynamoDB: %s", e)
-            return 0
-            
-    elif "lines" in collection_name:
-        # Get all lines for this receipt from DynamoDB
-        logger.info("Querying DynamoDB for lines: image_id=%s, receipt_id=%s", image_id, receipt_id)
-        try:
-            lines = dynamo_client.list_receipt_lines_from_receipt(image_id, receipt_id)
-            logger.info("Found %d lines in DynamoDB for receipt", len(lines))
-            
-            # Construct exact ChromaDB IDs for lines
-            chromadb_ids = [
-                f"IMAGE#{line.image_id}#RECEIPT#{line.receipt_id:05d}#LINE#{line.line_id:05d}"
-                for line in lines
-            ]
-        except Exception as e:
-            logger.error("Failed to query lines from DynamoDB: %s", e)
-            return 0
-    else:
-        logger.warning("Unknown collection type: %s", collection_name)
-        return 0
-    
-    logger.info("Constructed %d ChromaDB IDs to update", len(chromadb_ids))
-    
-    if not chromadb_ids:
-        logger.warning("No entities found in DynamoDB for image_id=%s, receipt_id=%s", image_id, receipt_id)
-        return 0
-    
-    # Use direct ID lookup - much faster than scanning entire collection
-    logger.info("Querying ChromaDB with exact IDs...")
-    try:
-        results = collection.get(ids=chromadb_ids, include=["metadatas"])
-        logger.info("Retrieved %d records from ChromaDB (expected %d)", len(results.get("ids", [])), len(chromadb_ids))
-    except Exception as e:
-        logger.error("Failed to query ChromaDB with exact IDs: %s", e)
-        return 0
-        
-    # Prepare updated metadata for found records
-    matching_ids = results.get("ids", [])
-    matching_metadatas = []
-    
-    for i, record_id in enumerate(matching_ids):
-        logger.info("Processing record: %s", record_id)
-        
-        # Get existing metadata and apply changes
-        existing_metadata = results["metadatas"][i] or {}
-        logger.info("Existing metadata for %s: %s", record_id, existing_metadata)
-        updated_metadata = existing_metadata.copy()
-
-        # Apply field changes
-        for field, change in changes.items():
-            old_value = change.get("old")
-            new_value = change["new"]
-            logger.info("Applying change: %s: %s -> %s", field, old_value, new_value)
-            if new_value is not None:
-                updated_metadata[field] = new_value
-            elif field in updated_metadata:
-                # Remove field if new value is None
-                del updated_metadata[field]
-
-        # Add update timestamp
-        updated_metadata["last_metadata_update"] = datetime.now(
-            timezone.utc
-        ).isoformat()
-        logger.info("Updated metadata for %s: %s", record_id, updated_metadata)
-        matching_metadatas.append(updated_metadata)
-
-    logger.info("Found %d matching records in ChromaDB out of %d expected", len(matching_ids), len(chromadb_ids))
-    
-    # Update records if any found
-    if matching_ids:
-        logger.info("Updating %d ChromaDB records...", len(matching_ids))
-        try:
-            collection.update(ids=matching_ids, metadatas=matching_metadatas)
-            elapsed_time = time.time() - start_time
-            logger.info("Successfully updated metadata for %d embeddings in %.2f seconds", len(matching_ids), elapsed_time)
-        except Exception as e:
-            logger.error("Failed to update ChromaDB metadata: %s", e)
-            return 0
-    else:
-        logger.warning("No matching ChromaDB records found (DynamoDB had %d IDs)", len(chromadb_ids))
-        
-        # If no records found in ChromaDB but DynamoDB has entities, this might indicate
-        # that embeddings haven't been created yet
-        if chromadb_ids:
-            logger.info("DynamoDB entities exist but no ChromaDB embeddings found - embeddings may not be created yet")
-
-    elapsed_time = time.time() - start_time
-    logger.info("Metadata update completed in %.2f seconds (DynamoDB-driven approach)", elapsed_time)
-    return len(matching_ids)
-
-
-def remove_receipt_metadata(collection, image_id: str, receipt_id: int) -> int:
-    """Remove merchant metadata fields from all embeddings of a specific receipt.
-    
-    Uses DynamoDB to construct exact ChromaDB IDs instead of scanning entire collection.
-    """
-    start_time = time.time()
-    logger.info("Starting metadata removal for image_id=%s, receipt_id=%s", image_id, receipt_id)
-    
-    # Get DynamoDB client to query for words/lines
-    dynamo_client = get_dynamo_client()
-    
-    # Determine collection type from collection name
-    collection_name = collection.name
-    logger.info("Processing collection: %s", collection_name)
-    
-    # Construct ChromaDB IDs by querying DynamoDB for exact entities
-    chromadb_ids = []
-    
-    if "words" in collection_name:
-        # Get all words for this receipt from DynamoDB
-        try:
-            words = dynamo_client.list_receipt_words_from_receipt(image_id, receipt_id)
-            chromadb_ids = [
-                f"IMAGE#{word.image_id}#RECEIPT#{word.receipt_id:05d}#LINE#{word.line_id:05d}#WORD#{word.word_id:05d}"
-                for word in words
-            ]
-        except Exception as e:
-            logger.error("Failed to query words from DynamoDB: %s", e)
-            return 0
-            
-    elif "lines" in collection_name:
-        # Get all lines for this receipt from DynamoDB
-        try:
-            lines = dynamo_client.list_receipt_lines_from_receipt(image_id, receipt_id)
-            chromadb_ids = [
-                f"IMAGE#{line.image_id}#RECEIPT#{line.receipt_id:05d}#LINE#{line.line_id:05d}"
-                for line in lines
-            ]
-        except Exception as e:
-            logger.error("Failed to query lines from DynamoDB: %s", e)
-            return 0
-    else:
-        logger.warning("Unknown collection type: %s", collection_name)
-        return 0
-    
-    if not chromadb_ids:
-        logger.warning("No entities found in DynamoDB for image_id=%s, receipt_id=%s", image_id, receipt_id)
-        return 0
-
-    # Fields to remove when metadata is deleted
-    fields_to_remove = [
-        "canonical_merchant_name",
-        "merchant_name",
-        "merchant_category",
-        "address",
-        "phone_number",
-        "place_id",
-    ]
-
-    # Use direct ID lookup instead of scanning entire collection
-    try:
-        results = collection.get(ids=chromadb_ids, include=["metadatas"])
-        logger.info("Retrieved %d records from ChromaDB for removal", len(results.get("ids", [])))
-    except Exception as e:
-        logger.error("Failed to query ChromaDB for metadata removal: %s", e)
-        return 0
-
-    matching_ids = results.get("ids", [])
-    matching_metadatas = []
-
-    for i, record_id in enumerate(matching_ids):
-        # Remove merchant fields from metadata
-        existing_metadata = results["metadatas"][i] or {}
-        updated_metadata = existing_metadata.copy()
-
-        for field in fields_to_remove:
-            if field in updated_metadata:
-                del updated_metadata[field]
-
-        # Add removal timestamp
-        updated_metadata["metadata_removed_at"] = datetime.now(
-            timezone.utc
-        ).isoformat()
-        matching_metadatas.append(updated_metadata)
-
-    # Update records if any found
-    if matching_ids:
-        try:
-            collection.update(ids=matching_ids, metadatas=matching_metadatas)
-            elapsed_time = time.time() - start_time
-            logger.info("Removed metadata from %d embeddings in %.2f seconds", len(matching_ids), elapsed_time)
-        except Exception as e:
-            logger.error("Failed to remove ChromaDB metadata: %s", e)
-            return 0
-    else:
-        logger.warning("No matching ChromaDB records found for removal (DynamoDB had %d IDs)", len(chromadb_ids))
-
-    elapsed_time = time.time() - start_time
-    logger.info("Metadata removal completed in %.2f seconds (DynamoDB-driven approach)", elapsed_time)
-    return len(matching_ids)
-
-
-def update_word_labels(
-    collection, chromadb_id: str, changes: Dict[str, Any]
-) -> int:
-    """Update label metadata for a specific word embedding."""
-    try:
-        # Get the specific record
-        result = collection.get(ids=[chromadb_id], include=["metadatas"])
-
-        if not result["ids"]:
-            logger.warning("Word embedding not found: %s", chromadb_id)
-            return 0
-
-        # Update metadata with label changes
-        existing_metadata = result["metadatas"][0] or {}
-        updated_metadata = existing_metadata.copy()
-
-        # Apply label field changes with "label_" prefix to avoid conflicts
-        for field, change in changes.items():
-            label_field = f"label_{field}"
-            new_value = change["new"]
-            if new_value is not None:
-                updated_metadata[label_field] = new_value
-            elif label_field in updated_metadata:
-                del updated_metadata[label_field]
-
-        # Add update timestamp
-        updated_metadata["last_label_update"] = datetime.now(
-            timezone.utc
-        ).isoformat()
-
-        # Update the record
-        collection.update(ids=[chromadb_id], metadatas=[updated_metadata])
-
-        logger.info("Updated labels for word: %s", chromadb_id)
-        return 1
-
-    except Exception as e:  # pylint: disable=broad-exception-caught
-        logger.error("Error updating word labels for %s: %s", chromadb_id, e)
-        return 0
-
-
-def remove_word_labels(collection, chromadb_id: str) -> int:
-    """Remove label metadata from a specific word embedding."""
-    try:
-        # Get the specific record
-        result = collection.get(ids=[chromadb_id], include=["metadatas"])
-
-        if not result["ids"]:
-            logger.warning("Word embedding not found: %s", chromadb_id)
-            return 0
-
-        # Remove all label fields from metadata
-        existing_metadata = result["metadatas"][0] or {}
-        updated_metadata = existing_metadata.copy()
-
-        # Remove all fields that start with "label_"
-        label_fields = [
-            key for key in updated_metadata.keys() if key.startswith("label_")
-        ]
-        for field in label_fields:
-            del updated_metadata[field]
-
-        # Add removal timestamp
-        updated_metadata["labels_removed_at"] = datetime.now(
-            timezone.utc
-        ).isoformat()
-
-        # Update the record
-        collection.update(ids=[chromadb_id], metadatas=[updated_metadata])
-
-        logger.info("Removed labels from word: %s", chromadb_id)
-        return 1
-
-    except Exception as e:  # pylint: disable=broad-exception-caught
-        logger.error("Error removing word labels for %s: %s", chromadb_id, e)
-        return 0
+        # Stop monitoring
+        stop_compaction_lambda_monitoring()
 
 
 def process_delta_messages(
     delta_messages: List[Dict[str, Any]],
+    metrics: Any = None,
 ) -> Dict[str, Any]:
     """Process traditional delta file messages.
 
@@ -1055,9 +420,12 @@ def process_delta_messages(
     by a separate compaction system.
     """
     logger.info(
-        "Received %d delta messages (not processed)", len(delta_messages)
+        "Received delta messages (not processed)",
+        count=len(delta_messages),
     )
-    logger.warning("Delta message processing not implemented in this handler")
+    logger.warning("Delta message processing not implemented")
+    if metrics:
+        metrics.count("CompactionDeltaMessagesSkipped", len(delta_messages))
 
     response = LambdaResponse(
         status_code=200,
@@ -1069,6 +437,599 @@ def process_delta_messages(
         ),
     )
     return response.to_dict()
+
+
+# Process parsed DynamoDB stream messages grouped by collection
+def process_stream_messages(
+    stream_messages: List[StreamMessage],
+    metrics: Any = None,
+) -> Dict[str, Any]:
+    messages_by_collection = group_messages_by_collection(stream_messages)
+
+    total_metadata_updates = 0
+    total_label_updates = 0
+    total_compaction_merged = 0
+    failed_receipt_handles: List[str] = []
+
+    for collection, msgs in messages_by_collection.items():
+        metadata_msgs, label_msgs, compaction_run_msgs = categorize_stream_messages(
+            msgs
+        )
+
+        # Phase A: off-lock snapshot download/open once
+        import tempfile
+        from receipt_chroma import ChromaClient
+        from receipt_chroma.s3 import download_snapshot_atomic, upload_snapshot_atomic
+
+        # Storage mode configuration - easily switchable
+        storage_mode = os.environ.get("CHROMADB_STORAGE_MODE", "auto").lower()
+        efs_root = os.environ.get("CHROMA_ROOT")
+
+        # Determine storage mode
+        if storage_mode == "s3":
+            use_efs = False
+            mode_reason = "explicitly set to S3-only"
+        elif storage_mode == "efs":
+            use_efs = True
+            mode_reason = "explicitly set to EFS"
+        elif storage_mode == "auto":
+            # Auto-detect based on EFS availability
+            use_efs = efs_root and efs_root != "/tmp/chroma"
+            mode_reason = f"auto-detected (efs_root={'available' if use_efs else 'not available'})"
+        else:
+            # Default to S3-only for unknown modes
+            use_efs = False
+            mode_reason = f"unknown mode '{storage_mode}', defaulting to S3-only"
+
+        logger.info(
+            "Storage mode configuration",
+            storage_mode=storage_mode,
+            efs_root=efs_root,
+            use_efs=use_efs,
+            mode_reason=mode_reason,
+            collection=collection.value
+        )
+
+        if use_efs:
+            logger.info("Using EFS + S3 hybrid approach", collection=collection.value)
+            # Use EFS + S3 hybrid approach with optimized locking
+            efs_manager = get_efs_snapshot_manager(collection.value, logger, metrics)
+
+            # Phase A: Optimized lock strategy - minimal lock time
+            lock_id = f"chroma-{collection.value}-update"
+            lm = LockManager(
+                get_dynamo_client(),
+                collection=collection,
+                heartbeat_interval=heartbeat_interval,
+                lock_duration_minutes=lock_duration_minutes,
+                max_heartbeat_failures=max_heartbeat_failures,
+            )
+
+            try:
+                # Step 1: Read operations OFF-LOCK (optimization)
+                latest_version = efs_manager.get_latest_s3_version()
+                if not latest_version:
+                    logger.error("Failed to get latest S3 version", collection=collection.value)
+                    failed_receipt_handles.extend(
+                        [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
+                    )
+                    continue
+
+                snapshot_result = efs_manager.ensure_snapshot_available(latest_version)
+                if snapshot_result["status"] != "available":
+                    logger.error("Failed to ensure snapshot availability", result=snapshot_result)
+                    failed_receipt_handles.extend(
+                        [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
+                    )
+                    continue
+
+                # Step 2: Quick CAS validation (minimal lock time)
+                phase1_lock_start = time.time()
+                if not lm.acquire(lock_id):
+                    # Track lock collision in Phase 1
+                    if metrics:
+                        metrics.count(
+                            "CompactionLockCollision",
+                            1,
+                            {"phase": "1", "collection": collection.value, "type": "validation"}
+                        )
+                    logger.info(
+                        "Lock busy during validation, skipping",
+                        collection=collection.value,
+                        message_count=len(msgs)
+                    )
+                    failed_receipt_handles.extend(
+                        [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
+                    )
+                    continue
+
+                phase1_lock_duration = time.time() - phase1_lock_start
+                if metrics:
+                    metrics.put_metric(
+                        "CompactionLockDuration",
+                        phase1_lock_duration * 1000,  # Convert to milliseconds
+                        unit="Milliseconds",
+                        dimensions={"phase": "1", "collection": collection.value, "type": "validation"}
+                    )
+
+                try:
+                    lm.start_heartbeat()
+                    # CAS: Validate pointer hasn't changed since we read it
+                    # (Quick validation under lock, then release for heavy I/O)
+                    pointer_key = f"{collection.value}/snapshot/latest-pointer.txt"
+                    bucket = os.environ["CHROMADB_BUCKET"]
+                    import boto3 as _boto
+                    s3_client = _boto.client("s3")
+                    try:
+                        resp = s3_client.get_object(Bucket=bucket, Key=pointer_key)
+                        current_pointer = resp["Body"].read().decode("utf-8").strip()
+                    except Exception:
+                        current_pointer = "latest-direct"
+
+                    if latest_version != current_pointer:
+                        logger.info(
+                            "Pointer drift detected during initial validation",
+                            collection=collection.value,
+                            expected=latest_version,
+                            current=current_pointer,
+                        )
+                        failed_receipt_handles.extend(
+                            [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
+                        )
+                        continue
+                finally:
+                    lm.stop_heartbeat()
+                    lm.release()
+
+                # Store expected pointer for Phase 3 validation
+                expected_pointer = latest_version
+
+                # Step 3: Perform heavy operations off-lock
+                efs_snapshot_path = snapshot_result["efs_path"]
+                local_snapshot_path = tempfile.mkdtemp()
+
+                copy_start_time = time.time()
+                shutil.copytree(efs_snapshot_path, local_snapshot_path, dirs_exist_ok=True)
+                copy_time_ms = (time.time() - copy_start_time) * 1000
+
+                snapshot_path = local_snapshot_path
+
+                logger.info(
+                    "Using EFS snapshot (copied to local)",
+                    collection=collection.value,
+                    version=latest_version,
+                    efs_path=efs_snapshot_path,
+                    local_path=local_snapshot_path,
+                    copy_time_ms=copy_time_ms,
+                    source=snapshot_result.get("source", "unknown")
+                )
+            except Exception as e:
+                logger.error("Failed during EFS setup", error=str(e), collection=collection.value)
+                failed_receipt_handles.extend(
+                    [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
+                )
+                continue
+        else:
+            logger.info("Using S3-only approach", collection=collection.value, mode_reason=mode_reason)
+            # Fallback to S3-only approach
+            temp_dir = tempfile.mkdtemp()
+            bucket = os.environ["CHROMADB_BUCKET"]
+            dl = download_snapshot_atomic(
+                bucket=bucket,
+                collection=collection.value,
+                local_path=temp_dir,
+                verify_integrity=True,
+            )
+            if dl.get("status") != "downloaded":
+                # download_snapshot_atomic will now automatically initialize empty snapshot
+                # if none exists, so if it still fails, it's a real error
+                logger.error("Failed to download or initialize snapshot", result=dl)
+                failed_receipt_handles.extend(
+                    [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
+                )
+                continue
+
+            # Log if snapshot was initialized (new empty snapshot)
+            if dl.get("initialized"):
+                logger.info(
+                    "Empty snapshot was initialized",
+                    collection=collection.value,
+                    version_id=dl.get("version_id"),
+                )
+
+            snapshot_path = temp_dir
+            expected_pointer = dl.get("version_id")
+
+            logger.info(
+                "Using S3 snapshot",
+                collection=collection.value,
+                version=expected_pointer,
+                temp_path=snapshot_path
+            )
+
+        # Initialize ChromaDB client using receipt_chroma
+        chroma_client = ChromaClient(
+            persist_directory=snapshot_path,
+            mode="snapshot",
+            metadata_only=True,  # No embeddings needed for snapshot operations
+        )
+
+        try:
+            # Merge deltas first
+            compaction_run_results = []
+            if compaction_run_msgs:
+                merged, per_run_results = merge_compaction_deltas(
+                    chroma_client=chroma_client,
+                    compaction_runs=compaction_run_msgs,
+                    collection=collection,
+                    logger=logger,
+                )
+                total_compaction_merged += merged
+                compaction_run_results = per_run_results
+
+            # Apply metadata updates
+            if metadata_msgs:
+                md_results = apply_metadata_updates_in_memory(
+                    chroma_client=chroma_client,
+                    metadata_updates=metadata_msgs,
+                    collection=collection,
+                    logger=logger,
+                    metrics=metrics,
+                    OBSERVABILITY_AVAILABLE=True,
+                    get_dynamo_client_func=get_dynamo_client,
+                )
+                total_metadata_updates += sum(
+                    r.updated_count for r in md_results if getattr(r, "error", None) is None
+                )
+
+            # Apply label updates
+            if label_msgs:
+                lb_results = apply_label_updates_in_memory(
+                    chroma_client=chroma_client,
+                    label_updates=label_msgs,
+                    collection=collection,
+                    logger=logger,
+                    metrics=metrics,
+                    OBSERVABILITY_AVAILABLE=True,
+                    get_dynamo_client_func=get_dynamo_client,
+                )
+                total_label_updates += sum(
+                    r.updated_count for r in lb_results if getattr(r, "error", None) is None
+                )
+
+            # Phase B: Optimized upload with minimal lock time
+            # CRITICAL: Close ChromaDB client BEFORE acquiring lock to ensure SQLite files are flushed and unlocked
+            # This prevents corruption when uploading files that are still being written to
+            # Using receipt_chroma's close() method which properly handles issue #5868
+            chroma_client.close()
+            chroma_client = None
+
+            published = False
+            import boto3 as _boto
+            s3_client = _boto.client("s3")
+
+            if use_efs:
+                # EFS case: Re-acquire lock only for critical S3 operations
+                backoff_attempts = [0.1, 0.2]  # Shorter backoff for EFS case
+
+                for attempt_idx, delay in enumerate(backoff_attempts, start=1):
+                    phase3_lock_start = time.time()
+                    if not lm.acquire(lock_id):
+                        # Track lock collision in Phase 3
+                        phase3_lock_duration = time.time() - phase3_lock_start
+                        if metrics:
+                            metrics.count(
+                                "CompactionLockCollision",
+                                1,
+                                {"phase": "3", "collection": collection.value, "type": "upload", "attempt": str(attempt_idx)}
+                            )
+                            metrics.put_metric(
+                                "CompactionLockWaitTime",
+                                (delay + phase3_lock_duration) * 1000,
+                                unit="Milliseconds",
+                                dimensions={"phase": "3", "collection": collection.value, "type": "backoff"}
+                            )
+                        logger.info(
+                            "Lock busy during upload, backing off",
+                            collection=collection.value,
+                            attempt=attempt_idx,
+                            delay_ms=int(delay * 1000),
+                        )
+                        time.sleep(delay)
+                        continue
+
+                    phase3_lock_duration = time.time() - phase3_lock_start
+                    if metrics:
+                        metrics.put_metric(
+                            "CompactionLockDuration",
+                            phase3_lock_duration * 1000,  # Convert to milliseconds
+                            unit="Milliseconds",
+                            dimensions={"phase": "3", "collection": collection.value, "type": "upload"}
+                        )
+
+                    try:
+                        lm.start_heartbeat()
+
+                        # CAS: re-read pointer and compare
+                        pointer_key = f"{collection.value}/snapshot/latest-pointer.txt"
+                        bucket = os.environ["CHROMADB_BUCKET"]
+                        try:
+                            resp = s3_client.get_object(Bucket=bucket, Key=pointer_key)
+                            current_pointer = resp["Body"].read().decode("utf-8").strip()
+                        except Exception:
+                            current_pointer = "latest-direct"
+
+                        if expected_pointer and current_pointer != expected_pointer:
+                            logger.info(
+                                "Pointer drift detected, skipping upload",
+                                collection=collection.value,
+                                expected=expected_pointer,
+                                current=current_pointer,
+                            )
+                            failed_receipt_handles.extend(
+                                [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
+                            )
+                            break
+
+                        up = upload_snapshot_atomic(
+                            local_path=snapshot_path,
+                            bucket=bucket,
+                            collection=collection.value,
+                            lock_manager=lm,
+                            metadata={
+                                "update_type": "batch_compaction",
+                                "expected_pointer": expected_pointer or "",
+                            },
+                        )
+                        if up.get("status") == "uploaded":
+                            published = True
+                            new_version = up.get("version_id")
+                            break
+                        else:
+                            logger.error("Snapshot upload failed", result=up)
+                            time.sleep(delay)
+                            continue
+                    finally:
+                        try:
+                            lm.stop_heartbeat()
+                        finally:
+                            lm.release()
+
+                # Update EFS cache AFTER lock release (off-lock optimization)
+                if published and new_version:
+                    try:
+                        # Copy the updated local snapshot back to EFS
+                        efs_snapshot_path = os.path.join(efs_manager.efs_snapshots_dir, new_version)
+                        if os.path.exists(efs_snapshot_path):
+                            shutil.rmtree(efs_snapshot_path)
+
+                        copy_start_time = time.time()
+                        shutil.copytree(snapshot_path, efs_snapshot_path)
+                        copy_time_ms = (time.time() - copy_start_time) * 1000
+
+                        logger.info(
+                            "Updated EFS snapshot (off-lock)",
+                            collection=collection.value,
+                            version=new_version,
+                            efs_path=efs_snapshot_path,
+                            copy_time_ms=copy_time_ms
+                        )
+                        # Update EFS version file to reflect latest published snapshot
+                        try:
+                            efs_manager.set_efs_version(new_version)
+                            logger.info(
+                                "Updated EFS .version",
+                                collection=collection.value,
+                                version=new_version,
+                                version_file=os.path.join(efs_manager.efs_snapshots_dir, ".version"),
+                            )
+                        except Exception as e:  # noqa: BLE001
+                            logger.warning(
+                                "Failed to update EFS .version (non-critical)",
+                                error=str(e),
+                                collection=collection.value,
+                                version=new_version,
+                            )
+
+                        efs_manager.cleanup_old_snapshots()
+                    except Exception as e:
+                        logger.warning(
+                            "Failed to update EFS cache (non-critical)",
+                            error=str(e),
+                            collection=collection.value,
+                            version=new_version
+                        )
+
+                # Mark compaction runs as completed after successful upload
+                if published and compaction_run_results:
+                    dynamo_client = get_dynamo_client()
+                    for run_result in compaction_run_results:
+                        try:
+                            dynamo_client.mark_compaction_run_completed(
+                                image_id=run_result["image_id"],
+                                receipt_id=run_result["receipt_id"],
+                                run_id=run_result["run_id"],
+                                collection=collection.value,
+                                merged_vectors=run_result["merged_count"],
+                            )
+                            logger.info(
+                                "Marked compaction run as completed",
+                                run_id=run_result["run_id"],
+                                image_id=run_result["image_id"],
+                                receipt_id=run_result["receipt_id"],
+                                collection=collection.value,
+                                merged_vectors=run_result["merged_count"],
+                            )
+                        except Exception as e:  # noqa: BLE001
+                            logger.warning(
+                                "Failed to mark compaction run as completed",
+                                error=str(e),
+                                run_id=run_result.get("run_id"),
+                                image_id=run_result.get("image_id"),
+                                receipt_id=run_result.get("receipt_id"),
+                                collection=collection.value,
+                            )
+            else:
+                # S3-only case: Standard lock acquisition
+                backoff_attempts = [0.15, 0.3]  # seconds
+
+                for attempt_idx, delay in enumerate(backoff_attempts, start=1):
+                    lock_id = f"chroma-{collection.value}-update"
+                    lm = LockManager(
+                        get_dynamo_client(),
+                        collection=collection,
+                        heartbeat_interval=heartbeat_interval,
+                        lock_duration_minutes=lock_duration_minutes,
+                        max_heartbeat_failures=max_heartbeat_failures,
+                    )
+
+                    phase3_s3_lock_start = time.time()
+                    if not lm.acquire(lock_id):
+                        phase3_s3_lock_duration = time.time() - phase3_s3_lock_start
+                        if metrics:
+                            metrics.count(
+                                "CompactionLockCollision",
+                                1,
+                                {"phase": "3", "collection": collection.value, "type": "upload_s3", "attempt": str(attempt_idx)}
+                            )
+                            metrics.put_metric(
+                                "CompactionLockWaitTime",
+                                (delay + phase3_s3_lock_duration) * 1000,
+                                unit="Milliseconds",
+                                dimensions={"phase": "3", "collection": collection.value, "type": "backoff_s3"}
+                            )
+                        logger.info(
+                            "Lock busy, backing off",
+                            collection=collection.value,
+                            attempt=attempt_idx,
+                            delay_ms=int(delay * 1000),
+                        )
+                        time.sleep(delay)
+                        continue
+
+                    phase3_s3_lock_duration = time.time() - phase3_s3_lock_start
+                    if metrics:
+                        metrics.put_metric(
+                            "CompactionLockDuration",
+                            phase3_s3_lock_duration * 1000,  # Convert to milliseconds
+                            unit="Milliseconds",
+                            dimensions={"phase": "3", "collection": collection.value, "type": "upload_s3"}
+                        )
+
+                    try:
+                        lm.start_heartbeat()
+                        # CAS: re-read pointer and compare
+                        pointer_key = f"{collection.value}/snapshot/latest-pointer.txt"
+                        bucket = os.environ["CHROMADB_BUCKET"]
+                        try:
+                            resp = s3_client.get_object(Bucket=bucket, Key=pointer_key)
+                            current_pointer = resp["Body"].read().decode("utf-8").strip()
+                        except Exception:
+                            current_pointer = "latest-direct"
+
+                        if expected_pointer and current_pointer != expected_pointer:
+                            logger.info(
+                                "Pointer drift detected, will retry",
+                                collection=collection.value,
+                                expected=expected_pointer,
+                                current=current_pointer,
+                            )
+                            # Back off and retry
+                            time.sleep(delay)
+                            continue
+
+                        up = upload_snapshot_atomic(
+                            local_path=snapshot_path,
+                            bucket=bucket,
+                            collection=collection.value,
+                            lock_manager=lm,
+                            metadata={
+                                "update_type": "batch_compaction",
+                                "expected_pointer": expected_pointer or "",
+                            },
+                        )
+                        if up.get("status") == "uploaded":
+                            published = True
+                            new_version = up.get("version_id")
+                            break
+                        else:
+                            logger.error("Snapshot upload failed", result=up)
+                            time.sleep(delay)
+                            continue
+                    finally:
+                        try:
+                            lm.stop_heartbeat()
+                        finally:
+                            lm.release()
+
+                # Mark compaction runs as completed after successful upload (S3-only case)
+                if published and compaction_run_results:
+                    dynamo_client = get_dynamo_client()
+                    for run_result in compaction_run_results:
+                        try:
+                            dynamo_client.mark_compaction_run_completed(
+                                image_id=run_result["image_id"],
+                                receipt_id=run_result["receipt_id"],
+                                run_id=run_result["run_id"],
+                                collection=collection.value,
+                                merged_vectors=run_result["merged_count"],
+                            )
+                            logger.info(
+                                "Marked compaction run as completed",
+                                run_id=run_result["run_id"],
+                                image_id=run_result["image_id"],
+                                receipt_id=run_result["receipt_id"],
+                                collection=collection.value,
+                                merged_vectors=run_result["merged_count"],
+                            )
+                        except Exception as e:  # noqa: BLE001
+                            logger.warning(
+                                "Failed to mark compaction run as completed",
+                                error=str(e),
+                                run_id=run_result.get("run_id"),
+                                image_id=run_result.get("image_id"),
+                                receipt_id=run_result.get("receipt_id"),
+                                collection=collection.value,
+                            )
+
+            if not published:
+                # Mark this collection's messages as failed for partial retry
+                failed_receipt_handles.extend(
+                    [m.receipt_handle for m in msgs if getattr(m, "receipt_handle", None)]
+                )
+                continue
+        finally:
+            # CRITICAL: Ensure ChromaDB client is closed even if errors occurred
+            # This prevents SQLite file locks from persisting
+            if 'chroma_client' in locals() and chroma_client is not None:
+                try:
+                    chroma_client.close()
+                except Exception as e:
+                    logger.warning(
+                        "Error closing ChromaDB client in finally block",
+                        error=str(e),
+                        collection=collection.value
+                    )
+
+            # Cleanup temp directories
+            if use_efs and 'local_snapshot_path' in locals():
+                shutil.rmtree(local_snapshot_path, ignore_errors=True)
+            elif not use_efs and 'temp_dir' in locals():
+                shutil.rmtree(temp_dir, ignore_errors=True)
+
+    if failed_receipt_handles:
+        return {
+            "batchItemFailures": [
+                {"itemIdentifier": h} for h in failed_receipt_handles if h
+            ]
+        }
+
+    return LambdaResponse(
+        status_code=200,
+        message="Stream messages processed",
+        metadata_updates=total_metadata_updates,
+        label_updates=total_label_updates,
+    ).to_dict()
 
 
 # Alias for consistent naming with other handlers
