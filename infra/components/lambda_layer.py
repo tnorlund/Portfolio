@@ -476,11 +476,23 @@ echo "🎉 Parallel function updates completed!"'''
             opts=pulumi.ResourceOptions(parent=self),
         )
 
+        # Create log groups for CodeBuild projects
+        # Note: We create these early so we can reference them in the IAM policy
+        publish_log_group = make_log_group(
+            f"{self.name}-publish-logs",
+            retention_days=14,
+            parent=self,
+        )
+
         # Create CodeBuild policy with permissions for layer publishing and function updates
         RolePolicy(
             f"{self.name}-codebuild-policy",
             role=codebuild_role.id,
-            policy=pulumi.Output.all(build_bucket.arn, self.layer_name).apply(
+            policy=pulumi.Output.all(
+                build_bucket.arn,
+                self.layer_name,
+                publish_log_group.arn
+            ).apply(
                 lambda args: json.dumps(
                     {
                         "Version": "2012-10-17",
@@ -503,6 +515,9 @@ echo "🎉 Parallel function updates completed!"'''
                                         f"{get_caller_identity().account_id}:"
                                         "log-group:/aws/codebuild/*:*"
                                     ),
+                                    # Include the specific publish log group
+                                    args[2],  # publish_log_group.arn
+                                    f"{args[2]}:*",  # publish_log_group.arn with wildcard for log streams
                                 ],
                             },
                             {
@@ -839,11 +854,8 @@ echo "🎉 Parallel function updates completed!"'''
                 },
             }
 
-        publish_log_group = make_log_group(
-            f"{self.name}-publish-logs",
-            retention_days=14,
-            parent=self,
-        )
+        # Note: publish_log_group was already created earlier (line 481)
+        # and is referenced in the IAM policy. Don't create it again here.
 
         # Create the publish CodeBuild project
         publish_project = Project(
@@ -1384,6 +1396,13 @@ layers_to_build = [
         "needs_pillow": False,
     },
     {
+        "package_dir": "receipt_dynamo_stream",
+        "name": "receipt-dynamo-stream",
+        "description": "DynamoDB stream parsing layer",
+        "python_versions": ["3.12"],
+        "needs_pillow": False,
+    },
+    {
         "package_dir": "receipt_upload",
         "name": "receipt-upload",
         "description": "Upload layer for receipt-upload",
@@ -1398,11 +1417,11 @@ SKIP_LAYER_BUILDING = (
     os.environ.get("PYTEST_RUNNING") == "1" or False
 )  # Skip building during tests
 
-# SYNC MODE: Set to True when ARNs are needed immediately (e.g., after major changes)
-# Set to False for faster pulumi up once layers are stable
-USE_SYNC_MODE = (
-    False  # Temporarily disabled for faster pulumi up while testing
-)
+# SYNC MODE: Set via Pulumi config: pulumi config set lambda-layer:sync-mode true
+# Or pass sync_mode parameter when creating LambdaLayer
+# Default is False (async mode) for faster pulumi up
+# Use sync mode when ARNs are needed immediately (e.g., first-time creation)
+USE_SYNC_MODE = None  # None means read from config instead of hardcoding
 
 # Create Lambda layers using the hybrid approach
 lambda_layers = {}
@@ -1423,16 +1442,18 @@ if _in_pulumi_context:
             description=layer_config["description"],  # type: ignore
             needs_pillow=layer_config["needs_pillow"],  # type: ignore
             package_extras=layer_config.get("package_extras"),  # type: ignore
-            sync_mode=USE_SYNC_MODE,  # Use flag to control sync/async mode
+            sync_mode=USE_SYNC_MODE,  # None = read from config, True/False = override
         )
         lambda_layers[layer_config["name"]] = lambda_layer
 
     # Access the built layers by name
     dynamo_layer = lambda_layers["receipt-dynamo"]
+    dynamo_stream_layer = lambda_layers["receipt-dynamo-stream"]
     upload_layer = lambda_layers["receipt-upload"]
 
     # Export the layer ARNs for reference
     pulumi.export("dynamo_layer_arn", dynamo_layer.arn)
+    pulumi.export("dynamo_stream_layer_arn", dynamo_stream_layer.arn)
     pulumi.export("upload_layer_arn", upload_layer.arn)
 else:
     # Create dummy objects when skipping or not in Pulumi context
@@ -1442,4 +1463,5 @@ else:
             self.arn = None
 
     dynamo_layer = DummyLayer("receipt-dynamo")  # type: ignore
+    dynamo_stream_layer = DummyLayer("receipt-dynamo-stream")  # type: ignore
     upload_layer = DummyLayer("receipt-upload")  # type: ignore
