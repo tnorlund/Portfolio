@@ -11,12 +11,17 @@ const nextConfig = {
   },
   compress: true,
   poweredByHeader: false,
-  
+
   // Only consider these file extensions as pages (excludes .test.tsx, .test.ts, etc.)
   pageExtensions: ['page.tsx', 'page.ts', 'page.jsx', 'page.js', 'tsx', 'ts', 'jsx', 'js'],
 
+  // Use Turbopack (default in Next.js 16) for better bundle optimization
+  // Turbopack automatically handles bundle splitting and tree shaking
+  turbopack: {},
+
   webpack: (config, { dev, isServer }) => {
-    // Optimize bundle splitting and tree shaking
+    // Webpack config for backward compatibility if webpack is explicitly used
+    // Note: Turbopack is now the default and recommended bundler in Next.js 16+
     if (!dev && !isServer) {
       config.optimization.splitChunks = {
         chunks: "all",
