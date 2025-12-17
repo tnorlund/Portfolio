@@ -81,16 +81,22 @@ def _load_results_from_s3(batch_bucket: str, execution_id: str) -> List[Dict]:
                     total_objects += 1
                     try:
                         response = s3.get_object(Bucket=batch_bucket, Key=key)
-                        result = json.loads(response["Body"].read().decode("utf-8"))
+                        result = json.loads(
+                            response["Body"].read().decode("utf-8")
+                        )
                         results.append(result)
                     except Exception as e:
                         failed_keys.append(key)
-                        logger.exception(f"Failed to load result from {key}: {e}")
+                        logger.exception(
+                            f"Failed to load result from {key}: {e}"
+                        )
 
         # Calculate failure rate and log summary
         failure_count = len(failed_keys)
         success_count = len(results)
-        failure_rate = failure_count / total_objects if total_objects > 0 else 0.0
+        failure_rate = (
+            failure_count / total_objects if total_objects > 0 else 0.0
+        )
 
         logger.info(
             f"S3 results summary: {success_count}/{total_objects} objects loaded successfully "
@@ -102,7 +108,11 @@ def _load_results_from_s3(batch_bucket: str, execution_id: str) -> List[Dict]:
             sample_size = min(10, len(failed_keys))
             logger.warning(
                 f"Failed to load {failure_count} objects. Sample: {failed_keys[:sample_size]}"
-                + (f" ... and {len(failed_keys) - sample_size} more" if len(failed_keys) > sample_size else "")
+                + (
+                    f" ... and {len(failed_keys) - sample_size} more"
+                    if len(failed_keys) > sample_size
+                    else ""
+                )
             )
 
         # Raise exception if failure rate exceeds threshold (50%)
@@ -173,7 +183,9 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     logger.info(f"Aggregating results for execution {execution_id}")
 
     # Always read results from S3 to avoid 256KB payload limit
-    logger.info("Reading results from S3 (payload only contains batch_count)...")
+    logger.info(
+        "Reading results from S3 (payload only contains batch_count)..."
+    )
     process_results = _load_results_from_s3(batch_bucket, execution_id)
 
     logger.info(f"Processing {len(process_results)} results from S3")
@@ -199,13 +211,27 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
             errors.append(result)
             continue
 
-        labels_processed = coerce_int(result.get("labels_processed"), field_name="labels_processed")
-        valid_count = coerce_int(result.get("valid_count"), field_name="valid_count")
-        invalid_count = coerce_int(result.get("invalid_count"), field_name="invalid_count")
-        needs_review_count = coerce_int(result.get("needs_review_count"), field_name="needs_review_count")
-        updated_count = coerce_int(result.get("updated_count"), field_name="updated_count")
-        skipped_count = coerce_int(result.get("skipped_count"), field_name="skipped_count")
-        failed_count = coerce_int(result.get("failed_count"), field_name="failed_count")
+        labels_processed = coerce_int(
+            result.get("labels_processed"), field_name="labels_processed"
+        )
+        valid_count = coerce_int(
+            result.get("valid_count"), field_name="valid_count"
+        )
+        invalid_count = coerce_int(
+            result.get("invalid_count"), field_name="invalid_count"
+        )
+        needs_review_count = coerce_int(
+            result.get("needs_review_count"), field_name="needs_review_count"
+        )
+        updated_count = coerce_int(
+            result.get("updated_count"), field_name="updated_count"
+        )
+        skipped_count = coerce_int(
+            result.get("skipped_count"), field_name="skipped_count"
+        )
+        failed_count = coerce_int(
+            result.get("failed_count"), field_name="failed_count"
+        )
 
         total_labels += labels_processed
         total_valid += valid_count
@@ -251,21 +277,23 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
             s3.put_object(
                 Bucket=batch_bucket,
                 Key=report_key,
-                Body=json.dumps(summary, indent=2, default=str).encode("utf-8"),
+                Body=json.dumps(summary, indent=2, default=str).encode(
+                    "utf-8"
+                ),
                 ContentType="application/json",
             )
             logger.info(f"Report uploaded to s3://{batch_bucket}/{report_key}")
         except Exception:
-            logger.exception("Failed to upload report to s3://%s/%s", batch_bucket, report_key)
+            logger.exception(
+                "Failed to upload report to s3://%s/%s",
+                batch_bucket,
+                report_key,
+            )
 
     return {
         "execution_id": execution_id,
         "summary": summary,
-        "report_path": f"s3://{batch_bucket}/{report_key}" if batch_bucket else None,
+        "report_path": (
+            f"s3://{batch_bucket}/{report_key}" if batch_bucket else None
+        ),
     }
-
-
-
-
-
-

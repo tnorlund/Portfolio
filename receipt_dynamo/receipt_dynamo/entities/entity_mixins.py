@@ -535,8 +535,8 @@ class GeometryHashMixin:
     """
     Mixin providing standardized __hash__ implementation for geometry entities.
 
-    This mixin eliminates duplicate __hash__ methods across geometry entities 
-    by providing a common implementation that hashes geometry fields in a 
+    This mixin eliminates duplicate __hash__ methods across geometry entities
+    by providing a common implementation that hashes geometry fields in a
     consistent
     order. The implementing class must have geometry attributes defined.
 
@@ -562,10 +562,10 @@ class GeometryHashMixin:
 
     def _get_base_geometry_hash_fields(self) -> Tuple[Any, ...]:
         """
-        Returns the common geometry fields that should be included in hash 
+        Returns the common geometry fields that should be included in hash
         computation.
 
-        This helper method provides a consistent ordering of core geometry 
+        This helper method provides a consistent ordering of core geometry
         fields
         for hashing, eliminating duplication across geometry entities. Entities
         can call this method and add their specific ID fields.
@@ -587,10 +587,10 @@ class GeometryHashMixin:
 
     def _get_geometry_hash_fields(self) -> Tuple[Any, ...]:
         """
-        Returns the geometry fields that should be included in hash 
+        Returns the geometry fields that should be included in hash
         computation.
 
-        This method provides a consistent ordering of geometry fields 
+        This method provides a consistent ordering of geometry fields
         for hashing.
         Subclasses can override this method to include additional fields or
         modify the field order.
@@ -605,9 +605,9 @@ class GeometryReprMixin:
     """
     Mixin providing standardized __repr__ implementation for geometry entities.
 
-    This mixin eliminates duplicate __repr__ methods across geometry 
+    This mixin eliminates duplicate __repr__ methods across geometry
     entities by
-    providing a common implementation that formats geometry fields 
+    providing a common implementation that formats geometry fields
     consistently.
     The implementing class must have geometry attributes defined.
 
@@ -683,7 +683,7 @@ class WarpTransformMixin:
         flip_y: bool = False,
     ) -> None:
         """
-        Receipt-specific inverse perspective transform from 'new' space 
+        Receipt-specific inverse perspective transform from 'new' space
         back to 'old' space.
 
         This delegates to GeometryMixin's inverse_perspective_transform method
@@ -1068,9 +1068,9 @@ class GeometryMixin:
     ) -> None:
         """Applies a normalized forward affine transformation to the entity.
 
-        This method applies an affine transformation where the c and f 
+        This method applies an affine transformation where the c and f
         parameters
-        are normalized offsets that get scaled based on the bounding box 
+        are normalized offsets that get scaled based on the bounding box
         dimensions
         and the source/destination dimensions.
 
@@ -1084,10 +1084,10 @@ class GeometryMixin:
             src_height: Source image height
             dst_width: Destination image width
             dst_height: Destination image height
-            flip_y: Whether to flip Y coordinates (not used in current 
+            flip_y: Whether to flip Y coordinates (not used in current
                 implementation)
         """
-        # Calculate the scaled offsets based on bounding box and image 
+        # Calculate the scaled offsets based on bounding box and image
         # dimensions
         x_offset = c * (self.bounding_box["width"] / (src_width * dst_width))
         y_offset = f * (
@@ -1114,7 +1114,7 @@ class GeometryMixin:
         """
         Rotates the entity 90 degrees counter-clockwise in place.
 
-        This is a special transformation used when rotating an entire 
+        This is a special transformation used when rotating an entire
         image/page
         90 degrees counter-clockwise. The coordinates are transformed according
         to the formula:
@@ -1130,7 +1130,7 @@ class GeometryMixin:
 
         # Transform all corner points according to 90 degree CCW rotation
         def rotate_90_ccw(px: float, py: float) -> Tuple[float, float]:
-            """Rotate a point 90 degrees counter-clockwise with coordinate 
+            """Rotate a point 90 degrees counter-clockwise with coordinate
             adjustment."""
             return py, -(px - 1)
 
@@ -1184,9 +1184,9 @@ class GeometryMixin:
         Args:
             shx (float): The horizontal shear factor.
             shy (float): The vertical shear factor.
-            pivot_x (float): The x-coordinate of the pivot point 
+            pivot_x (float): The x-coordinate of the pivot point
                 (default: 0.0).
-            pivot_y (float): The y-coordinate of the pivot point 
+            pivot_y (float): The y-coordinate of the pivot point
                 (default: 0.0).
         """
         # Shear all corner points

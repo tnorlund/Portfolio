@@ -72,11 +72,15 @@ def _load_groups_from_s3(event: Dict[str, Any]) -> Dict[str, Any]:
     poll_results_s3_bucket = event.get("poll_results_s3_bucket")
 
     if not groups_s3_key or not groups_s3_bucket:
-        raise ValueError("groups_s3_key and groups_s3_bucket are required for load_groups_from_s3 operation")
+        raise ValueError(
+            "groups_s3_key and groups_s3_bucket are required for load_groups_from_s3 operation"
+        )
 
     # Get total_groups from S3 metadata or download just to count
     total_groups = None
-    with tempfile.NamedTemporaryFile(mode="r", suffix=".json", delete=False) as tmp_file:
+    with tempfile.NamedTemporaryFile(
+        mode="r", suffix=".json", delete=False
+    ) as tmp_file:
         tmp_file_path = tmp_file.name
 
     try:
@@ -136,7 +140,9 @@ def _load_groups_from_s3(event: Dict[str, Any]) -> Dict[str, Any]:
 
     # Include poll_results field - null if in S3, empty array if not
     if poll_results_s3_key and poll_results_s3_bucket:
-        response["poll_results"] = None  # Keep in S3, will be loaded when needed
+        response["poll_results"] = (
+            None  # Keep in S3, will be loaded when needed
+        )
     else:
         response["poll_results"] = []  # Empty if not in S3
 
@@ -161,7 +167,9 @@ def _create_chunk_groups(event: Dict[str, Any]) -> Dict[str, Any]:
             poll_results_s3_key=poll_results_s3_key,
             poll_results_s3_bucket=poll_results_s3_bucket,
             poll_results_type=type(poll_results).__name__,
-            poll_results_length=len(poll_results) if isinstance(poll_results, list) else 0,
+            poll_results_length=(
+                len(poll_results) if isinstance(poll_results, list) else 0
+            ),
         )
 
         if not batch_id:
@@ -202,7 +210,9 @@ def _create_chunk_groups(event: Dict[str, Any]) -> Dict[str, Any]:
         # Upload groups to S3
         groups_s3_key = f"chunk_groups/{batch_id}/groups.json"
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp_file:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False
+        ) as tmp_file:
             json.dump(groups, tmp_file, indent=2)
             tmp_file_path = tmp_file.name
 
@@ -239,14 +249,20 @@ def _create_chunk_groups(event: Dict[str, Any]) -> Dict[str, Any]:
             poll_results_size = len(poll_results_payload.encode("utf-8"))
 
             # If poll_results is large, also store it in S3
-            if poll_results_size > 100 * 1024:  # If poll_results > 100KB, store in S3
+            if (
+                poll_results_size > 100 * 1024
+            ):  # If poll_results > 100KB, store in S3
                 logger.info(
                     "poll_results is large, also storing in S3",
                     size_kb=poll_results_size // 1024,
                 )
-                poll_results_s3_key = f"chunk_groups/{batch_id}/poll_results.json"
+                poll_results_s3_key = (
+                    f"chunk_groups/{batch_id}/poll_results.json"
+                )
 
-                with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp_file:
+                with tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".json", delete=False
+                ) as tmp_file:
                     json.dump(poll_results, tmp_file, indent=2)
                     tmp_file_path = tmp_file.name
 
@@ -300,7 +316,9 @@ def _create_chunk_groups(event: Dict[str, Any]) -> Dict[str, Any]:
             "total_groups": len(groups),
             "use_s3": True,
             "poll_results_s3_key": poll_results_s3_key,  # Pass through for MarkBatchesComplete
-            "poll_results_s3_bucket": poll_results_s3_bucket if poll_results_s3_key else None,  # Pass through for MarkBatchesComplete
+            "poll_results_s3_bucket": (
+                poll_results_s3_bucket if poll_results_s3_key else None
+            ),  # Pass through for MarkBatchesComplete
         }
 
         if poll_results_s3_key:
@@ -327,4 +345,3 @@ def _create_chunk_groups(event: Dict[str, Any]) -> Dict[str, Any]:
             "error": str(e),
             "message": "Failed to create chunk groups",
         }
-

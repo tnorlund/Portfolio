@@ -105,6 +105,7 @@ def setup_s3_snapshot(s3_client, temp_chroma_dir):
 
     # Upload to S3
     import tarfile
+
     tar_path = f"{temp_chroma_dir}.tar.gz"
     with tarfile.open(tar_path, "w:gz") as tar:
         tar.add(temp_chroma_dir, arcname="chroma_snapshot")
@@ -152,7 +153,9 @@ class TestEnhancedCompactionIntegration:
         msg = StreamMessage(
             entity_type="RECEIPT_METADATA",
             entity_data={"image_id": test_image_id, "receipt_id": 1},
-            changes={"merchant_name": {"old": "Old Merchant", "new": "New Merchant"}},
+            changes={
+                "merchant_name": {"old": "Old Merchant", "new": "New Merchant"}
+            },
             event_name="MODIFY",
             collections=(ChromaDBCollection.LINES,),
             timestamp=datetime.now().isoformat(),
@@ -238,7 +241,9 @@ class TestEnhancedCompactionIntegration:
         mock_metrics = MagicMock()
 
         # Mock process_collection to avoid actual processing
-        with patch("enhanced_compaction_handler.process_collection") as mock_process:
+        with patch(
+            "enhanced_compaction_handler.process_collection"
+        ) as mock_process:
             mock_process.return_value = {
                 "status": "success",
                 "failed_message_ids": [],
@@ -299,9 +304,13 @@ class TestEnhancedCompactionIntegration:
         # Mock context
         context = MagicMock()
         context.function_name = "test-function"
-        context.invoked_function_arn = "arn:aws:lambda:us-east-1:123456789012:function:test-function"
+        context.invoked_function_arn = (
+            "arn:aws:lambda:us-east-1:123456789012:function:test-function"
+        )
         context.aws_request_id = "test-request-id"
-        context.get_remaining_time_in_millis.return_value = 900000  # 15 minutes
+        context.get_remaining_time_in_millis.return_value = (
+            900000  # 15 minutes
+        )
 
         # Mock download/upload
         mock_download.return_value = {"status": "success", "version": "v1"}
@@ -377,12 +386,17 @@ class TestEnhancedCompactionIntegration:
         # Mock context
         context = MagicMock()
         context.function_name = "test-function"
-        context.invoked_function_arn = "arn:aws:lambda:us-east-1:123456789012:function:test-function"
+        context.invoked_function_arn = (
+            "arn:aws:lambda:us-east-1:123456789012:function:test-function"
+        )
         context.aws_request_id = "test-request-id"
         context.get_remaining_time_in_millis.return_value = 900000
 
         # Mock download failure
-        mock_download.return_value = {"status": "error", "error": "Download failed"}
+        mock_download.return_value = {
+            "status": "error",
+            "error": "Download failed",
+        }
 
         # Call Lambda handler
         result = lambda_handler(event, context)
@@ -436,7 +450,9 @@ class TestEnhancedCompactionIntegration:
         mock_metrics = MagicMock()
 
         # Mock process_collection for both collections
-        with patch("enhanced_compaction_handler.process_collection") as mock_process:
+        with patch(
+            "enhanced_compaction_handler.process_collection"
+        ) as mock_process:
             mock_process.return_value = {
                 "status": "success",
                 "failed_message_ids": [],

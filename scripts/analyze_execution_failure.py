@@ -108,7 +108,11 @@ def main():
     print("=" * 80)
     for event in events:
         event_type = event.get("type")
-        if "Failed" in event_type or "Aborted" in event_type or "TimedOut" in event_type:
+        if (
+            "Failed" in event_type
+            or "Aborted" in event_type
+            or "TimedOut" in event_type
+        ):
             print(f"\n{event_type}:")
             print(json.dumps(event, indent=2))
 
@@ -147,7 +151,11 @@ def main():
             )
             print(f"    Resource: {details.get('resource')}")
         elif event_type in ["TaskFailed", "TaskTimedOut"]:
-            details = event.get("taskFailedEventDetails") or event.get("taskTimedOutEventDetails") or {}
+            details = (
+                event.get("taskFailedEventDetails")
+                or event.get("taskTimedOutEventDetails")
+                or {}
+            )
             print(f"    Resource: {details.get('resource')}")
             print(f"    Error: {details.get('error')}")
             print(f"    Cause: {details.get('cause')}")
@@ -155,4 +163,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

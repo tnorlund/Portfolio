@@ -15,10 +15,13 @@ from pathlib import Path
 # Try to import jsonpath_ng, but don't fail if not available
 try:
     from jsonpath_ng import parse
+
     JSONPATH_AVAILABLE = True
 except ImportError:
     JSONPATH_AVAILABLE = False
-    print("⚠️  jsonpath_ng not installed. Install with: pip install jsonpath-ng")
+    print(
+        "⚠️  jsonpath_ng not installed. Install with: pip install jsonpath-ng"
+    )
     print("   Falling back to simple string matching validation...")
 
 
@@ -96,10 +99,22 @@ def test_group_chunks_merge_jsonpaths():
         ("$.chunk_results", True, "chunk_results"),
         ("$.poll_results", True, "poll_results"),
         # OLD (broken) - tries to get from chunked_data
-        ("$.chunked_data.poll_results_s3_key", False, "Should fail - key doesn't exist"),
+        (
+            "$.chunked_data.poll_results_s3_key",
+            False,
+            "Should fail - key doesn't exist",
+        ),
         # NEW (fixed) - gets from poll_results_data
-        ("$.poll_results_data.poll_results_s3_key", True, "Should work - key exists"),
-        ("$.poll_results_data.poll_results_s3_bucket", True, "Should work - key exists"),
+        (
+            "$.poll_results_data.poll_results_s3_key",
+            True,
+            "Should work - key exists",
+        ),
+        (
+            "$.poll_results_data.poll_results_s3_bucket",
+            True,
+            "Should work - key exists",
+        ),
     ]
 
     all_passed = True
@@ -111,14 +126,20 @@ def test_group_chunks_merge_jsonpaths():
             if should_succeed:
                 print(f"{status} {jsonpath_expr:50} → {value} ({description})")
             else:
-                print(f"{status} {jsonpath_expr:50} → Correctly fails ({description})")
+                print(
+                    f"{status} {jsonpath_expr:50} → Correctly fails ({description})"
+                )
         else:
             status = "❌"
             all_passed = False
             if should_succeed:
-                print(f"{status} {jsonpath_expr:50} → FAILED (expected success, got failure)")
+                print(
+                    f"{status} {jsonpath_expr:50} → FAILED (expected success, got failure)"
+                )
             else:
-                print(f"{status} {jsonpath_expr:50} → FAILED (expected failure, got success: {value})")
+                print(
+                    f"{status} {jsonpath_expr:50} → FAILED (expected failure, got success: {value})"
+                )
 
     print("=" * 80)
     if all_passed:
@@ -146,8 +167,16 @@ def test_split_into_chunks_jsonpaths():
 
     expressions = [
         ("$.poll_results_data.poll_results", True, "poll_results"),
-        ("$.poll_results_data.poll_results_s3_key", True, "poll_results_s3_key"),
-        ("$.poll_results_data.poll_results_s3_bucket", True, "poll_results_s3_bucket"),
+        (
+            "$.poll_results_data.poll_results_s3_key",
+            True,
+            "poll_results_s3_key",
+        ),
+        (
+            "$.poll_results_data.poll_results_s3_bucket",
+            True,
+            "poll_results_s3_bucket",
+        ),
     ]
 
     all_passed = True
@@ -178,4 +207,3 @@ if __name__ == "__main__":
         print("\n❌ Some validations failed. Fix before deploying.")
 
     sys.exit(exit_code)
-

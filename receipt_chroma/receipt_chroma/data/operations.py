@@ -649,9 +649,7 @@ def update_word_labels(
         collection.update(ids=[chromadb_id], metadatas=[updated_metadata])
 
         valid_labels = reconstructed_metadata.get("valid_labels")
-        valid_count = (
-            len(valid_labels.split(",")) - 2 if valid_labels else 0
-        )
+        valid_count = len(valid_labels.split(",")) - 2 if valid_labels else 0
 
         if logger:
             logger.info(

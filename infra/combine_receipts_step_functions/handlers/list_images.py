@@ -91,7 +91,9 @@ def get_image_ids_from_llm_analysis(
                     # Determine which receipts to combine based on option
                     if len(receipt_ids) >= 2:
                         # Generate combinations using shared utility
-                        combinations = generate_receipt_combinations(receipt_ids)
+                        combinations = generate_receipt_combinations(
+                            receipt_ids
+                        )
 
                         # Extract option number from response
                         option_num = None
@@ -143,14 +145,22 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     llm_analysis_s3_key = event.get("llm_analysis_s3_key")
     table_name = os.environ.get("DYNAMODB_TABLE_NAME")
 
-    logger.info("Listing images for combination, execution_id=%s", execution_id)
+    logger.info(
+        "Listing images for combination, execution_id=%s", execution_id
+    )
 
     images = []
 
     # If LLM analysis S3 key is provided, use pre-computed analysis
     if llm_analysis_s3_key:
-        logger.info("Loading images from LLM analysis: s3://%s/%s", batch_bucket, llm_analysis_s3_key)
-        images = get_image_ids_from_llm_analysis(batch_bucket, llm_analysis_s3_key)
+        logger.info(
+            "Loading images from LLM analysis: s3://%s/%s",
+            batch_bucket,
+            llm_analysis_s3_key,
+        )
+        images = get_image_ids_from_llm_analysis(
+            batch_bucket, llm_analysis_s3_key
+        )
     else:
         logger.info("Listing receipts and metadatas to find missing merchants")
         if not table_name:
@@ -166,7 +176,9 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
                 limit=100, last_evaluated_key=last_key
             )
             for r in recs:
-                receipts_by_image.setdefault(r.image_id, set()).add(r.receipt_id)
+                receipts_by_image.setdefault(r.image_id, set()).add(
+                    r.receipt_id
+                )
             if not last_key:
                 break
 

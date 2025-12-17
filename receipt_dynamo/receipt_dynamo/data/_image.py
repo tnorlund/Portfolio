@@ -259,16 +259,16 @@ class _Image(FlattenedStandardMixin):
         receipt_count: Optional[int] = None,
     ) -> Tuple[List[Image], Optional[Dict]]:
         """Lists images from the database by type, optionally filtered by exact receipt count.
-        
+
         Args:
             image_type: The type of images to retrieve
             limit: Maximum number of items to return
             last_evaluated_key: Pagination key from previous query
             receipt_count: If provided, only return images with this exact receipt count
-            
+
         Returns:
             Tuple of (images_list, next_pagination_key)
-            
+
         When receipt_count is provided, returns only images with that exact count.
         When receipt_count is None, returns all images ordered by receipt count (descending).
         """
@@ -288,7 +288,9 @@ class _Image(FlattenedStandardMixin):
             image_type = image_type.value
 
         # Validate receipt_count if provided
-        if receipt_count is not None and (not isinstance(receipt_count, int) or receipt_count < 0):
+        if receipt_count is not None and (
+            not isinstance(receipt_count, int) or receipt_count < 0
+        ):
             raise EntityValidationError(
                 "receipt_count must be a non-negative integer"
             )
@@ -303,7 +305,7 @@ class _Image(FlattenedStandardMixin):
                 expression_attribute_names={"#t": "GSI3PK", "#sk": "GSI3SK"},
                 expression_attribute_values={
                     ":pk": {"S": f"IMAGE#{image_type}"},
-                    ":sk": {"S": f"NUM_RECEIPTS#{receipt_count_str}"}
+                    ":sk": {"S": f"NUM_RECEIPTS#{receipt_count_str}"},
                 },
                 converter_func=item_to_image,
                 limit=limit,
@@ -315,7 +317,9 @@ class _Image(FlattenedStandardMixin):
                 index_name="GSI3",
                 key_condition_expression="#t = :val",
                 expression_attribute_names={"#t": "GSI3PK"},
-                expression_attribute_values={":val": {"S": f"IMAGE#{image_type}"}},
+                expression_attribute_values={
+                    ":val": {"S": f"IMAGE#{image_type}"}
+                },
                 converter_func=item_to_image,
                 limit=limit,
                 last_evaluated_key=last_evaluated_key,

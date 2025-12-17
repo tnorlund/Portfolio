@@ -184,7 +184,9 @@ def test_updatePlacesCache_nonexistent_raises(
     dynamo = DynamoClient(dynamodb_table)
 
     # Act & Assert
-    with pytest.raises(EntityNotFoundError, match="not found during update_places_cache"):
+    with pytest.raises(
+        EntityNotFoundError, match="not found during update_places_cache"
+    ):
         dynamo.update_places_cache(sample_places_cache)
 
 
@@ -218,7 +220,9 @@ def test_deletePlacesCache_nonexistent_raises(
     dynamo = DynamoClient(dynamodb_table)
 
     # Act & Assert
-    with pytest.raises(EntityNotFoundError, match="not found during delete_places_cache"):
+    with pytest.raises(
+        EntityNotFoundError, match="not found during delete_places_cache"
+    ):
         dynamo.delete_places_cache(sample_places_cache)
 
 

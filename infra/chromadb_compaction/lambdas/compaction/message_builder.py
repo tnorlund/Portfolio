@@ -15,7 +15,7 @@ def process_sqs_messages(
     metrics: Any = None,
     OBSERVABILITY_AVAILABLE: bool = False,
     process_stream_messages_func: Any = None,
-    process_delta_messages_func: Any = None
+    process_delta_messages_func: Any = None,
 ) -> Dict[str, Any]:
     """Process SQS messages from the compaction queue.
 
@@ -25,7 +25,11 @@ def process_sqs_messages(
 
     Returns partial batch failure response for unprocessed delta messages.
     """
-    logger.info("Processing SQS messages", message_count=len(records), batch_size=len(records))
+    logger.info(
+        "Processing SQS messages",
+        message_count=len(records),
+        batch_size=len(records),
+    )
 
     stream_messages = []
     delta_message_records = []  # Store full records for delta messages
@@ -199,7 +203,7 @@ def process_sqs_messages(
 
 
 def categorize_stream_messages(
-    stream_messages: List[StreamMessage]
+    stream_messages: List[StreamMessage],
 ) -> Tuple[List[StreamMessage], List[StreamMessage], List[StreamMessage]]:
     """Categorize stream messages by entity type.
 
@@ -222,7 +226,7 @@ def categorize_stream_messages(
 
 
 def group_messages_by_collection(
-    stream_messages: List[StreamMessage]
+    stream_messages: List[StreamMessage],
 ) -> Dict[ChromaDBCollection, List[StreamMessage]]:
     """Group stream messages by collection for batch processing."""
     messages_by_collection: Dict[ChromaDBCollection, List[StreamMessage]] = {}

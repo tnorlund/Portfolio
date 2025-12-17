@@ -128,4 +128,3 @@ def create_layoutlm_inference_lambda(
     pulumi.export(f"{ROUTE_NAME}_lambda_name", layoutlm_inference_lambda.name)
 
     return layoutlm_inference_lambda
-

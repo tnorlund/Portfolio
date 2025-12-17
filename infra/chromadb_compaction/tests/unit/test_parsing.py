@@ -206,19 +206,18 @@ class TestCompactionRunParsing:
         # Valid compaction run
         assert _is_compaction_run(
             "IMAGE#7e2bd911-7afb-4e0a-84de-57f51ce4daff",
-            "RECEIPT#00001#COMPACTION_RUN#test-run-123"
+            "RECEIPT#00001#COMPACTION_RUN#test-run-123",
         )
 
         # Not a compaction run (metadata)
         assert not _is_compaction_run(
             "IMAGE#7e2bd911-7afb-4e0a-84de-57f51ce4daff",
-            "RECEIPT#00001#METADATA"
+            "RECEIPT#00001#METADATA",
         )
 
         # Not an IMAGE PK
         assert not _is_compaction_run(
-            "BATCH#12345",
-            "RECEIPT#00001#COMPACTION_RUN#test-run-123"
+            "BATCH#12345", "RECEIPT#00001#COMPACTION_RUN#test-run-123"
         )
 
     def test_parse_compaction_run(self):
@@ -238,7 +237,9 @@ class TestCompactionRunParsing:
 
         new_image = compaction_run.to_item()
         pk = "IMAGE#7e2bd911-7afb-4e0a-84de-57f51ce4daff"
-        sk = "RECEIPT#00001#COMPACTION_RUN#550e8400-e29b-41d4-a716-446655440001"
+        sk = (
+            "RECEIPT#00001#COMPACTION_RUN#550e8400-e29b-41d4-a716-446655440001"
+        )
 
         parsed = _parse_compaction_run(new_image, pk, sk)
 
@@ -271,10 +272,10 @@ class TestCompactionRunParsing:
             "dynamodb": {
                 "Keys": compaction_run.key,
                 "NewImage": compaction_run.to_item(),
-            }
+            },
         }
 
-        # parse_stream_record CAN parse COMPACTION_RUN 
+        # parse_stream_record CAN parse COMPACTION_RUN
         # (though lambda_handler uses a fast-path for INSERT events)
         result = parse_stream_record(record)
         assert result is not None
@@ -284,4 +285,3 @@ class TestCompactionRunParsing:
 
 if __name__ == "__main__":
     pytest.main([__file__])
-

@@ -1,4 +1,5 @@
 """Unit tests for the Letter entity."""
+
 # pylint: disable=redefined-outer-name,too-many-statements,too-many-arguments
 # pylint: disable=too-many-locals,unused-argument,line-too-long,too-many-lines
 # pylint: disable=comparison-with-itself,consider-using-dict-items

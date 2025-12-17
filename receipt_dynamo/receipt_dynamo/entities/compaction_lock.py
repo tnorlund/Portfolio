@@ -95,7 +95,7 @@ class CompactionLock(DynamoDBEntity):
 
     @property
     def gsi1_key(self) -> Dict[str, Any]:
-        # Enables "list all active locks by collection and expiry" 
+        # Enables "list all active locks by collection and expiry"
         # admin queries
         expires_str = (
             self.expires

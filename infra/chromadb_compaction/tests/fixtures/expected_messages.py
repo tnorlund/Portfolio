@@ -77,7 +77,10 @@ REQUIRED_MESSAGE_ATTRIBUTES = {
     "source": {"StringValue": "dynamodb_stream", "DataType": "String"},
     "entity_type": {"StringValue": str, "DataType": "String"},
     "event_name": {"StringValue": str, "DataType": "String"},
-    "collection": {"StringValue": str, "DataType": "String"},  # "lines" or "words"
+    "collection": {
+        "StringValue": str,
+        "DataType": "String",
+    },  # "lines" or "words"
 }
 
 # Collection targeting rules
@@ -86,4 +89,3 @@ COLLECTION_TARGETING_RULES = {
     "RECEIPT_WORD_LABEL": ["words"],  # Only affects words
     "COMPACTION_RUN": ["lines", "words"],  # Separate message per collection
 }
-

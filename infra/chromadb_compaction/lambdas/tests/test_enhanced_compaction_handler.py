@@ -46,7 +46,9 @@ def sample_sqs_event():
         "Records": [
             {
                 "messageId": "msg-1",
-                "body": '{"entity_type": "RECEIPT_METADATA", "entity_data": {"image_id": "' + str(uuid4()) + '", "receipt_id": 1}, "changes": {}, "event_name": "MODIFY", "collections": ["lines"], "timestamp": "2025-01-01T00:00:00Z", "stream_record_id": "record-1", "aws_region": "us-east-1"}',
+                "body": '{"entity_type": "RECEIPT_METADATA", "entity_data": {"image_id": "'
+                + str(uuid4())
+                + '", "receipt_id": 1}, "changes": {}, "event_name": "MODIFY", "collections": ["lines"], "timestamp": "2025-01-01T00:00:00Z", "stream_record_id": "record-1", "aws_region": "us-east-1"}',
             }
         ]
     }
@@ -155,7 +157,9 @@ class TestProcessCollection:
         mock_upload.assert_called_once()
 
         # Verify temp directory cleanup
-        mock_rmtree.assert_called_once_with("/tmp/chroma-test", ignore_errors=True)
+        mock_rmtree.assert_called_once_with(
+            "/tmp/chroma-test", ignore_errors=True
+        )
 
     @patch("enhanced_compaction_handler.LockManager")
     @patch("enhanced_compaction_handler.download_chroma_snapshot")
@@ -179,7 +183,10 @@ class TestProcessCollection:
 
         # Setup mocks
         mock_mkdtemp.return_value = "/tmp/chroma-test"
-        mock_download.return_value = {"status": "error", "error": "Download failed"}
+        mock_download.return_value = {
+            "status": "error",
+            "error": "Download failed",
+        }
 
         # Call function
         result = process_collection(
@@ -190,16 +197,22 @@ class TestProcessCollection:
         )
 
         # Verify error handling
-        assert result["failed_message_ids"] == [sample_stream_message.stream_record_id]
+        assert result["failed_message_ids"] == [
+            sample_stream_message.stream_record_id
+        ]
 
         # Verify logger was called
         mock_logger.error.assert_called()
 
         # Verify metrics counter
-        mock_metrics.count.assert_called_with("CompactionSnapshotDownloadError", 1)
+        mock_metrics.count.assert_called_with(
+            "CompactionSnapshotDownloadError", 1
+        )
 
         # Verify temp directory cleanup
-        mock_rmtree.assert_called_once_with("/tmp/chroma-test", ignore_errors=True)
+        mock_rmtree.assert_called_once_with(
+            "/tmp/chroma-test", ignore_errors=True
+        )
 
     @patch("enhanced_compaction_handler.LockManager")
     @patch("enhanced_compaction_handler.DynamoClient")
@@ -239,7 +252,10 @@ class TestProcessCollection:
         mock_result.label_updates = []
         mock_process_updates.return_value = mock_result
 
-        mock_upload.return_value = {"status": "error", "error": "Upload failed"}
+        mock_upload.return_value = {
+            "status": "error",
+            "error": "Upload failed",
+        }
 
         mock_client = MagicMock()
         mock_chroma_client.return_value = mock_client
@@ -253,16 +269,22 @@ class TestProcessCollection:
         )
 
         # Verify error handling
-        assert result["failed_message_ids"] == [sample_stream_message.stream_record_id]
+        assert result["failed_message_ids"] == [
+            sample_stream_message.stream_record_id
+        ]
 
         # Verify logger was called
         mock_logger.error.assert_called()
 
         # Verify metrics counter
-        mock_metrics.count.assert_called_with("CompactionSnapshotUploadError", 1)
+        mock_metrics.count.assert_called_with(
+            "CompactionSnapshotUploadError", 1
+        )
 
         # Verify temp directory cleanup
-        mock_rmtree.assert_called_once_with("/tmp/chroma-test", ignore_errors=True)
+        mock_rmtree.assert_called_once_with(
+            "/tmp/chroma-test", ignore_errors=True
+        )
 
     @patch("enhanced_compaction_handler.LockManager")
     @patch("enhanced_compaction_handler.DynamoClient")
@@ -341,7 +363,9 @@ class TestProcessCollection:
         assert "msg-1" in result["failed_message_ids"]
 
         # Verify temp directory cleanup
-        mock_rmtree.assert_called_once_with("/tmp/chroma-test", ignore_errors=True)
+        mock_rmtree.assert_called_once_with(
+            "/tmp/chroma-test", ignore_errors=True
+        )
 
 
 class TestProcessSQSMessages:
@@ -552,7 +576,9 @@ class TestLambdaHandler:
         # Mock context
         mock_context = MagicMock()
         mock_context.function_name = "test-function"
-        mock_context.invoked_function_arn = "arn:aws:lambda:us-east-1:123456789012:function:test-function"
+        mock_context.invoked_function_arn = (
+            "arn:aws:lambda:us-east-1:123456789012:function:test-function"
+        )
         mock_context.aws_request_id = "test-request-id"
 
         # Call handler

@@ -23,9 +23,11 @@ def trace_function(operation_name=None, collection=None):
     """Alias for trace_chromadb_operation."""
     return trace_chromadb_operation(operation_name or "compaction")
 
+
 def trace_compaction_operation(operation_name=None):
     """Alias for trace_chromadb_operation."""
     return trace_chromadb_operation(operation_name or "compaction")
+
 
 __all__ = [
     "format_response",

@@ -325,8 +325,6 @@ def test_receipt_gsi2_key_generation(example_receipt):
     }
 
 
-
-
 @pytest.mark.unit
 def test_receipt_to_item(example_receipt):
     """Test converting a Receipt to a DynamoDB item."""

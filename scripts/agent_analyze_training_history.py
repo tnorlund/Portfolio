@@ -15,7 +15,9 @@ from typing import Any, Dict, List
 from receipt_dynamo import DynamoClient
 
 
-def analyze_training_history(table_name: str, output_file: str = None) -> Dict[str, Any]:
+def analyze_training_history(
+    table_name: str, output_file: str = None
+) -> Dict[str, Any]:
     """Analyze all training jobs and output JSON for agent.
 
     Args:
@@ -51,23 +53,21 @@ def analyze_training_history(table_name: str, output_file: str = None) -> Dict[s
             "allowed_labels": config.get("allowed_labels"),
         }
 
-        history.append({
-            "job_id": job.job_id,
-            "job_name": job.name,
-            "created_at": job.created_at,
-            "config": hyperparams,
-            "best_f1": best_metric.value,
-            "best_epoch": best_metric.epoch,
-            "total_epochs": len(epoch_metrics),
-            "epochs": [
-                {
-                    "epoch": m.epoch,
-                    "f1": m.value,
-                    "timestamp": m.timestamp
-                }
-                for m in epoch_metrics
-            ]
-        })
+        history.append(
+            {
+                "job_id": job.job_id,
+                "job_name": job.name,
+                "created_at": job.created_at,
+                "config": hyperparams,
+                "best_f1": best_metric.value,
+                "best_epoch": best_metric.epoch,
+                "total_epochs": len(epoch_metrics),
+                "epochs": [
+                    {"epoch": m.epoch, "f1": m.value, "timestamp": m.timestamp}
+                    for m in epoch_metrics
+                ],
+            }
+        )
 
     # Sort by best F1 descending
     history.sort(key=lambda x: x["best_f1"], reverse=True)
@@ -90,7 +90,7 @@ def analyze_training_history(table_name: str, output_file: str = None) -> Dict[s
             batch: {
                 "avg_f1": sum(f1s) / len(f1s),
                 "max_f1": max(f1s),
-                "count": len(f1s)
+                "count": len(f1s),
             }
             for batch, f1s in batch_size_groups.items()
         }
@@ -105,11 +105,11 @@ def analyze_training_history(table_name: str, output_file: str = None) -> Dict[s
         "best_run_job_id": best_run["job_id"] if best_run else None,
         "average_f1": avg_f1,
         "batch_size_analysis": batch_size_stats,
-        "runs": history
+        "runs": history,
     }
 
     if output_file:
-        with open(output_file, 'w') as f:
+        with open(output_file, "w") as f:
             json.dump(output, f, indent=2)
         print(f"✅ Training history saved to {output_file}")
     else:
@@ -122,4 +122,3 @@ if __name__ == "__main__":
     table_name = sys.argv[1] if len(sys.argv) > 1 else "ReceiptsTable-dc5be22"
     output_file = sys.argv[2] if len(sys.argv) > 2 else None
     analyze_training_history(table_name, output_file)
-

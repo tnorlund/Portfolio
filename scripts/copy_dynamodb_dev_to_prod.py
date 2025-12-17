@@ -91,7 +91,9 @@ def convert_datetime_strings(obj: Any) -> Any:
                 value.endswith("Z") or "T" in value and len(value) > 10
             ):
                 try:
-                    result[key] = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                    result[key] = datetime.fromisoformat(
+                        value.replace("Z", "+00:00")
+                    )
                 except (ValueError, AttributeError):
                     result[key] = value
             else:
@@ -126,11 +128,17 @@ def update_bucket_names(
     updated = item.copy()
 
     # Update raw_s3_bucket
-    if "raw_s3_bucket" in updated and updated["raw_s3_bucket"] == dev_raw_bucket:
+    if (
+        "raw_s3_bucket" in updated
+        and updated["raw_s3_bucket"] == dev_raw_bucket
+    ):
         updated["raw_s3_bucket"] = prod_raw_bucket
 
     # Update cdn_s3_bucket
-    if "cdn_s3_bucket" in updated and updated["cdn_s3_bucket"] == dev_cdn_bucket:
+    if (
+        "cdn_s3_bucket" in updated
+        and updated["cdn_s3_bucket"] == dev_cdn_bucket
+    ):
         updated["cdn_s3_bucket"] = prod_cdn_bucket
 
     return updated
@@ -151,8 +159,6 @@ def image_exists_in_prod(prod_client: DynamoClient, image_id: str) -> bool:
         return len(details.images) > 0
     except Exception:
         return False
-
-
 
 
 def copy_image_entities(
@@ -191,7 +197,11 @@ def copy_image_entities(
             images = [
                 Image(
                     **update_bucket_names(
-                        img, dev_raw_bucket, prod_raw_bucket, dev_cdn_bucket, prod_cdn_bucket
+                        img,
+                        dev_raw_bucket,
+                        prod_raw_bucket,
+                        dev_cdn_bucket,
+                        prod_cdn_bucket,
                     )
                 )
                 for img in export_data["images"]
@@ -205,7 +215,11 @@ def copy_image_entities(
             receipts = [
                 Receipt(
                     **update_bucket_names(
-                        r, dev_raw_bucket, prod_raw_bucket, dev_cdn_bucket, prod_cdn_bucket
+                        r,
+                        dev_raw_bucket,
+                        prod_raw_bucket,
+                        dev_cdn_bucket,
+                        prod_cdn_bucket,
                     )
                 )
                 for r in export_data["receipts"]
@@ -258,7 +272,8 @@ def copy_image_entities(
         # Process ReceiptLetters
         if export_data.get("receipt_letters"):
             receipt_letters = [
-                ReceiptLetter(**letter) for letter in export_data["receipt_letters"]
+                ReceiptLetter(**letter)
+                for letter in export_data["receipt_letters"]
             ]
             if not dry_run:
                 prod_client.add_receipt_letters(receipt_letters)
@@ -340,7 +355,9 @@ def copy_all_images(
         "errors": [],
     }
 
-    def process_one_file(export_file: Path) -> tuple[str, Dict[str, Any], Optional[str]]:
+    def process_one_file(
+        export_file: Path,
+    ) -> tuple[str, Dict[str, Any], Optional[str]]:
         """Process a single export file. Returns (image_id, stats, error)."""
         try:
             # Load export data
@@ -459,7 +476,9 @@ def main():
     mode = "DRY RUN" if args.dry_run else "LIVE COPY"
     logger.info(f"Mode: {mode}")
     if args.dry_run:
-        logger.info("No records will be copied. Use --no-dry-run to actually copy.")
+        logger.info(
+            "No records will be copied. Use --no-dry-run to actually copy."
+        )
 
     try:
         # Get configurations
@@ -492,7 +511,9 @@ def main():
         logger.info("COPY SUMMARY")
         logger.info("=" * 60)
         logger.info(f"Total images in export: {stats['total_images']}")
-        logger.info(f"{'Would copy' if args.dry_run else 'Copied'}: {stats['copied']}")
+        logger.info(
+            f"{'Would copy' if args.dry_run else 'Copied'}: {stats['copied']}"
+        )
         logger.info(f"Skipped (already exist): {stats['skipped']}")
         logger.info(f"Failed: {stats['failed']}")
 
@@ -506,10 +527,14 @@ def main():
             for error in stats["errors"][:10]:
                 logger.warning(f"  - {error}")
             if len(stats["errors"]) > 10:
-                logger.warning(f"  ... and {len(stats['errors']) - 10} more errors")
+                logger.warning(
+                    f"  ... and {len(stats['errors']) - 10} more errors"
+                )
 
         if args.dry_run:
-            logger.info("\n✅ Dry run completed. Use --no-dry-run to actually copy.")
+            logger.info(
+                "\n✅ Dry run completed. Use --no-dry-run to actually copy."
+            )
         else:
             if stats["failed"] > 0:
                 logger.error("\n❌ Copy completed with errors")
@@ -524,4 +549,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

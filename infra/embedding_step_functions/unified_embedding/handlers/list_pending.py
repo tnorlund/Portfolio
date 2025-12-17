@@ -109,7 +109,9 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Step Functions has a 256KB limit, so we'll use S3 if batches > 100KB
         import json
 
-        batches_payload = json.dumps([batch.__dict__ for batch in pending_batches])
+        batches_payload = json.dumps(
+            [batch.__dict__ for batch in pending_batches]
+        )
         batches_size = len(batches_payload.encode("utf-8"))
         use_s3 = batches_size > 100 * 1024  # 100KB threshold
 
@@ -127,7 +129,9 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
             bucket = os.environ.get("CHROMADB_BUCKET")
             if not bucket:
-                raise ValueError("CHROMADB_BUCKET environment variable not set")
+                raise ValueError(
+                    "CHROMADB_BUCKET environment variable not set"
+                )
 
             manifest_s3_key = f"manifests/{execution_id}/batches.json"
 
@@ -212,7 +216,5 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         raise RuntimeError(f"Data format error: {str(e)}") from e
 
     except Exception as e:
-        logger.error(
-            "Unexpected error listing pending batches", error=str(e)
-        )
+        logger.error("Unexpected error listing pending batches", error=str(e))
         raise RuntimeError(f"Internal error: {str(e)}") from e

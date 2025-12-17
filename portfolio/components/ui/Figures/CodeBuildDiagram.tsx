@@ -80,22 +80,24 @@ const CodeBuildDiagram: React.FC<CodeBuildDiagramProps> = ({ chars }) => {
     Array.from({ length: 5 }, () => React.createRef<SVGPathElement>());
 
   // Vertical layout refs (mobile)
-  const PATH_REFS_VERT = React.useMemo(() => {
-    return {
-      PulumiToS3: makeRefs(),
-      S3ToPipeline: makeRefs(),
-      PipelineToLambda: makeRefs(),
-    };
-  }, []);
+  const PATH_REFS_VERT = React.useMemo(
+    () => ({
+      PulumiToS3: makeRefs() as React.RefObject<SVGPathElement>[],
+      S3ToPipeline: makeRefs() as React.RefObject<SVGPathElement>[],
+      PipelineToLambda: makeRefs() as React.RefObject<SVGPathElement>[],
+    }),
+    [],
+  );
 
   // Horizontal layout refs (desktop)
-  const PATH_REFS_HORIZ = React.useMemo(() => {
-    return {
-      PulumiToS3: makeRefs(),
-      S3ToPipeline: makeRefs(),
-      PipelineToLambda: makeRefs(),
-    };
-  }, []);
+  const PATH_REFS_HORIZ = React.useMemo(
+    () => ({
+      PulumiToS3: makeRefs() as React.RefObject<SVGPathElement>[],
+      S3ToPipeline: makeRefs() as React.RefObject<SVGPathElement>[],
+      PipelineToLambda: makeRefs() as React.RefObject<SVGPathElement>[],
+    }),
+    [],
+  );
 
   // Type helper for path refs
   type PathRefs = typeof PATH_REFS_VERT;

@@ -27,11 +27,16 @@ class TestMerchantResolvingEmbeddingProcessor:
     @pytest.fixture
     def mock_dynamo_client(self):
         """Create mock DynamoDB client."""
-        with patch("receipt_upload.merchant_resolution.embedding_processor.DynamoClient") as MockDynamo:
+        with patch(
+            "receipt_upload.merchant_resolution.embedding_processor.DynamoClient"
+        ) as MockDynamo:
             client = MagicMock()
             client.list_receipt_lines_from_receipt.return_value = []
             client.list_receipt_words_from_receipt.return_value = []
-            client.list_receipt_word_labels_for_receipt.return_value = ([], None)
+            client.list_receipt_word_labels_for_receipt.return_value = (
+                [],
+                None,
+            )
             client.get_receipt_metadata.return_value = None
             MockDynamo.return_value = client
             yield client
@@ -39,7 +44,9 @@ class TestMerchantResolvingEmbeddingProcessor:
     @pytest.fixture
     def mock_s3_client(self):
         """Create mock S3 client."""
-        with patch("receipt_upload.merchant_resolution.embedding_processor.boto3") as MockBoto:
+        with patch(
+            "receipt_upload.merchant_resolution.embedding_processor.boto3"
+        ) as MockBoto:
             s3 = MagicMock()
             MockBoto.client.return_value = s3
             yield s3
@@ -353,7 +360,9 @@ class TestMerchantResolvingEmbeddingProcessorEnrichment:
     @pytest.fixture
     def mock_dynamo_client(self):
         """Create mock DynamoDB client."""
-        with patch("receipt_upload.merchant_resolution.embedding_processor.DynamoClient") as MockDynamo:
+        with patch(
+            "receipt_upload.merchant_resolution.embedding_processor.DynamoClient"
+        ) as MockDynamo:
             client = MagicMock()
             MockDynamo.return_value = client
             yield client
@@ -361,7 +370,9 @@ class TestMerchantResolvingEmbeddingProcessorEnrichment:
     @pytest.fixture
     def mock_s3_client(self):
         """Create mock S3 client."""
-        with patch("receipt_upload.merchant_resolution.embedding_processor.boto3") as MockBoto:
+        with patch(
+            "receipt_upload.merchant_resolution.embedding_processor.boto3"
+        ) as MockBoto:
             s3 = MagicMock()
             MockBoto.client.return_value = s3
             yield s3
@@ -376,7 +387,9 @@ class TestMerchantResolvingEmbeddingProcessorEnrichment:
         mock_metadata.place_id = None
         mock_dynamo_client.get_receipt_metadata.return_value = mock_metadata
 
-        with patch("receipt_upload.merchant_resolution.embedding_processor.boto3"):
+        with patch(
+            "receipt_upload.merchant_resolution.embedding_processor.boto3"
+        ):
             processor = MerchantResolvingEmbeddingProcessor(
                 table_name="test-table",
                 chromadb_bucket="test-bucket",
@@ -412,7 +425,9 @@ class TestMerchantResolvingEmbeddingProcessorEnrichment:
         mock_metadata.place_id = None
         mock_dynamo_client.get_receipt_metadata.return_value = mock_metadata
 
-        with patch("receipt_upload.merchant_resolution.embedding_processor.boto3"):
+        with patch(
+            "receipt_upload.merchant_resolution.embedding_processor.boto3"
+        ):
             processor = MerchantResolvingEmbeddingProcessor(
                 table_name="test-table",
                 chromadb_bucket="test-bucket",
@@ -444,7 +459,9 @@ class TestMerchantResolvingEmbeddingProcessorEnrichment:
         """Test handling when no existing metadata found."""
         mock_dynamo_client.get_receipt_metadata.return_value = None
 
-        with patch("receipt_upload.merchant_resolution.embedding_processor.boto3"):
+        with patch(
+            "receipt_upload.merchant_resolution.embedding_processor.boto3"
+        ):
             processor = MerchantResolvingEmbeddingProcessor(
                 table_name="test-table",
                 chromadb_bucket="test-bucket",
@@ -471,12 +488,14 @@ class TestMerchantResolvingEmbeddingProcessorInit:
 
     def test_init_with_places_client(self):
         """Test initialization with Places API key."""
-        with patch("receipt_upload.merchant_resolution.embedding_processor.DynamoClient"):
-            with patch("receipt_upload.merchant_resolution.embedding_processor.boto3"):
+        with patch(
+            "receipt_upload.merchant_resolution.embedding_processor.DynamoClient"
+        ):
+            with patch(
+                "receipt_upload.merchant_resolution.embedding_processor.boto3"
+            ):
                 # Patch the actual import location for PlacesClient
-                with patch(
-                    "receipt_places.PlacesClient"
-                ) as MockPlaces:
+                with patch("receipt_places.PlacesClient") as MockPlaces:
                     mock_places = MagicMock()
                     MockPlaces.return_value = mock_places
 
@@ -491,8 +510,12 @@ class TestMerchantResolvingEmbeddingProcessorInit:
 
     def test_init_without_places_client(self):
         """Test initialization without Places API key."""
-        with patch("receipt_upload.merchant_resolution.embedding_processor.DynamoClient"):
-            with patch("receipt_upload.merchant_resolution.embedding_processor.boto3"):
+        with patch(
+            "receipt_upload.merchant_resolution.embedding_processor.DynamoClient"
+        ):
+            with patch(
+                "receipt_upload.merchant_resolution.embedding_processor.boto3"
+            ):
                 processor = MerchantResolvingEmbeddingProcessor(
                     table_name="test-table",
                     chromadb_bucket="test-bucket",
@@ -508,8 +531,12 @@ class TestMerchantResolvingEmbeddingProcessorInit:
         monkeypatch.delenv("CHROMADB_LINES_QUEUE_URL", raising=False)
         monkeypatch.delenv("CHROMADB_WORDS_QUEUE_URL", raising=False)
 
-        with patch("receipt_upload.merchant_resolution.embedding_processor.DynamoClient"):
-            with patch("receipt_upload.merchant_resolution.embedding_processor.boto3"):
+        with patch(
+            "receipt_upload.merchant_resolution.embedding_processor.DynamoClient"
+        ):
+            with patch(
+                "receipt_upload.merchant_resolution.embedding_processor.boto3"
+            ):
                 MerchantResolvingEmbeddingProcessor(
                     table_name="test-table",
                     chromadb_bucket="test-bucket",

@@ -22,53 +22,61 @@ from botocore.exceptions import ClientError
 
 class UploadEFSSnapshotManager:
     """Manages ChromaDB snapshots using EFS for read-only access."""
-    
+
     def __init__(self, collection: str, logger: Any):
         """
         Initialize EFS snapshot manager for upload lambda.
-        
+
         Args:
             collection: Collection name (lines/words)
             logger: Logger instance
         """
         self.collection = collection
         self.logger = logger
-        
+
         # EFS mount path (from Lambda environment)
         self.efs_root = os.environ.get("CHROMA_ROOT", "/tmp/chroma")
-        self.efs_snapshots_dir = os.path.join(self.efs_root, "snapshots", collection)
-        
+        self.efs_snapshots_dir = os.path.join(
+            self.efs_root, "snapshots", collection
+        )
+
         # S3 configuration
         self.bucket = os.environ["CHROMADB_BUCKET"]
         self.s3_client = boto3.client("s3")
-        
+
         # Version tracking file
         self.version_file = os.path.join(self.efs_snapshots_dir, ".version")
-        
+
         # Debug EFS access with detailed logging
         self.logger.info(f"Initializing EFS snapshot manager for {collection}")
         self.logger.info(f"EFS root path: {self.efs_root}")
         self.logger.info(f"EFS snapshots dir: {self.efs_snapshots_dir}")
-        
+
         # Test EFS access
         try:
             # Check if EFS mount point exists
-            self.logger.info(f"Checking if EFS mount point exists: {self.efs_root}")
+            self.logger.info(
+                f"Checking if EFS mount point exists: {self.efs_root}"
+            )
             if os.path.exists(self.efs_root):
                 self.logger.info(f"EFS mount point exists: {self.efs_root}")
-                
+
                 # Try to list directory
                 try:
                     contents = os.listdir(self.efs_root)
-                    self.logger.info(f"EFS root directory contents: {contents}")
+                    self.logger.info(
+                        f"EFS root directory contents: {contents}"
+                    )
                 except Exception as e:
-                    self.logger.error(f"Failed to list EFS root directory: {e}")
+                    self.logger.error(
+                        f"Failed to list EFS root directory: {e}"
+                    )
                     raise
-                
+
                 # Try to create test file
                 try:
                     test_file = os.path.join(self.efs_root, ".test_write")
-                    with open(test_file, 'w') as f:
+                    with open(test_file, "w") as f:
                         f.write("test")
                     os.remove(test_file)
                     self.logger.info("EFS write test successful")
@@ -76,53 +84,58 @@ class UploadEFSSnapshotManager:
                     self.logger.error(f"EFS write test failed: {e}")
                     raise
             else:
-                self.logger.error(f"EFS mount point does not exist: {self.efs_root}")
-            
+                self.logger.error(
+                    f"EFS mount point does not exist: {self.efs_root}"
+                )
+
             # Ensure EFS directories exist
-            self.logger.info(f"Creating EFS snapshots directory: {self.efs_snapshots_dir}")
+            self.logger.info(
+                f"Creating EFS snapshots directory: {self.efs_snapshots_dir}"
+            )
             os.makedirs(self.efs_snapshots_dir, exist_ok=True)
             self.logger.info(f"EFS snapshots directory created/verified")
-            
+
         except Exception as e:
             self.logger.error(f"Failed to initialize EFS access: {e}")
             raise
-    
+
     def get_current_efs_version(self) -> Optional[str]:
         """Get the current snapshot version stored on EFS."""
         try:
             if os.path.exists(self.version_file):
-                with open(self.version_file, 'r') as f:
+                with open(self.version_file, "r") as f:
                     return f.read().strip()
         except Exception as e:
             self.logger.warning(f"Failed to read EFS version file: {e}")
         return None
-    
+
     def get_latest_s3_version(self) -> Optional[str]:
         """Get the latest snapshot version from S3."""
         try:
             pointer_key = f"{self.collection}/snapshot/latest-pointer.txt"
             response = self.s3_client.get_object(
-                Bucket=self.bucket, 
-                Key=pointer_key
+                Bucket=self.bucket, Key=pointer_key
             )
             return response["Body"].read().decode().strip()
         except ClientError as e:
-            if e.response['Error']['Code'] == 'NoSuchKey':
-                self.logger.warning(f"No latest-pointer.txt found for {self.collection}")
+            if e.response["Error"]["Code"] == "NoSuchKey":
+                self.logger.warning(
+                    f"No latest-pointer.txt found for {self.collection}"
+                )
                 return None
             raise
         except Exception as e:
             self.logger.error(f"Failed to get latest S3 version: {e}")
             return None
-    
+
     def ensure_snapshot_on_efs(self, version: str) -> Dict[str, Any]:
         """
         Ensure the specified snapshot version is available on EFS.
         Downloads from S3 if not present.
-        
+
         Args:
             version: Snapshot version to ensure
-            
+
         Returns:
             Dict with snapshot info: {
                 "efs_path": str,
@@ -131,117 +144,121 @@ class UploadEFSSnapshotManager:
             }
         """
         efs_snapshot_path = os.path.join(self.efs_snapshots_dir, version)
-        
+
         # Check if snapshot already exists on EFS
-        if os.path.exists(efs_snapshot_path) and os.path.isdir(efs_snapshot_path):
+        if os.path.exists(efs_snapshot_path) and os.path.isdir(
+            efs_snapshot_path
+        ):
             self.logger.info(
                 f"Snapshot {version} already exists on EFS",
                 collection=self.collection,
-                efs_path=efs_snapshot_path
+                efs_path=efs_snapshot_path,
             )
             return {
                 "efs_path": efs_snapshot_path,
                 "version": version,
-                "source": "efs"
+                "source": "efs",
             }
-        
+
         # Download from S3 to EFS
         self.logger.info(
             f"Downloading snapshot {version} from S3 to EFS",
             collection=self.collection,
-            efs_path=efs_snapshot_path
+            efs_path=efs_snapshot_path,
         )
-        
+
         download_start_time = time.time()
-        
+
         # Create EFS directory
         os.makedirs(efs_snapshot_path, exist_ok=True)
-        
+
         # Download snapshot files from S3
         prefix = f"{self.collection}/snapshot/timestamped/{version}/"
-        
+
         paginator = self.s3_client.get_paginator("list_objects_v2")
         pages = paginator.paginate(Bucket=self.bucket, Prefix=prefix)
-        
+
         downloaded_files = 0
         for page in pages:
             if "Contents" not in page:
                 continue
-            
+
             for obj in page["Contents"]:
                 key = obj["Key"]
                 # Skip the .snapshot_hash file
                 if key.endswith(".snapshot_hash"):
                     continue
-                
+
                 # Get the relative path within the snapshot
-                relative_path = key[len(prefix):]
+                relative_path = key[len(prefix) :]
                 if not relative_path:
                     continue
-                
+
                 # Create local directory structure
                 local_path = Path(efs_snapshot_path) / relative_path
                 local_path.parent.mkdir(parents=True, exist_ok=True)
-                
+
                 # Download the file
-                self.s3_client.download_file(
-                    self.bucket, key, str(local_path)
-                )
+                self.s3_client.download_file(self.bucket, key, str(local_path))
                 downloaded_files += 1
-        
+
         download_time_ms = (time.time() - download_start_time) * 1000
-        
+
         # Update version file
-        with open(self.version_file, 'w') as f:
+        with open(self.version_file, "w") as f:
             f.write(version)
-        
+
         self.logger.info(
             f"Downloaded {downloaded_files} files to EFS",
             collection=self.collection,
             version=version,
             efs_path=efs_snapshot_path,
-            download_time_ms=download_time_ms
+            download_time_ms=download_time_ms,
         )
-        
+
         return {
             "efs_path": efs_snapshot_path,
             "version": version,
             "source": "s3_download",
             "download_time_ms": download_time_ms,
-            "files_count": downloaded_files
+            "files_count": downloaded_files,
         }
-    
+
     def copy_to_local(self, efs_snapshot_path: str) -> str:
         """
         Copy snapshot from EFS to local storage for ChromaDB operations.
-        
+
         Args:
             efs_snapshot_path: Path to snapshot on EFS
-            
+
         Returns:
             Path to local copy of snapshot
         """
-        local_snapshot_path = tempfile.mkdtemp(prefix=f"chroma_local_{self.collection}_")
-        
+        local_snapshot_path = tempfile.mkdtemp(
+            prefix=f"chroma_local_{self.collection}_"
+        )
+
         copy_start_time = time.time()
-        shutil.copytree(efs_snapshot_path, local_snapshot_path, dirs_exist_ok=True)
+        shutil.copytree(
+            efs_snapshot_path, local_snapshot_path, dirs_exist_ok=True
+        )
         copy_time_ms = (time.time() - copy_start_time) * 1000
-        
+
         self.logger.info(
             f"Copied snapshot from EFS to local",
             collection=self.collection,
             efs_path=efs_snapshot_path,
             local_path=local_snapshot_path,
-            copy_time_ms=copy_time_ms
+            copy_time_ms=copy_time_ms,
         )
-        
+
         return local_snapshot_path
-    
+
     def get_snapshot_for_chromadb(self) -> Optional[Dict[str, Any]]:
         """
         Get a snapshot ready for ChromaDB operations.
         Returns local path for optimal ChromaDB performance.
-        
+
         Returns:
             Dict with snapshot info: {
                 "local_path": str,
@@ -253,18 +270,20 @@ class UploadEFSSnapshotManager:
         # Get latest version from S3
         latest_version = self.get_latest_s3_version()
         if not latest_version:
-            self.logger.warning(f"No latest version found for {self.collection}")
+            self.logger.warning(
+                f"No latest version found for {self.collection}"
+            )
             return None
-        
+
         # Ensure snapshot is on EFS
         snapshot_info = self.ensure_snapshot_on_efs(latest_version)
-        
+
         # Copy to local for ChromaDB operations
         local_path = self.copy_to_local(snapshot_info["efs_path"])
-        
+
         return {
             "local_path": local_path,
             "version": latest_version,
             "source": snapshot_info["source"],
-            "copy_time_ms": snapshot_info.get("download_time_ms", 0)
+            "copy_time_ms": snapshot_info.get("download_time_ms", 0),
         }

@@ -32,7 +32,9 @@ def find_metadata_with_null_place_id(
     Returns:
         List of (image_id, receipt_id) tuples that need fixing
     """
-    logger.info("Scanning for ReceiptMetadata records with NULL/missing place_id...")
+    logger.info(
+        "Scanning for ReceiptMetadata records with NULL/missing place_id..."
+    )
     records_to_fix = []
 
     try:
@@ -157,4 +159,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

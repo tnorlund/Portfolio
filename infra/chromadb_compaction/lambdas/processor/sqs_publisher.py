@@ -51,13 +51,21 @@ def publish_messages(messages: List[StreamMessage], metrics=None) -> int:
     # Send to lines queue
     if lines_messages:
         sent_count += send_batch_to_queue(
-            sqs, lines_messages, "LINES_QUEUE_URL", ChromaDBCollection.LINES, metrics
+            sqs,
+            lines_messages,
+            "LINES_QUEUE_URL",
+            ChromaDBCollection.LINES,
+            metrics,
         )
 
     # Send to words queue
     if words_messages:
         sent_count += send_batch_to_queue(
-            sqs, words_messages, "WORDS_QUEUE_URL", ChromaDBCollection.WORDS, metrics
+            sqs,
+            words_messages,
+            "WORDS_QUEUE_URL",
+            ChromaDBCollection.WORDS,
+            metrics,
         )
 
     return sent_count
@@ -134,13 +142,17 @@ def send_batch_to_queue(
             # The per-collection lock still ensures safe snapshot publishing.
             if entity_type == "COMPACTION_RUN":
                 image_id = entity_data.get("image_id") or "unknown"
-                message_group_id = f"COMPACTION_RUN:{image_id}:{collection.value}"
+                message_group_id = (
+                    f"COMPACTION_RUN:{image_id}:{collection.value}"
+                )
             elif entity_type in {"RECEIPT_METADATA", "RECEIPT_WORD_LABEL"}:
                 # Use same MessageGroupId as COMPACTION_RUN for the same image
                 # This ensures metadata updates are processed AFTER delta merge completes,
                 # maintaining proper ordering in the FIFO queue.
                 image_id = entity_data.get("image_id") or "unknown"
-                message_group_id = f"COMPACTION_RUN:{image_id}:{collection.value}"
+                message_group_id = (
+                    f"COMPACTION_RUN:{image_id}:{collection.value}"
+                )
             else:
                 # For other entities, keep existing grouping for parallelism
                 group_key = (
@@ -149,7 +161,9 @@ def send_batch_to_queue(
                     or entity_data.get("image_id")
                     or "default"
                 )
-                message_group_id = f"{entity_type}:{group_key}:{collection.value}"
+                message_group_id = (
+                    f"{entity_type}:{group_key}:{collection.value}"
+                )
 
             entries.append(
                 {
@@ -183,7 +197,9 @@ def send_batch_to_queue(
                 extra={"batch_size": len(entries)},
             )
 
-            response = sqs.send_message_batch(QueueUrl=queue_url, Entries=entries)
+            response = sqs.send_message_batch(
+                QueueUrl=queue_url, Entries=entries
+            )
 
             # Count successful sends
             successful = len(response.get("Successful", []))
@@ -217,7 +233,9 @@ def send_batch_to_queue(
                         extra={
                             "message_id": failed["Id"],
                             "error_code": failed.get("Code", "UnknownError"),
-                            "error_message": failed.get("Message", "No error details"),
+                            "error_message": failed.get(
+                                "Message", "No error details"
+                            ),
                         },
                     )
 

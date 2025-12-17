@@ -66,7 +66,7 @@ class _AIUsageMetric(FlattenedStandardMixin):
             self._batch_write_with_retry(request_items)
         except Exception:
             # If batch write fails, assume all metrics failed
-            # This simplifies error handling compared to the original 
+            # This simplifies error handling compared to the original
             # complex logic
             failed_metrics = metrics.copy()
 

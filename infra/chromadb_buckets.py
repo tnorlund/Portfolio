@@ -25,4 +25,3 @@ bucket_arn = shared_chromadb_buckets.bucket_arn
 
 pulumi.export("chromadb_bucket_name", bucket_name)
 pulumi.export("chromadb_bucket_arn", bucket_arn)
-

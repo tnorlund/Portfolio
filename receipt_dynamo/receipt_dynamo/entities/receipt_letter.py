@@ -101,7 +101,7 @@ class ReceiptLetter(
         if self.letter_id < 0:
             raise ValueError("letter_id must be positive")
 
-        # Use validation utils mixin for common validation 
+        # Use validation utils mixin for common validation
         # (handles image_id and text)
         self._validate_common_geometry_entity_fields()
 
@@ -220,7 +220,7 @@ class ReceiptLetter(
         )
 
     def _get_geometry_hash_fields(self) -> tuple:
-        """Override to include entity-specific ID fields in hash 
+        """Override to include entity-specific ID fields in hash
         computation."""
         return self._get_base_geometry_hash_fields() + (
             self.receipt_id,
@@ -272,7 +272,7 @@ def item_to_receipt_letter(item: Dict[str, Any]) -> ReceiptLetter:
 
     # Custom SK parser for RECEIPT#/LINE#/WORD#/LETTER# pattern
     def parse_receipt_letter_sk(sk: str) -> Dict[str, Any]:
-        """Parse the SK to extract receipt_id, line_id, word_id, and 
+        """Parse the SK to extract receipt_id, line_id, word_id, and
         letter_id."""
         parts = sk.split("#")
         if (

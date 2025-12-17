@@ -38,9 +38,13 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     }
     """
     execution_id = event.get("execution_id", "unknown")
-    batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET", "")
+    batch_bucket = event.get("batch_bucket") or os.environ.get(
+        "BATCH_BUCKET", ""
+    )
     manifest_key = event.get("manifest_s3_key")
-    langchain_project = event.get("langchain_project")  # Pass through for downstream Lambdas
+    langchain_project = event.get(
+        "langchain_project"
+    )  # Pass through for downstream Lambdas
 
     if not manifest_key:
         raise ValueError("manifest_s3_key not provided")
@@ -76,10 +80,3 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     except Exception as e:
         logger.error("Failed to load batches from %s: %s", manifest_key, e)
         raise
-
-
-
-
-
-
-

@@ -45,7 +45,9 @@ class EFSSnapshotManager:
         self.metrics = metrics
 
         # EFS mount path
-        self.efs_root = efs_root or os.environ.get("CHROMA_ROOT", "/tmp/chroma")
+        self.efs_root = efs_root or os.environ.get(
+            "CHROMA_ROOT", "/tmp/chroma"
+        )
         self.efs_snapshots_dir = os.path.join(
             self.efs_root, "snapshots", collection
         )

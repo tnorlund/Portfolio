@@ -61,4 +61,3 @@ def get_chromadb_relevant_changes(
             changes[field] = FieldChange(old=old_value, new=new_value)
 
     return changes
-
