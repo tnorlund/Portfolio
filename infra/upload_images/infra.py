@@ -698,7 +698,13 @@ class UploadImages(ComponentResource):
             f"{name}-embed-ndjson-image",
             dockerfile_path="infra/upload_images/container/Dockerfile",
             build_context_path=".",  # Project root for monorepo access
-            source_paths=None,  # Use default rsync with exclusions
+            source_paths=[
+                "receipt_dynamo",
+                "receipt_dynamo_stream",
+                "receipt_chroma",
+                "receipt_agent",
+                "receipt_places",
+            ],  # Include all packages required by the Dockerfile
             lambda_function_name=f"{name}-{stack}-embed-from-ndjson",
             lambda_config=embed_ndjson_lambda_config,
             platform="linux/arm64",
