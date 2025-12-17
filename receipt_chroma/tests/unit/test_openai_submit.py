@@ -59,17 +59,11 @@ class TestCreateBatchSummary:
         with tempfile.NamedTemporaryFile(
             mode="w", delete=False, suffix=".jsonl"
         ) as f:
-            json.dump(
-                {"custom_id": "IMAGE#img1#RECEIPT#00001#LINE#00001"}, f
-            )
+            json.dump({"custom_id": "IMAGE#img1#RECEIPT#00001#LINE#00001"}, f)
             f.write("\n")
-            json.dump(
-                {"custom_id": "IMAGE#img1#RECEIPT#00001#LINE#00002"}, f
-            )
+            json.dump({"custom_id": "IMAGE#img1#RECEIPT#00001#LINE#00002"}, f)
             f.write("\n")
-            json.dump(
-                {"custom_id": "IMAGE#img2#RECEIPT#00002#LINE#00001"}, f
-            )
+            json.dump({"custom_id": "IMAGE#img2#RECEIPT#00002#LINE#00001"}, f)
             temp_path = f.name
 
         try:
@@ -84,6 +78,7 @@ class TestCreateBatchSummary:
             assert summary.openai_batch_id == "openai123"
             assert summary.batch_type == "LINE_EMBEDDING"
             assert summary.status == "PENDING"
+            assert summary.receipt_refs is not None
             assert len(summary.receipt_refs) == 2
             assert ("img1", 1) in summary.receipt_refs
             assert ("img2", 2) in summary.receipt_refs
@@ -97,14 +92,10 @@ class TestCreateBatchSummary:
         with tempfile.NamedTemporaryFile(
             mode="w", delete=False, suffix=".jsonl"
         ) as f:
-            json.dump(
-                {"custom_id": "IMAGE#img1#RECEIPT#00001#LINE#00001"}, f
-            )
+            json.dump({"custom_id": "IMAGE#img1#RECEIPT#00001#LINE#00001"}, f)
             f.write("\n")
             f.write("invalid json line\n")
-            json.dump(
-                {"custom_id": "IMAGE#img2#RECEIPT#00002#LINE#00001"}, f
-            )
+            json.dump({"custom_id": "IMAGE#img2#RECEIPT#00002#LINE#00001"}, f)
             temp_path = f.name
 
         try:
@@ -117,6 +108,7 @@ class TestCreateBatchSummary:
 
             # Should still create summary despite invalid line
             assert summary.batch_id == "batch123"
+            assert summary.receipt_refs is not None
             assert len(summary.receipt_refs) == 2
         finally:
             import os
