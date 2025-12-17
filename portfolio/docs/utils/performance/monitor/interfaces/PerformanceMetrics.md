@@ -6,7 +6,7 @@
 
 # Interface: PerformanceMetrics
 
-Defined in: [utils/performance/monitor.ts:5](https://github.com/tnorlund/Portfolio/blob/74dc1fb8b93d615c881540e9970bcc2ab185687a/portfolio/utils/performance/monitor.ts#L5)
+Defined in: [utils/performance/monitor.ts:5](https://github.com/tnorlund/Portfolio/blob/2bad276c1a3acfbae35b5e2e15efef93f1466c43/portfolio/utils/performance/monitor.ts#L5)
 
 Performance monitoring utilities for development
 
@@ -16,7 +16,7 @@ Performance monitoring utilities for development
 
 > `optional` **apiCallDuration**: `Record`\<`string`, `number`[]\>
 
-Defined in: [utils/performance/monitor.ts:18](https://github.com/tnorlund/Portfolio/blob/74dc1fb8b93d615c881540e9970bcc2ab185687a/portfolio/utils/performance/monitor.ts#L18)
+Defined in: [utils/performance/monitor.ts:18](https://github.com/tnorlund/Portfolio/blob/2bad276c1a3acfbae35b5e2e15efef93f1466c43/portfolio/utils/performance/monitor.ts#L18)
 
 ***
 
@@ -24,7 +24,7 @@ Defined in: [utils/performance/monitor.ts:18](https://github.com/tnorlund/Portfo
 
 > `optional` **cls**: `number`
 
-Defined in: [utils/performance/monitor.ts:9](https://github.com/tnorlund/Portfolio/blob/74dc1fb8b93d615c881540e9970bcc2ab185687a/portfolio/utils/performance/monitor.ts#L9)
+Defined in: [utils/performance/monitor.ts:9](https://github.com/tnorlund/Portfolio/blob/2bad276c1a3acfbae35b5e2e15efef93f1466c43/portfolio/utils/performance/monitor.ts#L9)
 
 ***
 
@@ -32,7 +32,7 @@ Defined in: [utils/performance/monitor.ts:9](https://github.com/tnorlund/Portfol
 
 > `optional` **componentRenderTime**: `Record`\<`string`, `number`[]\>
 
-Defined in: [utils/performance/monitor.ts:17](https://github.com/tnorlund/Portfolio/blob/74dc1fb8b93d615c881540e9970bcc2ab185687a/portfolio/utils/performance/monitor.ts#L17)
+Defined in: [utils/performance/monitor.ts:17](https://github.com/tnorlund/Portfolio/blob/2bad276c1a3acfbae35b5e2e15efef93f1466c43/portfolio/utils/performance/monitor.ts#L17)
 
 ***
 
@@ -40,7 +40,7 @@ Defined in: [utils/performance/monitor.ts:17](https://github.com/tnorlund/Portfo
 
 > `optional` **fcp**: `number`
 
-Defined in: [utils/performance/monitor.ts:10](https://github.com/tnorlund/Portfolio/blob/74dc1fb8b93d615c881540e9970bcc2ab185687a/portfolio/utils/performance/monitor.ts#L10)
+Defined in: [utils/performance/monitor.ts:10](https://github.com/tnorlund/Portfolio/blob/2bad276c1a3acfbae35b5e2e15efef93f1466c43/portfolio/utils/performance/monitor.ts#L10)
 
 ***
 
@@ -48,7 +48,7 @@ Defined in: [utils/performance/monitor.ts:10](https://github.com/tnorlund/Portfo
 
 > `optional` **fid**: `number`
 
-Defined in: [utils/performance/monitor.ts:8](https://github.com/tnorlund/Portfolio/blob/74dc1fb8b93d615c881540e9970bcc2ab185687a/portfolio/utils/performance/monitor.ts#L8)
+Defined in: [utils/performance/monitor.ts:8](https://github.com/tnorlund/Portfolio/blob/2bad276c1a3acfbae35b5e2e15efef93f1466c43/portfolio/utils/performance/monitor.ts#L8)
 
 ***
 
@@ -56,7 +56,7 @@ Defined in: [utils/performance/monitor.ts:8](https://github.com/tnorlund/Portfol
 
 > `optional` **imageLoadTime**: `Record`\<`string`, `number`\>
 
-Defined in: [utils/performance/monitor.ts:19](https://github.com/tnorlund/Portfolio/blob/74dc1fb8b93d615c881540e9970bcc2ab185687a/portfolio/utils/performance/monitor.ts#L19)
+Defined in: [utils/performance/monitor.ts:19](https://github.com/tnorlund/Portfolio/blob/2bad276c1a3acfbae35b5e2e15efef93f1466c43/portfolio/utils/performance/monitor.ts#L19)
 
 ***
 
@@ -64,7 +64,7 @@ Defined in: [utils/performance/monitor.ts:19](https://github.com/tnorlund/Portfo
 
 > `optional` **jsHeapSize**: `number`
 
-Defined in: [utils/performance/monitor.ts:14](https://github.com/tnorlund/Portfolio/blob/74dc1fb8b93d615c881540e9970bcc2ab185687a/portfolio/utils/performance/monitor.ts#L14)
+Defined in: [utils/performance/monitor.ts:14](https://github.com/tnorlund/Portfolio/blob/2bad276c1a3acfbae35b5e2e15efef93f1466c43/portfolio/utils/performance/monitor.ts#L14)
 
 ***
 
@@ -72,7 +72,7 @@ Defined in: [utils/performance/monitor.ts:14](https://github.com/tnorlund/Portfo
 
 > `optional` **jsHeapSizeLimit**: `number`
 
-Defined in: [utils/performance/monitor.ts:15](https://github.com/tnorlund/Portfolio/blob/74dc1fb8b93d615c881540e9970bcc2ab185687a/portfolio/utils/performance/monitor.ts#L15)
+Defined in: [utils/performance/monitor.ts:15](https://github.com/tnorlund/Portfolio/blob/2bad276c1a3acfbae35b5e2e15efef93f1466c43/portfolio/utils/performance/monitor.ts#L15)
 
 ***
 
@@ -80,7 +80,7 @@ Defined in: [utils/performance/monitor.ts:15](https://github.com/tnorlund/Portfo
 
 > `optional` **lcp**: `number`
 
-Defined in: [utils/performance/monitor.ts:7](https://github.com/tnorlund/Portfolio/blob/74dc1fb8b93d615c881540e9970bcc2ab185687a/portfolio/utils/performance/monitor.ts#L7)
+Defined in: [utils/performance/monitor.ts:7](https://github.com/tnorlund/Portfolio/blob/2bad276c1a3acfbae35b5e2e15efef93f1466c43/portfolio/utils/performance/monitor.ts#L7)
 
 ***
 
@@ -88,7 +88,7 @@ Defined in: [utils/performance/monitor.ts:7](https://github.com/tnorlund/Portfol
 
 > `optional` **ttfb**: `number`
 
-Defined in: [utils/performance/monitor.ts:11](https://github.com/tnorlund/Portfolio/blob/74dc1fb8b93d615c881540e9970bcc2ab185687a/portfolio/utils/performance/monitor.ts#L11)
+Defined in: [utils/performance/monitor.ts:11](https://github.com/tnorlund/Portfolio/blob/2bad276c1a3acfbae35b5e2e15efef93f1466c43/portfolio/utils/performance/monitor.ts#L11)
 
 ***
 
@@ -96,4 +96,4 @@ Defined in: [utils/performance/monitor.ts:11](https://github.com/tnorlund/Portfo
 
 > `optional` **usedJSHeapSize**: `number`
 
-Defined in: [utils/performance/monitor.ts:16](https://github.com/tnorlund/Portfolio/blob/74dc1fb8b93d615c881540e9970bcc2ab185687a/portfolio/utils/performance/monitor.ts#L16)
+Defined in: [utils/performance/monitor.ts:16](https://github.com/tnorlund/Portfolio/blob/2bad276c1a3acfbae35b5e2e15efef93f1466c43/portfolio/utils/performance/monitor.ts#L16)
