@@ -23,6 +23,9 @@ class TestDeltaMerging:
         self, mock_s3_bucket_compaction, temp_chromadb_dir, mock_logger
     ):
         """Test merging a single delta tarball into snapshot."""
+        import shutil
+        import time
+
         s3_client, bucket_name = mock_s3_bucket_compaction
 
         # Create a delta ChromaDB snapshot
@@ -39,6 +42,9 @@ class TestDeltaMerging:
             ],
         )
         delta_client.close()
+
+        # Wait for ChromaDB to flush files to disk
+        time.sleep(0.1)
 
         # Create tarball from delta directory
         with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tf:
@@ -83,7 +89,7 @@ class TestDeltaMerging:
         )
 
         # Verify merge results
-        assert total_merged == 1
+        assert total_merged == 1, f"Expected 1 delta merged, got {total_merged}"
         assert len(per_run_results) == 1
         assert per_run_results[0]["run_id"] == "run-123"
         assert per_run_results[0]["merged_count"] == 1
@@ -100,14 +106,15 @@ class TestDeltaMerging:
 
         # Cleanup
         os.remove(tarball_path)
-        import shutil
-
         shutil.rmtree(delta_dir, ignore_errors=True)
 
     def test_merge_delta_directory_layout(
         self, mock_s3_bucket_compaction, temp_chromadb_dir, mock_logger
     ):
         """Test merging delta using directory layout (not tarball)."""
+        import shutil
+        import time
+
         s3_client, bucket_name = mock_s3_bucket_compaction
 
         # Create a delta ChromaDB snapshot
@@ -126,14 +133,22 @@ class TestDeltaMerging:
         )
         delta_client.close()
 
+        # Wait for ChromaDB to flush files to disk
+        time.sleep(0.1)
+
         # Upload delta directory to S3 (without creating tarball)
         delta_prefix = "deltas/run-456"
+        upload_count = 0
         for root, _, files in os.walk(delta_dir):
             for file in files:
                 local_path = os.path.join(root, file)
                 relative_path = os.path.relpath(local_path, delta_dir)
                 s3_key = f"{delta_prefix}/{relative_path}"
                 s3_client.upload_file(local_path, bucket_name, s3_key)
+                upload_count += 1
+
+        # Verify files were actually uploaded
+        assert upload_count > 0, "No files uploaded for delta"
 
         # Create main snapshot
         snapshot_client = ChromaClient(
@@ -166,7 +181,7 @@ class TestDeltaMerging:
         )
 
         # Verify merge results
-        assert total_merged == 2
+        assert total_merged == 2, f"Expected 2 deltas merged, got {total_merged}"
         assert len(per_run_results) == 1
         assert per_run_results[0]["merged_count"] == 2
 
@@ -179,14 +194,15 @@ class TestDeltaMerging:
         snapshot_client.close()
 
         # Cleanup
-        import shutil
-
         shutil.rmtree(delta_dir, ignore_errors=True)
 
     def test_merge_multiple_deltas(
         self, mock_s3_bucket_compaction, temp_chromadb_dir, mock_logger
     ):
         """Test merging multiple deltas in a single operation."""
+        import shutil
+        import time
+
         s3_client, bucket_name = mock_s3_bucket_compaction
 
         # Create main snapshot
@@ -217,14 +233,22 @@ class TestDeltaMerging:
             )
             delta_client.close()
 
+            # Wait for ChromaDB to flush files to disk
+            time.sleep(0.1)
+
             # Upload to S3 (directory layout)
             delta_prefix = f"deltas/{run_id}"
+            upload_count = 0
             for root, _, files in os.walk(delta_dir):
                 for file in files:
                     local_path = os.path.join(root, file)
                     relative_path = os.path.relpath(local_path, delta_dir)
                     s3_key = f"{delta_prefix}/{relative_path}"
                     s3_client.upload_file(local_path, bucket_name, s3_key)
+                    upload_count += 1
+
+            # Verify files were actually uploaded
+            assert upload_count > 0, f"No files uploaded for delta {i}"
 
             # Create compaction message
             compaction_msg = create_compaction_run_message(
@@ -238,8 +262,6 @@ class TestDeltaMerging:
             compaction_messages.append(compaction_msg)
 
             # Cleanup delta dir
-            import shutil
-
             shutil.rmtree(delta_dir, ignore_errors=True)
 
         # Merge all deltas
@@ -252,8 +274,8 @@ class TestDeltaMerging:
         )
 
         # Verify merge results
-        assert total_merged == 2
-        assert len(per_run_results) == 2
+        assert total_merged == 2, f"Expected 2 deltas merged, got {total_merged}"
+        assert len(per_run_results) == 2, f"Expected 2 run results, got {len(per_run_results)}"
 
         # Verify all deltas were merged
         collection = snapshot_client.get_collection("lines")
