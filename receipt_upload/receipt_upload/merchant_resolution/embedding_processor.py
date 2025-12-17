@@ -202,6 +202,7 @@ class MerchantResolvingEmbeddingProcessor:
                     image_id=image_id,
                     receipt_id=receipt_id,
                     merchant_result=merchant_result,
+                    existing_metadata=receipt_metadata,
                 )
             else:
                 _log("No merchant found - receipt will not be enriched")
@@ -233,6 +234,7 @@ class MerchantResolvingEmbeddingProcessor:
         image_id: str,
         receipt_id: int,
         merchant_result: MerchantResult,
+        existing_metadata: Optional[Any] = None,
     ) -> None:
         """
         Update receipt metadata in DynamoDB with merchant information.
@@ -241,10 +243,13 @@ class MerchantResolvingEmbeddingProcessor:
             image_id: Receipt's image_id
             receipt_id: Receipt's receipt_id
             merchant_result: Resolved merchant information
+            existing_metadata: Optional pre-fetched metadata to avoid duplicate query
         """
         try:
-            # Get current metadata
-            metadata = self.dynamo.get_receipt_metadata(image_id, receipt_id)
+            # Use provided metadata or fetch if not available
+            metadata = existing_metadata or self.dynamo.get_receipt_metadata(
+                image_id, receipt_id
+            )
 
             if metadata:
                 # Update with merchant info

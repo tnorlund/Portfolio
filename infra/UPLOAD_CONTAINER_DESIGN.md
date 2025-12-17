@@ -6,7 +6,7 @@ Single Lambda container that orchestrates the complete receipt upload & embeddin
 
 ## Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Mac OCR Script (local)                       │
 │  - Polls SQS for OCR jobs                                       │
@@ -96,7 +96,7 @@ Single Lambda container that orchestrates the complete receipt upload & embeddin
 ### Proposed New Flow (Single Unified Container)
 
 1. **Input**: SQS message with `image_id` and `job_id`
-   ```
+   ```text
    Mac OCR Script → S3 (writes OCR JSON) → SQS (triggers Lambda with image_id, job_id)
    ```
 

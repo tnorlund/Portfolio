@@ -25,6 +25,9 @@ from receipt_dynamo.entities import ReceiptLine, ReceiptWord
 
 logger = logging.getLogger(__name__)
 
+# Invalid place_id sentinel values to filter out
+INVALID_PLACE_IDS = frozenset(("", "null", "NO_RESULTS", "INVALID"))
+
 
 def _log(msg: str) -> None:
     """Log message with immediate flush for CloudWatch visibility."""
@@ -341,7 +344,7 @@ class MerchantResolver:
             metadata = self.dynamo.get_receipt_metadata(image_id, receipt_id)
             if metadata and metadata.place_id:
                 # Skip invalid place_ids
-                if metadata.place_id not in ("", "null", "NO_RESULTS", "INVALID"):
+                if metadata.place_id not in INVALID_PLACE_IDS:
                     return metadata.place_id
         except Exception as e:
             _log(f"Error getting place_id from DynamoDB: {e}")
