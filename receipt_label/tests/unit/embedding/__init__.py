@@ -1,1 +1,0 @@
-"""Embedding pipeline tests package."""

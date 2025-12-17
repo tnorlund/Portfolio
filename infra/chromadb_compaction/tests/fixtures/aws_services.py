@@ -186,33 +186,34 @@ def mock_chromadb_collections():
 def mock_s3_operations():
     """
     Mock S3 operations for ChromaDB snapshot handling.
-    
+
     Mocks the atomic snapshot download/upload operations used by
     the compaction handler.
     """
-    from unittest.mock import MagicMock, patch
-    
-    with patch('receipt_label.utils.chroma_s3_helpers.download_snapshot_atomic') as mock_download, \
-         patch('receipt_label.utils.chroma_s3_helpers.upload_snapshot_atomic') as mock_upload:
-        
-        # Mock successful download
-        mock_download.return_value = {
-            "status": "downloaded",
-            "version_id": "test-version-123",
-            "local_path": "/tmp/test-snapshot"
-        }
-        
-        # Mock successful upload
-        mock_upload.return_value = {
-            "status": "uploaded", 
-            "version_id": "test-version-456",
-            "s3_path": "s3://test-bucket/test-path"
-        }
-        
-        yield {
-            "download_snapshot_atomic": mock_download,
-            "upload_snapshot_atomic": mock_upload,
-        }
+    from unittest.mock import MagicMock
+
+    # Create direct mocks for S3 operations
+    mock_download = MagicMock()
+    mock_upload = MagicMock()
+
+    # Mock successful download
+    mock_download.return_value = {
+        "status": "downloaded",
+        "version_id": "test-version-123",
+        "local_path": "/tmp/test-snapshot"
+    }
+
+    # Mock successful upload
+    mock_upload.return_value = {
+        "status": "uploaded",
+        "version_id": "test-version-456",
+        "s3_path": "s3://test-bucket/test-path"
+    }
+
+    yield {
+        "download_snapshot_atomic": mock_download,
+        "upload_snapshot_atomic": mock_upload,
+    }
 
 
 @pytest.fixture
