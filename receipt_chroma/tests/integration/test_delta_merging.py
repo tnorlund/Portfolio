@@ -22,222 +22,137 @@ class TestDeltaMerging:
     def test_merge_single_delta_tarball(
         self, mock_s3_bucket_compaction, temp_chromadb_dir, mock_logger
     ):
-        """Test merging a single delta tarball into snapshot."""
+        """Test merging a single delta tarball into snapshot.
+
+        Use context managers to properly manage ChromaDB client lifecycle.
+        """
         import shutil
-        import time
 
         s3_client, bucket_name = mock_s3_bucket_compaction
 
-        # Create a delta ChromaDB snapshot
         delta_dir = tempfile.mkdtemp()
-        delta_client = ChromaClient(persist_directory=delta_dir, mode="write")
+        tarball_path = None
 
-        # Add delta data
-        delta_client.upsert(
-            collection_name="lines",
-            ids=["IMAGE#delta-id#RECEIPT#00001#LINE#00001"],
-            embeddings=[[0.9] * 1536],
-            metadatas=[
-                {"text": "Delta line", "merchant_name": "Delta Merchant"}
-            ],
-        )
-        delta_client.close()
+        try:
+            # Create delta using context manager for proper cleanup
+            with ChromaClient(
+                persist_directory=delta_dir, mode="write"
+            ) as delta_client:
+                # Add delta data
+                delta_client.upsert(
+                    collection_name="lines",
+                    ids=["IMAGE#delta-id#RECEIPT#00001#LINE#00001"],
+                    embeddings=[[0.9] * 1536],
+                    metadatas=[
+                        {"text": "Delta line", "merchant_name": "Delta Merchant"}
+                    ],
+                )
+            # Client is properly closed and resources released here
 
-        # Wait for ChromaDB to flush files to disk
-        time.sleep(0.1)
+            # Create tarball from delta directory (after client is closed)
+            with tempfile.NamedTemporaryFile(
+                suffix=".tar.gz", delete=False
+            ) as tf:
+                tarball_path = tf.name
+            with tarfile.open(tarball_path, "w:gz") as tar:
+                tar.add(delta_dir, arcname=".")
 
-        # Create tarball from delta directory
-        with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tf:
-            tarball_path = tf.name
-        with tarfile.open(tarball_path, "w:gz") as tar:
-            tar.add(delta_dir, arcname=".")
+            # Upload tarball to S3
+            delta_prefix = "deltas/run-123"
+            s3_client.upload_file(
+                tarball_path, bucket_name, f"{delta_prefix}/delta.tar.gz"
+            )
 
-        # Upload tarball to S3
-        delta_prefix = "deltas/run-123"
-        s3_client.upload_file(
-            tarball_path, bucket_name, f"{delta_prefix}/delta.tar.gz"
-        )
+            # Create main snapshot and merge
+            with ChromaClient(
+                persist_directory=temp_chromadb_dir, mode="write"
+            ) as snapshot_client:
+                snapshot_client.upsert(
+                    collection_name="lines",
+                    ids=["IMAGE#snapshot-id#RECEIPT#00001#LINE#00001"],
+                    embeddings=[[0.1] * 1536],
+                    metadatas=[{"text": "Snapshot line"}],
+                )
 
-        # Create main snapshot
-        snapshot_client = ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write"
-        )
-        snapshot_client.upsert(
-            collection_name="lines",
-            ids=["IMAGE#snapshot-id#RECEIPT#00001#LINE#00001"],
-            embeddings=[[0.1] * 1536],
-            metadatas=[{"text": "Snapshot line"}],
-        )
+                # Create compaction run message
+                compaction_msg = create_compaction_run_message(
+                    image_id="delta-id",
+                    receipt_id=1,
+                    run_id="run-123",
+                    delta_s3_prefix=f"s3://{bucket_name}/{delta_prefix}/",
+                    event_name="INSERT",
+                    collection=ChromaDBCollection.LINES,
+                )
 
-        # Create compaction run message
-        compaction_msg = create_compaction_run_message(
-            image_id="delta-id",
-            receipt_id=1,
-            run_id="run-123",
-            delta_s3_prefix=f"s3://{bucket_name}/{delta_prefix}/",
-            event_name="INSERT",
-            collection=ChromaDBCollection.LINES,
-        )
+                # Merge delta into snapshot
+                total_merged, per_run_results = merge_compaction_deltas(
+                    chroma_client=snapshot_client,
+                    compaction_runs=[compaction_msg],
+                    collection=ChromaDBCollection.LINES,
+                    logger=mock_logger,
+                    bucket=bucket_name,
+                )
 
-        # Merge delta into snapshot
-        total_merged, per_run_results = merge_compaction_deltas(
-            chroma_client=snapshot_client,
-            compaction_runs=[compaction_msg],
-            collection=ChromaDBCollection.LINES,
-            logger=mock_logger,
-            bucket=bucket_name,
-        )
+                # Verify merge results
+                assert (
+                    total_merged == 1
+                ), f"Expected 1 delta merged, got {total_merged}"
+                assert len(per_run_results) == 1
+                assert per_run_results[0]["run_id"] == "run-123"
+                assert per_run_results[0]["merged_count"] == 1
 
-        # Verify merge results
-        assert total_merged == 1, f"Expected 1 delta merged, got {total_merged}"
-        assert len(per_run_results) == 1
-        assert per_run_results[0]["run_id"] == "run-123"
-        assert per_run_results[0]["merged_count"] == 1
+                # Verify delta was merged into snapshot
+                collection = snapshot_client.get_collection("lines")
+                all_data = collection.get(include=["metadatas"])
 
-        # Verify delta was merged into snapshot
-        collection = snapshot_client.get_collection("lines")
-        all_data = collection.get(include=["metadatas"])
+                assert len(all_data["ids"]) == 2  # Original + delta
+                assert (
+                    "IMAGE#delta-id#RECEIPT#00001#LINE#00001"
+                    in all_data["ids"]
+                )
+                assert (
+                    "IMAGE#snapshot-id#RECEIPT#00001#LINE#00001"
+                    in all_data["ids"]
+                )
 
-        assert len(all_data["ids"]) == 2  # Original + delta
-        assert "IMAGE#delta-id#RECEIPT#00001#LINE#00001" in all_data["ids"]
-        assert "IMAGE#snapshot-id#RECEIPT#00001#LINE#00001" in all_data["ids"]
-
-        snapshot_client.close()
-
-        # Cleanup
-        os.remove(tarball_path)
-        shutil.rmtree(delta_dir, ignore_errors=True)
+        finally:
+            # Cleanup
+            if tarball_path and os.path.exists(tarball_path):
+                os.remove(tarball_path)
+            shutil.rmtree(delta_dir, ignore_errors=True)
 
     def test_merge_delta_directory_layout(
         self, mock_s3_bucket_compaction, temp_chromadb_dir, mock_logger
     ):
-        """Test merging delta using directory layout (not tarball)."""
+        """Test merging delta using directory layout (not tarball).
+
+        Use context managers to properly manage ChromaDB client lifecycle.
+        """
         import shutil
-        import time
 
         s3_client, bucket_name = mock_s3_bucket_compaction
 
-        # Create a delta ChromaDB snapshot
         delta_dir = tempfile.mkdtemp()
-        delta_client = ChromaClient(persist_directory=delta_dir, mode="write")
 
-        # Add delta data
-        delta_client.upsert(
-            collection_name="words",
-            ids=[
-                "IMAGE#delta-id#RECEIPT#00001#LINE#00001#WORD#00001",
-                "IMAGE#delta-id#RECEIPT#00001#LINE#00001#WORD#00002",
-            ],
-            embeddings=[[0.8] * 1536, [0.9] * 1536],
-            metadatas=[{"text": "Delta"}, {"text": "Words"}],
-        )
-        delta_client.close()
-
-        # Wait for ChromaDB to flush files to disk
-        time.sleep(0.1)
-
-        # Upload delta directory to S3 (without creating tarball)
-        delta_prefix = "deltas/run-456"
-        upload_count = 0
-        for root, _, files in os.walk(delta_dir):
-            for file in files:
-                local_path = os.path.join(root, file)
-                relative_path = os.path.relpath(local_path, delta_dir)
-                s3_key = f"{delta_prefix}/{relative_path}"
-                s3_client.upload_file(local_path, bucket_name, s3_key)
-                upload_count += 1
-
-        # Verify files were actually uploaded
-        assert upload_count > 0, "No files uploaded for delta"
-
-        # Create main snapshot
-        snapshot_client = ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write"
-        )
-        snapshot_client.upsert(
-            collection_name="words",
-            ids=["IMAGE#snapshot-id#RECEIPT#00001#LINE#00001#WORD#00001"],
-            embeddings=[[0.1] * 1536],
-            metadatas=[{"text": "Snapshot"}],
-        )
-
-        # Create compaction run message
-        compaction_msg = create_compaction_run_message(
-            image_id="delta-id",
-            receipt_id=1,
-            run_id="run-456",
-            delta_s3_prefix=f"s3://{bucket_name}/{delta_prefix}/",
-            event_name="INSERT",
-            collection=ChromaDBCollection.WORDS,
-        )
-
-        # Merge delta into snapshot
-        total_merged, per_run_results = merge_compaction_deltas(
-            chroma_client=snapshot_client,
-            compaction_runs=[compaction_msg],
-            collection=ChromaDBCollection.WORDS,
-            logger=mock_logger,
-            bucket=bucket_name,
-        )
-
-        # Verify merge results
-        assert total_merged == 2, f"Expected 2 deltas merged, got {total_merged}"
-        assert len(per_run_results) == 1
-        assert per_run_results[0]["merged_count"] == 2
-
-        # Verify delta was merged
-        collection = snapshot_client.get_collection("words")
-        all_data = collection.get(include=["metadatas"])
-
-        assert len(all_data["ids"]) == 3  # Original + 2 delta vectors
-
-        snapshot_client.close()
-
-        # Cleanup
-        shutil.rmtree(delta_dir, ignore_errors=True)
-
-    def test_merge_multiple_deltas(
-        self, mock_s3_bucket_compaction, temp_chromadb_dir, mock_logger
-    ):
-        """Test merging multiple deltas in a single operation."""
-        import shutil
-        import time
-
-        s3_client, bucket_name = mock_s3_bucket_compaction
-
-        # Create main snapshot
-        snapshot_client = ChromaClient(
-            persist_directory=temp_chromadb_dir, mode="write"
-        )
-        snapshot_client.upsert(
-            collection_name="lines",
-            ids=["IMAGE#snapshot-id#RECEIPT#00001#LINE#00001"],
-            embeddings=[[0.1] * 1536],
-            metadatas=[{"text": "Snapshot"}],
-        )
-
-        # Create two delta snapshots and upload to S3
-        compaction_messages = []
-        for i, run_id in enumerate(["run-1", "run-2"]):
-            delta_dir = tempfile.mkdtemp()
-            delta_client = ChromaClient(
+        try:
+            # Create delta using context manager for proper cleanup
+            with ChromaClient(
                 persist_directory=delta_dir, mode="write"
-            )
+            ) as delta_client:
+                # Add delta data
+                delta_client.upsert(
+                    collection_name="words",
+                    ids=[
+                        "IMAGE#delta-id#RECEIPT#00001#LINE#00001#WORD#00001",
+                        "IMAGE#delta-id#RECEIPT#00001#LINE#00001#WORD#00002",
+                    ],
+                    embeddings=[[0.8] * 1536, [0.9] * 1536],
+                    metadatas=[{"text": "Delta"}, {"text": "Words"}],
+                )
+            # Client is properly closed and resources released here
 
-            # Add unique delta data
-            delta_client.upsert(
-                collection_name="lines",
-                ids=[f"IMAGE#delta-{i}#RECEIPT#00001#LINE#00001"],
-                embeddings=[[0.5 + i * 0.1] * 1536],
-                metadatas=[{"text": f"Delta {i}"}],
-            )
-            delta_client.close()
-
-            # Wait for ChromaDB to flush files to disk
-            time.sleep(0.1)
-
-            # Upload to S3 (directory layout)
-            delta_prefix = f"deltas/{run_id}"
+            # Upload delta directory to S3 (after client is closed)
+            delta_prefix = "deltas/run-456"
             upload_count = 0
             for root, _, files in os.walk(delta_dir):
                 for file in files:
@@ -248,42 +163,160 @@ class TestDeltaMerging:
                     upload_count += 1
 
             # Verify files were actually uploaded
-            assert upload_count > 0, f"No files uploaded for delta {i}"
+            assert upload_count > 0, "No files uploaded for delta"
 
-            # Create compaction message
-            compaction_msg = create_compaction_run_message(
-                image_id=f"delta-{i}",
-                receipt_id=1,
-                run_id=run_id,
-                delta_s3_prefix=f"s3://{bucket_name}/{delta_prefix}/",
-                event_name="INSERT",
-                collection=ChromaDBCollection.LINES,
-            )
-            compaction_messages.append(compaction_msg)
+            # Create main snapshot and merge
+            with ChromaClient(
+                persist_directory=temp_chromadb_dir, mode="write"
+            ) as snapshot_client:
+                snapshot_client.upsert(
+                    collection_name="words",
+                    ids=["IMAGE#snapshot-id#RECEIPT#00001#LINE#00001#WORD#00001"],
+                    embeddings=[[0.1] * 1536],
+                    metadatas=[{"text": "Snapshot"}],
+                )
 
-            # Cleanup delta dir
+                # Create compaction run message
+                compaction_msg = create_compaction_run_message(
+                    image_id="delta-id",
+                    receipt_id=1,
+                    run_id="run-456",
+                    delta_s3_prefix=f"s3://{bucket_name}/{delta_prefix}/",
+                    event_name="INSERT",
+                    collection=ChromaDBCollection.WORDS,
+                )
+
+                # Merge delta into snapshot
+                total_merged, per_run_results = merge_compaction_deltas(
+                    chroma_client=snapshot_client,
+                    compaction_runs=[compaction_msg],
+                    collection=ChromaDBCollection.WORDS,
+                    logger=mock_logger,
+                    bucket=bucket_name,
+                )
+
+                # Verify merge results
+                assert (
+                    total_merged == 2
+                ), f"Expected 2 deltas merged, got {total_merged}"
+                assert len(per_run_results) == 1
+                assert per_run_results[0]["merged_count"] == 2
+
+                # Verify delta was merged
+                collection = snapshot_client.get_collection("words")
+                all_data = collection.get(include=["metadatas"])
+
+                assert len(all_data["ids"]) == 3  # Original + 2 delta vectors
+
+        finally:
+            # Cleanup
             shutil.rmtree(delta_dir, ignore_errors=True)
 
-        # Merge all deltas
-        total_merged, per_run_results = merge_compaction_deltas(
-            chroma_client=snapshot_client,
-            compaction_runs=compaction_messages,
-            collection=ChromaDBCollection.LINES,
-            logger=mock_logger,
-            bucket=bucket_name,
-        )
+    def test_merge_multiple_deltas(
+        self, mock_s3_bucket_compaction, temp_chromadb_dir, mock_logger
+    ):
+        """Test merging multiple deltas in a single operation.
 
-        # Verify merge results
-        assert total_merged == 2, f"Expected 2 deltas merged, got {total_merged}"
-        assert len(per_run_results) == 2, f"Expected 2 run results, got {len(per_run_results)}"
+        Use context managers to properly manage ChromaDB client lifecycle
+        and avoid nested close/reopen patterns that interact poorly with
+        ChromaDB issue #5868.
+        """
+        import shutil
 
-        # Verify all deltas were merged
-        collection = snapshot_client.get_collection("lines")
-        all_data = collection.get(include=["metadatas"])
+        s3_client, bucket_name = mock_s3_bucket_compaction
 
-        assert len(all_data["ids"]) == 3  # Original + 2 deltas
+        # Track delta directories for cleanup
+        delta_dirs = []
+        compaction_messages = []
 
-        snapshot_client.close()
+        try:
+            # Create main snapshot using context manager
+            with ChromaClient(
+                persist_directory=temp_chromadb_dir, mode="write"
+            ) as snapshot_client:
+                snapshot_client.upsert(
+                    collection_name="lines",
+                    ids=["IMAGE#snapshot-id#RECEIPT#00001#LINE#00001"],
+                    embeddings=[[0.1] * 1536],
+                    metadatas=[{"text": "Snapshot"}],
+                )
+
+                # Create two delta snapshots and upload to S3
+                for i, run_id in enumerate(["run-1", "run-2"]):
+                    delta_dir = tempfile.mkdtemp()
+                    delta_dirs.append(delta_dir)
+
+                    # Use context manager for delta client to ensure proper cleanup
+                    with ChromaClient(
+                        persist_directory=delta_dir, mode="write"
+                    ) as delta_client:
+                        # Add unique delta data
+                        delta_client.upsert(
+                            collection_name="lines",
+                            ids=[f"IMAGE#delta-{i}#RECEIPT#00001#LINE#00001"],
+                            embeddings=[[0.5 + i * 0.1] * 1536],
+                            metadatas=[{"text": f"Delta {i}"}],
+                        )
+                    # Client is properly closed and resources released here
+
+                    # Upload to S3 (directory layout)
+                    delta_prefix = f"deltas/{run_id}"
+                    upload_count = 0
+                    for root, _, files in os.walk(delta_dir):
+                        for file in files:
+                            local_path = os.path.join(root, file)
+                            relative_path = os.path.relpath(
+                                local_path, delta_dir
+                            )
+                            s3_key = f"{delta_prefix}/{relative_path}"
+                            s3_client.upload_file(
+                                local_path, bucket_name, s3_key
+                            )
+                            upload_count += 1
+
+                    # Verify files were actually uploaded
+                    assert (
+                        upload_count > 0
+                    ), f"No files uploaded for delta {i}"
+
+                    # Create compaction message
+                    compaction_msg = create_compaction_run_message(
+                        image_id=f"delta-{i}",
+                        receipt_id=1,
+                        run_id=run_id,
+                        delta_s3_prefix=f"s3://{bucket_name}/{delta_prefix}/",
+                        event_name="INSERT",
+                        collection=ChromaDBCollection.LINES,
+                    )
+                    compaction_messages.append(compaction_msg)
+
+                # Merge all deltas
+                total_merged, per_run_results = merge_compaction_deltas(
+                    chroma_client=snapshot_client,
+                    compaction_runs=compaction_messages,
+                    collection=ChromaDBCollection.LINES,
+                    logger=mock_logger,
+                    bucket=bucket_name,
+                )
+
+                # Verify merge results
+                assert (
+                    total_merged == 2
+                ), f"Expected 2 deltas merged, got {total_merged}"
+                assert (
+                    len(per_run_results) == 2
+                ), f"Expected 2 run results, got {len(per_run_results)}"
+
+                # Verify all deltas were merged
+                collection = snapshot_client.get_collection("lines")
+                all_data = collection.get(include=["metadatas"])
+
+                assert len(all_data["ids"]) == 3  # Original + 2 deltas
+
+        finally:
+            # Cleanup delta dirs
+            for delta_dir in delta_dirs:
+                shutil.rmtree(delta_dir, ignore_errors=True)
 
     def test_merge_deltas_no_messages(
         self, mock_s3_bucket_compaction, temp_chromadb_dir, mock_logger
