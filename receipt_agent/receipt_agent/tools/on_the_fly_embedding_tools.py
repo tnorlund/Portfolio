@@ -1,7 +1,8 @@
 """Tools for on-the-fly word embedding for agents.
 
 These tools allow agents to embed words without needing them to be pre-stored
-in ChromaDB, enabling hypothetical queries and validation of words from partial context.
+in ChromaDB, enabling hypothetical queries and validation of words
+from partial context.
 """
 
 from typing import Any, List, Optional
@@ -17,11 +18,17 @@ class EmbedWordOnTheFlyInput(BaseModel):
     word_text: str = Field(description="The word text to embed")
     left_words: Optional[List[str]] = Field(
         default=None,
-        description="List of words to the left (use ['<EDGE>'] if at edge, or omit for auto-edge)",
+        description=(
+            "List of words to the left (use ['<EDGE>'] if at edge, "
+            "or omit for auto-edge)"
+        ),
     )
     right_words: Optional[List[str]] = Field(
         default=None,
-        description="List of words to the right (use ['<EDGE>'] if at edge, or omit for auto-edge)",
+        description=(
+            "List of words to the right (use ['<EDGE>'] if at edge, "
+            "or omit for auto-edge)"
+        ),
     )
     context_size: int = Field(
         default=2,
@@ -65,7 +72,8 @@ def create_on_the_fly_embedding_tools(
     Returns:
         Tuple of (tools_list, state_dict)
     """
-    from langchain_core.tools import tool  # pylint: disable=import-outside-toplevel
+    # pylint: disable=import-outside-toplevel
+    from langchain_core.tools import tool
 
     state = {}
 
@@ -84,13 +92,16 @@ def create_on_the_fly_embedding_tools(
         - Searching for similar words using hypothetical context
         - Embedding words from partial receipt information
 
-        This creates an embedding without needing the word to be stored in ChromaDB.
+        This creates an embedding without needing the word to be stored
+        in ChromaDB.
         The embedding can then be used to search for similar words.
 
         Args:
             word_text: The word to embed
-            left_words: List of words to the left (use ["<EDGE>"] if at edge, or omit for auto-edge)
-            right_words: List of words to the right (use ["<EDGE>"] if at edge, or omit for auto-edge)
+            left_words: List of words to the left (use ["<EDGE>"] if at edge,
+                or omit for auto-edge)
+            right_words: List of words to the right (use ["<EDGE>"] if at edge,
+                or omit for auto-edge)
             context_size: Number of context words on each side (default: 2)
 
         Returns:
@@ -129,7 +140,10 @@ def create_on_the_fly_embedding_tools(
             "formatted_text": formatted_text,
             "embedding_length": len(embedding),
             "can_query": True,
-            "example_usage": "Use search_with_on_the_fly_embedding() to search ChromaDB with this word",
+            "example_usage": (
+                "Use search_with_on_the_fly_embedding() to search ChromaDB "
+                "with this word"
+            ),
         }
 
     @tool(args_schema=SearchWithOnTheFlyEmbeddingInput)
@@ -144,12 +158,14 @@ def create_on_the_fly_embedding_tools(
         Embed a word on-the-fly and search for similar words in ChromaDB.
 
         This is useful when you want to find similar words but don't have
-        the word stored in ChromaDB, or want to search with hypothetical context.
+        the word stored in ChromaDB, or want to search with hypothetical
+        context.
 
         Example use cases:
         - Validate a word that hasn't been embedded yet
         - Search for similar words with different context
-        - Test hypothetical scenarios (e.g., "what if this word had different neighbors?")
+        - Test hypothetical scenarios (e.g., "what if this word had
+          different neighbors?")
 
         Args:
             word_text: The word to search for
@@ -213,8 +229,14 @@ def create_on_the_fly_embedding_tools(
             metadatas = results.get("metadatas", [[]])[0]
             distances = results.get("distances", [[]])[0]
 
-            for doc_id, doc, metadata, distance in zip(ids, documents, metadatas, distances):
-                # Calculate similarity (distance is typically 0-2, convert to 0-1)
+            for doc_id, doc, metadata, distance in zip(
+                ids,
+                documents,
+                metadatas,
+                distances,
+            ):
+                # Calculate similarity (distance is typically 0-2,
+                # convert to 0-1)
                 similarity = max(0.0, 1.0 - (distance / 2))
 
                 similar_words.append(
