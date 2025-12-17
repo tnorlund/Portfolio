@@ -35,15 +35,17 @@ class TestMetadataMessageContract:
             entity_data={
                 "entity_type": "RECEIPT_METADATA",
                 "image_id": "7e2bd911-7afb-4e0a-84de-57f51ce4daff",
-                "receipt_id": 1
+                "receipt_id": 1,
             },
-            changes={"canonical_merchant_name": FieldChange(old="Old", new="New")},
+            changes={
+                "canonical_merchant_name": FieldChange(old="Old", new="New")
+            },
             event_name="MODIFY",
             collections=[ChromaDBCollection.LINES, ChromaDBCollection.WORDS],
             source="dynamodb_stream",
             timestamp=datetime.now().isoformat(),
             stream_record_id="event-123",
-            aws_region="us-east-1"
+            aws_region="us-east-1",
         )
 
         # Convert to dict (what gets sent to SQS)
@@ -52,13 +54,12 @@ class TestMetadataMessageContract:
             "entity_type": msg.entity_type,
             "entity_data": msg.entity_data,
             "changes": {
-                k: {"old": v.old, "new": v.new}
-                for k, v in msg.changes.items()
+                k: {"old": v.old, "new": v.new} for k, v in msg.changes.items()
             },
             "event_name": msg.event_name,
             "timestamp": msg.timestamp,
             "stream_record_id": msg.stream_record_id,
-            "aws_region": msg.aws_region
+            "aws_region": msg.aws_region,
         }
 
         # Verify all required fields present
@@ -72,13 +73,14 @@ class TestMetadataMessageContract:
     def test_metadata_changes_structure(self):
         """Changes dict has old/new structure."""
         changes = {
-            "canonical_merchant_name": FieldChange(old="Old Store", new="New Store"),
-            "place_id": FieldChange(old="place123", new="place456")
+            "canonical_merchant_name": FieldChange(
+                old="Old Store", new="New Store"
+            ),
+            "place_id": FieldChange(old="place123", new="place456"),
         }
 
         changes_dict = {
-            k: {"old": v.old, "new": v.new}
-            for k, v in changes.items()
+            k: {"old": v.old, "new": v.new} for k, v in changes.items()
         }
 
         # Each change should have old and new keys
@@ -96,7 +98,7 @@ class TestMetadataMessageContract:
             "event_name": "MODIFY",
             "timestamp": datetime.now().isoformat(),
             "stream_record_id": "event-123",
-            "aws_region": "us-east-1"
+            "aws_region": "us-east-1",
         }
 
         # Should not raise exception
@@ -121,15 +123,17 @@ class TestWordLabelMessageContract:
                 "receipt_id": 1,
                 "line_id": 5,
                 "word_id": 10,
-                "label": "TOTAL"
+                "label": "TOTAL",
             },
-            changes={"validation_status": FieldChange(old="PENDING", new="VALID")},
+            changes={
+                "validation_status": FieldChange(old="PENDING", new="VALID")
+            },
             event_name="MODIFY",
             collections=[ChromaDBCollection.WORDS],
             source="dynamodb_stream",
             timestamp=datetime.now().isoformat(),
             stream_record_id="event-456",
-            aws_region="us-east-1"
+            aws_region="us-east-1",
         )
 
         msg_dict = {
@@ -137,13 +141,12 @@ class TestWordLabelMessageContract:
             "entity_type": msg.entity_type,
             "entity_data": msg.entity_data,
             "changes": {
-                k: {"old": v.old, "new": v.new}
-                for k, v in msg.changes.items()
+                k: {"old": v.old, "new": v.new} for k, v in msg.changes.items()
             },
             "event_name": msg.event_name,
             "timestamp": msg.timestamp,
             "stream_record_id": msg.stream_record_id,
-            "aws_region": msg.aws_region
+            "aws_region": msg.aws_region,
         }
 
         # Verify required fields
@@ -167,13 +170,13 @@ class TestWordLabelMessageContract:
                 "receipt_id": 1,
                 "line_id": 5,
                 "word_id": 10,
-                "label": "TOTAL"
+                "label": "TOTAL",
             },
             "changes": {"label": {"old": "PRODUCT", "new": "TOTAL"}},
             "event_name": "MODIFY",
             "timestamp": datetime.now().isoformat(),
             "stream_record_id": "event-789",
-            "aws_region": "us-east-1"
+            "aws_region": "us-east-1",
         }
 
         json_str = json.dumps(msg_dict)
@@ -194,7 +197,7 @@ class TestCompactionRunMessageContract:
                 "receipt_id": 1,
                 "lines_delta_prefix": "s3://bucket/lines/delta",
                 "words_delta_prefix": "s3://bucket/words/delta",
-                "delta_s3_prefix": "s3://bucket/lines/delta"
+                "delta_s3_prefix": "s3://bucket/lines/delta",
             },
             changes={},
             event_name="INSERT",
@@ -202,7 +205,7 @@ class TestCompactionRunMessageContract:
             source="dynamodb_stream",
             timestamp=datetime.now().isoformat(),
             stream_record_id="event-run-123",
-            aws_region="us-east-1"
+            aws_region="us-east-1",
         )
 
         msg_dict = {
@@ -213,7 +216,7 @@ class TestCompactionRunMessageContract:
             "event_name": msg.event_name,
             "timestamp": msg.timestamp,
             "stream_record_id": msg.stream_record_id,
-            "aws_region": msg.aws_region
+            "aws_region": msg.aws_region,
         }
 
         # Verify required fields
@@ -235,13 +238,13 @@ class TestCompactionRunMessageContract:
                 "run_id": "run-123",
                 "image_id": "abc",
                 "receipt_id": 1,
-                "delta_s3_prefix": "s3://bucket/delta"
+                "delta_s3_prefix": "s3://bucket/delta",
             },
             "changes": {},
             "event_name": "INSERT",
             "timestamp": datetime.now().isoformat(),
             "stream_record_id": "event-123",
-            "aws_region": "us-east-1"
+            "aws_region": "us-east-1",
         }
 
         assert len(msg_dict["changes"]) == 0
@@ -291,9 +294,7 @@ class TestTimestampFormat:
 
     def test_timestamp_in_message(self):
         """Message timestamps are properly formatted."""
-        msg_dict = {
-            "timestamp": datetime.now().isoformat()
-        }
+        msg_dict = {"timestamp": datetime.now().isoformat()}
 
         # Should not raise exception
         parsed_time = datetime.fromisoformat(msg_dict["timestamp"])
@@ -302,4 +303,3 @@ class TestTimestampFormat:
 
 if __name__ == "__main__":
     pytest.main([__file__])
-

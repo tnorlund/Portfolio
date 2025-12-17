@@ -39,7 +39,9 @@ logger = logging.getLogger(__name__)
 class LayerVersionUpdater:
     """Update Lambda layer versions in Pulumi state to latest AWS versions."""
 
-    def __init__(self, stack_name: str, layer_names: Optional[List[str]] = None):
+    def __init__(
+        self, stack_name: str, layer_names: Optional[List[str]] = None
+    ):
         """
         Initialize the updater.
 
@@ -48,7 +50,7 @@ class LayerVersionUpdater:
             layer_names: Optional list of specific layer names to update.
                         If None, updates all layers found in state.
         """
-        if not re.match(r'^[a-zA-Z0-9_-]+$', stack_name):
+        if not re.match(r"^[a-zA-Z0-9_-]+$", stack_name):
             raise ValueError(
                 f"Invalid stack name: {stack_name}. "
                 "Must contain only alphanumeric characters, hyphens, and underscores."
@@ -62,9 +64,13 @@ class LayerVersionUpdater:
         # Initialize AWS client
         try:
             self.lambda_client = boto3.client("lambda")
-            self.aws_account_id = boto3.client("sts").get_caller_identity()["Account"]
+            self.aws_account_id = boto3.client("sts").get_caller_identity()[
+                "Account"
+            ]
             self.aws_region = self.lambda_client.meta.region_name
-            logger.info(f"Connected to AWS (Account: {self.aws_account_id}, Region: {self.aws_region})")
+            logger.info(
+                f"Connected to AWS (Account: {self.aws_account_id}, Region: {self.aws_region})"
+            )
         except (NoCredentialsError, ClientError) as e:
             logger.error(f"AWS credentials not configured: {e}")
             sys.exit(1)
@@ -81,13 +87,14 @@ class LayerVersionUpdater:
         """
         try:
             response = self.lambda_client.list_layer_versions(
-                LayerName=layer_name,
-                MaxItems=1
+                LayerName=layer_name, MaxItems=1
             )
             versions = response.get("LayerVersions", [])
             if versions:
                 latest_version = versions[0]["Version"]
-                logger.info(f"Found latest version {latest_version} for layer {layer_name}")
+                logger.info(
+                    f"Found latest version {latest_version} for layer {layer_name}"
+                )
                 return latest_version
             else:
                 logger.warning(f"No versions found for layer {layer_name}")
@@ -100,7 +107,9 @@ class LayerVersionUpdater:
                 logger.error(f"Error querying layer {layer_name}: {e}")
             return None
 
-    def find_all_layers_in_state(self, state: Dict[str, Any]) -> Dict[str, int]:
+    def find_all_layers_in_state(
+        self, state: Dict[str, Any]
+    ) -> Dict[str, int]:
         """
         Find all Lambda layer ARNs in Pulumi state and extract their current versions.
 
@@ -112,7 +121,9 @@ class LayerVersionUpdater:
         # Handle different Pulumi state formats
         resources = (
             state.get("deployment", {}).get("resources")
-            or state.get("checkpoint", {}).get("latest", {}).get("resources", [])
+            or state.get("checkpoint", {})
+            .get("latest", {})
+            .get("resources", [])
             or state.get("resources", [])
             or []
         )
@@ -130,15 +141,17 @@ class LayerVersionUpdater:
 
                 # Parse layer ARN: arn:aws:lambda:region:account:layer:layer-name:version
                 match = re.match(
-                    r'arn:aws:lambda:[^:]+:\d+:layer:([^:]+):(\d+)$',
-                    layer_arn
+                    r"arn:aws:lambda:[^:]+:\d+:layer:([^:]+):(\d+)$", layer_arn
                 )
                 if match:
                     layer_name = match.group(1)
                     version = int(match.group(2))
 
                     # Store the highest version we've seen for this layer
-                    if layer_name not in layers_found or version > layers_found[layer_name]:
+                    if (
+                        layer_name not in layers_found
+                        or version > layers_found[layer_name]
+                    ):
                         layers_found[layer_name] = version
 
         return layers_found
@@ -151,7 +164,7 @@ class LayerVersionUpdater:
                 ["pulumi", "stack", "export", "--stack", self.stack_name],
                 capture_output=True,
                 text=True,
-                check=True
+                check=True,
             )
             state = json.loads(result.stdout)
             logger.info("State exported successfully")
@@ -166,7 +179,9 @@ class LayerVersionUpdater:
     def backup_state(self, state: Dict[str, Any]) -> Path:
         """Create a backup of the current state."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_path = self.backup_dir / f"state_{self.stack_name}_{timestamp}.json"
+        backup_path = (
+            self.backup_dir / f"state_{self.stack_name}_{timestamp}.json"
+        )
 
         with open(backup_path, "w") as f:
             json.dump(state, f, indent=2)
@@ -198,7 +213,9 @@ class LayerVersionUpdater:
                 # Check if this layer matches any of the requested names
                 matches = False
                 for requested_name in self.layer_names:
-                    if layer_name == requested_name or layer_name.endswith(f"-{requested_name}"):
+                    if layer_name == requested_name or layer_name.endswith(
+                        f"-{requested_name}"
+                    ):
                         matches = True
                         break
                 if not matches:
@@ -208,7 +225,7 @@ class LayerVersionUpdater:
             if latest_version and latest_version != current_version:
                 layer_updates[layer_name] = {
                     "current": current_version,
-                    "latest": latest_version
+                    "latest": latest_version,
                 }
                 changes.append(
                     f"Layer {layer_name}: version {current_version} -> {latest_version}"
@@ -224,7 +241,9 @@ class LayerVersionUpdater:
         # Handle different Pulumi state formats
         resources = (
             updated_state.get("deployment", {}).get("resources")
-            or updated_state.get("checkpoint", {}).get("latest", {}).get("resources", [])
+            or updated_state.get("checkpoint", {})
+            .get("latest", {})
+            .get("resources", [])
             or updated_state.get("resources", [])
             or []
         )
@@ -244,8 +263,8 @@ class LayerVersionUpdater:
 
                 # Parse layer ARN
                 match = re.match(
-                    r'(arn:aws:lambda:[^:]+:\d+:layer:)([^:]+)(:)(\d+)$',
-                    layer_arn
+                    r"(arn:aws:lambda:[^:]+:\d+:layer:)([^:]+)(:)(\d+)$",
+                    layer_arn,
                 )
                 if match:
                     arn_prefix = match.group(1)
@@ -256,11 +275,11 @@ class LayerVersionUpdater:
                     # Check if this layer needs updating
                     if layer_name in layer_updates:
                         new_version = layer_updates[layer_name]["latest"]
-                        new_arn = f"{arn_prefix}{layer_name}{colon}{new_version}"
-                        updated_layers.append(new_arn)
-                        logger.debug(
-                            f"Updated {layer_arn} -> {new_arn}"
+                        new_arn = (
+                            f"{arn_prefix}{layer_name}{colon}{new_version}"
                         )
+                        updated_layers.append(new_arn)
+                        logger.debug(f"Updated {layer_arn} -> {new_arn}")
                     else:
                         updated_layers.append(layer_arn)
                 else:
@@ -282,7 +301,7 @@ class LayerVersionUpdater:
                 input=state_json,
                 text=True,
                 capture_output=True,
-                check=True
+                check=True,
             )
             logger.info("State imported successfully")
             logger.info(result.stdout)
@@ -293,7 +312,9 @@ class LayerVersionUpdater:
 
     def run(self, dry_run: bool = True) -> None:
         """Run the update process."""
-        logger.info(f"Starting layer version update for stack '{self.stack_name}'")
+        logger.info(
+            f"Starting layer version update for stack '{self.stack_name}'"
+        )
         if dry_run:
             logger.info("DRY RUN MODE - no changes will be made")
 
@@ -304,10 +325,14 @@ class LayerVersionUpdater:
         backup_path = self.backup_state(state)
 
         # Update layer versions
-        updated_state, changes = self.update_layer_versions_in_state(state, dry_run)
+        updated_state, changes = self.update_layer_versions_in_state(
+            state, dry_run
+        )
 
         if not changes:
-            logger.info("No changes needed - all layers are already at latest version")
+            logger.info(
+                "No changes needed - all layers are already at latest version"
+            )
             return
 
         # Show changes
@@ -344,19 +369,17 @@ def main():
         description="Update Pulumi state to use latest Lambda layer versions"
     )
     parser.add_argument(
-        "--stack",
-        required=True,
-        help="Pulumi stack name (e.g., 'dev')"
+        "--stack", required=True, help="Pulumi stack name (e.g., 'dev')"
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Show what would change without making changes"
+        help="Show what would change without making changes",
     )
     parser.add_argument(
         "--layers",
         help="Comma-separated list of specific layer names to update (e.g., 'receipt-dynamo-dev,receipt-label-dev'). "
-             "If not specified, updates all layers found in state."
+        "If not specified, updates all layers found in state.",
     )
 
     args = parser.parse_args()
@@ -371,4 +394,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

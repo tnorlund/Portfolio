@@ -236,7 +236,9 @@ def download_image_from_s3(
 
     # Build filename with optional unique suffix
     filename = (
-        f"{image_id}-{unique_suffix}.png" if unique_suffix else f"{image_id}.png"
+        f"{image_id}-{unique_suffix}.png"
+        if unique_suffix
+        else f"{image_id}.png"
     )
     image_path = base_dir / filename
 

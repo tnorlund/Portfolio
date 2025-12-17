@@ -14,6 +14,7 @@ def test_stream_processor_import():
     """Test that stream_processor can be imported successfully."""
     try:
         from stream_processor import lambda_handler
+
         assert callable(lambda_handler)
         print("✅ Stream processor imported successfully")
     except Exception as e:
@@ -24,6 +25,7 @@ def test_enhanced_compaction_handler_import():
     """Test that enhanced_compaction_handler can be imported successfully."""
     try:
         from enhanced_compaction_handler import lambda_handler
+
         assert callable(lambda_handler)
         print("✅ Enhanced compaction handler imported successfully")
     except Exception as e:
@@ -35,11 +37,11 @@ def test_stream_processor_execution():
     from stream_processor import lambda_handler
 
     # Test with empty event
-    test_event = {'Records': []}
+    test_event = {"Records": []}
     test_context = MagicMock()
-    
+
     result = lambda_handler(test_event, test_context)
-    
+
     # Should return a response (mocked)
     assert result is not None
     print("✅ Stream processor executed successfully")
@@ -50,11 +52,11 @@ def test_enhanced_compaction_handler_execution():
     from enhanced_compaction_handler import lambda_handler
 
     # Test with empty event
-    test_event = {'Records': []}
+    test_event = {"Records": []}
     test_context = MagicMock()
-    
+
     result = lambda_handler(test_event, test_context)
-    
+
     # Should return a response (mocked)
     assert result is not None
     print("✅ Enhanced compaction handler executed successfully")
@@ -64,6 +66,7 @@ def test_processor_imports():
     """Test that processor module imports work."""
     try:
         from processor import FieldChange, LambdaResponse, ParsedStreamRecord
+
         assert LambdaResponse is not None
         assert FieldChange is not None
         assert ParsedStreamRecord is not None
@@ -80,6 +83,7 @@ def test_compaction_imports():
             update_receipt_metadata,
             update_word_labels,
         )
+
         assert LambdaResponse is not None
         assert StreamMessage is not None
         assert update_receipt_metadata is not None
@@ -93,6 +97,7 @@ def test_utils_imports():
     """Test that utils module imports work."""
     try:
         import utils
+
         assert utils.get_operation_logger is not None
         assert utils.metrics is not None
         assert utils.trace_function is not None

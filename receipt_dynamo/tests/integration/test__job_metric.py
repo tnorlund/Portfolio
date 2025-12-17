@@ -269,7 +269,9 @@ def test_getJobMetric_raises_value_error_not_found(
     """
     Test that getJobMetric raises ValueError when the job metric does not exist
     """
-    with pytest.raises(EntityNotFoundError, match="No job metric found with job ID.*"):
+    with pytest.raises(
+        EntityNotFoundError, match="No job metric found with job ID.*"
+    ):
         job_metric_dynamo.get_job_metric(
             sample_job.job_id, "nonexistent", "2021-01-01T12:30:45"
         )
@@ -686,7 +688,9 @@ def test_validate_last_evaluated_key_raises_value_error_missing_keys():
     Test that validate_last_evaluated_key raises ValueError when keys are
     missing
     """
-    with pytest.raises(EntityValidationError, match="LastEvaluatedKey must contain keys"):
+    with pytest.raises(
+        EntityValidationError, match="LastEvaluatedKey must contain keys"
+    ):
         validate_last_evaluated_key({"PK": {"S": "value"}})  # Missing SK
 
 

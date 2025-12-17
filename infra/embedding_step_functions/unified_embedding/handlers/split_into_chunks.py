@@ -21,9 +21,15 @@ get_operation_logger = utils.logging.get_operation_logger
 logger = get_operation_logger(__name__)
 
 # Configuration - get chunk size from environment with separate word/line sizes
-CHUNK_SIZE_WORDS = int(os.environ.get("CHUNK_SIZE_WORDS", "15"))  # Increased from 5 for faster final merge
-CHUNK_SIZE_LINES = int(os.environ.get("CHUNK_SIZE_LINES", "25"))  # Increased from 10 for faster final merge
-CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", "25"))  # Default to lines size for backward compatibility
+CHUNK_SIZE_WORDS = int(
+    os.environ.get("CHUNK_SIZE_WORDS", "15")
+)  # Increased from 5 for faster final merge
+CHUNK_SIZE_LINES = int(
+    os.environ.get("CHUNK_SIZE_LINES", "25")
+)  # Increased from 10 for faster final merge
+CHUNK_SIZE = int(
+    os.environ.get("CHUNK_SIZE", "25")
+)  # Default to lines size for backward compatibility
 
 # Step Functions payload limit is 256KB (262,144 bytes)
 # We'll use S3 if the response would exceed 150KB to leave a large buffer
@@ -79,16 +85,22 @@ def _load_chunks_from_s3(event: Dict[str, Any]) -> Dict[str, Any]:
     poll_results_s3_bucket = event.get("poll_results_s3_bucket")
 
     if not chunks_s3_key or not chunks_s3_bucket:
-        raise ValueError("chunks_s3_key and chunks_s3_bucket are required for load_chunks_from_s3 operation")
+        raise ValueError(
+            "chunks_s3_key and chunks_s3_bucket are required for load_chunks_from_s3 operation"
+        )
 
     if total_chunks is None:
         # Need to get total_chunks from S3 metadata or download just to count
         # For now, we'll download just to get the count (minimal overhead)
-        with tempfile.NamedTemporaryFile(mode="r", suffix=".json", delete=False) as tmp_file:
+        with tempfile.NamedTemporaryFile(
+            mode="r", suffix=".json", delete=False
+        ) as tmp_file:
             tmp_file_path = tmp_file.name
 
         try:
-            s3_client.download_file(chunks_s3_bucket, chunks_s3_key, tmp_file_path)
+            s3_client.download_file(
+                chunks_s3_bucket, chunks_s3_key, tmp_file_path
+            )
             with open(tmp_file_path, "r", encoding="utf-8") as f:
                 chunks = json.load(f)
             total_chunks = len(chunks)
@@ -152,17 +164,25 @@ def _split_into_chunks(event: Dict[str, Any]) -> Dict[str, Any]:
         poll_results_s3_key = event.get("poll_results_s3_key")
         poll_results_s3_bucket = event.get("poll_results_s3_bucket")
 
-        if (not poll_results or poll_results is None) and poll_results_s3_key and poll_results_s3_bucket:
+        if (
+            (not poll_results or poll_results is None)
+            and poll_results_s3_key
+            and poll_results_s3_bucket
+        ):
             logger.info(
                 "Loading poll_results from S3: %s/%s",
                 poll_results_s3_bucket,
                 poll_results_s3_key,
             )
-            with tempfile.NamedTemporaryFile(mode="r", suffix=".json", delete=False) as tmp_file:
+            with tempfile.NamedTemporaryFile(
+                mode="r", suffix=".json", delete=False
+            ) as tmp_file:
                 tmp_file_path = tmp_file.name
 
             try:
-                s3_client.download_file(poll_results_s3_bucket, poll_results_s3_key, tmp_file_path)
+                s3_client.download_file(
+                    poll_results_s3_bucket, poll_results_s3_key, tmp_file_path
+                )
                 with open(tmp_file_path, "r", encoding="utf-8") as f:
                     poll_results = json.load(f)
                 logger.info(
@@ -211,38 +231,49 @@ def _split_into_chunks(event: Dict[str, Any]) -> Dict[str, Any]:
             }
 
         # Determine chunk size based on collection type
-        has_words = any(
-            d.get("collection") == "words" for d in valid_deltas
-        )
-        has_lines = any(
-            d.get("collection") == "lines" for d in valid_deltas
-        )
+        has_words = any(d.get("collection") == "words" for d in valid_deltas)
+        has_lines = any(d.get("collection") == "lines" for d in valid_deltas)
 
         # Use appropriate chunk size based on collection type
         if has_words and has_lines:
             # Mixed batch - use smaller chunk size to be safe
             chunk_size = CHUNK_SIZE_WORDS
-            logger.info("Mixed word/line batch detected, using word chunk size: %d", chunk_size)
+            logger.info(
+                "Mixed word/line batch detected, using word chunk size: %d",
+                chunk_size,
+            )
         elif has_words:
             # Pure word batch
             chunk_size = CHUNK_SIZE_WORDS
-            logger.info("Word embedding batch detected, using chunk size: %d", chunk_size)
+            logger.info(
+                "Word embedding batch detected, using chunk size: %d",
+                chunk_size,
+            )
         elif has_lines:
             # Pure line batch
             chunk_size = CHUNK_SIZE_LINES
-            logger.info("Line embedding batch detected, using chunk size: %d", chunk_size)
+            logger.info(
+                "Line embedding batch detected, using chunk size: %d",
+                chunk_size,
+            )
         else:
             # Unknown or legacy batch - use default
             chunk_size = CHUNK_SIZE
-            logger.info("Unknown batch type, using default chunk size: %d", chunk_size)
+            logger.info(
+                "Unknown batch type, using default chunk size: %d", chunk_size
+            )
 
         # Estimate if we'll need S3 based on number of deltas
         # Each delta result can be ~1-3KB (includes delta_key, batch_id, embedding_count, etc.)
         # Each chunk adds ~500 bytes overhead (chunk_index, batch_id, operation)
         # With larger chunks, we'll have fewer chunks overall
         estimated_chunks = (len(valid_deltas) + chunk_size - 1) // chunk_size
-        estimated_size_per_delta = 2500  # ~2.5KB per delta result (conservative)
-        estimated_size_per_chunk_overhead = 500  # ~500 bytes per chunk overhead
+        estimated_size_per_delta = (
+            2500  # ~2.5KB per delta result (conservative)
+        )
+        estimated_size_per_chunk_overhead = (
+            500  # ~500 bytes per chunk overhead
+        )
         estimated_total_size = (
             len(valid_deltas) * estimated_size_per_delta
             + estimated_chunks * estimated_size_per_chunk_overhead
@@ -255,8 +286,10 @@ def _split_into_chunks(event: Dict[str, Any]) -> Dict[str, Any]:
         # Single chunk should be safe, but multiple chunks = use S3
         use_s3_early = (
             estimated_total_size > MAX_PAYLOAD_SIZE
-            or estimated_chunks > 1  # More than 1 chunk = ALWAYS use S3 to be safe
-            or len(valid_deltas) > chunk_size  # More deltas than fit in one chunk = use S3
+            or estimated_chunks
+            > 1  # More than 1 chunk = ALWAYS use S3 to be safe
+            or len(valid_deltas)
+            > chunk_size  # More deltas than fit in one chunk = use S3
         )
 
         logger.info(
@@ -296,11 +329,13 @@ def _split_into_chunks(event: Dict[str, Any]) -> Dict[str, Any]:
         )
 
         # Check actual payload size (double-check even if we estimated)
-        response_payload = json.dumps({
-            "batch_id": batch_id,
-            "chunks": chunks,
-            "total_chunks": len(chunks),
-        })
+        response_payload = json.dumps(
+            {
+                "batch_id": batch_id,
+                "chunks": chunks,
+                "total_chunks": len(chunks),
+            }
+        )
         payload_size = len(response_payload.encode("utf-8"))
 
         logger.info(
@@ -320,12 +355,16 @@ def _split_into_chunks(event: Dict[str, Any]) -> Dict[str, Any]:
             # Get S3 bucket from environment
             bucket = os.environ.get("CHROMADB_BUCKET")
             if not bucket:
-                raise ValueError("CHROMADB_BUCKET environment variable not set")
+                raise ValueError(
+                    "CHROMADB_BUCKET environment variable not set"
+                )
 
             # Upload chunks to S3
             chunks_s3_key = f"chunks/{batch_id}/chunks.json"
 
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp_file:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".json", delete=False
+            ) as tmp_file:
                 json.dump(chunks, tmp_file, indent=2)
                 tmp_file_path = tmp_file.name
 
@@ -361,7 +400,9 @@ def _split_into_chunks(event: Dict[str, Any]) -> Dict[str, Any]:
             }
         else:
             # Response is small enough, return chunks directly
-            logger.info("Response payload within limit, returning chunks directly")
+            logger.info(
+                "Response payload within limit, returning chunks directly"
+            )
             return {
                 "batch_id": batch_id,
                 "chunks": chunks,

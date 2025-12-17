@@ -153,7 +153,10 @@ def lambda_layer_buildspec(
 
         # CodeBuild will zip these files because packaging="ZIP" in ProjectArtifactsArgs
         # Don't pre-zip them in the buildspec or we get double-zipping
-        artifacts = {"files": ["python/**/*", "lib/**/*"], "base-directory": "build"}
+        artifacts = {
+            "files": ["python/**/*", "lib/**/*"],
+            "base-directory": "build",
+        }
     else:
         build_commands = [
             'echo "Building in multi-version mode"',

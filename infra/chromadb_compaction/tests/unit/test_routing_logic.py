@@ -24,7 +24,7 @@ class TestCollectionTargeting:
             entity_data={"image_id": "abc", "receipt_id": 1},
             changes={"merchant_name": FieldChange(old="A", new="B")},
             event_name="MODIFY",
-            collections=[ChromaDBCollection.LINES, ChromaDBCollection.WORDS]
+            collections=[ChromaDBCollection.LINES, ChromaDBCollection.WORDS],
         )
 
         assert ChromaDBCollection.LINES in msg.collections
@@ -38,7 +38,7 @@ class TestCollectionTargeting:
             entity_data={"image_id": "abc", "word_id": 1},
             changes={"label": FieldChange(old="A", new="B")},
             event_name="MODIFY",
-            collections=[ChromaDBCollection.WORDS]
+            collections=[ChromaDBCollection.WORDS],
         )
 
         assert ChromaDBCollection.WORDS in msg.collections
@@ -52,11 +52,11 @@ class TestCollectionTargeting:
             entity_type="COMPACTION_RUN",
             entity_data={
                 "run_id": "abc-123",
-                "delta_s3_prefix": "s3://bucket/lines/delta"
+                "delta_s3_prefix": "s3://bucket/lines/delta",
             },
             changes={},
             event_name="INSERT",
-            collections=[ChromaDBCollection.LINES]
+            collections=[ChromaDBCollection.LINES],
         )
 
         assert ChromaDBCollection.LINES in lines_msg.collections
@@ -68,11 +68,11 @@ class TestCollectionTargeting:
             entity_type="COMPACTION_RUN",
             entity_data={
                 "run_id": "abc-123",
-                "delta_s3_prefix": "s3://bucket/words/delta"
+                "delta_s3_prefix": "s3://bucket/words/delta",
             },
             changes={},
             event_name="INSERT",
-            collections=[ChromaDBCollection.WORDS]
+            collections=[ChromaDBCollection.WORDS],
         )
 
         assert ChromaDBCollection.WORDS in words_msg.collections
@@ -90,15 +90,17 @@ class TestMessageStructure:
             entity_data={
                 "entity_type": "RECEIPT_METADATA",
                 "image_id": "test-image-123",
-                "receipt_id": 1
+                "receipt_id": 1,
             },
-            changes={"canonical_merchant_name": FieldChange(old="Old", new="New")},
+            changes={
+                "canonical_merchant_name": FieldChange(old="Old", new="New")
+            },
             event_name="MODIFY",
             collections=[ChromaDBCollection.LINES, ChromaDBCollection.WORDS],
             source="dynamodb_stream",
             timestamp="2024-01-01T00:00:00Z",
             stream_record_id="event-123",
-            aws_region="us-east-1"
+            aws_region="us-east-1",
         )
 
         assert msg.entity_type == "RECEIPT_METADATA"
@@ -120,15 +122,17 @@ class TestMessageStructure:
                 "receipt_id": 1,
                 "line_id": 5,
                 "word_id": 10,
-                "label": "TOTAL"
+                "label": "TOTAL",
             },
-            changes={"validation_status": FieldChange(old="PENDING", new="VALID")},
+            changes={
+                "validation_status": FieldChange(old="PENDING", new="VALID")
+            },
             event_name="MODIFY",
             collections=[ChromaDBCollection.WORDS],
             source="dynamodb_stream",
             timestamp="2024-01-01T00:00:00Z",
             stream_record_id="event-456",
-            aws_region="us-east-1"
+            aws_region="us-east-1",
         )
 
         assert msg.entity_type == "RECEIPT_WORD_LABEL"
@@ -146,7 +150,7 @@ class TestMessageStructure:
                 "run_id": "run-abc-123",
                 "image_id": "test-image-123",
                 "receipt_id": 1,
-                "delta_s3_prefix": "s3://bucket/lines/delta"
+                "delta_s3_prefix": "s3://bucket/lines/delta",
             },
             changes={},
             event_name="INSERT",
@@ -154,7 +158,7 @@ class TestMessageStructure:
             source="dynamodb_stream",
             timestamp="2024-01-01T00:00:00Z",
             stream_record_id="event-789",
-            aws_region="us-east-1"
+            aws_region="us-east-1",
         )
 
         assert msg.entity_type == "COMPACTION_RUN"
@@ -168,4 +172,3 @@ class TestMessageStructure:
 
 if __name__ == "__main__":
     pytest.main([__file__])
-

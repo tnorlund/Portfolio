@@ -64,7 +64,10 @@ class TestMetadataRoutingSQS:
         assert lines_body["source"] == "dynamodb_stream"
         assert lines_body["entity_type"] == "RECEIPT_METADATA"
         assert lines_body["event_name"] == "MODIFY"
-        assert lines_body["entity_data"]["image_id"] == "7e2bd911-7afb-4e0a-84de-57f51ce4daff"
+        assert (
+            lines_body["entity_data"]["image_id"]
+            == "7e2bd911-7afb-4e0a-84de-57f51ce4daff"
+        )
         assert lines_body["entity_data"]["receipt_id"] == 1
         assert "canonical_merchant_name" in lines_body["changes"]
 
@@ -126,7 +129,10 @@ class TestWordLabelRoutingSQS:
         assert words_body["entity_type"] == "RECEIPT_WORD_LABEL"
         assert words_body["event_name"] == "MODIFY"
         # Check that changes are present (label changed from PRODUCT to MERCHANT_NAME in fixture)
-        assert "reasoning" in words_body["changes"] or "validation_status" in words_body["changes"]
+        assert (
+            "reasoning" in words_body["changes"]
+            or "validation_status" in words_body["changes"]
+        )
 
         # Check lines queue is empty
         lines_response = sqs.receive_message(
@@ -216,8 +222,14 @@ class TestCompactionRunRoutingSQS:
         body = json.loads(message["Body"])
 
         # Check required fields
-        assert body["entity_data"]["run_id"] == "550e8400-e29b-41d4-a716-446655440001"  # UUID from fixture
-        assert body["entity_data"]["image_id"] == "7e2bd911-7afb-4e0a-84de-57f51ce4daff"
+        assert (
+            body["entity_data"]["run_id"]
+            == "550e8400-e29b-41d4-a716-446655440001"
+        )  # UUID from fixture
+        assert (
+            body["entity_data"]["image_id"]
+            == "7e2bd911-7afb-4e0a-84de-57f51ce4daff"
+        )
         assert body["entity_data"]["receipt_id"] == 1
         assert "delta_s3_prefix" in body["entity_data"]
         assert len(body["changes"]) == 0  # INSERT events have empty changes
@@ -231,9 +243,7 @@ class TestBatchProcessing:
     ):
         """Test handling >10 messages (SQS batch limit)."""
         # Create event with 15 metadata changes
-        events = {
-            "Records": []
-        }
+        events = {"Records": []}
         for i in range(15):
             single_event = target_event_factory(
                 canonical_merchant_name=f"Merchant {i}"
@@ -254,7 +264,7 @@ class TestBatchProcessing:
         target_metadata_event,
         word_label_update_event,
         compaction_run_insert_event,
-        mock_sqs_queues
+        mock_sqs_queues,
     ):
         """Test batch with multiple entity types."""
         sqs = mock_sqs_queues["sqs_client"]
@@ -329,8 +339,7 @@ class TestMessageFormat:
         lambda_handler(target_metadata_event, None)
 
         response = sqs.receive_message(
-            QueueUrl=lines_queue_url,
-            MessageAttributeNames=["All"]
+            QueueUrl=lines_queue_url, MessageAttributeNames=["All"]
         )
 
         # Note: moto may not fully preserve message attributes
@@ -377,7 +386,7 @@ class TestErrorHandling:
                     "eventName": "MODIFY",
                     "dynamodb": {
                         # Missing Keys
-                    }
+                    },
                 }
             ]
         }
@@ -391,4 +400,3 @@ class TestErrorHandling:
 
 if __name__ == "__main__":
     pytest.main([__file__])
-

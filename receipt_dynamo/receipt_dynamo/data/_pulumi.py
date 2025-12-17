@@ -16,7 +16,7 @@ def load_env(env: str = "dev", working_dir: str = None) -> Dict[str, Any]:
         dict: A dictionary of key-value pairs from the Pulumi stack outputs.
     """
     from pathlib import Path
-    
+
     try:
         # Find the directory containing Pulumi.yaml
         if working_dir:
@@ -29,10 +29,13 @@ def load_env(env: str = "dev", working_dir: str = None) -> Dict[str, Any]:
             else:
                 # Fall back to current working directory
                 pulumi_dir = Path.cwd()
-        
-        if not pulumi_dir.exists() or not (pulumi_dir / "Pulumi.yaml").exists():
+
+        if (
+            not pulumi_dir.exists()
+            or not (pulumi_dir / "Pulumi.yaml").exists()
+        ):
             return {}
-            
+
         result = subprocess.run(
             [
                 "pulumi",
@@ -66,7 +69,7 @@ def load_secrets(env: str = "dev", working_dir: str = None) -> Dict[str, Any]:
         dict: A dictionary of key-value pairs from the Pulumi stack secrets.
     """
     from pathlib import Path
-    
+
     try:
         # Find the directory containing Pulumi.yaml
         if working_dir:
@@ -79,10 +82,13 @@ def load_secrets(env: str = "dev", working_dir: str = None) -> Dict[str, Any]:
             else:
                 # Fall back to current working directory
                 pulumi_dir = Path.cwd()
-        
-        if not pulumi_dir.exists() or not (pulumi_dir / "Pulumi.yaml").exists():
+
+        if (
+            not pulumi_dir.exists()
+            or not (pulumi_dir / "Pulumi.yaml").exists()
+        ):
             return {}
-            
+
         result = subprocess.run(
             [
                 "pulumi",
@@ -98,7 +104,7 @@ def load_secrets(env: str = "dev", working_dir: str = None) -> Dict[str, Any]:
             cwd=str(pulumi_dir),
         )
         result_data = json.loads(result.stdout)
-        
+
         # Extract the actual values from the Pulumi config format
         # Format: {"key": {"value": "actual-value", "secret": true}}
         if isinstance(result_data, dict):
@@ -109,7 +115,7 @@ def load_secrets(env: str = "dev", working_dir: str = None) -> Dict[str, Any]:
                 else:
                     extracted[key] = config_entry
             return extracted
-        
+
         return result_data if isinstance(result_data, dict) else {}
     except (subprocess.CalledProcessError, json.JSONDecodeError) as e:
         # Return an empty dictionary on failure

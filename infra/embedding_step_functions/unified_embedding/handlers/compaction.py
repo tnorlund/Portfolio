@@ -853,12 +853,12 @@ def final_merge_single_handler(event: Dict[str, Any]) -> Dict[str, Any]:
     # Delegate to existing final_merge_handler
     return final_merge_handler(
         {
-        "operation": "final_merge",
-        "batch_id": batch_id,
-        "chunk_results": chunk_results,
-        "database": database_name,
-        "poll_results_s3_key": poll_results_s3_key,
-        "poll_results_s3_bucket": poll_results_s3_bucket,
+            "operation": "final_merge",
+            "batch_id": batch_id,
+            "chunk_results": chunk_results,
+            "database": database_name,
+            "poll_results_s3_key": poll_results_s3_key,
+            "poll_results_s3_bucket": poll_results_s3_bucket,
         }
     )
 

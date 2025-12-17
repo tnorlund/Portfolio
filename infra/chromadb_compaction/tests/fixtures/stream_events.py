@@ -110,7 +110,9 @@ WORD_LABEL_UPDATE_EVENT = {
                 "ApproximateCreationDateTime": 1755754670.0,
                 "Keys": {
                     "PK": {"S": "IMAGE#7e2bd911-7afb-4e0a-84de-57f51ce4daff"},
-                    "SK": {"S": "RECEIPT#00001#LINE#00005#WORD#00010#LABEL#MERCHANT_NAME"},
+                    "SK": {
+                        "S": "RECEIPT#00001#LINE#00005#WORD#00010#LABEL#MERCHANT_NAME"
+                    },
                 },
                 "OldImage": old_word_label.to_item(),
                 "NewImage": new_word_label.to_item(),
@@ -138,7 +140,9 @@ WORD_LABEL_REMOVE_EVENT = {
                 "ApproximateCreationDateTime": 1755754670.0,
                 "Keys": {
                     "PK": {"S": "IMAGE#7e2bd911-7afb-4e0a-84de-57f51ce4daff"},
-                    "SK": {"S": "RECEIPT#00001#LINE#00005#WORD#00010#LABEL#PRODUCT"},
+                    "SK": {
+                        "S": "RECEIPT#00001#LINE#00005#WORD#00010#LABEL#PRODUCT"
+                    },
                 },
                 "OldImage": old_word_label.to_item(),
                 "SequenceNumber": "977119800000398701107540003",
@@ -157,7 +161,7 @@ WORD_LABEL_REMOVE_EVENT = {
 def get_word_label_event_variation(
     label: str = "TOTAL",
     validation_status: str = "VALID",
-    event_name: str = "MODIFY"
+    event_name: str = "MODIFY",
 ) -> dict:
     """Get a variation of the word label event with different values."""
     old_label = ReceiptWordLabel(
@@ -167,7 +171,9 @@ def get_word_label_event_variation(
         word_id=10,
         label="PRODUCT",
         reasoning="Original classification",
-        timestamp_added=datetime.fromisoformat("2025-08-08T03:53:53.200541+00:00"),
+        timestamp_added=datetime.fromisoformat(
+            "2025-08-08T03:53:53.200541+00:00"
+        ),
         validation_status="PENDING",
     )
 
@@ -178,7 +184,9 @@ def get_word_label_event_variation(
         word_id=10,
         label=label,
         reasoning="Updated classification",
-        timestamp_added=datetime.fromisoformat("2025-08-08T03:53:53.200541+00:00"),
+        timestamp_added=datetime.fromisoformat(
+            "2025-08-08T03:53:53.200541+00:00"
+        ),
         validation_status=validation_status,
     )
 
@@ -193,8 +201,12 @@ def get_word_label_event_variation(
                 "dynamodb": {
                     "ApproximateCreationDateTime": 1755754670.0,
                     "Keys": {
-                        "PK": {"S": "IMAGE#7e2bd911-7afb-4e0a-84de-57f51ce4daff"},
-                        "SK": {"S": f"RECEIPT#00001#LINE#00005#WORD#00010#LABEL#{label}"},
+                        "PK": {
+                            "S": "IMAGE#7e2bd911-7afb-4e0a-84de-57f51ce4daff"
+                        },
+                        "SK": {
+                            "S": f"RECEIPT#00001#LINE#00005#WORD#00010#LABEL#{label}"
+                        },
                     },
                     "SequenceNumber": "977119800000398701107540999",
                     "SizeBytes": 512,
@@ -246,7 +258,9 @@ COMPACTION_RUN_INSERT_EVENT = {
                 "ApproximateCreationDateTime": 1755754670.0,
                 "Keys": {
                     "PK": {"S": "IMAGE#7e2bd911-7afb-4e0a-84de-57f51ce4daff"},
-                    "SK": {"S": "RECEIPT#00001#COMPACTION_RUN#550e8400-e29b-41d4-a716-446655440001"},
+                    "SK": {
+                        "S": "RECEIPT#00001#COMPACTION_RUN#550e8400-e29b-41d4-a716-446655440001"
+                    },
                 },
                 "NewImage": compaction_run.to_item(),
                 "SequenceNumber": "977119800000398701107540004",
@@ -265,10 +279,10 @@ COMPACTION_RUN_INSERT_EVENT = {
 def get_compaction_run_event_variation(
     run_id: str = "550e8400-e29b-41d4-a716-446655440002",  # Valid UUID default
     image_id: str = "7e2bd911-7afb-4e0a-84de-57f51ce4daff",
-    receipt_id: int = 1
+    receipt_id: int = 1,
 ) -> dict:
     """Get a variation of the compaction run event with different values.
-    
+
     Note: run_id must be a valid UUIDv4 string.
     """
     run = CompactionRun(
@@ -296,7 +310,9 @@ def get_compaction_run_event_variation(
                     "ApproximateCreationDateTime": 1755754670.0,
                     "Keys": {
                         "PK": {"S": f"IMAGE#{image_id}"},
-                        "SK": {"S": f"RECEIPT#{receipt_id:05d}#COMPACTION_RUN#{run_id}"},
+                        "SK": {
+                            "S": f"RECEIPT#{receipt_id:05d}#COMPACTION_RUN#{run_id}"
+                        },
                     },
                     "NewImage": run.to_item(),
                     "SequenceNumber": "977119800000398701107540999",
@@ -310,4 +326,3 @@ def get_compaction_run_event_variation(
             }
         ]
     }
-

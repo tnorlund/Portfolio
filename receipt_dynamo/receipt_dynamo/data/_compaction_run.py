@@ -147,14 +147,14 @@ class _CompactionRun(FlattenedStandardMixin):
         merged_vectors: int = 0,
     ) -> None:
         """Mark a collection state as COMPLETED and set finished_at + merged count.
-        
+
         Uses atomic UpdateExpression to update only specific fields, preventing race conditions
         when both lines and words collection updates happen simultaneously.
         """
         pk = f"IMAGE#{image_id}"
         sk = f"RECEIPT#{receipt_id:05d}#COMPACTION_RUN#{run_id}"
         now = datetime.now(timezone.utc).isoformat()
-        
+
         # Build UpdateExpression based on collection type
         if collection == "lines":
             update_expression = (
@@ -182,7 +182,7 @@ class _CompactionRun(FlattenedStandardMixin):
                 ":merged_count": {"N": str(merged_vectors)},
                 ":now": {"S": now},
             }
-        
+
         # Atomic update - only modifies fields for this collection
         self._client.update_item(
             TableName=self.table_name,
@@ -204,14 +204,14 @@ class _CompactionRun(FlattenedStandardMixin):
         error: str,
     ) -> None:
         """Mark a collection state as FAILED with error text.
-        
+
         Uses atomic UpdateExpression to update only specific fields, preventing race conditions
         when both lines and words collection updates happen simultaneously.
         """
         pk = f"IMAGE#{image_id}"
         sk = f"RECEIPT#{receipt_id:05d}#COMPACTION_RUN#{run_id}"
         now = datetime.now(timezone.utc).isoformat()
-        
+
         # Build UpdateExpression based on collection type
         if collection == "lines":
             update_expression = (
@@ -239,7 +239,7 @@ class _CompactionRun(FlattenedStandardMixin):
                 ":finished_at": {"S": now},
                 ":now": {"S": now},
             }
-        
+
         # Atomic update - only modifies fields for this collection
         self._client.update_item(
             TableName=self.table_name,

@@ -647,7 +647,9 @@ def test_validate_last_evaluated_key_raises_value_error_missing_keys():
     Test that validate_last_evaluated_key raises EntityValidationError when keys are
     missing
     """
-    with pytest.raises(EntityValidationError, match="LastEvaluatedKey must contain keys"):
+    with pytest.raises(
+        EntityValidationError, match="LastEvaluatedKey must contain keys"
+    ):
         validate_last_evaluated_key({"PK": {"S": "value"}})  # Missing SK
 
 
@@ -688,7 +690,8 @@ def test_listJobCheckpoints_raises_client_error(
 
     # Call the method and verify it raises the expected exception
     with pytest.raises(
-        OperationError, match="DynamoDB resource not found during list_job_checkpoints"
+        OperationError,
+        match="DynamoDB resource not found during list_job_checkpoints",
     ):
         job_checkpoint_dynamo.list_job_checkpoints(sample_job.job_id)
     mock_query.assert_called_once()
@@ -719,7 +722,8 @@ def test_listAllJobCheckpoints_raises_client_error(
 
     # Call the method and verify it raises the expected exception
     with pytest.raises(
-        OperationError, match="DynamoDB resource not found during list_all_job_checkpoints"
+        OperationError,
+        match="DynamoDB resource not found during list_all_job_checkpoints",
     ):
         job_checkpoint_dynamo.list_all_job_checkpoints()
     mock_query.assert_called_once()

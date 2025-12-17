@@ -312,7 +312,9 @@ async def process_batch(
             # Each label makes multiple LLM calls (agent + tools), so spacing helps
             if i > 1:
                 # Get delay from environment or use default
-                delay_seconds = float(os.environ.get("LABEL_DELAY_SECONDS", "0.5"))
+                delay_seconds = float(
+                    os.environ.get("LABEL_DELAY_SECONDS", "0.5")
+                )
                 await asyncio.sleep(delay_seconds)
 
             # Run validation agent

@@ -419,7 +419,8 @@ def test_batch_receipt_line_validation_mixed_types(
     mixed_list = [sample_receipt_line, "not-a-line", 123]
 
     with pytest.raises(
-        EntityValidationError, match=r"receipt_lines\[1\] must be an instance of ReceiptLine"
+        EntityValidationError,
+        match=r"receipt_lines\[1\] must be an instance of ReceiptLine",
     ):
         method(mixed_list)
 
@@ -721,7 +722,8 @@ def test_update_receipt_line_conditional_check_failed(
     )
 
     with pytest.raises(
-        EntityNotFoundError, match="receiptline not found during update_receipt_line"
+        EntityNotFoundError,
+        match="receiptline not found during update_receipt_line",
     ):
         client.update_receipt_line(sample_receipt_line)
 
@@ -966,7 +968,9 @@ def test_add_receipt_lines_unprocessed_items_retry(
 
     client.add_receipt_lines(lines)
 
-    assert call_count["value"] == 1, "Should have called transact_write_items once."
+    assert (
+        call_count["value"] == 1
+    ), "Should have called transact_write_items once."
 
 
 @pytest.mark.integration
@@ -1337,12 +1341,12 @@ def test_list_receipt_lines_from_receipt_empty_result(
 ) -> None:
     """Tests list_receipt_lines_from_receipt when no lines exist."""
     client = DynamoClient(dynamodb_table)
-    
+
     # Query for non-existent receipt
     result = client.list_receipt_lines_from_receipt(
         image_id=unique_image_id, receipt_id=999
     )
-    
+
     # Should return empty list
     assert result == []
     assert isinstance(result, list)
@@ -1416,7 +1420,7 @@ def test_list_receipt_lines_from_receipt_large_dataset(
             confidence=0.95,
         )
         lines.append(line)
-        
+
     client.add_receipt_lines(lines)
 
     # Query for receipt 1
@@ -1427,7 +1431,7 @@ def test_list_receipt_lines_from_receipt_large_dataset(
     # Verify all lines were retrieved
     assert len(retrieved_lines) == 50
     assert all(l.receipt_id == 1 for l in retrieved_lines)
-    
+
     # Verify order and completeness
     line_ids = {l.line_id for l in retrieved_lines}
     expected_ids = set(range(1, 51))
@@ -1442,7 +1446,7 @@ def test_list_receipt_lines_from_receipt_multiple_images(
 ) -> None:
     """Tests that method filters by image_id correctly."""
     client = DynamoClient(dynamodb_table)
-    
+
     # Create another unique image ID
     other_image_id = str(uuid4())
 
@@ -1461,7 +1465,7 @@ def test_list_receipt_lines_from_receipt_multiple_images(
         angle_radians=0,
         confidence=0.95,
     )
-    
+
     line2 = ReceiptLine(
         receipt_id=1,
         image_id=other_image_id,
@@ -1476,7 +1480,7 @@ def test_list_receipt_lines_from_receipt_multiple_images(
         angle_radians=0,
         confidence=0.95,
     )
-    
+
     client.add_receipt_line(line1)
     client.add_receipt_line(line2)
 
@@ -1499,7 +1503,7 @@ def test_list_receipt_lines_from_receipt_excludes_words_and_letters(
 ) -> None:
     """Tests that method only returns ReceiptLine entities, not Words or Letters."""
     client = DynamoClient(dynamodb_table)
-    
+
     # Add a receipt line
     line = ReceiptLine(
         receipt_id=1,
@@ -1516,10 +1520,11 @@ def test_list_receipt_lines_from_receipt_excludes_words_and_letters(
         confidence=0.95,
     )
     client.add_receipt_line(line)
-    
+
     # Also add some receipt words that should NOT be returned
     # (This simulates what would happen in a real scenario with mixed entity types)
     from receipt_dynamo.entities.receipt_word import ReceiptWord
+
     word = ReceiptWord(
         receipt_id=1,
         image_id=unique_image_id,
@@ -1575,11 +1580,11 @@ def test_list_receipt_lines_from_receipt_handles_pagination(
             confidence=0.95,
         )
         lines.append(line)
-        
+
     # Add in smaller batches to avoid DynamoDB batch limits
     batch_size = 25
     for i in range(0, len(lines), batch_size):
-        batch = lines[i:i + batch_size]
+        batch = lines[i : i + batch_size]
         client.add_receipt_lines(batch)
 
     # Query all lines - this should handle pagination automatically
@@ -1591,7 +1596,7 @@ def test_list_receipt_lines_from_receipt_handles_pagination(
     assert len(retrieved_lines) == 150
     assert all(l.receipt_id == 1 for l in retrieved_lines)
     assert all(l.image_id == unique_image_id for l in retrieved_lines)
-    
+
     # Verify completeness - all line_ids from 1 to 150
     line_ids = sorted([l.line_id for l in retrieved_lines])
     expected_ids = list(range(1, 151))

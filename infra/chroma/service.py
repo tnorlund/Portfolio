@@ -174,7 +174,9 @@ class ChromaEcsService(ComponentResource):
             ),
             opts=ResourceOptions(
                 parent=self,
-                ignore_changes=["container_definitions"],  # CodeBuild updates image
+                ignore_changes=[
+                    "container_definitions"
+                ],  # CodeBuild updates image
             ),
         )
 

@@ -6,14 +6,18 @@ from pathlib import Path
 def _list_dir(path: Path, limit: int = 20):
     try:
         entries = []
-        for p in sorted(path.iterdir(), key=lambda x: x.name, reverse=True)[:limit]:
+        for p in sorted(path.iterdir(), key=lambda x: x.name, reverse=True)[
+            :limit
+        ]:
             try:
                 stat = p.stat()
-                entries.append({
-                    "name": p.name,
-                    "is_dir": p.is_dir(),
-                    "size": stat.st_size if p.is_file() else None,
-                })
+                entries.append(
+                    {
+                        "name": p.name,
+                        "is_dir": p.is_dir(),
+                        "size": stat.st_size if p.is_file() else None,
+                    }
+                )
             except Exception as e:  # noqa: BLE001
                 entries.append({"name": p.name, "error": str(e)})
         return {"exists": True, "entries": entries}
@@ -53,5 +57,3 @@ def lambda_handler(event, context):  # noqa: ARG001
         "statusCode": 200,
         "body": json.dumps(result, indent=2),
     }
-
-

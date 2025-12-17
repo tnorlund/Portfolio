@@ -64,7 +64,9 @@ def handler(event, _context):
         logger.error("S3_CACHE_BUCKET environment variable not set")
         return {
             "statusCode": 500,
-            "body": json.dumps({"error": "Configuration error: S3_CACHE_BUCKET not set"}),
+            "body": json.dumps(
+                {"error": "Configuration error: S3_CACHE_BUCKET not set"}
+            ),
             "headers": {
                 "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "*",
@@ -73,7 +75,9 @@ def handler(event, _context):
 
     try:
         # Download cached JSON from S3
-        logger.info("Fetching cache from S3: %s/%s", S3_CACHE_BUCKET, CACHE_KEY)
+        logger.info(
+            "Fetching cache from S3: %s/%s", S3_CACHE_BUCKET, CACHE_KEY
+        )
         response = s3_client.get_object(Bucket=S3_CACHE_BUCKET, Key=CACHE_KEY)
         cache_data = json.loads(response["Body"].read().decode("utf-8"))
 
@@ -90,15 +94,19 @@ def handler(event, _context):
     except ClientError as e:
         error_code = e.response.get("Error", {}).get("Code", "Unknown")
         if error_code == "NoSuchKey":
-            logger.warning("Cache not found in S3: %s/%s", S3_CACHE_BUCKET, CACHE_KEY)
+            logger.warning(
+                "Cache not found in S3: %s/%s", S3_CACHE_BUCKET, CACHE_KEY
+            )
             return {
                 "statusCode": 404,
-                "body": json.dumps({
-                    "error": "Cache not found",
-                    "message": "The inference cache has not been generated yet. The cache generator Lambda should create it automatically.",
-                    "bucket": S3_CACHE_BUCKET,
-                    "key": CACHE_KEY,
-                }),
+                "body": json.dumps(
+                    {
+                        "error": "Cache not found",
+                        "message": "The inference cache has not been generated yet. The cache generator Lambda should create it automatically.",
+                        "bucket": S3_CACHE_BUCKET,
+                        "key": CACHE_KEY,
+                    }
+                ),
                 "headers": {
                     "Content-Type": "application/json",
                     "Access-Control-Allow-Origin": "*",
@@ -124,4 +132,3 @@ def handler(event, _context):
                 "Access-Control-Allow-Origin": "*",
             },
         }
-

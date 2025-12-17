@@ -254,7 +254,7 @@ class ErrorHandler:
                 **context
             )
         else:
-            # Try to extract entity type from context for more 
+            # Try to extract entity type from context for more
             # descriptive message
             entity_type = context.get("entity_type", "")
             entity_name = context.get("entity_name", "")

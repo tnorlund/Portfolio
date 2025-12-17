@@ -41,6 +41,7 @@ def download_serialized_file(*, s3_bucket: str, s3_key: str) -> Path:
         prefix="embedding-ingest-", suffix=suffix, dir="/tmp"
     )
     import os
+
     os.close(fd)  # Close file descriptor, let boto3 create the file
     boto3.client("s3").download_file(s3_bucket, s3_key, tmp_path)
     return Path(tmp_path)

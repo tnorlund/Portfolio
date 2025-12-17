@@ -1,4 +1,5 @@
 """Shared fixtures for receipt_dynamo_stream unit tests."""
+
 from typing import Mapping, Optional
 
 import pytest

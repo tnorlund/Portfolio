@@ -11,7 +11,6 @@ GIGABYTE = 1024
 MINUTE = 60
 
 
-
 # Common environment variables (merged with handler-specific ones)
 COMMON_ENV_VARS: Dict[str, str | None] = {
     "DYNAMODB_TABLE_NAME": os.environ.get("DYNAMODB_TABLE_NAME"),
@@ -20,8 +19,6 @@ COMMON_ENV_VARS: Dict[str, str | None] = {
     "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY"),
     "S3_BUCKET": os.environ.get("S3_BUCKET"),
 }
-
-
 
 
 # Runtime configuration

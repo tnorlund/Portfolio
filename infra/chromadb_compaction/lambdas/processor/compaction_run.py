@@ -45,7 +45,9 @@ def parse_compaction_run(
     # receipt_id is typically zero-padded in SK: RECEIPT#00001#...
     receipt_token = sk.split("#")[1] if "#" in sk else ""
     try:
-        receipt_id = int(receipt_token.replace("RECEIPT", "").replace("#", "") or 0)
+        receipt_id = int(
+            receipt_token.replace("RECEIPT", "").replace("#", "") or 0
+        )
     except Exception:
         # Fall back to attribute if present
         receipt_id = int(new_image.get("receipt_id", {}).get("N", 0))
@@ -97,4 +99,3 @@ def is_embeddings_completed(new_image: Dict[str, Any]) -> bool:
     return (lines_state == "COMPLETED" and words_state == "COMPLETED") or (
         lines_finished and words_finished
     )
-

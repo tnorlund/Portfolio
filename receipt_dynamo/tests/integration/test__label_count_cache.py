@@ -8,6 +8,7 @@ add, get, update, and list operations. It follows the perfect
 established in test__receipt.py, test__image.py, test__word.py, and
 # test__letter.py.
 """
+
 import time
 from datetime import datetime
 from typing import List, Literal
@@ -99,7 +100,7 @@ class TestLabelCountCacheBasicOperations:
     def test_add_label_count_cache_success(
         self,
         dynamodb_table: Literal["MyMockedTable"],
-        example_label_count_cache: LabelCountCache
+        example_label_count_cache: LabelCountCache,
     ) -> None:
         """Test successful addition of a label count cache."""
         client = DynamoClient(dynamodb_table)
@@ -110,7 +111,7 @@ class TestLabelCountCacheBasicOperations:
     def test_add_label_count_cache_with_ttl_success(
         self,
         dynamodb_table: Literal["MyMockedTable"],
-        example_label_count_cache_with_ttl: LabelCountCache
+        example_label_count_cache_with_ttl: LabelCountCache,
     ) -> None:
         """Test successful addition of a label count cache with TTL."""
         client = DynamoClient(dynamodb_table)
@@ -123,7 +124,7 @@ class TestLabelCountCacheBasicOperations:
     def test_get_label_count_cache_success(
         self,
         dynamodb_table: Literal["MyMockedTable"],
-        example_label_count_cache: LabelCountCache
+        example_label_count_cache: LabelCountCache,
     ) -> None:
         """Test successful retrieval of a label count cache."""
         client = DynamoClient(dynamodb_table)
@@ -142,7 +143,7 @@ class TestLabelCountCacheBasicOperations:
     def test_update_label_count_cache_success(
         self,
         dynamodb_table: Literal["MyMockedTable"],
-        example_label_count_cache: LabelCountCache
+        example_label_count_cache: LabelCountCache,
     ) -> None:
         """Test successful update of a label count cache."""
         client = DynamoClient(dynamodb_table)
@@ -158,7 +159,7 @@ class TestLabelCountCacheBasicOperations:
     def test_update_label_count_cache_not_found_raises_error(
         self,
         dynamodb_table: Literal["MyMockedTable"],
-        example_label_count_cache: LabelCountCache
+        example_label_count_cache: LabelCountCache,
     ) -> None:
         """Test that updating a non-existent label count cache raises error."""
         client = DynamoClient(dynamodb_table)
@@ -168,7 +169,7 @@ class TestLabelCountCacheBasicOperations:
     def test_add_duplicate_label_count_cache_raises_error(
         self,
         dynamodb_table: Literal["MyMockedTable"],
-        example_label_count_cache: LabelCountCache
+        example_label_count_cache: LabelCountCache,
     ) -> None:
         """Test that adding a duplicate label count cache raises error."""
         client = DynamoClient(dynamodb_table)
@@ -192,7 +193,7 @@ class TestLabelCountCacheBatchOperations:
     def test_add_label_count_caches_success(
         self,
         dynamodb_table: Literal["MyMockedTable"],
-        example_label_count_caches: List[LabelCountCache]
+        example_label_count_caches: List[LabelCountCache],
     ) -> None:
         """Test successful batch addition of label count caches."""
         client = DynamoClient(dynamodb_table)
@@ -245,7 +246,7 @@ class TestLabelCountCacheListOperations:
     def test_list_label_count_caches_success(
         self,
         dynamodb_table: Literal["MyMockedTable"],
-        example_label_count_caches: List[LabelCountCache]
+        example_label_count_caches: List[LabelCountCache],
     ) -> None:
         """Test successful listing of label count caches."""
         client = DynamoClient(dynamodb_table)
@@ -263,7 +264,7 @@ class TestLabelCountCacheListOperations:
     def test_list_label_count_caches_with_limit(
         self,
         dynamodb_table: Literal["MyMockedTable"],
-        example_label_count_caches: List[LabelCountCache]
+        example_label_count_caches: List[LabelCountCache],
     ) -> None:
         """Test listing label count caches with limit."""
         client = DynamoClient(dynamodb_table)
@@ -277,7 +278,7 @@ class TestLabelCountCacheListOperations:
     def test_list_label_count_caches_pagination(
         self,
         dynamodb_table: Literal["MyMockedTable"],
-        example_label_count_caches: List[LabelCountCache]
+        example_label_count_caches: List[LabelCountCache],
     ) -> None:
         """Test pagination through label count caches."""
         client = DynamoClient(dynamodb_table)
@@ -312,7 +313,7 @@ class TestLabelCountCacheListOperations:
     def test_list_label_count_caches_with_zero_limit(
         self,
         dynamodb_table: Literal["MyMockedTable"],
-        example_label_count_caches: List[LabelCountCache]
+        example_label_count_caches: List[LabelCountCache],
     ) -> None:
         """Test listing label count caches with zero limit."""
         client = DynamoClient(dynamodb_table)
@@ -331,9 +332,7 @@ class TestLabelCountCacheValidation:
     ) -> None:
         """Test that adding None raises EntityValidationError."""
         client = DynamoClient(dynamodb_table)
-        with pytest.raises(
-            EntityValidationError, match="item cannot be None"
-        ):
+        with pytest.raises(EntityValidationError, match="item cannot be None"):
             client.add_label_count_cache(None)  # type: ignore
 
     def test_add_label_count_cache_wrong_type_raises_error(
@@ -371,7 +370,7 @@ class TestLabelCountCacheValidation:
     def test_add_label_count_caches_wrong_item_type_raises_error(
         self,
         dynamodb_table: Literal["MyMockedTable"],
-        example_label_count_cache: LabelCountCache
+        example_label_count_cache: LabelCountCache,
     ) -> None:
         """Test that adding list with wrong item type raises error."""
         client = DynamoClient(dynamodb_table)
@@ -388,9 +387,7 @@ class TestLabelCountCacheValidation:
     ) -> None:
         """Test that updating None raises EntityValidationError."""
         client = DynamoClient(dynamodb_table)
-        with pytest.raises(
-            EntityValidationError, match="item cannot be None"
-        ):
+        with pytest.raises(EntityValidationError, match="item cannot be None"):
             client.update_label_count_cache(None)  # type: ignore
 
     def test_update_label_count_cache_wrong_type_raises_error(
@@ -403,7 +400,6 @@ class TestLabelCountCacheValidation:
             match="item must be an instance of the LabelCountCache class",
         ):
             client.update_label_count_cache("not-a-cache")  # type: ignore
-
 
 
 @pytest.mark.parametrize(
@@ -434,10 +430,12 @@ class TestLabelCountCacheErrorHandling:
         """Test that DynamoDB errors are properly handled in add operations."""
         client = DynamoClient(dynamodb_table)
         with patch.object(
-            client._client, "put_item", side_effect=ClientError(
+            client._client,
+            "put_item",
+            side_effect=ClientError(
                 {"Error": {"Code": error_code, "Message": "Test error"}},
-                "PutItem"
-            )
+                "PutItem",
+            ),
         ):
             with pytest.raises(expected_exception):
                 client.add_label_count_cache(example_label_count_cache)
@@ -452,10 +450,12 @@ class TestLabelCountCacheErrorHandling:
         """Test DynamoDB errors in batch add operations."""
         client = DynamoClient(dynamodb_table)
         with patch.object(
-            client._client, "batch_write_item", side_effect=ClientError(
+            client._client,
+            "batch_write_item",
+            side_effect=ClientError(
                 {"Error": {"Code": error_code, "Message": "Test error"}},
-                "BatchWriteItem"
-            )
+                "BatchWriteItem",
+            ),
         ):
             with pytest.raises(expected_exception):
                 client.add_label_count_caches(example_label_count_caches)
@@ -469,10 +469,12 @@ class TestLabelCountCacheErrorHandling:
         """Test that DynamoDB errors are properly handled in get operations."""
         client = DynamoClient(dynamodb_table)
         with patch.object(
-            client._client, "get_item", side_effect=ClientError(
+            client._client,
+            "get_item",
+            side_effect=ClientError(
                 {"Error": {"Code": error_code, "Message": "Test error"}},
-                "GetItem"
-            )
+                "GetItem",
+            ),
         ):
             with pytest.raises(expected_exception):
                 client.get_label_count_cache("TEST_LABEL")
@@ -490,10 +492,12 @@ class TestLabelCountCacheErrorHandling:
         if error_code == "ConditionalCheckFailedException":
             expected_exception = EntityNotFoundError
         with patch.object(
-            client._client, "put_item", side_effect=ClientError(
+            client._client,
+            "put_item",
+            side_effect=ClientError(
                 {"Error": {"Code": error_code, "Message": "Test error"}},
-                "PutItem"
-            )
+                "PutItem",
+            ),
         ):
             with pytest.raises(expected_exception):
                 client.update_label_count_cache(example_label_count_cache)
@@ -507,10 +511,12 @@ class TestLabelCountCacheErrorHandling:
         """Test DynamoDB errors in list operations."""
         client = DynamoClient(dynamodb_table)
         with patch.object(
-            client._client, "query", side_effect=ClientError(
+            client._client,
+            "query",
+            side_effect=ClientError(
                 {"Error": {"Code": error_code, "Message": "Test error"}},
-                "Query"
-            )
+                "Query",
+            ),
         ):
             with pytest.raises(expected_exception):
                 client.list_label_count_caches()
