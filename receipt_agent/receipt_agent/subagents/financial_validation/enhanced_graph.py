@@ -1,8 +1,9 @@
 """
 Enhanced Financial Validation Sub-Agent
 
-This enhanced version leverages table structure information from the table sub-agent
-to perform comprehensive financial validation including:
+This enhanced version leverages table structure information
+from the table sub-agent to perform comprehensive financial validation
+including:
 - Line-item field validation (QUANTITY × UNIT_PRICE = LINE_TOTAL)
 - Grand total math proof (SUBTOTAL + TAX = GRAND_TOTAL)
 - Missing field detection for line items
@@ -41,17 +42,30 @@ CORE_LABELS = {
     # Merchant & Store Info (6 labels)
     "MERCHANT_NAME": "Trading name or brand of the store issuing the receipt.",
     "STORE_HOURS": "Printed business hours or opening times for the merchant.",
-    "PHONE_NUMBER": "Telephone number printed on the receipt (store's main line).",
-    "WEBSITE": "Web or email address printed on the receipt (e.g., sprouts.com).",
+    "PHONE_NUMBER": (
+        "Telephone number printed on the receipt "
+        "(store's main line)."
+    ),
+    "WEBSITE": (
+        "Web or email address printed on the receipt "
+        "(e.g., sprouts.com)."
+    ),
     "LOYALTY_ID": "Customer loyalty / rewards / membership identifier.",
     # Location / Address (1 label)
-    "ADDRESS_LINE": "Full address line (street + city etc.) printed on the receipt.",
+    "ADDRESS_LINE": (
+        "Full address line (street + city etc.) printed on the receipt."
+    ),
     # Transaction Info (5 labels)
     "DATE": "Calendar date of the transaction.",
     "TIME": "Time of the transaction.",
-    "PAYMENT_METHOD": "Payment instrument summary (e.g., VISA ••••1234, CASH).",
+    "PAYMENT_METHOD": (
+        "Payment instrument summary (e.g., VISA ••••1234, CASH)."
+    ),
     "COUPON": "Coupon code or description that reduces price.",
-    "DISCOUNT": "Any non-coupon discount line item (e.g., 10% member discount).",
+    "DISCOUNT": (
+        "Any non-coupon discount line item "
+        "(e.g., 10% member discount)."
+    ),
     # Line-Item Fields (4 labels) - NOTE: LINE_TOTAL added here
     "PRODUCT_NAME": "Descriptive text of a purchased product (item name).",
     "QUANTITY": "Numeric count or weight of the item (e.g., 2, 1.31 lb).",
@@ -77,16 +91,22 @@ FINANCIAL_LABELS = {
 
 LINE_ITEM_LABELS = {"PRODUCT_NAME", "QUANTITY", "UNIT_PRICE", "LINE_TOTAL"}
 
-ENHANCED_FINANCIAL_VALIDATION_PROMPT = """You are an enhanced financial validation agent for receipts.
+ENHANCED_FINANCIAL_VALIDATION_PROMPT = """\
+You are an enhanced financial validation agent for receipts.
 
 Your job is to prove that the financial math on a receipt is correct by:
 
 ## Primary Validations
 
-1. **Grand Total Math**: Prove GRAND_TOTAL = SUBTOTAL + TAX + fees - discounts (±0.01 tolerance)
-2. **Subtotal Math**: Prove SUBTOTAL = sum of all LINE_TOTAL values (±0.01 tolerance)
-3. **Line Item Math**: For each line item, prove QUANTITY × UNIT_PRICE = LINE_TOTAL (±0.01 tolerance)
-4. **Line Item Completeness**: Each LINE_TOTAL must have related PRODUCT_NAME, and ideally QUANTITY + UNIT_PRICE
+1. **Grand Total Math**: Prove GRAND_TOTAL = SUBTOTAL + TAX + fees - discounts
+   (±0.01 tolerance)
+2. **Subtotal Math**: Prove SUBTOTAL = sum of all LINE_TOTAL values
+   (±0.01 tolerance)
+3. **Line Item Math**: For each line item, prove QUANTITY × UNIT_PRICE
+   = LINE_TOTAL
+   (±0.01 tolerance)
+4. **Line Item Completeness**: Each LINE_TOTAL must have related PRODUCT_NAME,
+   and ideally QUANTITY + UNIT_PRICE
 
 ## Table Structure Integration
 
@@ -102,20 +122,26 @@ Use this structure to:
 
 ## Available Tools
 
-- `get_table_structure`: Get table/column analysis from table sub-agent (if available)
+- `get_table_structure`: Get table/column analysis from table sub-agent
+  (if available)
 - `get_financial_labels`: Get all financial labels by type
 - `detect_currency`: Detect currency from receipt text
-- `validate_grand_total_math`: Check GRAND_TOTAL = SUBTOTAL + TAX math
-- `validate_subtotal_math`: Check SUBTOTAL = sum(LINE_TOTAL) math
-- `validate_line_item_math`: Check each QUANTITY × UNIT_PRICE = LINE_TOTAL
-- `find_missing_line_item_fields`: Find LINE_TOTALs missing PRODUCT_NAME/QUANTITY/UNIT_PRICE
+- `validate_grand_total_math`: Check GRAND_TOTAL = SUBTOTAL + TAX
+  math
+- `validate_subtotal_math`: Check SUBTOTAL = sum(LINE_TOTAL)
+  math
+- `validate_line_item_math`: Check each QUANTITY × UNIT_PRICE
+  = LINE_TOTAL
+- `find_missing_line_item_fields`: Find LINE_TOTALs missing PRODUCT_NAME,
+  QUANTITY, or UNIT_PRICE
 - `propose_corrections`: Submit label corrections with detailed reasoning
 
 ## Validation Process
 
 1. Start by getting table structure (if available) and financial labels
 2. Detect currency and validate consistency
-3. Validate grand total math: GRAND_TOTAL = SUBTOTAL + TAX + fees - discounts
+3. Validate grand total math: GRAND_TOTAL = SUBTOTAL + TAX + fees -
+   discounts
 4. Validate subtotal math: SUBTOTAL = sum of all LINE_TOTAL values
 5. For each line item, validate: QUANTITY × UNIT_PRICE = LINE_TOTAL
 6. Check that each LINE_TOTAL has complete line-item information
@@ -170,7 +196,10 @@ def create_enhanced_financial_validation_tools(
         else:
             return {
                 "has_structure": False,
-                "message": "No table structure available - proceeding with label-based analysis",
+                "message": (
+                    "No table structure available - proceeding with "
+                    "label-based analysis"
+                ),
             }
 
     @tool
@@ -311,7 +340,11 @@ def create_enhanced_financial_validation_tools(
                 issues.append(
                     {
                         "type": "grand_total_mismatch",
-                        "message": f"GRAND_TOTAL ({grand_total}) ≠ SUBTOTAL ({subtotal}) + TAX ({tax}) - DISCOUNTS ({discounts}) = {expected_total}",
+                        "message": (
+                            f"GRAND_TOTAL ({grand_total}) ≠ "
+                            f"SUBTOTAL ({subtotal}) + TAX ({tax}) - "
+                            f"DISCOUNTS ({discounts}) = {expected_total}"
+                        ),
                         "grand_total": grand_total,
                         "expected": expected_total,
                         "difference": grand_total - expected_total,
@@ -379,7 +412,10 @@ def create_enhanced_financial_validation_tools(
                 issues.append(
                     {
                         "type": "subtotal_mismatch",
-                        "message": f"SUBTOTAL ({subtotal}) ≠ sum of LINE_TOTAL values ({sum_line_totals})",
+                        "message": (
+                            f"SUBTOTAL ({subtotal}) ≠ sum of "
+                            f"LINE_TOTAL values ({sum_line_totals})"
+                        ),
                         "subtotal": subtotal,
                         "sum_line_totals": sum_line_totals,
                         "line_total_count": len(line_totals),
@@ -391,7 +427,10 @@ def create_enhanced_financial_validation_tools(
             issues.append(
                 {
                     "type": "missing_subtotal",
-                    "message": f"No SUBTOTAL found but {len(line_totals)} LINE_TOTAL values exist",
+                    "message": (
+                        f"No SUBTOTAL found but {len(line_totals)} "
+                        "LINE_TOTAL values exist"
+                    ),
                 }
             )
             is_valid = False
@@ -399,7 +438,10 @@ def create_enhanced_financial_validation_tools(
             issues.append(
                 {
                     "type": "missing_line_totals",
-                    "message": f"SUBTOTAL exists ({subtotal}) but no LINE_TOTAL values found",
+                    "message": (
+                        f"SUBTOTAL exists ({subtotal}) but no LINE_TOTAL "
+                        "values found"
+                    ),
                 }
             )
             is_valid = False
@@ -417,7 +459,8 @@ def create_enhanced_financial_validation_tools(
 
     @tool
     def validate_line_item_math() -> dict:
-        """Validate that QUANTITY × UNIT_PRICE = LINE_TOTAL for each line item."""
+        """Validate that QUANTITY × UNIT_PRICE = LINE_TOTAL for each
+        line item."""
         receipt = state["receipt"]
         labels = receipt.get("labels", [])
         words = receipt.get("words", [])
@@ -501,7 +544,12 @@ def create_enhanced_financial_validation_tools(
                         {
                             "type": "line_item_math_error",
                             "line_id": line_id,
-                            "message": f"Line {line_id}: LINE_TOTAL ({line_total}) ≠ QUANTITY ({quantity}) × UNIT_PRICE ({unit_price}) = {calculated_total}",
+                            "message": (
+                                f"Line {line_id}: LINE_TOTAL ({line_total}) ≠ "
+                                f"QUANTITY ({quantity}) × "
+                                f"UNIT_PRICE ({unit_price}) = "
+                                f"{calculated_total}"
+                            ),
                             "line_total": line_total,
                             "quantity": quantity,
                             "unit_price": unit_price,
@@ -699,8 +747,11 @@ async def run_enhanced_financial_validation(
         messages=[
             SystemMessage(content=ENHANCED_FINANCIAL_VALIDATION_PROMPT),
             HumanMessage(
-                content="Please perform comprehensive financial validation for this receipt. "
-                "Start by checking table structure and financial labels, then validate all math."
+                content=(
+                    "Please perform comprehensive financial validation "
+                    "for this receipt. Start by checking table structure and "
+                    "financial labels, then validate all math."
+                )
             ),
         ],
     )

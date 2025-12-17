@@ -19,45 +19,65 @@ from receipt_chroma.embedding.formatting.word_format import (
 logger = logging.getLogger(__name__)
 
 
-# ==============================================================================
+# =====================================================================
 # Receipt Context - Injected at runtime
-# ==============================================================================
+# =====================================================================
 
 @dataclass
 class ReceiptContext:
-    """Context for the receipt being processed. Injected into tools at runtime."""
+    """Context for the receipt being processed.
+    Injected into tools at runtime.
+    """
     image_id: str
     receipt_id: int
     merchant_name: Optional[str] = None
-    merchant_receipt_count: Optional[int] = None  # Number of receipts for this merchant
+    merchant_receipt_count: Optional[int] = None
+    # Number of receipts for this merchant
 
 
-def _build_word_id(image_id: str, receipt_id: int, line_id: int, word_id: int) -> str:
+def _build_word_id(
+    image_id: str,
+    receipt_id: int,
+    line_id: int,
+    word_id: int,
+) -> str:
     """Build ChromaDB document ID for a word."""
-    return f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}"
+    return (
+        f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#"
+        f"{word_id:05d}"
+    )
 
 
-# ==============================================================================
+# =====================================================================
 # Tool Input Schemas
-# ==============================================================================
+# =====================================================================
 
 class SearchLabelCandidatesInput(BaseModel):
     """Input for search_label_candidates tool."""
     word_id: int = Field(description="Word ID to find label candidates for")
     line_id: int = Field(description="Line ID containing the word")
-    n_results: int = Field(default=50, ge=10, le=100, description="Number of ChromaDB results to fetch (more = better statistics)")
+    n_results: int = Field(
+        default=50,
+        ge=10,
+        le=100,
+        description="Number of ChromaDB results to fetch "
+        "(more = better statistics)",
+    )
 
 
 class SubmitLabelSuggestionsInput(BaseModel):
     """Input for submit_label_suggestions tool."""
     suggestions: list[dict] = Field(
-        description="List of label suggestions. Each dict should have: word_id, line_id, label_type, confidence, reasoning"
+        description=(
+            "List of label suggestions. Each dict should have: "
+            "word_id, line_id, label_type, confidence, reasoning"
+        )
     )
 
 
-# ==============================================================================
+# =====================================================================
 # Tool Factory
-# ==============================================================================
+# =====================================================================
 
 def create_label_suggestion_tools(
     dynamo_client: Any,
@@ -85,7 +105,8 @@ def create_label_suggestion_tools(
         - existing_labels: All existing labels for this receipt
         - unlabeled_words: Words that don't have any labels yet
         - merchant_name: Merchant name from receipt metadata
-        - merchant_receipt_count: Number of receipts for this merchant (if available)
+        - merchant_receipt_count: Number of receipts for this merchant
+          (if available)
         """
         ctx: ReceiptContext = state["context"]
         if ctx is None:
@@ -103,9 +124,11 @@ def create_label_suggestion_tools(
             ]
 
             # Get existing labels
-            existing_labels, _ = dynamo_client.list_receipt_word_labels_for_receipt(
-                image_id=ctx.image_id,
-                receipt_id=ctx.receipt_id,
+            existing_labels, _ = (
+                dynamo_client.list_receipt_word_labels_for_receipt(
+                    image_id=ctx.image_id,
+                    receipt_id=ctx.receipt_id,
+                )
             )
 
             # Find unlabeled words
@@ -133,7 +156,8 @@ def create_label_suggestion_tools(
                 "total_words": len(meaningful_words),
                 "existing_labels_count": len(existing_labels),
                 "unlabeled_words_count": len(unlabeled_words),
-                "unlabeled_words": unlabeled_words[:50],  # Limit to first 50 for display
+                "unlabeled_words": unlabeled_words[:50],
+                # Limit to first 50 for display
                 "merchant_name": merchant_name,
                 "merchant_receipt_count": ctx.merchant_receipt_count,
             }
@@ -149,7 +173,8 @@ def create_label_suggestion_tools(
         n_results: int = 50,
     ) -> dict:
         """
-        Search ChromaDB for similar words with VALID labels to find label candidates.
+        Search ChromaDB for similar words with VALID labels to find label
+        candidates.
 
         This is the core tool - it finds similar words that have been correctly
         labeled, and analyzes which label types appear most frequently.
@@ -157,14 +182,16 @@ def create_label_suggestion_tools(
         Returns:
         - word_text: The word being analyzed
         - candidates: List of label candidates with confidence scores
-          Each candidate has: label_type, confidence, match_count, avg_similarity, examples
+          Each candidate has: label_type, confidence, match_count,
+          avg_similarity, examples
         - top_candidate: The highest confidence candidate (if any)
         - should_use_merchant_filter: Whether merchant filtering was used
 
         Args:
             word_id: Word ID to find candidates for
             line_id: Line ID containing the word
-            n_results: Number of ChromaDB results to fetch (default: 50, more = better stats)
+            n_results: Number of ChromaDB results to fetch (default: 50,
+                more = better stats)
         """
         ctx: ReceiptContext = state["context"]
         if ctx is None:
@@ -187,22 +214,32 @@ def create_label_suggestion_tools(
             if not word:
                 return {"error": f"Word {word_id} not found"}
 
-            # Get all words in receipt for context (needed for embedding format)
+            # Get all receipt words for context (needed for embedding format)
             dynamo_list_start = time.time()
-            all_words_in_receipt = dynamo_client.list_receipt_words_from_receipt(
-                image_id=ctx.image_id,
-                receipt_id=ctx.receipt_id,
+            all_words_in_receipt = (
+                dynamo_client.list_receipt_words_from_receipt(
+                    image_id=ctx.image_id,
+                    receipt_id=ctx.receipt_id,
+                )
             )
             dynamo_list_time = time.time() - dynamo_list_start
 
             if not all_words_in_receipt:
-                return {"error": f"No words found for receipt {ctx.receipt_id}"}
+                return {
+                    "error": f"No words found for receipt {ctx.receipt_id}"
+                }
 
             # Build word ID for ChromaDB lookup
-            chroma_id = _build_word_id(ctx.image_id, ctx.receipt_id, line_id, word_id)
+            chroma_id = _build_word_id(
+                ctx.image_id,
+                ctx.receipt_id,
+                line_id,
+                word_id,
+            )
 
             # Try to get stored embedding first (fast, free)
-            # Since words were just re-embedded with new format, stored embeddings should match
+            # Since words were just re-embedded with the new format,
+            # stored embeddings should match
             target_embedding = None
             get_time = 0
             embed_time = 0
@@ -218,37 +255,53 @@ def create_label_suggestion_tools(
 
                 if results and results.get("ids") and results["ids"]:
                     embeddings = results.get("embeddings")
-                    if embeddings and len(embeddings) > 0 and embeddings[0] is not None:
+                    if (
+                        embeddings
+                        and len(embeddings) > 0
+                        and embeddings[0] is not None
+                    ):
                         target_embedding = embeddings[0]
                         # Convert to list if numpy array
                         if hasattr(target_embedding, 'tolist'):
                             target_embedding = target_embedding.tolist()
                         elif not isinstance(target_embedding, list):
                             target_embedding = list(target_embedding)
-                        logger.debug(f"Using stored embedding for word '{word.text}'")
+                        logger.debug(
+                            f"Using stored embedding for word '{word.text}'"
+                        )
             except Exception as e:
                 logger.debug(f"Could not get stored embedding: {e}")
             finally:
                 get_time = time.time() - get_start
 
             # Fallback to on-the-fly embedding if stored embedding not found
-            # This ensures format consistency and works even if word doesn't exist in ChromaDB
+            # This ensures format consistency and works even if the word
+            # doesn't exist in ChromaDB
             if target_embedding is None:
-                logger.debug(f"Embedding on-the-fly for word '{word.text}' (not found in ChromaDB or fallback)")
+                logger.debug(
+                    f"Embedding on-the-fly for word '{word.text}' "
+                    f"(not found in ChromaDB or fallback)"
+                )
 
                 embed_start = time.time()
                 # Format word using the same format as validation agent
                 formatted_text = format_word_context_embedding_input(
                     target_word=word,
                     all_words=all_words_in_receipt,
-                    context_size=2,  # Default context size matches ChromaDB format
+                    # Default context size matches ChromaDB format
+                    context_size=2,
                 )
 
                 # Embed the formatted text on-the-fly using the embed function
                 target_embedding = embed_fn([formatted_text])[0]
 
                 if not target_embedding:
-                    return {"error": f"Failed to generate embedding for word '{word.text}'"}
+                    return {
+                        "error": (
+                            f"Failed to generate embedding for word "
+                            f"'{word.text}'"
+                        )
+                    }
 
                 # Ensure it's a list
                 if not isinstance(target_embedding, list):
@@ -262,7 +315,11 @@ def create_label_suggestion_tools(
             # Only use if merchant has >= 10 receipts (increases accuracy)
             use_merchant_filter = False
             merchant_filter = None
-            if ctx.merchant_name and ctx.merchant_receipt_count and ctx.merchant_receipt_count >= 10:
+            if (
+                ctx.merchant_name
+                and ctx.merchant_receipt_count
+                and ctx.merchant_receipt_count >= 10
+            ):
                 use_merchant_filter = True
                 merchant_filter = ctx.merchant_name.strip().title()
                 where_clause = {"merchant_name": {"$eq": merchant_filter}}
@@ -270,7 +327,8 @@ def create_label_suggestion_tools(
                 where_clause = None
 
             # Query ChromaDB for similar words
-            # Get extra results to filter out self (same pattern as validation agent)
+            # Get extra results to filter out self
+            # (same pattern as validation agent)
             query_start = time.time()
             query_results = chroma_client.query(
                 collection_name="words",
@@ -286,17 +344,31 @@ def create_label_suggestion_tools(
             # Continue to process results even if empty
 
             # Log query results for debugging
-            total_results = len(query_results.get("ids", [[]])[0]) if query_results.get("ids") else 0
-            logger.info(f"ChromaDB query for '{word.text}': found {total_results} total results")
+            total_results = (
+                len(query_results.get("ids", [[]])[0])
+                if query_results.get("ids")
+                else 0
+            )
+            logger.info(
+                f"ChromaDB query for '{word.text}': "
+                f"found {total_results} total results"
+            )
 
             # Check a few sample results to see what we're getting
             if total_results > 0:
                 sample_ids = query_results.get("ids", [[]])[0][:3]
                 sample_docs = query_results.get("documents", [[]])[0][:3]
                 sample_metas = query_results.get("metadatas", [[]])[0][:3]
-                for sid, sdoc, smeta in zip(sample_ids, sample_docs, sample_metas):
+                for sid, sdoc, smeta in zip(
+                    sample_ids,
+                    sample_docs,
+                    sample_metas,
+                ):
                     valid_lbls = smeta.get("valid_labels", "") if smeta else ""
-                    logger.info(f"  Sample result: '{sdoc}' (id: {sid[:50]}...) valid_labels: '{valid_lbls}'")
+                    logger.info(
+                        f"  Sample result: '{sdoc}' (id: {sid[:50]}...) "
+                        f"valid_labels: '{valid_lbls}'"
+                    )
 
             # Analyze results to find label candidates
             ids = query_results.get("ids", [[]])[0]
@@ -305,24 +377,37 @@ def create_label_suggestion_tools(
             distances = query_results.get("distances", [[]])[0]
 
             # Build word ID to exclude self
-            chroma_id = _build_word_id(ctx.image_id, ctx.receipt_id, line_id, word_id)
+            chroma_id = _build_word_id(
+                ctx.image_id,
+                ctx.receipt_id,
+                line_id,
+                word_id,
+            )
 
             # Track label candidates
-            label_candidates = {}  # {label_type: {count, similarities, examples}}
+            label_candidates = {}
+            # {label_type: {count, similarities, examples}}
 
             words_with_valid_labels = 0
             words_without_valid_labels = 0
 
-            for doc_id, doc, meta, dist in zip(ids, documents, metadatas, distances):
+            for doc_id, doc, meta, dist in zip(
+                ids,
+                documents,
+                metadatas,
+                distances,
+            ):
                 # Skip if same word
                 if doc_id == chroma_id:
                     continue
 
                 similarity = max(0.0, 1.0 - (dist / 2))
 
-                # Parse valid_labels (comma-delimited string format: ",LABEL1,LABEL2,")
+                # Parse valid_labels (comma-delimited string format:
+                # ",LABEL1,LABEL2,")
                 valid_labels_str = meta.get("valid_labels", "") if meta else ""
-                # Check if valid_labels is non-empty (after stripping delimiters)
+                # Check if valid_labels is non-empty
+                # (after stripping delimiters)
                 if not valid_labels_str or not valid_labels_str.strip(","):
                     words_without_valid_labels += 1
                     continue
@@ -348,7 +433,9 @@ def create_label_suggestion_tools(
                         }
 
                     label_candidates[label_type]["count"] += 1
-                    label_candidates[label_type]["similarities"].append(similarity)
+                    label_candidates[label_type]["similarities"].append(
+                        similarity
+                    )
 
                     # Keep up to 3 examples
                     if len(label_candidates[label_type]["examples"]) < 3:
@@ -369,8 +456,10 @@ def create_label_suggestion_tools(
 
                 # Confidence formula: prioritizes similarity over count
                 # High similarity is more reliable than high count
-                # Weight: 70% similarity, 30% count (suggestions should be similarity-driven)
-                count_score = min(1.0, count / 5.0)  # Normalize to 0-1 (5+ = 1.0, more permissive)
+                # Weight: 70% similarity, 30% count
+                # (suggestions should be similarity-driven)
+                count_score = min(1.0, count / 5.0)
+                # Normalize to 0-1 (5+ = 1.0, more permissive)
                 similarity_score = avg_sim  # Already 0-1
                 confidence = (similarity_score * 0.7) + (count_score * 0.3)
 
@@ -388,23 +477,29 @@ def create_label_suggestion_tools(
             scored_candidates.sort(key=lambda x: x["confidence"], reverse=True)
 
             logger.info(
-                f"Word '{word.text}': {words_with_valid_labels} results with valid_labels, "
-                f"{words_without_valid_labels} without, {len(scored_candidates)} candidates"
+                f"Word '{word.text}': {words_with_valid_labels} results "
+                f"with valid_labels, {words_without_valid_labels} without, "
+                f"{len(scored_candidates)} candidates"
             )
 
-            # If we found similar words but none have valid_labels, that's useful info
+            # If we found similar words but none have valid_labels,
+            # that's useful info
             if total_results > 0 and words_with_valid_labels == 0:
-                logger.info(
-                    f"  Note: Found {total_results} similar words in ChromaDB, but none have VALID labels yet. "
-                    f"This word will be skipped until similar words are validated."
-                )
+                    logger.info(
+                        f"  Note: Found {total_results} similar words "
+                        f"in ChromaDB, but none have VALID labels yet. "
+                        f"This word will be skipped until similar words "
+                        f"are validated."
+                    )
 
             return {
                 "word_text": word.text,
                 "word_id": word_id,
                 "line_id": line_id,
                 "candidates": scored_candidates,
-                "top_candidate": scored_candidates[0] if scored_candidates else None,
+                "top_candidate": (
+                    scored_candidates[0] if scored_candidates else None
+                ),
                 "should_use_merchant_filter": use_merchant_filter,
                 "total_matches": len([d for d in documents if d]),
                 "words_with_valid_labels": words_with_valid_labels,
@@ -415,17 +510,27 @@ def create_label_suggestion_tools(
                     "chroma_get_seconds": get_time,
                     "embedding_seconds": embed_time,
                     "chroma_query_seconds": query_time,
-                    "total_seconds": dynamo_get_time + dynamo_list_time + get_time + embed_time + query_time,
+                    "total_seconds": (
+                        dynamo_get_time
+                        + dynamo_list_time
+                        + get_time
+                        + embed_time
+                        + query_time
+                    ),
                 },
                 "message": (
-                    f"Found {total_results} similar words, but {words_with_valid_labels} have VALID labels. "
+                    f"Found {total_results} similar words, "
+                    f"but {words_with_valid_labels} have VALID labels. "
                     if total_results > 0 and words_with_valid_labels == 0
                     else None
                 ),
             }
 
         except Exception as e:
-            logger.error(f"Error searching label candidates: {e}", exc_info=True)
+            logger.error(
+                f"Error searching label candidates: {e}",
+                exc_info=True,
+            )
             return {"error": str(e)}
 
     @tool(args_schema=SubmitLabelSuggestionsInput)
@@ -433,7 +538,8 @@ def create_label_suggestion_tools(
         """
         Submit label suggestions for words on the receipt.
 
-        This creates ReceiptWordLabel entities with validation_status="PENDING".
+        This creates ReceiptWordLabel entities
+        with validation_status="PENDING".
         The validator and harmonizer will refine these later.
 
         Args:
@@ -464,7 +570,10 @@ def create_label_suggestion_tools(
                     line_id = suggestion["line_id"]
                     label_type = suggestion["label_type"]
                     confidence = suggestion.get("confidence", 0.5)
-                    reasoning = suggestion.get("reasoning", "Suggested by label suggestion agent")
+                    reasoning = suggestion.get(
+                        "reasoning",
+                        "Suggested by label suggestion agent",
+                    )
 
                     # Create ReceiptWordLabel with PENDING status
                     label = ReceiptWordLabel(
@@ -503,7 +612,10 @@ def create_label_suggestion_tools(
             }
 
         except Exception as e:
-            logger.error(f"Error submitting label suggestions: {e}", exc_info=True)
+            logger.error(
+                f"Error submitting label suggestions: {e}",
+                exc_info=True,
+            )
             return {"error": str(e)}
 
     # Return tools
@@ -514,4 +626,3 @@ def create_label_suggestion_tools(
     ]
 
     return tools, state
-
