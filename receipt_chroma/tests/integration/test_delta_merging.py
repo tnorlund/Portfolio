@@ -28,12 +28,17 @@ This ensures proper cleanup and prevents test flakiness.
     time.sleep(0.1)  # WRONG - adds cascading delays
     os.walk(tmpdir)  # May find incomplete files
 
-❌ NEVER DO THIS (nested clients with shared persist dirs):
-    with ChromaClient(...) as client1:
-        with ChromaClient(...) as client2:
+❌ NEVER DO THIS (nested clients with the SAME persist_directory):
+    with ChromaClient(persist_directory=tmpdir) as client1:
+        with ChromaClient(persist_directory=tmpdir) as client2:
             # Both using same directory = file lock contention
             ...
 
+✅ ALSO CORRECT (nested clients with DIFFERENT persist directories):
+    with ChromaClient(persist_directory=tmpdir1) as client1:
+        with ChromaClient(persist_directory=tmpdir2) as client2:
+            # Different directories = no shared file locks
+            ...
 WHY THIS MATTERS:
 - ChromaDB issue #5868: No public close() method
 - close() must call gc.collect() 3 times and sleep 0.5s
