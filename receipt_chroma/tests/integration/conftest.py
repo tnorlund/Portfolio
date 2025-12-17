@@ -98,21 +98,39 @@ def populated_chroma_db(temp_chromadb_dir):
 
 @pytest.fixture
 def s3_bucket(request):
-    """Create a mock S3 bucket using moto."""
-    with mock_aws():
+    """Create a mock S3 bucket using moto.
+
+    Uses explicit mock_aws start/stop pattern to ensure proper isolation
+    when tests run in parallel with pytest-xdist.
+    """
+    mock_context = mock_aws()
+    mock_context.start()
+
+    try:
         s3 = boto3.client("s3", region_name="us-east-1")
         bucket_name = request.param
         s3.create_bucket(Bucket=bucket_name)
         yield bucket_name
+    finally:
+        # Ensure moto context is properly cleaned up after test
+        mock_context.stop()
 
 
 @pytest.fixture
-def dynamodb_table():
+def dynamodb_table(request):
     """Spin up a moto DynamoDB table with GSIs and yield its name.
 
-    Tears down automatically after tests.
+    Tears down automatically after tests. Uses function scope to ensure
+    proper isolation when tests run in parallel with pytest-xdist.
+
+    This fixture is NOT scoped at module level to prevent test pollution
+    when running tests concurrently.
     """
-    with mock_aws():
+    # Start a fresh moto mock context for each test
+    mock_context = mock_aws()
+    mock_context.start()
+
+    try:
         dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
 
         table_name = "MyMockedTable"
@@ -195,6 +213,9 @@ def dynamodb_table():
 
         # Yield the table name so your tests can reference it
         yield table_name
+    finally:
+        # Ensure moto context is properly cleaned up after test
+        mock_context.stop()
 
 
 @pytest.fixture
@@ -231,12 +252,23 @@ def lock_manager_words(dynamo_client):
 
 @pytest.fixture
 def mock_s3_bucket_compaction():
-    """Create a mock S3 bucket for compaction testing."""
-    with mock_aws():
+    """Create a mock S3 bucket for compaction testing.
+
+    Uses explicit mock_aws start/stop pattern to ensure proper isolation
+    when tests run in parallel with pytest-xdist. This prevents S3 state
+    pollution across concurrent test workers.
+    """
+    mock_context = mock_aws()
+    mock_context.start()
+
+    try:
         s3_client = boto3.client("s3", region_name="us-east-1")
         bucket_name = "test-chromadb-bucket"
         s3_client.create_bucket(Bucket=bucket_name)
         yield s3_client, bucket_name
+    finally:
+        # Ensure moto context is properly cleaned up after test
+        mock_context.stop()
 
 
 @pytest.fixture(scope="function", autouse=False)
