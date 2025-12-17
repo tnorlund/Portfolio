@@ -34,7 +34,7 @@ from receipt_upload.merchant_resolution.embedding_processor import (
 )
 
 __all__ = [
-    "MerchantResolvingEmbeddingProcessor",
     "MerchantResolver",
+    "MerchantResolvingEmbeddingProcessor",
     "MerchantResult",
 ]
