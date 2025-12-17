@@ -271,7 +271,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Create clients using the receipt_agent factory
         from langchain_ollama import ChatOllama
-
         from receipt_agent.clients.factory import (
             create_chroma_client,
             create_dynamo_client,

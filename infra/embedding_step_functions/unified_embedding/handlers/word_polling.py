@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 import boto3
+import utils.logging  # pylint: disable=import-error
 from openai import OpenAI
 from receipt_agent.clients.factory import (
     create_embed_fn,
@@ -40,12 +41,6 @@ from receipt_chroma.embedding.records import (
     build_word_payload,
 )
 from receipt_chroma.s3 import download_snapshot_atomic
-from receipt_dynamo.constants import BatchStatus
-from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
-from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
-
-import utils.logging  # pylint: disable=import-error
 from utils.circuit_breaker import (  # pylint: disable=import-error
     CircuitBreakerOpenError,
     chromadb_circuit_breaker,
@@ -76,6 +71,11 @@ from utils.tracing import (  # pylint: disable=import-error
     trace_openai_batch_poll,
     tracer,
 )
+
+from receipt_dynamo.constants import BatchStatus
+from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
 
 get_logger = utils.logging.get_logger
 get_operation_logger = utils.logging.get_operation_logger

@@ -4,8 +4,9 @@
 import asyncio
 import time
 
-from receipt_dynamo.entities import ReceiptWord
 from receipt_label.pattern_detection import ParallelPatternOrchestrator
+
+from receipt_dynamo.entities import ReceiptWord
 
 
 async def test_pattern_detection():

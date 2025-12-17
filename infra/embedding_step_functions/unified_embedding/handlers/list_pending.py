@@ -6,11 +6,11 @@ Pure business logic - no Lambda-specific code.
 import os
 from typing import Any, Dict, List
 
+import utils.logging
+
 from receipt_dynamo.constants import BatchType
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import BatchSummary
-
-import utils.logging
 
 get_logger = utils.logging.get_logger
 
@@ -121,8 +121,9 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         if use_s3:
             # Upload batches to S3 manifest
-            import boto3
             import tempfile
+
+            import boto3
 
             bucket = os.environ.get("CHROMADB_BUCKET")
             if not bucket:

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict
 from uuid import uuid4
 
+import utils.logging  # pylint: disable=import-error
 from openai import OpenAI
 from receipt_chroma.embedding.formatting.line_format import (
     format_line_context_embedding_input,
@@ -19,9 +20,8 @@ from receipt_chroma.embedding.openai import (
     submit_openai_batch,
     upload_to_openai,
 )
-from receipt_dynamo.data.dynamo_client import DynamoClient
 
-import utils.logging  # pylint: disable=import-error
+from receipt_dynamo.data.dynamo_client import DynamoClient
 
 from ..embedding_ingest import (
     deserialize_receipt_lines,

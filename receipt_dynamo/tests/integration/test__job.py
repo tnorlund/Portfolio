@@ -20,7 +20,6 @@ from receipt_dynamo.data.shared_exceptions import (
 from receipt_dynamo.entities.job import Job
 from receipt_dynamo.entities.job_status import JobStatus
 
-
 pytestmark = pytest.mark.integration
 
 

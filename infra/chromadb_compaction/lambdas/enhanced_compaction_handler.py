@@ -19,24 +19,25 @@ import time
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Union
 
-# Enhanced observability imports
-from utils import (
-    get_operation_logger,
-    emf_metrics,
-    start_compaction_lambda_monitoring,
-    stop_compaction_lambda_monitoring,
-    with_compaction_timeout_protection,
-    trace_function,
-    format_response,
-)
-
-# DynamoDB and ChromaDB imports
-from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.constants import ChromaDBCollection
-
 # Use receipt_chroma package for compaction logic
 from receipt_chroma import ChromaClient, LockManager
 from receipt_chroma.compaction import process_collection_updates
+
+# Enhanced observability imports
+from utils import (
+    emf_metrics,
+    format_response,
+    get_operation_logger,
+    start_compaction_lambda_monitoring,
+    stop_compaction_lambda_monitoring,
+    trace_function,
+    with_compaction_timeout_protection,
+)
+
+from receipt_dynamo.constants import ChromaDBCollection
+
+# DynamoDB and ChromaDB imports
+from receipt_dynamo.data.dynamo_client import DynamoClient
 
 # Import StreamMessage from receipt_dynamo_stream
 try:

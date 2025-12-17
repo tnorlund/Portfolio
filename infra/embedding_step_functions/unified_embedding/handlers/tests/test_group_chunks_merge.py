@@ -4,7 +4,7 @@ This tests the data passing logic without needing to deploy to AWS.
 """
 
 import json
-from typing import Dict, Any
+from typing import Any, Dict
 
 
 def test_group_chunks_merge_uses_poll_results_data():

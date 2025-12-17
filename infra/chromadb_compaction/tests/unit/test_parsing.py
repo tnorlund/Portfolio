@@ -4,19 +4,20 @@ Unit tests for DynamoDB stream record parsing.
 Tests entity detection and parsing logic without AWS dependencies.
 """
 
-import pytest
 from datetime import datetime
 
+import pytest
+
+from receipt_dynamo.constants import ValidationMethod, ValidationStatus
+from receipt_dynamo.entities.compaction_run import CompactionRun
 from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
-from receipt_dynamo.entities.compaction_run import CompactionRun
-from receipt_dynamo.constants import ValidationStatus, ValidationMethod
 
 from ...lambdas.stream_processor import (
     ParsedStreamRecord,
-    parse_stream_record,
     _is_compaction_run,
     _parse_compaction_run,
+    parse_stream_record,
 )
 
 

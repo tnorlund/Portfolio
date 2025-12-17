@@ -12,9 +12,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from receipt_dynamo.data.export_image import export_image
-from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.constants import ImageType
+from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.data.export_image import export_image
 
 
 def main():

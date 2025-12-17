@@ -1,10 +1,11 @@
 """Unit tests for the refactored enhanced_compaction_handler."""
 
 import os
-import pytest
-from unittest.mock import MagicMock, patch, call
 from datetime import datetime
+from unittest.mock import MagicMock, call, patch
 from uuid import uuid4
+
+import pytest
 
 
 @pytest.fixture
@@ -55,6 +56,7 @@ def sample_sqs_event():
 def sample_stream_message():
     """Create a sample StreamMessage for testing."""
     from receipt_dynamo_stream.models import StreamMessage
+
     from receipt_dynamo.constants import ChromaDBCollection
 
     return StreamMessage(
@@ -97,8 +99,9 @@ class TestProcessCollection:
     ):
         """Test successful collection processing."""
         from enhanced_compaction_handler import process_collection
-        from receipt_dynamo.constants import ChromaDBCollection
         from receipt_chroma.compaction.models import CollectionUpdateResult
+
+        from receipt_dynamo.constants import ChromaDBCollection
 
         # Setup mocks
         mock_mkdtemp.return_value = "/tmp/chroma-test"
@@ -171,6 +174,7 @@ class TestProcessCollection:
     ):
         """Test handling of snapshot download failure."""
         from enhanced_compaction_handler import process_collection
+
         from receipt_dynamo.constants import ChromaDBCollection
 
         # Setup mocks
@@ -222,6 +226,7 @@ class TestProcessCollection:
     ):
         """Test handling of snapshot upload failure."""
         from enhanced_compaction_handler import process_collection
+
         from receipt_dynamo.constants import ChromaDBCollection
 
         # Setup mocks
@@ -283,8 +288,9 @@ class TestProcessCollection:
     ):
         """Test handling of processing errors in updates."""
         from enhanced_compaction_handler import process_collection
-        from receipt_dynamo.constants import ChromaDBCollection
         from receipt_dynamo_stream.models import StreamMessage
+
+        from receipt_dynamo.constants import ChromaDBCollection
 
         # Create test messages
         test_image_id = str(uuid4())
@@ -467,6 +473,7 @@ class TestProcessSQSMessages:
         """Test handling of partial batch failures."""
         from enhanced_compaction_handler import process_sqs_messages
         from receipt_dynamo_stream.models import StreamMessage
+
         from receipt_dynamo.constants import ChromaDBCollection
 
         # Create test messages

@@ -1,7 +1,7 @@
-import json
-import textwrap
-import string
 import base64
+import json
+import string
+import textwrap
 
 import pulumi_aws as aws
 from pulumi import ComponentResource, Output, ResourceOptions

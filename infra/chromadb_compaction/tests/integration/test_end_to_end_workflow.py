@@ -9,10 +9,16 @@ import json
 import os
 import tempfile
 from unittest.mock import MagicMock, patch
-from moto import mock_aws
-import boto3
 
-from receipt_dynamo import DynamoClient, ReceiptWord, ReceiptLine, ReceiptMetadata
+import boto3
+from moto import mock_aws
+
+from receipt_dynamo import (
+    DynamoClient,
+    ReceiptLine,
+    ReceiptMetadata,
+    ReceiptWord,
+)
 
 
 class TestEndToEndWorkflow:
@@ -369,7 +375,9 @@ class TestEndToEndWorkflow:
             ]
         }
         
-        from enhanced_compaction_handler import lambda_handler as compaction_handler
+        from enhanced_compaction_handler import (
+            lambda_handler as compaction_handler,
+        )
         
         compaction_result = compaction_handler(sqs_event, compaction_context)
         

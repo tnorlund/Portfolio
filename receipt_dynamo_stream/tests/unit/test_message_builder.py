@@ -5,9 +5,6 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
-from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
-
 from receipt_dynamo_stream.message_builder import (
     _extract_entity_data,
     build_compaction_run_completion_messages,
@@ -16,6 +13,9 @@ from receipt_dynamo_stream.message_builder import (
     build_messages_from_records,
 )
 from receipt_dynamo_stream.models import ChromaDBCollection, StreamMessage
+
+from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
+from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 from .conftest import MockMetrics
 

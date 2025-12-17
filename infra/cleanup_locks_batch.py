@@ -3,6 +3,7 @@
 Clean up compaction locks using the new batch delete method.
 """
 import botocore.exceptions
+
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.data._pulumi import load_env
 

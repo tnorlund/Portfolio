@@ -38,7 +38,6 @@ except ImportError:
 import copy
 
 import boto3
-
 from receipt_upload.cluster import reorder_box_points
 
 # Import geometry functions from receipt_upload (same as scan.py)

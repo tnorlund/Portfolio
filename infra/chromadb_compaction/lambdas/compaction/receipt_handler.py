@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from receipt_chroma import ChromaClient
 from receipt_chroma.s3 import download_snapshot_atomic, upload_snapshot_atomic
+
 from receipt_dynamo.constants import ChromaDBCollection
 
 from .models import (

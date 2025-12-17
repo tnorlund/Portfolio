@@ -16,7 +16,6 @@ from typing import Any, Dict, Optional
 
 import boto3
 from botocore.exceptions import ClientError
-
 from receipt_chroma.s3 import download_snapshot_atomic, upload_snapshot_atomic
 
 

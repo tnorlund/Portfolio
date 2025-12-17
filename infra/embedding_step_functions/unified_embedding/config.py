@@ -4,7 +4,7 @@ All Lambda configurations, environment variables, and settings in one place.
 """
 
 import os
-from typing import Dict, Any, List, cast
+from typing import Any, Dict, List, cast
 
 # Constants
 GIGABYTE = 1024

@@ -1,13 +1,14 @@
 """Integration tests for enhanced_compaction_handler with moto."""
 
-import os
 import json
-import pytest
-import tempfile
+import os
 import shutil
-from uuid import uuid4
+import tempfile
 from datetime import datetime
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
+
+import pytest
 
 # Skip if moto not available - imports moved to functions
 pytest.importorskip("moto")
@@ -39,8 +40,8 @@ def mock_env(aws_credentials):
 @pytest.fixture
 def s3_client(aws_credentials):
     """Create a mocked S3 client."""
-    from moto import mock_aws
     import boto3
+    from moto import mock_aws
 
     with mock_aws():
         s3 = boto3.client("s3", region_name="us-east-1")
@@ -52,8 +53,8 @@ def s3_client(aws_credentials):
 @pytest.fixture
 def dynamodb_client(aws_credentials):
     """Create a mocked DynamoDB client."""
-    from moto import mock_aws
     import boto3
+    from moto import mock_aws
 
     with mock_aws():
         dynamodb = boto3.client("dynamodb", region_name="us-east-1")
@@ -142,8 +143,9 @@ class TestEnhancedCompactionIntegration:
     ):
         """Test full workflow with S3 backend."""
         from enhanced_compaction_handler import process_collection
-        from receipt_dynamo.constants import ChromaDBCollection
         from receipt_dynamo_stream.models import StreamMessage
+
+        from receipt_dynamo.constants import ChromaDBCollection
 
         # Create test message
         test_image_id = setup_s3_snapshot
@@ -208,6 +210,7 @@ class TestEnhancedCompactionIntegration:
         """Test SQS message processing with mocked AWS services."""
         from enhanced_compaction_handler import process_sqs_messages
         from receipt_dynamo_stream.models import StreamMessage
+
         from receipt_dynamo.constants import ChromaDBCollection
 
         # Create test SQS records

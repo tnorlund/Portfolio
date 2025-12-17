@@ -30,7 +30,11 @@ from pulumi import (
 from pulumi_aws.cloudwatch import LogGroup
 from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
 from pulumi_aws.lambda_ import Function, FunctionEnvironmentArgs
-from pulumi_aws.s3 import Bucket, BucketVersioningV2, BucketVersioningV2VersioningConfigurationArgs
+from pulumi_aws.s3 import (
+    Bucket,
+    BucketVersioningV2,
+    BucketVersioningV2VersioningConfigurationArgs,
+)
 from pulumi_aws.sfn import StateMachine, StateMachineLoggingConfigurationArgs
 
 # Import shared components

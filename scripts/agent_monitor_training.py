@@ -8,11 +8,12 @@ Example:
     python scripts/agent_monitor_training.py ReceiptsTable-dc5be22 active_training.json
 """
 
-from receipt_dynamo import DynamoClient
 import json
 import sys
-from typing import Dict, Any, Optional
 from datetime import datetime
+from typing import Any, Dict, Optional
+
+from receipt_dynamo import DynamoClient
 
 
 def monitor_active_training(table_name: str, output_file: str = None) -> Dict[str, Any]:

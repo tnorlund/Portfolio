@@ -1,17 +1,22 @@
 """Shared utilities for unified embedding Lambda functions."""
 
-from .response import format_response, is_step_function_invocation
+from .aws_clients import get_dynamodb_client, get_s3_client, get_sqs_client
 from .logging import get_logger, get_operation_logger
-from .aws_clients import get_s3_client, get_dynamodb_client, get_sqs_client
+from .metrics import emf_metrics, metrics
+from .response import format_response, is_step_function_invocation
+from .timeout_handler import (
+    start_lambda_monitoring as start_compaction_lambda_monitoring,
+)
+from .timeout_handler import (
+    stop_lambda_monitoring as stop_compaction_lambda_monitoring,
+)
 from .timeout_handler import (
     with_timeout_protection as with_compaction_timeout_protection,
-    start_lambda_monitoring as start_compaction_lambda_monitoring,
-    stop_lambda_monitoring as stop_compaction_lambda_monitoring,
 )
 from .tracing import (
     trace_chromadb_operation,
 )
-from .metrics import metrics, emf_metrics
+
 
 # Create aliases for function name compatibility
 def trace_function(operation_name=None, collection=None):

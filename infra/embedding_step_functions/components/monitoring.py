@@ -1,7 +1,7 @@
 """Monitoring and alerting component for embedding infrastructure."""
 
 import json
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 from pulumi import (
     ComponentResource,
@@ -9,8 +9,8 @@ from pulumi import (
     ResourceOptions,
 )
 from pulumi_aws.cloudwatch import (
-    MetricAlarm,
     Dashboard,
+    MetricAlarm,
 )
 from pulumi_aws.sns import Topic, TopicSubscription
 

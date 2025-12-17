@@ -1,10 +1,10 @@
 import re
+from dataclasses import dataclass, field
 from hashlib import sha256
 from io import BytesIO
 from os.path import join
 from pathlib import Path
 from typing import List, Optional, Tuple
-from dataclasses import dataclass, field
 
 from boto3 import client
 from PIL import Image as PIL_Image

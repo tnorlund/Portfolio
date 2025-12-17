@@ -5,7 +5,6 @@ from typing import Any
 from unittest.mock import Mock, patch
 
 import pytest
-
 from receipt_dynamo_stream.models import (
     ChromaDBCollection,
     FieldChange,

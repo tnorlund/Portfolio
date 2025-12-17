@@ -7,13 +7,15 @@ Constructs StreamMessage objects from parsed entities and changes.
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Tuple
+
 from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
-# Avoid importing CompactionRun from receipt_dynamo to keep Lambda layer optional
-
 from .change_detector import get_chromadb_relevant_changes
 from .models import ChromaDBCollection, ParsedStreamRecord, StreamMessage
+
+# Avoid importing CompactionRun from receipt_dynamo to keep Lambda layer optional
+
 
 # Module-level logger
 logger = logging.getLogger(__name__)

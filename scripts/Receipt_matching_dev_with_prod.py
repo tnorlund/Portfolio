@@ -3,19 +3,20 @@
 Script to download and compare images and receipts between PROD and DEV environments.
 """
 
+import argparse
+import json
 import os
 import sys
-import json
-import argparse
-from typing import Dict, List
 from dataclasses import asdict
+from datetime import datetime
+from typing import Dict, List
+
 from tqdm import tqdm
 
 # Import the receipt_dynamo client
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.data._pulumi import load_env
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
-from datetime import datetime
 
 
 def get_table_name(env: str) -> str:

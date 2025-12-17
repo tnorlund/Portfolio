@@ -6,18 +6,20 @@ Combines:
 2. Merchant validation and embedding (from embed_from_ndjson)
 """
 
+import asyncio
 import json
 import logging
 import os
 import sys
 import time
-import asyncio
 from typing import Any, Dict, Optional
 
-from .ocr_processor import OCRProcessor
-from .metrics import metrics, emf_metrics
+from receipt_upload.merchant_resolution import (
+    MerchantResolvingEmbeddingProcessor,
+)
 
-from receipt_upload.merchant_resolution import MerchantResolvingEmbeddingProcessor
+from .metrics import emf_metrics, metrics
+from .ocr_processor import OCRProcessor
 
 # Set up logging - use print for guaranteed output
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)

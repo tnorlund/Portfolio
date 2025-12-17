@@ -35,20 +35,20 @@ parent_dir = os.path.dirname(script_dir)
 sys.path.insert(0, parent_dir)
 sys.path.insert(0, os.path.join(parent_dir, "receipt_dynamo"))
 
-from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data._pulumi import load_env
+from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities.image import Image
-from receipt_dynamo.entities.line import Line
-from receipt_dynamo.entities.word import Word
 from receipt_dynamo.entities.letter import Letter
-from receipt_dynamo.entities.receipt import Receipt
-from receipt_dynamo.entities.receipt_line import ReceiptLine
-from receipt_dynamo.entities.receipt_word import ReceiptWord, EmbeddingStatus
-from receipt_dynamo.entities.receipt_letter import ReceiptLetter
-from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
-from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
+from receipt_dynamo.entities.line import Line
 from receipt_dynamo.entities.ocr_job import OCRJob
 from receipt_dynamo.entities.ocr_routing_decision import OCRRoutingDecision
+from receipt_dynamo.entities.receipt import Receipt
+from receipt_dynamo.entities.receipt_letter import ReceiptLetter
+from receipt_dynamo.entities.receipt_line import ReceiptLine
+from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
+from receipt_dynamo.entities.receipt_word import EmbeddingStatus, ReceiptWord
+from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
+from receipt_dynamo.entities.word import Word
 
 # Configure logging
 logging.basicConfig(

@@ -2,6 +2,9 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+from receipt_upload.ocr import process_ocr_dict_as_receipt
+from receipt_upload.utils import download_file_from_s3
+
 from receipt_dynamo.constants import OCRStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import (
@@ -11,8 +14,6 @@ from receipt_dynamo.entities import (
     ReceiptLine,
     ReceiptWord,
 )
-from receipt_upload.ocr import process_ocr_dict_as_receipt
-from receipt_upload.utils import download_file_from_s3
 
 
 def refine_receipt(

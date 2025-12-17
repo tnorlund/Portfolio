@@ -5,10 +5,12 @@ This module sets up proper mocking and import paths to allow tests
 to run without modifying the Lambda code files.
 """
 
-import sys
 import os
+import sys
 from unittest.mock import MagicMock, patch
+
 import pytest
+
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_environment():
@@ -99,25 +101,33 @@ def setup_test_environment():
 
 # Import AWS service fixtures
 from .fixtures.aws_services import (
-    mock_sqs_queues,
-    mock_dynamodb_table,
-    mock_s3_bucket,
-    mock_chromadb_collections,
-    mock_s3_operations,
-    mock_dynamo_client,
     aws_test_environment,
     integration_test_environment,
+    mock_chromadb_collections,
+    mock_dynamo_client,
+    mock_dynamodb_table,
+    mock_s3_bucket,
+    mock_s3_operations,
+    mock_sqs_queues,
 )
 
 # Import stream event fixtures
 from .fixtures.stream_events import (
-    TARGET_METADATA_UPDATE_EVENT as target_metadata_event,
-    WORD_LABEL_UPDATE_EVENT as word_label_update_event,
-    WORD_LABEL_REMOVE_EVENT as word_label_remove_event,
     COMPACTION_RUN_INSERT_EVENT as compaction_run_insert_event,
+)
+from .fixtures.stream_events import (
+    TARGET_METADATA_UPDATE_EVENT as target_metadata_event,
+)
+from .fixtures.stream_events import (
+    WORD_LABEL_REMOVE_EVENT as word_label_remove_event,
+)
+from .fixtures.stream_events import (
+    WORD_LABEL_UPDATE_EVENT as word_label_update_event,
+)
+from .fixtures.stream_events import (
+    compaction_run_event_factory,
     target_event_factory,
     word_label_event_factory,
-    compaction_run_event_factory,
 )
 
 # Make fixtures available to all tests
