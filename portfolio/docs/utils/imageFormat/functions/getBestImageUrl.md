@@ -8,7 +8,7 @@
 
 > **getBestImageUrl**(`image`, `formatSupport`, `size`): `string`
 
-Defined in: [utils/imageFormat.ts:139](https://github.com/tnorlund/Portfolio/blob/78410040138f31561d8d573814aee28861abe6e8/portfolio/utils/imageFormat.ts#L139)
+Defined in: [utils/imageFormat.ts:139](https://github.com/tnorlund/Portfolio/blob/b4b5953317697e0f3dae0c75d94a4d2aec3a9e8d/portfolio/utils/imageFormat.ts#L139)
 
 Choose the optimal image URL given supported formats and available keys.
 Now supports different image sizes for bandwidth optimization.
