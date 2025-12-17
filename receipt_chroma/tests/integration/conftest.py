@@ -1,4 +1,30 @@
-"""Integration test fixtures for receipt_chroma using moto for AWS mocking."""
+"""Integration test fixtures for receipt_chroma using moto for AWS mocking.
+
+CHROMADB CLIENT USAGE IN TESTS:
+==============================
+
+ChromaClient MUST be used with context managers (with statement).
+Fixtures like chroma_client_write, chroma_client_read are provided as examples.
+For test code, always use the pattern below:
+
+    with ChromaClient(persist_directory=tmpdir) as client:
+        client.upsert(...)
+        # Use client here
+    # Automatic cleanup here via __exit__
+
+DO NOT:
+- Call client.close() manually outside try/finally
+- Add time.sleep() after close() in tests
+- Use nested ChromaClient contexts on same persist_directory
+- Mix context managers with manual close() calls
+
+WHY: ChromaDB doesn't expose close(). Our implementation (ChromaClient.close())
+      handles complex cleanup including gc.collect() 3 times and 0.5s sleep.
+      Context managers guarantee this happens at the right moment.
+      Extra sleeps in test code cascade and cause flakiness.
+
+Reference: ChromaDB issue #5868, ChromaClient class docstring.
+"""
 
 import tempfile
 

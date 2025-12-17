@@ -1,4 +1,48 @@
-"""Integration tests for delta merge processing."""
+"""Integration tests for delta merge processing.
+
+IMPORTANT - ChromaDB Client Usage Pattern:
+==========================================
+
+Always use ChromaDB clients with context managers (with statement).
+This ensures proper cleanup and prevents test flakiness.
+
+✅ CORRECT:
+    with ChromaClient(persist_directory=tmpdir, mode="write") as client:
+        client.upsert(collection_name="lines", ...)
+    # Cleanup happens automatically here
+    os.walk(tmpdir)  # Safe - files are ready
+
+✅ ALSO CORRECT (sequential, not nested):
+    with ChromaClient(...) as client1:
+        client1.upsert(...)
+    # client1 fully closed here
+
+    with ChromaClient(...) as client2:
+        client2.upsert(...)
+    # client2 fully closed here
+
+❌ NEVER DO THIS (causes test flakiness):
+    client = ChromaClient(...)
+    client.upsert(...)
+    client.close()
+    time.sleep(0.1)  # WRONG - adds cascading delays
+    os.walk(tmpdir)  # May find incomplete files
+
+❌ NEVER DO THIS (nested clients with shared persist dirs):
+    with ChromaClient(...) as client1:
+        with ChromaClient(...) as client2:
+            # Both using same directory = file lock contention
+            ...
+
+WHY THIS MATTERS:
+- ChromaDB issue #5868: No public close() method
+- close() must call gc.collect() 3 times and sleep 0.5s
+- Tests run in parallel with pytest-xdist
+- File handles stay open without proper cleanup
+- Leads to "assert 1 == 2" type failures when only 1 of 2 files upload
+
+For more details, see ChromaClient class docstring.
+"""
 
 import os
 import tarfile
