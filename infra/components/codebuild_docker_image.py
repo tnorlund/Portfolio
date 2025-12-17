@@ -370,6 +370,7 @@ class CodeBuildDockerImage(ComponentResource):
         # Default minimal packages that all Lambdas need
         packages_to_include = [
             "receipt_dynamo",
+            "receipt_dynamo_stream",
             "receipt_chroma",
             "receipt_places",
             "receipt_agent",
