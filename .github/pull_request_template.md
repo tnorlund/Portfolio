@@ -1,61 +1,60 @@
 # Pull Request
 
-## 📋 Description
+## Summary
 
-<!-- Describe what this PR does and why -->
+<!-- Provide a clear, concise summary of the changes in 1-3 bullet points -->
 
-## 🔄 Type of Change
+## Type of Change
 
-- [ ] 🐛 Bug fix (non-breaking change which fixes an issue)
-- [ ] ✨ New feature (non-breaking change which adds functionality)
+- [ ] 🐛 Bug fix (non-breaking change that fixes an issue)
+- [ ] ✨ New feature (non-breaking change that adds functionality)
 - [ ] 💥 Breaking change (fix or feature that would cause existing functionality to not work as expected)
 - [ ] 📚 Documentation update
 - [ ] 🔧 Refactoring (no functional changes)
 - [ ] ⚡ Performance improvement
-- [ ] 🧪 Test changes
+- [ ] 🧪 Test changes or improved coverage
 
-## 🧪 Testing
+## Which Package(s) are Affected?
 
-- [ ] Tests pass locally
-- [ ] Added tests for new functionality
-- [ ] Updated existing tests if needed
-- [ ] Manual testing completed
+- [ ] receipt_dynamo
+- [ ] receipt_dynamo_stream
+- [ ] receipt_chroma
+- [ ] receipt_upload
+- [ ] receipt_places
+- [ ] receipt_agent
+- [ ] Portfolio (TypeScript/Next.js)
+- [ ] Infrastructure (Pulumi)
+- [ ] CI/CD Workflows
+- [ ] Other: _______________
 
-## 📚 Documentation
+## Testing
 
-- [ ] Documentation updated
-- [ ] Comments added for complex logic
-- [ ] README updated if needed
+- [ ] Unit tests pass locally (`pytest` or `npm test`)
+- [ ] Integration tests pass locally (if applicable)
+- [ ] Added or updated tests for new functionality
+- [ ] All existing tests still pass with these changes
+- [ ] Manual testing completed (if applicable)
 
-## 🤖 AI Review Status
+## Documentation & Code Quality
 
-### Cursor Bot Review
+- [ ] Documentation or comments updated for complex logic
+- [ ] README updated (if introducing new feature/dependency)
+- [ ] TypeDoc/JSDoc comments added where needed
+- [ ] No new warnings or linting issues introduced
+- [ ] Code follows project style guidelines
 
-- [ ] Waiting for Cursor bot analysis
-- [ ] Cursor findings addressed
-- [ ] No critical issues found
+## Related Issues
 
-### AI Review (Cursor)
+<!-- Link to related issues: Closes #123, Relates to #456 -->
 
-- [ ] Cursor bot findings addressed (if any)
+## Impact Analysis
 
-## ✅ Checklist
+<!-- Describe potential impact on other parts of the system -->
 
-- [ ] My code follows this project's style guidelines
-- [ ] I have performed a self-review of my code
-- [ ] My changes generate no new warnings
-- [ ] I have added tests that prove my fix is effective or that my feature works
-- [ ] New and existing unit tests pass locally with my changes
-- [ ] Any dependent changes have been merged and published
+## Deployment Notes
 
-## 🚀 Deployment Notes
-
-<!-- Any special deployment instructions or rollback procedures -->
-
-## 📷 Screenshots
-
-<!-- If applicable, add screenshots to help explain your changes -->
+<!-- Any special deployment instructions, configuration changes, or rollback procedures -->
 
 ---
 
-**Note**: This PR will be automatically reviewed by Cursor bot. Please address any findings before requesting human review.
+This PR will be reviewed by CI/CD checks and automated analysis tools. Please ensure all checks pass before requesting human review.
