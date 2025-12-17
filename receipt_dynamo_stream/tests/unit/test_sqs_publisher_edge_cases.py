@@ -1,7 +1,8 @@
 """Additional edge case tests for sqs_publisher module."""
+
 from datetime import datetime
 from typing import Any
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -53,7 +54,7 @@ def _create_test_message(
     **kwargs: Any,
 ) -> StreamMessage:
     """Helper to create test StreamMessage."""
-    defaults = {
+    defaults: dict[str, Any] = {
         "entity_type": entity_type,
         "entity_data": {"image_id": "img-1", "receipt_id": 1},
         "changes": {"field": FieldChange(old="old", new="new")},
@@ -64,7 +65,7 @@ def _create_test_message(
         "aws_region": "us-east-1",
     }
     defaults.update(kwargs)
-    return StreamMessage(**defaults)
+    return StreamMessage(**defaults)  # type: ignore[arg-type]
 
 
 # Test _message_to_dict
@@ -87,7 +88,7 @@ def test_message_to_dict_empty_changes() -> None:
     msg = _create_test_message(changes={})
     result = _message_to_dict(msg)
 
-    assert result["changes"] == {}
+    assert not result["changes"]  # type: ignore[truthy-bool]
 
 
 def test_message_to_dict_multiple_changes() -> None:
@@ -100,14 +101,16 @@ def test_message_to_dict_multiple_changes() -> None:
         }
     )
     result = _message_to_dict(msg)
+    changes = result["changes"]
 
-    assert len(result["changes"]) == 3
-    assert result["changes"]["field1"]["old"] == "old1"
-    assert result["changes"]["field1"]["new"] == "new1"
-    assert result["changes"]["field2"]["old"] is None
-    assert result["changes"]["field2"]["new"] == "new2"
-    assert result["changes"]["field3"]["old"] == "old3"
-    assert result["changes"]["field3"]["new"] is None
+    assert isinstance(changes, dict)
+    assert len(changes) == 3
+    assert changes["field1"]["old"] == "old1"  # type: ignore[index]
+    assert changes["field1"]["new"] == "new1"  # type: ignore[index]
+    assert changes["field2"]["old"] is None  # type: ignore[index]
+    assert changes["field2"]["new"] == "new2"  # type: ignore[index]
+    assert changes["field3"]["old"] == "old3"  # type: ignore[index]
+    assert changes["field3"]["new"] is None  # type: ignore[index]
 
 
 def test_message_to_dict_none_optional_fields() -> None:
@@ -149,9 +152,7 @@ def test_publish_messages_single_collection(
     mock_sqs.send_message_batch.return_value = {"Successful": [{"Id": "0"}]}
     mock_boto_client.return_value = mock_sqs
 
-    msg = _create_test_message(
-        collections=(ChromaDBCollection.WORDS,)
-    )
+    msg = _create_test_message(collections=(ChromaDBCollection.WORDS,))
     sent = publish_messages([msg])
 
     assert sent == 1
