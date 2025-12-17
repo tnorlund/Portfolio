@@ -1,6 +1,6 @@
 """Additional edge case tests for parsers module."""
 from datetime import datetime
-from typing import Any, Dict, Mapping, Optional
+from typing import Any, Dict
 
 import pytest
 from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
@@ -12,21 +12,7 @@ from receipt_dynamo_stream.parsing.parsers import (
     parse_stream_record,
 )
 
-
-class MockMetrics:
-    """Mock metrics recorder for testing."""
-
-    def __init__(self) -> None:
-        self.counts: list[tuple[str, int, Optional[Mapping[str, str]]]] = []
-
-    def count(
-        self,
-        name: str,
-        value: int,
-        dimensions: Optional[Mapping[str, str]] = None,
-    ) -> object:
-        self.counts.append((name, value, dimensions))
-        return None
+from conftest import MockMetrics
 
 
 # Test detect_entity_type edge cases

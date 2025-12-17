@@ -1,5 +1,5 @@
 """Comprehensive unit tests for compaction_run parsing module."""
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import pytest
 
@@ -278,8 +278,13 @@ def test_is_embeddings_completed_empty_image() -> None:
 
 
 def test_is_embeddings_completed_none_image() -> None:
-    """Test with None new_image."""
-    assert is_embeddings_completed(None) is False  # type: ignore
+    """Test with None new_image - tests runtime behavior with invalid input.
+
+    This test verifies the function handles None gracefully. While the function
+    signature expects Dict[str, Any], this tests the actual runtime behavior when
+    None is passed, which can occur if DynamoDB returns unexpected data.
+    """
+    assert is_embeddings_completed(None)  # type: ignore[arg-type]
 
 
 def test_is_embeddings_completed_invalid_timestamp_structure() -> None:

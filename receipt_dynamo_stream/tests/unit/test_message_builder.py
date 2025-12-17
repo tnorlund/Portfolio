@@ -1,6 +1,7 @@
 """Comprehensive unit tests for message_builder module."""
 from datetime import datetime
-from typing import Any, Mapping, Optional
+from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
@@ -15,20 +16,7 @@ from receipt_dynamo_stream.message_builder import (
 )
 from receipt_dynamo_stream.models import ChromaDBCollection, StreamMessage
 
-
-class MockMetrics:
-    """Mock metrics recorder for testing."""
-
-    def __init__(self) -> None:
-        self.counts: list[tuple[str, int, Optional[Mapping[str, str]]]] = []
-
-    def count(
-        self,
-        name: str,
-        value: int,
-        dimensions: Optional[Mapping[str, str]] = None,
-    ) -> None:
-        self.counts.append((name, value, dimensions))
+from conftest import MockMetrics
 
 
 def _make_metadata(merchant_name: str = "Test Merchant") -> ReceiptMetadata:

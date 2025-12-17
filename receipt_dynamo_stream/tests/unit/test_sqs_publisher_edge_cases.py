@@ -1,8 +1,7 @@
 """Additional edge case tests for sqs_publisher module."""
-import os
 from datetime import datetime
-from typing import Any, Mapping, Optional
-from unittest.mock import Mock, patch
+from typing import Any
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
@@ -17,21 +16,32 @@ from receipt_dynamo_stream.sqs_publisher import (
     send_batch_to_queue,
 )
 
+from conftest import MockMetrics
 
-class MockMetrics:
-    """Mock metrics recorder for testing."""
 
-    def __init__(self) -> None:
-        self.counts: list[tuple[str, int, Optional[Mapping[str, str]]]] = []
+@pytest.fixture
+def env_words_queue(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Set WORDS_QUEUE_URL environment variable."""
+    monkeypatch.setenv("WORDS_QUEUE_URL", "https://queue.amazonaws.com/words")
 
-    def count(
-        self,
-        name: str,
-        value: int,
-        dimensions: Optional[Mapping[str, str]] = None,
-    ) -> object:
-        self.counts.append((name, value, dimensions))
-        return None
+
+@pytest.fixture
+def env_lines_queue(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Set LINES_QUEUE_URL environment variable."""
+    monkeypatch.setenv("LINES_QUEUE_URL", "https://queue.amazonaws.com/lines")
+
+
+@pytest.fixture
+def env_both_queues(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Set both LINES_QUEUE_URL and WORDS_QUEUE_URL environment variables."""
+    monkeypatch.setenv("LINES_QUEUE_URL", "https://queue.amazonaws.com/lines")
+    monkeypatch.setenv("WORDS_QUEUE_URL", "https://queue.amazonaws.com/words")
+
+
+@pytest.fixture
+def env_test_queue(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Set TEST_QUEUE_URL environment variable."""
+    monkeypatch.setenv("TEST_QUEUE_URL", "https://queue.amazonaws.com/test")
 
 
 def _create_test_message(
@@ -131,10 +141,10 @@ def test_publish_messages_empty_list(mock_boto_client: Mock) -> None:
 
 
 @patch("receipt_dynamo_stream.sqs_publisher.boto3.client")
-def test_publish_messages_single_collection(mock_boto_client: Mock) -> None:
+def test_publish_messages_single_collection(
+    mock_boto_client: Mock, env_words_queue: None
+) -> None:
     """Test message targeting single collection."""
-    os.environ["WORDS_QUEUE_URL"] = "https://queue.amazonaws.com/words"
-
     mock_sqs = Mock()
     mock_sqs.send_message_batch.return_value = {"Successful": [{"Id": "0"}]}
     mock_boto_client.return_value = mock_sqs
@@ -147,15 +157,12 @@ def test_publish_messages_single_collection(mock_boto_client: Mock) -> None:
     assert sent == 1
     assert mock_sqs.send_message_batch.call_count == 1
 
-    os.environ.pop("WORDS_QUEUE_URL", None)
-
 
 @patch("receipt_dynamo_stream.sqs_publisher.boto3.client")
-def test_publish_messages_both_collections(mock_boto_client: Mock) -> None:
+def test_publish_messages_both_collections(
+    mock_boto_client: Mock, env_both_queues: None
+) -> None:
     """Test message targeting both collections."""
-    os.environ["LINES_QUEUE_URL"] = "https://queue.amazonaws.com/lines"
-    os.environ["WORDS_QUEUE_URL"] = "https://queue.amazonaws.com/words"
-
     mock_sqs = Mock()
     mock_sqs.send_message_batch.return_value = {"Successful": [{"Id": "0"}]}
     mock_boto_client.return_value = mock_sqs
@@ -168,9 +175,6 @@ def test_publish_messages_both_collections(mock_boto_client: Mock) -> None:
     assert sent == 2
     assert mock_sqs.send_message_batch.call_count == 2
 
-    os.environ.pop("LINES_QUEUE_URL", None)
-    os.environ.pop("WORDS_QUEUE_URL", None)
-
 
 # Test send_batch_to_queue
 
@@ -178,7 +182,6 @@ def test_publish_messages_both_collections(mock_boto_client: Mock) -> None:
 def test_send_batch_to_queue_missing_queue_url() -> None:
     """Test when queue URL is not in environment."""
     mock_sqs = Mock()
-    os.environ.pop("TEST_QUEUE_URL", None)
 
     sent = send_batch_to_queue(
         mock_sqs,
@@ -191,10 +194,10 @@ def test_send_batch_to_queue_missing_queue_url() -> None:
     mock_sqs.send_message_batch.assert_not_called()
 
 
-def test_send_batch_to_queue_compaction_run_message_group() -> None:
+def test_send_batch_to_queue_compaction_run_message_group(
+    env_test_queue: None,
+) -> None:
     """Test message group ID for COMPACTION_RUN."""
-    os.environ["TEST_QUEUE_URL"] = "https://queue.amazonaws.com/test"
-
     mock_sqs = Mock()
     mock_sqs.send_message_batch.return_value = {"Successful": [{"Id": "0"}]}
 
@@ -220,13 +223,11 @@ def test_send_batch_to_queue_compaction_run_message_group() -> None:
     entries = call_args[1]["Entries"]
     assert entries[0]["MessageGroupId"] == "COMPACTION_RUN:img-456:lines"
 
-    os.environ.pop("TEST_QUEUE_URL", None)
 
-
-def test_send_batch_to_queue_receipt_metadata_message_group() -> None:
+def test_send_batch_to_queue_receipt_metadata_message_group(
+    env_test_queue: None,
+) -> None:
     """Test message group ID for RECEIPT_METADATA."""
-    os.environ["TEST_QUEUE_URL"] = "https://queue.amazonaws.com/test"
-
     mock_sqs = Mock()
     mock_sqs.send_message_batch.return_value = {"Successful": [{"Id": "0"}]}
 
@@ -248,13 +249,11 @@ def test_send_batch_to_queue_receipt_metadata_message_group() -> None:
     entries = call_args[1]["Entries"]
     assert entries[0]["MessageGroupId"] == "COMPACTION_RUN:img-789:words"
 
-    os.environ.pop("TEST_QUEUE_URL", None)
 
-
-def test_send_batch_to_queue_unknown_entity_type_fallback() -> None:
+def test_send_batch_to_queue_unknown_entity_type_fallback(
+    env_test_queue: None,
+) -> None:
     """Test message group ID fallback for unknown entity type."""
-    os.environ["TEST_QUEUE_URL"] = "https://queue.amazonaws.com/test"
-
     mock_sqs = Mock()
     mock_sqs.send_message_batch.return_value = {"Successful": [{"Id": "0"}]}
 
@@ -277,13 +276,11 @@ def test_send_batch_to_queue_unknown_entity_type_fallback() -> None:
     # Should use image_id as fallback
     assert entries[0]["MessageGroupId"] == "UNKNOWN_TYPE:img-abc:lines"
 
-    os.environ.pop("TEST_QUEUE_URL", None)
 
-
-def test_send_batch_to_queue_missing_entity_data_fields() -> None:
+def test_send_batch_to_queue_missing_entity_data_fields(
+    env_test_queue: None,
+) -> None:
     """Test message group ID when entity_data is missing expected fields."""
-    os.environ["TEST_QUEUE_URL"] = "https://queue.amazonaws.com/test"
-
     mock_sqs = Mock()
     mock_sqs.send_message_batch.return_value = {"Successful": [{"Id": "0"}]}
 
@@ -306,13 +303,11 @@ def test_send_batch_to_queue_missing_entity_data_fields() -> None:
     # Should use 'default' as final fallback
     assert entries[0]["MessageGroupId"] == "UNKNOWN_TYPE:default:lines"
 
-    os.environ.pop("TEST_QUEUE_URL", None)
 
-
-def test_send_batch_to_queue_batching() -> None:
+def test_send_batch_to_queue_batching(
+    env_test_queue: None,
+) -> None:
     """Test that messages are batched in groups of 10."""
-    os.environ["TEST_QUEUE_URL"] = "https://queue.amazonaws.com/test"
-
     mock_sqs = Mock()
     # Return 10 successful for each call
     mock_sqs.send_message_batch.return_value = {
@@ -339,12 +334,11 @@ def test_send_batch_to_queue_batching() -> None:
     assert mock_sqs.send_message_batch.call_count == 3
     assert sent == 30  # 10 + 10 + 10 (mocked to return 10 each time)
 
-    os.environ.pop("TEST_QUEUE_URL", None)
 
-
-def test_send_batch_to_queue_with_metrics() -> None:
+def test_send_batch_to_queue_with_metrics(
+    env_test_queue: None,
+) -> None:
     """Test that metrics are recorded."""
-    os.environ["TEST_QUEUE_URL"] = "https://queue.amazonaws.com/test"
     metrics = MockMetrics()
 
     mock_sqs = Mock()
@@ -365,12 +359,11 @@ def test_send_batch_to_queue_with_metrics() -> None:
     metric_names = [m[0] for m in metrics.counts]
     assert "SQSMessagesSuccessful" in metric_names
 
-    os.environ.pop("TEST_QUEUE_URL", None)
 
-
-def test_send_batch_to_queue_failure_with_metrics() -> None:
+def test_send_batch_to_queue_failure_with_metrics(
+    env_test_queue: None,
+) -> None:
     """Test that failure metrics are recorded."""
-    os.environ["TEST_QUEUE_URL"] = "https://queue.amazonaws.com/test"
     metrics = MockMetrics()
 
     mock_sqs = Mock()
@@ -391,13 +384,11 @@ def test_send_batch_to_queue_failure_with_metrics() -> None:
     metric_names = [m[0] for m in metrics.counts]
     assert "SQSMessagesFailed" in metric_names
 
-    os.environ.pop("TEST_QUEUE_URL", None)
 
-
-def test_send_batch_to_queue_message_attributes() -> None:
+def test_send_batch_to_queue_message_attributes(
+    env_test_queue: None,
+) -> None:
     """Test that message attributes are set correctly."""
-    os.environ["TEST_QUEUE_URL"] = "https://queue.amazonaws.com/test"
-
     mock_sqs = Mock()
     mock_sqs.send_message_batch.return_value = {"Successful": [{"Id": "0"}]}
 
@@ -419,5 +410,3 @@ def test_send_batch_to_queue_message_attributes() -> None:
     assert attrs["entity_type"]["StringValue"] == "RECEIPT_METADATA"
     assert attrs["event_name"]["StringValue"] == "MODIFY"
     assert attrs["collection"]["StringValue"] == "words"
-
-    os.environ.pop("TEST_QUEUE_URL", None)
