@@ -24,6 +24,12 @@ from typing import Any, Dict, List, Optional
 
 import pulumi
 import pulumi_command as command
+from infra.shared.build_utils import (
+    compute_hash,
+    make_artifact_bucket,
+    make_log_group,
+)
+from infra.utils import _find_project_root
 from pulumi import (
     AssetArchive,
     ComponentResource,
@@ -50,13 +56,6 @@ from pulumi_aws.codepipeline import (
 from pulumi_aws.iam import Role as ROLE
 from pulumi_aws.iam import RolePolicy, RolePolicyAttachment
 from pulumi_aws.lambda_ import Function, FunctionEnvironmentArgs
-
-from infra.shared.build_utils import (
-    compute_hash,
-    make_artifact_bucket,
-    make_log_group,
-)
-from infra.utils import _find_project_root
 
 PROJECT_DIR = _find_project_root()
 

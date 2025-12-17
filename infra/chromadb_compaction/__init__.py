@@ -23,14 +23,13 @@ if os.getenv("PYTEST_RUNNING") == "1":
 else:
     from .components import (
         ChromaDBBuckets,
-        create_chromadb_buckets,
         ChromaDBQueues,
-        create_chromadb_queues,
         DockerImageComponent,
         HybridLambdaDeployment,
+        create_chromadb_buckets,
+        create_chromadb_queues,
         create_hybrid_lambda_deployment,
     )
-
     from .infrastructure import (
         ChromaDBCompactionInfrastructure,
         create_chromadb_compaction_infrastructure,

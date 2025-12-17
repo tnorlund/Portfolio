@@ -36,7 +36,6 @@ except ImportError:
     sys.exit(1)
 
 import boto3
-
 from receipt_upload.geometry.transformations import (
     find_perspective_coeffs,
     invert_warp,

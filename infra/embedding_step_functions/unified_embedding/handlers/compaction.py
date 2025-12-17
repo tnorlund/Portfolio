@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import boto3
+import utils.logging  # pylint: disable=import-error
 from receipt_chroma import LockManager  # type: ignore[attr-defined]
 from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_chroma.s3 import (
@@ -21,13 +22,11 @@ from receipt_chroma.s3 import (
     upload_snapshot_atomic,
 )
 from receipt_chroma.s3.helpers import upload_snapshot_with_hash
+from utils.metrics import emf_metrics
 
 # Import receipt_dynamo for proper DynamoDB operations
 from receipt_dynamo.constants import ChromaDBCollection
 from receipt_dynamo.data.dynamo_client import DynamoClient
-
-import utils.logging  # pylint: disable=import-error
-from utils.metrics import emf_metrics
 
 get_logger = utils.logging.get_logger
 get_operation_logger = utils.logging.get_operation_logger

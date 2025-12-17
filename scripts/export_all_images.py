@@ -31,9 +31,9 @@ parent_dir = os.path.dirname(script_dir)
 sys.path.insert(0, parent_dir)
 sys.path.insert(0, os.path.join(parent_dir, "receipt_dynamo"))
 
+from receipt_dynamo.data._pulumi import load_env
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.export_image import export_image
-from receipt_dynamo.data._pulumi import load_env
 
 # Configure logging
 logging.basicConfig(

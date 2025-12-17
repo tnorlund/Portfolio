@@ -3,11 +3,10 @@
 import base64
 import os
 
+import api_gateway
 import pulumi
 import pulumi_aws as aws
 from pulumi import Output
-
-import api_gateway
 
 # Auto-enable Docker BuildKit based on Pulumi config
 config = pulumi.Config("portfolio")
@@ -26,8 +25,6 @@ if config.get_bool("docker-buildkit") != False:  # Default to True if not set
         print("✓ Docker BuildKit enabled for faster builds")
 
 from typing import Optional
-
-from pulumi import ResourceOptions
 
 # Import our infrastructure components
 import s3_website  # noqa: F401
@@ -48,6 +45,7 @@ from metadata_harmonizer_step_functions import MetadataHarmonizerStepFunction
 # Using the optimized docker-build based base images with scoped contexts
 from networking import PublicVpc
 from notifications import NotificationSystem
+from pulumi import ResourceOptions
 from raw_bucket import raw_bucket  # Import the actual bucket instance
 from s3_website import site_bucket  # Import the site bucket instance
 from security import ChromaSecurity

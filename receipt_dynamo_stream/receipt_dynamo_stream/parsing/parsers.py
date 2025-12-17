@@ -8,12 +8,12 @@ parsers so stream handlers can remain lightweight.
 import logging
 from typing import Mapping, Optional, Protocol, cast
 
+from receipt_dynamo_stream.models import ParsedStreamRecord, StreamEntity
+
 from receipt_dynamo.entities.receipt_metadata import item_to_receipt_metadata
 from receipt_dynamo.entities.receipt_word_label import (
     item_to_receipt_word_label,
 )
-
-from receipt_dynamo_stream.models import ParsedStreamRecord, StreamEntity
 
 logger = logging.getLogger(__name__)
 

@@ -4,15 +4,16 @@ Unit tests for stream processor dataclasses.
 Tests the dataclass structures used in the stream processor.
 """
 
-import pytest
 from datetime import datetime
 
-from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
+import pytest
+
 from receipt_dynamo.constants import ValidationMethod
+from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
 
 from ...lambdas.stream_processor import (
-    LambdaResponse,
     FieldChange,
+    LambdaResponse,
     ParsedStreamRecord,
 )
 

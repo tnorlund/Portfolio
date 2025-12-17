@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 import pytest
-
 from receipt_upload.cluster import dbscan_lines
 from receipt_upload.geometry import (
     compute_final_receipt_tilt,

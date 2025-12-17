@@ -5,6 +5,12 @@ This package provides modular components for processing DynamoDB stream events
 and routing them to ChromaDB compaction queues.
 """
 
+from .change_detector import get_chromadb_relevant_changes
+from .compaction_run import (
+    is_compaction_run,
+    parse_compaction_run,
+)
+from .message_builder import build_messages_from_records
 from .models import (
     ChromaDBCollection,
     FieldChange,
@@ -17,12 +23,6 @@ from .parsers import (
     parse_entity,
     parse_stream_record,
 )
-from .change_detector import get_chromadb_relevant_changes
-from .compaction_run import (
-    is_compaction_run,
-    parse_compaction_run,
-)
-from .message_builder import build_messages_from_records
 from .sqs_publisher import publish_messages
 
 __all__ = [

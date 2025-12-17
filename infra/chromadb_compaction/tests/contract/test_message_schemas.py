@@ -6,21 +6,22 @@ expected by the enhanced_compaction_handler (downstream consumer).
 """
 
 import json
-import pytest
 from datetime import datetime
+
+import pytest
 
 from receipt_dynamo.constants import ChromaDBCollection
 
 from ...lambdas.stream_processor import (
-    StreamMessage,
     FieldChange,
+    StreamMessage,
 )
 from ..fixtures.expected_messages import (
+    COLLECTION_TARGETING_RULES,
+    EXPECTED_COMPACTION_RUN_MESSAGE_SCHEMA,
     EXPECTED_METADATA_MESSAGE_SCHEMA,
     EXPECTED_WORD_LABEL_MESSAGE_SCHEMA,
-    EXPECTED_COMPACTION_RUN_MESSAGE_SCHEMA,
     REQUIRED_MESSAGE_FIELDS,
-    COLLECTION_TARGETING_RULES,
 )
 
 

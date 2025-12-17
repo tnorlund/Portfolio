@@ -1,5 +1,10 @@
 import pulumi
 import pulumi_aws as aws
+
+# Import cache generator routes first (API routes depend on them)
+import routes.address_similarity_cache_generator.infra  # noqa: F401
+import routes.layoutlm_inference_cache_generator.infra  # noqa: F401
+from routes.address_similarity.infra import address_similarity_lambda
 from routes.ai_usage.infra import ai_usage_lambda
 
 # Import your Lambda/route definitions
@@ -13,10 +18,7 @@ from routes.random_image_details.infra import random_image_details_lambda
 from routes.random_receipt_details.infra import random_receipt_details_lambda
 from routes.receipt_count.infra import receipt_count_lambda
 from routes.receipts.infra import receipts_lambda
-# Import cache generator routes first (API routes depend on them)
-import routes.address_similarity_cache_generator.infra  # noqa: F401
-from routes.address_similarity.infra import address_similarity_lambda
-import routes.layoutlm_inference_cache_generator.infra  # noqa: F401
+
 # LayoutLM inference Lambda is created conditionally in __main__.py after cache bucket exists
 # Route creation is also done in __main__.py after Lambda is created
 

@@ -1,11 +1,11 @@
 """Circuit breaker pattern implementation for protecting against external API failures."""
 
-import time
 import threading
-from enum import Enum
-from typing import Optional, Callable, Any, Dict
-from functools import wraps
+import time
 from contextlib import contextmanager
+from enum import Enum
+from functools import wraps
+from typing import Any, Callable, Dict, Optional
 
 from .logging import get_operation_logger
 from .metrics import metrics

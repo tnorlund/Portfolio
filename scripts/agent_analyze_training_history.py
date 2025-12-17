@@ -8,10 +8,11 @@ Example:
     python scripts/agent_analyze_training_history.py ReceiptsTable-dc5be22 training_history.json
 """
 
-from receipt_dynamo import DynamoClient
 import json
 import sys
-from typing import Dict, List, Any
+from typing import Any, Dict, List
+
+from receipt_dynamo import DynamoClient
 
 
 def analyze_training_history(table_name: str, output_file: str = None) -> Dict[str, Any]:

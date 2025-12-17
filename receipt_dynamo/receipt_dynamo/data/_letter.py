@@ -9,8 +9,8 @@ from receipt_dynamo.data.shared_exceptions import (
     EntityValidationError,
 )
 from receipt_dynamo.entities import item_to_letter
-from receipt_dynamo.entities.util import assert_valid_uuid
 from receipt_dynamo.entities.letter import Letter
+from receipt_dynamo.entities.util import assert_valid_uuid
 
 if TYPE_CHECKING:
     from receipt_dynamo.data.base_operations import (

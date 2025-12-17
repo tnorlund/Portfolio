@@ -4,8 +4,8 @@ import json
 import os
 import time
 from contextlib import contextmanager
-from typing import Dict, Any, Optional, Union
 from functools import wraps
+from typing import Any, Dict, Optional, Union
 
 import boto3
 from botocore.exceptions import ClientError

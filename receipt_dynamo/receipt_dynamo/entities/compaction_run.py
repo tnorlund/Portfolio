@@ -11,14 +11,13 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+from receipt_dynamo.constants import CompactionState
 from receipt_dynamo.entities.base import DynamoDBEntity
 from receipt_dynamo.entities.util import (
     _repr_str,
     assert_valid_uuid,
     validate_positive_int,
 )
-from receipt_dynamo.constants import CompactionState
-
 
 # Allowed compaction states come from constants.CompactionState
 _COMPACTION_STATES = {c.value for c in CompactionState}

@@ -1,12 +1,11 @@
-import os
-import sys
 import logging
+import os
 import subprocess
+import sys
 from pathlib import Path
 
 import boto3
 from botocore.exceptions import ClientError
-
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"

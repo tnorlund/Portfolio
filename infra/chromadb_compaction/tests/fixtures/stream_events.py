@@ -4,9 +4,8 @@ import copy
 from datetime import datetime
 
 from receipt_dynamo.entities import ReceiptMetadata
-from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 from receipt_dynamo.entities.compaction_run import CompactionRun
-
+from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 # ============================================================================
 # RECEIPT_METADATA EVENTS

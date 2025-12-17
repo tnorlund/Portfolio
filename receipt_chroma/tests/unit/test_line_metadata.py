@@ -3,7 +3,6 @@
 from unittest.mock import Mock
 
 import pytest
-
 from receipt_chroma.embedding.metadata.line_metadata import (
     create_line_metadata,
     enrich_line_metadata_with_anchors,

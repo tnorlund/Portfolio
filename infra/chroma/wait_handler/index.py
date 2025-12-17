@@ -1,10 +1,11 @@
 import json
 import os
-import time
-import urllib.request
-import urllib.error
 import socket
+import time
 import traceback
+import urllib.error
+import urllib.request
+
 import boto3
 
 

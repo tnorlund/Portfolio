@@ -14,7 +14,9 @@ stack = pulumi.get_stack()
 # Import the existing Lambda layer for receipt packages
 try:
     # pylint: disable=import-error
-    from infra.components.lambda_layer import dynamo_layer  # type: ignore[import-not-found]
+    from infra.components.lambda_layer import (
+        dynamo_layer,  # type: ignore[import-not-found]
+    )
 
     # pylint: enable=import-error
 except ImportError:

@@ -9,9 +9,10 @@ import tempfile
 from datetime import datetime, timezone
 
 import boto3
-from receipt_dynamo import DynamoClient
-from receipt_chroma.s3 import download_snapshot_atomic
 from receipt_chroma.data.chroma_client import ChromaClient
+from receipt_chroma.s3 import download_snapshot_atomic
+
+from receipt_dynamo import DynamoClient
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pulumi
 import pulumi_aws as aws
-from pulumi import ResourceOptions, Output
+from pulumi import Output, ResourceOptions
 
 
 class NatEgress(pulumi.ComponentResource):

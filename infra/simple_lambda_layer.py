@@ -335,8 +335,8 @@ class SimpleLambdaLayer(ComponentResource):
         self, bucket, project_name, layer_name, package_path, package_hash
     ):
         """Create a script file and return just the execution command."""
-        import tempfile
         import os
+        import tempfile
 
         try:
             # Generate the script content with embedded variables to avoid argument issues

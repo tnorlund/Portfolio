@@ -3,9 +3,9 @@
 # import signal  # Not currently used
 import threading
 import time
-from typing import List, Callable, Optional, Any, Dict
 from contextlib import contextmanager
 from functools import wraps
+from typing import Any, Callable, Dict, List, Optional
 
 from .logging import get_operation_logger
 from .metrics import metrics

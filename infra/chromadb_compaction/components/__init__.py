@@ -9,14 +9,14 @@ compaction:
 - lambda_functions: Hybrid Lambda deployment (zip + container)
 """
 
-from .s3_buckets import ChromaDBBuckets, create_chromadb_buckets
-from .sqs_queues import ChromaDBQueues, create_chromadb_queues
 from .docker_image import DockerImageComponent
+from .efs import ChromaEfs
 from .lambda_functions import (
     HybridLambdaDeployment,
     create_hybrid_lambda_deployment,
 )
-from .efs import ChromaEfs
+from .s3_buckets import ChromaDBBuckets, create_chromadb_buckets
+from .sqs_queues import ChromaDBQueues, create_chromadb_queues
 
 # pylint: disable=duplicate-code
 # Export lists are expected to be similar between package __init__ files

@@ -27,7 +27,9 @@ sys.modules["pulumi_aws"] = MagicMock()
 sys.modules["pulumi_aws.ecr"] = MagicMock()
 
 # Import handlers after mocking
-from ..lambdas.enhanced_compaction_handler import lambda_handler as enhanced_handler
+from ..lambdas.enhanced_compaction_handler import (
+    lambda_handler as enhanced_handler,
+)
 from ..lambdas.stream_processor import lambda_handler as stream_handler
 
 

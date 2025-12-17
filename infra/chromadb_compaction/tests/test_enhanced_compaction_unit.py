@@ -13,6 +13,7 @@ import os
 from unittest.mock import MagicMock, patch
 
 from receipt_dynamo.constants import ChromaDBCollection
+
 from ..lambdas.compaction.models import (
     LambdaResponse,
     StreamMessage,

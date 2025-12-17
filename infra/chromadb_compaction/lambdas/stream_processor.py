@@ -35,23 +35,23 @@ LAMBDA_TIMEOUT_THRESHOLD_SECONDS = int(LAMBDA_TIMEOUT_SECONDS * 0.8)
 # Circuit breaker: stop processing after this many consecutive failures
 MAX_CONSECUTIVE_FAILURES = int(os.getenv("MAX_CONSECUTIVE_FAILURES", "10"))
 
-# Enhanced observability imports
-from utils import (
-    get_operation_logger,
-    metrics,
-    emf_metrics,
-    trace_function,
-    start_compaction_lambda_monitoring,
-    stop_compaction_lambda_monitoring,
-    with_compaction_timeout_protection,
-    format_response,
-)
-
 # Import modular components (same pattern as utils)
 from receipt_dynamo_stream import (
     LambdaResponse,
     build_messages_from_records,
     publish_messages,
+)
+
+# Enhanced observability imports
+from utils import (
+    emf_metrics,
+    format_response,
+    get_operation_logger,
+    metrics,
+    start_compaction_lambda_monitoring,
+    stop_compaction_lambda_monitoring,
+    trace_function,
+    with_compaction_timeout_protection,
 )
 
 # Configure logging with observability
@@ -279,11 +279,15 @@ from processor import (
     FieldChange,
     ParsedStreamRecord,
     StreamMessage,
-    detect_entity_type as _detect_entity_type,
-    parse_entity as _parse_entity,
-    parse_stream_record,
-    get_chromadb_relevant_changes,
-    is_compaction_run as _is_compaction_run,
-    parse_compaction_run as _parse_compaction_run,
-    publish_messages as send_messages_to_queues,
 )
+from processor import detect_entity_type as _detect_entity_type
+from processor import (
+    get_chromadb_relevant_changes,
+)
+from processor import is_compaction_run as _is_compaction_run
+from processor import parse_compaction_run as _parse_compaction_run
+from processor import parse_entity as _parse_entity
+from processor import (
+    parse_stream_record,
+)
+from processor import publish_messages as send_messages_to_queues

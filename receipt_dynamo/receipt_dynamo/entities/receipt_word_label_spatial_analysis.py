@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple, Generator
+from typing import Any, Dict, Generator, List, Optional, Tuple
 
 from receipt_dynamo.entities.util import (
     _repr_str,

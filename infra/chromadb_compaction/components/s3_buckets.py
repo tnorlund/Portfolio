@@ -12,7 +12,7 @@ from typing import Optional
 
 import pulumi
 import pulumi_aws as aws
-from pulumi import ComponentResource, ResourceOptions, Output
+from pulumi import ComponentResource, Output, ResourceOptions
 
 
 class ChromaDBBuckets(ComponentResource):

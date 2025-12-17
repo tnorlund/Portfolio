@@ -8,8 +8,9 @@ building and routing logic rather than mocked functionality.
 import json
 import os
 from unittest.mock import MagicMock, patch
-from moto import mock_aws
+
 import boto3
+from moto import mock_aws
 
 from receipt_dynamo.constants import ChromaDBCollection
 

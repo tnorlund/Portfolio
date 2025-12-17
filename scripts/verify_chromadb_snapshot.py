@@ -17,12 +17,13 @@ import sys
 import tempfile
 from pathlib import Path
 
-from receipt_dynamo.data._pulumi import load_env  # noqa: F401
+from receipt_label.utils.chroma_client import ChromaDBClient
 from receipt_label.utils.chroma_s3_helpers import (
     download_snapshot_atomic,
     download_snapshot_from_s3,
 )
-from receipt_label.utils.chroma_client import ChromaDBClient
+
+from receipt_dynamo.data._pulumi import load_env  # noqa: F401
 
 
 def _resolve_bucket(env_name: str) -> str:

@@ -20,6 +20,7 @@ from receipt_chroma.embedding.records import (
     build_line_payload,
     build_word_payload,
 )
+
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import CompactionRun
 

@@ -1,14 +1,10 @@
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-import logging
 from PIL import Image as PIL_Image
-
-from receipt_dynamo.constants import ImageType, OCRJobType, OCRStatus
-from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.entities import Image, OCRJob, OCRRoutingDecision, Receipt
 from receipt_upload.cluster import (
     dbscan_lines_x_axis,
     join_overlapping_clusters,
@@ -25,6 +21,10 @@ from receipt_upload.utils import (
     upload_jpeg_to_s3,
     upload_png_to_s3,
 )
+
+from receipt_dynamo.constants import ImageType, OCRJobType, OCRStatus
+from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.entities import Image, OCRJob, OCRRoutingDecision, Receipt
 
 
 def process_scan(

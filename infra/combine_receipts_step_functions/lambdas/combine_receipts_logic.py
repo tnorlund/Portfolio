@@ -16,7 +16,6 @@ from receipt_dynamo.entities import ReceiptMetadata
 # Import image processing (optional)
 try:
     from PIL import Image as PIL_Image
-
     from receipt_upload.utils import (
         calculate_sha256_from_bytes,
         upload_all_cdn_formats,

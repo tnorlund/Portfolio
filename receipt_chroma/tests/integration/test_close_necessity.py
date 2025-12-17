@@ -13,7 +13,6 @@ import time
 from pathlib import Path
 
 import pytest
-
 from receipt_chroma import ChromaClient
 
 

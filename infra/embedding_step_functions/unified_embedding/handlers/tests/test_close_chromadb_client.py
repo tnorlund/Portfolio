@@ -19,23 +19,22 @@ Or use the standalone test (easier):
 NOTE: ChromaDB has compatibility issues with Python 3.14. Use Python 3.12.
 """
 
+import importlib.util
 import os
 import shutil
-import tempfile
-import time
-from pathlib import Path
-from typing import Optional
-
-import chromadb
-import pytest
 
 # Import the function we're testing
 # The compaction module is in the parent directory (handlers/)
 import sys
-import os
+import tempfile
+import time
+from pathlib import Path
 from pathlib import Path as PathLib
+from typing import Optional
 from unittest.mock import MagicMock
-import importlib.util
+
+import chromadb
+import pytest
 
 # Set PYTEST_RUNNING to prevent infrastructure imports
 os.environ['PYTEST_RUNNING'] = '1'

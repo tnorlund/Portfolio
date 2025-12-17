@@ -21,8 +21,10 @@ sys.modules["pulumi_aws.ecr"] = MagicMock()
 import pytest
 from moto import mock_aws
 
+from ..lambdas.enhanced_compaction_handler import (
+    lambda_handler as compaction_handler,
+)
 from ..lambdas.stream_processor import lambda_handler as stream_handler
-from ..lambdas.enhanced_compaction_handler import lambda_handler as compaction_handler
 
 
 class TestAWSServiceIntegration:
@@ -32,7 +34,7 @@ class TestAWSServiceIntegration:
     def test_sqs_message_flow_with_real_queues(self, target_metadata_event):
         """Test complete SQS message flow using real moto queues."""
         import boto3
-        
+
         # Create real SQS queues using moto
         sqs = boto3.client("sqs", region_name="us-east-1")
         
@@ -83,8 +85,9 @@ class TestAWSServiceIntegration:
     def test_dynamodb_queries_with_real_table(self):
         """Test DynamoDB queries using real moto table."""
         import boto3
+
         from receipt_dynamo.data.dynamo_client import DynamoClient
-        
+
         # Create real DynamoDB table using moto
         dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
         
@@ -141,7 +144,7 @@ class TestAWSServiceIntegration:
     def test_s3_operations_with_real_bucket(self):
         """Test S3 operations using real moto bucket."""
         import boto3
-        
+
         # Create real S3 bucket using moto
         s3 = boto3.client("s3", region_name="us-east-1")
         
@@ -220,7 +223,7 @@ class TestAWSServiceErrorHandling:
     def test_sqs_queue_not_found_error(self, target_metadata_event):
         """Test handling of missing SQS queue."""
         import boto3
-        
+
         # Create only one queue, but try to send to both
         sqs = boto3.client("sqs", region_name="us-east-1")
         
@@ -243,7 +246,7 @@ class TestAWSServiceErrorHandling:
     def test_dynamodb_table_not_found_error(self):
         """Test handling of missing DynamoDB table."""
         from receipt_dynamo.data.dynamo_client import DynamoClient
-        
+
         # Try to create client with non-existent table
         with patch.dict(os.environ, {
             "DYNAMODB_TABLE_NAME": "non-existent-table",

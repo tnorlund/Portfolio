@@ -17,7 +17,6 @@ from receipt_dynamo.data.shared_exceptions import (
 )
 from receipt_dynamo.entities.job_dependency import JobDependency
 
-
 pytestmark = pytest.mark.integration
 
 
