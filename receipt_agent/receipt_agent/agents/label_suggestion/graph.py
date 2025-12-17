@@ -24,15 +24,28 @@ logger = logging.getLogger(__name__)
 CORE_LABELS = {
     "MERCHANT_NAME": "Trading name or brand of the store issuing the receipt.",
     "STORE_HOURS": "Printed business hours or opening times for the merchant.",
-    "PHONE_NUMBER": "Telephone number printed on the receipt (store's main line).",
-    "WEBSITE": "Web or email address printed on the receipt (e.g., sprouts.com).",
+    "PHONE_NUMBER": (
+        "Telephone number printed on the receipt "
+        "(store's main line)."
+    ),
+    "WEBSITE": (
+        "Web or email address printed on the receipt "
+        "(e.g., sprouts.com)."
+    ),
     "LOYALTY_ID": "Customer loyalty / rewards / membership identifier.",
-    "ADDRESS_LINE": "Full address line (street + city etc.) printed on the receipt.",
+    "ADDRESS_LINE": (
+        "Full address line (street + city etc.) printed on the receipt."
+    ),
     "DATE": "Calendar date of the transaction.",
     "TIME": "Time of the transaction.",
-    "PAYMENT_METHOD": "Payment instrument summary (e.g., VISA ••••1234, CASH).",
+    "PAYMENT_METHOD": (
+        "Payment instrument summary (e.g., VISA ••••1234, CASH)."
+    ),
     "COUPON": "Coupon code or description that reduces price.",
-    "DISCOUNT": "Any non-coupon discount line item (e.g., '10% member discount').",
+    "DISCOUNT": (
+        "Any non-coupon discount line item "
+        "(e.g., '10% member discount')."
+    ),
     "PRODUCT_NAME": "Name of a product or item being purchased.",
     "QUANTITY": "Number of units purchased (e.g., '2', '1.5 lbs').",
     "UNIT_PRICE": "Price per unit of the product.",
@@ -42,23 +55,26 @@ CORE_LABELS = {
     "GRAND_TOTAL": "Final total amount paid (after all discounts and taxes).",
 }
 
-LABEL_SUGGESTION_PROMPT = """You are a label suggestion agent for receipt processing.
+LABEL_SUGGESTION_PROMPT = """You are a label suggestion agent for
+receipt processing.
 
-Your task is to analyze unlabeled words on a receipt and suggest appropriate CORE_LABEL types
-using ChromaDB similarity search results.
+Your task is to analyze unlabeled words on a receipt and suggest
+appropriate CORE_LABEL types using ChromaDB similarity search results.
 
 ## Strategy
 
-1. **Use ChromaDB results first**: The `search_label_candidates` tool provides similarity search
-   results showing which label types similar words have. Use this as primary evidence.
+1. **Use ChromaDB results first**: The `search_label_candidates`
+   tool provides similarity search results showing which label types
+   similar words have. Use this as primary evidence.
 
 2. **Minimize LLM calls**: Only use LLM reasoning when:
    - Multiple label candidates have similar confidence scores
    - ChromaDB results are ambiguous or conflicting
    - Word context needs interpretation beyond similarity scores
 
-3. **High confidence cases**: If ChromaDB shows a clear winner (high confidence, many matches),
-   suggest that label directly without LLM reasoning.
+3. **High confidence cases**: If ChromaDB shows a clear winner
+   (high confidence, many matches), suggest that label directly
+   without LLM reasoning.
 
 ## CORE_LABELS Definitions
 
@@ -68,21 +84,29 @@ using ChromaDB similarity search results.
 
 For each unlabeled word:
 
-1. **High Confidence (≥0.75)**: If top candidate has confidence ≥0.75 and ≥5 matches:
+1. **High Confidence (≥0.75)**: If top candidate has confidence
+   ≥0.75 and ≥5 matches:
    - Suggest the label directly
-   - Reasoning: "Found {count} similar words with VALID {label_type} labels (avg similarity: {avg_sim})"
+   - Reasoning: "Found {count} similar words with VALID {label_type}
+     labels (avg similarity: {avg_sim})"
 
-2. **Medium Confidence (0.60-0.75)**: If top candidate has confidence ≥0.60 and ≥3 matches:
+2. **Medium Confidence (0.60-0.75)**: If top candidate has confidence
+   ≥0.60 and ≥3 matches:
    - Suggest the label directly
-   - Reasoning: "Found {count} similar words with VALID {label_type} labels"
+   - Reasoning: "Found {count} similar words with VALID {label_type}
+     labels"
 
-3. **Multiple Candidates**: If multiple candidates have similar confidence (within 0.15):
+3. **Multiple Candidates**: If multiple candidates have similar
+   confidence (within 0.15):
    - Use LLM to choose based on word context and similar examples
-   - Consider which label type makes most sense given the word's position and surrounding text
+   - Consider which label type makes most sense given the word's
+     position and surrounding text
 
-4. **Low Confidence (<0.60)**: If confidence is low but some matches exist:
+4. **Low Confidence (<0.60)**: If confidence is low but some matches
+   exist:
    - Use LLM to evaluate if the word should be labeled at all
-   - Consider word context, position, and whether it's likely to be a meaningful label
+   - Consider word context, position, and whether it's likely to be a
+     meaningful label
 
 5. **No Matches**: If no similar words found:
    - Skip this word (don't suggest a label)
@@ -90,16 +114,21 @@ For each unlabeled word:
 
 ## Important Rules
 
-1. **Don't suggest labels for all words**: Only suggest when ChromaDB provides strong evidence
-2. **Respect existing labels**: Don't suggest labels for words that already have labels
+1. **Don't suggest labels for all words**: Only suggest when ChromaDB
+   provides strong evidence
+2. **Respect existing labels**: Don't suggest labels for words that
+   already have labels
 3. **Filter noise**: Words marked as `is_noise` are already excluded
-4. **Be conservative**: It's better to skip uncertain cases than create incorrect labels
-5. **Batch suggestions**: Use `submit_label_suggestions` to submit multiple suggestions at once
+4. **Be conservative**: It's better to skip uncertain cases than create
+   incorrect labels
+5. **Batch suggestions**: Use `submit_label_suggestions` to submit
+   multiple suggestions at once
 
 ## Workflow
 
 1. Call `get_receipt_context` to see unlabeled words
-2. For each unlabeled word, call `search_label_candidates` to get ChromaDB results
+2. For each unlabeled word, call `search_label_candidates` to get
+   ChromaDB results
 3. Analyze results and decide which words to suggest labels for
 4. Use `submit_label_suggestions` to create PENDING labels
 
@@ -150,7 +179,7 @@ async def suggest_labels_for_receipt(
     metadata = dynamo_client.get_receipt_metadata(image_id, receipt_id)
     merchant_name = metadata.merchant_name if metadata else None
 
-    # Count receipts for this merchant (query ChromaDB to count unique receipt_ids)
+    # Count receipts for this merchant via ChromaDB query for unique IDs
     merchant_receipt_count = None
     if merchant_name and chroma_client:
         try:
@@ -267,7 +296,8 @@ async def suggest_labels_for_receipt(
 
         if "error" in candidates_result:
             logger.debug(
-                f"Error searching candidates for word '{word_text}': {candidates_result['error']}"
+                f"Error searching candidates for word '{word_text}': "
+                f"{candidates_result['error']}"
             )
             continue
 
@@ -301,7 +331,8 @@ async def suggest_labels_for_receipt(
                 }
             )
             logger.debug(
-                f"No candidates found for word '{word_text}' (word_id: {word_id})"
+                f"No candidates found for word '{word_text}' "
+                f"(word_id: {word_id})"
             )
             continue
 
@@ -313,14 +344,17 @@ async def suggest_labels_for_receipt(
 
         logger.debug(
             f"Word '{word_text}': top candidate {label_type} "
-            f"(similarity: {avg_similarity:.2f}, confidence: {confidence:.2f}, matches: {match_count}, candidates: {len(candidates)})"
+            f"(similarity: {avg_similarity:.2f}, "
+            f"confidence: {confidence:.2f}, matches: {match_count}, "
+            f"candidates: {len(candidates)})"
         )
 
         # CASE 1: High similarity - suggest directly (NO LLM)
-        # Prioritize similarity over count for suggestions (will be validated later)
+        # Prioritize similarity over count for suggestions.
+        # Validation occurs later.
         avg_similarity = top_candidate["avg_similarity"]
         if avg_similarity >= 0.80 and match_count >= 2:
-            # High similarity with just 2+ matches is reliable enough to suggest
+            # High similarity with 2+ matches is reliable enough to suggest
             suggestions.append(
                 {
                     "word_id": word_id,
@@ -328,17 +362,20 @@ async def suggest_labels_for_receipt(
                     "label_type": label_type,
                     "confidence": confidence,
                     "reasoning": (
-                        f"Found {match_count} similar words with VALID {label_type} labels "
-                        f"(avg similarity: {avg_similarity:.2f})"
+                        f"Found {match_count} similar words with VALID "
+                        f"{label_type} labels (avg similarity: "
+                        f"{avg_similarity:.2f})"
                     ),
                 }
             )
             logger.debug(
-                f"High similarity suggestion: {word_text} -> {label_type} (similarity: {avg_similarity:.2f}, matches: {match_count})"
+                f"High similarity suggestion: {word_text} -> {label_type} "
+                f"(similarity: {avg_similarity:.2f}, matches: {match_count})"
             )
             continue
 
-        # CASE 2: Medium-high similarity or good confidence - suggest directly (NO LLM)
+        # CASE 2: Medium-high similarity or good confidence.
+        # Suggest directly (NO LLM).
         if (avg_similarity >= 0.75 and match_count >= 3) or (
             confidence >= 0.65 and match_count >= 3
         ):
@@ -349,17 +386,22 @@ async def suggest_labels_for_receipt(
                     "label_type": label_type,
                     "confidence": confidence,
                     "reasoning": (
-                        f"Found {match_count} similar words with VALID {label_type} labels "
-                        f"(avg similarity: {avg_similarity:.2f})"
+                        f"Found {match_count} similar words with VALID "
+                        f"{label_type} labels (avg similarity: "
+                        f"{avg_similarity:.2f})"
                     ),
                 }
             )
             logger.debug(
-                f"Medium-high suggestion: {word_text} -> {label_type} (similarity: {avg_similarity:.2f}, confidence: {confidence:.2f}, matches: {match_count})"
+                f"Medium-high suggestion: {word_text} -> {label_type} "
+                f"(similarity: {avg_similarity:.2f}, "
+                f"confidence: {confidence:.2f}, "
+                f"matches: {match_count})"
             )
             continue
 
-        # CASE 2b: Single candidate with decent similarity - suggest directly (NO LLM)
+        # CASE 2b: Single candidate with decent similarity.
+        # Suggest directly (NO LLM).
         if (
             len(candidates) == 1
             and avg_similarity >= 0.70
@@ -371,7 +413,11 @@ async def suggest_labels_for_receipt(
                     "line_id": line_id,
                     "label_type": label_type,
                     "confidence": confidence,
-                    "reasoning": f"Found {match_count} similar words with VALID {label_type} labels (avg similarity: {avg_similarity:.2f})",
+                    "reasoning": (
+                        f"Found {match_count} similar words with VALID "
+                        f"{label_type} labels (avg similarity: "
+                        f"{avg_similarity:.2f})"
+                    ),
                 }
             )
             continue
@@ -390,7 +436,8 @@ async def suggest_labels_for_receipt(
                 < 0.10
             )
 
-            # Use LLM for ambiguous cases: multiple candidates OR medium similarity
+            # Use LLM for ambiguous cases.
+            # Covers multiple candidates or medium similarity.
             if has_multiple_candidates or (
                 avg_similarity >= 0.65
                 and avg_similarity < 0.75
@@ -405,8 +452,10 @@ async def suggest_labels_for_receipt(
                 )
 
                 candidates_text = "\n".join(
-                    f"- **{c['label_type']}**: confidence={c['confidence']:.2f}, "
-                    f"matches={c['match_count']}, avg_sim={c['avg_similarity']:.2f}"
+                    f"- **{c['label_type']}**: "
+                    f"confidence={c['confidence']:.2f}, "
+                    f"matches={c['match_count']}, "
+                    f"avg_sim={c['avg_similarity']:.2f}"
                     for c in candidates[:3]
                 )
 
@@ -432,7 +481,8 @@ Respond with JSON:
                     response = await llm.ainvoke(
                         [HumanMessage(content=prompt)]
                     )
-                    # Parse response (simplified - in production, use structured output)
+                    # Parse response (simplified for now)
+                    # Production should use structured output
                     content = (
                         response.content
                         if hasattr(response, "content")
@@ -460,7 +510,8 @@ Respond with JSON:
                                     ),
                                     "reasoning": llm_result.get(
                                         "reasoning",
-                                        "LLM decision based on ChromaDB results",
+                                        "LLM decision based on ChromaDB "
+                                        "results",
                                     ),
                                 }
                             )
@@ -468,7 +519,8 @@ Respond with JSON:
                     logger.debug(
                         f"LLM call failed for word '{word_text}': {e}"
                     )
-                    # Fall back to top candidate if LLM fails and similarity is decent
+                    # Fall back to top candidate if LLM fails.
+                    # Similarity must be decent.
                     if avg_similarity >= 0.70 and match_count >= 2:
                         suggestions.append(
                             {
@@ -476,7 +528,12 @@ Respond with JSON:
                                 "line_id": line_id,
                                 "label_type": label_type,
                                 "confidence": confidence,
-                                "reasoning": f"Fallback: Found {match_count} similar words with VALID {label_type} labels (avg similarity: {avg_similarity:.2f})",
+                                "reasoning": (
+                                    f"Fallback: Found {match_count} "
+                                    f"similar words with VALID {label_type} "
+                                    f"labels (avg similarity: "
+                                    f"{avg_similarity:.2f})"
+                                ),
                             }
                         )
 
@@ -484,7 +541,8 @@ Respond with JSON:
         if avg_similarity < 0.65 or match_count < 2:
             skipped_low_confidence += 1
             logger.debug(
-                f"Skipped '{word_text}': similarity={avg_similarity:.2f} < 0.65 or matches={match_count} < 2"
+                f"Skipped '{word_text}': similarity={avg_similarity:.2f} "
+                f"< 0.65 or matches={match_count} < 2"
             )
 
         word_time = time.time() - word_start

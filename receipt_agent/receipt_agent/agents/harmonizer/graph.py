@@ -6,8 +6,8 @@ place_id and determine the correct canonical metadata for the group.
 
 Key Insight
 -----------
-Receipts with the same place_id MUST have consistent metadata. Any inconsistency
-indicates a data quality issue. The agent:
+Receipts with the same place_id MUST have consistent metadata.
+Any inconsistency indicates a data quality issue. The agent:
 1. Examines all receipts in the group
 2. Validates against Google Places
 3. Reasons about edge cases (OCR errors, address-like names)
@@ -71,15 +71,18 @@ class HarmonizerStateDict(TypedDict):
     cove_state_holder: Any
 
 
-# ==============================================================================
+# =============================================================================
 # System Prompt
-# ==============================================================================
+# =============================================================================
 
-HARMONIZER_PROMPT = """You are a receipt metadata harmonizer. Your job is to ensure all receipts sharing the same Google Place ID have consistent, correct metadata.
+HARMONIZER_PROMPT = """You are a receipt metadata harmonizer.
+Your job is to ensure all receipts sharing the same Google Place ID have
+consistent, correct metadata.
 
 ## Your Task
 
-You're given a group of receipts that all share the same `place_id`. These receipts SHOULD have identical metadata, but they may differ due to:
+You're given a group of receipts that all share the same `place_id`. These
+receipts SHOULD have identical metadata, but they may differ due to:
 - OCR errors (typos in merchant name, address, phone)
 - Different formatting (e.g., "Vons" vs "VONS" vs "vons")
 - Missing data on some receipts
@@ -88,75 +91,113 @@ You're given a group of receipts that all share the same `place_id`. These recei
 Your job is to:
 1. Examine all receipts in the group
 2. Validate against Google Places API (source of truth)
-3. Determine the correct canonical values for: merchant_name, address, phone
+3. Determine the correct canonical values for:
+   merchant_name, address, phone
 4. Identify which receipts need updates
 5. Submit your harmonization decision
 
 ## Available Tools
 
 ### Group Analysis Tools
-- `get_group_summary`: See all receipts in this group with their current metadata
-- `get_receipt_content`: View the actual content (lines, words) of a specific receipt
-- `display_receipt_text`: Display formatted receipt text (receipt-space grouping) for verification
-- `get_field_variations`: See all variations of a field (merchant_name, address, phone) across the group
+- `get_group_summary`: See all receipts in this group with their current
+  metadata
+- `get_receipt_content`: View the actual content (lines, words) of a specific
+  receipt
+- `display_receipt_text`: Display formatted receipt text
+  (receipt-space grouping) for verification
+- `get_field_variations`: See all variations of a field
+  (merchant_name, address, phone) across the group
 
 ### Google Places Tools (Source of Truth)
 - `verify_place_id`: Get official data from Google Places for this place_id
-- `find_businesses_at_address`: If Google returns an address as name, find actual businesses there
+- `find_businesses_at_address`: If Google returns an address as a name, find
+  actual businesses there
 
 ### Metadata Correction Tools
-- `find_correct_metadata`: Spin up a sub-agent to find the correct metadata for a receipt that appears to have incorrect metadata. Use this when a receipt's metadata doesn't match Google Places or other receipts in the group.
+- `find_correct_metadata`: Spin up a sub-agent to find the correct metadata for
+  a receipt whose metadata looks incorrect. Use this when a receipt's metadata
+  doesn't match Google Places or other receipts in the group.
 
 ### Address Verification Tool
-- `verify_address_on_receipt`: Verify that a specific address (from metadata or Google Places) actually appears on the receipt text. This is CRITICAL for catching wrong place_id assignments. If address doesn't match, use `find_correct_metadata` to fix it.
+- `verify_address_on_receipt`: Verify that a specific address
+  (from metadata or Google Places) actually appears on the receipt text. This
+  is CRITICAL for catching wrong place_id assignments. If the address doesn't
+  match, use `find_correct_metadata` to fix it.
 
 ### Text Consistency Verification Tool
-- `verify_text_consistency`: Verify that all receipts in the group actually contain text consistent with the canonical metadata. This uses CoVe (Consistency Verification) to check receipt text and identify outliers. Use this BEFORE submitting to ensure all receipts belong to the same place.
+- `verify_text_consistency`: Verify that all receipts in the group actually
+  contain text consistent with the canonical metadata. This uses CoVe
+  (Consistency Verification) to check receipt text and identify outliers. Use
+  this BEFORE submitting to ensure all receipts belong to the same place.
 
 ### Decision Tool (REQUIRED at the end)
-- `submit_harmonization`: Submit your decision for canonical values and which receipts need updates
+- `submit_harmonization`: Submit your decision for canonical values and which
+  receipts need updates
 
 ## Strategy
 
-1. **Start** with `get_group_summary` to see all receipts and their metadata variations
+1. **Start** with `get_group_summary` to see all receipts and their metadata
+   variations
 
 2. **Check Google Places** with `verify_place_id` to get the official data
    - This is the source of truth for merchant_name, address, phone
-   - If Google returns an address as the merchant name (e.g., "123 Main St"), use `find_businesses_at_address`
+   - If Google returns an address as the merchant name (e.g., "123 Main St"),
+     use `find_businesses_at_address`
 
-3. **Analyze variations** with `get_field_variations` to understand the inconsistencies
+3. **Analyze variations** with `get_field_variations` to understand the
+   inconsistencies
    - Which values are most common?
    - Are differences just formatting (case sensitivity)?
    - Are there OCR errors?
 
-4. **CRITICAL: Verify addresses match receipt text** - This is essential to catch wrong place_id assignments
-   - Use `display_receipt_text` or `verify_address_on_receipt` to check each receipt
-   - Compare the address in metadata against what's actually printed on the receipt
-   - If an address like "55 Fulton St, New York, NY 10038, USA" appears but the receipt shows a California address, this is a WRONG place_id assignment
-   - **If address doesn't match receipt text, use `find_correct_metadata` to fix it immediately**
-   - Do NOT proceed with harmonization if addresses don't match - fix them first
+4. **CRITICAL: Verify addresses match receipt text** - This is essential to
+   catch wrong place_id assignments
+   - Use `display_receipt_text` or `verify_address_on_receipt` to check each
+     receipt
+   - Compare the address in metadata against what's actually printed on the
+     receipt
+   - If an address like "55 Fulton St, New York, NY 10038, USA" appears but
+     the receipt shows a California address, this is a WRONG place_id
+     assignment
+   - **If address doesn't match receipt text, use `find_correct_metadata` to
+     fix it immediately**
+   - Do NOT proceed with harmonization if addresses don't match - fix them
+     first
 
-5. **Inspect receipt content** (if needed) with `get_receipt_content` or `display_receipt_text`
-   - First call `get_group_summary` to see all receipts with their `image_id` and `receipt_id`
-   - Then use `display_receipt_text(image_id, receipt_id)` to see formatted receipt text (receipt-space grouping) with verification prompt
-   - Or use `get_receipt_content(image_id, receipt_id)` to see raw lines and labeled words
+5. **Inspect receipt content** (if needed) with `get_receipt_content` or
+   `display_receipt_text`
+   - First call `get_group_summary` to see all receipts with their `image_id`
+     and `receipt_id`
+   - Then use `display_receipt_text(image_id, receipt_id)` to see formatted
+     receipt text (receipt-space grouping) with verification prompt
+   - Or use `get_receipt_content(image_id, receipt_id)` to see raw lines and
+     labeled words
    - Use these to verify metadata matches what's actually on the receipt
 
-6. **Find correct metadata** (if metadata appears incorrect) with `find_correct_metadata`
-   - **USE THIS if address doesn't match receipt text** - this indicates wrong place_id
-   - If a receipt's metadata doesn't match Google Places or seems wrong, use this tool
-   - It spins up a sub-agent to find the correct place_id, merchant_name, address, and phone
-   - The sub-agent examines receipt content, searches Google Places, and uses similarity search
+6. **Find correct metadata** (if metadata appears incorrect) with
+   `find_correct_metadata`
+   - **USE THIS if address doesn't match receipt text** - this indicates wrong
+     place_id
+   - If a receipt's metadata doesn't match Google Places or seems wrong, use
+     this tool
+   - It spins up a sub-agent to find the correct place_id, merchant_name,
+     address, and phone
+   - The sub-agent examines receipt content, searches Google Places, and uses
+     similarity search
    - Returns the correct metadata with confidence scores
 
-7. **Verify text consistency** (RECOMMENDED before submitting) with `verify_text_consistency`
-   - After determining canonical metadata, use this tool to verify all receipts actually belong to the same place
+7. **Verify text consistency** (RECOMMENDED before submitting) with
+   `verify_text_consistency`
+   - After determining canonical metadata, use this tool to verify all receipts
+     actually belong to the same place
    - The CoVe sub-agent checks each receipt's text against canonical metadata
    - Identifies outliers (receipts that may be from a different place)
-   - Use the results to adjust your harmonization decision if outliers are found
+   - Use the results to adjust your harmonization decision if outliers are
+     found
 
 8. **Submit your decision** with `submit_harmonization`:
-   - Canonical values from Google Places (preferred) or best-quality receipt data
+   - Canonical values from Google Places (preferred) or best-quality receipt
+     data
    - List of receipts that need updates
    - Confidence in your decision
 
@@ -168,11 +209,16 @@ Your job is to:
 - Use proper case (Title Case preferred over ALL CAPS)
 - **CRITICAL: NEVER use an address as a merchant name**
   - Addresses contain street numbers, street names, city, state, ZIP codes
-  - Examples of addresses (NOT merchant names): "55 Fulton St", "123 Main Street", "101 S Westlake Blvd"
-  - If you see something like "55 Fulton Market" and it looks like it could be an address, verify it's actually a business name
-  - If Google Places returns an address as the name, use `find_businesses_at_address` to find the actual business
-  - Merchant names are business names like "Starbucks", "Target", "CVS Pharmacy", "Trader Joe's"
-  - If you're unsure, use `display_receipt_text` to see what's actually printed on the receipt
+  - Examples of addresses (NOT merchant names): "55 Fulton St", "123 Main
+    Street", "101 S Westlake Blvd"
+  - If you see something like "55 Fulton Market" and it looks like it could be
+    an address, verify it's actually a business name
+  - If Google Places returns an address as the name, use
+    `find_businesses_at_address` to find the actual business
+  - Merchant names are business names like "Starbucks", "Target",
+    "CVS Pharmacy", "Trader Joe's"
+  - If you're unsure, use `display_receipt_text` to see what's actually printed
+    on the receipt
 
 ### Address
 - **Prefer Google Places address** (properly formatted)
@@ -192,16 +238,20 @@ Your job is to:
 
 1. ALWAYS start with `get_group_summary` to understand the group
 2. ALWAYS check Google Places with `verify_place_id` before deciding
-3. **CRITICAL: ALWAYS verify addresses match receipt text** - Use `display_receipt_text` or `verify_address_on_receipt` to check
-4. **If address doesn't match receipt text, use `find_correct_metadata` to fix it** - Don't proceed with wrong place_id
+3. **CRITICAL: ALWAYS verify addresses match receipt text** - Use
+   `display_receipt_text` or `verify_address_on_receipt` to check
+4. **If address doesn't match receipt text, use `find_correct_metadata` to fix
+   it** - Don't proceed with wrong place_id
 5. NEVER accept an address as a merchant name
-6. RECOMMENDED: Use `verify_text_consistency` before submitting to check for outliers
+6. RECOMMENDED: Use `verify_text_consistency` before submitting to check for
+   outliers
 7. ALWAYS end with `submit_harmonization`
 8. Be thorough but efficient
 
 ## What Gets Updated
 
-When you submit harmonization decisions, receipts with different values will have their:
+When you submit harmonization decisions, receipts with different values
+will have their:
 - `merchant_name` → Canonical merchant name
 - `address` → Canonical address
 - `phone_number` → Canonical phone
@@ -209,18 +259,18 @@ When you submit harmonization decisions, receipts with different values will hav
 Begin by getting the group summary, then validate with Google Places."""
 
 
-# ==============================================================================
+# =============================================================================
 # Helper Functions
-# ==============================================================================
+# =============================================================================
 
 
 # Use shared utility instead of local function
 _fetch_receipt_details_fallback = fetch_receipt_details_with_fallback
 
 
-# ==============================================================================
+# =============================================================================
 # Tool Factory for Harmonizer
-# ==============================================================================
+# =============================================================================
 
 
 def create_harmonizer_tools(
@@ -336,7 +386,8 @@ def create_harmonizer_tools(
 
         Returns:
         - lines: All text lines on the receipt
-        - labeled_words: Words with labels (MERCHANT_NAME, ADDRESS, PHONE, etc.)
+        - labeled_words: Words with labels
+          (MERCHANT_NAME, ADDRESS, PHONE, etc.)
         """
         try:
             # Sanitize image_id first (remove trailing characters like '?')
@@ -358,7 +409,8 @@ def create_harmonizer_tools(
                         and sanitized_image_id != image_id
                     ):
                         logger.debug(
-                            f"get_receipt_details failed for sanitized {img_id}#{receipt_id}, "
+                            "get_receipt_details failed for sanitized "
+                            f"{img_id}#{receipt_id}, "
                             f"trying original: {e}"
                         )
                     continue
@@ -366,8 +418,8 @@ def create_harmonizer_tools(
             if not receipt_details or not receipt_details.receipt:
                 # Try alternative methods to fetch receipt details
                 logger.info(
-                    f"Primary get_receipt_details failed for {image_id}#{receipt_id}, "
-                    f"trying alternative methods..."
+                    "Primary get_receipt_details failed for "
+                    f"{image_id}#{receipt_id}, trying alternative methods..."
                 )
                 receipt_details = _fetch_receipt_details_fallback(
                     dynamo_client, sanitized_image_id, receipt_id
@@ -380,7 +432,8 @@ def create_harmonizer_tools(
                 lines = receipt_details.lines or []
                 words_list = receipt_details.words or []
             elif not receipt_details:
-                # Try to fetch lines/words directly even if receipt entity is missing
+                # Try to fetch lines/words directly even if the receipt entity
+                # is missing
                 # Use sanitized_image_id from above
                 for img_id in [sanitized_image_id, image_id]:
                     try:
@@ -394,22 +447,29 @@ def create_harmonizer_tools(
                         )
                         if lines or words_list:
                             logger.info(
-                                f"Fetched {len(lines)} lines and {len(words_list)} words "
-                                f"directly for {img_id}#{receipt_id}"
+                                "Fetched "
+                                f"{len(lines)} lines and {len(words_list)} "
+                                f"words directly for {img_id}#{receipt_id}"
                             )
                             break
                     except Exception as e:
                         logger.debug(
-                            f"Could not fetch lines/words for {img_id}#{receipt_id}: {e}"
+                            "Could not fetch lines/words for "
+                            f"{img_id}#{receipt_id}: {e}"
                         )
 
             if not lines and not words_list:
                 logger.warning(
-                    f"Receipt details not found for {image_id}#{receipt_id} after fallback. "
-                    f"Metadata exists but receipt lines/words are missing from DynamoDB."
+                    "Receipt details not found for "
+                    f"{image_id}#{receipt_id} after fallback. "
+                    "Metadata exists but "
+                    "receipt lines/words are missing from DynamoDB."
                 )
                 return {
-                    "error": f"Receipt details not found for {image_id}#{receipt_id}",
+                    "error": (
+                        f"Receipt details not found for "
+                        f"{image_id}#{receipt_id}"
+                    ),
                     "lines": [],
                     "labeled_words": [],
                 }
@@ -456,20 +516,24 @@ def create_harmonizer_tools(
         """
         Verify that a specific address appears on the receipt text.
 
-        This tool checks if the given address (from metadata or Google Places) actually
-        appears on the receipt. This is critical for catching wrong place_id assignments
-        (e.g., if metadata says "55 Fulton St, New York, NY" but receipt shows a California address).
+        This tool checks if the given address (from metadata or Google Places)
+        actually appears on the receipt. This is critical for catching wrong
+        place_id assignments (e.g., if metadata says
+        "55 Fulton St, New York, NY" but receipt shows a California address).
 
         Args:
             image_id: Image ID of the receipt
             receipt_id: Receipt ID
-            address_to_check: The address to verify (e.g., from metadata or Google Places)
+            address_to_check: The address to verify (e.g., from metadata or
+                Google Places)
 
         Returns:
-        - matches: Whether the address appears on the receipt (allowing for OCR errors)
+        - matches: Whether the address appears on the receipt (allowing for OCR
+          errors)
         - evidence: What address text was found on the receipt (if any)
         - formatted_text: The formatted receipt text for inspection
-        - recommendation: What to do if address doesn't match (use find_correct_metadata)
+        - recommendation: What to do if address doesn't match (use
+          find_correct_metadata)
         """
         try:
             # Sanitize image_id first (remove trailing characters like '?')
@@ -490,7 +554,8 @@ def create_harmonizer_tools(
                         and sanitized_image_id != image_id
                     ):
                         logger.debug(
-                            f"get_receipt_details failed for sanitized {img_id}#{receipt_id}, "
+                            "get_receipt_details failed for sanitized "
+                            f"{img_id}#{receipt_id}, "
                             f"trying original: {e}"
                         )
                     continue
@@ -498,8 +563,8 @@ def create_harmonizer_tools(
             if not receipt_details or not receipt_details.receipt:
                 # Try alternative methods to fetch receipt details
                 logger.info(
-                    f"Primary get_receipt_details failed for {image_id}#{receipt_id}, "
-                    f"trying alternative methods..."
+                    "Primary get_receipt_details failed for "
+                    f"{image_id}#{receipt_id}, trying alternative methods..."
                 )
                 receipt_details = _fetch_receipt_details_fallback(
                     dynamo_client, sanitized_image_id, receipt_id
@@ -507,15 +572,23 @@ def create_harmonizer_tools(
 
             if not receipt_details or not receipt_details.receipt:
                 logger.warning(
-                    f"Receipt details not found for {image_id}#{receipt_id} after fallback. "
-                    f"Metadata exists but receipt lines/words are missing from DynamoDB. "
-                    f"Skipping address verification for this receipt."
+                    "Receipt details not found for "
+                    f"{image_id}#{receipt_id} after fallback. "
+                    "Metadata exists but "
+                    "receipt lines/words are missing from DynamoDB. "
+                    "Skipping address verification for this receipt."
                 )
                 return {
-                    "error": f"Receipt details not found for {image_id}#{receipt_id}",
+                    "error": (
+                        f"Receipt details not found for "
+                        f"{image_id}#{receipt_id}"
+                    ),
                     "found": False,
                     "matches": False,
-                    "evidence": "Receipt details (lines/words) not available in DynamoDB",
+                    "evidence": (
+                        "Receipt details (lines/words) not available in "
+                        "DynamoDB"
+                    ),
                     "recommendation": (
                         "Cannot verify address - receipt details missing. "
                         "This receipt has metadata but no OCR text. "
@@ -534,10 +607,15 @@ def create_harmonizer_tools(
                     )
                     if lines:
                         logger.info(
-                            f"Fetched {len(lines)} lines directly for {image_id}#{receipt_id}"
+                            "Fetched "
+                            f"{len(lines)} lines directly for "
+                            f"{image_id}#{receipt_id}"
                         )
                 except Exception as e:
-                    logger.debug(f"Could not fetch lines directly: {e}")
+                    logger.debug(
+                        "Could not fetch lines directly: "
+                        f"{e}"
+                    )
 
             if not lines:
                 return {
@@ -600,7 +678,8 @@ def create_harmonizer_tools(
                     if street_num_str in receipt_text_lower:
                         street_num_match = True
                         evidence.append(
-                            f"Found street number '{street_num_str}' in receipt"
+                            "Found street number "
+                            f"'{street_num_str}' in receipt"
                         )
 
                 # Check for street name (words after number)
@@ -635,7 +714,8 @@ def create_harmonizer_tools(
                         f"Found city/state '{city_state}' in receipt"
                     )
                     if not matches:
-                        # If we found city/state but not street, it's a partial match
+                        # If we found city/state but not street, it's a partial
+                        # match
                         matches = False  # Still not a full match
                 else:
                     evidence.append(
@@ -644,12 +724,16 @@ def create_harmonizer_tools(
 
             # If we have full address match, mark as matches
             if matches:
-                recommendation = "Address appears to match receipt text. Proceed with harmonization."
+                recommendation = (
+                    "Address appears to match receipt text. "
+                    "Proceed with harmonization."
+                )
             else:
                 recommendation = (
                     "WARNING: Address does NOT match receipt text. "
                     "This may indicate a wrong place_id assignment. "
-                    "Use find_correct_metadata to find the correct place_id and metadata for this receipt."
+                    "Use find_correct_metadata to find the correct place_id "
+                    "and metadata for this receipt."
                 )
 
             return {
@@ -674,11 +758,13 @@ def create_harmonizer_tools(
                 or "receipt details" in error_str.lower()
             ):
                 logger.warning(
-                    f"Receipt details not available for {image_id}#{receipt_id}: {error_str}"
+                    "Receipt details not available for "
+                    f"{image_id}#{receipt_id}: {error_str}"
                 )
             else:
                 logger.error(
-                    f"Error verifying address on receipt {image_id}#{receipt_id}: {e}"
+                    "Error verifying address on receipt "
+                    f"{image_id}#{receipt_id}: {e}"
                 )
             return {"error": str(e), "found": False, "matches": False}
 
@@ -693,18 +779,21 @@ def create_harmonizer_tools(
         """
         Display the formatted receipt text for verification.
 
-        This tool formats the receipt text using the same method as the combine agent,
-        grouping visually contiguous lines and displaying them in image order.
-        Use this to verify what text is actually on the receipt when checking metadata.
+        This tool formats the receipt text using the same method as the combine
+        agent, grouping visually contiguous lines and displaying them in image
+        order. Use this to verify what text is actually on the receipt when
+        checking metadata.
 
         Args:
             image_id: Image ID of the receipt
             receipt_id: Receipt ID
 
         Returns:
-        - formatted_text: Receipt text formatted in image order (grouped by visual rows)
+        - formatted_text: Receipt text formatted in image order
+          (grouped by visual rows)
         - line_count: Number of lines on the receipt
-        - verification_prompt: A prompt to help verify the metadata matches the receipt text
+        - verification_prompt: A prompt to help verify the metadata matches the
+          receipt text
         """
         try:
             # Sanitize image_id first (remove trailing characters like '?')
@@ -713,11 +802,13 @@ def create_harmonizer_tools(
             # Log table name for debugging
             table_name = getattr(dynamo_client, "table_name", "unknown")
             logger.debug(
-                f"display_receipt_text: Using table '{table_name}' for {image_id}#{receipt_id}"
+                "display_receipt_text: Using table "
+                f"'{table_name}' for {image_id}#{receipt_id}"
             )
 
             # Simplified: Use list_receipt_lines_from_receipt directly
-            # This is the most direct method and uses GSI3 for efficient querying
+            # This is the most direct method and uses GSI3 for efficient
+            # querying
             lines = []
             for img_id in [sanitized_image_id, image_id]:
                 try:
@@ -726,19 +817,22 @@ def create_harmonizer_tools(
                     )
                     if lines:
                         logger.info(
-                            f"Fetched {len(lines)} lines for {img_id}#{receipt_id} "
-                            f"using list_receipt_lines_from_receipt()"
+                            "Fetched "
+                            f"{len(lines)} lines for {img_id}#{receipt_id} "
+                            "using list_receipt_lines_from_receipt()"
                         )
                         break
                 except Exception as e:
                     logger.debug(
-                        f"list_receipt_lines_from_receipt failed for {img_id}#{receipt_id}: {e}"
+                        "list_receipt_lines_from_receipt failed for "
+                        f"{img_id}#{receipt_id}: {e}"
                     )
 
             # Fallback: Try get_receipt_details if direct query failed
             if not lines:
                 logger.debug(
-                    f"Direct line query failed, trying get_receipt_details() for {image_id}#{receipt_id}"
+                    "Direct line query failed, trying get_receipt_details() "
+                    f"for {image_id}#{receipt_id}"
                 )
                 try:
                     receipt_details = dynamo_client.get_receipt_details(
@@ -747,15 +841,20 @@ def create_harmonizer_tools(
                     if receipt_details and receipt_details.lines:
                         lines = receipt_details.lines
                         logger.info(
-                            f"Fetched {len(lines)} lines via get_receipt_details()"
+                            "Fetched "
+                            f"{len(lines)} lines via get_receipt_details()"
                         )
                 except Exception as e:
-                    logger.debug(f"get_receipt_details also failed: {e}")
+                    logger.debug(
+                        "get_receipt_details also failed: "
+                        f"{e}"
+                    )
 
             # Final fallback: Try fetch_receipt_details_with_fallback
             if not lines:
                 logger.debug(
-                    f"Trying fetch_receipt_details_with_fallback() for {image_id}#{receipt_id}"
+                    "Trying fetch_receipt_details_with_fallback() for "
+                    f"{image_id}#{receipt_id}"
                 )
                 receipt_details = _fetch_receipt_details_fallback(
                     dynamo_client, sanitized_image_id, receipt_id
@@ -763,7 +862,9 @@ def create_harmonizer_tools(
                 if receipt_details and receipt_details.lines:
                     lines = receipt_details.lines
                     logger.info(
-                        f"Fetched {len(lines)} lines via fetch_receipt_details_with_fallback()"
+                        "Fetched "
+                        f"{len(lines)} lines via "
+                        "fetch_receipt_details_with_fallback()"
                     )
 
             if not lines:
@@ -776,7 +877,7 @@ def create_harmonizer_tools(
                     "verification_prompt": "Receipt has no text lines.",
                 }
 
-            # Get metadata from ReceiptMetadata (Receipt entity doesn't have these fields)
+            # Use ReceiptMetadata when the Receipt entity lacks fields
             current_metadata = {}
             try:
                 metadata = dynamo_client.get_receipt_metadata(
@@ -796,7 +897,8 @@ def create_harmonizer_tools(
                     }
             except Exception as e:
                 logger.debug(
-                    f"Could not fetch metadata for {image_id}#{receipt_id}: {e}"
+                    "Could not fetch metadata for "
+                    f"{image_id}#{receipt_id}: {e}"
                 )
                 current_metadata = {
                     "merchant_name": "(not available)",
@@ -817,23 +919,25 @@ def create_harmonizer_tools(
 
             # Build verification prompt (metadata already set above)
 
-            verification_prompt = f"""Please verify the metadata for this receipt matches what's actually on the receipt:
-
-Current Metadata:
-- Merchant Name: {current_metadata['merchant_name']}
-- Address: {current_metadata['address']}
-- Phone: {current_metadata['phone']}
-
-Receipt Text (formatted in image order, grouped by visual rows):
-{formatted_text}
-
-Questions to verify:
-1. Does the merchant name on the receipt match the metadata?
-2. Does the address on the receipt match the metadata?
-3. Does the phone number on the receipt match the metadata?
-4. Are there any OCR errors or typos that need correction?
-
-Use this information to make your harmonization decision."""
+            verification_prompt = (
+                "Please verify the metadata for this receipt matches what's "
+                "actually on the receipt.\n\n"
+                "Current Metadata:\n"
+                f"- Merchant Name: {current_metadata['merchant_name']}\n"
+                f"- Address: {current_metadata['address']}\n"
+                f"- Phone: {current_metadata['phone']}\n\n"
+                "Receipt Text (formatted in image order, grouped by visual "
+                "rows):\n"
+                f"{formatted_text}\n\n"
+                "Questions to verify:\n"
+                "1. Does the merchant name on the receipt match\n"
+                "the metadata?\n"
+                "2. Does the address on the receipt match the metadata?\n"
+                "3. Does the phone number on the receipt match the metadata?\n"
+                "4. Are there any OCR errors or typos that need\n"
+                "correction?\n\n"
+                "Use this information to make your harmonization decision."
+            )
 
             return {
                 "image_id": image_id,
@@ -859,7 +963,8 @@ Use this information to make your harmonization decision."""
     @tool(args_schema=GetFieldVariationsInput)
     def get_field_variations(field: str) -> dict:
         """
-        Get detailed variations of a specific field across all receipts in the group.
+        Get detailed variations of a specific field across all receipts
+        in the group.
 
         Args:
             field: One of: merchant_name, address, phone
@@ -880,7 +985,10 @@ Use this information to make your harmonization decision."""
 
         if field not in field_map:
             return {
-                "error": f"Invalid field: {field}. Use: merchant_name, address, or phone"
+                "error": (
+                    "Invalid field: "
+                    f"{field}. Use: merchant_name, address, or phone"
+                )
             }
 
         receipts = group.get("receipts", [])
@@ -951,7 +1059,8 @@ Use this information to make your harmonization decision."""
         - place_name: Official business name from Google
         - place_address: Official formatted address
         - place_phone: Official phone number
-        - is_address_like: Whether the name looks like an address (needs further investigation)
+        - is_address_like: Whether the name looks like an address
+          (needs further investigation)
         """
         group = state.get("group")
         if not group or not isinstance(group, dict):
@@ -1002,7 +1111,8 @@ Use this information to make your harmonization decision."""
                 "place_phone": phone,
                 "is_address_like": is_address_like_result,
                 "warning": (
-                    "Google returned an address as the name. Use find_businesses_at_address to find the actual business."
+                    "Google returned an address as the name. Use "
+                    "find_businesses_at_address to find the actual business."
                     if is_address_like_result
                     else None
                 ),
@@ -1116,7 +1226,10 @@ Use this information to make your harmonization decision."""
                     ):
                         recommendation = {
                             "business": biz,
-                            "reason": f"Name matches receipt merchant '{receipt_name}'",
+                            "reason": (
+                                "Name matches receipt merchant "
+                                f"'{receipt_name}'"
+                            ),
                         }
                         break
                 if recommendation:
@@ -1147,7 +1260,8 @@ Use this information to make your harmonization decision."""
     @tool(args_schema=FindCorrectMetadataInput)
     async def find_correct_metadata(image_id: str, receipt_id: int) -> dict:
         """
-        Find the correct metadata for a receipt that appears to have incorrect metadata.
+        Find the correct metadata for a receipt that appears to have
+        incorrect metadata.
 
         This tool spins up a sub-agent (metadata finder) to:
         - Examine the receipt content (lines, words, labels)
@@ -1156,7 +1270,8 @@ Use this information to make your harmonization decision."""
         - Use similarity search (if available) to find similar receipts
         - Return the correct metadata with confidence scores
 
-        Use this when you suspect a receipt has incorrect metadata (wrong place_id, merchant_name, address, or phone).
+        Use this when you suspect a receipt has incorrect metadata
+        (wrong place_id, merchant_name, address, or phone).
 
         Args:
             image_id: Image ID of the receipt
@@ -1185,13 +1300,15 @@ Use this information to make your harmonization decision."""
             ):
                 try:
                     logger.info(
-                        "Lazy-loading ChromaDB for metadata finder sub-agent..."
+                        "Lazy-loading ChromaDB for metadata finder "
+                        "sub-agent..."
                     )
 
                     # Use shared helper to load dual-chroma setup
                     chroma_client, embed_fn = load_dual_chroma_from_s3(
                         chromadb_bucket=chromadb_bucket,
-                        verify_integrity=False,  # Skip integrity check for faster startup
+                        verify_integrity=False,
+                        # Skip integrity check for faster startup
                     )
 
                     # Cache in state for subsequent calls
@@ -1199,17 +1316,21 @@ Use this information to make your harmonization decision."""
                     state["embed_fn"] = embed_fn
 
                     logger.info(
-                        "ChromaDB and embeddings loaded and cached for metadata finder sub-agent"
+                        "ChromaDB and embeddings loaded and cached for "
+                        "metadata finder sub-agent"
                     )
                 except Exception as e:
                     logger.warning(
-                        f"Could not lazy-load ChromaDB (metadata finder will use fallback): {e}"
+                        "Could not lazy-load ChromaDB (metadata finder will "
+                        f"use fallback): {e}"
                     )
-                    # Continue without ChromaDB - metadata finder will use Google Places fallback
+                    # Continue without ChromaDB - metadata finder will use
+                    # Google Places fallback
                     chroma_client = None
                     embed_fn = None
 
-            # Check if we have the required dependencies for full metadata finder
+            # Check if we have the required dependencies for full metadata
+            # finder
             if chroma_client and embed_fn:
                 # Use full metadata finder agent
                 try:
@@ -1229,7 +1350,8 @@ Use this information to make your harmonization decision."""
                             embed_fn=embed_fn,
                             places_api=places_api,
                             settings=None,
-                            chromadb_bucket=chromadb_bucket,  # Pass bucket for lazy loading
+                            chromadb_bucket=chromadb_bucket,
+                            # Pass bucket for lazy loading
                         )
 
                     # Get receipt details to pass to metadata finder
@@ -1254,7 +1376,8 @@ Use this information to make your harmonization decision."""
 
                     if result.get("found"):
                         logger.info(
-                            f"Metadata finder found {len(result.get('fields_found', []))} fields "
+                            f"Metadata finder found "
+                            f"{len(result.get('fields_found', []))} fields "
                             f"for {image_id}#{receipt_id}"
                         )
                         return {
@@ -1273,7 +1396,8 @@ Use this information to make your harmonization decision."""
                             "found": False,
                             "reasoning": result.get(
                                 "reasoning",
-                                "Metadata finder could not find correct metadata",
+                                "Metadata finder could not find "
+                                "correct metadata",
                             ),
                             "method": "metadata_finder_agent",
                         }
@@ -1288,7 +1412,9 @@ Use this information to make your harmonization decision."""
             if not places_api:
                 return {
                     "found": False,
-                    "error": "Google Places API not available for metadata search",
+                    "error": (
+                        "Google Places API not available for metadata search"
+                    ),
                     "method": "fallback",
                 }
 
@@ -1357,8 +1483,14 @@ Use this information to make your harmonization decision."""
                                 "formatted_phone_number"
                             )
                             or place_details.get("international_phone_number"),
-                            "confidence": 0.7,  # Lower confidence for fallback method
-                            "reasoning": f"Found via Google Places {search_method} search (fallback method - full metadata finder not available)",
+                            "confidence": 0.7,
+                            # Lower confidence for fallback method
+                            "reasoning": (
+                                "Found via Google Places "
+                                f"{search_method} search "
+                                "(fallback method - full metadata "
+                                "finder not available)"
+                            ),
                             "fields_found": [
                                 "place_id",
                                 "merchant_name",
@@ -1370,7 +1502,10 @@ Use this information to make your harmonization decision."""
 
             return {
                 "found": False,
-                "reasoning": "Could not find correct metadata using Google Places search",
+                            "reasoning": (
+                                "Could not find correct metadata using "
+                                "Google Places search"
+                            ),
                 "method": "google_places_fallback",
             }
 
@@ -1406,16 +1541,19 @@ Use this information to make your harmonization decision."""
         canonical_phone: Optional[str],
     ) -> dict:
         """
-        Verify text consistency for all receipts in this group using CoVe (Consistency Verification).
+        Verify text consistency for all receipts in this group using CoVe
+        (Consistency Verification).
 
-        This tool spins up a sub-agent that checks each receipt's text against the canonical
-        metadata to identify outliers (receipts that may be from a different place).
+        This tool spins up a sub-agent that checks each receipt's text against
+        the canonical metadata to identify outliers (receipts that may be from
+        a different place).
 
-        Use this BEFORE submitting your harmonization decision to ensure all receipts
-        actually belong to the same place.
+        Use this BEFORE submitting your harmonization decision to ensure all
+        receipts actually belong to the same place.
 
         Args:
-            canonical_merchant_name: The canonical merchant name you plan to use
+            canonical_merchant_name: The canonical merchant name you
+                plan to use
             canonical_address: The canonical address you plan to use (or None)
             canonical_phone: The canonical phone you plan to use (or None)
 
@@ -1496,12 +1634,16 @@ Use this information to make your harmonization decision."""
                     cove_result.get("receipt_results", [])
                 )
                 logger.info(
-                    f"CoVe check complete: {outlier_count}/{receipt_results_count} outliers found "
+                    f"CoVe check complete: {outlier_count}/"
+                    f"{receipt_results_count} outliers found "
                     f"(expected {len(receipts)} receipts)"
                 )
                 return {
                     "status": "success",
-                    "message": f"Text consistency check complete. {outlier_count} outliers found.",
+                    "message": (
+                        "Text consistency check complete. "
+                        f"{outlier_count} outliers found."
+                    ),
                     "result": cove_result,
                     "outliers": cove_result.get("outliers", []),
                     "outlier_count": outlier_count,
@@ -1541,10 +1683,15 @@ Use this information to make your harmonization decision."""
             ge=0.0, le=1.0, description="Confidence in this decision (0-1)"
         )
         reasoning: str = Field(
-            description="Explanation of how you determined the canonical values"
+            description=(
+                "Explanation of how you determined the canonical values"
+            )
         )
         source: str = Field(
-            description="Source of truth: 'google_places', 'receipt_consensus', 'manual_selection'"
+            description=(
+                "Source of truth: 'google_places', 'receipt_consensus', "
+                "'manual_selection'"
+            )
         )
 
     @tool(args_schema=SubmitHarmonizationInput)
@@ -1559,7 +1706,8 @@ Use this information to make your harmonization decision."""
         """
         Submit your harmonization decision for this place_id group.
 
-        This determines the canonical values that all receipts in the group should have.
+        This determines the canonical values that all receipts
+        in the group should have.
 
         Args:
             canonical_merchant_name: The correct merchant name (REQUIRED)
@@ -1567,14 +1715,18 @@ Use this information to make your harmonization decision."""
             canonical_phone: The correct phone (optional)
             confidence: How confident you are (0.0-1.0)
             reasoning: Why you chose these values
-            source: Where the values came from ('google_places', 'receipt_consensus', 'manual_selection')
+            source: Where the values came from (
+                'google_places', 'receipt_consensus', 'manual_selection'
+            )
         """
 
         if canonical_address and not is_clean_address(canonical_address):
             return {
                 "error": (
-                    "canonical_address must be a clean address (no reasoning/commentary). "
-                    "Please provide the address only, without questions or extra text."
+                    "canonical_address must be a clean address "
+                    "(no reasoning/commentary). "
+                    "Please provide the address only, without questions "
+                    "or extra text."
                 )
             }
 
@@ -1590,15 +1742,18 @@ Use this information to make your harmonization decision."""
             changes = []
             if r.get("merchant_name") != canonical_merchant_name:
                 changes.append(
-                    f"merchant_name: '{r.get('merchant_name')}' → '{canonical_merchant_name}'"
+                    f"merchant_name: '{r.get('merchant_name')}' "
+                    f"→ '{canonical_merchant_name}'"
                 )
             if canonical_address and r.get("address") != canonical_address:
                 changes.append(
-                    f"address: '{r.get('address')}' → '{canonical_address}'"
+                    f"address: '{r.get('address')}' "
+                    f"→ '{canonical_address}'"
                 )
             if canonical_phone and r.get("phone") != canonical_phone:
                 changes.append(
-                    f"phone: '{r.get('phone')}' → '{canonical_phone}'"
+                    f"phone: '{r.get('phone')}' "
+                    f"→ '{canonical_phone}'"
                 )
 
             if changes:
@@ -1629,20 +1784,25 @@ Use this information to make your harmonization decision."""
             outlier_count = state["cove_result"].get("outlier_count", 0)
             if outlier_count > 0:
                 logger.warning(
-                    f"Harmonization submitted with {outlier_count} outliers identified by CoVe"
+                    "Harmonization submitted with "
+                    f"{outlier_count} outliers identified by CoVe"
                 )
 
         state["result"] = result
 
         logger.info(
             f"Harmonization submitted: {canonical_merchant_name} "
-            f"({len(updates_needed)}/{len(receipts)} need updates, confidence={confidence:.2%})"
+            f"({len(updates_needed)}/{len(receipts)} need updates, "
+            f"confidence={confidence:.2%})"
         )
 
         return {
             "success": True,
             "result": result,
-            "message": f"Harmonization decision recorded. {len(updates_needed)} receipts will be updated.",
+            "message": (
+                "Harmonization decision recorded. "
+                f"{len(updates_needed)} receipts will be updated."
+            ),
         }
 
     # Return tools
@@ -1668,9 +1828,9 @@ Use this information to make your harmonization decision."""
 # _is_address_like is now imported from receipt_agent.utils.address_validation
 
 
-# ==============================================================================
+# =============================================================================
 # Workflow Builder
-# ==============================================================================
+# =============================================================================
 
 
 def create_harmonizer_graph(
@@ -1689,10 +1849,11 @@ def create_harmonizer_graph(
         places_api: Google Places API client
         settings: Optional settings
         chroma_client: Optional ChromaDB client (for metadata finder sub-agent)
-                      If None, will be lazy-loaded when find_correct_metadata is called
+            If None, will be lazy-loaded when find_correct_metadata is called
         embed_fn: Optional embedding function (for metadata finder sub-agent)
-                  If None, will be lazy-loaded when find_correct_metadata is called
-        chromadb_bucket: Optional S3 bucket name for ChromaDB snapshots (for lazy loading)
+            If None, will be lazy-loaded when find_correct_metadata is called
+        chromadb_bucket: Optional S3 bucket name for ChromaDB snapshots
+            (for lazy loading)
 
     Returns:
         (compiled_graph, state_holder)
@@ -1764,9 +1925,9 @@ def create_harmonizer_graph(
     return compiled, state_holder
 
 
-# ==============================================================================
+# =============================================================================
 # Runner
-# ==============================================================================
+# =============================================================================
 
 
 async def run_harmonizer_agent(
@@ -1784,7 +1945,8 @@ async def run_harmonizer_agent(
         state_holder: State holder dict
         place_id: Google Place ID
         receipts: List of receipt dicts with metadata
-        places_api: Optional Google Places API client to fetch source of truth data
+        places_api: Optional Google Places API client to fetch source of truth
+            data
 
     Returns:
         Harmonization result dict
@@ -1826,7 +1988,8 @@ async def run_harmonizer_agent(
                         ),
                     }
                     logger.info(
-                        f"Fetched Google Places data for {place_id}: {google_places_info.get('name')}"
+                        f"Fetched Google Places data for {place_id}: "
+                        f"{google_places_info.get('name')}"
                     )
         except Exception as e:
             logger.warning(
@@ -1835,7 +1998,8 @@ async def run_harmonizer_agent(
 
     # Build initial prompt with Google Places data
     prompt_parts = [
-        f"Please harmonize the metadata for place_id '{place_id}' which has {len(receipts)} receipts."
+        f"Please harmonize the metadata for place_id '{place_id}' "
+        f"which has {len(receipts)} receipts."
     ]
 
     if google_places_info:
@@ -1847,11 +2011,13 @@ async def run_harmonizer_agent(
             )
         if google_places_info.get("formatted_address"):
             prompt_parts.append(
-                f"**Official Address:** {google_places_info['formatted_address']}"
+                f"**Official Address:** "
+                f"{google_places_info['formatted_address']}"
             )
         if google_places_info.get("formatted_phone_number"):
             prompt_parts.append(
-                f"**Official Phone:** {google_places_info['formatted_phone_number']}"
+                f"**Official Phone:** "
+                f"{google_places_info['formatted_phone_number']}"
             )
         if google_places_info.get("website"):
             prompt_parts.append(
@@ -1859,7 +2025,8 @@ async def run_harmonizer_agent(
             )
         if google_places_info.get("rating") is not None:
             prompt_parts.append(
-                f"**Rating:** {google_places_info['rating']} ({google_places_info.get('user_ratings_total', 0)} reviews)"
+                f"**Rating:** {google_places_info['rating']} "
+                f"({google_places_info.get('user_ratings_total', 0)} reviews)"
             )
         if google_places_info.get("types"):
             prompt_parts.append(
@@ -1870,15 +2037,18 @@ async def run_harmonizer_agent(
                 f"**Business Status:** {google_places_info['business_status']}"
             )
         prompt_parts.append(
-            "\nUse this Google Places data as the source of truth when determining canonical values."
+            "\nUse this Google Places data as the source of truth when "
+            "determining canonical values."
         )
     else:
         prompt_parts.append(
-            "\nNote: Google Places data is not available. Use the verify_place_id tool to fetch it."
+            "\nNote: Google Places data is not available. "
+            "Use the verify_place_id tool to fetch it."
         )
 
     prompt_parts.append(
-        "\nStart by getting the group summary, then proceed with harmonization."
+        "\nStart by getting the group summary, then proceed with "
+        "harmonization."
     )
 
     # Create initial state
@@ -1892,7 +2062,8 @@ async def run_harmonizer_agent(
     )
 
     logger.info(
-        f"Starting harmonizer agent for place_id {place_id} ({len(receipts)} receipts)"
+        f"Starting harmonizer agent for place_id {place_id} "
+        f"({len(receipts)} receipts)"
     )
 
     try:
@@ -1917,7 +2088,8 @@ async def run_harmonizer_agent(
         if result:
             logger.info(
                 f"Harmonization complete: {result['canonical_merchant_name']} "
-                f"({result['receipts_needing_update']}/{result['total_receipts']} need updates)"
+                f"({result['receipts_needing_update']}/"
+                f"{result['total_receipts']} need updates)"
             )
             return result
         else:

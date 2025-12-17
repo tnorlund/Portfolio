@@ -60,16 +60,30 @@ class MerchantCandidate(BaseModel):
     """A candidate merchant match."""
 
     merchant_name: str = Field(description="Merchant name")
-    place_id: Optional[str] = Field(default=None, description="Google Place ID")
-    address: Optional[str] = Field(default=None, description="Business address")
-    phone_number: Optional[str] = Field(default=None, description="Phone number")
-    category: Optional[str] = Field(default=None, description="Business category")
+    place_id: Optional[str] = Field(
+        default=None,
+        description="Google Place ID",
+    )
+    address: Optional[str] = Field(
+        default=None,
+        description="Business address",
+    )
+    phone_number: Optional[str] = Field(
+        default=None,
+        description="Phone number",
+    )
+    category: Optional[str] = Field(
+        default=None,
+        description="Business category",
+    )
     confidence_score: float = Field(
         description="Confidence in this candidate",
         ge=0.0,
         le=1.0,
     )
-    source: str = Field(description="Source of this candidate (chroma/places/llm)")
+    source: str = Field(
+        description="Source of this candidate (chroma/places/llm)"
+    )
     matched_fields: list[str] = Field(
         default_factory=list,
         description="Fields that matched",
@@ -288,10 +302,15 @@ class ToolCall(BaseModel):
 
     tool_name: str = Field(description="Name of the tool called")
     tool_input: dict[str, Any] = Field(description="Input to the tool")
-    tool_output: Optional[Any] = Field(default=None, description="Output from tool")
-    success: bool = Field(default=True, description="Whether tool call succeeded")
+    tool_output: Optional[Any] = Field(
+        default=None,
+        description="Output from tool",
+    )
+    success: bool = Field(
+        default=True,
+        description="Whether tool call succeeded",
+    )
     error_message: Optional[str] = Field(
         default=None,
         description="Error message if failed",
     )
-
