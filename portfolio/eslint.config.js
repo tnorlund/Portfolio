@@ -73,6 +73,11 @@ module.exports = [
       "jsx-a11y": jsxA11yPlugin,
       "@next/next": nextPlugin,
     },
+    settings: {
+      react: {
+        version: "19.2",
+      },
+    },
     rules: {
       "no-unused-vars": "off",
       "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
@@ -109,6 +114,11 @@ module.exports = [
       "react-hooks": reactHooksPlugin,
       "jsx-a11y": jsxA11yPlugin,
       "@next/next": nextPlugin,
+    },
+    settings: {
+      react: {
+        version: "19.2",
+      },
     },
     rules: {
       "no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
