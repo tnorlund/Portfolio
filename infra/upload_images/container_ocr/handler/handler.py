@@ -15,8 +15,9 @@ import asyncio
 from typing import Any, Dict, Optional
 
 from .ocr_processor import OCRProcessor
-from .embedding_processor import EmbeddingProcessor
 from .metrics import metrics, emf_metrics
+
+from receipt_upload.merchant_resolution import MerchantResolvingEmbeddingProcessor
 
 # Set up logging - use print for guaranteed output
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
@@ -193,12 +194,14 @@ def _process_single_record(
     # PHOTO/SCAN first pass: receipt_id=None (skip embeddings)
     if receipt_id is not None and image_type in ["NATIVE", "REFINEMENT"]:
         try:
-            _log(f"Initializing embedding processor for {image_type} receipt (receipt_id={receipt_id})")
+            _log(f"Initializing merchant-resolving embedding processor for {image_type} receipt (receipt_id={receipt_id})")
 
             embedding_start = time.time()
 
-            # Initialize embedding processor
-            embedding_processor = EmbeddingProcessor(
+            # Initialize merchant-resolving embedding processor
+            # This processor generates embeddings, resolves merchant info, and
+            # enriches the receipt in DynamoDB
+            embedding_processor = MerchantResolvingEmbeddingProcessor(
                 table_name=os.environ["DYNAMO_TABLE_NAME"],
                 chromadb_bucket=os.environ["CHROMADB_BUCKET"],
                 chroma_http_endpoint=os.environ.get("CHROMA_HTTP_ENDPOINT"),
@@ -208,9 +211,9 @@ def _process_single_record(
                 words_queue_url=os.environ.get("CHROMADB_WORDS_QUEUE_URL"),
             )
 
-            # Create embeddings with merchant context
+            # Create embeddings with merchant resolution
             # Pass receipt lines/words if available from OCR processor
-            _log(f"Creating embeddings with lines={ocr_result.get('receipt_lines') is not None}, words={ocr_result.get('receipt_words') is not None}")
+            _log(f"Creating embeddings with merchant resolution: lines={ocr_result.get('receipt_lines') is not None}, words={ocr_result.get('receipt_words') is not None}")
             embedding_result = embedding_processor.process_embeddings(
                 image_id=image_id,
                 receipt_id=receipt_id,
@@ -220,10 +223,16 @@ def _process_single_record(
 
             embedding_duration = time.time() - embedding_start
 
+            merchant_found = embedding_result.get("merchant_found", False)
+            merchant_name = embedding_result.get("merchant_name")
+            merchant_tier = embedding_result.get("merchant_resolution_tier")
+
             _log(
                 f"SUCCESS: Embeddings created for {image_type} receipt: "
                 f"image_id={image_id}, receipt_id={receipt_id}, "
-                f"run_id={embedding_result.get('run_id')}"
+                f"run_id={embedding_result.get('run_id')}, "
+                f"merchant_found={merchant_found}, merchant_name={merchant_name}, "
+                f"resolution_tier={merchant_tier}"
             )
 
             # Track metrics (aggregated, not per-call) - add to return dict
@@ -236,8 +245,11 @@ def _process_single_record(
                 "embeddings_created": True,
                 "embedding_success": True,
                 "embedding_duration": embedding_duration,
-                "lines_delta": embedding_result.get("lines_delta"),
-                "words_delta": embedding_result.get("words_delta"),
+                "merchant_found": merchant_found,
+                "merchant_name": merchant_name,
+                "merchant_place_id": embedding_result.get("merchant_place_id"),
+                "merchant_resolution_tier": merchant_tier,
+                "merchant_confidence": embedding_result.get("merchant_confidence"),
             }
 
         except Exception as e:

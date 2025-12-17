@@ -33,6 +33,8 @@ classifiers = [
 ]
 dependencies = [
   "receipt-dynamo",  # Local package for DynamoDB entities and operations
+  "receipt-chroma",  # Local package for ChromaDB embedding operations
+  "receipt-places",  # Local package for Google Places API
   "Pillow>=11.2.1",
   "pillow-avif-plugin>=1.3.0",
   "boto3>=1.26.0",
@@ -44,6 +46,10 @@ test = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "pytest-mock>=3.13.0",
+    "pytest-xdist>=3.6.0",  # For parallel test execution
+    "pytest-timeout>=2.1.0",  # For test timeouts
+    "moto>=5.0.0",  # For mocking AWS services in integration tests
+    "receipt-agent",  # For testing Place ID Finder integration
 ]
 dev = [
     "black==25.12.0",
