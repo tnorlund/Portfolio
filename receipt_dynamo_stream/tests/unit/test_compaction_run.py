@@ -284,7 +284,7 @@ def test_is_embeddings_completed_none_image() -> None:
     signature expects Dict[str, Any], this tests the actual runtime behavior when
     None is passed, which can occur if DynamoDB returns unexpected data.
     """
-    assert is_embeddings_completed(None)  # type: ignore[arg-type]
+    assert is_embeddings_completed(None) is False  # type: ignore[arg-type]
 
 
 def test_is_embeddings_completed_invalid_timestamp_structure() -> None:

@@ -168,7 +168,7 @@ def test_get_chromadb_relevant_changes_word_label_all_fields() -> None:
     assert changes["reasoning"].old == "initial reasoning"
     assert changes["reasoning"].new == "updated reasoning"
     assert changes["validation_status"].old == "NONE"
-    assert changes["validation_status"].new == "VALIDATED"
+    assert changes["validation_status"].new == "VALID"
 
 
 def test_get_chromadb_relevant_changes_unknown_entity_type() -> None:

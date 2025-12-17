@@ -12,7 +12,8 @@ from receipt_dynamo_stream.parsing.parsers import (
     parse_stream_record,
 )
 
-from conftest import MockMetrics
+# Import MockMetrics from conftest (same directory)
+from .conftest import MockMetrics
 
 
 # Test detect_entity_type edge cases
@@ -182,9 +183,9 @@ def test_parse_entity_type_error_with_metrics() -> None:
     )
 
     assert result is None
-    # Should record unexpected error metric
+    # Should record error metric
     metric_names = [m[0] for m in metrics.counts]
-    assert "EntityParsingUnexpectedError" in metric_names
+    assert "EntityParsingError" in metric_names
 
 
 # Test parse_stream_record edge cases

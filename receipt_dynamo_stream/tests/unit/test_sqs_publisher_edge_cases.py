@@ -16,7 +16,7 @@ from receipt_dynamo_stream.sqs_publisher import (
     send_batch_to_queue,
 )
 
-from conftest import MockMetrics
+from .conftest import MockMetrics
 
 
 @pytest.fixture

@@ -23,3 +23,6 @@ class MockMetrics:
 def mock_metrics() -> MockMetrics:
     """Provide a MockMetrics instance for testing."""
     return MockMetrics()
+
+
+__all__ = ["MockMetrics", "mock_metrics"]

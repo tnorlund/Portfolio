@@ -16,7 +16,7 @@ from receipt_dynamo_stream.message_builder import (
 )
 from receipt_dynamo_stream.models import ChromaDBCollection, StreamMessage
 
-from conftest import MockMetrics
+from .conftest import MockMetrics
 
 
 def _make_metadata(merchant_name: str = "Test Merchant") -> ReceiptMetadata:
