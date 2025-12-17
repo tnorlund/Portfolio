@@ -1,6 +1,7 @@
 """Additional edge case tests for parsers module."""
+
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, Mapping, Optional
 
 import pytest
 from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
@@ -14,7 +15,6 @@ from receipt_dynamo_stream.parsing.parsers import (
 
 # Import MockMetrics from conftest (same directory)
 from .conftest import MockMetrics
-
 
 # Test detect_entity_type edge cases
 
@@ -155,13 +155,9 @@ def test_parse_entity_value_error_with_metrics() -> None:
     sk = "RECEIPT#00001#METADATA"
 
     # Invalid image that will cause ValueError
-    image: Dict[str, Mapping[str, object]] = {
-        "invalid_field": {"S": "value"}
-    }
+    image: Dict[str, Mapping[str, object]] = {"invalid_field": {"S": "value"}}
 
-    result = parse_entity(
-        image, "RECEIPT_METADATA", "old", pk, sk, metrics
-    )
+    result = parse_entity(image, "RECEIPT_METADATA", "old", pk, sk, metrics)
 
     assert result is None
     metric_names = [m[0] for m in metrics.counts]
@@ -247,12 +243,8 @@ def test_parse_stream_record_old_entity_parse_failure() -> None:
                 "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},
                 "SK": {"S": "RECEIPT#00001#METADATA"},
             },
-            "OldImage": {
-                "invalid": {"S": "data"}
-            },  # Invalid metadata
-            "NewImage": {
-                "invalid": {"S": "data"}
-            },  # Invalid metadata
+            "OldImage": {"invalid": {"S": "data"}},  # Invalid metadata
+            "NewImage": {"invalid": {"S": "data"}},  # Invalid metadata
         },
     }
     result = parse_stream_record(record)
@@ -269,9 +261,7 @@ def test_parse_stream_record_with_metrics() -> None:
 
     record: Dict[str, Any] = {
         "eventName": "MODIFY",
-        "dynamodb": {
-            "invalid": "structure"
-        },  # Will cause KeyError
+        "dynamodb": {"invalid": "structure"},  # Will cause KeyError
     }
 
     result = parse_stream_record(record, metrics)
