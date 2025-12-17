@@ -39,19 +39,6 @@ updates:
       prefix: "chore"
       include: "scope"
 
-  # Enable version updates for pip (Python) - receipt_label
-  - package-ecosystem: "pip"
-    directory: "/receipt_label"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 3
-    labels:
-      - "dependencies"
-      - "python"
-    commit-message:
-      prefix: "chore"
-      include: "scope"
-
   # Enable version updates for pip (Python) - receipt_upload
   - package-ecosystem: "pip"
     directory: "/receipt_upload"
