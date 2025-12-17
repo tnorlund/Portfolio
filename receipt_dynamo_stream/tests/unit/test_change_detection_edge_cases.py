@@ -1,4 +1,5 @@
 """Additional edge case tests for change_detection module."""
+
 import dataclasses
 from datetime import datetime
 
@@ -73,9 +74,7 @@ def test_chromadb_relevant_fields_contains_expected() -> None:
 
 def test_get_chromadb_relevant_changes_both_none() -> None:
     """Test when both old and new entities are None."""
-    changes = get_chromadb_relevant_changes(
-        "RECEIPT_METADATA", None, None
-    )
+    changes = get_chromadb_relevant_changes("RECEIPT_METADATA", None, None)
     assert changes == {}
 
 
@@ -175,9 +174,7 @@ def test_get_chromadb_relevant_changes_unknown_entity_type() -> None:
     """Test with unknown entity type."""
     entity1 = _make_metadata()
     entity2 = _make_metadata()
-    changes = get_chromadb_relevant_changes(
-        "UNKNOWN_TYPE", entity1, entity2
-    )
+    changes = get_chromadb_relevant_changes("UNKNOWN_TYPE", entity1, entity2)
     assert changes == {}
 
 
