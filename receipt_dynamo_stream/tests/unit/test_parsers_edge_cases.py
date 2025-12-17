@@ -184,7 +184,7 @@ def test_parse_entity_type_error_with_metrics() -> None:
     assert result is None
     # Should record unexpected error metric
     metric_names = [m[0] for m in metrics.counts]
-    assert "EntityParsingUnexpectedError" in metric_names or result is None
+    assert "EntityParsingUnexpectedError" in metric_names
 
 
 # Test parse_stream_record edge cases

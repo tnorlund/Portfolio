@@ -245,7 +245,7 @@ def test_build_compaction_run_messages_with_metrics() -> None:
         "dynamodb": {
             "Keys": {
                 "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},
-                "SK": {"S": "RECEIPT#00001#COMPACTION_RUN#run-abc"},
+                "SK": {"S": "RECEIPT#INVALID#COMPACTION_RUN#run-abc"},
             },
             "NewImage": {
                 "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},

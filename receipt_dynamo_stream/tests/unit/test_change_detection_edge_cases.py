@@ -1,4 +1,5 @@
 """Additional edge case tests for change_detection module."""
+import dataclasses
 from datetime import datetime
 
 import pytest
@@ -152,7 +153,7 @@ def test_get_chromadb_relevant_changes_word_label_all_fields() -> None:
     new_entity = _make_word_label(
         label="MERCHANT",
         reasoning="updated reasoning",
-        validation_status="VALIDATED",
+        validation_status="VALID",
         label_proposed_by="agent2",
         label_consolidated_from="agent1",
     )
@@ -236,5 +237,5 @@ def test_get_chromadb_relevant_changes_field_change_immutability() -> None:
     )
 
     field_change = changes["merchant_name"]
-    with pytest.raises(Exception):  # FrozenInstanceError or AttributeError
+    with pytest.raises(dataclasses.FrozenInstanceError):
         field_change.old = "Modified"  # type: ignore
