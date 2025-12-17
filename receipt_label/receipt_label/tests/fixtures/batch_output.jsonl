@@ -1,3 +1,0 @@
-{"id":"batch_req_680693f9c41881908213352b93c3fe6a","custom_id":"IMAGE#29c1d8af-035c-431f-9d80-e4053cf28a00#RECEIPT#00001#LINE#00001#WORD#00001","response":{"body":{"data":[{"object":"embedding","index":0,"embedding":[0.001,0.002,0.003,0.004,0.005]}]}}}
-{"id":"batch_req_680693f9da4081908a9697108c39a3e1","custom_id":"IMAGE#29c1d8af-035c-431f-9d80-e4053cf28a00#RECEIPT#00001#LINE#00001#WORD#00002","response":{"body":{"data":[{"object":"embedding","index":0,"embedding":[0.010,0.020,0.030,0.040,0.050]}]}}}
-{"id":"batch_req_680693f9f27881908d78a382d28c3507","custom_id":"IMAGE#29c1d8af-035c-431f-9d80-e4053cf28a00#RECEIPT#00001#LINE#00001#WORD#00003","response":{"body":{"data":[{"object":"embedding","index":0,"embedding":[-0.005,-0.015,-0.025,-0.035,-0.045]}]}}}

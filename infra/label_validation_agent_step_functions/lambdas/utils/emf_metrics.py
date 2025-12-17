@@ -142,9 +142,3 @@ class EmbeddedMetricsFormatter:
 
 # Global EMF metrics formatter instance
 emf_metrics = EmbeddedMetricsFormatter()
-
-
-
-
-
-
