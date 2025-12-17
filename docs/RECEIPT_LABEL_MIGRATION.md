@@ -193,11 +193,16 @@ except ImportError:
 - Added try/except blocks in agents to import from receipt_label
 - Implemented fallback definitions for CORE_LABELS
 - Ensured zero breaking changes
+- **Status**: Protected imports in production code:
+  - `receipt_agent/agents/label_validation/graph.py` (try/except for CORE_LABELS)
+  - `receipt_agent/agents/label_harmonizer/tools/label_harmonizer_v3.py` (try/except for CORE_LABELS)
+  - `receipt_agent/examples/validate_single_receipt.py` (try/except for PlacesAPI)
 
 ### Phase 2: Functional Migration (✅ Complete)
 - Implemented `receipt_chroma.orchestration` helpers
 - Created `receipt_places` for Places API
 - Moved streaming logic to `receipt_dynamo_stream`
+- **Status**: All alternative implementations ready; agents work with or without receipt_label
 
 ### Phase 3: Dead Code Removal (✅ Complete)
 - Verified on_the_fly_embedding_tools.py was unused
@@ -213,6 +218,23 @@ except ImportError:
 - Created this migration guide
 - Updated PR template
 - Added architecture documentation
+
+### Notes on Remaining receipt_label Imports
+
+**Protected Imports (Safe - Production Code):**
+All remaining imports in production code are protected with try/except/ImportError blocks and have complete fallback implementations. The code functions correctly whether receipt_label is installed or not.
+
+**Unprotected Imports (Scripts/Development Utilities):**
+Several scripts in the `scripts/` directory still import from receipt_label directly:
+- `validate_noise_patterns.py`
+- `test_noise_detection.py`
+- `examples/demo_environment_config.py`
+- `maintenance/test_env_var_migration.py`
+- `maintenance/test_pattern_detection.py`
+- `test_realtime_embedding.py`
+- `verify_chromadb_snapshot.py`
+
+These are development/testing utilities, not production code. They would need receipt_label installed to run. This is acceptable since scripts are not part of the core system and are used only by developers.
 
 ## Benefits of the Split
 
