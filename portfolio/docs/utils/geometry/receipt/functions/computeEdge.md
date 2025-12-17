@@ -8,7 +8,7 @@
 
 > **computeEdge**(`lines`, `pick`, `bins`): \{ `bottom`: [`Point`](../../basic/interfaces/Point.md); `top`: [`Point`](../../basic/interfaces/Point.md); \} \| `null`
 
-Defined in: [utils/geometry/receipt.ts:128](https://github.com/tnorlund/Portfolio/blob/5e0eed483901d414a88a6f8ec10dde23992c0cb2/portfolio/utils/geometry/receipt.ts#L128)
+Defined in: [utils/geometry/receipt.ts:128](https://github.com/tnorlund/Portfolio/blob/78410040138f31561d8d573814aee28861abe6e8/portfolio/utils/geometry/receipt.ts#L128)
 
 Estimate a straight edge from OCR line data.
 

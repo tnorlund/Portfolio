@@ -8,7 +8,7 @@
 
 > **findHullExtremesAlongAngle**(`hull`, `centroid`, `angleDeg`): `object`
 
-Defined in: [utils/receipt/boundingBox.ts:305](https://github.com/tnorlund/Portfolio/blob/5e0eed483901d414a88a6f8ec10dde23992c0cb2/portfolio/utils/receipt/boundingBox.ts#L305)
+Defined in: [utils/receipt/boundingBox.ts:305](https://github.com/tnorlund/Portfolio/blob/78410040138f31561d8d573814aee28861abe6e8/portfolio/utils/receipt/boundingBox.ts#L305)
 
 Find the extreme points of a convex hull when projected along a specific angle.
 
