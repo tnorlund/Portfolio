@@ -35,62 +35,83 @@ from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 
 logger = logging.getLogger(__name__)
 
-# ==============================================================================
+# ======================================================================
 # Module-level constants for batch processing
-# ==============================================================================
+# ======================================================================
 
 COVE_MAX_BATCH_SIZE = 10
 COVE_MAX_TOTAL_CHARS = 15000  # ~3750 tokens, conservative limit
 
-# ==============================================================================
+# ======================================================================
 # System Prompt
-# ==============================================================================
+# ======================================================================
 
-COVE_TEXT_CONSISTENCY_PROMPT = """You are a receipt text consistency verifier (CoVe). Your job is to verify that all receipts sharing the same place_id actually contain text consistent with being from the same place.
+COVE_TEXT_CONSISTENCY_PROMPT = """
+You are a receipt text consistency verifier (CoVe). Your job is to verify that
+all receipts sharing the same place_id actually contain text consistent with
+being from the same place.
 
 ## Your Task
 
 You are given:
 - A place_id group of receipts
-- Canonical metadata (merchant_name, address, phone) determined by the harmonizer
+- Canonical metadata (merchant_name, address, phone) determined by the
+  harmonizer
 - Access to the actual receipt text for each receipt
 
 Your job is to:
 1. Examine the receipt text for each receipt in the group
 2. Compare each receipt's text against the canonical metadata
-3. Verify that merchant name, address, and phone appear in the receipt text (allowing for OCR errors)
+3. Verify that merchant name, address, and phone appear in the receipt text
+   (allowing for OCR errors)
 4. Identify any receipts that appear to be from a different place (outliers)
 5. Submit a consistency report with per-receipt verdicts
 
 ## Available Tools
 
 ### Receipt Text Tools
-- `batch_check_receipts`: **RECOMMENDED** - Check multiple receipts' text in a single call (efficient for large groups). Use this for groups with 5+ receipts to reduce tool calls.
-- `get_receipt_text`: Get formatted receipt text (receipt-space grouping) for a specific receipt (use for individual checks or when batch_check_receipts fails)
-- `get_receipt_content`: Get raw lines and labeled words for a specific receipt (use only if you need detailed word-level analysis)
+- `batch_check_receipts`: **RECOMMENDED** - Check multiple receipts' text in a
+  single call (efficient for large groups). Use this for groups with 5+
+  receipts to reduce tool calls.
+- `get_receipt_text`: Get formatted receipt text (receipt-space grouping) for
+  a specific receipt (use for individual checks or when
+  batch_check_receipts fails)
+- `get_receipt_content`: Get raw lines and labeled words for a specific receipt
+  (use only if you need detailed word-level analysis)
 - `get_group_summary`: See all receipts in this group with their metadata
 
 ## Strategy
 
 1. **Start** by getting the group summary to see all receipts
-   - Use `get_group_summary` to list all receipts with their image_id and receipt_id
+   - Use `get_group_summary` to list all receipts with their image_id and
+     receipt_id
 
 2. **Examine receipt text** for each receipt:
-   - **For groups with 5+ receipts**: Use `batch_check_receipts` to check multiple receipts at once (recommended batch size: 5-10 receipts per call)
-     - If the batch tool returns `has_more: true`, call it again with the remaining receipts
+   - **For groups with 5+ receipts**: Use `batch_check_receipts` to process
+     multiple receipts at once (recommended batch size: 5-10 receipts per call)
+     - If the batch tool returns `has_more: true`, call it again with the
+       remaining receipts
      - Continue until all receipts are checked
-   - **For individual checks**: Use `get_receipt_text` to get formatted text for a specific receipt
-   - **For detailed analysis**: Use `get_receipt_content` for deeper inspection (raw lines, labeled words) - only if needed
-   - **Note**: Some receipts may not have receipt details (lines/words) in DynamoDB.
-     If a receipt check returns an error or "not found", mark that receipt as UNSURE
-     with evidence "Receipt details not available" and continue with other receipts.
+   - **For individual checks**: Use `get_receipt_text` to get formatted text
+     for a specific receipt
+   - **For detailed analysis**: Use `get_receipt_content` for deeper inspection
+     (raw lines, labeled words) only if needed
+   - **Note**: Some receipts may not have receipt details (lines/words) in
+     DynamoDB.
+     If a receipt check returns an error or "not found", mark that receipt as
+     UNSURE with evidence "Receipt details not available" and continue with
+     other receipts.
    - Look for the canonical merchant name, address, and phone in the text
 
 3. **Compare against canonical metadata**:
-   - Does the merchant name appear in the receipt text? (case-insensitive, allow OCR errors)
-   - Does the address appear? (street number + street name, allow formatting differences)
-   - Does the phone number appear? (normalized digits, allow formatting differences)
-   - **For receipts without text**: Mark as UNSURE with evidence "Cannot verify - receipt details not available"
+   - Does the merchant name appear in the receipt text? (case-insensitive,
+     allow OCR errors)
+   - Does the address appear? (street number + street name, allow formatting
+     differences)
+   - Does the phone number appear? (normalized digits, allow formatting
+     differences)
+   - **For receipts without text**: Mark as UNSURE with evidence
+     "Cannot verify - receipt details not available"
 
 4. **Identify outliers**:
    - Receipts where merchant name, address, AND phone all mismatch → MISMATCH
@@ -103,35 +124,42 @@ Your job is to:
    - For each receipt: status (SAME_PLACE / MISMATCH / UNSURE) and evidence
    - List of outliers (receipts marked MISMATCH or UNSURE)
    - Overall confidence in the consistency check
-   - **Important**: Even if some receipts don't have text, you must still submit results
-     for ALL receipts in the group. Mark missing receipts as UNSURE.
+   - **Important**: Even if some receipts don't have text, you must still
+     submit results for ALL receipts in the group. Mark missing receipts as
+     UNSURE.
 
 ## Important Rules
 
 1. ALWAYS start with `get_group_summary` to see all receipts
 2. Check receipt text for EACH receipt in the group:
-   - **Use `batch_check_receipts` for efficiency** when checking 5+ receipts (batch 5-10 at a time)
+   - **Use `batch_check_receipts` for efficiency** when checking 5+ receipts
+     (batch 5-10 at a time)
    - Use `get_receipt_text` for individual checks or when batch fails
    - Skip receipts if details not available (mark as UNSURE)
 3. If a receipt doesn't have text/details, mark it as UNSURE and continue
 4. Be lenient with OCR errors - minor typos are OK
-5. Be strict with complete mismatches - if merchant/address/phone all differ, it's likely a different place
+5. Be strict with complete mismatches - if merchant/address/phone all differ,
+   it's likely a different place
 6. ALWAYS end with `submit_text_consistency` - never end without calling it
 7. You MUST submit results for ALL receipts, even if some don't have text
-8. **Efficiency**: Batch receipts when possible to reduce tool calls and stay within recursion limits
+8. **Efficiency**: Batch receipts when possible to reduce tool calls and stay
+   within recursion limits
 
 ## Status Definitions
 
 - **SAME_PLACE**: Receipt text matches canonical metadata (allowing OCR errors)
-- **MISMATCH**: Receipt text clearly indicates a different place (2+ fields mismatch)
-- **UNSURE**: Ambiguous case (1 field mismatch, unclear due to OCR quality, or receipt details not available)
+- **MISMATCH**: Receipt text clearly indicates a different place (2+ fields
+  mismatch)
+- **UNSURE**: Ambiguous case (1 field mismatch, unclear due to OCR quality, or
+  receipt details not available)
 
-Begin by getting the group summary, then systematically check each receipt's text."""
+Begin by getting the group summary, then systematically check each receipt's
+text."""
 
 
-# ==============================================================================
+# ======================================================================
 # Text Consistency Submission Tool
-# ==============================================================================
+# ======================================================================
 
 
 def create_text_consistency_submission_tool(state_holder: dict):
@@ -147,7 +175,9 @@ def create_text_consistency_submission_tool(state_holder: dict):
             description="Status: SAME_PLACE, MISMATCH, or UNSURE"
         )
         evidence: str = Field(
-            description="Evidence for this status (what text was found/missing)"
+            description=(
+                "Evidence for this status (what text was found/missing)"
+            )
         )
 
     class SubmitTextConsistencyInput(BaseModel):
@@ -174,19 +204,22 @@ def create_text_consistency_submission_tool(state_holder: dict):
         """
         Submit text consistency results for all receipts in the group.
 
-        Call this when you've checked all receipts and determined their consistency status.
+        Call this when you've checked all receipts and determined their
+        consistency status.
         This ends the workflow.
 
         Args:
             receipt_results: List of consistency results, one per receipt
-            overall_confidence: Overall confidence in the consistency check (0.0-1.0)
+            overall_confidence: Overall confidence in the consistency check
+                (0.0-1.0)
             reasoning: Explanation of the results
         """
         # Get expected receipts from state
         expected_receipts = state_holder.get("receipts", [])
         expected_count = len(expected_receipts)
 
-        # Deduplicate receipt_results by (image_id, receipt_id) - keep first occurrence
+        # Deduplicate receipt_results by (image_id, receipt_id) -
+        # keep first occurrence
         seen = set()
         unique_results = []
         for r in receipt_results:
@@ -242,22 +275,27 @@ def create_text_consistency_submission_tool(state_holder: dict):
         state_holder["consistency_result"] = result
 
         logger.info(
-            f"Text consistency submitted: {len(outliers)}/{len(receipt_results)} outliers "
-            f"(confidence={overall_confidence:.2%})"
+            (
+                "Text consistency submitted: "
+                f"{len(outliers)}/{len(receipt_results)} outliers "
+                f"(confidence={overall_confidence:.2%})"
+            )
         )
 
         return {
             "status": "submitted",
-            "message": f"Consistency check complete. {len(outliers)} outliers found.",
+            "message": (
+                f"Consistency check complete. {len(outliers)} outliers found."
+            ),
             "result": result,
         }
 
     return submit_text_consistency
 
 
-# ==============================================================================
+# ======================================================================
 # Helper Functions
-# ==============================================================================
+# ======================================================================
 
 # Reuse shared fallback helper for all CoVe tools
 _fetch_receipt_details_fallback = fetch_receipt_details_with_fallback
@@ -269,7 +307,8 @@ def _fetch_receipt_with_fallback(
     """
     Shared fetch logic for CoVe tools.
 
-    Sanitizes image_id, tries multiple IDs, and falls back to alternative methods
+    Sanitizes image_id, tries multiple IDs, and falls back to alternative
+    methods
     if primary fetch fails.
 
     Args:
@@ -306,7 +345,8 @@ def _fetch_receipt_with_fallback(
         except Exception as e:
             if img_id == sanitized_image_id and sanitized_image_id != image_id:
                 logger.debug(
-                    f"get_receipt_details failed for sanitized {img_id}#{receipt_id}, "
+                    f"get_receipt_details failed for sanitized "
+                    f"{img_id}#{receipt_id}, "
                     f"trying original: {e}"
                 )
             continue
@@ -324,9 +364,9 @@ def _fetch_receipt_with_fallback(
     return receipt_details
 
 
-# ==============================================================================
+# ======================================================================
 # Tool Factory for CoVe
-# ==============================================================================
+# ======================================================================
 
 
 def create_cove_tools(
@@ -412,9 +452,11 @@ def create_cove_tools(
     @tool(args_schema=GetReceiptTextInput)
     def get_receipt_text(image_id: str, receipt_id: int) -> dict:
         """
-        Get formatted receipt text (receipt-space grouping) for a specific receipt.
+        Get formatted receipt text (receipt-space grouping) for a
+        specific receipt.
 
-        This returns the receipt text formatted with visually contiguous lines grouped together.
+        This returns the receipt text formatted with visually contiguous lines
+        grouped together.
         Use this to examine what text is actually on the receipt.
 
         Args:
@@ -425,7 +467,8 @@ def create_cove_tools(
         - image_id: Image ID of the receipt
         - receipt_id: Receipt ID
         - found: Whether receipt details were found
-        - formatted_text: Receipt text formatted in receipt-space (grouped rows)
+        - formatted_text: Receipt text formatted in receipt-space
+          (grouped rows)
         - line_count: Number of lines on the receipt
         - error: Error message if receipt not found or error occurred
         """
@@ -439,9 +482,14 @@ def create_cove_tools(
             )
 
             # Handle case where we might have lines/words but no receipt entity
-            lines = receipt_details.lines or [] if receipt_details else []
+            lines = (
+                receipt_details.lines
+                if receipt_details and receipt_details.lines
+                else []
+            )
 
-            # If we don't have lines from receipt_details, try direct fetch with sanitized image_id
+            # If receipt_details lacks lines, try direct fetch
+            # with sanitized image_id
             if not lines:
                 for img_id in [sanitized_image_id, image_id]:
                     try:
@@ -450,7 +498,8 @@ def create_cove_tools(
                         )
                         if lines:
                             logger.info(
-                                f"Fetched {len(lines)} lines directly for {img_id}#{receipt_id} "
+                                f"Fetched {len(lines)} lines directly for "
+                                f"{img_id}#{receipt_id} "
                                 f"in get_receipt_text"
                             )
                             break
@@ -459,7 +508,11 @@ def create_cove_tools(
                         continue
                     except Exception as e:
                         logger.debug(
-                            f"Could not fetch lines for {img_id}#{receipt_id}: {e}"
+                            (
+                                "Could not fetch lines for "
+                                f"{img_id}#{receipt_id}: "
+                                f"{e}"
+                            )
                         )
 
             if not lines:
@@ -474,15 +527,23 @@ def create_cove_tools(
                     }
                 else:
                     logger.warning(
-                        f"Receipt details not found for {image_id}#{receipt_id} after fallback. "
-                        f"Metadata exists but receipt lines/words are missing from DynamoDB. "
+                        (
+                            "Receipt details not found for "
+                            f"{image_id}#{receipt_id} "
+                            "after fallback. "
+                            "Metadata exists but receipt lines/words "
+                            "are missing from DynamoDB."
+                        )
                         f"Skipping text consistency check for this receipt."
                     )
                     return {
                         "image_id": image_id,
                         "receipt_id": receipt_id,
                         "found": False,
-                        "error": f"Receipt details not found for {image_id}#{receipt_id}",
+                        "error": (
+                            "Receipt details not found for "
+                            f"{image_id}#{receipt_id}"
+                        ),
                         "formatted_text": "(Receipt details not available)",
                         "line_count": 0,
                     }
@@ -526,7 +587,11 @@ def create_cove_tools(
                 or "receipt details" in error_str.lower()
             ):
                 logger.warning(
-                    f"Receipt details not available for {image_id}#{receipt_id}: {error_str}"
+                    (
+                        f"Receipt details not available for "
+                        f"{image_id}#{receipt_id}: "
+                        f"{error_str}"
+                    )
                 )
             else:
                 logger.exception(
@@ -546,51 +611,63 @@ def create_cove_tools(
 
         receipts: list[dict] = Field(
             description=(
-                "List of receipts to check. Each receipt should be a dict with "
+                "List of receipts to check. Each receipt should be a dict "
+                "with 'image_id' (str) and 'receipt_id' (int). "
                 "'image_id' (str) and 'receipt_id' (int). "
-                "Recommended batch size: 5-10 receipts to balance efficiency and context limits."
+                "Recommended batch size: 5-10 receipts to balance efficiency "
+                "and context limits."
             )
         )
 
     @tool(args_schema=BatchCheckReceiptsInput)
     def batch_check_receipts(receipts: list[dict]) -> dict:
         """
-        Check multiple receipts' text in a single call (efficient for large groups).
+        Check multiple receipts' text in a single call (efficient for large
+        groups).
 
-        This tool fetches receipt text for multiple receipts at once, reducing the
-        number of tool calls needed. Use this instead of calling get_receipt_text
-        individually for each receipt.
+        This tool fetches receipt text for multiple receipts at once,
+        reducing the number of tool calls needed. Use this instead of
+        calling get_receipt_text individually for each receipt.
 
         Args:
-            receipts: List of receipt dicts, each with 'image_id' (str) and 'receipt_id' (int).
-                     Recommended batch size: 5-10 receipts.
+            receipts: List of receipt dicts, each with 'image_id' (str) and
+                'receipt_id' (int). Recommended batch size: 5-10 receipts.
 
         Returns:
             Dictionary with:
-            - checked_count: Number of receipts successfully checked (with text found)
+            - checked_count: Number of receipts successfully checked
+                (with text found)
             - total_requested: Total number of receipts requested
-            - total_processed: Number of receipts processed in this batch (may be less if batch size limit reached)
-            - has_more: Whether there are more receipts to process (if batch size limit was reached)
+            - total_processed: Number of receipts processed in this batch
+                (may be less if batch size limit reached)
+            - has_more: Whether there are more receipts to process (if batch
+                size limit was reached)
             - results: List of results, one per receipt, each containing:
               - image_id: Image ID
               - receipt_id: Receipt ID
               - found: Whether receipt text was found
-              - formatted_text: Receipt text (truncated if very long to manage context)
+              - formatted_text: Receipt text (truncated if very long to manage
+                context)
               - line_count: Number of lines
               - text_preview: First 200 characters of text (for quick scanning)
               - error: Error message if not found
-            - message: Summary message indicating if more receipts need to be checked
+            - message: Summary message indicating if more receipts need to be
+                checked
         """
         from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 
         # Limit batch size to prevent context overflow
-        # Estimate: ~500-1000 chars per receipt text = ~125-250 tokens per receipt
+        # Estimate: ~500-1000 chars per receipt text = ~125-250 tokens
+        # per receipt
         # With 10 receipts = ~1250-2500 tokens, safe for context
         # We'll dynamically adjust based on actual text length
         if len(receipts) > COVE_MAX_BATCH_SIZE:
             logger.info(
-                f"Batch size {len(receipts)} exceeds max {COVE_MAX_BATCH_SIZE}, "
-                f"processing first {COVE_MAX_BATCH_SIZE} receipts"
+                (
+                    "Batch size "
+                    f"{len(receipts)} exceeds max {COVE_MAX_BATCH_SIZE}, "
+                    f"processing first {COVE_MAX_BATCH_SIZE} receipts"
+                )
             )
             receipts_to_process = receipts[:COVE_MAX_BATCH_SIZE]
         else:
@@ -636,7 +713,8 @@ def create_cove_tools(
                         continue
                     except Exception:
                         logger.debug(
-                            f"get_receipt_details failed for {img_id}#{receipt_id}"
+                            f"get_receipt_details failed for "
+                            f"{img_id}#{receipt_id}"
                         )
                         continue
 
@@ -660,7 +738,8 @@ def create_cove_tools(
                                 break
                         except Exception:
                             logger.debug(
-                                f"get_receipt_details failed for {img_id}#{receipt_id}"
+                                f"get_receipt_details failed for "
+                                f"{img_id}#{receipt_id}"
                             )
                             continue
 
@@ -692,7 +771,8 @@ def create_cove_tools(
                 text_length = len(formatted_text)
                 remaining_capacity = COVE_MAX_TOTAL_CHARS - total_chars_so_far
 
-                # Reserve space for other receipts in batch (estimate 500 chars each)
+        # Reserve space for other receipts in batch
+        # (estimate 500 chars each)
                 remaining_receipts = (
                     len(receipts_to_process) - len(results) - 1
                 )
@@ -708,7 +788,10 @@ def create_cove_tools(
                 if text_length > MAX_TEXT_LENGTH:
                     formatted_text = (
                         formatted_text[:MAX_TEXT_LENGTH]
-                        + f"\n... (truncated, {text_length - MAX_TEXT_LENGTH} chars remaining)"
+                        + (
+                            f"\n... (truncated, "
+                            f"{text_length - MAX_TEXT_LENGTH} chars remaining)"
+                        )
                     )
                     text_length = MAX_TEXT_LENGTH
 
@@ -755,6 +838,12 @@ def create_cove_tools(
         # Check if there are more receipts to process
         has_more = len(receipts) > len(receipts_to_process)
 
+        status_msg = (
+            "More receipts remain - call batch_check_receipts again "
+            "with remaining receipts."
+            if has_more
+            else "All receipts processed."
+        )
         return {
             "checked_count": checked_count,
             "total_requested": len(receipts),
@@ -762,8 +851,12 @@ def create_cove_tools(
             "has_more": has_more,
             "results": results,
             "message": (
-                f"Processed {len(receipts_to_process)} of {len(receipts)} receipts. "
-                f"{'More receipts remain - call batch_check_receipts again with remaining receipts.' if has_more else 'All receipts processed.'}"
+                (
+                    "Processed "
+                    f"{len(receipts_to_process)}"
+                    f" of {len(receipts)} receipts. "
+                    f"{status_msg}"
+                )
             ),
         }
 
@@ -789,7 +882,8 @@ def create_cove_tools(
         - receipt_id: Receipt ID
         - found: Whether receipt details were found
         - lines: All text lines on the receipt
-        - labeled_words: Words with labels (MERCHANT_NAME, ADDRESS, PHONE, etc.)
+        - labeled_words: Words with labels (MERCHANT_NAME, ADDRESS, PHONE,
+          etc.)
         - error: Error message if receipt not found or error occurred
         """
         try:
@@ -805,7 +899,8 @@ def create_cove_tools(
             lines_list = receipt_details.lines or [] if receipt_details else []
             words_list = receipt_details.words or [] if receipt_details else []
 
-            # If we don't have lines/words from receipt_details, try direct fetch with sanitized image_id
+            # If we lack lines/words from receipt_details, try direct fetch
+            # with sanitized image_id
             if not lines_list:
                 for img_id in [sanitized_image_id, image_id]:
                     try:
@@ -815,16 +910,24 @@ def create_cove_tools(
                             )
                         )
                         if lines_list:
-                            logger.info(
-                                f"Fetched {len(lines_list)} lines directly for {img_id}#{receipt_id}"
+                        logger.info(
+                            (
+                                "Fetched "
+                                f"{len(lines_list)} lines directly for "
+                                f"{img_id}#{receipt_id}"
                             )
+                        )
                             break
                     except EntityNotFoundError:
                         # Lines don't exist for this image_id - try next one
                         continue
                     except Exception as e:
                         logger.debug(
-                            f"Could not fetch lines for {img_id}#{receipt_id}: {e}"
+                            (
+                                "Could not fetch lines for "
+                                f"{img_id}#{receipt_id}: "
+                                f"{e}"
+                            )
                         )
 
             if not words_list:
@@ -837,7 +940,11 @@ def create_cove_tools(
                         )
                         if words_list:
                             logger.info(
-                                f"Fetched {len(words_list)} words directly for {img_id}#{receipt_id}"
+                                (
+                                    "Fetched "
+                                    f"{len(words_list)} words directly for "
+                                    f"{img_id}#{receipt_id}"
+                                )
                             )
                             break
                     except EntityNotFoundError:
@@ -845,7 +952,11 @@ def create_cove_tools(
                         continue
                     except Exception as e:
                         logger.debug(
-                            f"Could not fetch words for {img_id}#{receipt_id}: {e}"
+                            (
+                                "Could not fetch words for "
+                                f"{img_id}#{receipt_id}: "
+                                f"{e}"
+                            )
                         )
 
             lines = [
@@ -869,7 +980,10 @@ def create_cove_tools(
                     "image_id": image_id,
                     "receipt_id": receipt_id,
                     "found": False,
-                    "error": f"Receipt details not found for {image_id}#{receipt_id}",
+                    "error": (
+                        "Receipt details not found for "
+                        f"{image_id}#{receipt_id}"
+                    ),
                     "lines": [],
                     "labeled_words": [],
                 }
@@ -902,11 +1016,18 @@ def create_cove_tools(
                 or "receipt details" in error_str.lower()
             ):
                 logger.warning(
-                    f"Receipt details not available for {image_id}#{receipt_id}: {error_str}"
+                    (
+                        f"Receipt details not available for "
+                        f"{image_id}#{receipt_id}: "
+                        f"{error_str}"
+                    )
                 )
             else:
                 logger.exception(
-                    f"Error getting receipt content for {image_id}#{receipt_id}"
+                    (
+                        f"Error getting receipt content for "
+                        f"{image_id}#{receipt_id}"
+                    )
                 )
             return {
                 "image_id": image_id,
@@ -932,9 +1053,9 @@ def create_cove_tools(
     return tools, state_holder
 
 
-# ==============================================================================
+# ======================================================================
 # Workflow Builder
-# ==============================================================================
+# ======================================================================
 
 
 def create_cove_text_consistency_graph(
@@ -1001,10 +1122,14 @@ def create_cove_text_consistency_graph(
                 if last_message.tool_calls:
                     return "tools"
                 # Give it another chance if no tool calls
-                if len(state.messages) > 10:
-                    logger.warning(
-                        "CoVe agent has made many steps without submitting - may need reminder"
-                    )
+                        if len(state.messages) > 10:
+                            logger.warning(
+                                (
+                                    "CoVe agent has made many steps and "
+                                    "still has not submitted -"
+                                    " may need reminder"
+                                )
+                            )
                 if len(state.messages) > 20:
                     logger.error("CoVe agent exceeded 20 steps - forcing end")
                     return "end"
@@ -1042,9 +1167,9 @@ def create_cove_text_consistency_graph(
     return compiled, state_holder
 
 
-# ==============================================================================
+# ======================================================================
 # CoVe Runner
-# ==============================================================================
+# ======================================================================
 
 
 async def run_cove_text_consistency(
@@ -1085,17 +1210,23 @@ async def run_cove_text_consistency(
         messages=[
             SystemMessage(content=COVE_TEXT_CONSISTENCY_PROMPT),
             HumanMessage(
-                content=f"Please verify text consistency for {len(receipts)} receipts "
-                f"with place_id {place_id}. Check that each receipt's text matches "
-                f"the canonical metadata: merchant_name='{canonical_merchant_name}', "
-                f"address='{canonical_address or 'N/A'}', phone='{canonical_phone or 'N/A'}'."
+                content=(
+                    f"Please verify text consistency for {len(receipts)} "
+                    f"receipts with place_id {place_id}. Check that each "
+                    f"receipt's text matches the canonical metadata: "
+                    f"merchant_name='{canonical_merchant_name}', "
+                    f"address='{canonical_address or 'N/A'}', "
+                    f"phone='{canonical_phone or 'N/A'}'."
+                ),
             ),
         ],
     )
 
     logger.info(
-        f"Starting CoVe text consistency check for place_id {place_id} "
-        f"({len(receipts)} receipts)"
+        (
+            f"Starting CoVe text consistency check for place_id {place_id} "
+            f"({len(receipts)} receipts)"
+        )
     )
 
     # Store receipts in state_holder for validation in submit_text_consistency
@@ -1132,8 +1263,11 @@ async def run_cove_text_consistency(
             receipt_results_count = len(result.get("receipt_results", []))
             outlier_count = result.get("outlier_count", 0)
             logger.info(
-                f"CoVe check complete: {outlier_count}/{receipt_results_count} outliers "
-                f"(expected {len(receipts)} receipts)"
+                (
+                    "CoVe check complete: "
+                    f"{outlier_count}/{receipt_results_count} outliers "
+                    f"(expected {len(receipts)} receipts)"
+                )
             )
             return {
                 "status": "success",
@@ -1142,7 +1276,10 @@ async def run_cove_text_consistency(
         else:
             # Agent ended without submitting result
             logger.warning(
-                f"CoVe agent ended without submitting result for place_id {place_id}"
+                (
+                    f"CoVe agent ended without submitting result for "
+                    f"place_id {place_id}"
+                )
             )
             return {
                 "status": "incomplete",
@@ -1159,5 +1296,3 @@ async def run_cove_text_consistency(
             "place_id": place_id,
             "receipt_count": len(receipts),
         }
-
-

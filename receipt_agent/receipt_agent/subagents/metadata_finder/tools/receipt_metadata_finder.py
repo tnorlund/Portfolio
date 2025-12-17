@@ -13,14 +13,17 @@ Finds ALL missing metadata for receipts, not just place_ids:
 Key Improvements Over Place ID Finder
 --------------------------------------
 1. **Comprehensive**: Finds ALL missing metadata, not just place_id
-2. **Intelligent Extraction**: Extracts metadata from receipt content even if Google Places fails
+2. **Intelligent Extraction**: Extracts metadata from receipt content
+   even if Google Places fails
 3. **Partial Fills**: Can fill in some fields even if others can't be found
 4. **Better Reasoning**: Understands what's missing and how to find it
-5. **Source Tracking**: Tracks where each field came from (receipt_content, google_places, similar_receipts)
+5. **Source Tracking**: Tracks where each field came from
+   (receipt_content, google_places, similar_receipts)
 
 How It Works
 ------------
-1. **Load receipts with missing metadata**: Query DynamoDB for receipts missing any metadata
+1. **Load receipts with missing metadata**: Query DynamoDB for receipts
+   missing any metadata
 2. **Agent-based reasoning**: Uses LLM agent to:
    - Examine receipt content (lines, words, labels)
    - Extract metadata from receipt itself
@@ -40,11 +43,16 @@ The finder updates ANY missing fields:
 Usage
 -----
 ```python
-from receipt_agent.subagents.metadata_finder.tools.receipt_metadata_finder import (
-    ReceiptMetadataFinder,
+from receipt_agent.subagents.metadata_finder.tools import (
+    receipt_metadata_finder,
 )
 
-finder = ReceiptMetadataFinder(dynamo_client, places_client, chroma_client, embed_fn)
+finder = receipt_metadata_finder.ReceiptMetadataFinder(
+    dynamo_client,
+    places_client,
+    chroma_client,
+    embed_fn,
+)
 report = await finder.find_all_metadata_agentic()
 finder.print_summary(report)
 
@@ -80,9 +88,9 @@ from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
-# ==============================================================================
+# ======================================================================
 # Module-level constants
-# ==============================================================================
+# ======================================================================
 
 # Field name mapping for matched_fields (canonical format)
 FIELD_NAME_MAPPING = {
@@ -112,13 +120,14 @@ ADDRESS_SUFFIXES = [
 ]
 
 
-# ==============================================================================
+# ======================================================================
 # Custom exceptions
-# ==============================================================================
+# ======================================================================
 
 
 class AgenticSearchRequirementsError(ValueError):
-    """Raised when agent-based search is requested without required dependencies."""
+    """Raised when agent-based search is requested without required
+    dependencies."""
 
     def __init__(self):
         super().__init__(
@@ -127,9 +136,9 @@ class AgenticSearchRequirementsError(ValueError):
         )
 
 
-# ==============================================================================
+# ======================================================================
 # Helper functions
-# ==============================================================================
+# ======================================================================
 
 
 def _looks_like_address(name: str) -> bool:
@@ -251,7 +260,8 @@ class UpdateResult:
 
     Attributes:
         total_processed: Total receipts processed
-        total_updated: Number successfully updated (or "would update" in dry-run mode)
+        total_updated: Number successfully updated
+            (or "would update" in dry-run mode)
         total_failed: Number that failed to update
         total_skipped: Number skipped (low confidence, etc.)
         errors: List of error messages
@@ -268,8 +278,8 @@ class ReceiptMetadataFinder:
     """
     Finds complete metadata for receipts using agent-based reasoning.
 
-    This class finds ALL missing metadata (place_id, merchant_name, address, phone)
-    using an LLM agent that:
+    This class finds ALL missing metadata (place_id, merchant_name,
+    address, phone) using an LLM agent that:
     - Examines receipt content (lines, words, labels)
     - Extracts metadata from receipt itself
     - Searches Google Places API for missing fields
@@ -319,7 +329,8 @@ class ReceiptMetadataFinder:
 
         Args:
             dynamo_client: DynamoDB client with list_receipt_metadatas() method
-            places_client: Google Places client (PlacesClient from receipt_places)
+            places_client: Google Places client (PlacesClient from
+                receipt_places)
             chroma_client: ChromaDB client for agent-based search
             embed_fn: Embedding function for agent-based search
             settings: Optional settings for agent-based search
@@ -355,7 +366,8 @@ class ReceiptMetadataFinder:
         total = 0
 
         try:
-            # Paginate and filter in one pass to avoid accumulating all metadatas
+            # Paginate and filter in one pass to avoid accumulating
+            # all metadatas
             last_key = None
             while True:
                 batch, last_key = self.dynamo.list_receipt_metadatas(
@@ -469,14 +481,20 @@ class ReceiptMetadataFinder:
         result.total_processed = len(receipts_to_process)
 
         logger.info(
-            f"Finding metadata using agent for {len(receipts_to_process)} receipts..."
+            (
+                "Finding metadata using agent for "
+                f"{len(receipts_to_process)} receipts..."
+            )
         )
 
         # Process each receipt with agent
         for i, receipt in enumerate(receipts_to_process):
             if (i + 1) % 5 == 0:
                 logger.info(
-                    f"Processed {i + 1}/{len(receipts_to_process)} receipts..."
+                    (
+                        "Processed "
+                        f"{i + 1}/{len(receipts_to_process)} receipts..."
+                    )
                 )
 
             # Retry logic for server errors
@@ -513,13 +531,18 @@ class ReceiptMetadataFinder:
 
                     if is_retryable and attempt < max_retries - 1:
                         logger.warning(
-                            f"Retryable error for {receipt.image_id}#{receipt.receipt_id} "
-                            f"(attempt {attempt + 1}/{max_retries}): {error_str[:100]}"
+                            (
+                                "Retryable error for "
+                                f"{receipt.image_id}#{receipt.receipt_id} "
+                                f"(attempt {attempt + 1}/{max_retries}): "
+                                f"{error_str[:100]}"
+                            )
                         )
                         await asyncio.sleep(retry_delay * (attempt + 1))
                         continue
                     else:
-                        # Give up on this receipt but continue processing others
+                        # Give up on this receipt but continue
+                        # processing others
                         logger.error(
                             "Giving up on %s#%s after %d attempts: %s",
                             receipt.image_id,
@@ -527,7 +550,8 @@ class ReceiptMetadataFinder:
                             attempt + 1,
                             error_str[:200],
                         )
-                        break  # Fall through to record match.error / total_errors
+                        break  # Fall through to record match.error /
+                        # total_errors
 
             # Convert agent result to MetadataMatch
             match = MetadataMatch(receipt=receipt)
@@ -565,42 +589,54 @@ class ReceiptMetadataFinder:
                 elif len(found_required) > 0:
                     result.total_found_partial += 1
                 else:
-                    # Agent said "found" but no required fields - treat as not found
+                    # Agent said "found" but no required fields -
+                    # treat as not found
                     result.total_not_found += 1
             else:
-                # No metadata found - distinguish between errors and normal "not found"
+                # No metadata found - distinguish between errors and
+                # normal "not found"
                 match.found = False
                 match.confidence = 0.0
 
                 if last_error:
-                    # Actual exception/API failure occurred - this is a real error
+                    # Actual exception/API failure occurred - this is a
+                    # real error
                     match.error = str(last_error)
                 elif agent_result:
-                    # Agent completed but found no metadata - normal "not found" outcome
+                    # Agent completed but found no metadata - normal "not
+                    # found" outcome
                     match.not_found_reason = agent_result.get(
                         "reasoning", "no_match"
                     )
                 else:
-                    # No result and no error - should not happen, but treat as not found
+                    # No result and no error - should not happen, but treat as
+                    # not found
                     match.not_found_reason = "no_match"
 
             result.matches.append(match)
 
             # Count errors separately (only for actual exceptions/API failures)
-            # Found cases (total_found_all, total_found_partial, or total_not_found when found=True
-            # but no required fields) are already counted above
+            # Found cases (total_found_all, total_found_partial, or
+            # total_not_found when found=True but no required fields) are
+            # already counted above
             if not match.found and match.error:
-                # Only count as error if error is actually set (exceptions/API failures)
+                # Only count as error if error is actually set (exceptions/API
+                # failures)
                 result.total_errors += 1
             elif not match.found and not match.error:
                 # Not found but no error - normal "no match" outcome
-                # (This only happens when agent_result.get("found") was False/None)
+                # (This only happens when agent_result.get("found") was
+                # False/None)
                 result.total_not_found += 1
 
         logger.info(
-            f"Metadata finder complete: {result.total_found_all} all fields, "
-            f"{result.total_found_partial} partial, {result.total_not_found} not found, "
-            f"{result.total_errors} errors"
+            (
+                "Metadata finder complete: "
+                f"{result.total_found_all} all fields, "
+                f"{result.total_found_partial} partial, "
+                f"{result.total_not_found} not found, "
+                f"{result.total_errors} errors"
+            )
         )
 
         self._last_report = result
@@ -639,8 +675,12 @@ class ReceiptMetadataFinder:
 
             if match.confidence < min_confidence:
                 logger.debug(
-                    f"Skipping {match.receipt.image_id}#{match.receipt.receipt_id}: "
-                    f"confidence {match.confidence} < {min_confidence}"
+                    (
+                        "Skipping "
+                        f"{match.receipt.image_id}#"
+                        f"{match.receipt.receipt_id}: "
+                        f"confidence {match.confidence} < {min_confidence}"
+                    )
                 )
                 result.total_skipped += 1
                 continue
@@ -651,7 +691,10 @@ class ReceiptMetadataFinder:
 
         if dry_run:
             logger.info(
-                f"[DRY RUN] Would update {len(matches_to_update)} receipts with metadata"
+                (
+                    "[DRY RUN] Would update "
+                    f"{len(matches_to_update)} receipts with metadata"
+                )
             )
             for match in matches_to_update[:10]:
                 fields = [
@@ -659,8 +702,13 @@ class ReceiptMetadataFinder:
                     for f in match.fields_found
                 ]
                 logger.info(
-                    f"  {match.receipt.image_id[:8]}...#{match.receipt.receipt_id}: "
-                    f"{', '.join(fields)} (confidence={match.confidence:.1f}%)"
+                    (
+                        "  "
+                        f"{match.receipt.image_id[:8]}..."
+                        f"#{match.receipt.receipt_id}: "
+                        f"{', '.join(fields)} "
+                        f"(confidence={match.confidence:.1f}%)"
+                    )
                 )
             if len(matches_to_update) > 10:
                 logger.info(f"  ... and {len(matches_to_update) - 10} more")
@@ -672,7 +720,10 @@ class ReceiptMetadataFinder:
 
         # Actually apply updates
         logger.info(
-            f"Applying metadata updates to {len(matches_to_update)} receipts..."
+            (
+                "Applying metadata updates to "
+                f"{len(matches_to_update)} receipts..."
+            )
         )
 
         for match in matches_to_update:
@@ -738,8 +789,12 @@ class ReceiptMetadataFinder:
                     result.total_updated += 1
 
                     logger.info(
-                        f"Created new metadata for {match.receipt.image_id[:8]}...#{match.receipt.receipt_id}: "
-                        f"{len(match.fields_found)} fields"
+                        (
+                            "Created new metadata for "
+                            f"{match.receipt.image_id[:8]}..."
+                            f"#{match.receipt.receipt_id}: "
+                            f"{len(match.fields_found)} fields"
+                        )
                     )
                     continue
 
@@ -750,7 +805,8 @@ class ReceiptMetadataFinder:
                     metadata.place_id = match.place_id
                     updated_fields.append("place_id")
 
-                # Update merchant_name if missing OR if different (especially if current looks like an address)
+                # Update merchant_name if missing OR if different
+                # (especially if current looks like an address)
                 # CRITICAL: Never use an address as a merchant name
                 if match.merchant_name:
                     # Validate that match.merchant_name is NOT an address
@@ -761,8 +817,13 @@ class ReceiptMetadataFinder:
                     # Skip if the match itself looks like an address
                     if match_looks_like_address:
                         logger.warning(
-                            f"Skipping merchant_name update for {match.receipt.image_id[:8]}...#{match.receipt.receipt_id}: "
-                            f"'{match.merchant_name}' looks like an address, not a merchant name"
+                            (
+                                "Skipping merchant_name update for "
+                                f"{match.receipt.image_id[:8]}..."
+                                f"#{match.receipt.receipt_id}: "
+                                f"'{match.merchant_name}' looks like "
+                                "an address, not a merchant name"
+                            )
                         )
                     elif not metadata.merchant_name:
                         metadata.merchant_name = match.merchant_name
@@ -772,7 +833,8 @@ class ReceiptMetadataFinder:
                         looks_like_address = _looks_like_address(
                             metadata.merchant_name
                         )
-                        # Always update if different and we have high confidence, or if current looks like address
+                        # Always update if different and we have high
+                        # confidence, or if current looks like address
                         if looks_like_address or match.confidence >= 80:
                             metadata.merchant_name = match.merchant_name
                             updated_fields.append("merchant_name")
@@ -802,16 +864,19 @@ class ReceiptMetadataFinder:
                     metadata.matched_fields = new_matched_fields
                     updated_fields.append("matched_fields")
 
-                # Update validation_status based on whether we found a place_id and confidence
-                # Note: ReceiptMetadata.__post_init__ will recalculate this, but we set it explicitly
-                # to ensure it's correct based on our confidence and place_id
+                # Update validation_status based on whether we found a place_id
+                # and confidence
+                # Note: ReceiptMetadata.__post_init__ will recalculate this.
+                # We set it explicitly to ensure it's correct based on our
+                # confidence and place_id
                 from receipt_dynamo.constants import MerchantValidationStatus
 
                 confidence = (
                     match.confidence / 100.0
                 )  # Convert from percentage to decimal
                 # Base status on the place_id that will actually be stored
-                # (use metadata.place_id to avoid downgrading existing place_ids when match.place_id is None)
+                # (use metadata.place_id to avoid downgrading stored place_ids
+                # when match.place_id is None)
                 has_place_id = bool(metadata.place_id)
 
                 # Determine appropriate validation status
@@ -835,24 +900,39 @@ class ReceiptMetadataFinder:
                     result.total_updated += 1
 
                     logger.debug(
-                        f"Updated {match.receipt.image_id[:8]}...#{match.receipt.receipt_id}: "
-                        f"{', '.join(updated_fields)}"
+                            (
+                                "Updated "
+                                f"{match.receipt.image_id[:8]}..."
+                                f"#{match.receipt.receipt_id}: "
+                                f"{', '.join(updated_fields)}"
+                            )
                     )
                 else:
                     result.total_skipped += 1
 
             except Exception as e:
                 logger.exception(
-                    f"Failed to update {match.receipt.image_id}#{match.receipt.receipt_id}"
+                    (
+                        "Failed to update "
+                        f"{match.receipt.image_id}#{match.receipt.receipt_id}"
+                    )
                 )
                 result.total_failed += 1
                 result.errors.append(
-                    f"{match.receipt.image_id}#{match.receipt.receipt_id}: {e!s}"
+                    (
+                        f"{match.receipt.image_id}#"
+                        f"{match.receipt.receipt_id}: "
+                        f"{e!s}"
+                    )
                 )
 
         logger.info(
-            f"Update complete: {result.total_updated} updated, "
-            f"{result.total_failed} failed, {result.total_skipped} skipped"
+            (
+                "Update complete: "
+                f"{result.total_updated} updated, "
+                f"{result.total_failed} failed, "
+                f"{result.total_skipped} skipped"
+            )
         )
 
         return result
@@ -891,13 +971,23 @@ class ReceiptMetadataFinder:
             )
 
         print(
-            f"  ✅ Found all fields: {report.total_found_all} ({found_all_percentage:.1f}%)"
+            (
+                "  ✅ Found all fields: "
+                f"{report.total_found_all} ({found_all_percentage:.1f}%)"
+            )
         )
         print(
-            f"  ⚠️  Found partial: {report.total_found_partial} ({found_partial_percentage:.1f}%)"
+            (
+                "  ⚠️  Found partial: "
+                f"{report.total_found_partial} "
+                f"({found_partial_percentage:.1f}%)"
+            )
         )
         print(
-            f"  ❌ Not found: {report.total_not_found} ({not_found_percentage:.1f}%)"
+            (
+                "  ❌ Not found: "
+                f"{report.total_not_found} ({not_found_percentage:.1f}%)"
+            )
         )
         if report.total_errors > 0:
             print(f"  ⛔ Errors: {report.total_errors}")
@@ -921,8 +1011,11 @@ class ReceiptMetadataFinder:
             for match in found_matches[:10]:
                 fields_str = ", ".join(match.fields_found)
                 print(
-                    f"  ✅ {fields_str} "
-                    f"(confidence={match.confidence:.0f}%)"
+                    (
+                        "  ✅ "
+                        f"{fields_str} "
+                        f"(confidence={match.confidence:.0f}%)"
+                    )
                 )
             if len(found_matches) > 10:
                 print(f"  ... and {len(found_matches) - 10} more")
@@ -934,7 +1027,11 @@ class ReceiptMetadataFinder:
             print("Sample not found (first 5):")
             for match in not_found[:5]:
                 print(
-                    f"  ❌ {match.receipt.image_id[:8]}...#{match.receipt.receipt_id}"
+                    (
+                        "  ❌ "
+                        f"{match.receipt.image_id[:8]}..."
+                        f"#{match.receipt.receipt_id}"
+                    )
                 )
             if len(not_found) > 5:
                 print(f"  ... and {len(not_found) - 5} more")
