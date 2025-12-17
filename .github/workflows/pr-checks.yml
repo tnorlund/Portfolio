@@ -64,7 +64,7 @@ jobs:
     runs-on: [self-hosted, macOS, ARM64]
     strategy:
       matrix:
-        package: [receipt_dynamo, receipt_dynamo_stream, receipt_label, receipt_chroma]
+        package: [receipt_dynamo, receipt_dynamo_stream, receipt_label, receipt_chroma, receipt_upload]
     steps:
       - uses: actions/checkout@v6
         with:
@@ -171,6 +171,18 @@ jobs:
             python3 -m pip install -e "./receipt_dynamo" --disable-pip-version-check
             echo "Verifying receipt_dynamo installation..."
             python3 -c "import receipt_dynamo; print(f'receipt_dynamo imported from: {receipt_dynamo.__file__}')"
+          elif [[ "${{ matrix.package }}" == "receipt_upload" ]]; then
+            echo "Installing receipt_upload local dependencies from PR source"
+            # Install local packages first (without deps to avoid PyPI resolution)
+            python3 -m pip install --no-deps -e "./receipt_dynamo" --disable-pip-version-check
+            python3 -m pip install --no-deps -e "./receipt_dynamo_stream" --disable-pip-version-check
+            python3 -m pip install --no-deps -e "./receipt_chroma" --disable-pip-version-check
+            python3 -m pip install --no-deps -e "./receipt_places" --disable-pip-version-check
+            python3 -m pip install --no-deps -e "./receipt_agent" --disable-pip-version-check
+            echo "Verifying local package installations..."
+            python3 -c "import receipt_dynamo; print(f'receipt_dynamo: {receipt_dynamo.__file__}')"
+            python3 -c "import receipt_chroma; print(f'receipt_chroma: {receipt_chroma.__file__}')"
+            python3 -c "import receipt_places; print(f'receipt_places: {receipt_places.__file__}')"
           fi
 
           # Install target package with all test dependencies
@@ -197,6 +209,9 @@ jobs:
                 "pytest>=8.3.0,<10.0.0" "pytest-mock>=3.14.0,<4.0.0" "pytest-cov>=6.1.0,<7.0.0" \
                 "pytest-xdist>=3.6.0,<4.0.0" "pytest-timeout>=2.1.0,<3.0.0" "moto>=5.1.0,<6.0.0" \
                 --disable-pip-version-check
+            elif [[ "${{ matrix.package }}" == "receipt_upload" ]]; then
+              # Install receipt_upload with test deps - local packages already installed above
+              python3 -m pip install -e ".[test]" --disable-pip-version-check
             else
               python3 -m pip install --force-reinstall -e ".[test]" --disable-pip-version-check
             fi
@@ -258,6 +273,17 @@ jobs:
               python3 -m pip list | grep receipt
               exit 1
             }
+          elif [[ "${{ matrix.package }}" == "receipt_upload" ]]; then
+            echo "=== Final receipt_upload verification ==="
+            python3 -c "import receipt_dynamo; print(f'receipt_dynamo location: {receipt_dynamo.__file__}')"
+            python3 -c "import receipt_chroma; print(f'receipt_chroma location: {receipt_chroma.__file__}')"
+            python3 -c "import receipt_places; print(f'receipt_places location: {receipt_places.__file__}')"
+            python3 -c "import receipt_upload; print(f'receipt_upload location: {receipt_upload.__file__}')"
+            python3 -c "from receipt_upload.merchant_resolution import MerchantResolver; print('MerchantResolver importable')" || {
+              echo "ERROR: receipt_upload imports broken after installation!"
+              python3 -m pip list | grep receipt
+              exit 1
+            }
           fi
 
       - name: Run Python tests
@@ -280,6 +306,9 @@ jobs:
           elif [[ "${{ matrix.package }}" == "receipt_chroma" ]]; then
             # receipt_chroma uses marker-based test organization (similar to receipt_dynamo)
             pytest tests -n auto --timeout=30 -m "unit and not slow" --tb=short -q -o addopts=""
+          elif [[ "${{ matrix.package }}" == "receipt_upload" ]]; then
+            # receipt_upload uses test/ directory
+            pytest test -n auto --timeout=30 --tb=short -q -o addopts=""
           else
             # receipt_dynamo uses directory-based test organization
             pytest tests/unit -n auto --timeout=30 -m "not slow" --tb=short -q -o addopts=""
