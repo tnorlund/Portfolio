@@ -527,14 +527,11 @@ def create_cove_tools(
                     }
                 else:
                     logger.warning(
-                        (
-                            "Receipt details not found for "
-                            f"{image_id}#{receipt_id} "
-                            "after fallback. "
-                            "Metadata exists but receipt lines/words "
-                            "are missing from DynamoDB."
-                        )
-                        f"Skipping text consistency check for this receipt."
+                        "Receipt details not found for "
+                        f"{image_id}#{receipt_id} "
+                        "after fallback. Metadata exists but receipt "
+                        "lines/words are missing from DynamoDB. "
+                        "Skipping text consistency check for this receipt."
                     )
                     return {
                         "image_id": image_id,
@@ -613,7 +610,6 @@ def create_cove_tools(
             description=(
                 "List of receipts to check. Each receipt should be a dict "
                 "with 'image_id' (str) and 'receipt_id' (int). "
-                "'image_id' (str) and 'receipt_id' (int). "
                 "Recommended batch size: 5-10 receipts to balance efficiency "
                 "and context limits."
             )
@@ -912,13 +908,13 @@ def create_cove_tools(
                             )
                         )
                         if lines_list:
-                        logger.info(
-                            (
-                                "Fetched "
-                                f"{len(lines_list)} lines directly for "
-                                f"{img_id}#{receipt_id}"
+                            logger.info(
+                                (
+                                    "Fetched "
+                                    f"{len(lines_list)} lines directly for "
+                                    f"{img_id}#{receipt_id}"
+                                )
                             )
-                        )
                             break
                     except EntityNotFoundError:
                         # Lines don't exist for this image_id - try next one

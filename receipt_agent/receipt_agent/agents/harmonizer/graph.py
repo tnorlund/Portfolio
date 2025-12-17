@@ -675,12 +675,12 @@ def create_harmonizer_tools(
                 street_num = re.search(r"^\d+", address_parts)
                 if street_num:
                     street_num_str = street_num.group()
-                        if street_num_str in receipt_text_lower:
-                            street_num_match = True
-                            evidence.append(
-                                "Found street number "
-                                f"'{street_num_str}' in receipt"
-                            )
+                    if street_num_str in receipt_text_lower:
+                        street_num_match = True
+                        evidence.append(
+                            "Found street number "
+                            f"'{street_num_str}' in receipt"
+                        )
 
                 # Check for street name (words after number)
                 street_words = (
