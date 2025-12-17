@@ -500,13 +500,17 @@ class TestMerchantResolvingEmbeddingProcessorInit:
 
                 assert processor.places_client is None
 
-    def test_init_sets_queue_urls_in_environment(self):
+    def test_init_sets_queue_urls_in_environment(self, monkeypatch):
         """Test that queue URLs are set in environment."""
         import os
 
+        # Use monkeypatch to set env vars (auto-restores after test)
+        monkeypatch.delenv("CHROMADB_LINES_QUEUE_URL", raising=False)
+        monkeypatch.delenv("CHROMADB_WORDS_QUEUE_URL", raising=False)
+
         with patch("receipt_upload.merchant_resolution.embedding_processor.DynamoClient"):
             with patch("receipt_upload.merchant_resolution.embedding_processor.boto3"):
-                processor = MerchantResolvingEmbeddingProcessor(
+                MerchantResolvingEmbeddingProcessor(
                     table_name="test-table",
                     chromadb_bucket="test-bucket",
                     lines_queue_url="https://sqs.us-east-1.amazonaws.com/lines",
