@@ -3,8 +3,9 @@ import React from "react";
 import PrimaryBoundaryLines, { LineSegment } from "../PrimaryBoundaryLines";
 
 jest.mock("@react-spring/web", () => ({
-  useTransition: (items: any[]) => (fn: (style: any, item: any) => JSX.Element) =>
-    items.map(item => fn({}, item)),
+  useTransition:
+    (items: any[]) => (fn: (style: any, item: any) => React.ReactElement) =>
+      items.map((item) => fn({}, item)),
   animated: {
     line: (props: any) => <line {...props} />,
   },

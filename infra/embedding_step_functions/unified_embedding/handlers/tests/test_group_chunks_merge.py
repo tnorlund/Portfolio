@@ -28,7 +28,9 @@ def test_group_chunks_merge_uses_poll_results_data():
             "poll_results_s3_bucket": "chromadb-dev-shared-buckets-vectors-c239843",
         },
         "chunk_results": [
-            {"intermediate_key": "intermediate/c5df280d-32c7-4377-80d0-eb3e34417c37/chunk-0/"},
+            {
+                "intermediate_key": "intermediate/c5df280d-32c7-4377-80d0-eb3e34417c37/chunk-0/"
+            },
         ],
         "poll_results": [],
     }
@@ -42,11 +44,17 @@ def test_group_chunks_merge_uses_poll_results_data():
         "group_size": 10,
         "poll_results": sample_input["poll_results"],
         # This would fail because chunked_data doesn't have poll_results_s3_key
-        "poll_results_s3_key": sample_input["chunked_data"].get("poll_results_s3_key"),  # None!
-        "poll_results_s3_bucket": sample_input["chunked_data"].get("poll_results_s3_bucket"),  # None!
+        "poll_results_s3_key": sample_input["chunked_data"].get(
+            "poll_results_s3_key"
+        ),  # None!
+        "poll_results_s3_bucket": sample_input["chunked_data"].get(
+            "poll_results_s3_bucket"
+        ),  # None!
     }
 
-    assert old_approach["poll_results_s3_key"] is None, "Old approach would fail"
+    assert (
+        old_approach["poll_results_s3_key"] is None
+    ), "Old approach would fail"
 
     # NEW (fixed) approach - gets from poll_results_data
     new_approach = {
@@ -56,12 +64,22 @@ def test_group_chunks_merge_uses_poll_results_data():
         "group_size": 10,
         "poll_results": sample_input["poll_results"],
         # This works because poll_results_data always has these keys
-        "poll_results_s3_key": sample_input["poll_results_data"]["poll_results_s3_key"],
-        "poll_results_s3_bucket": sample_input["poll_results_data"]["poll_results_s3_bucket"],
+        "poll_results_s3_key": sample_input["poll_results_data"][
+            "poll_results_s3_key"
+        ],
+        "poll_results_s3_bucket": sample_input["poll_results_data"][
+            "poll_results_s3_bucket"
+        ],
     }
 
-    assert new_approach["poll_results_s3_key"] == "poll_results/c5df280d-32c7-4377-80d0-eb3e34417c37/poll_results.json"
-    assert new_approach["poll_results_s3_bucket"] == "chromadb-dev-shared-buckets-vectors-c239843"
+    assert (
+        new_approach["poll_results_s3_key"]
+        == "poll_results/c5df280d-32c7-4377-80d0-eb3e34417c37/poll_results.json"
+    )
+    assert (
+        new_approach["poll_results_s3_bucket"]
+        == "chromadb-dev-shared-buckets-vectors-c239843"
+    )
 
     print("✅ GroupChunksForMerge fix validated")
 
@@ -86,7 +104,9 @@ def test_jsonpath_expressions():
     # Old (broken) path
     old_path = jsonpath_ng.parse("$.chunked_data.poll_results_s3_key")
     old_matches = [match.value for match in old_path.find(sample_data)]
-    assert len(old_matches) == 0, "Old path should return empty (key doesn't exist)"
+    assert (
+        len(old_matches) == 0
+    ), "Old path should return empty (key doesn't exist)"
 
     # New (fixed) path
     new_path = jsonpath_ng.parse("$.poll_results_data.poll_results_s3_key")
@@ -101,4 +121,3 @@ if __name__ == "__main__":
     test_group_chunks_merge_uses_poll_results_data()
     test_jsonpath_expressions()
     print("\n✅ All tests passed!")
-

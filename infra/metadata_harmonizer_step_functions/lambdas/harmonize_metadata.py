@@ -408,7 +408,9 @@ async def process_place_id_batch(
 
         except Exception as e:
             error_str = str(e)
-            logger.exception(f"Error processing place_id {group.place_id}: {e}")
+            logger.exception(
+                f"Error processing place_id {group.place_id}: {e}"
+            )
 
             # Track failed LLM call
             llm_calls_failed += 1

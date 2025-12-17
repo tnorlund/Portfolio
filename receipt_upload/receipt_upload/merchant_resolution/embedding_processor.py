@@ -82,7 +82,9 @@ class MerchantResolvingEmbeddingProcessor:
             try:
                 from receipt_places import PlacesClient
 
-                self.places_client = PlacesClient(api_key=google_places_api_key)
+                self.places_client = PlacesClient(
+                    api_key=google_places_api_key
+                )
             except ImportError:
                 _log("WARNING: receipt_places not available")
 
@@ -164,7 +166,9 @@ class MerchantResolvingEmbeddingProcessor:
                 receipt_metadata=receipt_metadata,
                 receipt_word_labels=word_labels,
                 merchant_name=(
-                    receipt_metadata.merchant_name if receipt_metadata else None
+                    receipt_metadata.merchant_name
+                    if receipt_metadata
+                    else None
                 ),
                 sqs_notify=True,  # Trigger async compaction
             )
@@ -260,7 +264,9 @@ class MerchantResolvingEmbeddingProcessor:
                 if merchant_result.merchant_name:
                     # Only update if current is empty or different
                     if not metadata.merchant_name:
-                        updates["merchant_name"] = merchant_result.merchant_name
+                        updates["merchant_name"] = (
+                            merchant_result.merchant_name
+                        )
 
                 if merchant_result.address:
                     if not metadata.address:
@@ -276,7 +282,9 @@ class MerchantResolvingEmbeddingProcessor:
                         receipt_id=receipt_id,
                         **updates,
                     )
-                    _log(f"Updated receipt metadata with: {list(updates.keys())}")
+                    _log(
+                        f"Updated receipt metadata with: {list(updates.keys())}"
+                    )
             else:
                 _log(f"No existing metadata for {image_id}#{receipt_id}")
 

@@ -27,7 +27,9 @@ from receipt_chroma.s3 import (
 class EFSSnapshotManager:
     """Manages ChromaDB snapshots using EFS + S3 hybrid approach."""
 
-    def __init__(self, collection: str, bucket: str, logger: Any, metrics: Any = None):
+    def __init__(
+        self, collection: str, bucket: str, logger: Any, metrics: Any = None
+    ):
         """
         Initialize EFS snapshot manager.
 
@@ -43,7 +45,9 @@ class EFSSnapshotManager:
 
         # EFS mount path (from Lambda environment)
         self.efs_root = os.environ.get("CHROMA_ROOT", "/tmp/chroma")
-        self.efs_snapshots_dir = os.path.join(self.efs_root, "snapshots", collection)
+        self.efs_snapshots_dir = os.path.join(
+            self.efs_root, "snapshots", collection
+        )
 
         # S3 configuration
         self.bucket = bucket
@@ -59,16 +63,18 @@ class EFSSnapshotManager:
         """Get the current snapshot version stored on EFS."""
         try:
             if os.path.exists(self.version_file):
-                with open(self.version_file, 'r') as f:
+                with open(self.version_file, "r") as f:
                     return f.read().strip()
         except Exception as e:
-            self.logger.warning("Failed to read EFS version file", error=str(e))
+            self.logger.warning(
+                "Failed to read EFS version file", error=str(e)
+            )
         return None
 
     def set_efs_version(self, version: str) -> None:
         """Set the current snapshot version on EFS."""
         try:
-            with open(self.version_file, 'w') as f:
+            with open(self.version_file, "w") as f:
                 f.write(version)
         except Exception as e:
             self.logger.error("Failed to write EFS version file", error=str(e))
@@ -80,7 +86,9 @@ class EFSSnapshotManager:
             pointer_key = f"{self.collection}/snapshot/latest-pointer.txt"
 
             try:
-                response = s3_client.get_object(Bucket=self.bucket, Key=pointer_key)
+                response = s3_client.get_object(
+                    Bucket=self.bucket, Key=pointer_key
+                )
                 version_id = response["Body"].read().decode("utf-8").strip()
                 return version_id
             except ClientError as e:
@@ -120,7 +128,7 @@ class EFSSnapshotManager:
                     return {
                         "status": "failed",
                         "error": f"Download failed: {download_result}",
-                        "download_time_ms": (time.time() - start_time) * 1000
+                        "download_time_ms": (time.time() - start_time) * 1000,
                     }
 
                 # Move to EFS
@@ -140,21 +148,21 @@ class EFSSnapshotManager:
                     collection=self.collection,
                     version=version,
                     download_time_ms=download_time * 1000,
-                    efs_path=snapshot_path
+                    efs_path=snapshot_path,
                 )
 
                 if self.metrics:
                     self.metrics.timer(
                         "EFSSnapshotDownloadTime",
                         download_time,
-                        {"collection": self.collection}
+                        {"collection": self.collection},
                     )
 
                 return {
                     "status": "downloaded",
                     "version": version,
                     "efs_path": snapshot_path,
-                    "download_time_ms": download_time * 1000
+                    "download_time_ms": download_time * 1000,
                 }
 
         except Exception as e:
@@ -162,20 +170,23 @@ class EFSSnapshotManager:
                 "Failed to download snapshot to EFS",
                 collection=self.collection,
                 version=version,
-                error=str(e)
+                error=str(e),
             )
 
             if self.metrics:
                 self.metrics.count(
                     "EFSSnapshotDownloadError",
                     1,
-                    {"collection": self.collection, "error_type": type(e).__name__}
+                    {
+                        "collection": self.collection,
+                        "error_type": type(e).__name__,
+                    },
                 )
 
             return {
                 "status": "failed",
                 "error": str(e),
-                "download_time_ms": (time.time() - start_time) * 1000
+                "download_time_ms": (time.time() - start_time) * 1000,
             }
 
     def get_snapshot_path(self, version: str) -> str:
@@ -199,20 +210,20 @@ class EFSSnapshotManager:
                 "Snapshot already available on EFS",
                 collection=self.collection,
                 version=version,
-                efs_path=snapshot_path
+                efs_path=snapshot_path,
             )
             return {
                 "status": "available",
                 "version": version,
                 "efs_path": snapshot_path,
-                "source": "efs_cache"
+                "source": "efs_cache",
             }
 
         # Download from S3
         self.logger.info(
             "Downloading snapshot from S3 to EFS",
             collection=self.collection,
-            version=version
+            version=version,
         )
 
         download_result = self.download_snapshot_to_efs(version)
@@ -222,7 +233,7 @@ class EFSSnapshotManager:
                 "status": "available",
                 "version": version,
                 "efs_path": download_result["efs_path"],
-                "source": "s3_download"
+                "source": "s3_download",
             }
         else:
             return download_result
@@ -242,7 +253,7 @@ class EFSSnapshotManager:
                 "Starting S3 sync",
                 collection=self.collection,
                 version=version,
-                efs_path=snapshot_path
+                efs_path=snapshot_path,
             )
 
             # Upload snapshot to S3
@@ -250,35 +261,31 @@ class EFSSnapshotManager:
                 bucket=self.bucket,
                 collection=self.collection,
                 local_path=snapshot_path,
-                version_id=version
+                version_id=version,
             )
 
             if upload_result.get("status") == "uploaded":
                 self.logger.info(
                     "S3 sync completed",
                     collection=self.collection,
-                    version=version
+                    version=version,
                 )
 
                 if self.metrics:
                     self.metrics.count(
-                        "EFSS3SyncSuccess",
-                        1,
-                        {"collection": self.collection}
+                        "EFSS3SyncSuccess", 1, {"collection": self.collection}
                     )
             else:
                 self.logger.error(
                     "S3 sync failed",
                     collection=self.collection,
                     version=version,
-                    result=upload_result
+                    result=upload_result,
                 )
 
                 if self.metrics:
                     self.metrics.count(
-                        "EFSS3SyncError",
-                        1,
-                        {"collection": self.collection}
+                        "EFSS3SyncError", 1, {"collection": self.collection}
                     )
 
         except Exception as e:
@@ -286,14 +293,17 @@ class EFSSnapshotManager:
                 "S3 sync error",
                 collection=self.collection,
                 version=version,
-                error=str(e)
+                error=str(e),
             )
 
             if self.metrics:
                 self.metrics.count(
                     "EFSS3SyncError",
                     1,
-                    {"collection": self.collection, "error_type": type(e).__name__}
+                    {
+                        "collection": self.collection,
+                        "error_type": type(e).__name__,
+                    },
                 )
 
     def cleanup_old_snapshots(self, keep_versions: int = 3) -> None:
@@ -326,25 +336,27 @@ class EFSSnapshotManager:
                     "Cleaned up old snapshot",
                     collection=self.collection,
                     version=version,
-                    efs_path=snapshot_path
+                    efs_path=snapshot_path,
                 )
 
                 if self.metrics:
                     self.metrics.count(
                         "EFSSnapshotCleanup",
                         1,
-                        {"collection": self.collection}
+                        {"collection": self.collection},
                     )
 
         except Exception as e:
             self.logger.error(
                 "Failed to cleanup old snapshots",
                 collection=self.collection,
-                error=str(e)
+                error=str(e),
             )
 
 
-def get_efs_snapshot_manager(collection: str, bucket: str, logger: Any, metrics: Any = None) -> EFSSnapshotManager:
+def get_efs_snapshot_manager(
+    collection: str, bucket: str, logger: Any, metrics: Any = None
+) -> EFSSnapshotManager:
     """
     Factory function to create EFS snapshot manager.
 

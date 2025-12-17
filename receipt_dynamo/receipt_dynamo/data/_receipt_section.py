@@ -159,7 +159,7 @@ class _ReceiptSection(
         Raises
         ------
         ValueError
-            If receipt_sections is invalid or if any receipt_section 
+            If receipt_sections is invalid or if any receipt_section
             does not exist.
         """
         self._update_entities(

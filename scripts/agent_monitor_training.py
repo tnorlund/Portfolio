@@ -16,7 +16,9 @@ from typing import Any, Dict, Optional
 from receipt_dynamo import DynamoClient
 
 
-def monitor_active_training(table_name: str, output_file: str = None) -> Dict[str, Any]:
+def monitor_active_training(
+    table_name: str, output_file: str = None
+) -> Dict[str, Any]:
     """Get status of currently running training job.
 
     Args:
@@ -33,14 +35,16 @@ def monitor_active_training(table_name: str, output_file: str = None) -> Dict[st
     if not running_jobs:
         status: Dict[str, Any] = {
             "status": "no_active_jobs",
-            "message": "No training jobs currently running"
+            "message": "No training jobs currently running",
         }
     else:
         job = running_jobs[0]  # Assume one active job at a time
         metrics = dynamo.list_job_metrics(job.job_id)
         logs = dynamo.list_job_logs(job.job_id, limit=20)
 
-        latest_metric = max(metrics, key=lambda m: m.epoch or 0) if metrics else None
+        latest_metric = (
+            max(metrics, key=lambda m: m.epoch or 0) if metrics else None
+        )
 
         # Extract key hyperparameters
         config = job.job_config or {}
@@ -58,7 +62,9 @@ def monitor_active_training(table_name: str, output_file: str = None) -> Dict[st
         # Calculate training progress
         total_epochs = hyperparams.get("epochs", 0)
         current_epoch = latest_metric.epoch if latest_metric else 0
-        progress_pct = (current_epoch / total_epochs * 100) if total_epochs > 0 else 0.0
+        progress_pct = (
+            (current_epoch / total_epochs * 100) if total_epochs > 0 else 0.0
+        )
 
         # Analyze F1 trend
         epoch_metrics = sorted(metrics, key=lambda m: m.epoch or 0)
@@ -87,22 +93,20 @@ def monitor_active_training(table_name: str, output_file: str = None) -> Dict[st
             "latest_metrics": {
                 "epoch": latest_metric.epoch if latest_metric else None,
                 "f1": latest_metric.value if latest_metric else None,
-                "timestamp": latest_metric.timestamp if latest_metric else None,
+                "timestamp": (
+                    latest_metric.timestamp if latest_metric else None
+                ),
             },
             "f1_trend": f1_trend,
             "all_epochs": [
-                {
-                    "epoch": m.epoch,
-                    "f1": m.value,
-                    "timestamp": m.timestamp
-                }
+                {"epoch": m.epoch, "f1": m.value, "timestamp": m.timestamp}
                 for m in sorted(epoch_metrics, key=lambda m: m.epoch or 0)
             ],
             "recent_logs": [log.message for log in logs[-10:]] if logs else [],
         }
 
     if output_file:
-        with open(output_file, 'w') as f:
+        with open(output_file, "w") as f:
             json.dump(status, f, indent=2)
         print(f"✅ Active training status saved to {output_file}")
     else:
@@ -115,4 +119,3 @@ if __name__ == "__main__":
     table_name = sys.argv[1] if len(sys.argv) > 1 else "ReceiptsTable-dc5be22"
     output_file = sys.argv[2] if len(sys.argv) > 2 else None
     monitor_active_training(table_name, output_file)
-

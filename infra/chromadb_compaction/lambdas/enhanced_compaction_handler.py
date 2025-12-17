@@ -135,6 +135,7 @@ class MetricsAccumulator:
         unit: str = "Seconds",
     ):
         """Context manager for timing operations."""
+
         # Simple implementation for accumulator
         class TimerContext:
             def __init__(self, accumulator, name, dims, unit_val):
@@ -360,7 +361,9 @@ def process_collection(
             metrics.gauge(
                 "CompactionLabelsUpdatedRecords", result.total_labels_updated
             )
-            metrics.gauge("CompactionDeltaMergeCount", result.delta_merge_count)
+            metrics.gauge(
+                "CompactionDeltaMergeCount", result.delta_merge_count
+            )
             if result.has_errors:
                 metrics.count("CompactionProcessingErrors", 1)
 
@@ -377,7 +380,8 @@ def process_collection(
                             entity_data.get("image_id") is not None
                             and entity_data.get("receipt_id") is not None
                             and entity_data["image_id"] == meta_result.image_id
-                            and entity_data["receipt_id"] == meta_result.receipt_id
+                            and entity_data["receipt_id"]
+                            == meta_result.receipt_id
                         ):
                             failed_message_ids.append(msg.stream_record_id)
 

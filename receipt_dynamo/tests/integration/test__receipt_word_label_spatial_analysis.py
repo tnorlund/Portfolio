@@ -1,7 +1,7 @@
 """
 Integration tests for ReceiptWordLabelSpatialAnalysis operations in DynamoDB.
 
-This module tests the ReceiptWordLabelSpatialAnalysis-related methods of 
+This module tests the ReceiptWordLabelSpatialAnalysis-related methods of
 DynamoClient, including add, get, update, delete, and query operations.
 """
 
@@ -98,7 +98,7 @@ def _batch_spatial_analyses() -> List[ReceiptWordLabelSpatialAnalysis]:
     analyses = []
     base_time = datetime(2024, 3, 20, 12, 0, 0)
     labels = ["TAX", "SUBTOTAL", "TOTAL", "BUSINESS_NAME", "DATE"]
-    
+
     for i in range(5):
         analyses.append(
             ReceiptWordLabelSpatialAnalysis(
@@ -121,7 +121,7 @@ def _batch_spatial_analyses() -> List[ReceiptWordLabelSpatialAnalysis]:
                 analysis_version="1.0",
             )
         )
-    
+
     return analyses
 
 
@@ -130,8 +130,16 @@ def _batch_spatial_analyses() -> List[ReceiptWordLabelSpatialAnalysis]:
 # =============================================================================
 
 ADD_ERROR_SCENARIOS = [
-    ("ConditionalCheckFailedException", EntityAlreadyExistsError, "already exists"),
-    ("ProvisionedThroughputExceededException", DynamoDBThroughputError, "Throughput exceeded"),
+    (
+        "ConditionalCheckFailedException",
+        EntityAlreadyExistsError,
+        "already exists",
+    ),
+    (
+        "ProvisionedThroughputExceededException",
+        DynamoDBThroughputError,
+        "Throughput exceeded",
+    ),
     ("InternalServerError", DynamoDBServerError, "server error"),
     ("ValidationException", EntityValidationError, "Validation error"),
     ("AccessDeniedException", DynamoDBError, "DynamoDB error"),
@@ -141,7 +149,11 @@ ADD_ERROR_SCENARIOS = [
 
 UPDATE_ERROR_SCENARIOS = [
     ("ConditionalCheckFailedException", EntityNotFoundError, "not found"),
-    ("ProvisionedThroughputExceededException", DynamoDBThroughputError, "Throughput exceeded"),
+    (
+        "ProvisionedThroughputExceededException",
+        DynamoDBThroughputError,
+        "Throughput exceeded",
+    ),
     ("InternalServerError", DynamoDBServerError, "server error"),
     ("ValidationException", EntityValidationError, "Validation error"),
     ("AccessDeniedException", DynamoDBError, "DynamoDB error"),
@@ -151,7 +163,11 @@ UPDATE_ERROR_SCENARIOS = [
 
 DELETE_ERROR_SCENARIOS = [
     ("ConditionalCheckFailedException", EntityNotFoundError, "not found"),
-    ("ProvisionedThroughputExceededException", DynamoDBThroughputError, "Throughput exceeded"),
+    (
+        "ProvisionedThroughputExceededException",
+        DynamoDBThroughputError,
+        "Throughput exceeded",
+    ),
     ("InternalServerError", DynamoDBServerError, "server error"),
     ("ValidationException", EntityValidationError, "Validation error"),
     ("AccessDeniedException", DynamoDBError, "DynamoDB error"),
@@ -160,7 +176,11 @@ DELETE_ERROR_SCENARIOS = [
 ]
 
 QUERY_ERROR_SCENARIOS = [
-    ("ProvisionedThroughputExceededException", DynamoDBThroughputError, "Throughput exceeded"),
+    (
+        "ProvisionedThroughputExceededException",
+        DynamoDBThroughputError,
+        "Throughput exceeded",
+    ),
     ("InternalServerError", DynamoDBServerError, "server error"),
     ("ValidationException", EntityValidationError, "Validation error"),
     ("AccessDeniedException", DynamoDBError, "DynamoDB error"),
@@ -173,6 +193,7 @@ QUERY_ERROR_SCENARIOS = [
 # BASIC CRUD OPERATIONS
 # =============================================================================
 
+
 class TestReceiptWordLabelSpatialAnalysisBasicOperations:
     """Test basic CRUD operations for ReceiptWordLabelSpatialAnalysis."""
 
@@ -184,7 +205,7 @@ class TestReceiptWordLabelSpatialAnalysisBasicOperations:
         """Test successful addition of a spatial analysis."""
         client = DynamoClient(dynamodb_table)
         client.add_receipt_word_label_spatial_analysis(sample_spatial_analysis)
-        
+
         result = client.get_receipt_word_label_spatial_analysis(
             image_id=sample_spatial_analysis.image_id,
             receipt_id=sample_spatial_analysis.receipt_id,
@@ -201,7 +222,7 @@ class TestReceiptWordLabelSpatialAnalysisBasicOperations:
         """Test that adding a duplicate spatial analysis raises error."""
         client = DynamoClient(dynamodb_table)
         client.add_receipt_word_label_spatial_analysis(sample_spatial_analysis)
-        
+
         # Create duplicate with same keys
         duplicate = ReceiptWordLabelSpatialAnalysis(
             image_id=sample_spatial_analysis.image_id,
@@ -214,7 +235,7 @@ class TestReceiptWordLabelSpatialAnalysisBasicOperations:
             timestamp_added=datetime.now(),
             analysis_version="2.0",
         )
-        
+
         with pytest.raises(EntityAlreadyExistsError, match="already exists"):
             client.add_receipt_word_label_spatial_analysis(duplicate)
 
@@ -223,7 +244,7 @@ class TestReceiptWordLabelSpatialAnalysisBasicOperations:
     ) -> None:
         """Test that getting a non-existent spatial analysis raises error."""
         client = DynamoClient(dynamodb_table)
-        
+
         with pytest.raises(EntityNotFoundError, match="does not exist"):
             client.get_receipt_word_label_spatial_analysis(
                 image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -240,7 +261,7 @@ class TestReceiptWordLabelSpatialAnalysisBasicOperations:
         """Test successful update of a spatial analysis."""
         client = DynamoClient(dynamodb_table)
         client.add_receipt_word_label_spatial_analysis(sample_spatial_analysis)
-        
+
         # Update the analysis
         updated_analysis = ReceiptWordLabelSpatialAnalysis(
             image_id=sample_spatial_analysis.image_id,
@@ -253,9 +274,9 @@ class TestReceiptWordLabelSpatialAnalysisBasicOperations:
             timestamp_added=sample_spatial_analysis.timestamp_added,
             analysis_version="2.0",  # Updated version
         )
-        
+
         client.update_receipt_word_label_spatial_analysis(updated_analysis)
-        
+
         result = client.get_receipt_word_label_spatial_analysis(
             image_id=sample_spatial_analysis.image_id,
             receipt_id=sample_spatial_analysis.receipt_id,
@@ -273,9 +294,11 @@ class TestReceiptWordLabelSpatialAnalysisBasicOperations:
     ) -> None:
         """Test that updating a non-existent spatial analysis raises error."""
         client = DynamoClient(dynamodb_table)
-        
+
         with pytest.raises(EntityNotFoundError, match="not found"):
-            client.update_receipt_word_label_spatial_analysis(sample_spatial_analysis)
+            client.update_receipt_word_label_spatial_analysis(
+                sample_spatial_analysis
+            )
 
     def test_delete_spatial_analysis_success(
         self,
@@ -285,7 +308,7 @@ class TestReceiptWordLabelSpatialAnalysisBasicOperations:
         """Test successful deletion of a spatial analysis."""
         client = DynamoClient(dynamodb_table)
         client.add_receipt_word_label_spatial_analysis(sample_spatial_analysis)
-        
+
         # Verify it exists
         result = client.get_receipt_word_label_spatial_analysis(
             image_id=sample_spatial_analysis.image_id,
@@ -294,10 +317,12 @@ class TestReceiptWordLabelSpatialAnalysisBasicOperations:
             word_id=sample_spatial_analysis.word_id,
         )
         assert result is not None
-        
+
         # Delete it
-        client.delete_receipt_word_label_spatial_analysis(sample_spatial_analysis)
-        
+        client.delete_receipt_word_label_spatial_analysis(
+            sample_spatial_analysis
+        )
+
         # Verify it's gone
         with pytest.raises(EntityNotFoundError):
             client.get_receipt_word_label_spatial_analysis(
@@ -311,6 +336,7 @@ class TestReceiptWordLabelSpatialAnalysisBasicOperations:
 # =============================================================================
 # BATCH OPERATIONS
 # =============================================================================
+
 
 class TestReceiptWordLabelSpatialAnalysisBatchOperations:
     """Test batch operations for ReceiptWordLabelSpatialAnalysis."""
@@ -341,7 +367,7 @@ class TestReceiptWordLabelSpatialAnalysisBatchOperations:
         """Test successful batch update of spatial analyses."""
         client = DynamoClient(dynamodb_table)
         client.add_receipt_word_label_spatial_analyses(batch_spatial_analyses)
-        
+
         # Update all analyses with new version
         updated_analyses = []
         for analysis in batch_spatial_analyses:
@@ -357,9 +383,9 @@ class TestReceiptWordLabelSpatialAnalysisBatchOperations:
                 analysis_version="2.0",  # Updated version
             )
             updated_analyses.append(updated)
-        
+
         client.update_receipt_word_label_spatial_analyses(updated_analyses)
-        
+
         # Verify updates
         for updated in updated_analyses:
             result = client.get_receipt_word_label_spatial_analysis(
@@ -378,7 +404,7 @@ class TestReceiptWordLabelSpatialAnalysisBatchOperations:
         """Test successful batch deletion of spatial analyses."""
         client = DynamoClient(dynamodb_table)
         client.add_receipt_word_label_spatial_analyses(batch_spatial_analyses)
-        
+
         # Verify they exist
         for analysis in batch_spatial_analyses:
             result = client.get_receipt_word_label_spatial_analysis(
@@ -388,10 +414,12 @@ class TestReceiptWordLabelSpatialAnalysisBatchOperations:
                 word_id=analysis.word_id,
             )
             assert result is not None
-        
+
         # Delete them
-        client.delete_receipt_word_label_spatial_analyses(batch_spatial_analyses)
-        
+        client.delete_receipt_word_label_spatial_analyses(
+            batch_spatial_analyses
+        )
+
         # Verify they're gone
         for analysis in batch_spatial_analyses:
             with pytest.raises(EntityNotFoundError):
@@ -407,6 +435,7 @@ class TestReceiptWordLabelSpatialAnalysisBatchOperations:
 # GSI QUERY OPERATIONS
 # =============================================================================
 
+
 class TestReceiptWordLabelSpatialAnalysisQueryOperations:
     """Test query operations using GSI for ReceiptWordLabelSpatialAnalysis."""
 
@@ -418,7 +447,7 @@ class TestReceiptWordLabelSpatialAnalysisQueryOperations:
     ) -> None:
         """Test listing spatial analyses for a specific receipt."""
         client = DynamoClient(dynamodb_table)
-        
+
         # Create analyses for same receipt but different image
         same_receipt_analysis = ReceiptWordLabelSpatialAnalysis(
             image_id=sample_spatial_analysis.image_id,  # Same image
@@ -431,26 +460,36 @@ class TestReceiptWordLabelSpatialAnalysisQueryOperations:
             timestamp_added=datetime.now(),
             analysis_version="1.0",
         )
-        
+
         client.add_receipt_word_label_spatial_analysis(sample_spatial_analysis)
         client.add_receipt_word_label_spatial_analysis(same_receipt_analysis)
-        client.add_receipt_word_label_spatial_analysis(another_spatial_analysis)  # Different receipt
-        
+        client.add_receipt_word_label_spatial_analysis(
+            another_spatial_analysis
+        )  # Different receipt
+
         # Query for analyses of specific receipt
         results, _ = client.list_spatial_analyses_for_receipt(
             image_id=sample_spatial_analysis.image_id,
             receipt_id=sample_spatial_analysis.receipt_id,
         )
-        
+
         assert len(results) == 2
         result_keys = {
             (r.image_id, r.receipt_id, r.line_id, r.word_id) for r in results
         }
         expected_keys = {
-            (sample_spatial_analysis.image_id, sample_spatial_analysis.receipt_id, 
-             sample_spatial_analysis.line_id, sample_spatial_analysis.word_id),
-            (same_receipt_analysis.image_id, same_receipt_analysis.receipt_id,
-             same_receipt_analysis.line_id, same_receipt_analysis.word_id),
+            (
+                sample_spatial_analysis.image_id,
+                sample_spatial_analysis.receipt_id,
+                sample_spatial_analysis.line_id,
+                sample_spatial_analysis.word_id,
+            ),
+            (
+                same_receipt_analysis.image_id,
+                same_receipt_analysis.receipt_id,
+                same_receipt_analysis.line_id,
+                same_receipt_analysis.word_id,
+            ),
         }
         assert result_keys == expected_keys
 
@@ -462,7 +501,7 @@ class TestReceiptWordLabelSpatialAnalysisQueryOperations:
     ) -> None:
         """Test getting spatial analyses by label type."""
         client = DynamoClient(dynamodb_table)
-        
+
         # Create analysis with same label but different receipt
         same_label_analysis = ReceiptWordLabelSpatialAnalysis(
             image_id="5b74a26d-33e6-4f22-b4ea-d795fc5c0fa5",
@@ -475,16 +514,18 @@ class TestReceiptWordLabelSpatialAnalysisQueryOperations:
             timestamp_added=datetime.now(),
             analysis_version="1.0",
         )
-        
+
         client.add_receipt_word_label_spatial_analysis(sample_spatial_analysis)
         client.add_receipt_word_label_spatial_analysis(same_label_analysis)
-        client.add_receipt_word_label_spatial_analysis(another_spatial_analysis)  # Different label
-        
+        client.add_receipt_word_label_spatial_analysis(
+            another_spatial_analysis
+        )  # Different label
+
         # Query for analyses of specific label
         results, _ = client.get_spatial_analyses_by_label(
             label=sample_spatial_analysis.from_label
         )
-        
+
         assert len(results) == 2
         for result in results:
             assert result.from_label == sample_spatial_analysis.from_label
@@ -497,7 +538,7 @@ class TestReceiptWordLabelSpatialAnalysisQueryOperations:
     ) -> None:
         """Test listing spatial analyses for a specific image."""
         client = DynamoClient(dynamodb_table)
-        
+
         # Create analysis for same image but different receipt
         same_image_analysis = ReceiptWordLabelSpatialAnalysis(
             image_id=sample_spatial_analysis.image_id,  # Same image
@@ -510,16 +551,18 @@ class TestReceiptWordLabelSpatialAnalysisQueryOperations:
             timestamp_added=datetime.now(),
             analysis_version="1.0",
         )
-        
+
         client.add_receipt_word_label_spatial_analysis(sample_spatial_analysis)
         client.add_receipt_word_label_spatial_analysis(same_image_analysis)
-        client.add_receipt_word_label_spatial_analysis(another_spatial_analysis)  # Different image
-        
+        client.add_receipt_word_label_spatial_analysis(
+            another_spatial_analysis
+        )  # Different image
+
         # Query for analyses of specific image
         results, _ = client.list_spatial_analyses_for_image(
             image_id=sample_spatial_analysis.image_id
         )
-        
+
         assert len(results) == 2
         for result in results:
             assert result.image_id == sample_spatial_analysis.image_id
@@ -534,7 +577,9 @@ class TestReceiptWordLabelSpatialAnalysisQueryOperations:
         client.add_receipt_word_label_spatial_analyses(batch_spatial_analyses)
 
         # Get first page
-        first_results, first_key = client.list_receipt_word_label_spatial_analyses(limit=2)
+        first_results, first_key = (
+            client.list_receipt_word_label_spatial_analyses(limit=2)
+        )
         assert len(first_results) == 2
         assert first_key is not None
 
@@ -547,13 +592,13 @@ class TestReceiptWordLabelSpatialAnalysisQueryOperations:
         # Verify no overlap
         all_results = first_results + remaining_results
         assert len(all_results) == 5
-        
+
         result_keys = {
-            (r.image_id, r.receipt_id, r.line_id, r.word_id) 
+            (r.image_id, r.receipt_id, r.line_id, r.word_id)
             for r in all_results
         }
         expected_keys = {
-            (a.image_id, a.receipt_id, a.line_id, a.word_id) 
+            (a.image_id, a.receipt_id, a.line_id, a.word_id)
             for a in batch_spatial_analyses
         }
         assert result_keys == expected_keys
@@ -563,6 +608,7 @@ class TestReceiptWordLabelSpatialAnalysisQueryOperations:
 # VALIDATION TESTS
 # =============================================================================
 
+
 class TestReceiptWordLabelSpatialAnalysisValidation:
     """Test validation for ReceiptWordLabelSpatialAnalysis operations."""
 
@@ -571,9 +617,10 @@ class TestReceiptWordLabelSpatialAnalysisValidation:
     ) -> None:
         """Test that adding None raises OperationError."""
         client = DynamoClient(dynamodb_table)
-        
+
         with pytest.raises(
-            OperationError, match="Unexpected error during add_receipt_word_label_spatial_analysis: spatial_analysis cannot be None"
+            OperationError,
+            match="Unexpected error during add_receipt_word_label_spatial_analysis: spatial_analysis cannot be None",
         ):
             client.add_receipt_word_label_spatial_analysis(None)  # type: ignore
 
@@ -582,7 +629,7 @@ class TestReceiptWordLabelSpatialAnalysisValidation:
     ) -> None:
         """Test that adding wrong type raises OperationError."""
         client = DynamoClient(dynamodb_table)
-        
+
         with pytest.raises(
             OperationError,
             match="Unexpected error during add_receipt_word_label_spatial_analysis: spatial_analysis must be an instance of ReceiptWordLabelSpatialAnalysis",
@@ -596,7 +643,9 @@ class TestReceiptWordLabelSpatialAnalysisValidation:
         client = DynamoClient(dynamodb_table)
 
         # Test None parameters
-        with pytest.raises(EntityValidationError, match="image_id cannot be None"):
+        with pytest.raises(
+            EntityValidationError, match="image_id cannot be None"
+        ):
             client.get_receipt_word_label_spatial_analysis(
                 image_id=None,  # type: ignore
                 receipt_id=1,
@@ -604,7 +653,9 @@ class TestReceiptWordLabelSpatialAnalysisValidation:
                 word_id=1,
             )
 
-        with pytest.raises(EntityValidationError, match="receipt_id cannot be None"):
+        with pytest.raises(
+            EntityValidationError, match="receipt_id cannot be None"
+        ):
             client.get_receipt_word_label_spatial_analysis(
                 image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
                 receipt_id=None,  # type: ignore
@@ -613,7 +664,9 @@ class TestReceiptWordLabelSpatialAnalysisValidation:
             )
 
         # Test wrong types
-        with pytest.raises(EntityValidationError, match="image_id must be a string"):
+        with pytest.raises(
+            EntityValidationError, match="image_id must be a string"
+        ):
             client.get_receipt_word_label_spatial_analysis(
                 image_id=123,  # type: ignore
                 receipt_id=1,
@@ -621,7 +674,9 @@ class TestReceiptWordLabelSpatialAnalysisValidation:
                 word_id=1,
             )
 
-        with pytest.raises(EntityValidationError, match="receipt_id must be an integer"):
+        with pytest.raises(
+            EntityValidationError, match="receipt_id must be an integer"
+        ):
             client.get_receipt_word_label_spatial_analysis(
                 image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
                 receipt_id="1",  # type: ignore
@@ -630,7 +685,9 @@ class TestReceiptWordLabelSpatialAnalysisValidation:
             )
 
         # Test negative values
-        with pytest.raises(EntityValidationError, match="receipt_id must be positive"):
+        with pytest.raises(
+            EntityValidationError, match="receipt_id must be positive"
+        ):
             client.get_receipt_word_label_spatial_analysis(
                 image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
                 receipt_id=-1,
@@ -638,7 +695,9 @@ class TestReceiptWordLabelSpatialAnalysisValidation:
                 word_id=1,
             )
 
-        with pytest.raises(EntityValidationError, match="line_id must be positive"):
+        with pytest.raises(
+            EntityValidationError, match="line_id must be positive"
+        ):
             client.get_receipt_word_label_spatial_analysis(
                 image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
                 receipt_id=1,
@@ -653,21 +712,29 @@ class TestReceiptWordLabelSpatialAnalysisValidation:
         client = DynamoClient(dynamodb_table)
 
         # Test invalid label
-        with pytest.raises(EntityValidationError, match="label must be a non-empty string"):
+        with pytest.raises(
+            EntityValidationError, match="label must be a non-empty string"
+        ):
             client.get_spatial_analyses_by_label(label="")
 
-        with pytest.raises(EntityValidationError, match="label must be a non-empty string"):
+        with pytest.raises(
+            EntityValidationError, match="label must be a non-empty string"
+        ):
             client.get_spatial_analyses_by_label(label=None)  # type: ignore
 
         # Test invalid limit
-        with pytest.raises(EntityValidationError, match="limit must be an integer"):
+        with pytest.raises(
+            EntityValidationError, match="limit must be an integer"
+        ):
             client.list_spatial_analyses_for_receipt(
                 image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
                 receipt_id=1,
                 limit="10",  # type: ignore
             )
 
-        with pytest.raises(EntityValidationError, match="limit must be greater than 0"):
+        with pytest.raises(
+            EntityValidationError, match="limit must be greater than 0"
+        ):
             client.list_spatial_analyses_for_receipt(
                 image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
                 receipt_id=1,
@@ -679,7 +746,10 @@ class TestReceiptWordLabelSpatialAnalysisValidation:
 # ERROR HANDLING TESTS
 # =============================================================================
 
-@pytest.mark.parametrize("error_code,expected_exception,error_match", ADD_ERROR_SCENARIOS)
+
+@pytest.mark.parametrize(
+    "error_code,expected_exception,error_match", ADD_ERROR_SCENARIOS
+)
 class TestReceiptWordLabelSpatialAnalysisAddErrorHandling:
     """Test error handling for add operations."""
 
@@ -694,18 +764,24 @@ class TestReceiptWordLabelSpatialAnalysisAddErrorHandling:
     ) -> None:
         """Test that DynamoDB errors are properly handled in add operations."""
         client = DynamoClient(dynamodb_table)
-        
+
         with patch.object(
-            client._client, "put_item", side_effect=ClientError(
+            client._client,
+            "put_item",
+            side_effect=ClientError(
                 {"Error": {"Code": error_code, "Message": "Test error"}},
-                "PutItem"
-            )
+                "PutItem",
+            ),
         ):
             with pytest.raises(expected_exception, match=error_match):
-                client.add_receipt_word_label_spatial_analysis(sample_spatial_analysis)
+                client.add_receipt_word_label_spatial_analysis(
+                    sample_spatial_analysis
+                )
 
 
-@pytest.mark.parametrize("error_code,expected_exception,error_match", UPDATE_ERROR_SCENARIOS)
+@pytest.mark.parametrize(
+    "error_code,expected_exception,error_match", UPDATE_ERROR_SCENARIOS
+)
 class TestReceiptWordLabelSpatialAnalysisUpdateErrorHandling:
     """Test error handling for update operations."""
 
@@ -720,18 +796,24 @@ class TestReceiptWordLabelSpatialAnalysisUpdateErrorHandling:
     ) -> None:
         """Test that DynamoDB errors are properly handled in update operations."""
         client = DynamoClient(dynamodb_table)
-        
+
         with patch.object(
-            client._client, "put_item", side_effect=ClientError(
+            client._client,
+            "put_item",
+            side_effect=ClientError(
                 {"Error": {"Code": error_code, "Message": "Test error"}},
-                "PutItem"
-            )
+                "PutItem",
+            ),
         ):
             with pytest.raises(expected_exception, match=error_match):
-                client.update_receipt_word_label_spatial_analysis(sample_spatial_analysis)
+                client.update_receipt_word_label_spatial_analysis(
+                    sample_spatial_analysis
+                )
 
 
-@pytest.mark.parametrize("error_code,expected_exception,error_match", QUERY_ERROR_SCENARIOS)
+@pytest.mark.parametrize(
+    "error_code,expected_exception,error_match", QUERY_ERROR_SCENARIOS
+)
 class TestReceiptWordLabelSpatialAnalysisQueryErrorHandling:
     """Test error handling for query operations."""
 
@@ -745,12 +827,14 @@ class TestReceiptWordLabelSpatialAnalysisQueryErrorHandling:
     ) -> None:
         """Test that DynamoDB errors are properly handled in query operations."""
         client = DynamoClient(dynamodb_table)
-        
+
         with patch.object(
-            client._client, "query", side_effect=ClientError(
+            client._client,
+            "query",
+            side_effect=ClientError(
                 {"Error": {"Code": error_code, "Message": "Test error"}},
-                "Query"
-            )
+                "Query",
+            ),
         ):
             with pytest.raises(expected_exception, match=error_match):
                 client.get_spatial_analyses_by_label("TAX")

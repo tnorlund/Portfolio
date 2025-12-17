@@ -190,13 +190,13 @@ class XRayTracer:
                 current = xray_recorder.current_subsegment()
             except Exception:
                 pass
-            
+
             if not current:
                 try:
                     current = xray_recorder.current_segment()
                 except Exception:
                     pass
-            
+
             if current:
                 current.put_annotation(key, str(value))
                 self.logger.debug(
@@ -224,13 +224,13 @@ class XRayTracer:
                 current = xray_recorder.current_subsegment()
             except Exception:
                 pass
-            
+
             if not current:
                 try:
                     current = xray_recorder.current_segment()
                 except Exception:
                     pass
-            
+
             if current:
                 current.put_metadata(key, value, namespace)
                 self.logger.debug(

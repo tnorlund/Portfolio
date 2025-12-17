@@ -288,8 +288,8 @@ class _Letter(FlattenedStandardMixin):
         Returns:
             List of Letter objects from the specified word
         """
-        # For letters, we need to query by a composite parent 
-        # (IMAGE + LINE + WORD). Since QueryByParentMixin expects a single 
+        # For letters, we need to query by a composite parent
+        # (IMAGE + LINE + WORD). Since QueryByParentMixin expects a single
         # parent, we'll use the
         # original query
         letters, _ = self._query_entities(

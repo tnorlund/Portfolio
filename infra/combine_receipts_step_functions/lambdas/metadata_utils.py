@@ -48,7 +48,7 @@ def get_best_receipt_metadata(
                 image_id,
                 receipt_id,
                 e,
-                exc_info=True
+                exc_info=True,
             )
             continue
 
@@ -106,10 +106,14 @@ def migrate_receipt_word_labels(
             # Paginate through all labels for this receipt
             last_evaluated_key = None
             while True:
-                labels, last_evaluated_key = client.list_receipt_word_labels_for_receipt(
-                    image_id, receipt_id, last_evaluated_key=last_evaluated_key
+                labels, last_evaluated_key = (
+                    client.list_receipt_word_labels_for_receipt(
+                        image_id,
+                        receipt_id,
+                        last_evaluated_key=last_evaluated_key,
+                    )
                 )
-                
+
                 for label in labels:
                     original_key = (label.word_id, label.line_id, receipt_id)
                     new_word_id = word_id_map.get(original_key)
@@ -131,7 +135,7 @@ def migrate_receipt_word_labels(
                         label_consolidated_from=f"receipt_{receipt_id}_word_{label.word_id}",
                     )
                     new_labels.append(new_label)
-                
+
                 # Continue if there are more pages
                 if not last_evaluated_key:
                     break
@@ -141,12 +145,7 @@ def migrate_receipt_word_labels(
                 image_id,
                 receipt_id,
                 e,
-                exc_info=True
+                exc_info=True,
             )
             continue
     return new_labels
-
-
-
-
-

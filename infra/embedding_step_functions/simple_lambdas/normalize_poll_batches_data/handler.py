@@ -170,7 +170,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
 
 def _download_and_combine_poll_results(
-    poll_results_refs: List[Dict[str, Any]]
+    poll_results_refs: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
     """Download individual poll results from S3 and combine them."""
     if not poll_results_refs:
@@ -195,7 +195,9 @@ def _download_and_combine_poll_results(
                 ) as tmp_file:
                     tmp_file_path = tmp_file.name
 
-                s3_client.download_file(result_bucket, result_key, tmp_file_path)
+                s3_client.download_file(
+                    result_bucket, result_key, tmp_file_path
+                )
 
                 with open(tmp_file_path, "r", encoding="utf-8") as f:
                     result = json.load(f)

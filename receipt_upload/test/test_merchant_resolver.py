@@ -340,7 +340,9 @@ class TestMerchantResolverHelpers:
 
     def test_extract_phone_returns_none_when_missing(self, resolver):
         """Test phone extraction returns None when no phone."""
-        words = [MagicMock(extracted_data={"type": "address", "value": "123 Main"})]
+        words = [
+            MagicMock(extracted_data={"type": "address", "value": "123 Main"})
+        ]
 
         phone = resolver._extract_phone(words)
         assert phone is None
@@ -409,9 +411,7 @@ class TestMerchantResolverErrorHandling:
         )
 
         words = [
-            MagicMock(
-                extracted_data={"type": "phone", "value": "5551234567"}
-            )
+            MagicMock(extracted_data={"type": "phone", "value": "5551234567"})
         ]
         lines = [MagicMock(spec=ReceiptLine, line_id=1, text="Store")]
 
@@ -439,9 +439,7 @@ class TestMerchantResolverErrorHandling:
         )
 
         words = [
-            MagicMock(
-                extracted_data={"type": "phone", "value": "5551234567"}
-            )
+            MagicMock(extracted_data={"type": "phone", "value": "5551234567"})
         ]
         lines = [MagicMock(spec=ReceiptLine, line_id=1, text="Store")]
 
@@ -483,23 +481,21 @@ class TestMerchantResolverErrorHandling:
         )
 
         words = [
-            MagicMock(
-                extracted_data={"type": "phone", "value": "5551234567"}
-            )
+            MagicMock(extracted_data={"type": "phone", "value": "5551234567"})
         ]
         lines = [MagicMock(spec=ReceiptLine, line_id=1, text="Store")]
 
         mock_lines_client.query.return_value = {
-            "metadatas": [
-                [{"image_id": "other", "receipt_id": 99}]
-            ]
+            "metadatas": [[{"image_id": "other", "receipt_id": 99}]]
         }
 
         # Test invalid place_id values
         for invalid_id in ["", "null", "NO_RESULTS", "INVALID"]:
             mock_metadata = MagicMock()
             mock_metadata.place_id = invalid_id
-            mock_dynamo_client.get_receipt_metadata.return_value = mock_metadata
+            mock_dynamo_client.get_receipt_metadata.return_value = (
+                mock_metadata
+            )
 
             result = resolver.resolve(
                 lines_client=mock_lines_client,

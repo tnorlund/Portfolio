@@ -133,7 +133,9 @@ def extract_lambda_functions_from_history(history: List[Dict]) -> List[str]:
     for event in history:
         event_type = event.get("type")
         if event_type == "TaskStateEntered":
-            resource = event.get("taskStateEnteredEventDetails", {}).get("resource")
+            resource = event.get("taskStateEnteredEventDetails", {}).get(
+                "resource"
+            )
             if resource and "lambda:" in resource:
                 # Extract function name from ARN
                 # Format: arn:aws:lambda:region:account:function:name
@@ -142,7 +144,9 @@ def extract_lambda_functions_from_history(history: List[Dict]) -> List[str]:
                     func_name = parts[6]
                     lambda_functions.add(func_name)
         elif event_type == "LambdaFunctionScheduled":
-            resource = event.get("lambdaFunctionScheduledEventDetails", {}).get("resource")
+            resource = event.get(
+                "lambdaFunctionScheduledEventDetails", {}
+            ).get("resource")
             if resource:
                 parts = resource.split(":")
                 if len(parts) >= 7:
@@ -230,7 +234,9 @@ def get_ecr_image_details(image_uri: str) -> Dict:
     return {}
 
 
-def get_lambda_image_at_time(function_name: str, execution_time: str) -> Optional[Dict]:
+def get_lambda_image_at_time(
+    function_name: str, execution_time: str
+) -> Optional[Dict]:
     """Try to determine which image was used at execution time.
 
     This checks ECR image push times relative to execution time.
@@ -275,11 +281,15 @@ def get_lambda_image_at_time(function_name: str, execution_time: str) -> Optiona
     matching_image = None
 
     if exec_dt:
-        for image in sorted(images, key=lambda x: x.get("imagePushedAt", ""), reverse=True):
+        for image in sorted(
+            images, key=lambda x: x.get("imagePushedAt", ""), reverse=True
+        ):
             pushed_at = image.get("imagePushedAt", "")
             if pushed_at:
                 try:
-                    pushed_dt = datetime.fromisoformat(pushed_at.replace("Z", "+00:00"))
+                    pushed_dt = datetime.fromisoformat(
+                        pushed_at.replace("Z", "+00:00")
+                    )
                     if pushed_dt <= exec_dt:
                         matching_image = image
                         break
@@ -288,7 +298,9 @@ def get_lambda_image_at_time(function_name: str, execution_time: str) -> Optiona
 
     # If no matching image found, use the most recent one
     if not matching_image and images:
-        matching_image = sorted(images, key=lambda x: x.get("imagePushedAt", ""), reverse=True)[0]
+        matching_image = sorted(
+            images, key=lambda x: x.get("imagePushedAt", ""), reverse=True
+        )[0]
 
     if matching_image:
         digest = matching_image.get("imageDigest", "")
@@ -333,11 +345,15 @@ def get_ecr_image_before_time(image_uri: str, before_time: str) -> Dict:
 
     # Find image pushed just before execution time
     images = result.get("imageDetails", [])
-    for image in sorted(images, key=lambda x: x.get("imagePushedAt", ""), reverse=True):
+    for image in sorted(
+        images, key=lambda x: x.get("imagePushedAt", ""), reverse=True
+    ):
         pushed_at = image.get("imagePushedAt", "")
         if pushed_at:
             try:
-                pushed_dt = datetime.fromisoformat(pushed_at.replace("Z", "+00:00"))
+                pushed_dt = datetime.fromisoformat(
+                    pushed_at.replace("Z", "+00:00")
+                )
                 if pushed_dt <= exec_dt:
                     return image
             except Exception:
@@ -394,7 +410,9 @@ def analyze_execution(execution_id: str, sf_name: str) -> Dict:
             image_uri = image_info.get("image_uri", "Unknown")
             print(f"  Image URI: {image_uri}")
             if "image_pushed_at" in image_info:
-                print(f"  Image Pushed At: {image_info.get('image_pushed_at')}")
+                print(
+                    f"  Image Pushed At: {image_info.get('image_pushed_at')}"
+                )
             if "image_digest" in image_info:
                 digest = image_info.get("image_digest", "")
                 print(f"  Image Digest: {digest[:20]}...")
@@ -403,7 +421,9 @@ def analyze_execution(execution_id: str, sf_name: str) -> Dict:
                 if tags:
                     print(f"  Image Tags: {', '.join(tags)}")
             if "last_modified" in image_info:
-                print(f"  Lambda Last Modified: {image_info.get('last_modified')}")
+                print(
+                    f"  Lambda Last Modified: {image_info.get('last_modified')}"
+                )
         else:
             print(f"  Could not determine image")
         print()
@@ -420,9 +440,9 @@ def analyze_execution(execution_id: str, sf_name: str) -> Dict:
 
 def main():
     """Main function to compare executions."""
-    print("="*80)
+    print("=" * 80)
     print("ECR Image Comparison for Step Function Executions")
-    print("="*80)
+    print("=" * 80)
 
     # Analyze successful execution
     success_data = analyze_execution(SUCCESS_EXECUTION, LINE_SF_NAME)
@@ -431,9 +451,9 @@ def main():
     failed_data = analyze_execution(FAILED_EXECUTION, LINE_SF_NAME)
 
     # Compare results
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("COMPARISON")
-    print("="*80 + "\n")
+    print("=" * 80 + "\n")
 
     if not success_data or not failed_data:
         print("ERROR: Could not analyze both executions")
@@ -450,7 +470,9 @@ def main():
 
     # Compare images for common functions
     common_funcs = success_funcs & failed_funcs
-    print(f"Comparing images for {len(common_funcs)} common Lambda functions:\n")
+    print(
+        f"Comparing images for {len(common_funcs)} common Lambda functions:\n"
+    )
 
     for func_name in sorted(common_funcs):
         print(f"{func_name}:")
@@ -463,12 +485,20 @@ def main():
         print(f"  Success execution: {success_uri}")
         print(f"  Failed execution:  {failed_uri}")
 
-        if success_uri != failed_uri and success_uri != "Unknown" and failed_uri != "Unknown":
+        if (
+            success_uri != failed_uri
+            and success_uri != "Unknown"
+            and failed_uri != "Unknown"
+        ):
             print(f"  ⚠️  DIFFERENT IMAGES!")
 
             # Extract digests for comparison
-            success_digest = success_uri.split("@")[-1] if "@" in success_uri else None
-            failed_digest = failed_uri.split("@")[-1] if "@" in failed_uri else None
+            success_digest = (
+                success_uri.split("@")[-1] if "@" in success_uri else None
+            )
+            failed_digest = (
+                failed_uri.split("@")[-1] if "@" in failed_uri else None
+            )
 
             if success_digest and failed_digest:
                 print(f"    Success digest: {success_digest[:20]}...")
@@ -480,4 +510,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -93,7 +93,9 @@ class LayoutLMInferenceCacheGenerator(ComponentResource):
         )
 
         # Convert Input[str] to Output[str] for proper resolution
-        layoutlm_training_bucket_output = Output.from_input(layoutlm_training_bucket)
+        layoutlm_training_bucket_output = Output.from_input(
+            layoutlm_training_bucket
+        )
 
         # DynamoDB access policy
         self.dynamodb_policy = aws.iam.RolePolicy(
@@ -191,7 +193,9 @@ class LayoutLMInferenceCacheGenerator(ComponentResource):
             f"{name}-image",
             dockerfile_path=dockerfile_path,
             build_context_path=build_context_path,
-            source_paths=["receipt_layoutlm"],  # Include receipt_layoutlm package
+            source_paths=[
+                "receipt_layoutlm"
+            ],  # Include receipt_layoutlm package
             lambda_function_name=lambda_function_name,
             lambda_config={
                 "role_arn": self.lambda_role.arn,
@@ -275,4 +279,3 @@ def create_layoutlm_inference_cache_generator(
 # Module-level variable to hold the cache bucket name
 # This will be set when the cache generator is created in __main__.py
 cache_bucket_name: Optional[Output[str]] = None
-

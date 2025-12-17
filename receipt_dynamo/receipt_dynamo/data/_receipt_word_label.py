@@ -471,7 +471,7 @@ class _ReceiptWordLabel(
             last_evaluated_key (Optional[Dict[str, Any]]): Key to start from
 
         Returns:
-            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: 
+            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:
                 The receipt word labels for the image and last evaluated key
         """
         if not isinstance(image_id, str):
@@ -528,7 +528,7 @@ class _ReceiptWordLabel(
             last_evaluated_key (Optional[Dict[str, Any]]): Key to start from
 
         Returns:
-            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: 
+            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:
                 The receipt word labels for the receipt and last evaluated key
         """
         if not isinstance(image_id, str):
@@ -601,8 +601,8 @@ class _ReceiptWordLabel(
             last_evaluated_key (Optional[Dict[str, Any]]): Key to start from
 
         Returns:
-            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]: 
-                The receipt word labels for the specific word and last 
+            Tuple[List[ReceiptWordLabel], Optional[Dict[str, Any]]]:
+                The receipt word labels for the specific word and last
                 evaluated key
         """
         if not isinstance(image_id, str):

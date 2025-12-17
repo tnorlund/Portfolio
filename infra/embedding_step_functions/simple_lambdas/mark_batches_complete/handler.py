@@ -49,17 +49,25 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         poll_results_s3_key = event.get("poll_results_s3_key")
         poll_results_s3_bucket = event.get("poll_results_s3_bucket")
 
-        if (not poll_results or poll_results is None) and poll_results_s3_key and poll_results_s3_bucket:
+        if (
+            (not poll_results or poll_results is None)
+            and poll_results_s3_key
+            and poll_results_s3_bucket
+        ):
             logger.info(
                 "Loading poll_results from S3: %s/%s",
                 poll_results_s3_bucket,
                 poll_results_s3_key,
             )
-            with tempfile.NamedTemporaryFile(mode="r", suffix=".json", delete=False) as tmp_file:
+            with tempfile.NamedTemporaryFile(
+                mode="r", suffix=".json", delete=False
+            ) as tmp_file:
                 tmp_file_path = tmp_file.name
 
             try:
-                s3_client.download_file(poll_results_s3_bucket, poll_results_s3_key, tmp_file_path)
+                s3_client.download_file(
+                    poll_results_s3_bucket, poll_results_s3_key, tmp_file_path
+                )
                 with open(tmp_file_path, "r", encoding="utf-8") as f:
                     poll_results = json.load(f)
                 logger.info(
@@ -93,17 +101,23 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 # Only mark batches as COMPLETED if:
                 # 1. batch_status is "completed" AND
                 # 2. action is "process_results" (not "wait", "handle_failure", etc.)
-                if batch_id and batch_status == "completed" and action == "process_results":
+                if (
+                    batch_id
+                    and batch_status == "completed"
+                    and action == "process_results"
+                ):
                     if batch_id not in batch_ids:
                         batch_ids.append(batch_id)
                 else:
                     # Track skipped batches for logging
                     if batch_id:
-                        skipped_batches.append({
-                            "batch_id": batch_id,
-                            "batch_status": batch_status,
-                            "action": action,
-                        })
+                        skipped_batches.append(
+                            {
+                                "batch_id": batch_id,
+                                "batch_status": batch_status,
+                                "action": action,
+                            }
+                        )
 
         if skipped_batches:
             logger.info(
@@ -123,7 +137,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             return {
                 "batches_marked": 0,
                 "batch_ids": [],
-                "skipped_batches": len(skipped_batches) if skipped_batches else 0,
+                "skipped_batches": (
+                    len(skipped_batches) if skipped_batches else 0
+                ),
             }
 
         logger.info(
@@ -138,7 +154,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         try:
             # Get all batch summaries in one call
-            batch_summaries = dynamo_client.get_batch_summaries_by_batch_ids(batch_ids)
+            batch_summaries = dynamo_client.get_batch_summaries_by_batch_ids(
+                batch_ids
+            )
 
             # Update status for all summaries
             for batch_summary in batch_summaries:
@@ -148,7 +166,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             # Process in chunks of 25 (DynamoDB transaction limit)
             chunk_size = 25
             for i in range(0, len(batch_summaries), chunk_size):
-                chunk = batch_summaries[i:i + chunk_size]
+                chunk = batch_summaries[i : i + chunk_size]
                 try:
                     dynamo_client.update_batch_summaries(chunk)
                     marked_count += len(chunk)
@@ -167,11 +185,18 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         try:
                             dynamo_client.update_batch_summary(batch_summary)
                             marked_count += 1
-                            logger.info("Marked batch as complete: %s", batch_summary.batch_id)
+                            logger.info(
+                                "Marked batch as complete: %s",
+                                batch_summary.batch_id,
+                            )
                         except Exception as e2:
                             error_msg = f"Failed to mark batch {batch_summary.batch_id} as complete: {str(e2)[:100]}"
                             errors.append(error_msg)
-                            logger.error("Error marking batch as complete: %s - %s", batch_summary.batch_id, str(e2))
+                            logger.error(
+                                "Error marking batch as complete: %s - %s",
+                                batch_summary.batch_id,
+                                str(e2),
+                            )
 
             # Check for any batch_ids that weren't found
             found_batch_ids = {bs.batch_id for bs in batch_summaries}
@@ -185,7 +210,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             # Fallback: if methods don't exist, try individual calls
             logger.warning(
                 "Batch methods not available, falling back to individual calls: %s",
-                str(e)
+                str(e),
             )
             for batch_id in batch_ids:
                 try:
@@ -198,7 +223,11 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 except Exception as e2:
                     error_msg = f"Failed to mark batch {batch_id} as complete: {str(e2)[:100]}"
                     errors.append(error_msg)
-                    logger.error("Error marking batch as complete: %s - %s", batch_id, str(e2))
+                    logger.error(
+                        "Error marking batch as complete: %s - %s",
+                        batch_id,
+                        str(e2),
+                    )
 
         if errors:
             logger.warning(
@@ -219,10 +248,11 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
 
     except Exception as e:
-        logger.error("Unexpected error marking batches as complete: %s", str(e))
+        logger.error(
+            "Unexpected error marking batches as complete: %s", str(e)
+        )
         return {
             "statusCode": 500,
             "error": str(e),
             "message": "Failed to mark batches as complete",
         }
-

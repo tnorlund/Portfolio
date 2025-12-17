@@ -23,8 +23,12 @@ import sys
 
 # Check Python version
 if sys.version_info >= (3, 14):
-    print("⚠️  Warning: Python 3.14+ detected. ChromaDB may have compatibility issues.")
-    print("   Consider using Python 3.12: python3.12 -m venv .venv_test_chromadb")
+    print(
+        "⚠️  Warning: Python 3.14+ detected. ChromaDB may have compatibility issues."
+    )
+    print(
+        "   Consider using Python 3.12: python3.12 -m venv .venv_test_chromadb"
+    )
     print()
 
 import os
@@ -36,23 +40,25 @@ import time
 from pathlib import Path
 
 # Set environment before any imports
-os.environ['PYTEST_RUNNING'] = '1'
+os.environ["PYTEST_RUNNING"] = "1"
 
 # Mock dependencies before importing compaction
 from unittest.mock import MagicMock
 
-sys.modules['utils'] = MagicMock()
-sys.modules['utils.logging'] = MagicMock()
+sys.modules["utils"] = MagicMock()
+sys.modules["utils.logging"] = MagicMock()
 mock_logger = MagicMock()
-sys.modules['utils.logging'].get_operation_logger = MagicMock(return_value=mock_logger)
-sys.modules['utils.logging'].get_logger = MagicMock(return_value=mock_logger)
+sys.modules["utils.logging"].get_operation_logger = MagicMock(
+    return_value=mock_logger
+)
+sys.modules["utils.logging"].get_logger = MagicMock(return_value=mock_logger)
 
-sys.modules['receipt_dynamo'] = MagicMock()
-sys.modules['receipt_dynamo.constants'] = MagicMock()
-sys.modules['receipt_dynamo.data'] = MagicMock()
-sys.modules['receipt_dynamo.data.dynamo_client'] = MagicMock()
-sys.modules['boto3'] = MagicMock()
-sys.modules['chromadb_compaction'] = MagicMock()
+sys.modules["receipt_dynamo"] = MagicMock()
+sys.modules["receipt_dynamo.constants"] = MagicMock()
+sys.modules["receipt_dynamo.data"] = MagicMock()
+sys.modules["receipt_dynamo.data.dynamo_client"] = MagicMock()
+sys.modules["boto3"] = MagicMock()
+sys.modules["chromadb_compaction"] = MagicMock()
 
 # Monkey-patch pydantic for chromadb compatibility with Python 3.14
 # This MUST happen before chromadb is imported
@@ -64,17 +70,17 @@ try:
     # Patch pydantic module to provide BaseSettings
     pydantic.BaseSettings = pydantic_settings.BaseSettings
     # Make sure it's in the module dict
-    setattr(pydantic, 'BaseSettings', pydantic_settings.BaseSettings)
+    setattr(pydantic, "BaseSettings", pydantic_settings.BaseSettings)
 
     # Pre-patch chromadb.config module before it's imported if needed
     # Only inject chromadb.config temporarily, not the entire chromadb module
     import types
 
     # Check if chromadb.config already exists (shouldn't, but be safe)
-    if 'chromadb.config' not in sys.modules:
-        chromadb_config_mock = types.ModuleType('chromadb.config')
+    if "chromadb.config" not in sys.modules:
+        chromadb_config_mock = types.ModuleType("chromadb.config")
         chromadb_config_mock.BaseSettings = pydantic_settings.BaseSettings
-        sys.modules['chromadb.config'] = chromadb_config_mock
+        sys.modules["chromadb.config"] = chromadb_config_mock
 
 except ImportError:
     print("⚠️  pydantic-settings not installed. ChromaDB may fail to import.")
@@ -85,15 +91,17 @@ except ImportError:
 try:
     # Clean up any temporary mock entries before importing chromadb
     # so the genuine package can be loaded
-    if chromadb_config_mock is not None and 'chromadb.config' in sys.modules:
+    if chromadb_config_mock is not None and "chromadb.config" in sys.modules:
         # Only remove if it's our temporary mock
-        if sys.modules['chromadb.config'] is chromadb_config_mock:
-            del sys.modules['chromadb.config']
+        if sys.modules["chromadb.config"] is chromadb_config_mock:
+            del sys.modules["chromadb.config"]
 
     import chromadb
 
     # After import, check if chromadb.config lacks BaseSettings and reapply if needed
-    if hasattr(chromadb, 'config') and not hasattr(chromadb.config, 'BaseSettings'):
+    if hasattr(chromadb, "config") and not hasattr(
+        chromadb.config, "BaseSettings"
+    ):
         try:
             chromadb.config.BaseSettings = pydantic_settings.BaseSettings
         except NameError:
@@ -101,14 +109,15 @@ try:
             pass
 except Exception as e:
     # Clean up temporary mock in exception path
-    if chromadb_config_mock is not None and 'chromadb.config' in sys.modules:
-        if sys.modules['chromadb.config'] is chromadb_config_mock:
-            del sys.modules['chromadb.config']
+    if chromadb_config_mock is not None and "chromadb.config" in sys.modules:
+        if sys.modules["chromadb.config"] is chromadb_config_mock:
+            del sys.modules["chromadb.config"]
     print(f"❌ Failed to import chromadb: {e}")
     print("   This is likely due to Python 3.14 compatibility issues.")
     print("   Try running with Python 3.12 or install pydantic-settings.")
     print(f"   Error details: {type(e).__name__}: {e}")
     import traceback
+
     traceback.print_exc()
     sys.exit(1)
 
@@ -118,8 +127,8 @@ import importlib.util
 handlers_dir = Path(__file__).parent.parent
 compaction_path = handlers_dir / "compaction.py"
 
-os.environ.setdefault('DYNAMODB_TABLE_NAME', 'test-table')
-os.environ.setdefault('CHROMADB_BUCKET', 'test-bucket')
+os.environ.setdefault("DYNAMODB_TABLE_NAME", "test-table")
+os.environ.setdefault("CHROMADB_BUCKET", "test-bucket")
 
 spec = importlib.util.spec_from_file_location("compaction", compaction_path)
 compaction_module = importlib.util.module_from_spec(spec)
@@ -138,8 +147,7 @@ def test_close_releases_file_locks():
     try:
         client = chromadb.PersistentClient(path=temp_dir)
         collection = client.get_or_create_collection(
-            name="test_collection",
-            metadata={"test": "true"}
+            name="test_collection", metadata={"test": "true"}
         )
 
         # Add test data
@@ -147,7 +155,7 @@ def test_close_releases_file_locks():
             ids=["id1", "id2", "id3"],
             embeddings=[[0.1, 0.2, 0.3], [0.4, 0.5, 0.6], [0.7, 0.8, 0.9]],
             documents=["doc1", "doc2", "doc3"],
-            metadatas=[{"key": "1"}, {"key": "2"}, {"key": "3"}]
+            metadatas=[{"key": "1"}, {"key": "2"}, {"key": "3"}],
         )
 
         assert collection.count() == 3, "Collection should have 3 items"
@@ -173,7 +181,9 @@ def test_close_releases_file_locks():
             copied_file = Path(copy_dir) / "chroma.sqlite3"
             shutil.copy2(sqlite_file, copied_file)
             assert copied_file.exists(), "Should be able to copy SQLite file"
-            assert copied_file.stat().st_size > 0, "Copied file should have content"
+            assert (
+                copied_file.stat().st_size > 0
+            ), "Copied file should have content"
             print("✅ Successfully copied SQLite file")
         finally:
             shutil.rmtree(copy_dir, ignore_errors=True)
@@ -184,8 +194,12 @@ def test_close_releases_file_locks():
         try:
             shutil.copytree(temp_dir, copy_dir, dirs_exist_ok=True)
             copy_path = Path(copy_dir)
-            assert copy_path.exists(), "Should be able to copy entire directory"
-            assert (copy_path / "chroma.sqlite3").exists(), "SQLite file should be copied"
+            assert (
+                copy_path.exists()
+            ), "Should be able to copy entire directory"
+            assert (
+                copy_path / "chroma.sqlite3"
+            ).exists(), "SQLite file should be copied"
             print("✅ Successfully copied entire directory")
         finally:
             shutil.rmtree(copy_dir, ignore_errors=True)
@@ -200,8 +214,12 @@ def test_close_releases_file_locks():
                 tar.add(temp_dir, arcname="chromadb")
 
             assert Path(tar_path).exists(), "Should be able to create tarball"
-            assert Path(tar_path).stat().st_size > 0, "Tarball should have content"
-            print(f"✅ Successfully created tarball ({Path(tar_path).stat().st_size} bytes)")
+            assert (
+                Path(tar_path).stat().st_size > 0
+            ), "Tarball should have content"
+            print(
+                f"✅ Successfully created tarball ({Path(tar_path).stat().st_size} bytes)"
+            )
 
             # Verify we can extract it
             extract_dir = tempfile.mkdtemp(prefix="chromadb_extract_")
@@ -209,8 +227,12 @@ def test_close_releases_file_locks():
                 with tarfile.open(tar_path, "r:gz") as tar:
                     tar.extractall(extract_dir)
 
-                extracted_sqlite = Path(extract_dir) / "chromadb" / "chroma.sqlite3"
-                assert extracted_sqlite.exists(), "SQLite file should be in tarball"
+                extracted_sqlite = (
+                    Path(extract_dir) / "chromadb" / "chroma.sqlite3"
+                )
+                assert (
+                    extracted_sqlite.exists()
+                ), "SQLite file should be in tarball"
                 print("✅ Successfully extracted tarball")
             finally:
                 shutil.rmtree(extract_dir, ignore_errors=True)
@@ -222,7 +244,9 @@ def test_close_releases_file_locks():
         print("\n📋 Test 1.4: New client reading from same directory...")
         new_client = chromadb.PersistentClient(path=temp_dir)
         new_collection = new_client.get_collection("test_collection")
-        assert new_collection.count() == 3, "New client should be able to read data"
+        assert (
+            new_collection.count() == 3
+        ), "New client should be able to read data"
         print("✅ New client successfully read data")
         close_chromadb_client(new_client, collection_name="test_collection")
 
@@ -232,6 +256,7 @@ def test_close_releases_file_locks():
     except Exception as e:
         print(f"\n❌ Test failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
     finally:
@@ -275,4 +300,3 @@ if __name__ == "__main__":
     else:
         print("❌ Some tests failed")
         sys.exit(1)
-

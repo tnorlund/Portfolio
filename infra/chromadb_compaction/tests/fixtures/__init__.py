@@ -34,26 +34,24 @@ from .stream_events import (
 __all__ = [
     # AWS Service Fixtures
     "mock_sqs_queues",
-    "mock_dynamodb_table", 
+    "mock_dynamodb_table",
     "mock_s3_bucket",
     "mock_chromadb_collections",
     "mock_s3_operations",
     "mock_dynamo_client",
     "aws_test_environment",
     "integration_test_environment",
-    
     # Stream Event Fixtures
     "TARGET_METADATA_UPDATE_EVENT",
-    "WORD_LABEL_UPDATE_EVENT", 
+    "WORD_LABEL_UPDATE_EVENT",
     "WORD_LABEL_REMOVE_EVENT",
     "COMPACTION_RUN_INSERT_EVENT",
     "target_event_factory",
     "word_label_event_factory",
     "compaction_run_event_factory",
-    
     # Message Schema Fixtures
     "METADATA_MESSAGE_SCHEMA",
     "LABEL_MESSAGE_SCHEMA",
-    "COMPACTION_RUN_MESSAGE_SCHEMA", 
+    "COMPACTION_RUN_MESSAGE_SCHEMA",
     "validate_message_schema",
 ]

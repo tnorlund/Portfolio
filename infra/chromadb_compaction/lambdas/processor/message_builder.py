@@ -39,7 +39,9 @@ def build_messages_from_records(
     for record in records:
         # Handle COMPACTION_RUN INSERT events (fast-path)
         if record.get("eventName") == "INSERT":
-            compaction_messages = build_compaction_run_messages(record, metrics)
+            compaction_messages = build_compaction_run_messages(
+                record, metrics
+            )
             messages.extend(compaction_messages)
         # Handle MODIFY and REMOVE events
         elif record.get("eventName") in ["MODIFY", "REMOVE"]:
@@ -239,7 +241,9 @@ def build_entity_change_message(
         new_entity = parsed_record.new_entity
 
         # Check for ChromaDB-relevant changes
-        changes = get_chromadb_relevant_changes(entity_type, old_entity, new_entity)
+        changes = get_chromadb_relevant_changes(
+            entity_type, old_entity, new_entity
+        )
 
         if metrics:
             metrics.count(
@@ -254,7 +258,9 @@ def build_entity_change_message(
 
         # Extract entity identification data and determine target collections
         entity = old_entity or new_entity
-        entity_data, target_collections = _extract_entity_data(entity_type, entity)
+        entity_data, target_collections = _extract_entity_data(
+            entity_type, entity
+        )
 
         if not entity_data or not target_collections:
             return None
@@ -340,4 +346,3 @@ def _extract_entity_data(
         return {}, []
 
     return entity_data, target_collections
-

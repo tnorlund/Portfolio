@@ -65,7 +65,9 @@ def handler(event, _):
                 "body": json.dumps(sorted_merchant_counts),
             }
         except Exception as e:
-            logger.error("Error fetching merchant counts: %s", e, exc_info=True)
+            logger.error(
+                "Error fetching merchant counts: %s", e, exc_info=True
+            )
             return {
                 "statusCode": 500,
                 "headers": {

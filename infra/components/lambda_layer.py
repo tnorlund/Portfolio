@@ -76,7 +76,9 @@ class LambdaLayer(ComponentResource):
         description: Optional[str] = None,
         needs_pillow: bool = False,
         sync_mode: Optional[bool] = None,
-        package_extras: Optional[str] = None,  # e.g., extras for optional dependencies
+        package_extras: Optional[
+            str
+        ] = None,  # e.g., extras for optional dependencies
         opts: Optional[pulumi.ResourceOptions] = None,
     ):
         super().__init__(f"lambda-layer:{name}", name, {}, opts)
@@ -486,9 +488,7 @@ echo "🎉 Parallel function updates completed!"'''
             f"{self.name}-codebuild-policy",
             role=codebuild_role.id,
             policy=pulumi.Output.all(
-                build_bucket.arn,
-                self.layer_name,
-                publish_log_group.arn
+                build_bucket.arn, self.layer_name, publish_log_group.arn
             ).apply(
                 lambda args: json.dumps(
                     {

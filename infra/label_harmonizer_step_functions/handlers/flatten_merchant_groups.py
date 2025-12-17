@@ -39,7 +39,9 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     }
     """
     execution_id = event.get("execution_id", "unknown")
-    batch_bucket = event.get("batch_bucket") or os.environ.get("BATCH_BUCKET", "")
+    batch_bucket = event.get("batch_bucket") or os.environ.get(
+        "BATCH_BUCKET", ""
+    )
     prepare_results = event.get("prepare_results", [])
 
     logger.info(
@@ -69,7 +71,9 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
             merchant_groups = json.loads(manifest_content)
             all_work_items.extend(merchant_groups)
             logger.info(
-                "Loaded %d merchant groups from %s", len(merchant_groups), manifest_key
+                "Loaded %d merchant groups from %s",
+                len(merchant_groups),
+                manifest_key,
             )
         except Exception as e:
             logger.error("Failed to read manifest %s: %s", manifest_key, e)
@@ -98,4 +102,3 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
         "work_items_manifest_s3_key": combined_manifest_key,
         "total_work_items": len(all_work_items),
     }
-
