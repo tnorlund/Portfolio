@@ -9,8 +9,12 @@ jest.mock('react-intersection-observer', () => ({
 
 const mockedUseInView = useInView as jest.MockedFunction<typeof useInView>;
 
-const ref = { current: null } as React.RefObject<Element>;
-const mockedReturn: ReturnType<typeof useInView> = [ref as any, true, undefined] as any;
+const mockRefCallback = (_node?: Element | null | undefined) => {
+  // no-op ref callback
+};
+const mockedReturn = [mockRefCallback, true, undefined] as unknown as ReturnType<
+  typeof useInView
+>;
 
 describe('useOptimizedInView', () => {
   beforeEach(() => {
