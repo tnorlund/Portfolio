@@ -1,7 +1,6 @@
 """Unit tests for StorageMode enum."""
 
 import pytest
-
 from receipt_chroma.storage import StorageMode
 
 

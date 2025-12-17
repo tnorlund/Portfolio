@@ -6,14 +6,14 @@ that will be stored in ChromaDB.
 
 from typing import Any, Dict, List, Optional, TypedDict
 
-from receipt_dynamo.constants import ValidationStatus
-from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
-
 from receipt_chroma.embedding.utils.normalize import (
     normalize_address,
     normalize_phone,
     normalize_url,
 )
+
+from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
 
 class WordMetadata(TypedDict, total=False):

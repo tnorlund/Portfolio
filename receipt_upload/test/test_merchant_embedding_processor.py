@@ -9,16 +9,16 @@ Tests the full embedding and merchant resolution pipeline:
 All external services (ChromaDB, DynamoDB, S3, OpenAI) are mocked.
 """
 
-import pytest
-from unittest.mock import MagicMock, patch
 import tempfile
+from unittest.mock import MagicMock, patch
 
-from receipt_dynamo.entities import ReceiptLine, ReceiptWord
-
+import pytest
 from receipt_upload.merchant_resolution import (
     MerchantResolvingEmbeddingProcessor,
     MerchantResult,
 )
+
+from receipt_dynamo.entities import ReceiptLine, ReceiptWord
 
 
 class TestMerchantResolvingEmbeddingProcessor:

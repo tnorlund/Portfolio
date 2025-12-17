@@ -4,14 +4,14 @@ import dataclasses
 from datetime import datetime
 
 import pytest
-from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
-from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
-
 from receipt_dynamo_stream.change_detection.detector import (
     CHROMADB_RELEVANT_FIELDS,
     get_chromadb_relevant_changes,
 )
 from receipt_dynamo_stream.models import FieldChange
+
+from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
+from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 
 def _make_metadata(**kwargs: object) -> ReceiptMetadata:

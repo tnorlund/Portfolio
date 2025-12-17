@@ -35,7 +35,6 @@ import boto3
 import yaml
 from botocore.exceptions import ClientError, NoCredentialsError
 
-
 # Configure logging
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"

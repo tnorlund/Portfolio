@@ -6,9 +6,10 @@ from typing import Any, Dict, Optional
 from unittest.mock import MagicMock
 from uuid import uuid4
 
+from receipt_dynamo_stream.models import FieldChange, StreamMessage
+
 from receipt_dynamo.constants import ChromaDBCollection
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
-from receipt_dynamo_stream.models import FieldChange, StreamMessage
 
 
 def create_metadata_message(

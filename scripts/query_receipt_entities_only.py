@@ -6,6 +6,7 @@ Query only the top-level Receipt entities from PROD DynamoDB table.
 import json
 import os
 import sys
+
 import boto3
 from boto3.dynamodb.conditions import Key
 

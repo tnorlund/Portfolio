@@ -10,7 +10,6 @@ import tempfile
 from typing import Any, Dict, List
 
 import boto3
-
 import utils.logging
 
 get_logger = utils.logging.get_logger

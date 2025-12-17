@@ -6,12 +6,12 @@ Lambda events and returns pure data (no HTTP wrapping).
 
 # Import handler modules (not functions) for lazy loading
 from . import (
-    word_polling,
-    line_polling,
     compaction,
     find_unembedded,
-    submit_openai,
+    line_polling,
     list_pending,
+    submit_openai,
+    word_polling,
 )
 
 __all__ = [

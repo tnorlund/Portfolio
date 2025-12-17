@@ -6,10 +6,11 @@ following the same patterns used in the receipt_dynamo package.
 """
 
 import os
+from unittest.mock import patch
+
 import boto3
 import pytest
-from moto import mock_aws, mock_s3, mock_sqs, mock_dynamodb
-from unittest.mock import patch
+from moto import mock_aws, mock_dynamodb, mock_s3, mock_sqs
 
 
 @pytest.fixture

@@ -14,15 +14,14 @@ import os
 from typing import Any, Dict, List, Optional
 
 import boto3
-
 from receipt_chroma import create_embeddings_and_compaction_run
-from receipt_dynamo import DynamoClient
-from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
-
 from receipt_upload.merchant_resolution.resolver import (
     MerchantResolver,
     MerchantResult,
 )
+
+from receipt_dynamo import DynamoClient
+from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
 
 logger = logging.getLogger(__name__)
 

@@ -8,11 +8,13 @@ Example:
     python scripts/agent_dataset_stats.py ReceiptsTable-dc5be22 dataset_stats.json
 """
 
-from receipt_dynamo import DynamoClient
-from receipt_layoutlm.receipt_layoutlm.data_loader import CORE_LABELS
 import json
 import sys
-from typing import Dict, Any
+from typing import Any, Dict
+
+from receipt_layoutlm.receipt_layoutlm.data_loader import CORE_LABELS
+
+from receipt_dynamo import DynamoClient
 
 
 def get_dataset_stats(table_name: str, output_file: str = None) -> Dict[str, Any]:

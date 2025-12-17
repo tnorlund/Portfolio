@@ -4,22 +4,24 @@ Routes requests to appropriate handlers based on environment configuration.
 No module-level state for better testability and clarity.
 """
 
-import os
 import logging
+import os
 from typing import Any, Dict
 
 # Import handlers when needed, not at module level
-from handlers import word_polling
-from handlers import line_polling
-from handlers import compaction
-from handlers import find_unembedded
-from handlers import submit_openai
-from handlers import list_pending
-from handlers import split_into_chunks
-from handlers import find_unembedded_words
-from handlers import submit_words_openai
-from handlers import mark_batches_complete
-from handlers import create_chunk_groups
+from handlers import (
+    compaction,
+    create_chunk_groups,
+    find_unembedded,
+    find_unembedded_words,
+    line_polling,
+    list_pending,
+    mark_batches_complete,
+    split_into_chunks,
+    submit_openai,
+    submit_words_openai,
+    word_polling,
+)
 from utils import response as response_utils
 
 # Set up logging

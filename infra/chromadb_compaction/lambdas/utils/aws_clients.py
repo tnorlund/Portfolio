@@ -4,9 +4,10 @@ Provides singleton clients for better performance and connection reuse.
 """
 
 import os
-from typing import Optional
-import boto3
 from functools import lru_cache
+from typing import Optional
+
+import boto3
 
 
 @lru_cache(maxsize=1)

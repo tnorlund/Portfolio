@@ -4,14 +4,14 @@ import math
 from unittest.mock import Mock, patch
 
 import pytest
-from receipt_dynamo.entities import Line
-
 from receipt_upload.cluster import (
     dbscan_lines,
     dbscan_lines_x_axis,
     join_overlapping_clusters,
     reorder_box_points,
 )
+
+from receipt_dynamo.entities import Line
 
 
 class TestDBSCANLines:

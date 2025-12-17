@@ -5,8 +5,9 @@ This test file verifies that the Lambda functions can be imported and
 basic functionality works with the mocked dependencies.
 """
 
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 
 def test_stream_processor_import():
@@ -32,7 +33,7 @@ def test_enhanced_compaction_handler_import():
 def test_stream_processor_execution():
     """Test that stream_processor lambda_handler can be executed."""
     from stream_processor import lambda_handler
-    
+
     # Test with empty event
     test_event = {'Records': []}
     test_context = MagicMock()
@@ -47,7 +48,7 @@ def test_stream_processor_execution():
 def test_enhanced_compaction_handler_execution():
     """Test that enhanced_compaction_handler lambda_handler can be executed."""
     from enhanced_compaction_handler import lambda_handler
-    
+
     # Test with empty event
     test_event = {'Records': []}
     test_context = MagicMock()
@@ -62,7 +63,7 @@ def test_enhanced_compaction_handler_execution():
 def test_processor_imports():
     """Test that processor module imports work."""
     try:
-        from processor import LambdaResponse, FieldChange, ParsedStreamRecord
+        from processor import FieldChange, LambdaResponse, ParsedStreamRecord
         assert LambdaResponse is not None
         assert FieldChange is not None
         assert ParsedStreamRecord is not None
@@ -75,7 +76,10 @@ def test_compaction_imports():
     """Test that compaction module imports work."""
     try:
         from compaction.models import LambdaResponse, StreamMessage
-        from compaction.operations import update_receipt_metadata, update_word_labels
+        from compaction.operations import (
+            update_receipt_metadata,
+            update_word_labels,
+        )
         assert LambdaResponse is not None
         assert StreamMessage is not None
         assert update_receipt_metadata is not None

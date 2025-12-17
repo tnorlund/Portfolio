@@ -8,9 +8,10 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 import boto3
+from receipt_layoutlm import LayoutLMInference
+
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ValidationStatus
-from receipt_layoutlm import LayoutLMInference
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)

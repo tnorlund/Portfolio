@@ -1,12 +1,13 @@
-import os
 import json
+import os
+import urllib.error
+import urllib.request
 from typing import Any, Dict, List
 
 import boto3
 import chromadb
+
 from receipt_dynamo import DynamoClient
-import urllib.request
-import urllib.error
 
 
 def build_chromadb_id(word: Dict[str, Any]) -> str:

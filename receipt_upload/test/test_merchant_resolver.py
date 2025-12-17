@@ -8,12 +8,12 @@ Tests the two-tier merchant resolution strategy:
 All external services (ChromaDB, DynamoDB, Places API) are mocked.
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
 
-from receipt_dynamo.entities import ReceiptLine, ReceiptWord
-
+import pytest
 from receipt_upload.merchant_resolution import MerchantResolver, MerchantResult
+
+from receipt_dynamo.entities import ReceiptLine, ReceiptWord
 
 
 class TestMerchantResolverTier1Phone:

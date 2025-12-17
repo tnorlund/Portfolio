@@ -21,7 +21,6 @@ from receipt_dynamo.data.shared_exceptions import (
 from receipt_dynamo.entities.job import Job
 from receipt_dynamo.entities.job_checkpoint import JobCheckpoint
 
-
 pytestmark = pytest.mark.integration
 
 

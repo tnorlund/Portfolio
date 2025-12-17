@@ -4,12 +4,13 @@ Unit tests for ChromaDB-relevant change detection.
 Tests the logic that determines which field changes require ChromaDB updates.
 """
 
-import pytest
 from datetime import datetime
 
+import pytest
+
+from receipt_dynamo.constants import ValidationMethod, ValidationStatus
 from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
-from receipt_dynamo.constants import ValidationStatus, ValidationMethod
 
 from ...lambdas.stream_processor import (
     FieldChange,

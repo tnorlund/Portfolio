@@ -35,7 +35,6 @@ except ImportError:
     sys.exit(1)
 
 import boto3
-
 from receipt_upload.cluster import reorder_box_points
 from receipt_upload.geometry import box_points, min_area_rect
 

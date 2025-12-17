@@ -4,6 +4,11 @@ from pathlib import Path
 
 import pulumi
 import pulumi_aws as aws
+from dynamo_db import dynamodb_table
+
+# Import the CodeBuildDockerImage component
+from infra.components.codebuild_docker_image import CodeBuildDockerImage
+from infra.components.lambda_layer import dynamo_layer, upload_layer
 from pulumi import (
     AssetArchive,
     ComponentResource,
@@ -22,12 +27,6 @@ from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
 from pulumi_aws.lambda_ import Function, FunctionEnvironmentArgs
 from pulumi_aws.s3 import Bucket
 from pulumi_aws.sqs import Queue
-
-from dynamo_db import dynamodb_table
-
-# Import the CodeBuildDockerImage component
-from infra.components.codebuild_docker_image import CodeBuildDockerImage
-from infra.components.lambda_layer import dynamo_layer, upload_layer
 
 config = Config("portfolio")
 openai_api_key = config.require_secret("OPENAI_API_KEY")

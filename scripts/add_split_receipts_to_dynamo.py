@@ -50,12 +50,13 @@ repo_root = Path(__file__).parent.parent
 sys.path.insert(0, str(repo_root))
 sys.path.insert(0, str(repo_root / "receipt_upload"))
 
-from receipt_dynamo import DynamoClient  # noqa: E402
-from receipt_dynamo.entities import Receipt, ReceiptLine  # noqa: E402
 from receipt_upload.utils import (  # noqa: E402
     upload_all_cdn_formats,
     upload_png_to_s3,
 )
+
+from receipt_dynamo import DynamoClient  # noqa: E402
+from receipt_dynamo.entities import Receipt, ReceiptLine  # noqa: E402
 
 
 def load_receipt_lines(base: Path, receipt_id: int) -> List[Dict]:

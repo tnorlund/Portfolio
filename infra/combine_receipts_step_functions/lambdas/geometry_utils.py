@@ -8,7 +8,6 @@ used when combining receipts.
 from typing import Any, Dict, List, Optional, Tuple
 
 from PIL import Image as PIL_Image
-
 from receipt_upload.cluster import reorder_box_points
 from receipt_upload.geometry.hull_operations import box_points, min_area_rect
 from receipt_upload.geometry.transformations import (

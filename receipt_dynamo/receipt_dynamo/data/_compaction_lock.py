@@ -10,12 +10,13 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
+from receipt_dynamo.constants import ChromaDBCollection
 from receipt_dynamo.data.base_operations import (
     DeleteRequestTypeDef,
-    FlattenedStandardMixin,
-    WriteRequestTypeDef,
-    TransactWriteItemTypeDef,
     DeleteTypeDef,
+    FlattenedStandardMixin,
+    TransactWriteItemTypeDef,
+    WriteRequestTypeDef,
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
@@ -23,7 +24,6 @@ from receipt_dynamo.data.shared_exceptions import (
     EntityNotFoundError,
     EntityValidationError,
 )
-from receipt_dynamo.constants import ChromaDBCollection
 from receipt_dynamo.entities.compaction_lock import (
     CompactionLock,
     item_to_compaction_lock,

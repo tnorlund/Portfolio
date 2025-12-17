@@ -2,11 +2,11 @@
 
 import os
 import signal
-import time
 import threading
+import time
 from contextlib import contextmanager
-from typing import Optional, Callable, Any
 from functools import wraps
+from typing import Any, Callable, Optional
 
 from .logging import get_operation_logger
 from .metrics import metrics

@@ -12,6 +12,7 @@ from typing import Any, Dict, List
 
 import boto3
 import utils.logging
+
 from receipt_dynamo.data.dynamo_client import DynamoClient
 
 get_logger = utils.logging.get_logger

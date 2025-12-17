@@ -6,8 +6,8 @@ import os
 import time
 import uuid
 from contextlib import contextmanager
-from typing import Optional
 from functools import wraps
+from typing import Optional
 
 
 class StructuredFormatter(logging.Formatter):

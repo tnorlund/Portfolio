@@ -32,6 +32,7 @@ from receipt_chroma.embedding.records import (
 )
 from receipt_chroma.s3.helpers import upload_delta_tarball
 from receipt_chroma.s3.snapshot import download_snapshot_atomic
+
 from receipt_dynamo.constants import CompactionState
 from receipt_dynamo.entities import (
     CompactionRun,
@@ -43,6 +44,7 @@ from receipt_dynamo.entities import (
 
 if TYPE_CHECKING:
     from mypy_boto3_s3 import S3Client
+
     from receipt_dynamo import DynamoClient
 
 logger = logging.getLogger(__name__)

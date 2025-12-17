@@ -3,8 +3,8 @@ Pytest configuration for handler tests.
 
 This prevents parent package imports that require Pulumi infrastructure.
 """
-import sys
 import os
+import sys
 from unittest.mock import MagicMock
 
 # Set PYTEST_RUNNING before any imports

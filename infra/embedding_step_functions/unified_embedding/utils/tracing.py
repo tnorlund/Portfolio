@@ -2,11 +2,11 @@
 
 import os
 from contextlib import contextmanager
-from typing import Optional, Dict, Any
 from functools import wraps
+from typing import Any, Dict, Optional
 
 try:
-    from aws_xray_sdk.core import xray_recorder, patch_all
+    from aws_xray_sdk.core import patch_all, xray_recorder
     from aws_xray_sdk.core.context import Context
     from aws_xray_sdk.core.models.segment import Segment
     from aws_xray_sdk.core.models.subsegment import Subsegment

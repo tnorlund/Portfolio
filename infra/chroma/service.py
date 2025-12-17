@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
-from typing import Optional
 from pathlib import Path
+from typing import Optional
 
 import pulumi
 import pulumi_aws as aws
-from pulumi import ComponentResource, ResourceOptions, Output
+
+# Import the CodeBuildDockerImage component
+from infra.components.codebuild_docker_image import CodeBuildDockerImage
+from pulumi import ComponentResource, Output, ResourceOptions
 from pulumi_aws.ecr import (
     Repository,
     RepositoryImageScanningConfigurationArgs,
 )
-
-# Import the CodeBuildDockerImage component
-from infra.components.codebuild_docker_image import CodeBuildDockerImage
 
 
 class ChromaEcsService(ComponentResource):

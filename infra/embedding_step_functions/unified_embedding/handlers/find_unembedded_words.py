@@ -6,11 +6,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 import boto3
+import utils.logging  # pylint: disable=import-error
+
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import ReceiptWord
-
-import utils.logging  # pylint: disable=import-error
 
 from ..embedding_ingest import write_ndjson
 from ..utils.env_vars import get_required_env

@@ -28,11 +28,11 @@ if sys.version_info >= (3, 14):
     print()
 
 import os
-import sys
-import tempfile
 import shutil
-import time
+import sys
 import tarfile
+import tempfile
+import time
 from pathlib import Path
 
 # Set environment before any imports
@@ -58,8 +58,9 @@ sys.modules['chromadb_compaction'] = MagicMock()
 # This MUST happen before chromadb is imported
 chromadb_config_mock = None
 try:
-    import pydantic_settings
     import pydantic
+    import pydantic_settings
+
     # Patch pydantic module to provide BaseSettings
     pydantic.BaseSettings = pydantic_settings.BaseSettings
     # Make sure it's in the module dict
@@ -68,6 +69,7 @@ try:
     # Pre-patch chromadb.config module before it's imported if needed
     # Only inject chromadb.config temporarily, not the entire chromadb module
     import types
+
     # Check if chromadb.config already exists (shouldn't, but be safe)
     if 'chromadb.config' not in sys.modules:
         chromadb_config_mock = types.ModuleType('chromadb.config')
@@ -112,6 +114,7 @@ except Exception as e:
 
 # Load compaction module directly
 import importlib.util
+
 handlers_dir = Path(__file__).parent.parent
 compaction_path = handlers_dir / "compaction.py"
 

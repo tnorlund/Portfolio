@@ -25,12 +25,12 @@ Usage:
     result = processor.process_embeddings(image_id, receipt_id, lines, words)
 """
 
+from receipt_upload.merchant_resolution.embedding_processor import (
+    MerchantResolvingEmbeddingProcessor,
+)
 from receipt_upload.merchant_resolution.resolver import (
     MerchantResolver,
     MerchantResult,
-)
-from receipt_upload.merchant_resolution.embedding_processor import (
-    MerchantResolvingEmbeddingProcessor,
 )
 
 __all__ = [

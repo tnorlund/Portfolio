@@ -7,15 +7,15 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import pulumi
+
+# Import the CodeBuildDockerImage component
+from infra.components.codebuild_docker_image import CodeBuildDockerImage
 from pulumi import ComponentResource, Output, ResourceOptions
 from pulumi_aws.ecr import (
     LifecyclePolicy,
     Repository,
     RepositoryImageScanningConfigurationArgs,
 )
-
-# Import the CodeBuildDockerImage component
-from infra.components.codebuild_docker_image import CodeBuildDockerImage
 
 
 class DockerImageComponent(ComponentResource):

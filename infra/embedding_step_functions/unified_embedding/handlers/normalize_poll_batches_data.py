@@ -17,7 +17,6 @@ import tempfile
 from typing import Any, Dict
 
 import boto3
-
 import utils.logging
 
 get_logger = utils.logging.get_logger

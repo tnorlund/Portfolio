@@ -1,7 +1,6 @@
 """Unit tests for delta parsing functions."""
 
 import pytest
-
 from receipt_chroma.embedding.delta.line_delta import (
     _parse_metadata_from_line_id,
 )

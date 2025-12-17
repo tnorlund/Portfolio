@@ -47,7 +47,6 @@ except ImportError:
 import copy
 
 import boto3
-
 from receipt_upload.cluster import reorder_box_points
 from receipt_upload.geometry import box_points, invert_affine, min_area_rect
 from receipt_upload.geometry.transformations import invert_warp

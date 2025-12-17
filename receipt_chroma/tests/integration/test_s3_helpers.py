@@ -6,7 +6,6 @@ from pathlib import Path
 import boto3
 import pytest
 from moto import mock_aws
-
 from receipt_chroma.s3.helpers import (
     download_snapshot_from_s3,
     upload_snapshot_with_hash,

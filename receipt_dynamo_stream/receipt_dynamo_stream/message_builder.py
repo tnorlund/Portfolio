@@ -13,9 +13,6 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Iterable, Mapping, Optional, Protocol, cast
 
-from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
-from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
-
 from receipt_dynamo_stream.change_detection import (
     get_chromadb_relevant_changes,
 )
@@ -26,6 +23,9 @@ from receipt_dynamo_stream.parsing import (
     parse_compaction_run,
     parse_stream_record,
 )
+
+from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
+from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 logger = logging.getLogger(__name__)
 

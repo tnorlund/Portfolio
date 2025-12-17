@@ -30,11 +30,12 @@ from PIL import ImageDraw, ImageFont
 repo_root = Path(__file__).parent.parent
 sys.path.insert(0, str(repo_root))
 sys.path.insert(0, str(repo_root / "receipt_upload"))
-from receipt_dynamo import DynamoClient  # type: ignore
 from receipt_upload.geometry.transformations import (  # type: ignore
     find_perspective_coeffs,
     invert_warp,
 )
+
+from receipt_dynamo import DynamoClient  # type: ignore
 from scripts.split_receipt import setup_environment  # type: ignore
 
 

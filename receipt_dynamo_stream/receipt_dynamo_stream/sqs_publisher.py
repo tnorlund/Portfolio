@@ -12,7 +12,6 @@ import os
 from typing import Any, Iterable, Mapping, Optional, Protocol, cast
 
 import boto3
-
 from receipt_dynamo_stream.models import ChromaDBCollection, StreamMessage
 
 logger = logging.getLogger(__name__)
