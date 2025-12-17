@@ -431,6 +431,7 @@ class CombineReceiptsStepFunction(ComponentResource):
             build_context_path=".",
             source_paths=[
                 "receipt_dynamo",
+                "receipt_dynamo_stream",
                 "receipt_chroma",
                 "receipt_agent",
                 "receipt_places",
