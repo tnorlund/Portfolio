@@ -45,7 +45,7 @@ jobs:
                   swift package resolve
 
             - name: Cache Swift packages
-              uses: actions/cache@v4
+              uses: actions/cache@v5
               with:
                   path: receipt_ocr_swift/.build
                   key: ${{ runner.os }}-spm-${{ hashFiles('receipt_ocr_swift/Package.resolved') }}
