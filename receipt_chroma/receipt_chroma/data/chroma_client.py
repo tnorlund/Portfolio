@@ -61,24 +61,67 @@ class ChromaClient:
     """
     ChromaDB client with proper resource management.
 
-    This client implements:
-    - Context manager support for automatic cleanup
-    - Explicit close() method to release SQLite connections
-    - Proper handling of file locks to prevent corruption
+    IMPORTANT: This client MUST be used with context managers (with statement)
+    or explicit close() in try/finally blocks. Failure to do so causes:
+    - File handle leaks
+    - Database corruption
+    - Test flakiness under parallel execution (pytest-xdist)
+    - S3 upload failures when uploading ChromaDB files
 
-    Usage:
-        # As context manager (recommended)
+    Root cause: ChromaDB issue #5868
+    https://github.com/chroma-core/chroma/issues/5868
+    ChromaDB does not expose a public close() method, leaving SQLite connections
+    and file handles open. This client implements proper cleanup by:
+    1. Accessing internal SQLite connections
+    2. Forcing garbage collection (3 passes)
+    3. Sleeping 0.5s to allow OS to release file handles
+    4. Marking client as unusable after close
+
+    This cleanup must happen at clear resource boundaries - context managers
+    provide this automatically.
+
+    Recommended Usage (ALWAYS USE THIS):
+        # Context manager - guarantees cleanup even if exception occurs
         with ChromaClient(persist_directory="/path/to/db") as client:
             collection = client.get_collection("my_collection")
-            # ... use collection ...
+            client.upsert(...)
+        # Cleanup happens automatically here via __exit__
 
-        # Manual management
+    Acceptable Usage (only if context manager not possible):
+        # Manual management - less safe, must always be in try/finally
         client = ChromaClient(persist_directory="/path/to/db")
         try:
             collection = client.get_collection("my_collection")
-            # ... use collection ...
+            client.upsert(...)
         finally:
-            client.close()
+            client.close()  # MUST call close() in finally block
+
+    NEVER DO THIS (causes test flakiness):
+        client = ChromaClient(...)
+        client.upsert(...)
+        client.close()
+        time.sleep(0.1)  # WRONG - ChromaClient.close() already sleeps 0.5s
+        os.walk(persist_directory)  # May find incomplete files
+
+    NEVER DO THIS (causes file handle leaks):
+        client = ChromaClient(...)
+        client.upsert(...)
+        # Forgot to close - file handles stay open, database corrupts
+
+    For tests: Use context managers in sequence, not nested:
+        # RIGHT - clear boundaries
+        with ChromaClient(...) as client1:
+            client1.upsert(...)
+        # client1 fully closed here
+
+        with ChromaClient(...) as client2:
+            client2.upsert(...)
+        # client2 fully closed here
+
+        # WRONG - nested clients competing for resources
+        with ChromaClient(...) as client1:
+            with ChromaClient(...) as client2:
+                # May cause file lock contention
     """
 
     def __init__(  # pylint: disable=too-many-positional-arguments
@@ -218,12 +261,38 @@ class ChromaClient:
         """
         Close the ChromaDB client and release all resources.
 
-        This method properly closes SQLite connections and releases file locks.
-        It's critical to call this before uploading ChromaDB files to S3 or
-        performing other file operations.
+        CRITICAL: This method must be called before:
+        - Uploading ChromaDB files to S3
+        - Switching between read/write modes
+        - Running in parallel tests (pytest-xdist)
+        - Accessing files with os.walk() or similar
 
-        This addresses the issue described in:
+        Why close() is complex (see ChromaDB issue #5868):
         https://github.com/chroma-core/chroma/issues/5868
+
+        ChromaDB does not expose a public close() method. This implementation:
+        1. Clears collection cache to release references
+        2. Accesses internal _client to close SQLite connections directly
+        3. Forces 3 GC passes to clear circular references
+        4. Sleeps 0.5s to allow OS to release file handles
+
+        Each of these steps is necessary:
+        - Step 1: Allows Step 2 to work by removing Python references
+        - Step 2: Closes SQLite's internal file handles
+        - Step 3: Clears Python's reference tracking (chromadb has circular refs)
+        - Step 4: Gives OS time to release actual file descriptors
+
+        Without all steps, file locks remain and cause:
+        - "File is locked" errors when uploading to S3
+        - Test flakiness in parallel execution
+        - Database corruption
+
+        DO NOT add extra time.sleep() calls in test code. The 0.5s delay
+        in this method is carefully tuned. Adding test-level delays creates
+        cascading waits that cause slow, flaky tests.
+
+        ALWAYS use context managers (with statement) instead of calling this
+        directly. The __exit__ method calls close() automatically.
 
         After calling close(), the client cannot be used again. Create a new
         instance if you need to use ChromaDB again.

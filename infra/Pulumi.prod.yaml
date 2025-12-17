@@ -22,7 +22,7 @@ config:
   portfolio:vpcCidr: 10.20.0.0/16
   portfolio:PINECONE_API_KEY:
     secure: AAABANdW1oCKVnvnDvAqcO2g53fAPtzYXWNfnFQF9xIe8WDFZ3QKHfjcCoC6c5fLFRikzt9yQepRE4/lb+dBi/S62g5jRWozGWsYUuBGc2Kh6eYcWUQBZ8QHsopksZW3iEqZxvfxlcVOyp8=
-  lambda-layer:sync-mode: "true"
+  lambda-layer:sync-mode: "false"
   portfolio:notification_emails:
     - "tnorlund@icloud.com" # Replace with your actual email address for production alerts
   portfolio:use-static-base-image: "false" # Use content-based tags for production
