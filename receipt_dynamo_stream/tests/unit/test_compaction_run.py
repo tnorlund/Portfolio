@@ -1,4 +1,5 @@
 """Comprehensive unit tests for compaction_run parsing module."""
+
 from typing import Any, Dict, Optional
 
 import pytest
@@ -8,7 +9,6 @@ from receipt_dynamo_stream.parsing.compaction_run import (
     is_embeddings_completed,
     parse_compaction_run,
 )
-
 
 # Test is_compaction_run
 
