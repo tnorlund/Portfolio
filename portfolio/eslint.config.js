@@ -75,7 +75,7 @@ module.exports = [
     },
     settings: {
       react: {
-        version: "19.2",
+        version: "detect",
       },
     },
     rules: {
@@ -117,7 +117,7 @@ module.exports = [
     },
     settings: {
       react: {
-        version: "19.2",
+        version: "detect",
       },
     },
     rules: {
