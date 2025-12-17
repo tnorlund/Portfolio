@@ -269,7 +269,7 @@ def lock_manager_words(dynamo_client):
 
 
 @pytest.fixture
-def mock_s3_bucket_compaction(request):
+def mock_s3_bucket_compaction():
     """Create a mock S3 bucket for compaction testing.
 
     Uses explicit mock_aws start/stop pattern to ensure proper isolation
