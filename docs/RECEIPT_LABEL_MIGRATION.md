@@ -39,7 +39,7 @@ The `receipt_label` package was a monolithic Python module that served as a catc
 ### Infrastructure
 
 - **Lambda Layer**: `receipt_label` was deployed as a Lambda layer to reduce function size
-- **Docker Containers**: Multiple Step Functions used `receipt_label` in containerized environments
+- **Docker containers**: Multiple Step Functions used `receipt_label` in containerized environments
 - **Dependencies**: Depended on external APIs and processing libraries
 
 ## Why the Monolithic Approach Failed
@@ -86,7 +86,7 @@ This made it hard to reason about dependencies and update individual features.
 
 ### New Package Structure
 
-```
+```text
 receipt_dynamo          → Core data model and DynamoDB operations
 receipt_dynamo_stream   → DynamoDB Streams integration
 receipt_chroma          → Vector embeddings and ChromaDB operations

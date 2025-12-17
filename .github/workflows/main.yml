@@ -233,12 +233,6 @@ jobs:
               "pytest>=8.3.0,<10.0.0" "pytest-mock>=3.14.0,<4.0.0" "pytest-cov>=6.1.0,<7.0.0" \
               "pytest-xdist>=3.6.0,<4.0.0" "pytest-timeout>=2.1.0,<3.0.0" "moto>=5.1.0,<6.0.0" \
               --disable-pip-version-check
-          elif [[ "${{ matrix.package }}" != "receipt_dynamo" ]]; then
-            echo "Installing receipt_dynamo dependency from PR source..."
-            python3 -m pip install --force-reinstall -e "receipt_dynamo[test]" --disable-pip-version-check
-            # Install the target package from PR source with all test dependencies
-            echo "Installing ${{ matrix.package }} from PR source..."
-            python3 -m pip install --force-reinstall -e "${{ matrix.package }}[test]" --disable-pip-version-check
           else
             # receipt_dynamo package - just install it directly
             echo "Installing ${{ matrix.package }} from PR source..."
