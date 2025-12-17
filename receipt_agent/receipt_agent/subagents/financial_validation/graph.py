@@ -42,8 +42,7 @@ You're given a receipt with text and labels. Your job is to:
 1. Detect currency from receipt text
 2. Extract financial values (grand total, subtotal, tax, line items)
 3. Validate financial math:
-   - Grand Total ≈ Subtotal + Tax + Fees - Discounts
-     (with tolerance for rounding)
+   - Grand Total ≈ Subtotal + Tax (with tolerance for rounding)
    - Subtotal ≈ Sum of all LINE_TOTAL values
    - Line Items: QUANTITY × UNIT_PRICE ≈ LINE_TOTAL
 4. Identify which labels are incorrect or missing
@@ -60,8 +59,7 @@ You're given a receipt with text and labels. Your job is to:
 
 ## Validation Rules
 
-- Grand Total = Subtotal + Tax + Fees - Discounts
-  (tolerance: 0.01 for rounding)
+- Grand Total = Subtotal + Tax (tolerance: 0.01 for rounding)
 - Subtotal = Sum of all LINE_TOTAL values (tolerance: 0.01)
 - Line Items: QUANTITY × UNIT_PRICE ≈ LINE_TOTAL (tolerance: 0.01)
 - All amounts must use same currency
@@ -448,4 +446,3 @@ async def run_financial_validation(
         "issues": [],
         "corrections": result_data.get("corrections", []),
     }
-

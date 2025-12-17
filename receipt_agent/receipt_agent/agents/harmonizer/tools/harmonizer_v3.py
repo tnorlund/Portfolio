@@ -365,10 +365,10 @@ class MerchantHarmonizerV3:
             for group in self._place_id_groups.values():
                 group.is_consistent = self._is_group_consistent(group)
 
-                logger.info(
-                    f"Loaded {total} receipts for "
-                    f"{len(self._place_id_groups)} place_id group(s)"
-                )
+            logger.info(
+                f"Loaded {total} receipts for "
+                f"{len(self._place_id_groups)} place_id group(s)"
+            )
 
         except Exception:
             logger.exception("Failed to load receipts for place_ids")

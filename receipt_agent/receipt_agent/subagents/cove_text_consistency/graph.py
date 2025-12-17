@@ -769,10 +769,12 @@ def create_cove_tools(
                 # Smart truncation: adjust based on total context used so far
                 # Estimate remaining capacity and truncate if needed
                 text_length = len(formatted_text)
-                remaining_capacity = COVE_MAX_TOTAL_CHARS - total_chars_so_far
+                remaining_capacity = (
+                    COVE_MAX_TOTAL_CHARS - total_chars_so_far
+                )
 
-        # Reserve space for other receipts in batch
-        # (estimate 500 chars each)
+                # Reserve space for other receipts in batch
+                # (estimate 500 chars each)
                 remaining_receipts = (
                     len(receipts_to_process) - len(results) - 1
                 )
@@ -1122,18 +1124,15 @@ def create_cove_text_consistency_graph(
                 if last_message.tool_calls:
                     return "tools"
                 # Give it another chance if no tool calls
-                        if len(state.messages) > 10:
-                            logger.warning(
-                                (
-                                    "CoVe agent has made many steps and "
-                                    "still has not submitted -"
-                                    " may need reminder"
-                                )
-                            )
-                if len(state.messages) > 20:
-                    logger.error("CoVe agent exceeded 20 steps - forcing end")
-                    return "end"
-                return "agent"
+                if len(state.messages) > 10:
+                    logger.warning(
+                        "CoVe agent has made many steps and "
+                        "still has not submitted - may need reminder"
+                    )
+            if len(state.messages) > 20:
+                logger.error("CoVe agent exceeded 20 steps - forcing end")
+                return "end"
+            return "agent"
 
         return "agent"
 

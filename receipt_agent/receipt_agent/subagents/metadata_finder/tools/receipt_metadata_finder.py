@@ -415,8 +415,8 @@ class ReceiptMetadataFinder:
                             ),
                         )
 
-                    self._receipts_with_missing_metadata.append(receipt)
-                    total += 1
+                        self._receipts_with_missing_metadata.append(receipt)
+                        total += 1
 
                 if not last_key:
                     break
@@ -529,29 +529,29 @@ class ReceiptMetadataFinder:
                         or "disconnected" in error_str.lower()
                     )
 
-                    if is_retryable and attempt < max_retries - 1:
-                        logger.warning(
-                            (
-                                "Retryable error for "
-                                f"{receipt.image_id}#{receipt.receipt_id} "
-                                f"(attempt {attempt + 1}/{max_retries}): "
-                                f"{error_str[:100]}"
+                        if is_retryable and attempt < max_retries - 1:
+                            logger.warning(
+                                (
+                                    "Retryable error for "
+                                    f"{receipt.image_id}#{receipt.receipt_id} "
+                                    f"(attempt {attempt + 1}/{max_retries}): "
+                                    f"{error_str[:100]}"
+                                )
                             )
-                        )
-                        await asyncio.sleep(retry_delay * (attempt + 1))
-                        continue
-                    else:
-                        # Give up on this receipt but continue
-                        # processing others
-                        logger.error(
-                            "Giving up on %s#%s after %d attempts: %s",
-                            receipt.image_id,
-                            receipt.receipt_id,
-                            attempt + 1,
-                            error_str[:200],
-                        )
-                        break  # Fall through to record match.error /
-                        # total_errors
+                            await asyncio.sleep(retry_delay * (attempt + 1))
+                            continue
+                        else:
+                            # Give up on this receipt but continue
+                            # processing others
+                            logger.error(
+                                "Giving up on %s#%s after %d attempts: %s",
+                                receipt.image_id,
+                                receipt.receipt_id,
+                                attempt + 1,
+                                error_str[:200],
+                            )
+                        # Fall through to record match.error / total_errors
+                        break
 
             # Convert agent result to MetadataMatch
             match = MetadataMatch(receipt=receipt)
@@ -900,12 +900,10 @@ class ReceiptMetadataFinder:
                     result.total_updated += 1
 
                     logger.debug(
-                            (
-                                "Updated "
-                                f"{match.receipt.image_id[:8]}..."
-                                f"#{match.receipt.receipt_id}: "
-                                f"{', '.join(updated_fields)}"
-                            )
+                        "Updated "
+                        f"{match.receipt.image_id[:8]}..."
+                        f"#{match.receipt.receipt_id}: "
+                        f"{', '.join(updated_fields)}"
                     )
                 else:
                     result.total_skipped += 1
