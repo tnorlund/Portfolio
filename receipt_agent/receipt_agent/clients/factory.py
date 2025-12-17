@@ -67,8 +67,9 @@ def create_chroma_client(
     - Line embeddings (collection: "lines")
     - Word embeddings (collection: "words")
 
-    If RECEIPT_AGENT_CHROMA_LINES_DIRECTORY and RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY
-    are set, creates separate clients for each collection and returns a DualChromaClient.
+    If RECEIPT_AGENT_CHROMA_LINES_DIRECTORY and
+    RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY are set, creates separate clients
+    for each collection and returns a DualChromaClient.
 
     Args:
         persist_directory: Local path to ChromaDB (defaults to settings)
@@ -77,7 +78,8 @@ def create_chroma_client(
         settings: Configuration settings
 
     Returns:
-        ChromaClient instance from receipt_chroma, or DualChromaClient if separate directories are set
+        ChromaClient instance from receipt_chroma, or DualChromaClient if
+        separate directories are set
     """
     import os
 
@@ -102,42 +104,66 @@ def create_chroma_client(
 
             # Create DualChromaClient wrapper
             class DualChromaClient:
-                """Wrapper client that routes queries to separate lines/words clients."""
+                """Routes queries to separate line and word clients."""
 
                 def __init__(self, lines_client, words_client):
                     self.lines_client = lines_client
                     self.words_client = words_client
 
                 def query(self, collection_name, **kwargs):
-                    """Route query to the appropriate client based on collection_name."""
+                    """Route query based on collection_name."""
                     if collection_name == "lines":
-                        return self.lines_client.query(collection_name="lines", **kwargs)
+                        return self.lines_client.query(
+                            collection_name="lines",
+                            **kwargs,
+                        )
                     elif collection_name == "words":
-                        return self.words_client.query(collection_name="words", **kwargs)
+                        return self.words_client.query(
+                            collection_name="words",
+                            **kwargs,
+                        )
                     else:
-                        raise ValueError(f"Unknown collection: {collection_name}")
+                        raise ValueError(
+                            f"Unknown collection: {collection_name}"
+                        )
 
                 def get(self, collection_name, **kwargs):
-                    """Route get to the appropriate client based on collection_name."""
+                    """Route get based on collection_name."""
                     if collection_name == "lines":
-                        return self.lines_client.get(collection_name="lines", **kwargs)
+                        return self.lines_client.get(
+                            collection_name="lines",
+                            **kwargs,
+                        )
                     elif collection_name == "words":
-                        return self.words_client.get(collection_name="words", **kwargs)
+                        return self.words_client.get(
+                            collection_name="words",
+                            **kwargs,
+                        )
                     else:
-                        raise ValueError(f"Unknown collection: {collection_name}")
+                        raise ValueError(
+                            f"Unknown collection: {collection_name}"
+                        )
 
                 def list_collections(self):
                     """Return both collections."""
                     return ["lines", "words"]
 
                 def get_collection(self, collection_name, **kwargs):
-                    """Route get_collection to the appropriate client."""
+                    """Route get_collection based on collection_name."""
                     if collection_name == "lines":
-                        return self.lines_client.get_collection("lines", **kwargs)
+                        return self.lines_client.get_collection(
+                            "lines",
+                            **kwargs,
+                        )
                     elif collection_name == "words":
-                        return self.words_client.get_collection("words", **kwargs)
+                        return self.words_client.get_collection(
+                            "words",
+                            **kwargs,
+                        )
                     else:
-                        raise ValueError(f"Unknown collection: {collection_name}")
+                        raise ValueError(
+                            f"Unknown collection: {collection_name}"
+                        )
 
                 def __enter__(self):
                     if hasattr(self.lines_client, "__enter__"):
@@ -186,8 +212,10 @@ def create_chroma_client(
         else:
             raise ValueError(
                 "Either persist_directory or http_url must be specified. "
-                "Set RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY, RECEIPT_AGENT_CHROMA_HTTP_URL, "
-                "or RECEIPT_AGENT_CHROMA_LINES_DIRECTORY + RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"
+                "Set RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY, "
+                "RECEIPT_AGENT_CHROMA_HTTP_URL, or "
+                "RECEIPT_AGENT_CHROMA_LINES_DIRECTORY + "
+                "RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"
             )
 
         return client
@@ -326,7 +354,9 @@ def create_embed_fn(
         return embed_fn
 
     except ImportError as e:
-        logger.error("Failed to import openai. Install with: pip install openai")
+        logger.error(
+            "Failed to import openai. Install with: pip install openai"
+        )
         raise ImportError("openai package required for embeddings") from e
 
 
@@ -346,7 +376,8 @@ def create_all_clients(
         settings: Configuration settings
 
     Returns:
-        Dictionary with keys: dynamo_client, chroma_client, places_api, embed_fn
+        Dictionary with keys: dynamo_client, chroma_client, places_api,
+        embed_fn
     """
     if settings is None:
         settings = get_settings()
@@ -364,4 +395,3 @@ def create_all_clients(
         "places_api": places,
         "embed_fn": embed_fn,
     }
-

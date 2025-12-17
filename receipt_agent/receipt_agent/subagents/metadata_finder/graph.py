@@ -1,7 +1,8 @@
 """
 Receipt Metadata Finder Sub-Agent Graph
 
-Graph creation and execution functions for the receipt metadata finder workflow.
+Graph creation and execution functions for the receipt metadata finder
+workflow.
 """
 
 import logging
@@ -37,11 +38,12 @@ def _build_line_id(image_id: str, receipt_id: int, line_id: int) -> str:
 logger = logging.getLogger(__name__)
 
 
-# ==============================================================================
+# ======================================================================
 # System Prompt
-# ==============================================================================
+# ======================================================================
 
-RECEIPT_METADATA_FINDER_PROMPT = """You are a receipt metadata finder. Your job is to find ALL missing metadata for a receipt, not just the place_id.
+RECEIPT_METADATA_FINDER_PROMPT = """You are a receipt metadata finder.
+Your job is to find ALL missing metadata for a receipt, not just the place_id.
 
 ## Your Task
 
@@ -60,13 +62,18 @@ Find complete metadata for this receipt:
 - `get_receipt_text`: View formatted receipt text (receipt order, grouped rows)
 
 ### Similarity Search Tools (find matching receipts)
-- `find_similar_to_my_line`: Use one of YOUR line embeddings to find similar lines elsewhere
-- `find_similar_to_my_word`: Use one of YOUR word embeddings to find similar words elsewhere
-- `search_lines`: Search by arbitrary text (address, phone, merchant name, etc.)
-- `search_words`: Search for specific labeled words (MERCHANT_NAME, ADDRESS, PHONE)
+- `find_similar_to_my_line`: Use one of YOUR line embeddings to find similar
+  lines elsewhere
+- `find_similar_to_my_word`: Use one of YOUR word embeddings to find similar
+  words elsewhere
+- `search_lines`: Search by arbitrary text (address, phone, merchant name,
+  etc.)
+- `search_words`: Search for specific labeled words (MERCHANT_NAME, ADDRESS,
+  PHONE)
 
 ### Aggregation Tools (understand consensus)
-- `get_merchant_consensus`: Get canonical data for a merchant based on all receipts
+- `get_merchant_consensus`: Get canonical data for a merchant based on all
+  receipts
 - `get_place_id_info`: Get all receipts using a specific Place ID
 
 ### Google Places Tools (Source of Truth)
@@ -76,11 +83,14 @@ Find complete metadata for this receipt:
   - merchant_name: Text search as fallback
   - place_id: If you find a candidate place_id to verify
 - `find_businesses_at_address`: Find businesses at a specific address
-  - **CRITICAL: Use this when Google Places returns an address as the merchant name**
-  - **NEVER accept an address (e.g., "10601 Magnolia Blvd") as a merchant name**
+  - **CRITICAL: Use this when Google Places returns an address as the
+    merchant name**
+  - **NEVER accept an address (e.g., "10601 Magnolia Blvd") as a merchant
+    name**
 
 ### Decision Tool (REQUIRED at the end)
-- `submit_metadata`: Submit ALL metadata you found (place_id, merchant_name, address, phone)
+- `submit_metadata`: Submit ALL metadata you found (place_id, merchant_name,
+  address, phone)
 
 ## Strategy
 
@@ -99,7 +109,8 @@ Find complete metadata for this receipt:
 
 3. **Fill in missing fields**:
    - If place_id is missing: Search Google Places API
-   - If merchant_name is missing: Extract from receipt or get from Google Places
+   - If merchant_name is missing: Extract from receipt or get from Google
+     Places
    - If address is missing: Extract from receipt or get from Google Places
    - If phone is missing: Extract from receipt or get from Google Places
 
@@ -117,7 +128,8 @@ Find complete metadata for this receipt:
 
 6. **Handle address-like merchant names** (CRITICAL):
    - **NEVER accept an address as a merchant name**
-   - If Google Places returns an address as the name, use `find_businesses_at_address`
+   - If Google Places returns an address as the name, use
+     `find_businesses_at_address`
    - Match business names with receipt content
 
 7. **Submit your findings**:
@@ -128,7 +140,8 @@ Find complete metadata for this receipt:
 
 ## Important Rules
 
-1. ALWAYS start by getting receipt content (get_my_metadata, get_my_lines, get_my_words)
+1. ALWAYS start by getting receipt content (get_my_metadata, get_my_lines,
+   get_my_words)
 2. Extract metadata from receipt FIRST (it's the most reliable source)
 3. Use Google Places to find place_id and validate/fill in other fields
 4. **NEVER accept an address as a merchant name**
@@ -138,7 +151,8 @@ Find complete metadata for this receipt:
 ## Field Priority
 
 For each field, use this priority:
-1. **Receipt content** (labels, lines) - Most reliable, comes from the receipt itself
+1. **Receipt content** (labels, lines) - Most reliable, comes from the receipt
+   itself
 2. **Google Places** - Official source, use for validation and missing fields
 3. **Similar receipts** - Verification only, may be wrong
 
@@ -150,12 +164,13 @@ When you submit metadata, ALL fields you provide will be used:
 - `address` ← From receipt or Google Places
 - `phone_number` ← From receipt or Google Places
 
-Begin by examining the receipt content, then systematically find all missing metadata."""
+Begin by examining the receipt content, then systematically find all missing
+metadata."""
 
 
-# ==============================================================================
+# ======================================================================
 # Metadata Submission Tool
-# ==============================================================================
+# ======================================================================
 
 
 def create_metadata_submission_tool(state_holder: dict):
@@ -188,18 +203,30 @@ def create_metadata_submission_tool(state_holder: dict):
         )
         field_confidence: dict[str, float] = Field(
             default_factory=dict,
-            description="Confidence for each field: {'place_id': 0.9, 'merchant_name': 0.95, ...}",
+            description=(
+                "Confidence for each field: {'place_id': 0.9, "
+                "'merchant_name': 0.95, ...}"
+            ),
         )
         reasoning: str = Field(
-            description="Explanation of how you found the metadata and why you're confident"
+            description=(
+                "Explanation of how you found the metadata and why you're "
+                "confident"
+            )
         )
         sources: dict[str, str] = Field(
             default_factory=dict,
-            description="Source for each field: {'place_id': 'google_places', 'merchant_name': 'receipt_content', ...}",
+            description=(
+                "Source for each field: {'place_id': 'google_places', "
+                "'merchant_name': 'receipt_content', ...}"
+            ),
         )
         search_methods_used: list[str] = Field(
             default_factory=list,
-            description="List of search methods used (phone, address, text, similar_receipts, etc.)",
+            description=(
+                "List of search methods used (phone, address, text, "
+                "similar_receipts, etc.)"
+            ),
         )
 
     @tool(args_schema=SubmitMetadataInput)
@@ -217,7 +244,8 @@ def create_metadata_submission_tool(state_holder: dict):
         """
         Submit ALL metadata you found for this receipt.
 
-        Call this when you've found metadata (or determined what can't be found).
+        Call this when you've found metadata (or determined what can't be
+        found).
         This ends the workflow.
 
         Args:
@@ -228,7 +256,8 @@ def create_metadata_submission_tool(state_holder: dict):
             confidence: Overall confidence (0.0 to 1.0)
             field_confidence: Confidence for each field
             reasoning: How you found the metadata
-            sources: Source for each field (receipt_content, google_places, similar_receipts)
+            sources: Source for each field (receipt_content,
+                google_places, similar_receipts)
             search_methods_used: Methods you used (phone, address, text, etc.)
         """
         if field_confidence is None:
@@ -281,9 +310,9 @@ def create_metadata_submission_tool(state_holder: dict):
     return submit_metadata
 
 
-# ==============================================================================
+# ======================================================================
 # Workflow Builder
-# ==============================================================================
+# ======================================================================
 
 
 def create_receipt_metadata_finder_graph(
@@ -299,11 +328,14 @@ def create_receipt_metadata_finder_graph(
 
     Args:
         dynamo_client: DynamoDB client
-        chroma_client: ChromaDB client (may be None, will be lazy-loaded if bucket provided)
-        embed_fn: Function to generate embeddings (may be None, will be lazy-loaded if bucket provided)
+        chroma_client: ChromaDB client (may be None, will be
+            lazy-loaded if bucket provided)
+        embed_fn: Function to generate embeddings (may be None, will be
+            lazy-loaded if bucket provided)
         places_api: Google Places API client
         settings: Optional settings
-        chromadb_bucket: Optional S3 bucket name for lazy loading ChromaDB collections
+        chromadb_bucket: Optional S3 bucket name for lazy loading ChromaDB
+            collections
 
     Returns:
         (compiled_graph, state_holder) - The graph and state dict
@@ -353,14 +385,16 @@ def create_receipt_metadata_finder_graph(
                 # Give it another chance if no tool calls
                 if len(state.messages) > 10:
                     logger.warning(
-                        "Agent has made many steps without submitting - may need reminder"
+                        "Agent has made many steps without submitting"
+                        " - may need reminder"
                     )
-                if len(state.messages) > 20:
-                    logger.error(
-                        "Agent exceeded 20 steps without submitting - forcing end"
-                    )
-                    return "end"
-                return "agent"
+            if len(state.messages) > 20:
+                logger.error(
+                    "Agent exceeded 20 steps without submitting"
+                    " - forcing end"
+                )
+                return "end"
+            return "agent"
 
         return "agent"
 
@@ -394,9 +428,9 @@ def create_receipt_metadata_finder_graph(
     return compiled, state_holder
 
 
-# ==============================================================================
+# ======================================================================
 # Metadata Finder Runner
-# ==============================================================================
+# ======================================================================
 
 
 async def run_receipt_metadata_finder(
@@ -419,8 +453,10 @@ async def run_receipt_metadata_finder(
         receipt_id: Receipt ID
         line_embeddings: Pre-loaded line embeddings (optional)
         word_embeddings: Pre-loaded word embeddings (optional)
-        receipt_lines: Pre-loaded receipt lines (optional, avoids DynamoDB read)
-        receipt_words: Pre-loaded receipt words (optional, avoids DynamoDB read)
+        receipt_lines: Pre-loaded receipt lines (optional, avoids DynamoDB
+            read)
+        receipt_words: Pre-loaded receipt words (optional, avoids DynamoDB
+            read)
 
     Returns:
         Metadata result dict
@@ -474,8 +510,12 @@ async def run_receipt_metadata_finder(
         messages=[
             SystemMessage(content=RECEIPT_METADATA_FINDER_PROMPT),
             HumanMessage(
-                content=f"Please find ALL missing metadata for receipt {image_id}#{receipt_id}. "
-                f"Start by examining the receipt content, then find any missing fields."
+                content=(
+                    f"Please find ALL missing metadata "
+                    f"for receipt {image_id}#{receipt_id}. "
+                    "Start by examining the receipt content, "
+                    "then find any missing fields."
+                ),
             ),
         ],
     )
@@ -508,14 +548,20 @@ async def run_receipt_metadata_finder(
 
         if result:
             logger.info(
-                f"Metadata finder complete: {len(result.get('fields_found', []))} fields found "
-                f"(confidence={result.get('confidence', 0):.2%})"
+                (
+                    f"Metadata finder complete: "
+                    f"{len(result.get('fields_found', []))} fields found "
+                    f"(confidence={result.get('confidence', 0):.2%})"
+                )
             )
             return result
         else:
             # Agent ended without submitting result
             logger.warning(
-                f"Agent ended without submitting metadata for {image_id}#{receipt_id}"
+                (
+                    f"Agent ended without submitting metadata for "
+                    f"{image_id}#{receipt_id}"
+                )
             )
             return {
                 "image_id": image_id,

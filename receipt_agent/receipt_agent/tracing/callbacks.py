@@ -60,7 +60,10 @@ def get_run_url() -> Optional[str]:
         if run_tree and run_tree.id:
             settings = get_settings()
             # LangSmith run URL format
-            return f"https://smith.langchain.com/o/default/projects/p/{settings.langsmith_project}/r/{run_tree.id}"
+            return (
+                f"https://smith.langchain.com/o/default/projects/p/"
+                f"{settings.langsmith_project}/r/{run_tree.id}"
+            )
     except Exception as e:
         logger.debug(f"Could not get run URL: {e}")
 
@@ -144,7 +147,12 @@ class ValidationRunContext:
             pass
         return self
 
-    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+    async def __aexit__(
+        self,
+        exc_type: Any,
+        exc_val: Any,
+        exc_tb: Any,
+    ) -> None:
         """Exit the context and finalize tracking."""
         if exc_type is not None:
             logger.error(
@@ -164,12 +172,18 @@ class ValidationRunContext:
         """Get the LangSmith URL for this run."""
         if self.run_id:
             settings = get_settings()
-            return f"https://smith.langchain.com/o/default/projects/p/{settings.langsmith_project}/r/{self.run_id}"
+            return (
+                f"https://smith.langchain.com/o/default/projects/p/"
+                f"{settings.langsmith_project}/r/{self.run_id}"
+            )
         return None
 
-    def log_feedback(self, score: float, comment: Optional[str] = None) -> bool:
+    def log_feedback(
+        self,
+        score: float,
+        comment: Optional[str] = None,
+    ) -> bool:
         """Log feedback for this run."""
         if self.run_id:
             return log_feedback(self.run_id, score, comment)
         return False
-

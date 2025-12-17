@@ -8,15 +8,20 @@ financial values (LINE_TOTAL, SUBTOTAL, TAX, GRAND_TOTAL) on receipts.
 
 1. **Structure Analysis**: Analyze receipt text, words, and table structure
 2. **Numeric Discovery**: Find all numeric values with positional context
-3. **LLM Reasoning**: Use LLM to reason about which values represent which financial types
-4. **Mathematical Verification**: Test that proposed assignments follow receipt math
-5. **Context Generation**: Provide structured financial context for label assignment
+3. **LLM Reasoning**: Use LLM to reason about which values represent
+   which financial types
+4. **Mathematical Verification**: Test that proposed assignments follow
+   receipt math
+5. **Context Generation**: Provide structured financial context for label
+   assignment
 
 ## Key Features
 
-- **Reasoning-First**: LLM analyzes patterns and context before making assignments
+- **Reasoning-First**: LLM analyzes patterns and context before making
+  assignments
 - **Self-Verification**: Agent tests its own mathematical conclusions
-- **Explainable**: Detailed reasoning provided for each financial assignment
+- **Explainable**: Detailed reasoning provided for each financial
+  assignment
 - **Flexible**: Adapts to different receipt formats without rigid rules
 - **Mathematical Validation**: Ensures GRAND_TOTAL = SUBTOTAL + TAX, etc.
 
@@ -26,24 +31,55 @@ Provides rich financial context that downstream label sub-agents can use:
 ```python
 {
     "financial_candidates": {
-        "GRAND_TOTAL": [{"line_id": 25, "word_id": 3, "value": 45.67, "confidence": 0.95}],
-        "SUBTOTAL": [{"line_id": 23, "word_id": 2, "value": 42.18, "confidence": 0.90}],
-        "TAX": [{"line_id": 24, "word_id": 2, "value": 3.49, "confidence": 0.85}],
+        "GRAND_TOTAL": [
+            {
+                "line_id": 25,
+                "word_id": 3,
+                "value": 45.67,
+                "confidence": 0.95,
+            }
+        ],
+        "SUBTOTAL": [
+            {
+                "line_id": 23,
+                "word_id": 2,
+                "value": 42.18,
+                "confidence": 0.90,
+            }
+        ],
+        "TAX": [
+            {
+                "line_id": 24,
+                "word_id": 2,
+                "value": 3.49,
+                "confidence": 0.85,
+            }
+        ],
         "LINE_TOTAL": [
-            {"line_id": 10, "word_id": 4, "value": 12.99, "confidence": 0.80},
-            {"line_id": 12, "word_id": 3, "value": 8.50, "confidence": 0.75}
-        ]
+            {
+                "line_id": 10,
+                "word_id": 4,
+                "value": 12.99,
+                "confidence": 0.80,
+            },
+            {
+                "line_id": 12,
+                "word_id": 3,
+                "value": 8.50,
+                "confidence": 0.75,
+            }
+        ],
     },
     "mathematical_validation": {
         "verified": 2,
         "total_tests": 2,
-        "all_valid": True
+        "all_valid": True,
     },
     "currency": "USD",
     "llm_reasoning": {
         "structure_analysis": "...",
         "final_assessment": "...",
-        "confidence": "high"
+        "confidence": "high",
     }
 }
 ```
@@ -86,15 +122,21 @@ FINANCIAL_LABELS = {
     "COUPON",
 }
 
-LLM_DRIVEN_FINANCIAL_DISCOVERY_PROMPT = """You are a financial discovery agent. Your task is to analyze a receipt and identify financial values through a 5-step process.
+LLM_DRIVEN_FINANCIAL_DISCOVERY_PROMPT = """\
+You are a financial discovery agent. Your task is to analyze a receipt
+and identify financial values through a 5-step process.
 
 ## MANDATORY WORKFLOW - Execute in this EXACT order:
 
 **STEP 1**: Call `analyze_receipt_structure()`
 **STEP 2**: Call `identify_numeric_candidates()`
-**STEP 3**: Call `reason_about_financial_layout(reasoning="your analysis", candidate_assignments=[your assignments])`
+**STEP 3**:
+`reason_about_financial_layout(reasoning="your analysis",`
+`candidate_assignments=[your assignments])`
 **STEP 4**: Call `test_mathematical_relationships()`
-**STEP 5**: Call `finalize_financial_context(final_reasoning="summary", confidence_assessment="high/medium/low")`
+**STEP 5**:
+`finalize_financial_context(final_reasoning="summary",`
+`confidence_assessment="high/medium/low")`
 
 ## Rules:
 - Call each tool EXACTLY ONCE in the specified order
@@ -104,9 +146,19 @@ LLM_DRIVEN_FINANCIAL_DISCOVERY_PROMPT = """You are a financial discovery agent. 
 ## Step 3 Format Example:
 ```
 reason_about_financial_layout(
-    reasoning="This receipt shows a simple transaction with a balance due of $8.59...",
+    reasoning=(
+        "This receipt shows a simple transaction with a balance due of "
+        "$8.59..."
+    ),
     candidate_assignments=[
-        {"line_id": 24, "word_id": 1, "value": 8.59, "proposed_type": "GRAND_TOTAL", "confidence": 0.95, "reasoning": "This is the balance due amount"}
+        {
+            "line_id": 24,
+            "word_id": 1,
+            "value": 8.59,
+            "proposed_type": "GRAND_TOTAL",
+            "confidence": 0.95,
+            "reasoning": "This is the balance due amount",
+        }
     ]
 )
 ```
@@ -117,7 +169,8 @@ Start with Step 1 now.
 
 - **GRAND_TOTAL**: The final amount due (usually largest, at bottom)
 - **SUBTOTAL**: Sum of all line items before tax/fees (usually before tax line)
-- **TAX**: Sales tax, VAT, or other taxes (usually between subtotal and grand total)
+- **TAX**: Sales tax, VAT, or other taxes (usually between subtotal and grand
+  total)
 - **LINE_TOTAL**: Individual line item totals (extended price for each product)
 - **UNIT_PRICE**: Price per unit of a product
 - **QUANTITY**: Number or weight of items purchased
@@ -126,26 +179,32 @@ Start with Step 1 now.
 
 - GRAND_TOTAL = SUBTOTAL + TAX + fees - discounts (±$0.01 tolerance)
 - SUBTOTAL = sum of all LINE_TOTAL values (±$0.01 tolerance)
-- For line items: QUANTITY × UNIT_PRICE = LINE_TOTAL (±$0.01 tolerance)
+- For line items:
+  QUANTITY × UNIT_PRICE = LINE_TOTAL (±$0.01 tolerance)
 
 ## Approach Guidelines
 
-- **Think like a human** reading the receipt - what story does the financial flow tell?
+- **Think like a human** reading the receipt - what story does the financial
+  flow tell?
 - **Use context clues** from surrounding text, positioning, and table structure
-- **Consider business logic** - receipts follow predictable patterns but vary in format
-- **Reason about relationships** - which numbers should mathematically relate to each other?
+- **Consider business logic** - receipts follow predictable patterns but vary
+  in format
+- **Reason about relationships** - which numbers should mathematically relate
+  to each other?
 - **Verify your reasoning** - test that your assignments follow correct math
 - **Be transparent** - explain your reasoning clearly for each assignment
 
 ## Quality Standards
 
-- Assign financial types based on logical reasoning, not just position or keywords
+- Assign financial types based on logical reasoning, not just position or
+  keywords
 - Ensure mathematical relationships validate correctly
 - Provide confidence scores based on strength of evidence
 - Include detailed reasoning for each assignment
 - Acknowledge uncertainty when evidence is ambiguous
 
-Start by analyzing the receipt structure to understand the layout and financial flow."""
+Start by analyzing the receipt structure to understand the layout and
+financial flow."""
 
 
 def create_llm_driven_financial_tools(
@@ -174,7 +233,8 @@ def create_llm_driven_financial_tools(
 
     @tool
     def analyze_receipt_structure() -> dict:
-        """Get comprehensive view of receipt structure for financial analysis."""
+        """Get comprehensive view of receipt structure for financial
+        analysis."""
         try:
             logger.debug(
                 "TOOL: analyze_receipt_structure called, state keys=%s",
@@ -212,7 +272,8 @@ def create_llm_driven_financial_tools(
             for line_id, word_texts in lines_by_id.items():
                 line_texts[line_id] = " ".join(word_texts)
 
-            # Sort lines deterministically and truncate to prevent context overflow
+            # Sort lines deterministically and truncate
+            # to prevent context overflow
             sorted_line_items = sorted(line_texts.items())
             total_lines = len(sorted_line_items)
             lines_truncated = total_lines > MAX_LINE_PREVIEW_LINES
@@ -261,7 +322,8 @@ def create_llm_driven_financial_tools(
 
     @tool
     def identify_numeric_candidates() -> dict:
-        """Find all numeric values in the receipt with their positions and surrounding context."""
+        """Find all numeric values in the receipt with their positions
+        and surrounding context."""
         receipt = state["receipt"]
         words = receipt.get("words", [])
 
@@ -311,7 +373,8 @@ def create_llm_driven_financial_tools(
                     }
                 )
 
-        # Sort by value for easier analysis (deterministic: highest values first)
+        # Sort by value for easier analysis
+        # (deterministic: highest values first)
         numeric_candidates.sort(key=lambda x: x["numeric_value"], reverse=True)
 
         # Compute statistics from full list before truncation
@@ -378,10 +441,12 @@ def create_llm_driven_financial_tools(
     def reason_about_financial_layout(
         reasoning: str, candidate_assignments: list[dict]
     ) -> dict:
-        """Apply reasoning to identify which numeric values represent which financial types.
+        """Apply reasoning to identify which numeric values represent which
+        financial types.
 
         Args:
-            reasoning: Your detailed reasoning about the receipt's financial structure and how you identified each type
+            reasoning: Your detailed reasoning about the receipt's financial
+                structure and how you identified each type
             candidate_assignments: List of assignments in this format:
                 [
                     {
@@ -390,7 +455,10 @@ def create_llm_driven_financial_tools(
                         "value": 45.67,
                         "proposed_type": "GRAND_TOTAL",
                         "confidence": 0.95,
-                        "reasoning": "This is the largest value at the bottom of the receipt, appearing after 'TOTAL'"
+                        "reasoning": (
+                            "This is the largest value at the bottom "
+                            "of the receipt, appearing after 'TOTAL'"
+                        ),
                     },
                     {
                         "line_id": 21,
@@ -398,7 +466,10 @@ def create_llm_driven_financial_tools(
                         "value": 42.18,
                         "proposed_type": "SUBTOTAL",
                         "confidence": 0.90,
-                        "reasoning": "This appears before tax with 'SUBTOTAL' text, and is close to sum of line items"
+                        "reasoning": (
+                            "This appears before tax with 'SUBTOTAL' text, "
+                            "and is close to sum of line items"
+                        ),
                     }
                 ]
 
@@ -431,15 +502,20 @@ def create_llm_driven_financial_tools(
             ]
             if missing_fields:
                 return {
-                    "error": f"Assignment missing required fields: {missing_fields}"
+                    "error": (
+                        f"Assignment missing required fields: {missing_fields}"
+                    )
                 }
 
             # Validate proposed_type is one of the allowed types
             proposed_type = assignment.get("proposed_type")
             if proposed_type not in ALLOWED_FINANCIAL_TYPES:
                 return {
-                    "error": f"Invalid proposed_type '{proposed_type}'. "
-                    f"Must be one of: {', '.join(sorted(ALLOWED_FINANCIAL_TYPES))}"
+                    "error": (
+                        f"Invalid proposed_type '{proposed_type}'. "
+                        f"Must be one of: "
+                        f"{', '.join(sorted(ALLOWED_FINANCIAL_TYPES))}"
+                    )
                 }
 
         # Prevent duplicate (line_id, word_id) assignments
@@ -459,7 +535,6 @@ def create_llm_driven_financial_tools(
                 new_confidence = assignment.get("confidence", 0)
 
                 if new_confidence > existing_confidence:
-                    # New assignment has higher confidence - replace
                     duplicates_removed.append(
                         {
                             "removed": existing,
@@ -469,7 +544,6 @@ def create_llm_driven_financial_tools(
                     )
                     seen_words[word_key] = assignment
                 else:
-                    # Existing assignment has higher or equal confidence - keep it
                     duplicates_removed.append(
                         {
                             "removed": assignment,
@@ -485,13 +559,21 @@ def create_llm_driven_financial_tools(
                 removed = dup_info["removed"]
                 kept = dup_info["kept"]
                 dup_details.append(
-                    f"line {removed.get('line_id')} word {removed.get('word_id')} "
-                    f"(removed: {removed.get('proposed_type')} conf={removed.get('confidence', 0):.2f}, "
-                    f"kept: {kept.get('proposed_type')} conf={kept.get('confidence', 0):.2f})"
+                    (
+                        f"line {removed.get('line_id')} word "
+                        f"{removed.get('word_id')} "
+                        f"(removed: {removed.get('proposed_type')} "
+                        f"conf={removed.get('confidence', 0):.2f}, "
+                        f"kept: {kept.get('proposed_type')} "
+                        f"conf={kept.get('confidence', 0):.2f})"
+                    )
                 )
             logger.warning(
-                f"⚠️  Removed {len(duplicates_removed)} duplicate assignments, "
-                f"kept highest confidence: {', '.join(dup_details[:5])}"
+                (
+                    f"⚠️  Removed {len(duplicates_removed)} duplicate "
+                    f"assignments, kept highest confidence: "
+                    f"{', '.join(dup_details[:5])}"
+                )
                 + (
                     f" (and {len(duplicates_removed) - 5} more)"
                     if len(duplicates_removed) > 5
@@ -564,7 +646,8 @@ def create_llm_driven_financial_tools(
             try:
                 return float(value.strip())
             except (ValueError, AttributeError):
-                # If that fails, try extract_number (handles "$25.79", "(25.79)", etc.)
+                # If that fails, try extract_number
+                # (handles "$25.79", "(25.79)", etc.)
                 return extract_number(value)
 
         # For other types, try to convert via string
@@ -572,17 +655,22 @@ def create_llm_driven_financial_tools(
             return float(str(value))
         except (ValueError, TypeError):
             logger.warning(
-                f"Could not coerce value to float: {value} (type: {type(value)})"
+                f"Could not coerce value to float: {value} "
+                f"(type: {type(value)})"
             )
             return None
 
     @tool
     def test_mathematical_relationships() -> dict:
-        """Test whether your proposed financial assignments follow correct receipt mathematics."""
+        """Test whether your proposed financial assignments follow correct
+        receipt mathematics."""
         proposed = state.get("proposed_assignments", [])
         if not proposed:
             return {
-                "error": "No proposed assignments to test. Call reason_about_financial_layout first."
+                "error": (
+                    "No proposed assignments to test. Call "
+                    "reason_about_financial_layout first."
+                )
             }
 
         # Extract values by type, coercing to numeric
@@ -603,8 +691,11 @@ def create_llm_driven_financial_tools(
                     }
                 )
                 logger.warning(
-                    f"Invalid numeric value for {financial_type} at line {assignment.get('line_id')} "
-                    f"word {assignment.get('word_id')}: {raw_value} (type: {type(raw_value)})"
+                    f"Invalid numeric value for {financial_type} at line "
+                    f"{assignment.get('line_id')} word "
+                    f"{assignment.get('word_id')}: "
+                    f"{raw_value} "
+                    f"(type: {type(raw_value)})"
                 )
                 continue  # Skip invalid values
 
@@ -622,7 +713,8 @@ def create_llm_driven_financial_tools(
         # If we have invalid values, include them in the response
         if invalid_values:
             logger.warning(
-                f"Skipped {len(invalid_values)} assignments with invalid numeric values"
+                f"Skipped {len(invalid_values)} assignments with invalid "
+                "numeric values"
             )
 
         verification_results = []
@@ -652,7 +744,9 @@ def create_llm_driven_financial_tools(
             verification_results.append(
                 {
                     "test_name": "GRAND_TOTAL = SUBTOTAL + TAX",
-                    "description": "Verify that grand total equals subtotal plus tax",
+                    "description": (
+                        "Verify that grand total equals subtotal plus tax"
+                    ),
                     "grand_total": grand_total,
                     "subtotal": subtotal,
                     "tax": tax,
@@ -687,7 +781,9 @@ def create_llm_driven_financial_tools(
             verification_results.append(
                 {
                     "test_name": "SUBTOTAL = sum(LINE_TOTAL)",
-                    "description": "Verify that subtotal equals sum of all line totals",
+                    "description": (
+                        "Verify that subtotal equals sum of all line totals"
+                    ),
                     "subtotal": subtotal,
                     "line_totals": line_totals,
                     "line_total_count": len(line_totals),
@@ -724,7 +820,8 @@ def create_llm_driven_financial_tools(
                     line_total = _coerce_numeric_value(line_total_raw)
 
                     if line_total is None:
-                        continue  # Skip if can't coerce LINE_TOTAL
+                        # Skip if LINE_TOTAL cannot be coerced
+                        continue
 
                     if (
                         "QUANTITY" in line_assignments
@@ -738,7 +835,8 @@ def create_llm_driven_financial_tools(
                         unit_price = _coerce_numeric_value(unit_price_raw)
 
                         if quantity is None or unit_price is None:
-                            continue  # Skip if can't coerce QUANTITY or UNIT_PRICE
+                            # Skip if QUANTITY or UNIT_PRICE cannot be coerced
+                            continue
 
                         calculated_line_total = quantity * unit_price
                         difference = line_total - calculated_line_total
@@ -760,7 +858,9 @@ def create_llm_driven_financial_tools(
             verification_results.append(
                 {
                     "test_name": "LINE_TOTAL = QUANTITY × UNIT_PRICE",
-                    "description": "Verify line item mathematics for individual products",
+                    "description": (
+                        "Verify line item mathematics for individual products"
+                    ),
                     "line_item_tests": line_item_tests,
                     "total_line_items_tested": len(line_item_tests),
                     "line_items_passed": len(
@@ -796,7 +896,10 @@ def create_llm_driven_financial_tools(
             "recommendations": (
                 "All mathematical relationships verified successfully."
                 if all_tests_pass
-                else "Some mathematical relationships failed - consider revising financial assignments."
+                else (
+                    "Some mathematical relationships failed - consider "
+                    "revising financial assignments."
+                )
             ),
         }
 
@@ -804,11 +907,14 @@ def create_llm_driven_financial_tools(
     def finalize_financial_context(
         final_reasoning: str, confidence_assessment: str, currency: str = "USD"
     ) -> dict:
-        """Submit your final financial analysis as context for downstream label assignment.
+        """Submit your final financial analysis as context for downstream label
+        assignment.
 
         Args:
-            final_reasoning: Your final reasoning about the financial structure and assignments
-            confidence_assessment: Overall assessment of confidence (e.g., "high", "medium", "low")
+            final_reasoning: Your final reasoning about the financial structure
+                and assignments
+            confidence_assessment: Overall assessment of confidence
+                (e.g., "high", "medium", "low")
             currency: Detected currency (default: USD)
 
         Returns:
@@ -819,7 +925,10 @@ def create_llm_driven_financial_tools(
 
         if not proposed:
             return {
-                "error": "No proposed assignments available. Call reason_about_financial_layout first."
+                "error": (
+                    "No proposed assignments available. Call "
+                    "reason_about_financial_layout first."
+                )
             }
 
         # Get receipt data to look up word text
@@ -1050,19 +1159,27 @@ async def run_llm_driven_financial_discovery(
         messages=[
             SystemMessage(content=LLM_DRIVEN_FINANCIAL_DISCOVERY_PROMPT),
             HumanMessage(
-                content="Please analyze this receipt to identify financial values (LINE_TOTAL, SUBTOTAL, TAX, GRAND_TOTAL). "
-                "Use reasoning to understand the receipt structure, identify numeric candidates, apply your reasoning to assign financial types, "
-                "verify the mathematical relationships, and provide structured context for label assignment."
+                content=(
+                    "Please analyze this receipt to identify financial values "
+                    "(LINE_TOTAL, SUBTOTAL, TAX, GRAND_TOTAL). "
+                    "Use reasoning to understand the receipt structure, "
+                    "identify numeric candidates, apply your reasoning "
+                    "to assign financial types, verify the mathematical "
+                    "relationships, and provide structured context for label "
+                    "assignment."
+                )
             ),
         ],
     )
 
     try:
         logger.info(
-            f"LLM Financial Discovery: Starting graph execution with {len(words)} words"
+            f"LLM Financial Discovery: Starting graph execution with "
+            f"{len(words)} words"
         )
         logger.info(
-            f"LLM Financial Discovery: Initial state has {len(initial_state.messages)} messages"
+            f"LLM Financial Discovery: Initial state has "
+            f"{len(initial_state.messages)} messages"
         )
 
         # Run the agent
@@ -1070,7 +1187,8 @@ async def run_llm_driven_financial_discovery(
 
         logger.info("LLM Financial Discovery: Graph execution completed")
         logger.info(
-            f"LLM Financial Discovery: Tool state keys: {list(tool_state.keys())}"
+            f"LLM Financial Discovery: Tool state keys: "
+            f"{list(tool_state.keys())}"
         )
 
         # Extract final result from tool state
@@ -1079,16 +1197,19 @@ async def run_llm_driven_financial_discovery(
 
         if final_result:
             logger.info(
-                f"LLM Financial Discovery: SUCCESS - final_result found with keys: {list(final_result.keys())}"
+                f"LLM Financial Discovery: SUCCESS - final_result found with "
+                f"keys: {list(final_result.keys())}"
             )
             return final_result
         else:
             logger.warning(
-                "LLM Financial Discovery: FAILED - no final_result in tool_state"
+                "LLM Financial Discovery: FAILED - no final_result "
+                "in tool_state"
             )
             if tool_state:
                 logger.warning(
-                    f"LLM Financial Discovery: Available tool_state keys: {list(tool_state.keys())}"
+                    f"LLM Financial Discovery: Available tool_state keys: "
+                    f"{list(tool_state.keys())}"
                 )
 
             # Fallback - extract what we can from tool state
@@ -1108,7 +1229,9 @@ async def run_llm_driven_financial_discovery(
                         if tool_state
                         else ""
                     ),
-                    "final_assessment": "Agent completed but did not finalize results",
+                    "final_assessment": (
+                        "Agent completed but did not finalize results"
+                    ),
                     "confidence": "unknown",
                 },
                 "error": "Agent did not call finalize_financial_context",

@@ -55,25 +55,21 @@ else
     FORMAT_RESULT=$?
 fi
 
-# Step 2: Set up environment
+# Step 2: Set up environment (install all key packages with test/dev extras)
 echo ""
-echo "🔧 Setting up test environment..."
+echo "🔧 Setting up test environment (all core packages)..."
 
-# Check if package has test dependencies
-if [[ -f "$PACKAGE/pyproject.toml" ]] && grep -q "test.*=" "$PACKAGE/pyproject.toml"; then
-    echo "Installing $PACKAGE with test dependencies..."
-    pip install -e "$PACKAGE[test]" >/dev/null 2>&1
-else
-    echo "Installing minimal test dependencies..."
-    pip install pytest pytest-xdist pytest-cov >/dev/null 2>&1
-    pip install -e "$PACKAGE" >/dev/null 2>&1
-fi
+echo "Installing receipt_dynamo with test/dev extras..."
+pip install -e "./receipt_dynamo[test,dev]"
 
-# Handle cross-package dependencies
-if [[ "$PACKAGE" == "receipt_label" ]]; then
-    echo "Installing receipt_dynamo dependency for receipt_label..."
-    pip install -e "receipt_dynamo" >/dev/null 2>&1
-fi
+echo "Installing receipt_upload with test/dev extras..."
+pip install -e "./receipt_upload[test,dev]"
+
+echo "Installing receipt_label with test/dev extras..."
+pip install -e "./receipt_label[test,dev]"
+
+echo "Installing portfolio npm deps..."
+npm ci --prefix ./portfolio
 
 print_status 0 "Environment ready"
 

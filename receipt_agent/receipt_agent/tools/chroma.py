@@ -20,7 +20,10 @@ class QuerySimilarLinesInput(BaseModel):
     """Input schema for query_similar_lines tool."""
 
     query_text: str = Field(
-        description="Text to search for similar lines (e.g., address or phone line)"
+        description=(
+            "Text to search for similar lines "
+            "(e.g., address or phone line)"
+        )
     )
     n_results: int = Field(
         default=10,
@@ -48,7 +51,9 @@ class QuerySimilarWordsInput(BaseModel):
     )
     label_type: Optional[str] = Field(
         default=None,
-        description="Filter by label type (e.g., 'MERCHANT_NAME', 'PHONE', 'ADDRESS')",
+        description=(
+            "Filter by label type (e.g., 'MERCHANT_NAME', 'PHONE', 'ADDRESS')"
+        ),
     )
     n_results: int = Field(
         default=10,
@@ -159,7 +164,8 @@ def query_similar_lines(
             })
 
         logger.info(
-            f"Found {len(output)} similar lines above threshold {min_similarity}"
+            f"Found {len(output)} similar lines above threshold "
+            f"{min_similarity}"
         )
         return output
 
@@ -397,4 +403,3 @@ def search_by_place_id(
     except Exception as e:
         logger.error(f"Error searching by place_id: {e}")
         return {"error": str(e)}
-
