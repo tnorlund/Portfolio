@@ -48,7 +48,9 @@ def get_training_bucket_name(stack: str, s3_client=None) -> str:
     bucket_name = env.get("layoutlm_training_bucket")
 
     if bucket_name:
-        logger.info(f"{stack.upper()} training bucket (from Pulumi): {bucket_name}")
+        logger.info(
+            f"{stack.upper()} training bucket (from Pulumi): {bucket_name}"
+        )
         return bucket_name
 
     # If not in Pulumi outputs, try to find it in AWS
@@ -76,7 +78,7 @@ def get_training_bucket_name(stack: str, s3_client=None) -> str:
                 candidates_sorted = sorted(
                     candidates,
                     key=lambda x: x.get("CreationDate", datetime.min),
-                    reverse=True
+                    reverse=True,
                 )
 
                 # If we have multiple buckets, the newest one is likely prod
@@ -122,7 +124,9 @@ def find_latest_model(s3_client, bucket: str) -> Optional[str]:
 
     try:
         # List all run prefixes
-        resp = s3_client.list_objects_v2(Bucket=bucket, Prefix="runs/", Delimiter="/")
+        resp = s3_client.list_objects_v2(
+            Bucket=bucket, Prefix="runs/", Delimiter="/"
+        )
         prefixes = [cp["Prefix"] for cp in resp.get("CommonPrefixes", [])]
 
         if not prefixes:
@@ -158,8 +162,12 @@ def find_latest_model(s3_client, bucket: str) -> Optional[str]:
             return best_prefix
         except ClientError:
             # Fallback: find latest checkpoint with model.safetensors
-            logger.info("No 'best' directory, looking for latest checkpoint...")
-            page = s3_client.list_objects_v2(Bucket=bucket, Prefix=latest_prefix)
+            logger.info(
+                "No 'best' directory, looking for latest checkpoint..."
+            )
+            page = s3_client.list_objects_v2(
+                Bucket=bucket, Prefix=latest_prefix
+            )
             candidates = [
                 o
                 for o in page.get("Contents", [])
@@ -204,7 +212,9 @@ def copy_one_file(
             return key, True, None
 
         copy_source = {"Bucket": source_bucket, "Key": key}
-        s3_client.copy_object(CopySource=copy_source, Bucket=dest_bucket, Key=key)
+        s3_client.copy_object(
+            CopySource=copy_source, Bucket=dest_bucket, Key=key
+        )
         return key, True, None
     except Exception as e:
         return key, False, str(e)
@@ -242,7 +252,12 @@ def copy_model_files(
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_key = {
             executor.submit(
-                copy_one_file, s3_client, source_bucket, dest_bucket, key, dry_run
+                copy_one_file,
+                s3_client,
+                source_bucket,
+                dest_bucket,
+                key,
+                dry_run,
             ): key
             for key in files
         }
@@ -310,7 +325,9 @@ def verify_model_files(s3_client, bucket: str, prefix: str) -> bool:
             pass
 
     if not found_tokenizer:
-        logger.warning("No tokenizer files found (may still work if using default)")
+        logger.warning(
+            "No tokenizer files found (may still work if using default)"
+        )
 
     logger.info("Model verification complete")
     return True
@@ -352,7 +369,9 @@ def main():
     mode = "DRY RUN" if args.dry_run else "LIVE COPY"
     logger.info(f"Mode: {mode}")
     if args.dry_run:
-        logger.info("No files will be copied. Use --no-dry-run to actually copy.")
+        logger.info(
+            "No files will be copied. Use --no-dry-run to actually copy."
+        )
 
     try:
         # Initialize S3 client first (needed for bucket discovery)
@@ -371,7 +390,9 @@ def main():
             logger.info("=" * 60)
             logger.info("BUCKET CHECK")
             logger.info("=" * 60)
-            logger.info(f"Dev and prod are using the same bucket: {dev_bucket}")
+            logger.info(
+                f"Dev and prod are using the same bucket: {dev_bucket}"
+            )
             logger.info("Model files are already available in prod bucket.")
             logger.info("Skipping copy operation.")
 
@@ -431,7 +452,9 @@ def main():
         logger.info("=" * 60)
         logger.info(f"Model prefix: {model_prefix}")
         logger.info(f"Total files: {stats['total']}")
-        logger.info(f"{'Would copy' if args.dry_run else 'Copied'}: {stats['copied']}")
+        logger.info(
+            f"{'Would copy' if args.dry_run else 'Copied'}: {stats['copied']}"
+        )
         logger.info(f"Failed: {stats['failed']}")
 
         if stats["errors"]:
@@ -439,19 +462,25 @@ def main():
             for error in stats["errors"][:10]:
                 logger.warning(f"  - {error}")
             if len(stats["errors"]) > 10:
-                logger.warning(f"  ... and {len(stats['errors']) - 10} more errors")
+                logger.warning(
+                    f"  ... and {len(stats['errors']) - 10} more errors"
+                )
 
         # Verify model in prod (if not dry run)
         if not args.dry_run and stats["failed"] == 0:
             logger.info("\nVerifying model in prod...")
             if verify_model_files(s3_client, prod_bucket, model_prefix):
-                logger.info("✅ Model successfully copied and verified in prod")
+                logger.info(
+                    "✅ Model successfully copied and verified in prod"
+                )
             else:
                 logger.error("❌ Model verification failed in prod")
                 sys.exit(1)
 
         if args.dry_run:
-            logger.info("\n✅ Dry run completed. Use --no-dry-run to actually copy.")
+            logger.info(
+                "\n✅ Dry run completed. Use --no-dry-run to actually copy."
+            )
         else:
             if stats["failed"] > 0:
                 logger.error("\n❌ Copy completed with errors")
@@ -470,4 +499,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

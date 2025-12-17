@@ -688,9 +688,11 @@ def test_item_to_image(
 @pytest.mark.unit
 def test_image_init_invalid_receipt_count():
     """Test that invalid receipt_count values raise appropriate errors."""
-    
+
     # Test negative receipt_count
-    with pytest.raises(ValueError, match="receipt_count must be a non-negative integer"):
+    with pytest.raises(
+        ValueError, match="receipt_count must be a non-negative integer"
+    ):
         Image(
             "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             10,
@@ -700,7 +702,7 @@ def test_image_init_invalid_receipt_count():
             "key",
             receipt_count=-1,
         )
-    
+
     # Test string receipt_count
     with pytest.raises(ValueError, match="receipt_count must be an integer"):
         Image(
@@ -708,11 +710,11 @@ def test_image_init_invalid_receipt_count():
             10,
             20,
             "2021-01-01T00:00:00",
-            "bucket", 
+            "bucket",
             "key",
             receipt_count="5",
         )
-    
+
     # Test float receipt_count
     with pytest.raises(ValueError, match="receipt_count must be an integer"):
         Image(
@@ -721,7 +723,7 @@ def test_image_init_invalid_receipt_count():
             20,
             "2021-01-01T00:00:00",
             "bucket",
-            "key", 
+            "key",
             receipt_count=5.5,
         )
 
@@ -729,7 +731,7 @@ def test_image_init_invalid_receipt_count():
 @pytest.mark.unit
 def test_image_init_valid_receipt_count():
     """Test that valid receipt_count values work correctly."""
-    
+
     # Test positive receipt_count
     image1 = Image(
         "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -741,7 +743,7 @@ def test_image_init_valid_receipt_count():
         receipt_count=5,
     )
     assert image1.receipt_count == 5
-    
+
     # Test zero receipt_count
     image2 = Image(
         "3f52804b-2fad-4e00-92c8-b593da3a8ed3",
@@ -753,7 +755,7 @@ def test_image_init_valid_receipt_count():
         receipt_count=0,
     )
     assert image2.receipt_count == 0
-    
+
     # Test None receipt_count (should work)
     image3 = Image(
         "3f52804b-2fad-4e00-92c8-b593da3a8ed3",

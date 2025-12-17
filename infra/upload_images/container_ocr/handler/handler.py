@@ -25,6 +25,7 @@ from .ocr_processor import OCRProcessor
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 logger = logging.getLogger(__name__)
 
+
 def _log(msg: str):
     """Log message with immediate flush for CloudWatch visibility."""
     print(f"[HANDLER] {msg}", flush=True)
@@ -43,7 +44,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
     """
     start_time = time.time()
-    record_count = len(event.get('Records', []))
+    record_count = len(event.get("Records", []))
 
     _log(f"Processing {record_count} OCR records")
 
@@ -68,7 +69,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     for record in event.get("Records", []):
         try:
-            result = _process_single_record(record, collected_metrics, image_type_counts)
+            result = _process_single_record(
+                record, collected_metrics, image_type_counts
+            )
             results.append(result)
 
             if result.get("success"):
@@ -104,22 +107,28 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
     # Record aggregated metrics
     execution_time = time.time() - start_time
-    collected_metrics.update({
-        "UploadLambdaExecutionTime": execution_time,
-        "UploadLambdaSuccess": success_count,
-        "UploadLambdaError": error_count,
-        "UploadLambdaEmbeddingsCreated": embedding_count,
-        "UploadLambdaOCRFailed": ocr_failed_count,
-        "UploadLambdaOCRSuccess": ocr_success_count,
-        "UploadLambdaEmbeddingSuccess": embedding_success_count,
-        "UploadLambdaEmbeddingFailed": embedding_failed_count,
-        "UploadLambdaEmbeddingSkipped": embedding_skipped_count,
-    })
+    collected_metrics.update(
+        {
+            "UploadLambdaExecutionTime": execution_time,
+            "UploadLambdaSuccess": success_count,
+            "UploadLambdaError": error_count,
+            "UploadLambdaEmbeddingsCreated": embedding_count,
+            "UploadLambdaOCRFailed": ocr_failed_count,
+            "UploadLambdaOCRSuccess": ocr_success_count,
+            "UploadLambdaEmbeddingSuccess": embedding_success_count,
+            "UploadLambdaEmbeddingFailed": embedding_failed_count,
+            "UploadLambdaEmbeddingSkipped": embedding_skipped_count,
+        }
+    )
 
     if ocr_success_count > 0:
-        collected_metrics["UploadLambdaOCRDuration"] = total_ocr_duration / ocr_success_count
+        collected_metrics["UploadLambdaOCRDuration"] = (
+            total_ocr_duration / ocr_success_count
+        )
     if embedding_success_count > 0:
-        collected_metrics["UploadLambdaEmbeddingDuration"] = total_embedding_duration / embedding_success_count
+        collected_metrics["UploadLambdaEmbeddingDuration"] = (
+            total_embedding_duration / embedding_success_count
+        )
 
     # Log all metrics via EMF in a single log line (no API call cost)
     emf_metrics.log_metrics(
@@ -131,14 +140,18 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         },
     )
 
-    _log(f"Completed processing {len(results)} records (success: {success_count}, errors: {error_count}, embeddings: {embedding_count})")
+    _log(
+        f"Completed processing {len(results)} records (success: {success_count}, errors: {error_count}, embeddings: {embedding_count})"
+    )
     return {
         "statusCode": 200,
-        "body": json.dumps({
-            "message": "OCR results processed",
-            "processed": len(results),
-            "results": results
-        })
+        "body": json.dumps(
+            {
+                "message": "OCR results processed",
+                "processed": len(results),
+                "results": results,
+            }
+        ),
     }
 
 
@@ -179,7 +192,9 @@ def _process_single_record(
     ocr_result["ocr_success"] = True
     ocr_result["ocr_duration"] = ocr_duration
 
-    _log(f"OCR processing completed: image_type={image_type}, receipt_id={ocr_result.get('receipt_id')}")
+    _log(
+        f"OCR processing completed: image_type={image_type}, receipt_id={ocr_result.get('receipt_id')}"
+    )
 
     # Step 2: Validate merchant and create embeddings
     # Only process embeddings for:
@@ -196,7 +211,9 @@ def _process_single_record(
     # PHOTO/SCAN first pass: receipt_id=None (skip embeddings)
     if receipt_id is not None and image_type in ["NATIVE", "REFINEMENT"]:
         try:
-            _log(f"Initializing merchant-resolving embedding processor for {image_type} receipt (receipt_id={receipt_id})")
+            _log(
+                f"Initializing merchant-resolving embedding processor for {image_type} receipt (receipt_id={receipt_id})"
+            )
 
             embedding_start = time.time()
 
@@ -215,7 +232,9 @@ def _process_single_record(
 
             # Create embeddings with merchant resolution
             # Pass receipt lines/words if available from OCR processor
-            _log(f"Creating embeddings with merchant resolution: lines={ocr_result.get('receipt_lines') is not None}, words={ocr_result.get('receipt_words') is not None}")
+            _log(
+                f"Creating embeddings with merchant resolution: lines={ocr_result.get('receipt_lines') is not None}, words={ocr_result.get('receipt_words') is not None}"
+            )
             embedding_result = embedding_processor.process_embeddings(
                 image_id=image_id,
                 receipt_id=receipt_id,
@@ -251,14 +270,18 @@ def _process_single_record(
                 "merchant_name": merchant_name,
                 "merchant_place_id": embedding_result.get("merchant_place_id"),
                 "merchant_resolution_tier": merchant_tier,
-                "merchant_confidence": embedding_result.get("merchant_confidence"),
+                "merchant_confidence": embedding_result.get(
+                    "merchant_confidence"
+                ),
             }
 
         except Exception as e:
-            _log(f"ERROR: Merchant validation/embedding failed for {image_type}: {e}")
+            _log(
+                f"ERROR: Merchant validation/embedding failed for {image_type}: {e}"
+            )
             logger.error(
                 f"Merchant validation/embedding failed for {image_type}: {e}",
-                exc_info=True
+                exc_info=True,
             )
 
             # Don't fail the whole job - OCR data is still stored

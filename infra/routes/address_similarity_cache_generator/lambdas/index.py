@@ -36,21 +36,21 @@ def is_url_line(line):
     Returns:
         bool: True if the line appears to be a URL
     """
-    if not hasattr(line, 'text') or not line.text:
+    if not hasattr(line, "text") or not line.text:
         return False
 
     text = line.text.lower().strip()
 
     # Common URL patterns
     url_patterns = [
-        'www.',
-        '.com',
-        '.co',
-        '.org',
-        '.net',
-        '.io',
-        'http://',
-        'https://',
+        "www.",
+        ".com",
+        ".co",
+        ".org",
+        ".net",
+        ".io",
+        "http://",
+        "https://",
     ]
 
     # Check if text contains URL patterns
@@ -59,7 +59,7 @@ def is_url_line(line):
             return True
 
     # Check if it's mostly a domain-like string (contains dots and no spaces, or very few)
-    if '.' in text and text.count(' ') <= 1:
+    if "." in text and text.count(" ") <= 1:
         # Likely a domain
         return True
 
@@ -75,7 +75,7 @@ def is_empty_or_whitespace_line(line):
     Returns:
         bool: True if the line is empty or whitespace-only
     """
-    if not hasattr(line, 'text'):
+    if not hasattr(line, "text"):
         return True
 
     if not line.text:
@@ -108,19 +108,22 @@ def calculate_bounding_box_for_lines(lines):
 
     # Filter out URL lines and empty/whitespace lines - they shouldn't be part of the address bounding box
     address_lines = [
-        line for line in lines
+        line
+        for line in lines
         if not is_url_line(line) and not is_empty_or_whitespace_line(line)
     ]
 
     # If all lines were filtered out, fall back to using all non-empty lines (edge case)
     if not address_lines:
-        address_lines = [line for line in lines if not is_empty_or_whitespace_line(line)]
+        address_lines = [
+            line for line in lines if not is_empty_or_whitespace_line(line)
+        ]
         if not address_lines:
             # Last resort: use all lines
             address_lines = lines
         logger.warning(
             "All lines were filtered out (URLs/empty), using %d lines for bounding box calculation",
-            len(address_lines)
+            len(address_lines),
         )
 
     # Collect all corner points from all address lines
@@ -129,18 +132,22 @@ def calculate_bounding_box_for_lines(lines):
 
     for line in address_lines:
         # Get all corner coordinates
-        all_x.extend([
-            line.top_left["x"],
-            line.top_right["x"],
-            line.bottom_left["x"],
-            line.bottom_right["x"],
-        ])
-        all_y.extend([
-            line.top_left["y"],
-            line.top_right["y"],
-            line.bottom_left["y"],
-            line.bottom_right["y"],
-        ])
+        all_x.extend(
+            [
+                line.top_left["x"],
+                line.top_right["x"],
+                line.bottom_left["x"],
+                line.bottom_right["x"],
+            ]
+        )
+        all_y.extend(
+            [
+                line.top_left["y"],
+                line.top_right["y"],
+                line.bottom_left["y"],
+                line.bottom_right["y"],
+            ]
+        )
 
     # Find bounds
     min_x = min(all_x)
@@ -294,7 +301,7 @@ def handler(_event, _context):
             current_group = [sorted_line_ids[0]]
             for i in range(1, len(sorted_line_ids)):
                 # If this line_id is consecutive with the previous one, add to current group
-                if sorted_line_ids[i] == sorted_line_ids[i-1] + 1:
+                if sorted_line_ids[i] == sorted_line_ids[i - 1] + 1:
                     current_group.append(sorted_line_ids[i])
                 else:
                     # Start a new group
@@ -336,9 +343,7 @@ def handler(_event, _context):
             and not is_empty_or_whitespace_line(line)
         ]
         address_context_words = [
-            word
-            for word in original_words
-            if word.line_id in selected_group
+            word for word in original_words if word.line_id in selected_group
         ]
         # Filter words to only those in non-URL lines
         non_url_line_ids = {line.line_id for line in address_context_lines}
@@ -473,7 +478,10 @@ def handler(_event, _context):
         seen_receipts = set()  # Avoid duplicates
 
         for metadata, distance, _document in zip(
-            similar_lines_data, similar_distances, similar_documents, strict=True
+            similar_lines_data,
+            similar_distances,
+            similar_documents,
+            strict=True,
         ):
             if not metadata:
                 continue
@@ -529,7 +537,10 @@ def handler(_event, _context):
                 if sorted_similar_line_ids:
                     current_group = [sorted_similar_line_ids[0]]
                     for i in range(1, len(sorted_similar_line_ids)):
-                        if sorted_similar_line_ids[i] == sorted_similar_line_ids[i-1] + 1:
+                        if (
+                            sorted_similar_line_ids[i]
+                            == sorted_similar_line_ids[i - 1] + 1
+                        ):
                             current_group.append(sorted_similar_line_ids[i])
                         else:
                             similar_address_groups.append(current_group)
@@ -540,7 +551,9 @@ def handler(_event, _context):
                 # This handles cases where an address appears twice on a receipt
                 if similar_address_groups:
                     # Use the largest group, or first if all same size
-                    selected_similar_group = max(similar_address_groups, key=len)
+                    selected_similar_group = max(
+                        similar_address_groups, key=len
+                    )
                     logger.debug(
                         "Selected address group for similar receipt: line_ids=%s (from %d groups)",
                         selected_similar_group,
@@ -567,7 +580,9 @@ def handler(_event, _context):
                     if word.line_id in selected_similar_group
                 ]
                 # Filter words to only those in non-URL lines
-                non_url_line_ids = {line.line_id for line in similar_address_lines}
+                non_url_line_ids = {
+                    line.line_id for line in similar_address_lines
+                }
                 similar_address_words = [
                     word
                     for word in similar_address_words
@@ -582,7 +597,9 @@ def handler(_event, _context):
                 ]
 
                 # Calculate bounding box for similar address lines
-                similar_bbox = calculate_bounding_box_for_lines(similar_address_lines)
+                similar_bbox = calculate_bounding_box_for_lines(
+                    similar_address_lines
+                )
 
                 similar_receipts.append(
                     {

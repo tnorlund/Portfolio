@@ -309,7 +309,7 @@ class Word(
         )
 
     def _get_geometry_hash_fields(self) -> tuple:
-        """Override to include entity-specific ID fields in hash 
+        """Override to include entity-specific ID fields in hash
         computation."""
         geometry_fields = (
             self.text,

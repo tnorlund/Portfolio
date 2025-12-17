@@ -90,9 +90,7 @@ def test_addJob_raises_value_error(job_dynamo):
 @pytest.mark.integration
 def test_addJob_raises_value_error_job_not_instance(job_dynamo):
     """Test that addJob raises OperationError when job is not an instance of Job"""
-    with pytest.raises(
-        OperationError, match="job must be an instance of Job"
-    ):
+    with pytest.raises(OperationError, match="job must be an instance of Job"):
         job_dynamo.add_job("not a job")
 
 
@@ -525,9 +523,7 @@ def test_updateJob_raises_value_error_job_not_instance(job_dynamo):
     Test that updateJob raises ValueError when job is not an instance of
     Job
     """
-    with pytest.raises(
-        OperationError, match="job must be an instance of Job"
-    ):
+    with pytest.raises(OperationError, match="job must be an instance of Job"):
         job_dynamo.update_job("not a job")
 
 
@@ -575,9 +571,7 @@ def test_deleteJob_raises_value_error_job_not_instance(job_dynamo):
     """
     Test that deleteJob raises ValueError when job is not an instance of Job
     """
-    with pytest.raises(
-        OperationError, match="job must be an instance of Job"
-    ):
+    with pytest.raises(OperationError, match="job must be an instance of Job"):
         job_dynamo.delete_job("not a job")
 
 
@@ -592,7 +586,9 @@ def test_deleteJob_raises_conditional_check_failed(job_dynamo, sample_job):
 
 
 @pytest.mark.integration
-@pytest.mark.skip(reason="Implementation bug: _add_entity called with wrong signature")
+@pytest.mark.skip(
+    reason="Implementation bug: _add_entity called with wrong signature"
+)
 def test_addJobStatus_success(job_dynamo, sample_job, sample_job_status):
     """Test adding a job status successfully"""
     # Add the job first
@@ -612,7 +608,9 @@ def test_addJobStatus_success(job_dynamo, sample_job, sample_job_status):
 
 
 @pytest.mark.integration
-@pytest.mark.skip(reason="Implementation bug: _add_entity called with wrong signature")
+@pytest.mark.skip(
+    reason="Implementation bug: _add_entity called with wrong signature"
+)
 def test_addJobStatus_raises_value_error_status_none(job_dynamo):
     """Test that addJobStatus raises ValueError when status is None"""
     with pytest.raises(OperationError, match="job_status cannot be None"):
@@ -620,7 +618,9 @@ def test_addJobStatus_raises_value_error_status_none(job_dynamo):
 
 
 @pytest.mark.integration
-@pytest.mark.skip(reason="Implementation bug: _add_entity called with wrong signature")
+@pytest.mark.skip(
+    reason="Implementation bug: _add_entity called with wrong signature"
+)
 def test_addJobStatus_raises_value_error_status_not_instance(job_dynamo):
     """
     Test that addJobStatus raises ValueError when status is not an instance
@@ -634,7 +634,9 @@ def test_addJobStatus_raises_value_error_status_not_instance(job_dynamo):
 
 
 @pytest.mark.integration
-@pytest.mark.skip(reason="Depends on add_job_status which has implementation bug")
+@pytest.mark.skip(
+    reason="Depends on add_job_status which has implementation bug"
+)
 def test_getJobWithStatus_success(job_dynamo, sample_job, sample_job_status):
     """Test getting a job with its status updates"""
     # Add the job
@@ -715,7 +717,9 @@ def test_listJobs_with_limit(job_dynamo, sample_job):
 
 
 @pytest.mark.integration
-@pytest.mark.skip(reason="Depends on add_job_status which has implementation bug")
+@pytest.mark.skip(
+    reason="Depends on add_job_status which has implementation bug"
+)
 def test_listJobStatuses_success(job_dynamo, sample_job_status):
     """Test listJobStatuses successfully lists job statuses"""
     # Add the job status first
@@ -734,7 +738,9 @@ def test_listJobStatuses_success(job_dynamo, sample_job_status):
 
 
 @pytest.mark.integration
-@pytest.mark.skip(reason="Depends on add_job_status which has implementation bug")
+@pytest.mark.skip(
+    reason="Depends on add_job_status which has implementation bug"
+)
 def test_listJobStatuses_with_limit(job_dynamo, sample_job_status):
     """Test listJobStatuses with a limit parameter"""
     # Add the job status first
@@ -762,7 +768,9 @@ def test_validate_last_evaluated_key_raises_value_error_missing_keys():
     Test that validate_last_evaluated_key raises ValueError when keys are
     missing
     """
-    with pytest.raises(EntityValidationError, match="LastEvaluatedKey must contain keys"):
+    with pytest.raises(
+        EntityValidationError, match="LastEvaluatedKey must contain keys"
+    ):
         validate_last_evaluated_key({"PK": {"S": "value"}})  # Missing SK
 
 
@@ -841,9 +849,7 @@ def test_listJobStatuses_raises_client_error_resource_not_found(
     mocker.patch.object(job_dynamo._client, "query", side_effect=mocked_error)
 
     # Call the method and verify it raises the expected exception
-    with pytest.raises(
-        DynamoDBError, match="DynamoDB error during"
-    ):
+    with pytest.raises(DynamoDBError, match="DynamoDB error during"):
         job_dynamo.list_job_statuses(str(uuid.uuid4()))
 
 
@@ -886,9 +892,7 @@ def test_listJobStatuses_raises_client_error_access_denied(job_dynamo, mocker):
     mocker.patch.object(job_dynamo._client, "query", side_effect=mocked_error)
 
     # Call the method and verify it raises the expected exception
-    with pytest.raises(
-        DynamoDBError, match="DynamoDB error during"
-    ):
+    with pytest.raises(DynamoDBError, match="DynamoDB error during"):
         job_dynamo.list_job_statuses(str(uuid.uuid4()))
 
 

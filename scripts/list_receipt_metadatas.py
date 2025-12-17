@@ -56,8 +56,10 @@ def list_all_metadatas(
             page_count += 1
             logger.info(f"Fetching page {page_count}...")
 
-            metadatas, last_evaluated_key = dynamo_client.list_receipt_metadatas(
-                limit=1000, last_evaluated_key=last_evaluated_key
+            metadatas, last_evaluated_key = (
+                dynamo_client.list_receipt_metadatas(
+                    limit=1000, last_evaluated_key=last_evaluated_key
+                )
             )
 
             all_metadatas.extend(metadatas)
@@ -81,7 +83,9 @@ def list_all_metadatas(
         logger.error(f"Error listing metadatas: {e}", exc_info=True)
         raise
 
-    logger.info(f"Total ReceiptMetadata records retrieved: {len(all_metadatas)}")
+    logger.info(
+        f"Total ReceiptMetadata records retrieved: {len(all_metadatas)}"
+    )
 
     # Save to file if requested
     if output_file:
@@ -100,7 +104,9 @@ def list_all_metadatas(
                         "matched_fields": m.matched_fields,
                         "validated_by": m.validated_by,
                         "reasoning": m.reasoning,
-                        "timestamp": m.timestamp.isoformat() if m.timestamp else None,
+                        "timestamp": (
+                            m.timestamp.isoformat() if m.timestamp else None
+                        ),
                         "validation_status": m.validation_status,
                         "canonical_place_id": m.canonical_place_id,
                         "canonical_merchant_name": m.canonical_merchant_name,
@@ -152,7 +158,9 @@ def print_summary(metadatas: List[ReceiptMetadata]) -> None:
     print(f"\nUnique merchants: {len(unique_merchants)}")
 
     # Count records with/without place_id
-    with_place_id = sum(1 for m in metadatas if m.place_id and m.place_id.strip())
+    with_place_id = sum(
+        1 for m in metadatas if m.place_id and m.place_id.strip()
+    )
     without_place_id = len(metadatas) - with_place_id
 
     print(f"\nRecords with place_id: {with_place_id}")
@@ -214,10 +222,14 @@ def main():
                 env = load_env(env=args.stack)
                 table_name = env.get("dynamodb_table_name")
                 if not table_name:
-                    logger.error(f"dynamodb_table_name not found in {args.stack} stack")
+                    logger.error(
+                        f"dynamodb_table_name not found in {args.stack} stack"
+                    )
                     sys.exit(1)
             except Exception as e:
-                logger.error(f"Failed to load Pulumi config: {e}", exc_info=True)
+                logger.error(
+                    f"Failed to load Pulumi config: {e}", exc_info=True
+                )
                 sys.exit(1)
         else:
             # Try environment variable
@@ -263,4 +275,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

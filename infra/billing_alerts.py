@@ -104,9 +104,3 @@ class BillingAlerts(ComponentResource):
     def alarm_arns(self) -> dict[str, Output[str]]:
         """Get ARNs of all created alarms."""
         return {name: alarm.arn for name, alarm in self.alarms.items()}
-
-
-
-
-
-

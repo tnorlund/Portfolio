@@ -66,7 +66,7 @@ def download_chromadb_snapshot(
     for page in pages:
         for obj in page.get("Contents", []):
             key = obj["Key"]
-            relative_path = key[len(prefix):]
+            relative_path = key[len(prefix) :]
             if not relative_path or key.endswith(".snapshot_hash"):
                 continue
 
@@ -112,8 +112,12 @@ async def process_batch(
     )
 
     # Get configurable limits from environment
-    receipt_delay_seconds = float(os.environ.get("RECEIPT_DELAY_SECONDS", "0.5"))
-    max_llm_calls_per_receipt = int(os.environ.get("MAX_LLM_CALLS_PER_RECEIPT", "10"))
+    receipt_delay_seconds = float(
+        os.environ.get("RECEIPT_DELAY_SECONDS", "0.5")
+    )
+    max_llm_calls_per_receipt = int(
+        os.environ.get("MAX_LLM_CALLS_PER_RECEIPT", "10")
+    )
 
     # Initialize metrics
     receipts_processed = 0

@@ -37,27 +37,29 @@ import chromadb
 import pytest
 
 # Set PYTEST_RUNNING to prevent infrastructure imports
-os.environ['PYTEST_RUNNING'] = '1'
+os.environ["PYTEST_RUNNING"] = "1"
 
 # Mock dependencies before importing compaction
 # compaction.py imports utils.logging and other modules which may not be available in test environment
-sys.modules['utils'] = MagicMock()
-sys.modules['utils.logging'] = MagicMock()
+sys.modules["utils"] = MagicMock()
+sys.modules["utils.logging"] = MagicMock()
 mock_logger = MagicMock()
-sys.modules['utils.logging'].get_operation_logger = MagicMock(return_value=mock_logger)
-sys.modules['utils.logging'].get_logger = MagicMock(return_value=mock_logger)
+sys.modules["utils.logging"].get_operation_logger = MagicMock(
+    return_value=mock_logger
+)
+sys.modules["utils.logging"].get_logger = MagicMock(return_value=mock_logger)
 
 # Mock receipt_dynamo (it's not needed for testing close_chromadb_client)
-sys.modules['receipt_dynamo'] = MagicMock()
-sys.modules['receipt_dynamo.constants'] = MagicMock()
-sys.modules['receipt_dynamo.data'] = MagicMock()
-sys.modules['receipt_dynamo.data.dynamo_client'] = MagicMock()
+sys.modules["receipt_dynamo"] = MagicMock()
+sys.modules["receipt_dynamo.constants"] = MagicMock()
+sys.modules["receipt_dynamo.data"] = MagicMock()
+sys.modules["receipt_dynamo.data.dynamo_client"] = MagicMock()
 
 # Mock boto3 (compaction.py imports it)
-sys.modules['boto3'] = MagicMock()
+sys.modules["boto3"] = MagicMock()
 
 # Mock chromadb_compaction to prevent import errors
-sys.modules['chromadb_compaction'] = MagicMock()
+sys.modules["chromadb_compaction"] = MagicMock()
 
 # Get the compaction.py file path
 handlers_dir = PathLib(__file__).parent.parent
@@ -68,8 +70,8 @@ spec = importlib.util.spec_from_file_location("compaction", compaction_path)
 compaction_module = importlib.util.module_from_spec(spec)
 
 # Set environment variables that compaction.py might need
-os.environ.setdefault('DYNAMODB_TABLE_NAME', 'test-table')
-os.environ.setdefault('CHROMADB_BUCKET', 'test-bucket')
+os.environ.setdefault("DYNAMODB_TABLE_NAME", "test-table")
+os.environ.setdefault("CHROMADB_BUCKET", "test-bucket")
 
 # Execute the module
 spec.loader.exec_module(compaction_module)
@@ -93,8 +95,7 @@ def chromadb_client_with_data(temp_chromadb_dir):
     """Create a ChromaDB client with test data."""
     client = chromadb.PersistentClient(path=temp_chromadb_dir)
     collection = client.get_or_create_collection(
-        name="test_collection",
-        metadata={"test": "true"}
+        name="test_collection", metadata={"test": "true"}
     )
 
     # Add some test data
@@ -102,13 +103,15 @@ def chromadb_client_with_data(temp_chromadb_dir):
         ids=["id1", "id2", "id3"],
         embeddings=[[0.1, 0.2, 0.3], [0.4, 0.5, 0.6], [0.7, 0.8, 0.9]],
         documents=["doc1", "doc2", "doc3"],
-        metadatas=[{"key": "1"}, {"key": "2"}, {"key": "3"}]
+        metadatas=[{"key": "1"}, {"key": "2"}, {"key": "3"}],
     )
 
     return client, collection
 
 
-def test_close_chromadb_client_releases_file_locks(chromadb_client_with_data, temp_chromadb_dir):
+def test_close_chromadb_client_releases_file_locks(
+    chromadb_client_with_data, temp_chromadb_dir
+):
     """
     Test that close_chromadb_client releases SQLite file locks.
 
@@ -131,7 +134,9 @@ def test_close_chromadb_client_releases_file_locks(chromadb_client_with_data, te
     client = None  # Clear reference
 
     # Wait a moment for file handles to be released
-    time.sleep(0.6)  # Slightly longer than the 0.5s delay in close_chromadb_client
+    time.sleep(
+        0.6
+    )  # Slightly longer than the 0.5s delay in close_chromadb_client
 
     # Test 1: Copy SQLite file to another location (this will fail if file is locked)
     copy_dir = tempfile.mkdtemp(prefix="chromadb_copy_")
@@ -139,7 +144,9 @@ def test_close_chromadb_client_releases_file_locks(chromadb_client_with_data, te
         copied_file = Path(copy_dir) / "chroma.sqlite3"
         shutil.copy2(sqlite_file, copied_file)
         assert copied_file.exists(), "Should be able to copy SQLite file"
-        assert copied_file.stat().st_size > 0, "Copied file should have content"
+        assert (
+            copied_file.stat().st_size > 0
+        ), "Copied file should have content"
     finally:
         shutil.rmtree(copy_dir, ignore_errors=True)
 
@@ -147,8 +154,12 @@ def test_close_chromadb_client_releases_file_locks(chromadb_client_with_data, te
     copy_dir = tempfile.mkdtemp(prefix="chromadb_copy_dir_")
     try:
         shutil.copytree(temp_chromadb_dir, copy_dir, dirs_exist_ok=True)
-        assert Path(copy_dir).exists(), "Should be able to copy entire directory"
-        assert Path(copy_dir / "chroma.sqlite3").exists(), "SQLite file should be copied"
+        assert Path(
+            copy_dir
+        ).exists(), "Should be able to copy entire directory"
+        assert Path(
+            copy_dir / "chroma.sqlite3"
+        ).exists(), "SQLite file should be copied"
     finally:
         shutil.rmtree(copy_dir, ignore_errors=True)
 
@@ -156,7 +167,9 @@ def test_close_chromadb_client_releases_file_locks(chromadb_client_with_data, te
     # This verifies files are not locked
     new_client = chromadb.PersistentClient(path=temp_chromadb_dir)
     new_collection = new_client.get_collection("test_collection")
-    assert new_collection.count() == 3, "New client should be able to read data"
+    assert (
+        new_collection.count() == 3
+    ), "New client should be able to read data"
 
     # Cleanup
     close_chromadb_client(new_client, collection_name="test_collection")
@@ -186,7 +199,11 @@ def test_close_chromadb_client_with_multiple_collections(temp_chromadb_dir):
     copy_dir = tempfile.mkdtemp(prefix="chromadb_multi_")
     try:
         shutil.copytree(temp_chromadb_dir, copy_dir, dirs_exist_ok=True)
-        assert Path(copy_dir).exists(), "Should be able to copy directory with multiple collections"
+        assert Path(
+            copy_dir
+        ).exists(), (
+            "Should be able to copy directory with multiple collections"
+        )
     finally:
         shutil.rmtree(copy_dir, ignore_errors=True)
 
@@ -199,7 +216,9 @@ def test_close_chromadb_client_handles_none():
     close_chromadb_client(None, collection_name="none_test")
 
 
-def test_close_chromadb_client_allows_file_operations_after_close(chromadb_client_with_data, temp_chromadb_dir):
+def test_close_chromadb_client_allows_file_operations_after_close(
+    chromadb_client_with_data, temp_chromadb_dir
+):
     """
     Test that file operations (like tar/zip) work after closing client.
 
@@ -232,8 +251,12 @@ def test_close_chromadb_client_allows_file_operations_after_close(chromadb_clien
                 tar.extractall(extract_dir)
 
             # Verify SQLite file was extracted
-            extracted_sqlite = Path(extract_dir) / "chromadb" / "chroma.sqlite3"
-            assert extracted_sqlite.exists(), "SQLite file should be in tarball"
+            extracted_sqlite = (
+                Path(extract_dir) / "chromadb" / "chroma.sqlite3"
+            )
+            assert (
+                extracted_sqlite.exists()
+            ), "SQLite file should be in tarball"
         finally:
             shutil.rmtree(extract_dir, ignore_errors=True)
     finally:
@@ -241,7 +264,9 @@ def test_close_chromadb_client_allows_file_operations_after_close(chromadb_clien
             os.remove(tar_path)
 
 
-def test_close_chromadb_client_without_closing_fails_file_operations(chromadb_client_with_data, temp_chromadb_dir):
+def test_close_chromadb_client_without_closing_fails_file_operations(
+    chromadb_client_with_data, temp_chromadb_dir
+):
     """
     Test that WITHOUT closing the client, file operations may fail.
 
@@ -280,7 +305,9 @@ def test_close_chromadb_client_without_closing_fails_file_operations(chromadb_cl
 
 
 @pytest.mark.parametrize("collection_name", [None, "test_collection", ""])
-def test_close_chromadb_client_with_different_collection_names(chromadb_client_with_data, collection_name):
+def test_close_chromadb_client_with_different_collection_names(
+    chromadb_client_with_data, collection_name
+):
     """
     Test that close_chromadb_client works with different collection_name values.
     """
@@ -296,4 +323,3 @@ def test_close_chromadb_client_with_different_collection_names(chromadb_client_w
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])
-

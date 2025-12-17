@@ -114,7 +114,9 @@ class Image(DynamoDBEntity, CDNFieldsMixin):
             if not isinstance(self.receipt_count, int):
                 raise ValueError("receipt_count must be an integer")
             if self.receipt_count < 0:
-                raise ValueError("receipt_count must be a non-negative integer")
+                raise ValueError(
+                    "receipt_count must be a non-negative integer"
+                )
 
     @property
     def key(self) -> Dict[str, Any]:

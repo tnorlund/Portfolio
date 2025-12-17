@@ -112,4 +112,3 @@ log_group = aws.cloudwatch.LogGroup(
     ),
     retention_in_days=30,
 )
-

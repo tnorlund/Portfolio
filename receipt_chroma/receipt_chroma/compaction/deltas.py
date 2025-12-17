@@ -66,7 +66,9 @@ def merge_compaction_deltas(
                     continue
 
                 # Download delta to temporary directory (unique per run)
-                delta_subdir = f"delta_{run_id}" if run_id else f"delta_{hash(msg)}"
+                delta_subdir = (
+                    f"delta_{run_id}" if run_id else f"delta_{hash(msg)}"
+                )
                 delta_dir = os.path.join(workdir, delta_subdir)
                 os.makedirs(delta_dir, exist_ok=True)
 
@@ -104,7 +106,9 @@ def merge_compaction_deltas(
                             f"Getting collection from delta: collection_name={collection_name}"
                         )
                         src = delta_client.get_collection(collection_name)
-                        logger.info("Successfully got collection, reading data")
+                        logger.info(
+                            "Successfully got collection, reading data"
+                        )
                         data = src.get(
                             include=["documents", "embeddings", "metadatas"]
                         )
@@ -155,7 +159,9 @@ def merge_compaction_deltas(
                         logger.info(
                             f"Delta has no collection or failed to read: collection={collection_name}, run_id={run_id}, image_id={image_id}, receipt_id={receipt_id}, error={str(e)}"
                         )
-                        logger.exception("Exception details for delta collection read")
+                        logger.exception(
+                            "Exception details for delta collection read"
+                        )
                     finally:
                         # Ensure delta_client is closed to prevent file handle leaks
                         delta_client.close()

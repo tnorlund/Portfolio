@@ -27,7 +27,10 @@ class MetricsCollector:
             try:
                 self.cloudwatch = boto3.client("cloudwatch")
             except Exception as e:
-                print(f"[METRICS] Failed to initialize CloudWatch client: {e}", flush=True)
+                print(
+                    f"[METRICS] Failed to initialize CloudWatch client: {e}",
+                    flush=True,
+                )
                 self.enabled = False
 
     def put_metric(
@@ -68,7 +71,10 @@ class MetricsCollector:
             )
 
         except ClientError as e:
-            print(f"[METRICS] Failed to publish metric {metric_name}: {e}", flush=True)
+            print(
+                f"[METRICS] Failed to publish metric {metric_name}: {e}",
+                flush=True,
+            )
 
     def count(
         self,
@@ -208,10 +214,11 @@ class EmbeddedMetricsFormatter:
             return
 
         emf_log = self.create_metric_log(metrics_dict, dimensions, properties)
-        print(emf_log, flush=True)  # CloudWatch automatically parses EMF from stdout
+        print(
+            emf_log, flush=True
+        )  # CloudWatch automatically parses EMF from stdout
 
 
 # Global metrics collector instance
 metrics = MetricsCollector()
 emf_metrics = EmbeddedMetricsFormatter()
-

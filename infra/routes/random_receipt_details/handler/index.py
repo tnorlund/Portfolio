@@ -112,4 +112,3 @@ def handle_get_request():
             "statusCode": 500,
             "body": f"Internal server error: {str(exc)}",
         }
-

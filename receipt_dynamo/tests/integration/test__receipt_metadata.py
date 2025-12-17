@@ -74,7 +74,7 @@ def _batch_receipt_metadatas() -> List[ReceiptMetadata]:
     """Provides a list of 30 receipt metadatas for batch testing."""
     metadatas = []
     base_time = datetime(2024, 3, 20, 12, 0, 0)
-    
+
     for i in range(30):
         metadatas.append(
             ReceiptMetadata(
@@ -87,12 +87,14 @@ def _batch_receipt_metadatas() -> List[ReceiptMetadata]:
                 phone_number=f"+123456{i:04d}",
                 validation_status="VALID" if i % 2 == 0 else "PENDING",
                 matched_fields=["name", "address"] if i % 3 == 0 else ["name"],
-                validated_by=["NEARBY_LOOKUP", "TEXT_SEARCH", "PHONE_LOOKUP"][i % 3],
+                validated_by=["NEARBY_LOOKUP", "TEXT_SEARCH", "PHONE_LOOKUP"][
+                    i % 3
+                ],
                 timestamp=base_time,
                 reasoning=f"Test metadata {i}",
             )
         )
-    
+
     return metadatas
 
 
@@ -417,17 +419,19 @@ def test_update_receipt_metadata_success(
 ) -> None:
     """Tests successful update of a receipt metadata."""
     client = DynamoClient(dynamodb_table)
-    
+
     # First add the metadata
     client.add_receipt_metadata(sample_receipt_metadata)
-    
+
     # Update it with new values
-    sample_receipt_metadata.reasoning = "Updated reasoning with higher confidence"
+    sample_receipt_metadata.reasoning = (
+        "Updated reasoning with higher confidence"
+    )
     sample_receipt_metadata.matched_fields = ["name", "address", "phone"]
     sample_receipt_metadata.merchant_category = "Updated Category"
-    
+
     client.update_receipt_metadata(sample_receipt_metadata)
-    
+
     # Verify the update
     retrieved = client.get_receipt_metadata(
         sample_receipt_metadata.image_id,
@@ -446,17 +450,21 @@ def test_update_receipt_metadatas_batch(
 ) -> None:
     """Tests successful batch update of receipt metadatas."""
     client = DynamoClient(dynamodb_table)
-    
+
     # First add both metadatas
     client.add_receipt_metadata(sample_receipt_metadata)
     client.add_receipt_metadata(another_receipt_metadata)
-    
+
     # Update both with new reasoning
     sample_receipt_metadata.reasoning = "Updated reasoning for first metadata"
-    another_receipt_metadata.reasoning = "Updated reasoning for second metadata"
-    
-    client.update_receipt_metadatas([sample_receipt_metadata, another_receipt_metadata])
-    
+    another_receipt_metadata.reasoning = (
+        "Updated reasoning for second metadata"
+    )
+
+    client.update_receipt_metadatas(
+        [sample_receipt_metadata, another_receipt_metadata]
+    )
+
     # Verify both updates
     retrieved1 = client.get_receipt_metadata(
         sample_receipt_metadata.image_id,
@@ -466,7 +474,7 @@ def test_update_receipt_metadatas_batch(
         another_receipt_metadata.image_id,
         another_receipt_metadata.receipt_id,
     )
-    
+
     assert retrieved1.reasoning == "Updated reasoning for first metadata"
     assert retrieved2.reasoning == "Updated reasoning for second metadata"
 
@@ -483,13 +491,13 @@ def test_delete_receipt_metadata_success(
 ) -> None:
     """Tests successful deletion of a receipt metadata."""
     client = DynamoClient(dynamodb_table)
-    
+
     # First add the metadata
     client.add_receipt_metadata(sample_receipt_metadata)
-    
+
     # Delete it
     client.delete_receipt_metadata(sample_receipt_metadata)
-    
+
     # Verify it's gone
     with pytest.raises(EntityNotFoundError):
         client.get_receipt_metadata(
@@ -505,7 +513,7 @@ def test_delete_receipt_metadata_not_found(
 ) -> None:
     """Tests that deleting a non-existent metadata raises EntityNotFoundError."""
     client = DynamoClient(dynamodb_table)
-    
+
     # Delete non-existent metadata - should raise
     with pytest.raises(EntityNotFoundError):
         client.delete_receipt_metadata(sample_receipt_metadata)
@@ -518,15 +526,15 @@ def test_delete_receipt_metadatas_batch(
 ) -> None:
     """Tests batch deletion of receipt metadatas."""
     client = DynamoClient(dynamodb_table)
-    
+
     # Add first 10 metadatas
     metadatas_to_delete = batch_receipt_metadatas[:10]
     for metadata in metadatas_to_delete:
         client.add_receipt_metadata(metadata)
-    
+
     # Delete them in batch
     client.delete_receipt_metadatas(metadatas_to_delete)
-    
+
     # Verify all are deleted
     for metadata in metadatas_to_delete:
         with pytest.raises(EntityNotFoundError):
@@ -547,7 +555,7 @@ def test_list_receipt_metadatas_success(
 ) -> None:
     """Tests listing all receipt metadatas."""
     client = DynamoClient(dynamodb_table)
-    
+
     # Add multiple metadatas
     metadatas = []
     for i in range(5):
@@ -562,10 +570,10 @@ def test_list_receipt_metadatas_success(
         )
         metadatas.append(metadata)
         client.add_receipt_metadata(metadata)
-    
+
     # List them
     retrieved, last_key = client.list_receipt_metadatas(limit=10)
-    
+
     assert len(retrieved) >= 5  # May have more from other tests
     assert last_key is None
 
@@ -577,22 +585,22 @@ def test_list_receipt_metadatas_with_pagination(
 ) -> None:
     """Tests listing receipt metadatas with pagination."""
     client = DynamoClient(dynamodb_table)
-    
+
     # Add 30 metadatas
     for metadata in batch_receipt_metadatas:
         client.add_receipt_metadata(metadata)
-    
+
     # Get first page
     page1, last_key1 = client.list_receipt_metadatas(limit=15)
     assert len(page1) == 15
     assert last_key1 is not None
-    
+
     # Get second page
     page2, last_key2 = client.list_receipt_metadatas(
         limit=15, last_evaluated_key=last_key1
     )
     assert len(page2) <= 15  # May be fewer items on second page
-    
+
     # Get remaining items if there are more
     all_retrieved = page1 + page2
     if last_key2 is not None:
@@ -600,7 +608,7 @@ def test_list_receipt_metadatas_with_pagination(
             limit=15, last_evaluated_key=last_key2
         )
         all_retrieved.extend(page3)
-    
+
     # Verify we got all our items
     assert len(all_retrieved) >= 30
 
@@ -617,7 +625,7 @@ def test_get_receipt_metadatas_by_merchant_success(
     """Tests retrieving receipt metadatas by merchant name."""
     client = DynamoClient(dynamodb_table)
     merchant_name = "Test Merchant ABC"
-    
+
     # Add metadatas for the same merchant
     metadatas = []
     for i in range(3):
@@ -633,10 +641,12 @@ def test_get_receipt_metadatas_by_merchant_success(
         )
         metadatas.append(metadata)
         client.add_receipt_metadata(metadata)
-    
+
     # Query by merchant name
-    retrieved, last_key = client.get_receipt_metadatas_by_merchant(merchant_name)
-    
+    retrieved, last_key = client.get_receipt_metadatas_by_merchant(
+        merchant_name
+    )
+
     assert len(retrieved) == 3
     assert all(m.merchant_name == merchant_name for m in retrieved)
     assert last_key is None
@@ -648,7 +658,7 @@ def test_get_receipt_metadatas_by_merchant_case_insensitive(
 ) -> None:
     """Tests that merchant name queries are case-insensitive."""
     client = DynamoClient(dynamodb_table)
-    
+
     # Add metadata with mixed case merchant name
     metadata = ReceiptMetadata(
         image_id=str(uuid4()),
@@ -661,11 +671,15 @@ def test_get_receipt_metadatas_by_merchant_case_insensitive(
         reasoning="Test case insensitive query",
     )
     client.add_receipt_metadata(metadata)
-    
+
     # Query with different case
-    retrieved1, _ = client.get_receipt_metadatas_by_merchant("mixed case merchant")
-    retrieved2, _ = client.get_receipt_metadatas_by_merchant("MIXED CASE MERCHANT")
-    
+    retrieved1, _ = client.get_receipt_metadatas_by_merchant(
+        "mixed case merchant"
+    )
+    retrieved2, _ = client.get_receipt_metadatas_by_merchant(
+        "MIXED CASE MERCHANT"
+    )
+
     assert len(retrieved1) == 1
     assert len(retrieved2) == 1
     assert retrieved1[0].merchant_name == "MiXeD CaSe MeRcHaNt"
@@ -684,7 +698,7 @@ def test_list_receipt_metadatas_with_place_id_success(
     """Tests listing receipt metadatas by place ID."""
     client = DynamoClient(dynamodb_table)
     place_id = "ChIJrTLr-GyuEmsRBfy61i59si0"
-    
+
     # Add metadatas with the same place_id
     metadatas = []
     for i in range(4):
@@ -700,10 +714,10 @@ def test_list_receipt_metadatas_with_place_id_success(
         )
         metadatas.append(metadata)
         client.add_receipt_metadata(metadata)
-    
+
     # Query by place_id
     retrieved, last_key = client.list_receipt_metadatas_with_place_id(place_id)
-    
+
     assert len(retrieved) == 4
     assert all(m.place_id == place_id for m in retrieved)
     assert last_key is None
@@ -715,12 +729,12 @@ def test_list_receipt_metadatas_with_place_id_empty(
 ) -> None:
     """Tests listing receipt metadatas for a place_id with no results."""
     client = DynamoClient(dynamodb_table)
-    
+
     # Query for non-existent place_id
     retrieved, last_key = client.list_receipt_metadatas_with_place_id(
         "ChIJNonExistentPlaceId"
     )
-    
+
     assert len(retrieved) == 0
     assert last_key is None
 
@@ -736,7 +750,7 @@ def test_get_receipt_metadatas_by_validation_status(
 ) -> None:
     """Tests retrieving receipt metadatas by validation status using GSI3."""
     client = DynamoClient(dynamodb_table)
-    
+
     # Add metadatas with different validation statuses
     statuses = ["MATCHED", "UNSURE", "NO_MATCH"]
     for i, status in enumerate(statuses):
@@ -753,15 +767,15 @@ def test_get_receipt_metadatas_by_validation_status(
                 reasoning=f"Test {status} validation {j}",
             )
             client.add_receipt_metadata(metadata)
-    
+
     # Query by validation status using the GSI3 implementation
     # Note: This test verifies the GSI3 structure exists even if the query method doesn't
     retrieved_all, _ = client.list_receipt_metadatas(limit=50)
-    
+
     # Verify we have metadatas with different validation statuses
     statuses_found = {m.validation_status for m in retrieved_all}
     assert len(statuses_found) >= 1  # At least one status should be present
-    
+
     # Verify each metadata has a valid validation_status
     for metadata in retrieved_all[-9:]:  # Check the last 9 we just added
         assert metadata.validation_status in ["MATCHED", "UNSURE", "NO_MATCH"]
@@ -778,14 +792,14 @@ def test_get_receipt_metadatas_by_indices_success(
 ) -> None:
     """Tests batch retrieval of receipt metadatas by indices."""
     client = DynamoClient(dynamodb_table)
-    
+
     # Add multiple metadatas
     indices = []
     for i in range(5):
         image_id = str(uuid4())
         receipt_id = i + 1
         indices.append((image_id, receipt_id))
-        
+
         metadata = ReceiptMetadata(
             image_id=image_id,
             receipt_id=receipt_id,
@@ -797,10 +811,10 @@ def test_get_receipt_metadatas_by_indices_success(
             reasoning=f"Batch test {i}",
         )
         client.add_receipt_metadata(metadata)
-    
+
     # Get them all by indices
     retrieved = client.get_receipt_metadatas_by_indices(indices)
-    
+
     assert len(retrieved) == 5
     for metadata in retrieved:
         assert (metadata.image_id, metadata.receipt_id) in indices
@@ -812,28 +826,32 @@ def test_get_receipt_metadatas_by_indices_validation(
 ) -> None:
     """Tests validation for get_receipt_metadatas_by_indices."""
     client = DynamoClient(dynamodb_table)
-    
+
     # Test None indices
     with pytest.raises(EntityValidationError, match="indices cannot be None"):
         client.get_receipt_metadatas_by_indices(None)  # type: ignore
-    
+
     # Test non-list indices
     with pytest.raises(EntityValidationError, match="indices must be a list"):
         client.get_receipt_metadatas_by_indices("not-a-list")  # type: ignore
-    
+
     # Test non-tuple items
-    with pytest.raises(EntityValidationError, match="indices must be a list of tuples"):
+    with pytest.raises(
+        EntityValidationError, match="indices must be a list of tuples"
+    ):
         client.get_receipt_metadatas_by_indices([("valid", 1), "not-a-tuple"])  # type: ignore
-    
+
     # Test invalid tuple types
     with pytest.raises(
         EntityValidationError,
         match="indices must be a list of tuples of \\(image_id, receipt_id\\)",
     ):
         client.get_receipt_metadatas_by_indices([(123, 1)])  # type: ignore
-    
+
     # Test invalid receipt_id
-    with pytest.raises(EntityValidationError, match="receipt_id must be positive"):
+    with pytest.raises(
+        EntityValidationError, match="receipt_id must be positive"
+    ):
         client.get_receipt_metadatas_by_indices([("valid-id", 0)])
 
 
@@ -851,7 +869,7 @@ def test_add_receipt_metadatas_batch_with_unprocessed(
     """Tests that add_receipt_metadatas handles unprocessed items correctly."""
     client = DynamoClient(dynamodb_table)
     metadatas_to_add = batch_receipt_metadatas[:5]
-    
+
     # Mock batch_write_item to return unprocessed items on first call
     # pylint: disable=protected-access
     mock_batch = mocker.patch.object(
@@ -868,9 +886,9 @@ def test_add_receipt_metadatas_batch_with_unprocessed(
             {},  # Success on retry
         ],
     )
-    
+
     client.add_receipt_metadatas(metadatas_to_add)
-    
+
     # Should be called twice (initial + retry)
     assert mock_batch.call_count == 2
 
@@ -882,7 +900,7 @@ def test_update_receipt_metadata_not_found(
 ) -> None:
     """Tests that updating a non-existent metadata raises EntityNotFoundError."""
     client = DynamoClient(dynamodb_table)
-    
+
     with pytest.raises(
         EntityNotFoundError,
         match="not found during update_receipt_metadata",
@@ -910,7 +928,7 @@ def test_get_receipt_metadatas_by_merchant_validation(
 ) -> None:
     """Tests validation for get_receipt_metadatas_by_merchant parameters."""
     client = DynamoClient(dynamodb_table)
-    
+
     with pytest.raises(EntityValidationError, match=expected_error):
         client.get_receipt_metadatas_by_merchant(merchant_name)
 
@@ -931,7 +949,7 @@ def test_list_receipt_metadatas_with_place_id_validation(
 ) -> None:
     """Tests validation for list_receipt_metadatas_with_place_id parameters."""
     client = DynamoClient(dynamodb_table)
-    
+
     with pytest.raises(EntityValidationError, match=expected_error):
         client.list_receipt_metadatas_with_place_id(place_id)
 
@@ -952,6 +970,6 @@ def test_list_receipt_metadatas_limit_validation(
 ) -> None:
     """Tests validation for list_receipt_metadatas limit parameter."""
     client = DynamoClient(dynamodb_table)
-    
+
     with pytest.raises(EntityValidationError, match=expected_error):
         client.list_receipt_metadatas(limit=limit)

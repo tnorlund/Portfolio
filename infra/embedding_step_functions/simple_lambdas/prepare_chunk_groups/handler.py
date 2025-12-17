@@ -176,7 +176,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             for i in range(len(groups))
         ]
 
-        logger.info("Created %d group index entries for Map state", len(group_indices))
+        logger.info(
+            "Created %d group index entries for Map state", len(group_indices)
+        )
 
         # Return hierarchical merge response
         # chunk_groups structure matches what MergeChunkGroupsInParallel expects
@@ -203,4 +205,3 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     except Exception as e:
         logger.error("Unexpected error: %s", str(e), exc_info=True)
         raise
-

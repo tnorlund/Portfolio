@@ -44,7 +44,9 @@ def _get_base_label(bio_label: str) -> str:
     return bio_label
 
 
-def _combine_bio_probabilities(all_probs: Dict[str, float]) -> Dict[str, float]:
+def _combine_bio_probabilities(
+    all_probs: Dict[str, float],
+) -> Dict[str, float]:
     """Combine B- and I- probabilities into base label probabilities.
 
     Sums B-X and I-X probabilities for each base label X.
@@ -166,14 +168,20 @@ def calculate_metrics(
             correct += 1
             # True positive
             if predicted != "O":
-                label_true_positives[predicted] = label_true_positives.get(predicted, 0) + 1
+                label_true_positives[predicted] = (
+                    label_true_positives.get(predicted, 0) + 1
+                )
         else:
             # False positive for predicted label
             if predicted != "O":
-                label_false_positives[predicted] = label_false_positives.get(predicted, 0) + 1
+                label_false_positives[predicted] = (
+                    label_false_positives.get(predicted, 0) + 1
+                )
             # False negative for actual label
             if actual != "O":
-                label_false_negatives[actual] = label_false_negatives.get(actual, 0) + 1
+                label_false_negatives[actual] = (
+                    label_false_negatives.get(actual, 0) + 1
+                )
 
     overall_accuracy = (correct / total) if total > 0 else 0.0
 
@@ -182,7 +190,11 @@ def calculate_metrics(
     per_label_precision: Dict[str, float] = {}
     per_label_recall: Dict[str, float] = {}
 
-    all_labels = set(label_true_positives.keys()) | set(label_false_positives.keys()) | set(label_false_negatives.keys())
+    all_labels = (
+        set(label_true_positives.keys())
+        | set(label_false_positives.keys())
+        | set(label_false_negatives.keys())
+    )
 
     for label in all_labels:
         tp = label_true_positives.get(label, 0)
@@ -191,7 +203,11 @@ def calculate_metrics(
 
         precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
         recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
+        f1 = (
+            2 * (precision * recall) / (precision + recall)
+            if (precision + recall) > 0
+            else 0.0
+        )
 
         per_label_precision[label] = precision
         per_label_recall[label] = recall
@@ -228,7 +244,11 @@ def handler(_event, _context):
         infer = LayoutLMInference(
             model_dir=MODEL_DIR,
             model_s3_uri=MODEL_S3_URI,
-            auto_from_bucket_env="LAYOUTLM_TRAINING_BUCKET" if LAYOUTLM_TRAINING_BUCKET else None,
+            auto_from_bucket_env=(
+                "LAYOUTLM_TRAINING_BUCKET"
+                if LAYOUTLM_TRAINING_BUCKET
+                else None
+            ),
         )
         logger.info("Model loaded successfully. Device: %s", infer._device)
 
@@ -238,8 +258,10 @@ def handler(_event, _context):
 
         # Query for receipts that have at least one VALID label
         # We'll get a random receipt by querying for labels and picking one
-        all_valid_labels, _ = dynamo_client.list_receipt_word_labels_with_status(
-            ValidationStatus.VALID, limit=100
+        all_valid_labels, _ = (
+            dynamo_client.list_receipt_word_labels_with_status(
+                ValidationStatus.VALID, limit=100
+            )
         )
 
         if not all_valid_labels:
@@ -269,7 +291,9 @@ def handler(_event, _context):
 
         # Step 2: Get receipt details
         logger.info("Loading receipt details")
-        receipt_details = dynamo_client.get_receipt_details(image_id, receipt_id)
+        receipt_details = dynamo_client.get_receipt_details(
+            image_id, receipt_id
+        )
 
         # Step 3: Run inference
         logger.info("Running LayoutLM inference")
@@ -283,11 +307,15 @@ def handler(_event, _context):
         # BIO prefix will be added per-line when matching to predictions (matching training)
         # IMPORTANT: word_id is only unique within a line, so we need (line_id, word_id) as key
         ground_truth_base: Dict[tuple[int, int], str] = {}
-        ground_truth_original: Dict[tuple[int, int], str] = {}  # Store original CORE_LABELS
+        ground_truth_original: Dict[tuple[int, int], str] = (
+            {}
+        )  # Store original CORE_LABELS
         for label in receipt_details.labels:
             if label.validation_status == ValidationStatus.VALID:
                 # Store original label from database (e.g., PHONE_NUMBER, TIME, LINE_TOTAL)
-                ground_truth_original[(label.line_id, label.word_id)] = label.label
+                ground_truth_original[(label.line_id, label.word_id)] = (
+                    label.label
+                )
                 # Normalize label to base form (matches training normalization)
                 normalized = _normalize_label_for_4label_setup(label.label)
                 ground_truth_base[(label.line_id, label.word_id)] = normalized
@@ -330,17 +358,25 @@ def handler(_event, _context):
                 # Try to match by position first (most common case)
                 if token_idx < len(line_words):
                     word = line_words[token_idx]
-                    if token == word.text or token.strip() == word.text.strip():
+                    if (
+                        token == word.text
+                        or token.strip() == word.text.strip()
+                    ):
                         word_id = word.word_id
 
                 # If position match failed, try text lookup
                 if word_id is None:
-                    word_id = word_lookup.get((line_id, token)) or word_lookup.get((line_id, token.strip()))
+                    word_id = word_lookup.get(
+                        (line_id, token)
+                    ) or word_lookup.get((line_id, token.strip()))
 
                 # If still no match, try to find by text in the line
                 if word_id is None:
                     for word in line_words:
-                        if token == word.text or token.strip() == word.text.strip():
+                        if (
+                            token == word.text
+                            or token.strip() == word.text.strip()
+                        ):
                             word_id = word.word_id
                             break
 
@@ -363,7 +399,11 @@ def handler(_event, _context):
                     prev_base = "O"
                 else:
                     # B- for first occurrence, I- for contiguous same label
-                    bio_label = "B-" + base_label if prev_base != base_label else "I-" + base_label
+                    bio_label = (
+                        "B-" + base_label
+                        if prev_base != base_label
+                        else "I-" + base_label
+                    )
                     line_bio_labels.append(bio_label)
                     prev_base = base_label
 
@@ -373,7 +413,9 @@ def handler(_event, _context):
                 ground_truth_bio = line_bio_labels[token_idx]
 
                 # Get prediction for this token
-                if token_idx < len(line_pred.labels) and token_idx < len(line_pred.confidences):
+                if token_idx < len(line_pred.labels) and token_idx < len(
+                    line_pred.confidences
+                ):
                     pred_label = line_pred.labels[token_idx]
                     confidence = line_pred.confidences[token_idx]
                 else:
@@ -382,7 +424,9 @@ def handler(_event, _context):
 
                 # Get all class probabilities for this word
                 all_probs = {}
-                if line_pred.all_probabilities and token_idx < len(line_pred.all_probabilities):
+                if line_pred.all_probabilities and token_idx < len(
+                    line_pred.all_probabilities
+                ):
                     all_probs = line_pred.all_probabilities[token_idx]
 
                 # Combine B- and I- probabilities into base labels
@@ -390,11 +434,19 @@ def handler(_event, _context):
 
                 # Get base labels for display
                 predicted_label_base = _get_base_label(pred_label)
-                ground_truth_label_base = _get_base_label(ground_truth_bio) if ground_truth_bio != "O" else None
+                ground_truth_label_base = (
+                    _get_base_label(ground_truth_bio)
+                    if ground_truth_bio != "O"
+                    else None
+                )
 
                 # Get original ground truth label (before normalization)
                 # This is the original CORE_LABEL from the database (e.g., PHONE_NUMBER, TIME, LINE_TOTAL)
-                ground_truth_label_original = ground_truth_original.get((line_id, word_id)) if word_id is not None else None
+                ground_truth_label_original = (
+                    ground_truth_original.get((line_id, word_id))
+                    if word_id is not None
+                    else None
+                )
 
                 # Calculate correctness (using BIO labels for accuracy)
                 is_correct = pred_label == ground_truth_bio
@@ -406,7 +458,11 @@ def handler(_event, _context):
                         "text": token,
                         # BIO labels (for correctness checking)
                         "predicted_label": pred_label,
-                        "ground_truth_label": ground_truth_bio if ground_truth_bio != "O" else None,
+                        "ground_truth_label": (
+                            ground_truth_bio
+                            if ground_truth_bio != "O"
+                            else None
+                        ),
                         # Base labels (for display - normalized to 4-label system)
                         "predicted_label_base": predicted_label_base,
                         "ground_truth_label_base": ground_truth_label_base,
@@ -445,14 +501,20 @@ def handler(_event, _context):
         for line_pred in inference_result.lines:
             # Get ground truth labels for this line (in BIO format)
             line_ground_truth = []
-            line_words_for_gt = [w for w in receipt_details.words if w.line_id == line_pred.line_id]
+            line_words_for_gt = [
+                w
+                for w in receipt_details.words
+                if w.line_id == line_pred.line_id
+            ]
             line_words_for_gt.sort(key=lambda w: w.word_id)
 
             # Convert to BIO format per-line (matching training)
             line_base_labels_gt = []
             for word in line_words_for_gt:
                 # Use (line_id, word_id) as key since word_id is only unique within a line
-                base_label = ground_truth_base.get((line_pred.line_id, word.word_id), "O")
+                base_label = ground_truth_base.get(
+                    (line_pred.line_id, word.word_id), "O"
+                )
                 line_base_labels_gt.append(base_label)
 
             # Convert to BIO
@@ -462,7 +524,11 @@ def handler(_event, _context):
                     line_ground_truth.append("O")
                     prev_base_gt = "O"
                 else:
-                    bio_label = "B-" + base_label if prev_base_gt != base_label else "I-" + base_label
+                    bio_label = (
+                        "B-" + base_label
+                        if prev_base_gt != base_label
+                        else "I-" + base_label
+                    )
                     line_ground_truth.append(bio_label)
                     prev_base_gt = base_label
 
@@ -472,7 +538,9 @@ def handler(_event, _context):
                     "tokens": line_pred.tokens,
                     "predicted_labels": line_pred.labels,
                     "confidences": [float(c) for c in line_pred.confidences],
-                    "ground_truth_labels": line_ground_truth if line_ground_truth else None,
+                    "ground_truth_labels": (
+                        line_ground_truth if line_ground_truth else None
+                    ),
                 }
             )
 
@@ -534,4 +602,3 @@ def handler(_event, _context):
             "statusCode": 500,
             "body": json.dumps({"error": str(e)}),
         }
-

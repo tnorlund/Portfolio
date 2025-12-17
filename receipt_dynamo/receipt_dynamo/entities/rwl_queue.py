@@ -143,7 +143,7 @@ class Queue:
         yield "job_count", self.job_count
 
     def __hash__(self) -> int:
-        """Returns the hash value of the Queue object based on its unique 
+        """Returns the hash value of the Queue object based on its unique
         identifier.
 
         Returns:

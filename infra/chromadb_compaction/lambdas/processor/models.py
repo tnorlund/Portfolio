@@ -68,4 +68,3 @@ class FieldChange:
 
     old: Any
     new: Any
-

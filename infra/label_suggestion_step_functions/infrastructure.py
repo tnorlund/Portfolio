@@ -56,7 +56,9 @@ langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
 
 # Label suggestion specific config
 suggestion_config = Config("label-suggestion")
-max_concurrency_process_default = suggestion_config.get_int("max_concurrency_process") or 5  # More permissive than validation
+max_concurrency_process_default = (
+    suggestion_config.get_int("max_concurrency_process") or 5
+)  # More permissive than validation
 
 
 class LabelSuggestionStepFunction(ComponentResource):
@@ -95,7 +97,9 @@ class LabelSuggestionStepFunction(ComponentResource):
         stack = pulumi.get_stack()
 
         # Use provided values or fall back to config or defaults
-        self.max_concurrency_process = max_concurrency_process or max_concurrency_process_default
+        self.max_concurrency_process = (
+            max_concurrency_process or max_concurrency_process_default
+        )
 
         # ============================================================
         # S3 Bucket for batch files and results
@@ -371,7 +375,10 @@ class LabelSuggestionStepFunction(ComponentResource):
                 "LANGCHAIN_API_KEY": langchain_api_key,
                 "LANGCHAIN_TRACING_V2": "true",
                 "LANGCHAIN_ENDPOINT": "https://api.smith.langchain.com",
-                "LANGCHAIN_PROJECT": pulumi.Config("portfolio").get("langchain_project") or "label-suggestion-agent",
+                "LANGCHAIN_PROJECT": pulumi.Config("portfolio").get(
+                    "langchain_project"
+                )
+                or "label-suggestion-agent",
             },
         }
 
@@ -567,7 +574,9 @@ class LabelSuggestionStepFunction(ComponentResource):
                 },
                 "NoReceiptsToProcess": {
                     "Type": "Pass",
-                    "Result": {"message": "No receipts with unlabeled words to process"},
+                    "Result": {
+                        "message": "No receipts with unlabeled words to process"
+                    },
                     "End": True,
                 },
                 # Load batch manifest from S3 and return batch indices
@@ -648,7 +657,9 @@ class LabelSuggestionStepFunction(ComponentResource):
                                         "BackoffRate": 2.0,
                                     },
                                     {
-                                        "ErrorEquals": ["OllamaRateLimitError"],
+                                        "ErrorEquals": [
+                                            "OllamaRateLimitError"
+                                        ],
                                         "IntervalSeconds": 30,
                                         "MaxAttempts": 5,
                                         "BackoffRate": 1.5,
@@ -710,4 +721,3 @@ class LabelSuggestionStepFunction(ComponentResource):
         }
 
         return json.dumps(definition)
-

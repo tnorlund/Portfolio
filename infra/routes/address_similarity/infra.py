@@ -92,7 +92,9 @@ def create_address_similarity_lambda(
             }
         ),
         handler="index.handler",
-        layers=[dynamo_layer.arn],  # Keep for consistency, even if not strictly needed
+        layers=[
+            dynamo_layer.arn
+        ],  # Keep for consistency, even if not strictly needed
         environment={
             "variables": {
                 "S3_CACHE_BUCKET": Output.from_input(cache_bucket_name),
@@ -123,4 +125,3 @@ log_group = aws.cloudwatch.LogGroup(
 # Export Lambda details
 pulumi.export(f"{ROUTE_NAME}_lambda_arn", address_similarity_lambda.arn)
 pulumi.export(f"{ROUTE_NAME}_lambda_name", address_similarity_lambda.name)
-

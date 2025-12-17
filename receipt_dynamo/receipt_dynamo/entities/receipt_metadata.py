@@ -447,8 +447,12 @@ def item_to_receipt_metadata(item: Dict[str, Any]) -> ReceiptMetadata:
 
     # Type-safe extractors
     custom_extractors = {
-        "place_id": EntityFactory.extract_string_field("place_id", ""),  # Default to empty string if missing/NULL
-        "merchant_name": EntityFactory.extract_string_field("merchant_name", ""),  # Default to empty string if missing/NULL
+        "place_id": EntityFactory.extract_string_field(
+            "place_id", ""
+        ),  # Default to empty string if missing/NULL
+        "merchant_name": EntityFactory.extract_string_field(
+            "merchant_name", ""
+        ),  # Default to empty string if missing/NULL
         "matched_fields": EntityFactory.extract_string_list_field(
             "matched_fields"
         ),

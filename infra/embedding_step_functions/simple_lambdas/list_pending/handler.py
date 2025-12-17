@@ -167,11 +167,13 @@ def lambda_handler(
             # Create manifest with batch info
             manifest_batches = []
             for index, batch_info in enumerate(batch_list):
-                manifest_batches.append({
-                    "index": index,
-                    "batch_id": batch_info["batch_id"],
-                    "openai_batch_id": batch_info["openai_batch_id"],
-                })
+                manifest_batches.append(
+                    {
+                        "index": index,
+                        "batch_id": batch_info["batch_id"],
+                        "openai_batch_id": batch_info["openai_batch_id"],
+                    }
+                )
 
             manifest = {
                 "execution_id": execution_id,
@@ -184,7 +186,9 @@ def lambda_handler(
             # Upload manifest to S3
             manifest_key = f"poll_manifests/{execution_id}/manifest.json"
 
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp_file:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".json", delete=False
+            ) as tmp_file:
                 json.dump(manifest, tmp_file, indent=2)
                 tmp_file_path = tmp_file.name
 
@@ -243,7 +247,5 @@ def lambda_handler(
         raise RuntimeError(f"Data format error: {str(e)}") from e
 
     except Exception as e:
-        logger.error(
-            "Unexpected error listing pending batches: %s", str(e)
-        )
+        logger.error("Unexpected error listing pending batches: %s", str(e))
         raise RuntimeError(f"Internal error: {str(e)}") from e

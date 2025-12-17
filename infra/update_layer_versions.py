@@ -54,9 +54,11 @@ class LayerVersionUpdater:
             stack_name: Pulumi stack name (dev or prod)
         """
         # Validate stack name to prevent path traversal
-        if not re.match(r'^[a-zA-Z0-9_-]+$', stack_name):
-            raise ValueError(f"Invalid stack name: {stack_name}. Must contain only alphanumeric characters, hyphens, and underscores.")
-        
+        if not re.match(r"^[a-zA-Z0-9_-]+$", stack_name):
+            raise ValueError(
+                f"Invalid stack name: {stack_name}. Must contain only alphanumeric characters, hyphens, and underscores."
+            )
+
         self.stack_name = stack_name
         self.config_path = config_path
         self.backup_dir = Path("backups")
@@ -65,11 +67,13 @@ class LayerVersionUpdater:
         # Load configuration
         self.config = self._load_config()
         self._validate_config()
-        
+
         # Process configuration
         self.settings = self.config.get("settings", {}) or {}
         base_layers = self.config.get("layers", {}) or {}
-        stack_overrides = (self.config.get("stack_overrides", {}) or {}).get(self.stack_name, {}) or {}
+        stack_overrides = (self.config.get("stack_overrides", {}) or {}).get(
+            self.stack_name, {}
+        ) or {}
         # Merge base and overrides (overrides win)
         self.layer_mappings = {**base_layers, **stack_overrides}
 
@@ -78,7 +82,10 @@ class LayerVersionUpdater:
         cfg_account = self.settings.get("aws_account_id")
         try:
             self.lambda_client = boto3.client("lambda", region_name=cfg_region)
-            self.aws_account_id = cfg_account or boto3.client("sts").get_caller_identity()["Account"]
+            self.aws_account_id = (
+                cfg_account
+                or boto3.client("sts").get_caller_identity()["Account"]
+            )
             self.aws_region = cfg_region or self.lambda_client.meta.region_name
         except (NoCredentialsError, ClientError) as e:
             logger.warning(f"AWS credentials not configured: {e}")
@@ -102,35 +109,43 @@ class LayerVersionUpdater:
 
     def _validate_config(self) -> None:
         """Validate the loaded configuration structure."""
-        required_fields = ['layers']
+        required_fields = ["layers"]
         for field in required_fields:
             if field not in self.config:
                 raise ValueError(f"Missing required field in config: {field}")
-        
+
         # Validate layer configurations
-        layers = self.config.get('layers', {})
+        layers = self.config.get("layers", {})
         for layer_name, layer_config in layers.items():
             if not isinstance(layer_config, dict):
                 raise ValueError(f"Layer '{layer_name}' must be a dictionary")
-            
-            version = layer_config.get('version')
+
+            version = layer_config.get("version")
             if not isinstance(version, int) or version < 1:
-                raise ValueError(f"Invalid version for layer '{layer_name}': must be a positive integer")
-        
+                raise ValueError(
+                    f"Invalid version for layer '{layer_name}': must be a positive integer"
+                )
+
         # Validate stack overrides if present
-        stack_overrides = self.config.get('stack_overrides', {})
+        stack_overrides = self.config.get("stack_overrides", {})
         if stack_overrides:
             for stack, overrides in stack_overrides.items():
                 if not isinstance(overrides, dict):
-                    raise ValueError(f"Stack overrides for '{stack}' must be a dictionary")
-                
+                    raise ValueError(
+                        f"Stack overrides for '{stack}' must be a dictionary"
+                    )
+
                 for layer_name, layer_config in overrides.items():
                     if not isinstance(layer_config, dict):
-                        raise ValueError(f"Layer override '{layer_name}' in stack '{stack}' must be a dictionary")
-                    
-                    version = layer_config.get('version')
+                        raise ValueError(
+                            f"Layer override '{layer_name}' in stack '{stack}' must be a dictionary"
+                        )
+
+                    version = layer_config.get("version")
                     if not isinstance(version, int) or version < 1:
-                        raise ValueError(f"Invalid version for layer '{layer_name}' in stack '{stack}': must be a positive integer")
+                        raise ValueError(
+                            f"Invalid version for layer '{layer_name}' in stack '{stack}': must be a positive integer"
+                        )
 
     def _validate_layer_arn(self, arn: str) -> bool:
         """
@@ -142,11 +157,17 @@ class LayerVersionUpdater:
         Returns:
             True if valid, False otherwise
         """
-        pattern = r"^arn:aws:lambda:[a-z0-9-]+:\d{12}:layer:[a-zA-Z0-9-_]+:\d+$"
+        pattern = (
+            r"^arn:aws:lambda:[a-z0-9-]+:\d{12}:layer:[a-zA-Z0-9-_]+:\d+$"
+        )
         return bool(re.match(pattern, arn))
 
     def _build_layer_arn(
-        self, layer_name: str, version: int, region: str = None, account_id: str = None
+        self,
+        layer_name: str,
+        version: int,
+        region: str = None,
+        account_id: str = None,
     ) -> str:
         """
         Build a complete layer ARN from components.
@@ -159,19 +180,19 @@ class LayerVersionUpdater:
 
         Returns:
             Complete layer ARN
-            
+
         Raises:
             ValueError: If region or account_id cannot be determined
         """
         region = region or self.aws_region
         account_id = account_id or self.aws_account_id
-        
+
         if not region or not account_id:
             raise ValueError(
                 "Cannot build layer ARN: missing region/account_id. "
                 "Provide settings.aws_region and settings.aws_account_id or configure AWS credentials."
             )
-        
+
         return f"arn:aws:lambda:{region}:{account_id}:layer:{layer_name}:{version}"
 
     def _parse_layer_arn(self, arn: str) -> Dict[str, str]:
@@ -190,8 +211,8 @@ class LayerVersionUpdater:
             raise ValueError(f"Invalid layer ARN format: {arn}")
 
         return {
-            "partition": parts[1],    # aws
-            "service": parts[2],      # lambda
+            "partition": parts[1],  # aws
+            "service": parts[2],  # lambda
             "region": parts[3],
             "account_id": parts[4],
             "resource_type": parts[5],  # layer
@@ -207,15 +228,26 @@ class LayerVersionUpdater:
             Path to the exported state file
         """
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_file = self.backup_dir / f"{self.stack_name}_state_{timestamp}.json"
+        backup_file = (
+            self.backup_dir / f"{self.stack_name}_state_{timestamp}.json"
+        )
 
         logger.info(f"Exporting stack state for {self.stack_name}")
         try:
-            subprocess.run([
-                "pulumi", "stack", "export", 
-                "--stack", self.stack_name,
-                "--show-secrets", "--file", str(backup_file)
-            ], cwd=Path.cwd(), check=True)
+            subprocess.run(
+                [
+                    "pulumi",
+                    "stack",
+                    "export",
+                    "--stack",
+                    self.stack_name,
+                    "--show-secrets",
+                    "--file",
+                    str(backup_file),
+                ],
+                cwd=Path.cwd(),
+                check=True,
+            )
             logger.info(f"State exported to: {backup_file}")
             return str(backup_file)
         except subprocess.CalledProcessError as e:
@@ -245,7 +277,9 @@ class LayerVersionUpdater:
             logger.error(f"Invalid JSON in state file: {e}")
             raise
 
-    def find_lambda_resources(self, state: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def find_lambda_resources(
+        self, state: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
         """
         Find all Lambda function resources in the state.
 
@@ -256,18 +290,20 @@ class LayerVersionUpdater:
             List of Lambda function resources
         """
         lambda_resources = []
-        
+
         # Navigate through the state structure (Pulumi v3+ exports)
         resources = (
             state.get("deployment", {}).get("resources")
-            or state.get("checkpoint", {}).get("latest", {}).get("resources", [])
+            or state.get("checkpoint", {})
+            .get("latest", {})
+            .get("resources", [])
             or []
         )
-        
+
         for resource in resources:
             if resource.get("type") == "aws:lambda/function:Function":
                 lambda_resources.append(resource)
-        
+
         logger.info(f"Found {len(lambda_resources)} Lambda function resources")
         return lambda_resources
 
@@ -286,48 +322,60 @@ class LayerVersionUpdater:
         """
         changes = []
         updated_state = copy.deepcopy(state) if not dry_run else state
-        
+
         lambda_resources = self.find_lambda_resources(state)
-        
+
         for resource in lambda_resources:
             function_name = resource.get("outputs", {}).get("name")
             if not function_name:
                 continue
-                
+
             # Check if this function has layers
             layers = resource.get("outputs", {}).get("layers", [])
             if not layers:
                 continue
-                
+
             updated_layers = []
             layer_updated = False
-            
+
             for layer_arn in layers:
-                if not isinstance(layer_arn, str) or not self._validate_layer_arn(layer_arn):
+                if not isinstance(
+                    layer_arn, str
+                ) or not self._validate_layer_arn(layer_arn):
                     updated_layers.append(layer_arn)
                     continue
-                    
+
                 # Parse the layer ARN
                 try:
                     layer_info = self._parse_layer_arn(layer_arn)
                     layer_name = layer_info["layer_name"]
                     current_version = layer_info["version"]
-                    
+
                     # Check if we have an update for this layer
                     new_version = None
-                    for mapping_name, mapping_config in self.layer_mappings.items():
-                        if layer_name.endswith(f"-{mapping_name}") or layer_name == mapping_name:
+                    for (
+                        mapping_name,
+                        mapping_config,
+                    ) in self.layer_mappings.items():
+                        if (
+                            layer_name.endswith(f"-{mapping_name}")
+                            or layer_name == mapping_name
+                        ):
                             new_version = mapping_config.get("version")
                             break
-                    
-                    if new_version and str(new_version) != str(current_version):
+
+                    if new_version and str(new_version) != str(
+                        current_version
+                    ):
                         new_arn = self._build_layer_arn(
-                            layer_name, new_version,
-                            layer_info["region"], layer_info["account_id"]
+                            layer_name,
+                            new_version,
+                            layer_info["region"],
+                            layer_info["account_id"],
                         )
                         updated_layers.append(new_arn)
                         layer_updated = True
-                        
+
                         change_msg = (
                             f"Function {function_name}: Layer {layer_name} "
                             f"version {current_version} -> {new_version}"
@@ -336,11 +384,11 @@ class LayerVersionUpdater:
                         logger.info(change_msg)
                     else:
                         updated_layers.append(layer_arn)
-                        
+
                 except Exception as e:
                     logger.warning(f"Error processing layer {layer_arn}: {e}")
                     updated_layers.append(layer_arn)
-            
+
             # Update the resource if layers changed
             if layer_updated and not dry_run:
                 # Update both inputs and outputs
@@ -348,10 +396,12 @@ class LayerVersionUpdater:
                     resource["inputs"]["layers"] = updated_layers
                 if "outputs" in resource:
                     resource["outputs"]["layers"] = updated_layers
-        
+
         return updated_state, changes
 
-    def save_state_to_file(self, state: Dict[str, Any], file_path: str) -> None:
+    def save_state_to_file(
+        self, state: Dict[str, Any], file_path: str
+    ) -> None:
         """
         Save Pulumi state to JSON file.
 
@@ -376,11 +426,19 @@ class LayerVersionUpdater:
         """
         logger.info(f"Importing state for stack {self.stack_name}")
         try:
-            subprocess.run([
-                "pulumi", "stack", "import",
-                "--stack", self.stack_name,
-                "--file", file_path
-            ], cwd=Path.cwd(), check=True)
+            subprocess.run(
+                [
+                    "pulumi",
+                    "stack",
+                    "import",
+                    "--stack",
+                    self.stack_name,
+                    "--file",
+                    file_path,
+                ],
+                cwd=Path.cwd(),
+                check=True,
+            )
             logger.info("State import completed")
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to import stack state: {e}")
@@ -409,23 +467,28 @@ class LayerVersionUpdater:
             for page in paginator.paginate():
                 for function in page["Functions"]:
                     function_name = function["FunctionName"]
-                    
+
                     # Check if this function belongs to our stack
                     try:
                         tags = self.lambda_client.list_tags(
                             Resource=function["FunctionArn"]
                         ).get("Tags", {})
-                        
+
                         tag_key = self.settings.get("tag_key", "environment")
-                        stack_match = tags.get(tag_key) == self.stack_name or tags.get("pulumi:stack") == self.stack_name
+                        stack_match = (
+                            tags.get(tag_key) == self.stack_name
+                            or tags.get("pulumi:stack") == self.stack_name
+                        )
                         if not stack_match:
                             continue
-                            
+
                     except ClientError:
                         continue
 
                     # Get current layers
-                    current_layers = [layer["Arn"] for layer in function.get("Layers", [])]
+                    current_layers = [
+                        layer["Arn"] for layer in function.get("Layers", [])
+                    ]
                     if not current_layers:
                         continue
 
@@ -437,27 +500,37 @@ class LayerVersionUpdater:
                         try:
                             layer_info = self._parse_layer_arn(layer_arn)
                             layer_name = layer_info["layer_name"]
-                            
+
                             # Check for updates
                             new_version = None
-                            for mapping_name, mapping_config in self.layer_mappings.items():
-                                if layer_name.endswith(f"-{mapping_name}") or layer_name == mapping_name:
+                            for (
+                                mapping_name,
+                                mapping_config,
+                            ) in self.layer_mappings.items():
+                                if (
+                                    layer_name.endswith(f"-{mapping_name}")
+                                    or layer_name == mapping_name
+                                ):
                                     new_version = mapping_config.get("version")
                                     break
-                            
+
                             if new_version:
                                 new_arn = self._build_layer_arn(
-                                    layer_name, new_version,
-                                    layer_info["region"], layer_info["account_id"]
+                                    layer_name,
+                                    new_version,
+                                    layer_info["region"],
+                                    layer_info["account_id"],
                                 )
                                 updated_layers.append(new_arn)
                                 if new_arn != layer_arn:
                                     function_updated = True
                             else:
                                 updated_layers.append(layer_arn)
-                                
+
                         except Exception as e:
-                            logger.warning(f"Error processing layer {layer_arn}: {e}")
+                            logger.warning(
+                                f"Error processing layer {layer_arn}: {e}"
+                            )
                             updated_layers.append(layer_arn)
 
                     # Update the function if needed
@@ -470,9 +543,12 @@ class LayerVersionUpdater:
                         else:
                             try:
                                 self.lambda_client.update_function_configuration(
-                                    FunctionName=function_name, Layers=updated_layers
+                                    FunctionName=function_name,
+                                    Layers=updated_layers,
                                 )
-                                logger.info(f"Updated AWS function {function_name}")
+                                logger.info(
+                                    f"Updated AWS function {function_name}"
+                                )
                             except ClientError as e:
                                 logger.error(
                                     f"Failed to update function {function_name}: {e}"
@@ -489,40 +565,47 @@ class LayerVersionUpdater:
             dry_run: If True, only show what would be changed
             sync_aws: If True, also sync changes with AWS
         """
-        logger.info(f"Starting layer version update for stack '{self.stack_name}'")
-        
+        logger.info(
+            f"Starting layer version update for stack '{self.stack_name}'"
+        )
+
         if dry_run:
             logger.info("Running in DRY-RUN mode - no changes will be made")
-        
+
         try:
             # Export current state
             state_file = self.export_stack_state()
-            
+
             # Load and process state
             state = self.load_state_from_file(state_file)
-            updated_state, changes = self.update_layer_versions_in_state(state, dry_run)
-            
+            updated_state, changes = self.update_layer_versions_in_state(
+                state, dry_run
+            )
+
             if not changes:
                 logger.info("No layer version updates needed")
                 return
-            
+
             logger.info(f"Found {len(changes)} layer version updates:")
             for change in changes:
                 logger.info(f"  - {change}")
-            
+
             if not dry_run:
                 # Save updated state
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                updated_file = self.backup_dir / f"{self.stack_name}_updated_{timestamp}.json"
+                updated_file = (
+                    self.backup_dir
+                    / f"{self.stack_name}_updated_{timestamp}.json"
+                )
                 self.save_state_to_file(updated_state, str(updated_file))
-                
+
                 # Import updated state
                 self.import_stack_state(str(updated_file))
                 logger.info("Pulumi state updated successfully")
-            
+
             if sync_aws:
                 self.sync_with_aws(changes, dry_run)
-                
+
         except Exception as e:
             logger.error(f"Operation failed: {e}")
             sys.exit(1)
@@ -534,30 +617,23 @@ def main():
         description="Update Lambda layer versions in Pulumi state"
     )
     parser.add_argument(
-        "--config", 
-        required=True,
-        help="Path to layer configuration YAML file"
+        "--config", required=True, help="Path to layer configuration YAML file"
     )
     parser.add_argument(
-        "--stack", 
-        default="dev",
-        help="Pulumi stack name (default: dev)"
+        "--stack", default="dev", help="Pulumi stack name (default: dev)"
     )
     parser.add_argument(
-        "--dry-run", 
+        "--dry-run",
         action="store_true",
-        help="Show what would be changed without making changes"
+        help="Show what would be changed without making changes",
     )
     parser.add_argument(
-        "--sync-aws", 
+        "--sync-aws",
         action="store_true",
-        help="Also sync changes with AWS Lambda functions"
+        help="Also sync changes with AWS Lambda functions",
     )
     parser.add_argument(
-        "--verbose", 
-        "-v", 
-        action="store_true",
-        help="Enable verbose logging"
+        "--verbose", "-v", action="store_true", help="Enable verbose logging"
     )
 
     args = parser.parse_args()

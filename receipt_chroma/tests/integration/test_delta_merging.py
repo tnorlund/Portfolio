@@ -93,7 +93,10 @@ class TestDeltaMerging:
                     ids=["IMAGE#delta-id#RECEIPT#00001#LINE#00001"],
                     embeddings=[[0.9] * 1536],
                     metadatas=[
-                        {"text": "Delta line", "merchant_name": "Delta Merchant"}
+                        {
+                            "text": "Delta line",
+                            "merchant_name": "Delta Merchant",
+                        }
                     ],
                 )
             # Client is properly closed and resources released here
@@ -220,7 +223,9 @@ class TestDeltaMerging:
             ) as snapshot_client:
                 snapshot_client.upsert(
                     collection_name="words",
-                    ids=["IMAGE#snapshot-id#RECEIPT#00001#LINE#00001#WORD#00001"],
+                    ids=[
+                        "IMAGE#snapshot-id#RECEIPT#00001#LINE#00001#WORD#00001"
+                    ],
                     embeddings=[[0.1] * 1536],
                     metadatas=[{"text": "Snapshot"}],
                 )
@@ -324,9 +329,7 @@ class TestDeltaMerging:
                             upload_count += 1
 
                     # Verify files were actually uploaded
-                    assert (
-                        upload_count > 0
-                    ), f"No files uploaded for delta {i}"
+                    assert upload_count > 0, f"No files uploaded for delta {i}"
 
                     # Create compaction message
                     compaction_msg = create_compaction_run_message(

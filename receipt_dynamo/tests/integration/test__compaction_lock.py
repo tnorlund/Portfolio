@@ -1,6 +1,7 @@
 """
 Integration tests for CompactionLock operations in DynamoDB.
 """
+
 import time
 from datetime import datetime, timedelta, timezone
 from typing import List, Literal, Type
@@ -94,10 +95,9 @@ class TestCompactionLockOperations:
         """Test successful addition of a compaction lock."""
         client = DynamoClient(dynamodb_table)
         client.add_compaction_lock(example_compaction_lock)
-        
+
         result = client.get_compaction_lock(
-            example_compaction_lock.lock_id, 
-            example_compaction_lock.collection
+            example_compaction_lock.lock_id, example_compaction_lock.collection
         )
         assert result == example_compaction_lock
 
@@ -109,10 +109,9 @@ class TestCompactionLockOperations:
         """Test addition of a minimal compaction lock."""
         client = DynamoClient(dynamodb_table)
         client.add_compaction_lock(minimal_compaction_lock)
-        
+
         result = client.get_compaction_lock(
-            minimal_compaction_lock.lock_id,
-            minimal_compaction_lock.collection
+            minimal_compaction_lock.lock_id, minimal_compaction_lock.collection
         )
         assert result == minimal_compaction_lock
         assert result.heartbeat is None
@@ -122,7 +121,9 @@ class TestCompactionLockOperations:
     ) -> None:
         """Test that getting a non-existent lock returns None."""
         client = DynamoClient(dynamodb_table)
-        result = client.get_compaction_lock("NON_EXISTENT_LOCK", ChromaDBCollection.LINES)
+        result = client.get_compaction_lock(
+            "NON_EXISTENT_LOCK", ChromaDBCollection.LINES
+        )
         assert result is None
 
     def test_update_compaction_lock_success(
@@ -145,10 +146,9 @@ class TestCompactionLockOperations:
 
         client.update_compaction_lock(updated_lock)
         result = client.get_compaction_lock(
-            example_compaction_lock.lock_id,
-            example_compaction_lock.collection
+            example_compaction_lock.lock_id, example_compaction_lock.collection
         )
-        
+
         assert result == updated_lock
         assert result.heartbeat != example_compaction_lock.heartbeat
 
@@ -164,12 +164,11 @@ class TestCompactionLockOperations:
         client.delete_compaction_lock(
             example_compaction_lock.lock_id,
             example_compaction_lock.owner,
-            example_compaction_lock.collection
+            example_compaction_lock.collection,
         )
 
         result = client.get_compaction_lock(
-            example_compaction_lock.lock_id,
-            example_compaction_lock.collection
+            example_compaction_lock.lock_id, example_compaction_lock.collection
         )
         assert result is None
 
@@ -180,22 +179,22 @@ class TestCompactionLockOperations:
     ) -> None:
         """Test that adding a lock succeeds when existing lock is expired."""
         client = DynamoClient(dynamodb_table)
-        
+
         # Create an expired lock
         expired_lock = CompactionLock(
             lock_id=example_compaction_lock.lock_id,
             owner=str(uuid4()),  # Different owner
-            expires=datetime.now(timezone.utc) - timedelta(minutes=1),  # Expired
+            expires=datetime.now(timezone.utc)
+            - timedelta(minutes=1),  # Expired
             collection=example_compaction_lock.collection,
         )
         client.add_compaction_lock(expired_lock)
 
         # Should be able to add new lock with same ID because old one is expired
         client.add_compaction_lock(example_compaction_lock)
-        
+
         result = client.get_compaction_lock(
-            example_compaction_lock.lock_id,
-            example_compaction_lock.collection
+            example_compaction_lock.lock_id, example_compaction_lock.collection
         )
         assert result == example_compaction_lock
         assert result.owner != expired_lock.owner
@@ -205,7 +204,7 @@ class TestCompactionLockOperations:
     ) -> None:
         """Test that locks are isolated by collection."""
         client = DynamoClient(dynamodb_table)
-        
+
         # Create locks with same ID but different collections
         lock_id = "shared-lock-id"
         lines_lock = CompactionLock(
@@ -226,8 +225,12 @@ class TestCompactionLockOperations:
         client.add_compaction_lock(words_lock)
 
         # Both should be retrievable independently
-        lines_result = client.get_compaction_lock(lock_id, ChromaDBCollection.LINES)
-        words_result = client.get_compaction_lock(lock_id, ChromaDBCollection.WORDS)
+        lines_result = client.get_compaction_lock(
+            lock_id, ChromaDBCollection.LINES
+        )
+        words_result = client.get_compaction_lock(
+            lock_id, ChromaDBCollection.WORDS
+        )
 
         assert lines_result == lines_lock
         assert words_result == words_lock
@@ -281,8 +284,8 @@ class TestCompactionLockErrors:
         client = DynamoClient(dynamodb_table)
 
         with pytest.raises(
-            EntityNotFoundError, 
-            match="Lock 'NON_EXISTENT' for collection 'lines' not found"
+            EntityNotFoundError,
+            match="Lock 'NON_EXISTENT' for collection 'lines' not found",
         ):
             client.delete_compaction_lock(
                 "NON_EXISTENT", str(uuid4()), ChromaDBCollection.LINES
@@ -300,12 +303,12 @@ class TestCompactionLockErrors:
         wrong_owner = str(uuid4())
         with pytest.raises(
             EntityValidationError,
-            match=f"Cannot delete lock '{example_compaction_lock.lock_id}' for collection 'lines' - owned by {example_compaction_lock.owner}"
+            match=f"Cannot delete lock '{example_compaction_lock.lock_id}' for collection 'lines' - owned by {example_compaction_lock.owner}",
         ):
             client.delete_compaction_lock(
                 example_compaction_lock.lock_id,
                 wrong_owner,
-                example_compaction_lock.collection
+                example_compaction_lock.collection,
             )
 
 
@@ -323,9 +326,7 @@ class TestCompactionLockValidation:
     ) -> None:
         """Test that adding None raises EntityValidationError."""
         client = DynamoClient(dynamodb_table)
-        with pytest.raises(
-            EntityValidationError, match="lock cannot be None"
-        ):
+        with pytest.raises(EntityValidationError, match="lock cannot be None"):
             client.add_compaction_lock(None)  # type: ignore
 
     def test_add_compaction_lock_wrong_type_raises_error(
@@ -344,7 +345,9 @@ class TestCompactionLockValidation:
     ) -> None:
         """Test that getting with empty lock_id raises error."""
         client = DynamoClient(dynamodb_table)
-        with pytest.raises(EntityValidationError, match="lock_id cannot be empty"):
+        with pytest.raises(
+            EntityValidationError, match="lock_id cannot be empty"
+        ):
             client.get_compaction_lock("", ChromaDBCollection.LINES)
 
     def test_delete_compaction_lock_empty_params_raises_error(
@@ -352,14 +355,22 @@ class TestCompactionLockValidation:
     ) -> None:
         """Test that delete with empty parameters raises error."""
         client = DynamoClient(dynamodb_table)
-        
+
         # Empty lock_id
-        with pytest.raises(EntityValidationError, match="lock_id cannot be empty"):
-            client.delete_compaction_lock("", str(uuid4()), ChromaDBCollection.LINES)
-        
+        with pytest.raises(
+            EntityValidationError, match="lock_id cannot be empty"
+        ):
+            client.delete_compaction_lock(
+                "", str(uuid4()), ChromaDBCollection.LINES
+            )
+
         # Empty owner
-        with pytest.raises(EntityValidationError, match="owner cannot be empty"):
-            client.delete_compaction_lock("test-lock", "", ChromaDBCollection.LINES)
+        with pytest.raises(
+            EntityValidationError, match="owner cannot be empty"
+        ):
+            client.delete_compaction_lock(
+                "test-lock", "", ChromaDBCollection.LINES
+            )
 
 
 # -------------------------------------------------------------------
@@ -387,7 +398,7 @@ class TestCompactionLockListing:
     ) -> None:
         """Test listing compaction locks."""
         client = DynamoClient(dynamodb_table)
-        
+
         for lock in example_compaction_locks:
             client.add_compaction_lock(lock)
 
@@ -407,7 +418,7 @@ class TestCompactionLockListing:
     ) -> None:
         """Test pagination through compaction locks."""
         client = DynamoClient(dynamodb_table)
-        
+
         for lock in example_compaction_locks:
             client.add_compaction_lock(lock)
 
@@ -434,7 +445,7 @@ class TestCompactionLockListing:
         """Test listing only active (non-expired) locks."""
         client = DynamoClient(dynamodb_table)
         now = datetime.now(timezone.utc)
-        
+
         # Create expired lock
         expired_lock = CompactionLock(
             lock_id="expired-lock",
@@ -442,7 +453,7 @@ class TestCompactionLockListing:
             expires=now - timedelta(minutes=1),
             collection=ChromaDBCollection.LINES,
         )
-        
+
         # Create active lock
         active_lock = CompactionLock(
             lock_id="active-lock",
@@ -461,7 +472,7 @@ class TestCompactionLockListing:
 
 
 # -------------------------------------------------------------------
-#                     CLEANUP OPERATIONS  
+#                     CLEANUP OPERATIONS
 # -------------------------------------------------------------------
 
 
@@ -483,8 +494,7 @@ class TestCompactionLockCleanup:
 
         # Lock should still exist
         result = client.get_compaction_lock(
-            example_compaction_lock.lock_id,
-            example_compaction_lock.collection
+            example_compaction_lock.lock_id, example_compaction_lock.collection
         )
         assert result is not None
 
@@ -494,18 +504,18 @@ class TestCompactionLockCleanup:
         """Test cleanup when some locks are expired."""
         client = DynamoClient(dynamodb_table)
         now = datetime.now(timezone.utc)
-        
+
         # Create expired locks
         expired_locks = [
             CompactionLock(
                 lock_id=f"expired-{i}",
                 owner=str(uuid4()),
-                expires=now - timedelta(minutes=i+1),
+                expires=now - timedelta(minutes=i + 1),
                 collection=ChromaDBCollection.LINES,
             )
             for i in range(2)
         ]
-        
+
         # Create active lock
         active_lock = CompactionLock(
             lock_id="active",
@@ -522,7 +532,9 @@ class TestCompactionLockCleanup:
         assert count == 2
 
         # Only active lock should remain
-        active_result = client.get_compaction_lock("active", ChromaDBCollection.LINES)
+        active_result = client.get_compaction_lock(
+            "active", ChromaDBCollection.LINES
+        )
         assert active_result is not None
 
         for expired in expired_locks:
@@ -538,12 +550,24 @@ class TestCompactionLockCleanup:
 
 
 ERROR_SCENARIOS = [
-    ("ProvisionedThroughputExceededException", DynamoDBThroughputError, "Throughput exceeded"),
+    (
+        "ProvisionedThroughputExceededException",
+        DynamoDBThroughputError,
+        "Throughput exceeded",
+    ),
     ("InternalServerError", DynamoDBServerError, "DynamoDB server error"),
     ("ValidationException", EntityValidationError, "Validation error"),
     ("AccessDeniedException", DynamoDBError, "DynamoDB error during"),
-    ("ResourceNotFoundException", OperationError, "DynamoDB resource not found"),
-    ("ItemCollectionSizeLimitExceededException", DynamoDBError, "DynamoDB error during"),
+    (
+        "ResourceNotFoundException",
+        OperationError,
+        "DynamoDB resource not found",
+    ),
+    (
+        "ItemCollectionSizeLimitExceededException",
+        DynamoDBError,
+        "DynamoDB error during",
+    ),
     ("TransactionConflictException", DynamoDBError, "DynamoDB error during"),
     ("RequestLimitExceeded", DynamoDBError, "DynamoDB error during"),
     ("ServiceUnavailable", DynamoDBServerError, "DynamoDB server error"),
@@ -552,7 +576,9 @@ ERROR_SCENARIOS = [
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("error_code,expected_exception,error_match", ERROR_SCENARIOS)
+@pytest.mark.parametrize(
+    "error_code,expected_exception,error_match", ERROR_SCENARIOS
+)
 class TestCompactionLockErrorHandling:
     """Test error handling for CompactionLock operations."""
 
@@ -567,10 +593,12 @@ class TestCompactionLockErrorHandling:
         """Test that DynamoDB client errors are properly handled in add operations."""
         client = DynamoClient(dynamodb_table)
         with patch.object(
-            client._client, "put_item", side_effect=ClientError(
+            client._client,
+            "put_item",
+            side_effect=ClientError(
                 {"Error": {"Code": error_code, "Message": "Test error"}},
-                "PutItem"
-            )
+                "PutItem",
+            ),
         ):
             with pytest.raises(expected_exception, match=error_match):
                 client.add_compaction_lock(example_compaction_lock)
@@ -586,10 +614,12 @@ class TestCompactionLockErrorHandling:
         """Test that DynamoDB client errors are properly handled in update operations."""
         client = DynamoClient(dynamodb_table)
         with patch.object(
-            client._client, "put_item", side_effect=ClientError(
+            client._client,
+            "put_item",
+            side_effect=ClientError(
                 {"Error": {"Code": error_code, "Message": "Test error"}},
-                "PutItem"
-            )
+                "PutItem",
+            ),
         ):
             with pytest.raises(expected_exception, match=error_match):
                 client.update_compaction_lock(example_compaction_lock)
@@ -604,13 +634,17 @@ class TestCompactionLockErrorHandling:
         """Test that DynamoDB client errors are properly handled in get operations."""
         client = DynamoClient(dynamodb_table)
         with patch.object(
-            client._client, "get_item", side_effect=ClientError(
+            client._client,
+            "get_item",
+            side_effect=ClientError(
                 {"Error": {"Code": error_code, "Message": "Test error"}},
-                "GetItem"
-            )
+                "GetItem",
+            ),
         ):
             with pytest.raises(expected_exception, match=error_match):
-                client.get_compaction_lock("test-lock", ChromaDBCollection.LINES)
+                client.get_compaction_lock(
+                    "test-lock", ChromaDBCollection.LINES
+                )
 
     def test_delete_compaction_lock_client_errors(
         self,
@@ -622,10 +656,12 @@ class TestCompactionLockErrorHandling:
         """Test that DynamoDB client errors are properly handled in delete operations."""
         client = DynamoClient(dynamodb_table)
         with patch.object(
-            client._client, "delete_item", side_effect=ClientError(
+            client._client,
+            "delete_item",
+            side_effect=ClientError(
                 {"Error": {"Code": error_code, "Message": "Test error"}},
-                "DeleteItem"
-            )
+                "DeleteItem",
+            ),
         ):
             with pytest.raises(expected_exception, match=error_match):
                 client.delete_compaction_lock(
@@ -647,7 +683,7 @@ class TestCompactionLockEdgeCases:
     ) -> None:
         """Test locks with special characters in lock_id."""
         client = DynamoClient(dynamodb_table)
-        
+
         special_lock = CompactionLock(
             lock_id="lock-with-@#$%_special_chars",
             owner=str(uuid4()),
@@ -656,7 +692,9 @@ class TestCompactionLockEdgeCases:
         )
 
         client.add_compaction_lock(special_lock)
-        result = client.get_compaction_lock(special_lock.lock_id, special_lock.collection)
+        result = client.get_compaction_lock(
+            special_lock.lock_id, special_lock.collection
+        )
         assert result == special_lock
 
     def test_lock_with_very_long_id(
@@ -664,7 +702,7 @@ class TestCompactionLockEdgeCases:
     ) -> None:
         """Test locks with very long lock_id."""
         client = DynamoClient(dynamodb_table)
-        
+
         long_id = "a" * 500  # Very long ID
         long_lock = CompactionLock(
             lock_id=long_id,
@@ -683,7 +721,7 @@ class TestCompactionLockEdgeCases:
     ) -> None:
         """Test locks with hash symbols in lock_id."""
         client = DynamoClient(dynamodb_table)
-        
+
         hash_lock = CompactionLock(
             lock_id="lock#with#hash#symbols",
             owner=str(uuid4()),
@@ -692,7 +730,9 @@ class TestCompactionLockEdgeCases:
         )
 
         client.add_compaction_lock(hash_lock)
-        result = client.get_compaction_lock(hash_lock.lock_id, hash_lock.collection)
+        result = client.get_compaction_lock(
+            hash_lock.lock_id, hash_lock.collection
+        )
         assert result == hash_lock
         assert "#" in result.lock_id
 
@@ -701,7 +741,7 @@ class TestCompactionLockEdgeCases:
     ) -> None:
         """Test that concurrent operations on different locks work."""
         client = DynamoClient(dynamodb_table)
-        
+
         # Create locks for different collections with same ID
         lock_id = "concurrent-test"
         locks = [
@@ -711,7 +751,10 @@ class TestCompactionLockEdgeCases:
                 expires=datetime.now(timezone.utc) + timedelta(minutes=5),
                 collection=collection,
             )
-            for collection in [ChromaDBCollection.LINES, ChromaDBCollection.WORDS]
+            for collection in [
+                ChromaDBCollection.LINES,
+                ChromaDBCollection.WORDS,
+            ]
         ]
 
         # Add both locks simultaneously
@@ -727,9 +770,13 @@ class TestCompactionLockEdgeCases:
         client.delete_compaction_lock(
             locks[0].lock_id, locks[0].owner, locks[0].collection
         )
-        
-        deleted_result = client.get_compaction_lock(locks[0].lock_id, locks[0].collection)
+
+        deleted_result = client.get_compaction_lock(
+            locks[0].lock_id, locks[0].collection
+        )
         assert deleted_result is None
-        
-        remaining_result = client.get_compaction_lock(locks[1].lock_id, locks[1].collection)
+
+        remaining_result = client.get_compaction_lock(
+            locks[1].lock_id, locks[1].collection
+        )
         assert remaining_result == locks[1]

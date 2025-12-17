@@ -40,16 +40,19 @@ class TestCoreCompactionLogic:
             "MAX_HEARTBEAT_FAILURES": "3",
         },
     )
-    @patch('infra.chromadb_compaction.lambdas.enhanced_compaction_handler.get_dynamo_client')
+    @patch(
+        "infra.chromadb_compaction.lambdas.enhanced_compaction_handler.get_dynamo_client"
+    )
     def test_update_receipt_metadata_logic(self, mock_get_dynamo_client):
         """Test the core metadata update logic."""
 
         # Setup mock DynamoDB client
         mock_dynamo_client = MagicMock()
         mock_get_dynamo_client.return_value = mock_dynamo_client
-        
-        # Create mock receipt lines 
+
+        # Create mock receipt lines
         from receipt_dynamo.entities.receipt_line import ReceiptLine
+
         test_image_id = "550e8400-e29b-41d4-a716-446655440000"
         mock_lines = [
             ReceiptLine(
@@ -65,7 +68,7 @@ class TestCoreCompactionLogic:
                 angle_degrees=0.0,
                 angle_radians=0.0,
                 confidence=0.95,
-                embedding_status="PENDING"
+                embedding_status="PENDING",
             ),
             ReceiptLine(
                 image_id=test_image_id,
@@ -80,7 +83,7 @@ class TestCoreCompactionLogic:
                 angle_degrees=0.0,
                 angle_radians=0.0,
                 confidence=0.95,
-                embedding_status="PENDING"
+                embedding_status="PENDING",
             ),
             ReceiptLine(
                 image_id=test_image_id,
@@ -95,10 +98,12 @@ class TestCoreCompactionLogic:
                 angle_degrees=0.0,
                 angle_radians=0.0,
                 confidence=0.95,
-                embedding_status="PENDING"
+                embedding_status="PENDING",
             ),
         ]
-        mock_dynamo_client.list_receipt_lines_from_receipt.return_value = mock_lines
+        mock_dynamo_client.list_receipt_lines_from_receipt.return_value = (
+            mock_lines
+        )
 
         # Setup mock collection
         mock_collection = MagicMock()
@@ -108,7 +113,7 @@ class TestCoreCompactionLogic:
         mock_collection.get.return_value = {
             "ids": [
                 f"IMAGE#{test_image_id}#RECEIPT#00456#LINE#00001",
-                f"IMAGE#{test_image_id}#RECEIPT#00456#LINE#00002", 
+                f"IMAGE#{test_image_id}#RECEIPT#00456#LINE#00002",
                 f"IMAGE#{test_image_id}#RECEIPT#00456#LINE#00003",
             ],
             "metadatas": [

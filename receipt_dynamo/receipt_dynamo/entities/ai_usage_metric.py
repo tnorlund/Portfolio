@@ -205,7 +205,7 @@ class AIUsageMetric(SerializationMixin, DynamoDBEntity):
         if self.metadata:
             custom_fields["metadata"] = self._serialize_value(self.metadata)
 
-        # Exclude computed fields and internal properties from 
+        # Exclude computed fields and internal properties from
         # auto-serialization
         exclude_fields = {
             "pk",

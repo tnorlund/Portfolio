@@ -62,7 +62,10 @@ def get_bucket_names(stack: str) -> Dict[str, str]:
 
 
 def list_all_objects(
-    s3_client, bucket: str, prefix: str = "", extensions: Optional[List[str]] = None
+    s3_client,
+    bucket: str,
+    prefix: str = "",
+    extensions: Optional[List[str]] = None,
 ) -> List[str]:
     """
     List all objects in an S3 bucket with optional prefix and extension filter.
@@ -87,7 +90,9 @@ def list_all_objects(
             for obj in page["Contents"]:
                 key = obj["Key"]
                 if extensions:
-                    if any(key.lower().endswith(ext.lower()) for ext in extensions):
+                    if any(
+                        key.lower().endswith(ext.lower()) for ext in extensions
+                    ):
                         keys.append(key)
                 else:
                     keys.append(key)
@@ -123,6 +128,7 @@ def check_objects_batch(
 
     # Use a lock to ensure thread-safe access to results
     from threading import Lock
+
     lock = Lock()
 
     def check_one(key: str) -> tuple[str, bool]:
@@ -163,7 +169,9 @@ def copy_one_object(
             return key, True, None
 
         copy_source = {"Bucket": source_bucket, "Key": key}
-        s3_client.copy_object(CopySource=copy_source, Bucket=dest_bucket, Key=key)
+        s3_client.copy_object(
+            CopySource=copy_source, Bucket=dest_bucket, Key=key
+        )
         return key, True, None
     except Exception as e:
         return key, False, str(e)
@@ -192,13 +200,17 @@ def copy_objects(
         "errors": [],
     }
 
-    logger.info(f"Processing {len(keys)} objects with {max_workers} workers...")
+    logger.info(
+        f"Processing {len(keys)} objects with {max_workers} workers..."
+    )
 
     # Batch check for existing objects if skip_existing is enabled
     keys_to_copy = keys
     if skip_existing:
         logger.info("Checking which objects already exist in destination...")
-        existing = check_objects_batch(s3_client, dest_bucket, keys, max_workers=20)
+        existing = check_objects_batch(
+            s3_client, dest_bucket, keys, max_workers=20
+        )
         keys_to_copy = [k for k in keys if not existing.get(k, False)]
         stats["skipped"] = len(keys) - len(keys_to_copy)
         logger.info(
@@ -214,7 +226,12 @@ def copy_objects(
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_key = {
             executor.submit(
-                copy_one_object, s3_client, source_bucket, dest_bucket, key, dry_run
+                copy_one_object,
+                s3_client,
+                source_bucket,
+                dest_bucket,
+                key,
+                dry_run,
             ): key
             for key in keys_to_copy
         }
@@ -365,7 +382,9 @@ def main():
     mode = "DRY RUN" if args.dry_run else "LIVE COPY"
     logger.info(f"Mode: {mode}")
     if args.dry_run:
-        logger.info("No files will be copied. Use --no-dry-run to actually copy.")
+        logger.info(
+            "No files will be copied. Use --no-dry-run to actually copy."
+        )
 
     try:
         # Get bucket names
@@ -374,9 +393,11 @@ def main():
 
         # Initialize S3 client with larger connection pool for parallel operations
         from botocore.config import Config
+
         config = Config(
-            max_pool_connections=args.max_workers * 2,  # Allow more concurrent connections
-            retries={'max_attempts': 3, 'mode': 'adaptive'}
+            max_pool_connections=args.max_workers
+            * 2,  # Allow more concurrent connections
+            retries={"max_attempts": 3, "mode": "adaptive"},
         )
         s3_client = boto3.client("s3", config=config)
 
@@ -416,15 +437,23 @@ def main():
         if not args.skip_raw:
             logger.info("\nRaw Images:")
             logger.info(f"  Total: {total_stats['raw'].get('total', 0)}")
-            logger.info(f"  {'Would copy' if args.dry_run else 'Copied'}: {total_stats['raw']['copied']}")
-            logger.info(f"  Skipped (already exist): {total_stats['raw']['skipped']}")
+            logger.info(
+                f"  {'Would copy' if args.dry_run else 'Copied'}: {total_stats['raw']['copied']}"
+            )
+            logger.info(
+                f"  Skipped (already exist): {total_stats['raw']['skipped']}"
+            )
             logger.info(f"  Failed: {total_stats['raw']['failed']}")
 
         if not args.skip_cdn:
             logger.info("\nCDN Images:")
             logger.info(f"  Total: {total_stats['cdn'].get('total', 0)}")
-            logger.info(f"  {'Would copy' if args.dry_run else 'Copied'}: {total_stats['cdn']['copied']}")
-            logger.info(f"  Skipped (already exist): {total_stats['cdn']['skipped']}")
+            logger.info(
+                f"  {'Would copy' if args.dry_run else 'Copied'}: {total_stats['cdn']['copied']}"
+            )
+            logger.info(
+                f"  Skipped (already exist): {total_stats['cdn']['skipped']}"
+            )
             logger.info(f"  Failed: {total_stats['cdn']['failed']}")
 
         # Show errors if any
@@ -444,9 +473,13 @@ def main():
                 logger.warning(f"  ... and {len(all_errors) - 10} more errors")
 
         if args.dry_run:
-            logger.info("\n✅ Dry run completed. Use --no-dry-run to actually copy files.")
+            logger.info(
+                "\n✅ Dry run completed. Use --no-dry-run to actually copy files."
+            )
         else:
-            total_failed = total_stats["raw"]["failed"] + total_stats["cdn"]["failed"]
+            total_failed = (
+                total_stats["raw"]["failed"] + total_stats["cdn"]["failed"]
+            )
             if total_failed > 0:
                 logger.error("\n❌ Copy completed with errors")
                 sys.exit(1)
@@ -460,4 +493,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

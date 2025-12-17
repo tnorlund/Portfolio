@@ -50,10 +50,18 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Load poll_results from S3 if it's stored there
         # Check multiple possible locations (from different step function paths)
         # Priority: primary > fallback > poll_data (source of truth from NormalizePollBatchesData)
-        poll_results_s3_key_primary = event.get("poll_results_s3_key")  # From final_merge_result or root level
-        poll_results_s3_key_fallback = event.get("poll_results_s3_key_fallback")  # From root level or intermediate steps
-        poll_results_s3_key_poll_data = event.get("poll_results_s3_key_poll_data")  # From poll_results_data (guaranteed to exist)
-        poll_results_s3_key_chunked = event.get("poll_results_s3_key_chunked")  # From chunked_data
+        poll_results_s3_key_primary = event.get(
+            "poll_results_s3_key"
+        )  # From final_merge_result or root level
+        poll_results_s3_key_fallback = event.get(
+            "poll_results_s3_key_fallback"
+        )  # From root level or intermediate steps
+        poll_results_s3_key_poll_data = event.get(
+            "poll_results_s3_key_poll_data"
+        )  # From poll_results_data (guaranteed to exist)
+        poll_results_s3_key_chunked = event.get(
+            "poll_results_s3_key_chunked"
+        )  # From chunked_data
 
         poll_results_s3_key = (
             poll_results_s3_key_primary
@@ -62,10 +70,18 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             or poll_results_s3_key_chunked
         )
 
-        poll_results_s3_bucket_primary = event.get("poll_results_s3_bucket")  # From final_merge_result or root level
-        poll_results_s3_bucket_fallback = event.get("poll_results_s3_bucket_fallback")  # From root level or intermediate steps
-        poll_results_s3_bucket_poll_data = event.get("poll_results_s3_bucket_poll_data")  # From poll_results_data (guaranteed to exist)
-        poll_results_s3_bucket_chunked = event.get("poll_results_s3_bucket_chunked")  # From chunked_data
+        poll_results_s3_bucket_primary = event.get(
+            "poll_results_s3_bucket"
+        )  # From final_merge_result or root level
+        poll_results_s3_bucket_fallback = event.get(
+            "poll_results_s3_bucket_fallback"
+        )  # From root level or intermediate steps
+        poll_results_s3_bucket_poll_data = event.get(
+            "poll_results_s3_bucket_poll_data"
+        )  # From poll_results_data (guaranteed to exist)
+        poll_results_s3_bucket_chunked = event.get(
+            "poll_results_s3_bucket_chunked"
+        )  # From chunked_data
 
         poll_results_s3_bucket = (
             poll_results_s3_bucket_primary
@@ -76,9 +92,17 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         # Log which path was used for debugging
         if poll_results_s3_key:
-            source = "primary" if poll_results_s3_key_primary else (
-                "fallback" if poll_results_s3_key_fallback else (
-                    "poll_data" if poll_results_s3_key_poll_data else "chunked_data"
+            source = (
+                "primary"
+                if poll_results_s3_key_primary
+                else (
+                    "fallback"
+                    if poll_results_s3_key_fallback
+                    else (
+                        "poll_data"
+                        if poll_results_s3_key_poll_data
+                        else "chunked_data"
+                    )
                 )
             )
             logger.info(
@@ -92,17 +116,25 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 available_keys=list(event.keys()),
             )
 
-        if (not poll_results or poll_results is None) and poll_results_s3_key and poll_results_s3_bucket:
+        if (
+            (not poll_results or poll_results is None)
+            and poll_results_s3_key
+            and poll_results_s3_bucket
+        ):
             logger.info(
                 "Loading poll_results from S3: %s/%s",
                 poll_results_s3_bucket,
                 poll_results_s3_key,
             )
-            with tempfile.NamedTemporaryFile(mode="r", suffix=".json", delete=False) as tmp_file:
+            with tempfile.NamedTemporaryFile(
+                mode="r", suffix=".json", delete=False
+            ) as tmp_file:
                 tmp_file_path = tmp_file.name
 
             try:
-                s3_client.download_file(poll_results_s3_bucket, poll_results_s3_key, tmp_file_path)
+                s3_client.download_file(
+                    poll_results_s3_bucket, poll_results_s3_key, tmp_file_path
+                )
                 with open(tmp_file_path, "r", encoding="utf-8") as f:
                     poll_results = json.load(f)
                 logger.info(
@@ -146,18 +178,24 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 # Only mark batches as COMPLETED if:
                 # 1. batch_status is "completed" AND
                 # 2. action is "process_results" (not "wait", "handle_failure", etc.)
-                if batch_id and batch_status == "completed" and action == "process_results":
+                if (
+                    batch_id
+                    and batch_status == "completed"
+                    and action == "process_results"
+                ):
                     if batch_id not in seen_batch_ids:
                         seen_batch_ids.add(batch_id)
                         batch_ids.append(batch_id)
                 else:
                     # Track skipped batches for logging
                     if batch_id:
-                        skipped_batches.append({
-                            "batch_id": batch_id,
-                            "batch_status": batch_status,
-                            "action": action,
-                        })
+                        skipped_batches.append(
+                            {
+                                "batch_id": batch_id,
+                                "batch_status": batch_status,
+                                "action": action,
+                            }
+                        )
 
         if skipped_batches:
             logger.info(
@@ -177,7 +215,9 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             return {
                 "batches_marked": 0,
                 "batch_ids": [],
-                "skipped_batches": len(skipped_batches) if skipped_batches else 0,
+                "skipped_batches": (
+                    len(skipped_batches) if skipped_batches else 0
+                ),
             }
 
         logger.info(
@@ -192,7 +232,9 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         try:
             # Get all batch summaries in one call
-            batch_summaries = dynamo_client.get_batch_summaries_by_batch_ids(batch_ids)
+            batch_summaries = dynamo_client.get_batch_summaries_by_batch_ids(
+                batch_ids
+            )
 
             # Update status for all summaries
             for batch_summary in batch_summaries:
@@ -202,7 +244,7 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             # Process in chunks of 25 (DynamoDB transaction limit)
             chunk_size = 25
             for i in range(0, len(batch_summaries), chunk_size):
-                chunk = batch_summaries[i:i + chunk_size]
+                chunk = batch_summaries[i : i + chunk_size]
                 try:
                     dynamo_client.update_batch_summaries(chunk)
                     marked_count += len(chunk)
@@ -221,7 +263,10 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         try:
                             dynamo_client.update_batch_summary(batch_summary)
                             marked_count += 1
-                            logger.debug("Marked batch as complete", batch_id=batch_summary.batch_id)
+                            logger.debug(
+                                "Marked batch as complete",
+                                batch_id=batch_summary.batch_id,
+                            )
                         except Exception as e2:
                             error_msg = f"Failed to mark batch {batch_summary.batch_id} as complete: {str(e2)[:100]}"
                             errors.append(error_msg)
@@ -282,10 +327,11 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
 
     except Exception as e:
-        logger.error("Unexpected error marking batches as complete", error=str(e))
+        logger.error(
+            "Unexpected error marking batches as complete", error=str(e)
+        )
         return {
             "statusCode": 500,
             "error": str(e),
             "message": "Failed to mark batches as complete",
         }
-

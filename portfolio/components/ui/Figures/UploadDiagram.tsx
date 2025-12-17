@@ -81,16 +81,17 @@ const UploadDiagram: React.FC<UploadDiagramProps> = ({ chars }) => {
   const makeRefs = () =>
     Array.from({ length: 5 }, () => React.createRef<SVGPathElement>());
 
-  const PATH_REFS = React.useMemo(() => {
-    return {
-      BottomMiddle: makeRefs(),
-      BottomLeft: makeRefs(),
-      BottomRight: makeRefs(),
-      TopMiddle: makeRefs(),
-      TopLeft: makeRefs(),
-      TopRight: makeRefs(),
-    };
-  }, []); // Empty dependency - refs should never change
+  const PATH_REFS = React.useMemo(
+    () => ({
+      BottomMiddle: makeRefs() as React.RefObject<SVGPathElement>[],
+      BottomLeft: makeRefs() as React.RefObject<SVGPathElement>[],
+      BottomRight: makeRefs() as React.RefObject<SVGPathElement>[],
+      TopMiddle: makeRefs() as React.RefObject<SVGPathElement>[],
+      TopLeft: makeRefs() as React.RefObject<SVGPathElement>[],
+      TopRight: makeRefs() as React.RefObject<SVGPathElement>[],
+    }),
+    [],
+  ); // Empty dependency - refs should never change
 
   // get (x,y) point on path at pct%
   const pointAt = (ref: React.RefObject<SVGPathElement>, pct: number) => {

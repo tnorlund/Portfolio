@@ -310,6 +310,7 @@ def reset_s3_state():
     # Cleanup happens after the test
     # Force garbage collection to help clean up S3 connections
     import gc
+
     gc.collect()
 
 

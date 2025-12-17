@@ -69,7 +69,9 @@ def test_spatial_relationship_init_valid(example_spatial_relationship):
 def test_spatial_relationship_init_invalid_to_label():
     """SpatialRelationship with invalid to_label raises ValueError."""
     # Empty label
-    with pytest.raises(ValueError, match="to_label must be a non-empty string"):
+    with pytest.raises(
+        ValueError, match="to_label must be a non-empty string"
+    ):
         SpatialRelationship(
             to_label="",
             to_line_id=10,
@@ -79,7 +81,9 @@ def test_spatial_relationship_init_invalid_to_label():
         )
 
     # Non-string label
-    with pytest.raises(ValueError, match="to_label must be a non-empty string"):
+    with pytest.raises(
+        ValueError, match="to_label must be a non-empty string"
+    ):
         SpatialRelationship(
             to_label=123,
             to_line_id=10,
@@ -116,7 +120,9 @@ def test_spatial_relationship_init_invalid_ids():
 @pytest.mark.unit
 def test_spatial_relationship_init_invalid_distance():
     """SpatialRelationship with invalid distance raises ValueError."""
-    with pytest.raises(ValueError, match="distance must be a non-negative number"):
+    with pytest.raises(
+        ValueError, match="distance must be a non-negative number"
+    ):
         SpatialRelationship(
             to_label="TAX",
             to_line_id=10,
@@ -158,7 +164,10 @@ def test_spatial_relationship_label_uppercased():
 @pytest.mark.unit
 def test_spatial_analysis_init_valid(example_spatial_analysis):
     """Test constructing a valid ReceiptWordLabelSpatialAnalysis."""
-    assert example_spatial_analysis.image_id == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    assert (
+        example_spatial_analysis.image_id
+        == "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+    )
     assert example_spatial_analysis.receipt_id == 1
     assert example_spatial_analysis.line_id == 12
     assert example_spatial_analysis.word_id == 45
@@ -236,7 +245,9 @@ def test_spatial_analysis_init_invalid_ids():
 def test_spatial_analysis_init_invalid_from_label():
     """ReceiptWordLabelSpatialAnalysis with invalid from_label raises ValueError."""
     # Empty label
-    with pytest.raises(ValueError, match="from_label must be a non-empty string"):
+    with pytest.raises(
+        ValueError, match="from_label must be a non-empty string"
+    ):
         ReceiptWordLabelSpatialAnalysis(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
@@ -249,7 +260,9 @@ def test_spatial_analysis_init_invalid_from_label():
         )
 
     # Non-string label
-    with pytest.raises(ValueError, match="from_label must be a non-empty string"):
+    with pytest.raises(
+        ValueError, match="from_label must be a non-empty string"
+    ):
         ReceiptWordLabelSpatialAnalysis(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
@@ -279,7 +292,9 @@ def test_spatial_analysis_init_invalid_position():
         )
 
     # Missing required keys
-    with pytest.raises(ValueError, match="from_position must contain 'x' and 'y' keys"):
+    with pytest.raises(
+        ValueError, match="from_position must contain 'x' and 'y' keys"
+    ):
         ReceiptWordLabelSpatialAnalysis(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
@@ -296,7 +311,9 @@ def test_spatial_analysis_init_invalid_position():
 def test_spatial_analysis_init_invalid_relationships():
     """ReceiptWordLabelSpatialAnalysis with invalid spatial_relationships raises ValueError."""
     # Non-list relationships
-    with pytest.raises(ValueError, match="spatial_relationships must be a list"):
+    with pytest.raises(
+        ValueError, match="spatial_relationships must be a list"
+    ):
         ReceiptWordLabelSpatialAnalysis(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
@@ -309,7 +326,10 @@ def test_spatial_analysis_init_invalid_relationships():
         )
 
     # List with non-SpatialRelationship objects
-    with pytest.raises(ValueError, match="spatial_relationships\\[0\\] must be a SpatialRelationship"):
+    with pytest.raises(
+        ValueError,
+        match="spatial_relationships\\[0\\] must be a SpatialRelationship",
+    ):
         ReceiptWordLabelSpatialAnalysis(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
@@ -326,7 +346,9 @@ def test_spatial_analysis_init_invalid_relationships():
 def test_spatial_analysis_init_invalid_timestamp():
     """ReceiptWordLabelSpatialAnalysis with invalid timestamp raises ValueError."""
     # Invalid string format
-    with pytest.raises(ValueError, match="timestamp_added string must be in ISO format"):
+    with pytest.raises(
+        ValueError, match="timestamp_added string must be in ISO format"
+    ):
         ReceiptWordLabelSpatialAnalysis(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
@@ -339,7 +361,10 @@ def test_spatial_analysis_init_invalid_timestamp():
         )
 
     # Non-string, non-datetime
-    with pytest.raises(ValueError, match="timestamp_added must be a datetime object or a string"):
+    with pytest.raises(
+        ValueError,
+        match="timestamp_added must be a datetime object or a string",
+    ):
         ReceiptWordLabelSpatialAnalysis(
             image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
             receipt_id=1,
@@ -400,7 +425,9 @@ def test_spatial_analysis_gsi2_key(example_spatial_analysis):
     """Test GSI2 key generation."""
     key = example_spatial_analysis.gsi2_key()
     expected = {
-        "GSI2PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001#SPATIAL"},
+        "GSI2PK": {
+            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001#SPATIAL"
+        },
         "GSI2SK": {"S": "LABEL#GRAND_TOTAL#LINE#00012#WORD#00045"},
     }
     assert key == expected
@@ -413,7 +440,7 @@ def test_spatial_analysis_gsi2_key(example_spatial_analysis):
 def test_spatial_analysis_to_item(example_spatial_analysis):
     """Test conversion to DynamoDB item."""
     item = example_spatial_analysis.to_item()
-    
+
     # Check basic structure
     assert "PK" in item
     assert "SK" in item
@@ -423,7 +450,7 @@ def test_spatial_analysis_to_item(example_spatial_analysis):
     assert "GSI2SK" in item
     assert "TYPE" in item
     assert item["TYPE"]["S"] == "RECEIPT_WORD_LABEL_SPATIAL_ANALYSIS"
-    
+
     # Check data fields
     assert item["from_label"]["S"] == "GRAND_TOTAL"
     assert item["from_position"]["M"]["x"]["N"] == "0.8"
@@ -431,7 +458,7 @@ def test_spatial_analysis_to_item(example_spatial_analysis):
     assert item["timestamp_added"]["S"] == "2021-01-01T00:00:00"
     assert item["analysis_version"]["S"] == "1.0"
     assert item["relationships_count"]["N"] == "2"
-    
+
     # Check spatial relationships
     assert len(item["spatial_relationships"]["L"]) == 2
     first_rel = item["spatial_relationships"]["L"][0]["M"]
@@ -511,15 +538,17 @@ def test_item_to_spatial_analysis_invalid_pk_format():
 def test_spatial_analysis_eq(example_spatial_analysis):
     """Test that ReceiptWordLabelSpatialAnalysis equality works as expected."""
     # Test equality with same data
-    same_analysis = ReceiptWordLabelSpatialAnalysis(**dict(example_spatial_analysis))
+    same_analysis = ReceiptWordLabelSpatialAnalysis(
+        **dict(example_spatial_analysis)
+    )
     assert example_spatial_analysis == same_analysis
-    
+
     # Test inequality with different data
     different_analysis = ReceiptWordLabelSpatialAnalysis(
         **dict(example_spatial_analysis, receipt_id=2)
     )
     assert example_spatial_analysis != different_analysis
-    
+
     # Test inequality with non-ReceiptWordLabelSpatialAnalysis
     assert example_spatial_analysis != "not_a_spatial_analysis"
     assert example_spatial_analysis is not None
@@ -532,7 +561,7 @@ def test_spatial_analysis_hash(example_spatial_analysis):
     hash1 = hash(example_spatial_analysis)
     hash2 = hash(example_spatial_analysis)
     assert hash1 == hash2
-    
+
     # Different objects should have different hashes (usually)
     different_analysis = ReceiptWordLabelSpatialAnalysis(
         **dict(example_spatial_analysis, receipt_id=2)
@@ -549,7 +578,7 @@ def test_spatial_analysis_iter(example_spatial_analysis):
     analysis_dict = dict(example_spatial_analysis)
     expected_keys = {
         "image_id",
-        "receipt_id", 
+        "receipt_id",
         "line_id",
         "word_id",
         "from_label",

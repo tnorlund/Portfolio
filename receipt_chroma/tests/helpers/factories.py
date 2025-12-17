@@ -86,7 +86,7 @@ def create_label_message(
     # Create a record snapshot with the label entity if not provided
     if record_snapshot is None:
         # Use a valid UUID if the image_id is a test string
-        valid_image_id = image_id if image_id.count('-') == 4 else str(uuid4())
+        valid_image_id = image_id if image_id.count("-") == 4 else str(uuid4())
         label_entity = ReceiptWordLabel(
             image_id=valid_image_id,
             receipt_id=receipt_id,

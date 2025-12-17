@@ -532,6 +532,8 @@ def test_receipt_line_gsi3_key():
         confidence=0.95,
     )
     assert line.gsi3_key() == {
-        "GSI3PK": {"S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"},
+        "GSI3PK": {
+            "S": "IMAGE#3f52804b-2fad-4e00-92c8-b593da3a8ed3#RECEIPT#00001"
+        },
         "GSI3SK": {"S": "LINE"},
     }
