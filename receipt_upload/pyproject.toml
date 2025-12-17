@@ -48,6 +48,7 @@ test = [
     "pytest-mock>=3.13.0",
     "pytest-xdist>=3.6.0",  # For parallel test execution
     "pytest-timeout>=2.1.0",  # For test timeouts
+    "moto>=5.0.0",  # For mocking AWS services in integration tests
     "receipt-agent",  # For testing Place ID Finder integration
 ]
 dev = [
