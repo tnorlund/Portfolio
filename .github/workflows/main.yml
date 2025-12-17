@@ -106,7 +106,8 @@ jobs:
           # Check formatting but don't block (we have auto-format on PRs)
           echo "Checking Python formatting..."
           black --check --line-length=79 receipt_dynamo receipt_dynamo_stream receipt_chroma receipt_upload infra || echo "::warning::Some files need black formatting"
-          isort --check-only --profile=black --line-length=79 receipt_dynamo receipt_dynamo_stream receipt_chroma receipt_upload infra || echo "::warning::Some imports need isort formatting"
+          # isort configuration is in .isort.cfg
+          isort --check-only receipt_dynamo receipt_dynamo_stream receipt_chroma receipt_upload infra || echo "::warning::Some imports need isort formatting"
 
       - name: Set up Node.js
         if: steps.changes.outputs.portfolio == 'true'
