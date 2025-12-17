@@ -17,12 +17,14 @@ COPY receipt_agent/ /tmp/receipt_agent/
 # Install dependencies from pyproject.toml files in dependency order
 # receipt_dynamo_stream depends on receipt_dynamo
 # receipt_chroma depends on receipt_dynamo_stream
+# receipt_places depends on receipt_dynamo
+# receipt_upload depends on receipt_dynamo, receipt_chroma, and receipt_places
 # receipt_agent depends on receipt_dynamo, receipt_chroma, receipt_upload, and receipt_places
 RUN pip install --no-cache-dir /tmp/receipt_dynamo && \
     pip install --no-cache-dir /tmp/receipt_dynamo_stream && \
     pip install --no-cache-dir /tmp/receipt_chroma && \
-    pip install --no-cache-dir /tmp/receipt_upload && \
     pip install --no-cache-dir /tmp/receipt_places && \
+    pip install --no-cache-dir /tmp/receipt_upload && \
     pip install --no-cache-dir /tmp/receipt_agent && \
     rm -rf /tmp/receipt_dynamo /tmp/receipt_dynamo_stream /tmp/receipt_chroma /tmp/receipt_upload /tmp/receipt_places /tmp/receipt_agent
 
