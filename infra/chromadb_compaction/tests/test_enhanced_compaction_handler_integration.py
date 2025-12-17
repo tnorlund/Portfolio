@@ -161,38 +161,6 @@ class TestEnhancedCompactionHandlerIntegration:
         # If S3 operations were called, they should be properly structured
         # (This allows for various implementation approaches)
 
-    def test_error_handling_missing_collection(
-        self, target_metadata_event, mock_sqs_queues, mock_s3_operations
-    ):
-        """Test graceful handling when ChromaDB collection doesn't exist."""
-        
-        # Create mock that raises exception for get_collection
-        from unittest.mock import patch, Mock
-        
-        with patch('receipt_label.utils.chroma_client.ChromaDBClient') as MockClient:
-            mock_client = Mock()
-            mock_client.get_collection.side_effect = Exception("Collection not found")
-            MockClient.return_value = mock_client
-            
-            # Process pipeline
-            stream_result = stream_handler(target_metadata_event, None)
-            assert stream_result["statusCode"] == 200
-            
-            # Get message and create handler event
-            sqs = mock_sqs_queues["sqs_client"]
-            lines_queue_url = mock_sqs_queues["lines_queue_url"]
-            response = sqs.receive_message(QueueUrl=lines_queue_url, MaxNumberOfMessages=1)
-            sqs_message = response["Messages"][0]
-            handler_event = self._create_handler_event_from_sqs(sqs_message, "lines")
-            
-            # Handler should handle the error gracefully
-            handler_result = enhanced_handler(handler_event, None)
-            
-            # Should still return success but with warnings
-            assert handler_result["statusCode"] == 200
-            # Should have processing stats showing the failure was handled
-            assert "processed_messages" in handler_result
-
     def _create_handler_event_from_sqs(self, sqs_message, collection_type):
         """Convert SQS message from stream processor to enhanced handler event format."""
         

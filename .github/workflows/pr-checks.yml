@@ -50,7 +50,7 @@ jobs:
           python3 -m pip install isort black
 
           # Check if code is formatted with standardized parameters
-          if isort --check-only --profile=black --line-length=79 --multi-line-output=3 --include-trailing-comma --force-grid-wrap=0 --use-parentheses --ensure-newline-before-comments receipt_dynamo receipt_dynamo_stream receipt_label receipt_chroma receipt_upload infra scripts && black --check --line-length=79 receipt_dynamo receipt_dynamo_stream receipt_label receipt_chroma receipt_upload infra scripts; then
+          if isort --check-only --profile=black --line-length=79 --multi-line-output=3 --include-trailing-comma --force-grid-wrap=0 --use-parentheses --ensure-newline-before-comments receipt_dynamo receipt_dynamo_stream receipt_chroma receipt_upload infra scripts && black --check --line-length=79 receipt_dynamo receipt_dynamo_stream receipt_chroma receipt_upload infra scripts; then
             echo "formatted=true" >> $GITHUB_OUTPUT
           else
             echo "formatted=false" >> $GITHUB_OUTPUT
@@ -64,7 +64,7 @@ jobs:
     runs-on: [self-hosted, macOS, ARM64]
     strategy:
       matrix:
-        package: [receipt_dynamo, receipt_dynamo_stream, receipt_label, receipt_chroma, receipt_upload]
+        package: [receipt_dynamo, receipt_dynamo_stream, receipt_chroma, receipt_upload]
     steps:
       - uses: actions/checkout@v6
         with:
@@ -129,28 +129,7 @@ jobs:
           python3 -m pip install hatchling --disable-pip-version-check
 
           # Install package with test dependencies from PR source
-          if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
-            echo "Installing receipt_dynamo, receipt_dynamo_stream, and receipt_chroma dependencies from PR source first"
-            # Install from the parent directory since we haven't cd'd yet
-            python3 -m pip install -e "./receipt_dynamo" --disable-pip-version-check
-            # Verify receipt_dynamo is importable
-            echo "Verifying receipt_dynamo installation..."
-            python3 -c "import receipt_dynamo; print(f'receipt_dynamo imported from: {receipt_dynamo.__file__}')"
-            python3 -c "from receipt_dynamo.entities.places_cache import PlacesCache; print('PlacesCache imported successfully')"
-            # Install receipt_dynamo_stream (receipt_chroma now depends on it)
-            echo "Installing receipt_dynamo_stream dependency..."
-            python3 -m pip install --no-deps -e "./receipt_dynamo_stream" --disable-pip-version-check
-            # Install receipt_dynamo_stream's dependencies manually (excluding receipt-dynamo which is already installed)
-            python3 -m pip install "boto3>=1.34.0" --disable-pip-version-check
-            # Install receipt_chroma (receipt_label now depends on it after migration)
-            echo "Installing receipt_chroma dependency..."
-            python3 -m pip install --no-deps -e "./receipt_chroma" --disable-pip-version-check
-            # Install receipt_chroma's dependencies manually (excluding receipt-dynamo which is already installed)
-            python3 -m pip install "boto3>=1.34.0" "chromadb>=1.3.5" "openai>=2.8.1,<3.0.0" --disable-pip-version-check
-            # Verify receipt_chroma is importable
-            echo "Verifying receipt_chroma installation..."
-            python3 -c "import receipt_chroma; print(f'receipt_chroma imported from: {receipt_chroma.__file__}')"
-          elif [[ "${{ matrix.package }}" == "receipt_chroma" ]]; then
+          if [[ "${{ matrix.package }}" == "receipt_chroma" ]]; then
             echo "Installing receipt_dynamo and receipt_dynamo_stream dependencies from PR source first"
             # Install from the parent directory since we haven't cd'd yet
             python3 -m pip install -e "./receipt_dynamo" --disable-pip-version-check
@@ -190,10 +169,8 @@ jobs:
           cd ${{ matrix.package }}
           if [[ -f "pyproject.toml" ]] && grep -q "test.*=" pyproject.toml; then
             echo "Installing package with test dependencies from PR source"
-            # Don't use --force-reinstall for receipt_label/receipt_chroma to preserve local receipt_dynamo
-            if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
-              python3 -m pip install -e ".[test,lambda]" --disable-pip-version-check
-            elif [[ "${{ matrix.package }}" == "receipt_chroma" ]]; then
+            # Don't use --force-reinstall for receipt_chroma to preserve local receipt_dynamo
+            if [[ "${{ matrix.package }}" == "receipt_chroma" ]]; then
               # Install receipt_chroma without dependencies first to avoid pip trying to resolve receipt-dynamo from PyPI
               python3 -m pip install --no-deps -e "." --disable-pip-version-check
               # Install receipt_chroma's dependencies manually (excluding receipt-dynamo which is already installed)
@@ -257,16 +234,8 @@ jobs:
           echo "=== Package info ==="
           echo "$PIP_SHOW_OUTPUT" | grep -E "(Name:|Version:|Location:|Editable)" || true
 
-          # Final verification for receipt_label/receipt_chroma that receipt_dynamo is still local
-          if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
-            echo "=== Final receipt_dynamo verification ==="
-            python3 -c "import receipt_dynamo; print(f'receipt_dynamo location: {receipt_dynamo.__file__}')"
-            python3 -c "from receipt_dynamo.entities.places_cache import PlacesCache; print('PlacesCache still importable')" || {
-              echo "ERROR: receipt_dynamo imports broken after receipt_label installation!"
-              python3 -m pip list | grep receipt
-              exit 1
-            }
-          elif [[ "${{ matrix.package }}" == "receipt_chroma" ]]; then
+          # Final verification for receipt_chroma that receipt_dynamo is still local
+          if [[ "${{ matrix.package }}" == "receipt_chroma" ]]; then
             echo "=== Final receipt_dynamo verification ==="
             python3 -c "import receipt_dynamo; print(f'receipt_dynamo location: {receipt_dynamo.__file__}')"
             python3 -c "import receipt_chroma; print(f'receipt_chroma location: {receipt_chroma.__file__}')" || {
@@ -301,10 +270,7 @@ jobs:
 
           # Run only fast unit tests with 30-second timeout
           # Use -o addopts="" to override pytest.ini for faster CI runs without coverage
-          if [[ "${{ matrix.package }}" == "receipt_label" ]]; then
-            # receipt_label uses marker-based test organization
-            pytest tests -n auto --timeout=30 -m "unit and not slow" --tb=short -q -o addopts=""
-          elif [[ "${{ matrix.package }}" == "receipt_chroma" ]]; then
+          if [[ "${{ matrix.package }}" == "receipt_chroma" ]]; then
             # receipt_chroma uses marker-based test organization (similar to receipt_dynamo)
             pytest tests -n auto --timeout=30 -m "unit and not slow" --tb=short -q -o addopts=""
           elif [[ "${{ matrix.package }}" == "receipt_upload" ]]; then
