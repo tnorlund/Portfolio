@@ -6,7 +6,7 @@
 
 # Interface: ImageFormats
 
-Defined in: [utils/imageFormat.ts:115](https://github.com/tnorlund/Portfolio/blob/3bb9a4deb3aa47455e7dcddaac94dcf70eb5d1e4/portfolio/utils/imageFormat.ts#L115)
+Defined in: [utils/imageFormat.ts:115](https://github.com/tnorlund/Portfolio/blob/5e0eed483901d414a88a6f8ec10dde23992c0cb2/portfolio/utils/imageFormat.ts#L115)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [utils/imageFormat.ts:115](https://github.com/tnorlund/Portfolio/blo
 
 > **cdn\_s3\_key**: `string`
 
-Defined in: [utils/imageFormat.ts:116](https://github.com/tnorlund/Portfolio/blob/3bb9a4deb3aa47455e7dcddaac94dcf70eb5d1e4/portfolio/utils/imageFormat.ts#L116)
+Defined in: [utils/imageFormat.ts:116](https://github.com/tnorlund/Portfolio/blob/5e0eed483901d414a88a6f8ec10dde23992c0cb2/portfolio/utils/imageFormat.ts#L116)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [utils/imageFormat.ts:116](https://github.com/tnorlund/Portfolio/blo
 
 > `optional` **cdn\_avif\_s3\_key**: `string`
 
-Defined in: [utils/imageFormat.ts:118](https://github.com/tnorlund/Portfolio/blob/3bb9a4deb3aa47455e7dcddaac94dcf70eb5d1e4/portfolio/utils/imageFormat.ts#L118)
+Defined in: [utils/imageFormat.ts:118](https://github.com/tnorlund/Portfolio/blob/5e0eed483901d414a88a6f8ec10dde23992c0cb2/portfolio/utils/imageFormat.ts#L118)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [utils/imageFormat.ts:118](https://github.com/tnorlund/Portfolio/blo
 
 > `optional` **cdn\_medium\_avif\_s3\_key**: `string`
 
-Defined in: [utils/imageFormat.ts:130](https://github.com/tnorlund/Portfolio/blob/3bb9a4deb3aa47455e7dcddaac94dcf70eb5d1e4/portfolio/utils/imageFormat.ts#L130)
+Defined in: [utils/imageFormat.ts:130](https://github.com/tnorlund/Portfolio/blob/5e0eed483901d414a88a6f8ec10dde23992c0cb2/portfolio/utils/imageFormat.ts#L130)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [utils/imageFormat.ts:130](https://github.com/tnorlund/Portfolio/blo
 
 > `optional` **cdn\_medium\_s3\_key**: `string`
 
-Defined in: [utils/imageFormat.ts:128](https://github.com/tnorlund/Portfolio/blob/3bb9a4deb3aa47455e7dcddaac94dcf70eb5d1e4/portfolio/utils/imageFormat.ts#L128)
+Defined in: [utils/imageFormat.ts:128](https://github.com/tnorlund/Portfolio/blob/5e0eed483901d414a88a6f8ec10dde23992c0cb2/portfolio/utils/imageFormat.ts#L128)
 
 ***
 
@@ -46,7 +46,7 @@ Defined in: [utils/imageFormat.ts:128](https://github.com/tnorlund/Portfolio/blo
 
 > `optional` **cdn\_medium\_webp\_s3\_key**: `string`
 
-Defined in: [utils/imageFormat.ts:129](https://github.com/tnorlund/Portfolio/blob/3bb9a4deb3aa47455e7dcddaac94dcf70eb5d1e4/portfolio/utils/imageFormat.ts#L129)
+Defined in: [utils/imageFormat.ts:129](https://github.com/tnorlund/Portfolio/blob/5e0eed483901d414a88a6f8ec10dde23992c0cb2/portfolio/utils/imageFormat.ts#L129)
 
 ***
 
@@ -54,7 +54,7 @@ Defined in: [utils/imageFormat.ts:129](https://github.com/tnorlund/Portfolio/blo
 
 > `optional` **cdn\_small\_avif\_s3\_key**: `string`
 
-Defined in: [utils/imageFormat.ts:126](https://github.com/tnorlund/Portfolio/blob/3bb9a4deb3aa47455e7dcddaac94dcf70eb5d1e4/portfolio/utils/imageFormat.ts#L126)
+Defined in: [utils/imageFormat.ts:126](https://github.com/tnorlund/Portfolio/blob/5e0eed483901d414a88a6f8ec10dde23992c0cb2/portfolio/utils/imageFormat.ts#L126)
 
 ***
 
@@ -62,7 +62,7 @@ Defined in: [utils/imageFormat.ts:126](https://github.com/tnorlund/Portfolio/blo
 
 > `optional` **cdn\_small\_s3\_key**: `string`
 
-Defined in: [utils/imageFormat.ts:124](https://github.com/tnorlund/Portfolio/blob/3bb9a4deb3aa47455e7dcddaac94dcf70eb5d1e4/portfolio/utils/imageFormat.ts#L124)
+Defined in: [utils/imageFormat.ts:124](https://github.com/tnorlund/Portfolio/blob/5e0eed483901d414a88a6f8ec10dde23992c0cb2/portfolio/utils/imageFormat.ts#L124)
 
 ***
 
@@ -70,7 +70,7 @@ Defined in: [utils/imageFormat.ts:124](https://github.com/tnorlund/Portfolio/blo
 
 > `optional` **cdn\_small\_webp\_s3\_key**: `string`
 
-Defined in: [utils/imageFormat.ts:125](https://github.com/tnorlund/Portfolio/blob/3bb9a4deb3aa47455e7dcddaac94dcf70eb5d1e4/portfolio/utils/imageFormat.ts#L125)
+Defined in: [utils/imageFormat.ts:125](https://github.com/tnorlund/Portfolio/blob/5e0eed483901d414a88a6f8ec10dde23992c0cb2/portfolio/utils/imageFormat.ts#L125)
 
 ***
 
@@ -78,7 +78,7 @@ Defined in: [utils/imageFormat.ts:125](https://github.com/tnorlund/Portfolio/blo
 
 > `optional` **cdn\_thumbnail\_avif\_s3\_key**: `string`
 
-Defined in: [utils/imageFormat.ts:122](https://github.com/tnorlund/Portfolio/blob/3bb9a4deb3aa47455e7dcddaac94dcf70eb5d1e4/portfolio/utils/imageFormat.ts#L122)
+Defined in: [utils/imageFormat.ts:122](https://github.com/tnorlund/Portfolio/blob/5e0eed483901d414a88a6f8ec10dde23992c0cb2/portfolio/utils/imageFormat.ts#L122)
 
 ***
 
@@ -86,7 +86,7 @@ Defined in: [utils/imageFormat.ts:122](https://github.com/tnorlund/Portfolio/blo
 
 > `optional` **cdn\_thumbnail\_s3\_key**: `string`
 
-Defined in: [utils/imageFormat.ts:120](https://github.com/tnorlund/Portfolio/blob/3bb9a4deb3aa47455e7dcddaac94dcf70eb5d1e4/portfolio/utils/imageFormat.ts#L120)
+Defined in: [utils/imageFormat.ts:120](https://github.com/tnorlund/Portfolio/blob/5e0eed483901d414a88a6f8ec10dde23992c0cb2/portfolio/utils/imageFormat.ts#L120)
 
 ***
 
@@ -94,7 +94,7 @@ Defined in: [utils/imageFormat.ts:120](https://github.com/tnorlund/Portfolio/blo
 
 > `optional` **cdn\_thumbnail\_webp\_s3\_key**: `string`
 
-Defined in: [utils/imageFormat.ts:121](https://github.com/tnorlund/Portfolio/blob/3bb9a4deb3aa47455e7dcddaac94dcf70eb5d1e4/portfolio/utils/imageFormat.ts#L121)
+Defined in: [utils/imageFormat.ts:121](https://github.com/tnorlund/Portfolio/blob/5e0eed483901d414a88a6f8ec10dde23992c0cb2/portfolio/utils/imageFormat.ts#L121)
 
 ***
 
@@ -102,4 +102,4 @@ Defined in: [utils/imageFormat.ts:121](https://github.com/tnorlund/Portfolio/blo
 
 > `optional` **cdn\_webp\_s3\_key**: `string`
 
-Defined in: [utils/imageFormat.ts:117](https://github.com/tnorlund/Portfolio/blob/3bb9a4deb3aa47455e7dcddaac94dcf70eb5d1e4/portfolio/utils/imageFormat.ts#L117)
+Defined in: [utils/imageFormat.ts:117](https://github.com/tnorlund/Portfolio/blob/5e0eed483901d414a88a6f8ec10dde23992c0cb2/portfolio/utils/imageFormat.ts#L117)
