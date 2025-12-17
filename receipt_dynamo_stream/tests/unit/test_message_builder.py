@@ -1,7 +1,6 @@
 """Comprehensive unit tests for message_builder module."""
 from datetime import datetime
 from typing import Any, Mapping, Optional
-from unittest.mock import MagicMock
 
 import pytest
 from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata

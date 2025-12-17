@@ -180,9 +180,9 @@ def test_get_chromadb_relevant_changes_unknown_entity_type() -> None:
     assert changes == {}
 
 
-def test_get_chromadb_relevant_changes_none_to_value() -> None:
-    """Test when a field changes from None to a value."""
-    old_entity = _make_metadata(canonical_merchant_name=None)
+def test_get_chromadb_relevant_changes_empty_to_value() -> None:
+    """Test when a field changes from empty string to a value."""
+    old_entity = _make_metadata(canonical_merchant_name="")
     new_entity = _make_metadata(canonical_merchant_name="New Canonical")
 
     changes = get_chromadb_relevant_changes(
@@ -190,14 +190,14 @@ def test_get_chromadb_relevant_changes_none_to_value() -> None:
     )
 
     assert "canonical_merchant_name" in changes
-    assert changes["canonical_merchant_name"].old is None
+    assert changes["canonical_merchant_name"].old == ""
     assert changes["canonical_merchant_name"].new == "New Canonical"
 
 
-def test_get_chromadb_relevant_changes_value_to_none() -> None:
-    """Test when a field changes from a value to None."""
+def test_get_chromadb_relevant_changes_value_to_empty() -> None:
+    """Test when a field changes from a value to empty string."""
     old_entity = _make_metadata(canonical_merchant_name="Old Canonical")
-    new_entity = _make_metadata(canonical_merchant_name=None)
+    new_entity = _make_metadata(canonical_merchant_name="")
 
     changes = get_chromadb_relevant_changes(
         "RECEIPT_METADATA", old_entity, new_entity
@@ -205,7 +205,7 @@ def test_get_chromadb_relevant_changes_value_to_none() -> None:
 
     assert "canonical_merchant_name" in changes
     assert changes["canonical_merchant_name"].old == "Old Canonical"
-    assert changes["canonical_merchant_name"].new is None
+    assert changes["canonical_merchant_name"].new == ""
 
 
 def test_get_chromadb_relevant_changes_irrelevant_fields_ignored() -> None:

@@ -2,7 +2,7 @@
 import os
 from datetime import datetime
 from typing import Any, Mapping, Optional
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
