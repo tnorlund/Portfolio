@@ -149,7 +149,10 @@ def produce_embedding_delta(
         # Send to SQS if queue URL is provided and not empty
         if sqs_queue_url:
             try:
-                sqs = boto3.client("sqs")
+                sqs = boto3.client(
+                    "sqs",
+                    region_name=os.environ.get("AWS_REGION", "us-east-1"),
+                )
 
                 message_body = {
                     "delta_key": s3_key,
