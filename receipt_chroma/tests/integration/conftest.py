@@ -101,8 +101,11 @@ def s3_bucket(request):
     """Create a mock S3 bucket using moto.
 
     Uses explicit mock_aws start/stop pattern to ensure proper isolation
-    when tests run in parallel with pytest-xdist.
+    when tests run in parallel with pytest-xdist. Includes aggressive cleanup
+    with garbage collection to ensure moto state is fully released.
     """
+    import gc
+
     mock_context = mock_aws()
     mock_context.start()
 
@@ -114,6 +117,8 @@ def s3_bucket(request):
     finally:
         # Ensure moto context is properly cleaned up after test
         mock_context.stop()
+        # Force garbage collection to release moto's internal state
+        gc.collect()
 
 
 @pytest.fixture
@@ -251,24 +256,34 @@ def lock_manager_words(dynamo_client):
 
 
 @pytest.fixture
-def mock_s3_bucket_compaction():
+def mock_s3_bucket_compaction(request):
     """Create a mock S3 bucket for compaction testing.
 
     Uses explicit mock_aws start/stop pattern to ensure proper isolation
     when tests run in parallel with pytest-xdist. This prevents S3 state
     pollution across concurrent test workers.
+
+    Each test gets a unique bucket name to prevent collisions when running
+    tests in parallel. Includes aggressive cleanup with garbage collection
+    to ensure moto state is fully released.
     """
+    import gc
+    import uuid
+
     mock_context = mock_aws()
     mock_context.start()
 
     try:
         s3_client = boto3.client("s3", region_name="us-east-1")
-        bucket_name = "test-chromadb-bucket"
+        # Use unique bucket name per test to prevent collisions in parallel execution
+        bucket_name = f"test-chromadb-{uuid.uuid4().hex[:8]}"
         s3_client.create_bucket(Bucket=bucket_name)
         yield s3_client, bucket_name
     finally:
         # Ensure moto context is properly cleaned up after test
         mock_context.stop()
+        # Force garbage collection to release moto's internal state
+        gc.collect()
 
 
 @pytest.fixture(scope="function", autouse=False)
